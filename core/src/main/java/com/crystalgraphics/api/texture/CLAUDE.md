@@ -36,8 +36,8 @@ static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
 // mymod/textures/fx/noise.yaml:   sampler: { filter: bilinear, wrap: repeat }
 
 // A made texture: the default, or its own
-CgTexture2D lut = CgTextures.create("mymod.lut", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
-CgTexture2D tiles = CgTexture2D.createEmpty(64, 64, CgFormat.RGBA8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+CgTexture2D lut = CgTextures.of("mymod.lut", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
+CgTexture2D tiles = CgTextures.of("mymod.tiles", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM)).sampler(CgSampler.NEAREST_CLAMP);
 
 // Anything, sampled another way at one binding
 material.applyProperties(b -> b.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP));
@@ -52,12 +52,15 @@ material.applyProperties(b -> b.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CL
 
 | Class | Role |
 |-------|------|
-| `CgTexture2D` | One 2D image. `create(path[, settings])`, `createDirect(path)` (not cached), `create(name, w, h, format, levels)` (what `CgTextures.create` calls), `createEmpty(w, h, format[, levels])`, `createFromPixels(w, h, pixels, format)`; `write(...)` regions, `release()`. |
-| `CgTexture2DArray` | A stack of 2D images, smaller ones centred. `create(paths...)`, `createDirect(paths...)`, `allocateEmpty(w, h, layers, format)`. |
-| `CgTexture3D` | A volume. `create(paths...)`, `createDirect(paths...)`, `createEmpty(w, h, d, format[, levels])`. |
-| `CgTextureCubemap` | A cube. `create(six paths)`, `createStacked(path[, settings])`, `createDirect(six paths)`, `createEmpty(size, format)`. |
+| `CgTexture2D` | One 2D image. `create(path[, settings])`, `create(name, desc)`; `write(...)` regions. |
+| `CgTexture2DArray` | A stack of 2D images, smaller ones centred. `create(paths...)`, `create(name, desc)`; `uploadLayerRegion`, `growLayers`. |
+| `CgTexture3D` | A volume. `create(paths...)`, `create(name, desc)`; `uploadRegion`, `generateMipmaps`. |
+| `CgTextureCubemap` | A cube. `create(six paths)`, `createStacked(path[, settings])`, `create(name, desc)`; `uploadFace`. |
 
-Each has a covariant `sampler(CgSampler)`.
+Each has a covariant `sampler(CgSampler)`, and a made one `release()`. `CgTextures` calls them: `of`, `frames`,
+`volume` and `cube`, each with paths or with `(name, CgTextureDesc)`. A description states its kind
+(`CgTextureDesc.of`/`array`/`volume`/`cube`), so a one-slice volume or a one-layer array is one; a description of
+another kind than the call's throws.
 
 ## Relationship to Other Packages
 

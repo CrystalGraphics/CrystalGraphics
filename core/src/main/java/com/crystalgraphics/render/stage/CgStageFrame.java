@@ -21,7 +21,7 @@ import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
-import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 

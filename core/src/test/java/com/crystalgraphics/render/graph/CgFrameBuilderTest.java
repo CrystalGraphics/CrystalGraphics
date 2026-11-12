@@ -21,6 +21,7 @@ import java.util.concurrent.Executors;
 
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * render-graph G1: what the frame builder decides with no GL — order from reads and writes, culling, transient

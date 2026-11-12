@@ -11,7 +11,7 @@ import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;

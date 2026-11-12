@@ -13,6 +13,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * One raster pass's copy of its own target, for its draws reading {@code cg_SceneColor} or {@code cg_DepthBuffer}

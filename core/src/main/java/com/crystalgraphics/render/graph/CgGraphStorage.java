@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * A graph texture's storage on the device while it is resolved (Unreal's pooled render target behind an

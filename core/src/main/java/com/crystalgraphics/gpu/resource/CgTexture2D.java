@@ -56,7 +56,7 @@ import com.crystalgraphics.api.texture.CgSampler;
  * <ul>
  *   <li>A file that will not load is logged and drawn as the purple and black checkerboard: {@link #isMissing()}.</li>
  *   <li>{@link #reload()} decodes it again into the same id, so references stay valid; a texture made without a file
- *       ({@code createEmpty}, {@code createFromPixels}) has nothing to reload.</li>
+ *       ({@code create(name, desc)}) has nothing to reload.</li>
  * </ul>
  *
  * <h3>Cooked</h3>
@@ -103,9 +103,6 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     /** Asset path this texture was loaded from; {@code null} for procedural textures. */
     @Getter private final String sourcePath;
-    /** A made texture's name, for the device and the logs; null for any other. */
-    @Nullable
-    private String label;
 
     /** Levels specified at allocation; a spec that generates mipmaps has its full chain instead. */
     private int levels = 1;
@@ -144,16 +141,6 @@ public final class CgTexture2D extends CgTextureAbstract {
     /** {@code path} as {@code settings} say rather than its own file: shared by the path and those settings. */
     public static CgTexture2D create(String path, CgTextureSettings settings) {
         return CgTextureManager.get().getOrCreate(path, settings);
-    }
-
-    /**
-     * {@code path} decoded here, as its settings file says, not cached: the caller owns it, and no change to the file
-     * finds it. Any thread. A file that will not load leaves the checkerboard.
-     */
-    public static CgTexture2D createDirect(String path) {
-        CgTexture2D tex = new CgTexture2D(0, 0, 0, Texels.file(path), path);
-        tex.load();
-        return tex;
     }
 
     /** {@code path}, loaded at its first use: what the manager caches. */
@@ -256,15 +243,19 @@ public final class CgTexture2D extends CgTextureAbstract {
         return getLevels();
     }
 
-    /** {@code CgTextures.create}'s: an empty texture named {@code name}, its maker's to {@link #release}. Any thread. */
-    public static CgTexture2D create(String name, int width, int height, CgFormat format, int levels) {
-        if (levels < 1 || levels > CgTexture.fullChain(width, height)) {
-            throw new IllegalArgumentException(name + ": " + levels + " levels for " + width + "x" + height);
-        }
-        CgTexture2D tex = new CgTexture2D(0, width, height, Texels.made(format, levels), (String) null);
-        tex.label = name;
-        tex.levels = levels;
-        tex.upload(width, height, null, tex.spec.getGlBaseFormat(), tex.spec.getGlType());
+    /**
+     * An empty 2D texture named {@code name}, its maker's to {@link #release}: what {@code CgTextures.of(name, desc)}
+     * makes. Any thread.
+     *
+     * @throws IllegalArgumentException for a description that is not one 2D texture
+     */
+    public static CgTexture2D create(String name, CgTextureDesc desc) {
+        if (!desc.is2D()) throw new IllegalArgumentException(name + ": a 2D texture, not " + desc);
+        CgTexture2D tex = new CgTexture2D(0, desc.width(), desc.height(), Texels.made(desc.format(), desc.levels()),
+                (String) null);
+        tex.label(name);
+        tex.levels = desc.levels();
+        tex.upload(desc.width(), desc.height(), null, tex.spec.getGlBaseFormat(), tex.spec.getGlType());
         return tex;
     }
 
@@ -303,7 +294,7 @@ public final class CgTexture2D extends CgTextureAbstract {
      * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
      *
      * <pre>{@code
-     * CgTexture2D mask = CgTexture2D.createEmpty(64, 64, CgFormat.R8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+     * CgTexture2D mask = CgTextures.of("mymod.mask", CgTextureDesc.of(64, 64, CgFormat.R8_UNORM)).sampler(CgSampler.NEAREST_CLAMP);
      * }</pre>
      *
      * @throws IllegalStateException for a texture from a file, shared by every caller of its path
@@ -313,42 +304,9 @@ public final class CgTexture2D extends CgTextureAbstract {
         return this;
     }
 
-    /** An empty 2D texture of {@code format}, sampled bilinear (nearest for an integer format). Not cached; caller owns it. */
-    public static CgTexture2D createEmpty(int width, int height, CgFormat format) {
-        return createEmpty(width, height, format, 1);
-    }
-
-    /**
-     * An empty texture of {@code levels} mip levels, sampled through all of them: what a kernel or a pass fills level by
-     * level. Not cached; caller owns the lifecycle.
-     *
-     * <pre>{@code
-     * CgTexture2D chain = CgTexture2D.createEmpty(w, h, CgFormat.RGBA16_FLOAT, CgTexture.fullChain(w, h));
-     * float level2 = textureLod(chain, uv, 2.0).r;   // in a shader, once something wrote level 2
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Sampled trilinear across several levels: {@link #sampler(CgSampler)} for another.</li>
-     *   <li>Its caller fills every level: it never makes its own chain.</li>
-     * </ul>
-     */
-    public static CgTexture2D createEmpty(int width, int height, CgFormat format, int levels) {
-        if (levels < 1 || levels > CgTexture.fullChain(width, height)) {
-            throw new IllegalArgumentException(levels + " levels for a " + width + "x" + height + " texture: it holds 1 to "
-                    + CgTexture.fullChain(width, height));
-        }
-        return createEmpty(width, height, Texels.made(format, levels), levels);
-    }
-
-    static CgTexture2D createEmpty(int width, int height, Texels spec, int levels) {
+    /** {@link CgFrameBuffer}'s attachment storage, of its own {@code Texels}. */
+    static CgTexture2D storage(int width, int height, Texels spec, int levels) {
         return doCreate(width, height, null, spec.getGlBaseFormat(), spec.getGlType(), spec, null, levels);
-    }
-
-    /** A texture of {@code format} holding {@code pixels}, one level, sampled as {@link #createEmpty} says. Caller owns it. */
-    public static CgTexture2D createFromPixels(int width, int height, ByteBuffer pixels, CgFormat format) {
-        Texels spec = Texels.made(format, 1);
-        return doCreate(width, height, pixels,
-                spec.getGlBaseFormat(), spec.getGlType(), spec, null, 1);
     }
 
     // ── Upload ────────────────────────────────────────────────────────
@@ -473,7 +431,7 @@ public final class CgTexture2D extends CgTextureAbstract {
 
     @Override
     protected String source() {
-        return sourcePath != null ? sourcePath : label != null ? label : super.source();
+        return sourcePath != null ? sourcePath : super.source();
     }
 
     @Override

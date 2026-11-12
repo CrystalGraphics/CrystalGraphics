@@ -2108,13 +2108,16 @@ com/crystalgraphics/api/texture/CgTextureType
 com/crystalgraphics/api/texture/CgTextures
   access public,final
   extends java/lang/Object
-  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static cube (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
+  method public,static cube (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static cube (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static frames (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
+  method public,static frames (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static frames ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static volume (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
+  method public,static volume (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static volume ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
 com/crystalgraphics/api/vertex/CgAttribType
   access public,final,enum
@@ -6040,12 +6043,8 @@ com/crystalgraphics/gpu/resource/CgTexture2D
   method public write (IIIIILcom/crystalgraphics/platform/rhi/format/CgFormat;Lcom/crystalgraphics/gpu/CgUploadLease;)V
   method public write (IIIIILcom/crystalgraphics/platform/rhi/format/CgFormat;Ljava/nio/ByteBuffer;)V
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static create (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureSettings;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static createDirect (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static createEmpty (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static createEmpty (IILcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static createFromPixels (IILjava/nio/ByteBuffer;Lcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static missing ()Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static wrap (III)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
 com/crystalgraphics/gpu/resource/CgTexture2DArray
@@ -6055,12 +6054,12 @@ com/crystalgraphics/gpu/resource/CgTexture2DArray
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
   method public growLayers (I)V
+  method public release ()V
   method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public uploadLayerRegion (IIIIIIILjava/nio/ByteBuffer;)V
   method public uploadLayerRegion (IIIIIIILjava/nio/FloatBuffer;)V
-  method public,static allocateEmpty (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
-  method public,static createDirect ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
 com/crystalgraphics/gpu/resource/CgTexture3D
   access public,final
   extends com/crystalgraphics/gpu/resource/CgTextureAbstract
@@ -6069,14 +6068,13 @@ com/crystalgraphics/gpu/resource/CgTexture3D
   method public getLevels ()I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
+  method public release ()V
   method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public uploadRegion (IIIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;)V
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;II)V
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
-  method public,static createDirect ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
-  method public,static createEmpty (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
-  method public,static createEmpty (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static fullChain (III)I
 com/crystalgraphics/gpu/resource/CgTextureAbstract
   access public,abstract
@@ -6134,16 +6132,48 @@ com/crystalgraphics/gpu/resource/CgTextureCubemap
   field public,static,final POSITIVE_Z I
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
+  method public release ()V
   method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public upload (I[Ljava/nio/ByteBuffer;II)V
   method public upload ([Lcom/crystalgraphics/util/io/CgTextureIO$CgImageData;)V
   method public uploadFace (IIIIIILcom/crystalgraphics/gpu/CgUploadLease;II)V
   method public uploadFace (IIIIIILjava/nio/ByteBuffer;II)V
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static create (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
-  method public,static createDirect (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
-  method public,static createEmpty (ILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static createStacked (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static createStacked (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureSettings;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
+com/crystalgraphics/gpu/resource/CgTextureDesc
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;II)V
+  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;III)V
+  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;IIILcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;)V
+  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)V
+  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;I)V
+  method public depth ()I
+  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  method public hashCode ()I
+  method public height ()I
+  method public is2D ()Z
+  method public isArray ()Z
+  method public isCube ()Z
+  method public isDepth ()Z
+  method public isMultisampled ()Z
+  method public isVolume ()Z
+  method public kind ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Kind;
+  method public layers ()I
+  method public levels ()I
+  method public samples ()I
+  method public width ()I
+  method public withMips ()Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public withMips (I)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public withSamples (I)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final toString ()Ljava/lang/String;
+  method public,static array (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public,static cube (ILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public,static of (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
+  method public,static volume (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
 com/crystalgraphics/gpu/resource/CgTextureManager
   access public,final
   extends java/lang/Object
@@ -9378,7 +9408,7 @@ com/crystalgraphics/render/graph/CgFrameScope
   extends java/lang/Object
   method public,static get (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;)Ljava/lang/Object;
   method public,static put (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;Ljava/lang/Object;)V
-  method public,static texture (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;Lcom/crystalgraphics/render/graph/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static texture (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/graph/CgFrameScope$Key
   access public,final
   extends java/lang/Object
@@ -9442,7 +9472,7 @@ com/crystalgraphics/render/graph/CgGraphTexture
   extends com/crystalgraphics/render/graph/CgGraphResource
   implements com/crystalgraphics/api/texture/CgTexture
   method public depthOf ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public desc ()Lcom/crystalgraphics/render/graph/CgTextureDesc;
+  method public desc ()Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
   method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public getDepth ()I
   method public getHeight ()I
@@ -9463,12 +9493,12 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public target ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public toString ()Ljava/lang/String;
   method public,static current ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static history (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static history (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static imported (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/graph/CgGraphTexture$Kind
   access public,final,enum
   extends java/lang/Enum
@@ -9680,32 +9710,6 @@ com/crystalgraphics/render/graph/CgTargetCompare$Difference
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/render/graph/CgTextureDesc
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;II)V
-  method public <init> (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;III)V
-  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)V
-  method public <init> (IILcom/crystalgraphics/platform/rhi/format/CgFormat;I)V
-  method public depth ()I
-  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
-  method public hashCode ()I
-  method public height ()I
-  method public isArray ()Z
-  method public isDepth ()Z
-  method public isMultisampled ()Z
-  method public isVolume ()Z
-  method public layers ()I
-  method public levels ()I
-  method public samples ()I
-  method public width ()I
-  method public withMips ()Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public withSamples (I)Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final toString ()Ljava/lang/String;
-  method public,static array (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public,static of (IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
-  method public,static volume (IIILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgTextureDesc;
 com/crystalgraphics/render/mesh/CgMeshStore
   access public,final
   extends java/lang/Object

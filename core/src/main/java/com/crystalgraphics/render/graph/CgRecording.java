@@ -25,6 +25,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * What one recorder produces for a frame: passes, the chunks drawn in them, the snapshots they bind, and the

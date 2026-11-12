@@ -4,6 +4,7 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 
 import java.util.IdentityHashMap;
 import java.util.Map;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * What lives for a host frame across its firings: a blackboard a firing publishes to and a later firing of the same

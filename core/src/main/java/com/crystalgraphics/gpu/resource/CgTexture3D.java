@@ -27,19 +27,16 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(Texels, String...)} — a slice an image, cached by the paths and the spec, loaded at its
- *       first use as a {@link CgTexture2D} from a file is. Slices of another size than the first, or that will not
- *       load, are logged and leave a clear 1x1x1 volume: {@link #isMissing()}.</li>
- *   <li>{@link #createDirect(Texels, String...)} — the same decoded here, not cached.</li>
- *   <li>{@link #createEmpty(int, int, int, Texels, int)} — storage a kernel, a bake or an upload fills; any
- *       thread, its GL work waiting for the render thread as a {@link CgTexture2D}'s does.</li>
+ *   <li>{@link #create(String...)} — a slice an image, cached by the paths, loaded at its first use as a
+ *       {@link CgTexture2D} from a file is. Slices of another size than the first, or that will not load, are logged
+ *       and leave a clear 1x1x1 volume: {@link #isMissing()}.</li>
+ *   <li>{@link #create(String, CgTextureDesc)} — storage a kernel, a bake or an upload fills; any thread.</li>
  * </ul>
  *
  * <pre>{@code
  * // a tiling noise volume baked on a worker: level 0 uploaded, the rest generated
- * Texels repeat = Texels.builder().type(CgTextureType.RGBA8).minFilter(GL_LINEAR).magFilter(GL_LINEAR)
- *         .wrapS(GL_REPEAT).wrapT(GL_REPEAT).wrapR(GL_REPEAT).build();
- * CgTexture3D noise = CgTexture3D.createEmpty(128, 128, 128, repeat, CgTexture3D.fullChain(128, 128, 128));
+ * CgTexture3D noise = CgTextures.volume("mymod.noise", CgTextureDesc.volume(128, 128, 128, CgFormat.RGBA8_UNORM).withMips())
+ *         .sampler(CgSampler.TRILINEAR_WRAP);
  * noise.uploadRegion(0, 0, 0, 0, 128, 128, 128, texels, GL_RGBA, GL_UNSIGNED_BYTE);
  * noise.generateMipmaps();
  *
@@ -65,12 +62,12 @@ public final class CgTexture3D extends CgTextureAbstract {
                 depth, mips(), 1, SAMPLED_ONLY);
     }
 
-    /** Levels allocated by {@link #createEmpty}; a spec that generates mipmaps has its full chain instead. */
+    /** Levels allocated by {@link #create(String, CgTextureDesc)}; a file's settings with mips give its full chain instead. */
     private int levels = 1;
 
     private final Consumer<CgUploadLease> landing = this::land;
 
-    /** Source paths for reload; {@code null} for createDirect (no reload support). */
+    /** Source paths for reload; {@code null} for a made volume. */
     @Getter private final String[] sourcePaths;
 
     private CgTexture3D(int textureId, int width, int height, int depth, Texels spec, String[] sourcePaths) {
@@ -93,14 +90,6 @@ public final class CgTexture3D extends CgTextureAbstract {
         return (CgTexture3D) result;
     }
 
-    /** {@link #create} decoded here, not cached: the caller owns it. */
-    public static CgTexture3D createDirect(String... paths) {
-        String[] own = checkPaths(paths);
-        CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, Texels.file(own[0]), own);
-        tex.load();
-        return tex;
-    }
-
     private static String[] checkPaths(String[] paths) {
         if (paths.length == 0) throw new IllegalArgumentException("a volume of no images");
         return paths.clone();
@@ -111,16 +100,35 @@ public final class CgTexture3D extends CgTextureAbstract {
         return depth;
     }
 
-    /** An empty texture of one level, sampled bilinear (nearest for an integer format). Not cached; caller owns it. */
-    public static CgTexture3D createEmpty(int width, int height, int depth, CgFormat format) {
-        return createEmpty(width, height, depth, format, 1);
+    /**
+     * An empty volume named {@code name}, which a kernel, a bake or an upload fills: what
+     * {@code CgTextures.volume(name, desc)} makes, its maker's to {@link #release}. Any thread.
+     *
+     * <ul>
+     *   <li>Sampled trilinear across several levels: {@link #sampler(CgSampler)} for another.</li>
+     *   <li>It never makes its own chain: fill level 0, then {@link #generateMipmaps()}.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException for a description that is not a volume
+     */
+    public static CgTexture3D create(String name, CgTextureDesc desc) {
+        if (!desc.isVolume()) throw new IllegalArgumentException(name + ": a volume, not " + desc);
+        CgTexture3D tex = made(desc.width(), desc.height(), desc.depth(), desc.format(), desc.levels());
+        tex.label(name);
+        return tex;
+    }
+
+    /** Releases a texture of yours, once the frames reading it retire. Any thread. */
+    public void release() {
+        delete();
     }
 
     /**
      * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
      *
      * <pre>{@code
-     * CgTexture3D noise = CgTexture3D.createEmpty(32, 32, 32, CgFormat.R8_UNORM).sampler(CgSampler.TRILINEAR_WRAP);
+     * CgTexture3D noise = CgTextures.volume("mymod.noise", CgTextureDesc.volume(32, 32, 32, CgFormat.R8_UNORM))
+     *         .sampler(CgSampler.TRILINEAR_WRAP);
      * }</pre>
      *
      * @throws IllegalStateException for a texture from a file, shared by every caller of its path
@@ -131,16 +139,8 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
 
-    /**
-     * An empty texture of {@code levels} mip levels, sampled through all of them. Any thread. Not cached; caller owns the
-     * lifecycle.
-     *
-     * <ul>
-     *   <li>Sampled trilinear across several levels: {@link #sampler(CgSampler)} for another.</li>
-     *   <li>It never makes its own chain: fill level 0, then {@link #generateMipmaps()}.</li>
-     * </ul>
-     */
-    public static CgTexture3D createEmpty(int width, int height, int depth, CgFormat format, int levels) {
+    /** {@link #create}'s storage, of any depth: a fallback's and {@link CgFrameBuffer}'s 1x1x1 included. */
+    static CgTexture3D made(int width, int height, int depth, CgFormat format, int levels) {
         Texels spec = Texels.made(format, levels);
         if (width <= 0 || height <= 0 || depth <= 0) {
             throw new IllegalArgumentException("a 3D texture of " + width + "x" + height + "x" + depth);

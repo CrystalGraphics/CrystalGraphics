@@ -11,6 +11,7 @@ import com.crystalgraphics.trace.CgAllocationProof;
 import org.junit.Before;
 import org.junit.Test;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * T5: a stage firing's recording and the frame builder allocate nothing per frame once warm: chunks of draws in two

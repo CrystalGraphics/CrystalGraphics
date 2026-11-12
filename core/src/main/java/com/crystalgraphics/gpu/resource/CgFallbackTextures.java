@@ -56,13 +56,13 @@ public final class CgFallbackTextures {
         TRANSPARENT = createPixel(0, 0, 0, 0);
         ByteBuffer zeroByte = ByteBuffer.allocateDirect(1);
         zeroByte.put((byte) 0).flip();
-        ZERO_UINT = CgTexture2D.createFromPixels(1, 1, zeroByte, CgFormat.R8_UINT);
-        CgTexture3D volume = CgTexture3D.createEmpty(1, 1, 1, CgFormat.RGBA8_UNORM);
+        ZERO_UINT = filled("crystalgraphics.fallback.zeroUint", zeroByte, CgFormat.R8_UINT);
+        CgTexture3D volume = CgTexture3D.made(1, 1, 1, CgFormat.RGBA8_UNORM, 1);
         ByteBuffer white = ByteBuffer.allocateDirect(4);
         white.put((byte) 255).put((byte) 255).put((byte) 255).put((byte) 255).flip();
         volume.uploadRegion(0, 0, 0, 0, 1, 1, 1, white, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
         WHITE_VOLUME = volume;
-        CgTexture3D black = CgTexture3D.createEmpty(1, 1, 1, CgFormat.RGBA8_UNORM);
+        CgTexture3D black = CgTexture3D.made(1, 1, 1, CgFormat.RGBA8_UNORM, 1);
         ByteBuffer zero = ByteBuffer.allocateDirect(4);
         zero.put((byte) 0).put((byte) 0).put((byte) 0).put((byte) 0).flip();
         black.uploadRegion(0, 0, 0, 0, 1, 1, 1, zero, GLC.GL_RGBA, GLC.GL_UNSIGNED_BYTE);
@@ -94,7 +94,13 @@ public final class CgFallbackTextures {
         ByteBuffer buf = ByteBuffer.allocateDirect(4);
         buf.put((byte) r).put((byte) g).put((byte) b).put((byte) a);
         buf.flip();
-        return CgTexture2D.createFromPixels(1, 1, buf, CgFormat.RGBA8_UNORM);
+        return filled("crystalgraphics.fallback.colour", buf, CgFormat.RGBA8_UNORM);
+    }
+
+    private static CgTexture2D filled(String name, ByteBuffer texel, CgFormat format) {
+        CgTexture2D texture = CgTexture2D.create(name, CgTextureDesc.of(1, 1, format));
+        texture.write(0, 0, 0, 1, 1, format, texel);
+        return texture;
     }
 
     private static void deleteAndNull(CgTextureAbstract tex) {

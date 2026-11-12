@@ -36,15 +36,12 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *
  * <h3>Factories</h3>
  * <ul>
- *   <li>{@link #create(Texels, String, String, String, String, String, String)} — cached by the paths and the
- *       spec, loaded at its first use as a {@link CgTexture2D} from a file is. Faces that will not load, or are not
- *       one square size, are logged and leave a clear 1x1 cube: {@link #isMissing()}.</li>
- *   <li>{@link #createDirect(Texels, String, String, String, String, String, String)} — the same decoded here,
- *       not cached.</li>
- *   <li>{@link #createStacked(String, Texels)} — one image of its six faces stacked top to bottom, {@code w x 6w},
- *       as a {@code texture} asset with {@code cube: true} holds them: cached, loaded at its first use. A {@code .hdr}
- *       wants an {@code RGBA16F} spec, as a {@link CgTexture2D} of one does.</li>
- *   <li>{@link #createEmpty(int, Texels)} — empty faces; caller owns lifecycle.</li>
+ *   <li>{@link #create(String, String, String, String, String, String)} — a face a file, cached by the paths, loaded at
+ *       its first use as a {@link CgTexture2D} from a file is. Faces that will not load, or are not one square size,
+ *       are logged and leave a clear 1x1 cube: {@link #isMissing()}.</li>
+ *   <li>{@link #createStacked(String)} — one image of its six faces stacked top to bottom, {@code w x 6w}, as a
+ *       {@code texture} asset with {@code cube: true} holds them: cached, loaded at its first use.</li>
+ *   <li>{@link #create(String, CgTextureDesc)} — empty faces, its maker's to release.</li>
  * </ul>
  *
  * <pre>{@code
@@ -58,7 +55,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *
  * <pre>{@code
  * // a sky baked on a worker: each face written straight into staging
- * CgTextureCubemap sky = CgTextureCubemap.createEmpty(512, CgFormat.RGBA8_UNORM);
+ * CgTextureCubemap sky = CgTextures.cube("mymod.sky", CgTextureDesc.cube(512, CgFormat.RGBA8_UNORM));
  * for (int face = 0; face < 6; face++) {
  *     CgUploadLease lease = CgUploads.lease(4 * 512 * 512);
  *     bakeFace(face, lease.bytes());
@@ -76,7 +73,7 @@ public final class CgTextureCubemap extends CgTextureAbstract {
     /** Face indices for {@link #uploadFace}, in canonical order. */
     public static final int POSITIVE_X = 0, NEGATIVE_X = 1, POSITIVE_Y = 2, NEGATIVE_Y = 3, POSITIVE_Z = 4, NEGATIVE_Z = 5;
 
-    /** Source face paths for reload; {@code null} for createDirect and createEmpty. */
+    /** Source face paths for reload; {@code null} for a made cube. */
     @Getter private final String[] sourcePaths;
     /** The one image its faces are stacked in; null for six face files or none. */
     @Nullable private final String stacked;
@@ -140,21 +137,12 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         });
     }
 
-    /** {@link #create} decoded here, not cached: the caller owns it. */
-    public static CgTextureCubemap createDirect(String posX, String negX,
-                                                String posY, String negY,
-                                                String posZ, String negZ) {
-        Texels spec = Texels.file(posX);
-        CgTextureCubemap tex = new CgTextureCubemap(0, 0, spec, new String[] { posX, negX, posY, negY, posZ, negZ });
-        tex.load();
-        return tex;
-    }
-
     /**
      * Samples it by {@code sampler} where a binding names none: a texture you made. Returns it, to chain.
      *
      * <pre>{@code
-     * CgTextureCubemap sky = CgTextureCubemap.createEmpty(512, CgFormat.RGBA16_FLOAT).sampler(CgSampler.TRILINEAR_CLAMP);
+     * CgTextureCubemap sky = CgTextures.cube("mymod.sky", CgTextureDesc.cube(512, CgFormat.RGBA16_FLOAT))
+     *         .sampler(CgSampler.TRILINEAR_CLAMP);
      * }</pre>
      *
      * @throws IllegalStateException for a texture from a file, shared by every caller of its path
@@ -164,16 +152,27 @@ public final class CgTextureCubemap extends CgTextureAbstract {
         return this;
     }
 
-    /** An empty cubemap of one level, sampled bilinear (nearest for an integer format). Any thread. Caller owns it. */
-    public static CgTextureCubemap createEmpty(int size, CgFormat format) {
-        Texels spec = Texels.made(format, 1);
-        if (size <= 0) throw new IllegalArgumentException("Cubemap size must be positive, got: " + size);
-        CgTextureCubemap tex = new CgTextureCubemap(0, size, spec, null);
+    /**
+     * An empty cube named {@code name}, its faces filled by {@link #uploadFace}: what {@code CgTextures.cube(name, desc)}
+     * makes, its maker's to {@link #release}. Any thread.
+     *
+     * @throws IllegalArgumentException for a description that is not a cube of one level
+     */
+    public static CgTextureCubemap create(String name, CgTextureDesc desc) {
+        if (!desc.isCube() || desc.levels() > 1) throw new IllegalArgumentException(name + ": a cube of one level, not " + desc);
+        int size = desc.width();
+        CgTextureCubemap tex = new CgTextureCubemap(0, size, Texels.made(desc.format(), 1), null);
+        tex.label(name);
         tex.gpu.run(() -> {
             tex.storage(size);
             tex.applySpec();
         });
         return tex;
+    }
+
+    /** Releases a texture of yours, once the frames reading it retire. Any thread. */
+    public void release() {
+        delete();
     }
 
     // ── Upload ────────────────────────────────────────────────────────

@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.path;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.gpu.CgUploadLease;
@@ -63,7 +65,8 @@ public final class CgVfxPathTexture {
         if (texture == null || textureRows < capacity) {
             // A new texture when it must grow: re-specifying one frames in flight still sample blocks the render thread.
             if (texture != null) texture.delete();
-            texture = CgTexture2D.createEmpty(WIDTH, capacity, CgFormat.RGBA32_FLOAT).sampler(CgSampler.NEAREST_CLAMP);
+            texture = CgTextures.of("crystalgraphics.vfx.paths", CgTextureDesc.of(WIDTH, capacity, CgFormat.RGBA32_FLOAT))
+                    .sampler(CgSampler.NEAREST_CLAMP);
             textureRows = capacity;
         }
         // This frame's rows only, from an upload lease: copied on the GPU's timeline, behind the draws that read them.

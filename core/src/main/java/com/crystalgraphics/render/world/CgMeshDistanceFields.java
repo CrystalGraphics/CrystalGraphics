@@ -8,7 +8,7 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.mesh.CgOffsetAllocator;
 import com.crystalgraphics.trace.CgTrace;

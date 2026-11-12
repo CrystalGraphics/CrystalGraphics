@@ -9,6 +9,7 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import com.crystalgraphics.api.texture.CgSampler;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * A texture a frame graph orders work on: a pass writes it, a draw or a copy reads it. A handle at once, on any
@@ -75,6 +76,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgExternalTarget target,
                            @Nullable CgGraphTexture depthOf, @Nullable CgGraphTexture of) {
         super(name);
+        if (desc != null && (desc.isCube() || desc.isVolume() && desc.levels() > 1)) {
+            throw new IllegalArgumentException(name + ": the graph makes no cube, and a volume of one level: " + desc);
+        }
         this.kind = kind;
         this.desc = desc;
         this.target = target;

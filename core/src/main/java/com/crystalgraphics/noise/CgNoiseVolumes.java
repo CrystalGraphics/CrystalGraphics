@@ -1,5 +1,7 @@
 package com.crystalgraphics.noise;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgFrameBuffer;
@@ -106,14 +108,14 @@ public final class CgNoiseVolumes {
     /** Makes the volumes for the current context and starts their bake. Render thread. */
     public static void install() {
         if (STORAGE[0] != null) return;
-        pending = zero(CgFormat.RGBA16_FLOAT, 8, GLC.GL_RGBA);
-        pendingWavelet = zero(CgFormat.R16_FLOAT, 2, GLC.GL_RED);
-        int levels = CgTexture3D.fullChain(SIZE, SIZE, SIZE);
+        pending = zero("crystalgraphics.noise.pending", CgFormat.RGBA16_FLOAT, 8, GLC.GL_RGBA);
+        pendingWavelet = zero("crystalgraphics.noise.pendingWavelet", CgFormat.R16_FLOAT, 2, GLC.GL_RED);
         for (int i = 0; i < RGBA; i++) {
-            STORAGE[i] = CgFrameBuffer.createVolume(NAMES[i], CgTexture3D.createEmpty(SIZE, SIZE, SIZE, CgFormat.RGBA16_FLOAT, levels).sampler(SAMPLER));
+            STORAGE[i] = CgFrameBuffer.createVolume(NAMES[i], CgTextures.volume(NAMES[i],
+                    CgTextureDesc.volume(SIZE, SIZE, SIZE, CgFormat.RGBA16_FLOAT).withMips()).sampler(SAMPLER));
         }
-        STORAGE[WAVELET_AT] = CgFrameBuffer.createVolume(WAVELET,
-                CgTexture3D.createEmpty(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, CgFormat.R16_FLOAT).sampler(SAMPLER));
+        STORAGE[WAVELET_AT] = CgFrameBuffer.createVolume(WAVELET, CgTextures.volume(WAVELET,
+                CgTextureDesc.volume(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, CgFormat.R16_FLOAT)).sampler(SAMPLER));
         int expected = generation;
         CgLoadPlan.get().task("crystalgraphics:noise").render(task -> generation != expected || bake(task)).start();
     }
@@ -199,8 +201,8 @@ public final class CgNoiseVolumes {
         return CgCompute.load(KERNELS).kernel(name);
     }
 
-    private static CgTexture3D zero(CgFormat texels, int bytes, int format) {
-        CgTexture3D texel = CgTexture3D.createEmpty(1, 1, 1, texels).sampler(SAMPLER);
+    private static CgTexture3D zero(String name, CgFormat texels, int bytes, int format) {
+        CgTexture3D texel = CgTextures.volume(name, CgTextureDesc.volume(1, 1, 1, texels)).sampler(SAMPLER);
         texel.uploadRegion(0, 0, 0, 0, 1, 1, 1, ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder()), format,
                 GLC.GL_HALF_FLOAT);
         return texel;

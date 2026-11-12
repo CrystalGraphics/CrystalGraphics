@@ -1,5 +1,7 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.HashMap;
@@ -36,7 +38,7 @@ final class CgTextGradients {
 
     /** The ramp texture, made at the first ask. */
     static synchronized CgTexture2D texture() {
-        if (texture == null) texture = CgTexture2D.createEmpty(WIDTH, ROWS, CgFormat.RGBA8_UNORM);
+        if (texture == null) texture = CgTextures.of("crystalgraphics.text.gradients", CgTextureDesc.of(WIDTH, ROWS, CgFormat.RGBA8_UNORM));
         return texture;
     }
 

@@ -83,6 +83,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * Runs a {@link CgFrame} on the render thread: uploads its snapshots and each kind's instances once, then executes its

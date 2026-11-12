@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.look;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 
 import java.nio.ByteBuffer;
@@ -190,8 +192,9 @@ public final class CgVfxFlipbook {
             for (float f : rects) texels.putFloat(f);
             while (texels.hasRemaining()) texels.putFloat(0f);
             texels.flip();
-            texture = CgTexture2D.createFromPixels(width, height, texels, CgFormat.RGBA32_FLOAT)
+            texture = CgTextures.of("crystalgraphics.vfx.flipbook", CgTextureDesc.of(width, height, CgFormat.RGBA32_FLOAT))
                     .sampler(CgSampler.NEAREST_CLAMP);
+            texture.write(0, 0, 0, width, height, CgFormat.RGBA32_FLOAT, texels);
             return texture;
         }
     }

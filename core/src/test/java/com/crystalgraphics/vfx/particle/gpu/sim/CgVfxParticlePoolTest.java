@@ -2,7 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu.sim;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.graph.CgTextureDesc;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;

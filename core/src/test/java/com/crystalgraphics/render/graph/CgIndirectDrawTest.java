@@ -22,6 +22,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * gpu-compute C4, GL-free: an indirect draw orders its pass after the kernel that writes its count, reads the count as

@@ -116,7 +116,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
      * Samples it by {@code sampler} where a binding names none: a texture you made. Any thread; the next draw reads it.
      *
      * <pre>{@code
-     * CgTexture2D sheet = CgTextures.create("mymod.sheet", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM))
+     * CgTexture2D sheet = CgTextures.of("mymod.sheet", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM))
      *         .sampler(CgSampler.NEAREST_CLAMP);
      * }</pre>
      *
@@ -233,9 +233,18 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
     private static final CgVar.Bool LOG_FIRST_USE = CgVar.bool("crystalgraphics.texture.logFirstUse", false, CgVar.DEV,
             "Log each texture from files loaded at its first use: its source, the thread that paid for it and how long.");
 
-    /** What it was made from, for a log line: its file where it has one. */
+    /** A made texture's name, for the device and the logs; null for any other. */
+    @Nullable
+    private String label;
+
+    /** Names a made texture. */
+    final void label(String name) {
+        this.label = java.util.Objects.requireNonNull(name, "name");
+    }
+
+    /** What it was made from, for a log line: its file where it has one, its name where it was made. */
     protected String source() {
-        return getClass().getSimpleName();
+        return label != null ? label : getClass().getSimpleName();
     }
     private static volatile long loads;
 

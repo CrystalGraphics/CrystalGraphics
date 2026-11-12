@@ -291,7 +291,7 @@ public class CgFrameBuffer {
             throw new IllegalArgumentException("CgFrameBuffer '" + name + "': a volume is one single-sampled colour "
                     + "texture at slot 0, not " + format);
         }
-        return adopt(name, format, CgTexture3D.createEmpty(width, height, depth, type.format()));
+        return adopt(name, format, CgTexture3D.made(width, height, depth, type.format(), 1));
     }
 
     /**
@@ -299,7 +299,7 @@ public class CgFrameBuffer {
      * {@code 3d} image and a draw samples it as made. The framebuffer owns it from here.
      *
      * <pre>{@code
-     * CgTexture3D made = CgTexture3D.createEmpty(64, 64, 64, repeatingRgba16f, CgTexture3D.fullChain(64, 64, 64));
+     * CgTexture3D made = CgTextures.volume("mymod.made", CgTextureDesc.volume(64, 64, 64, CgFormat.RGBA16_FLOAT).withMips());
      * CgFrameBuffer noise = CgFrameBuffer.createVolume("noise", made);
      * pass.dispatch(fill, 64, 64, 64).image("OUT", CgGraphTexture.imported("noise", noise), 0, -1);
      * noise.delete();   // deletes made
@@ -442,7 +442,7 @@ public class CgFrameBuffer {
             if (arrayLayers > 0) {
                 CgTextureType type = fmt.getColorSlot(0);
                 Attachment a = new Attachment(0, type, false);
-                a.texture = CgTexture2DArray.allocateEmpty(w, h, arrayLayers, type.format());
+                a.texture = CgTexture2DArray.allocate(w, h, arrayLayers, type.format());
                 colorAttachments.put(0, a);
                 return;
             }
@@ -479,7 +479,7 @@ public class CgFrameBuffer {
 
     private CgTexture2D texture(String label, CgTextureType type, int w, int h, int levels) {
         return images != null ? CgTexture2D.onDevice(images.make(CgTexture2D.deviceDesc(label, w, h, Texels.target(type),
-                levels)), Texels.target(type)) : CgTexture2D.createEmpty(w, h, Texels.target(type), levels);
+                levels)), Texels.target(type)) : CgTexture2D.storage(w, h, Texels.target(type), levels);
     }
 
     /** A slot a pass attaches and never samples: what a renderbuffer was, multisampled where the format is. */

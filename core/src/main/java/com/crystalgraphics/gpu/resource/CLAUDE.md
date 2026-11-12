@@ -15,11 +15,11 @@ via the singleton `CgTextureManager`.
 |------|------|
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
 | `CgTextureAbstract.java` | Shared base: id, `Texels`, dimensions, its own `sampler()` and `setSampler` (refused once shared), bind, delete, `checkUsable`, and the load at first use (below). |
-| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, settings])` (cached, loaded at first use), `createDirect(path)`, `missing()` (the checkerboard), `createEmpty(w, h, format[, levels])` (storage for that many mip levels, written by a kernel or a pass rather than generated), `createFromPixels(...)`. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, its settings the sampling. |
-| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)` (cached, loaded at first use, images of different sizes centred), `createDirect(paths...)`; `allocateEmpty(w, h, layers, format)` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU). |
+| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, settings])` (cached, loaded at first use), `missing()` (the checkerboard), `create(name, desc)` (empty, of the description's levels, written by a kernel, a pass or `write` rather than generated); `storage(...)` is `CgFrameBuffer`'s. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, its settings the sampling. |
+| `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)` (cached, loaded at first use, images of different sizes centred); `create(name, desc)` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU). |
 | `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. |
-| `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)` (cached, loaded at first use), `createDirect(paths...)`; `createEmpty(w, h, d, format[, levels])` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
-| `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(posX...negZ)`, `createDirect(posX...negZ)`, `createStacked(path[, settings])` (one image, faces stacked top to bottom in Unreal's slice order, each face i unchanged; `w x 6w` or it throws at first use), `createEmpty(size, format)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
+| `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)` (cached, loaded at first use); `create(name, desc)` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
+| `CgTextureCubemap.java` | Cubemap (`GL_TEXTURE_CUBE_MAP`). `create(posX...negZ)`, `createStacked(path[, settings])` (one image, faces stacked top to bottom in Unreal's slice order, each face i unchanged; `w x 6w` or it throws at first use), `create(name, desc)`, any thread through its `CgDeferral` (faces decoded on the calling thread); `uploadFace(face, level, x, y, w, h, ...)` from a buffer or a lease, the face carried in the lease's `z`. |
 
 ## Where an upload runs
 
@@ -57,7 +57,6 @@ first use               getWidth/getHeight/getId/getLevels/isMissing/bind/any wr
   -> ensureLoaded()     once, synchronized, on the thread that asks
   -> load()             decode the files, queue the upload through gpu (CgDeferral)
 reload()                load() again in place: same object, same id; a file that will not load keeps what it had
-createDirect(...)       the same object, load() at once, not cached
 ```
 
 - **A subclass reads its own fields only after `checkUsable()` or inside `load()`**: before its first use a texture
@@ -97,7 +96,7 @@ void freeAll();                                                                 
 ## Storage and sampling
 
 Every texture's storage is a device texture (`CgDeviceTextures`, `CgTextureAbstract.storeOnDevice`): made with the
-shape its first whole upload or `createEmpty` gives it, written by `writeTexture` or a lease's GPU copy, its chain by
+shape its first whole upload or its description gives it, written by `writeTexture` or a lease's GPU copy, its chain by
 `generateMipmaps`. The engine knows it by the name `CgDeviceNames` gives it, and that name changes when the storage
 is remade (a grow, a resize): read `getId()` at each use.
 
@@ -109,7 +108,7 @@ A texture's own sampling is a `CgSampler` value (`sampler()`), the one a binding
 
 - `load()` is the single decode path per type and `upload()` the single whole upload; factories and `reload()` call them.
 - `reload()` is always in place: the same Java object. Its id is the storage's and may change; read it at each use.
-- `create(...)` is cached and tracked, so a change to its files reloads it; `createDirect(...)` is neither.
+- A texture from files is cached and tracked, so a change to its files reloads it; a made one is neither.
 - Never call `glGet*` here; the `Texels` is the source of truth.
 - `delete()` is idempotent (second call is silent no-op).
 

@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgTexture3D;
@@ -145,7 +147,7 @@ public final class CgVfxField {
     /** Its texture, an RGBA32F volume, made at the first ask: the array {@link CgVfxModule.VectorField#textures()} answers. */
     CgTexture[] textures() {
         if (texture == null) {
-            CgTexture3D made = CgTexture3D.createEmpty(width, height, depth, CgFormat.RGBA32_FLOAT);
+            CgTexture3D made = CgTextures.volume("crystalgraphics.vfx.field", CgTextureDesc.volume(width, height, depth, CgFormat.RGBA32_FLOAT));
             ByteBuffer texels = ByteBuffer.allocateDirect(width * height * depth * 16).order(ByteOrder.nativeOrder());
             for (int i = 0; i < vectors.length; i += 3) texels.putFloat(vectors[i]).putFloat(vectors[i + 1]).putFloat(vectors[i + 2]).putFloat(0f);
             made.uploadRegion(0, 0, 0, 0, width, height, depth, texels.flip(), GLC.GL_RGBA, GLC.GL_FLOAT);

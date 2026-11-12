@@ -52,7 +52,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  *   <li>A host's resource reload listener calls {@link #reload()}: textures, shaders, materials and kernels
  *       in that order, each isolated, then the listeners.</li>
  *   <li>An asset that never loaded is not tracked, so a change to its file does nothing until it loads.</li>
- *   <li>Only cached textures ({@link CgTextureManager}) are tracked; one made with {@code createDirect} is not.</li>
+ *   <li>Only cached textures ({@link CgTextureManager}) are tracked; a made one has no file to reload.</li>
  * </ul>
  */
 public final class CgAssetReloader {

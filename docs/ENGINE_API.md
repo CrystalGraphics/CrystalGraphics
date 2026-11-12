@@ -519,8 +519,9 @@ fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
 ```java
 CgTexture2D tex    = CgTextures.of("mymod:textures/foo.png");                  // shared, lazy; foo.yaml says how it loads
 CgTexture2DArray f = CgTextures.frames("mymod:textures/fx/f_%d.png", 4);       // f_0 to f_3, a layer each
-CgTexture2D hdr    = CgTextures.create("mymod.hdr", CgTextureDesc.of(512, 512, CgFormat.RGBA16_FLOAT));
-CgTexture2D tiles  = CgTexture2D.createEmpty(64, 64, CgFormat.RGBA8_UNORM).sampler(CgSampler.NEAREST_CLAMP);
+CgTexture2D hdr    = CgTextures.of("mymod.hdr", CgTextureDesc.of(512, 512, CgFormat.RGBA16_FLOAT));   // made, yours
+CgTexture2D tiles  = CgTextures.of("mymod.tiles", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM)).sampler(CgSampler.NEAREST_CLAMP);
+CgTexture3D noise  = CgTextures.volume("mymod.noise", CgTextureDesc.volume(64, 64, 64, CgFormat.R8_UNORM).withMips());
 hdr.release();
 ```
 
@@ -529,9 +530,10 @@ wrote (§ *Async*).
 
 - **A texture from files loads at its first use**: its size, its id, a bind or a write decode it on the thread that
   asks, and a bind uploads it. So a constant in common code costs a dedicated server nothing.
-- **`CgTextures` is the shorthand for every texture**: `of` (2D), `frames` (2D array), `volume` (3D), `cube` (six
-  faces, stacked in one `w x 6w` image with +X at the top, or six files), and `create(name, desc)` for one of your
-  own. Each type's own `create` is what it calls.
+- **`CgTextures` is the front door for every texture**: `of` (2D), `frames` (2D array), `volume` (3D), `cube` (six
+  faces, stacked in one `w x 6w` image with +X at the top, or six files). Each takes paths for a texture from files,
+  or a name and a `CgTextureDesc` (`of`, `array`, `volume`, `cube`) for an empty one of your own, which you write and
+  `release()`. A description of the wrong kind throws.
 - **A file loads as its settings file says** (`gpu/resource/CgTextureSettings`: `noise.png`'s `noise.yaml` —
   `colour`, `mips`, `sampler`, `cube`), and plain without one: linear 8-bit colour, one level, bilinear and clamped.
   Code that loads a file its own way passes settings: `CgTexture2D.create(path, CgTextureSettings.PLAIN.withMips(true))`.
@@ -548,7 +550,7 @@ wrote (§ *Async*).
   trilinear and repeated without one or without its `wrap`, as Unreal's `TA_Wrap`), which a binding's `sampler` replaces. `compression` picks no format yet: every
   image loads uncompressed.
 - **`create` is cached by the paths and the settings.** To sample one image two ways, load it once and give a
-  binding a `CgSampler` (below). `createDirect` decodes at once and is the caller's.
+  binding a `CgSampler` (below).
 - **A file that will not load** is logged and drawn as the 8x8 checkerboard (`CgTexture2D.missing()`), a missing
   array layer as clear; `isMissing()` says so. An array's images of different sizes are each centred on a layer the
   largest one's size.
@@ -727,7 +729,7 @@ frame executes (`CgDeferral.applyAll`).
 
 ```java
 // On a worker: made, filled and handed over; drawn by the next frame that executes
-CgTexture2D noise = CgTexture2D.createEmpty(256, 256, CgFormat.RGBA8_UNORM);
+CgTexture2D noise = CgTextures.of("mymod.noise", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
 noise.uploadRegion(0, 0, 0, 256, 256, pixels, GL_RGBA, GL_UNSIGNED_BYTE);   // pixels copied into a lease here
 
 CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED
@@ -1023,7 +1025,6 @@ CgAssetReloader.addListener(new CgReloadListener() {        // or a cache keyed 
 - **A file counts once its writes are quiet for 120 ms**: a save is several events. Editors' scratch files are ignored.
 - While it is on, the shader preprocessor caches includes again, evicting each edited one; its watchers open on a
   worker, so the first frame never waits for a tree's walk.
-- A texture made with `createDirect` is not cached, so no change finds it.
 - Per frame, with nothing edited, it allocates nothing and makes no system call. On macOS the JDK's watcher polls and
   can miss a change faster than its interval; Ctrl+R (harness) or F3+T reloads everything.
 - `-Dcrystalgraphics.hotReload.unwatched=<dirs>` reads those roots without watching them: a tree of thousands of

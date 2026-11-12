@@ -66,12 +66,21 @@ public class CgTextureFromFilesTest {
 
     @Test
     public void aMadeTextureTakesItsOwnSampler() {
-        CgTexture2D made = CgTexture2D.createEmpty(4, 4, CgFormat.RGBA8_UNORM);
+        CgTexture2D made = CgTextures.of("test.made", CgTextureDesc.of(4, 4, CgFormat.RGBA8_UNORM));
         assertEquals(CgSampler.BILINEAR_CLAMP, made.sampler());
         assertSame(made, made.sampler(CgSampler.NEAREST_CLAMP));
         assertEquals(CgSampler.NEAREST_CLAMP, made.sampler());
-        assertEquals(CgSampler.NEAREST_CLAMP, CgTexture2D.createEmpty(4, 4, CgFormat.R8_UINT).sampler());
+        assertEquals(CgSampler.NEAREST_CLAMP, CgTextures.of("test.uint", CgTextureDesc.of(4, 4, CgFormat.R8_UINT)).sampler());
         made.release();
+    }
+
+    @Test
+    public void aMadeTextureIsTheKindItsDescriptionSays() {
+        CgTextureDesc volume = CgTextureDesc.volume(4, 4, 1, CgFormat.RGBA8_UNORM);   // one slice, still a volume
+        assertEquals(1, CgTextures.volume("test.volume", volume).getDepth());
+        assertEquals(1, CgTextures.frames("test.array", CgTextureDesc.array(4, 4, 1, CgFormat.R8_UNORM)).getDepth());
+        assertEquals(4, CgTextures.cube("test.cube", CgTextureDesc.cube(4, CgFormat.RGBA8_UNORM)).getWidth());
+        assertThrows(IllegalArgumentException.class, () -> CgTextures.of("test.wrong", volume));
     }
 
     @Test

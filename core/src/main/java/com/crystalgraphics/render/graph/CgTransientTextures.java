@@ -12,6 +12,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * Transient graph textures placed in the device's transient heaps, so textures never alive together share memory

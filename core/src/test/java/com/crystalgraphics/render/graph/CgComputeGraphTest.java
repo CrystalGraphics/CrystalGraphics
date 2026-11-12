@@ -19,6 +19,7 @@ import java.util.Map;
 
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 /**
  * gpu-compute C3, GL-free: what the frame builder decides for compute passes and graph buffers — order from what
@@ -531,8 +532,7 @@ public class CgComputeGraphTest {
         assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).texture("_Grid", flat));
         assertThrows(IllegalArgumentException.class,
                 () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
-        assertThrows(IllegalArgumentException.class, () -> CgTextureDesc.volume(8, 8, 1, r32f));
-        assertThrows(IllegalArgumentException.class, () -> new CgTextureDesc(8, 8, 8, r32f, 2, 1));
+        assertThrows(IllegalArgumentException.class, () -> CgGraphTexture.transientTexture("deep", CgTextureDesc.volume(8, 8, 8, r32f).withMips(2)));
 
         // An image is a colour texture: a depth one binds as nothing a kernel writes.
         CgGraphTexture depth = CgGraphTexture.transientTexture("depth", CgTextureDesc.of(8, 8, CgFormat.DEPTH32_FLOAT));

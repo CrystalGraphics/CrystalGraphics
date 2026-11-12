@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.fluid;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.util.CgHalfFloat;
 
@@ -104,7 +106,8 @@ public final class CgVfxColormap {
             sample((i + 0.5f) / resolution, texel);
             System.arraycopy(texel, 0, texels, i * 4, 4);
         }
-        texture = CgTexture2D.createFromPixels(resolution, 1, CgHalfFloat.halves(texels), CgFormat.RGBA16_FLOAT);
+        texture = CgTextures.of("crystalgraphics.vfx.colormap", CgTextureDesc.of(resolution, 1, CgFormat.RGBA16_FLOAT));
+        texture.write(0, 0, 0, resolution, 1, CgFormat.RGBA16_FLOAT, CgHalfFloat.halves(texels));
         return texture;
     }
 
