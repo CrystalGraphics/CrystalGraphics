@@ -712,10 +712,10 @@ public final class CgNullRHI implements CgRHI {
         public void writeBuffer(CgGpuBuffer dst, long dstOffset, ByteBuffer data) {
             outsidePass("writeBuffer");
             use(dst);
-            int n = data.remaining();
-            ByteBuffer to = ((Buffer) dst).memory.duplicate();
-            to.position((int) dstOffset);
-            to.put(data.duplicate());
+            int n = data.remaining(), from = data.position(), at = (int) dstOffset;
+            ByteBuffer to = ((Buffer) dst).memory;
+            // Absolute reads and writes, as copyBuffer's: a view of either buffer would allocate each write.
+            for (int i = 0; i < n; i++) to.put(at + i, data.get(from + i));
             if (logging) record("writeBuffer " + ref(dst) + "+" + dstOffset + " " + n);
         }
 
@@ -723,7 +723,7 @@ public final class CgNullRHI implements CgRHI {
         public void fillBuffer(CgGpuBuffer dst, long dstOffset, long size, int value) {
             outsidePass("fillBuffer");
             use(dst);
-            ByteBuffer to = ((Buffer) dst).memory.duplicate().order(ByteOrder.nativeOrder());
+            ByteBuffer to = ((Buffer) dst).memory;   // native order; absolute writes, no view to allocate
             for (long at = dstOffset; at < dstOffset + size; at += 4) to.putInt((int) at, value);
             if (logging) record("fillBuffer " + ref(dst) + "+" + dstOffset + " " + size);
         }
@@ -806,11 +806,10 @@ public final class CgNullRHI implements CgRHI {
         public void readBuffer(CgGpuBuffer src, long srcOffset, ByteBuffer out) {
             outsidePass("readBuffer");
             use(src);
-            ByteBuffer from = ((Buffer) src).memory.duplicate();
-            from.limit((int) (srcOffset + out.remaining()));
-            from.position((int) srcOffset);
-            int size = from.remaining();
-            out.put(from);
+            ByteBuffer from = ((Buffer) src).memory;
+            int size = out.remaining(), at = out.position(), base = (int) srcOffset;
+            for (int i = 0; i < size; i++) out.put(at + i, from.get(base + i));   // absolute: no view to allocate
+            out.position(at + size);
             if (logging) record("readBuffer " + ref(src) + "+" + srcOffset + " " + size);
         }
 

@@ -38,8 +38,14 @@ public final class CgUploadLease implements Runnable {
     private Consumer<CgUploadLease> sink;
     private int level, x, y, z, width, height, depth, format, type;
 
-    /** Views of {@link #block}'s memory, kept while the lease object is reused on the same block. */
-    private CgUploads.Block viewed;
+    /**
+     * Views of the blocks' memory this lease object was last reused on, a few: blocks rotate frame to frame, so one
+     * view would be made again each frame. Its own, as a lease is written on any thread.
+     */
+    private final CgUploads.Block[] viewed = new CgUploads.Block[4];
+    private final ByteBuffer[] views = new ByteBuffer[4];
+    private final FloatBuffer[] floatViews = new FloatBuffer[4];
+    private int nextView;
     private ByteBuffer view;
     private FloatBuffer floats;
     private ByteBuffer exposed;
@@ -183,11 +189,17 @@ public final class CgUploadLease implements Runnable {
 
     /** The block's memory positioned at this lease, limited to it. */
     private ByteBuffer at() {
-        if (viewed != block) {
-            view = block.memory.duplicate().order(ByteOrder.nativeOrder());
-            floats = view.asFloatBuffer();
-            viewed = block;
+        int k = 0;
+        while (k < viewed.length && viewed[k] != block) k++;
+        if (k == viewed.length) {
+            k = nextView;
+            nextView = (nextView + 1) % viewed.length;
+            viewed[k] = block;
+            views[k] = block.memory.duplicate().order(ByteOrder.nativeOrder());
+            floatViews[k] = views[k].asFloatBuffer();
         }
+        view = views[k];
+        floats = floatViews[k];
         view.limit(offset + size);
         view.position(offset);
         return view;
