@@ -532,7 +532,7 @@ public final class CgGLDevice implements CgRHI {
         surfaceColor = new GLTexture(gl, new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM,
                 width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
         surfaceDepth = new GLTexture(gl, new CgGpuTexture.Desc("surface depth", CgGpuTexture.Kind.D2,
-                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1,
+                CgFormat.DEPTH32_FLOAT_STENCIL8, width, height, 1, 1, 1,
                 EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC)));
         presented = new CgTextureView[] {CgTextureView.whole(surfaceColor)};
     }
