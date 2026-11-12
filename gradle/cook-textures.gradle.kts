@@ -4,9 +4,9 @@
 //   ./gradlew cookTextures -Pcook.from=<kit>/textures -Pcook.to=<kit>/cooked       # GPU encoder (DirectCompute)
 //   ./gradlew cookTextures -Pcook.from=... -Pcook.to=... -Pcook.cpu                 # CPU encoder: minutes, every core
 //
-// A sidecar <name>.texture.yaml beside an image overrides its defaults (aaa-assets §26): `colour: linear` for data,
-// `mips: false`, `compression: none` (no .cgtex: the PNG is loaded as it is). An image whose .cgtex is newer than it
-// and its sidecar is skipped. Windows only, as texconv is: a cooked kit is committed or shipped, not cooked by every
+// An image's settings file, <name>.yaml beside it (CgTextureSettings), decides its cook: `colour: linear` for data,
+// `mips: false`, `compression: none` (no .cgtex: the PNG is loaded as it is). It is copied beside the .cgtex, which
+// samples as it says. An image whose .cgtex is newer than it and its settings file is skipped. Windows only, as texconv is: a cooked kit is committed or shipped, not cooked by every
 // build. Rows stay top first, as CgTextureIO reads a PNG, so a cooked texture samples as its PNG does. Mips filter
 // colour apart from alpha (-sepalpha), each a 2x2 average (-if BOX): Unreal's SimpleAverage, and GL's. An additive
 // texture's colour where alpha is 0 is kept.
@@ -51,7 +51,7 @@ tasks.register("cookTextures") {
         val groups = linkedMapOf<Pair<Boolean, Boolean>, MutableList<File>>()   // (srgb, mips) -> images
         var skipped = 0
         from.walkTopDown().filter { it.isFile && it.extension.equals("png", true) }.sorted().forEach { png ->
-            val sidecar = File(png.parentFile, png.nameWithoutExtension + ".texture.yaml")
+            val sidecar = File(png.parentFile, png.nameWithoutExtension + ".yaml")
             val settings = if (sidecar.isFile) sidecar.readLines()
                 .mapNotNull { Regex("^\\s*(\\w+)\\s*:\\s*([\\w-]+)").find(it.substringBefore('#'))?.destructured }
                 .associate { (k, v) -> k to v } else emptyMap()
@@ -87,6 +87,9 @@ tasks.register("cookTextures") {
                     out.parentFile.mkdirs()
                     val cgtex = cgtex(dds.readBytes(), srgb, png)
                     out.writeBytes(cgtex)
+                    // The engine reads a .cgtex's sampling and cube from the settings file beside it.
+                    val sidecar = File(png.parentFile, png.nameWithoutExtension + ".yaml")
+                    if (sidecar.isFile) sidecar.copyTo(File(out.parentFile, sidecar.name), overwrite = true)
                     dds.delete()
                     cooked++
                     bytes += cgtex.size
