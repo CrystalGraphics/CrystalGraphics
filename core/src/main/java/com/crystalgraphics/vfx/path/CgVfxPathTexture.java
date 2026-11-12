@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * paths.begin();
  * int row = paths.add(path, seed, age);   // as many as the frame draws
  * paths.upload();                         // before the world stages record
- * material.applyProperties(b -> b.sampler("_FxPath", 0, paths.texture()));
+ * instance.sampler("_FxPath", 0, paths.texture());
  * }</pre>
  *
  * <ul>

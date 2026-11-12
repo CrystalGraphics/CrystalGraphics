@@ -26,7 +26,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInstance;
@@ -108,11 +107,6 @@ public final class CgPostMaterial implements CgPostEffect {
     private CgPipeline over;
     private CgGraphTexture[] textures = new CgGraphTexture[0];
     private String emissionInput;
-    // What the held binder sets: a sampler and its texture, so binding allocates nothing.
-    private String bindName;
-    private int bindUnit;
-    private CgTexture bindTexture;
-    private final Consumer<CgMaterialValues> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
 
     private CgPostMaterial(CgMaterialInstance material, CgPostPoint point, int order) {
         this.material = Objects.requireNonNull(material, "material");
@@ -295,10 +289,7 @@ public final class CgPostMaterial implements CgPostEffect {
 
     private void bind(String name, CgTexture texture) {
         // Its own unit: a second input on unit 0 would take the first's.
-        bindName = name;
-        bindUnit = CgMaterialProxy.of(material).samplerUnit(name);
-        bindTexture = texture;
-        bind.accept(material);
+        material.sampler(name, CgMaterialProxy.of(material).samplerUnit(name), texture);
     }
 
     /** Each pass's pipeline, resolved again when the shader parses again; false while one is not ready. */

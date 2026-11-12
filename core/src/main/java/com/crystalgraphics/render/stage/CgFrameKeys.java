@@ -50,7 +50,7 @@ public final class CgFrameKeys {
      * <pre>{@code
      * CgGraphTexture mask = frame.resources().get(CgFrameKeys.CUSTOM_DEPTH);
      * pass.readsDepth(mask, unit);                                                   // CustomDepth
-     * material.applyProperties(b -> b.sampler("_CustomStencil", 0, mask.stencil())); // usampler2D: texelFetch(...).r
+     * instance.sampler("_CustomStencil", 0, mask.stencil());                         // usampler2D: texelFetch(...).r
      * }</pre>
      */
     public static final CgFrameKey<CgGraphTexture> CUSTOM_DEPTH = CgFrameKey.of("crystalgraphics:custom_depth", CgGraphTexture.class);

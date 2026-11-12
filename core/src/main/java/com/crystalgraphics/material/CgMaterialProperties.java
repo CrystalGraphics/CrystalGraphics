@@ -19,8 +19,7 @@ import java.util.Map;
 /**
  * Partitioned view of a material's property list — separates UBO-eligible
  * (non-sampler) properties from sampler properties, provides typed dispatch
- * methods for both categories, and is the {@link CgMaterialValues} writer
- * {@code CgMaterial.applyProperties()} hands its caller.
+ * methods for both categories, and is the {@link CgMaterialValues} a material's proxy writes into.
  *
  * <p>Built once per material (never reallocated). On recompile, {@link #rebuild}
  * repopulates all internal state in-place — zero extra object creation.</p>

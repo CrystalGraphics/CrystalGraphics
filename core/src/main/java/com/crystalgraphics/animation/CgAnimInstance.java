@@ -28,7 +28,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Consumer;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
@@ -131,7 +130,6 @@ public final class CgAnimInstance {
     /** The clip and its time behind each of this frame's blended poses, for its curves. */
     private CgAnimSequence[] sampledClips = new CgAnimSequence[0];
     private float[] sampledTimes = new float[0];
-    private final ScalarWriter writer = new ScalarWriter();
     /** Its layered slots, blended over the body in the order added (Unreal's Layered blend per bone nodes). */
     private final List<CgAnimLayer> layers = new ArrayList<>();
 
@@ -663,20 +661,13 @@ public final class CgAnimInstance {
      */
     public void scalar(String name, float value) {
         float[] defaults = declared(name);
-        writer.name = name;
-        writer.value = value;
-        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) writer.accept(owned[s]);
+        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) owned[s].set1f(name, value);
     }
 
     /** Puts the scalar {@code name} back to each own material's default, as a curve no clip keys any more does. */
     public void resetScalar(String name) {
         float[] defaults = declared(name);
-        writer.name = name;
-        for (int s = 0; s < materials.length; s++) {
-            if (Float.isNaN(defaults[s])) continue;
-            writer.value = defaults[s];
-            writer.accept(owned[s]);
-        }
+        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) owned[s].set1f(name, defaults[s]);
     }
 
     /**
@@ -685,30 +676,16 @@ public final class CgAnimInstance {
      */
     public void vector(String name, float x, float y, float z, float w) {
         float[][] defaults = declaredVector(name);
-        writer.name = name;
-        writer.vector = true;
-        writer.x = x;
-        writer.y = y;
-        writer.z = z;
-        writer.w = w;
-        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) writer.accept(owned[s]);
-        writer.vector = false;
+        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) owned[s].vec4(name, x, y, z, w);
     }
 
     /** Puts the vector {@code name} back to each own material's default. */
     public void resetVector(String name) {
         float[][] defaults = declaredVector(name);
-        writer.name = name;
-        writer.vector = true;
         for (int s = 0; s < materials.length; s++) {
-            if (defaults[s] == null) continue;
-            writer.x = defaults[s][0];
-            writer.y = defaults[s][1];
-            writer.z = defaults[s][2];
-            writer.w = defaults[s][3];
-            writer.accept(owned[s]);
+            float[] d = defaults[s];
+            if (d != null) owned[s].vec4(name, d[0], d[1], d[2], d[3]);
         }
-        writer.vector = false;
     }
 
     /** Each slot's default vector for {@code name} where its own material declares it, null where not. */
@@ -745,19 +722,6 @@ public final class CgAnimInstance {
     /** Applies this frame's material curves: after {@code POSE}, on the client world's thread ({@link CgAnimation}). */
     void applyCurves() {
         curves.apply(this);
-    }
-
-    /** Writes one scalar or vector; reused, so setting one allocates nothing. */
-    private static final class ScalarWriter implements Consumer<CgMaterialValues> {
-        String name;
-        float value, x, y, z, w;
-        boolean vector;
-
-        @Override
-        public void accept(CgMaterialValues b) {
-            if (vector) b.vec4(name, x, y, z, w);
-            else b.set1f(name, value);
-        }
     }
 
     /** How many material slots it has: one a submesh of its mesh. */

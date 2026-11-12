@@ -6762,7 +6762,6 @@ com/crystalgraphics/material/CgMaterialProxy
   method public <init> ()V
   method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;)V
   method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;Lcom/crystalgraphics/api/material/CgMaterialState;)V
-  method public applyProperties (Ljava/util/function/Consumer;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public captureBindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
   method public changes ()I
@@ -9291,7 +9290,7 @@ com/crystalgraphics/render/graph/CgDispatch
   method public skipBarrier (Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public skipCountBarrier (Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public values (Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/graph/CgDispatch;
+  method public values ()Lcom/crystalgraphics/api/material/CgMaterialValues;
 com/crystalgraphics/render/graph/CgDraw
   access public,final
   extends java/lang/Object

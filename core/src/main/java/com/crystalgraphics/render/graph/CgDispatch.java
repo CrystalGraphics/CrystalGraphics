@@ -21,7 +21,6 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
-import java.util.function.Consumer;
 
 /**
  * One kernel run in a {@link CgComputePass}: what it is bound to, its property values and how many it runs. Made by the
@@ -359,30 +358,31 @@ public final class CgDispatch {
     }
 
     /**
-     * Applies a material's value setter to this dispatch: each value and sampler it sets that the kernel declares, the
-     * rest skipped, as a material skips a property its shader lacks. One setter then serves a pass drawn as a material
-     * and one dispatched as a kernel.
+     * This dispatch as a material's values: each value and sampler written that the kernel declares, the rest skipped,
+     * as a material skips a property its shader lacks. One method then writes a pass drawn as a material and one
+     * dispatched as a kernel.
      *
      * <pre>{@code
-     * Consumer<CgMaterialValues> grid = b -> b.vec4("_Rays", l, b, r, t).sampler("_Normals", 0, normals);
-     * pass.dispatch(gbuffer, width, height, 1).image("GBUFFER", target).values(grid);
+     * private void grid(CgMaterialValues b) { b.vec4("_Rays", l, b, r, t).sampler("_Normals", 0, normals); }
+     *
+     * grid(pass.dispatch(gbuffer, width, height, 1).image("GBUFFER", target).values());
+     * grid(instance);                                            // the same values on a material instance
      * }</pre>
      *
      * <ul>
      *   <li>A {@code vec3} or an array the kernel declares throws: kernels take neither.</li>
-     *   <li>A sampler's unit and sampler state are the kernel's: the setter's are ignored.</li>
+     *   <li>A sampler's unit and sampler state are the kernel's: those written are ignored.</li>
      * </ul>
      */
-    public CgDispatch values(Consumer<CgMaterialValues> setter) {
+    public CgMaterialValues values() {
         if (adapter == null) adapter = new Values();
-        setter.accept(adapter);
-        return this;
+        return adapter;
     }
 
     @Nullable
     private Values adapter;
 
-    /** What {@link #values} hands a setter: each call onto this dispatch, where the kernel has the name. */
+    /** What {@link #values} answers: each call onto this dispatch, where the kernel has the name. */
     private final class Values implements CgMaterialValues {
         private boolean has(String name) {
             return kernel.compute().properties().has(name);
@@ -432,13 +432,13 @@ public final class CgDispatch {
     }
 
     public CgDispatch set(String name, float value) {
-        values()[offset(name, 1, false)] = value;
+        block()[offset(name, 1, false)] = value;
         return this;
     }
 
     public CgDispatch set(String name, float x, float y) {
         int at = offset(name, 2, false);
-        float[] v = values();
+        float[] v = block();
         v[at] = x;
         v[at + 1] = y;
         return this;
@@ -446,7 +446,7 @@ public final class CgDispatch {
 
     public CgDispatch set(String name, float x, float y, float z, float w) {
         int at = offset(name, 4, false);
-        float[] v = values();
+        float[] v = block();
         v[at] = x;
         v[at + 1] = y;
         v[at + 2] = z;
@@ -456,7 +456,7 @@ public final class CgDispatch {
 
     /** An int or bool property: 0 is false. */
     public CgDispatch set(String name, int value) {
-        values()[offset(name, 1, true)] = Float.intBitsToFloat(value);
+        block()[offset(name, 1, true)] = Float.intBitsToFloat(value);
         return this;
     }
 
@@ -556,7 +556,7 @@ public final class CgDispatch {
         return at;
     }
 
-    private float[] values() {
+    private float[] block() {
         if (values == null) throw new IllegalArgumentException(source.path() + " declares no value properties");
         return values;
     }

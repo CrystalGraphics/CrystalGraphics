@@ -1,26 +1,19 @@
 /**
- * Public CrystalShader material API.
+ * Materials: {@link com.crystalgraphics.api.material.CgMaterial}, a shared material made from a {@code .shader} or a
+ * {@code .material} file and cached, and {@link com.crystalgraphics.api.material.CgMaterialInstance}, values of your own
+ * over one. A draw takes either, as a {@link com.crystalgraphics.api.material.CgMaterialInterface}.
  *
- * <p>{@link com.crystalgraphics.api.material.CgMaterial} is the main entry point:
- * it loads a {@code .shader} file, compiles it, holds property values, and provides
- * {@code bind()} / {@code unbind()} for draw-time use.</p>
- *
- * <p>{@link com.crystalgraphics.api.vertex.CgVertexFormat#SPATIAL} is the
- * predefined {@link com.crystalgraphics.api.vertex.CgVertexFormat} constant
- * compatible with the material pipeline's {@code cg_env.glsl} attribute contract.</p>
- *
- * <h3>Typical usage</h3>
  * <pre>{@code
- * CgMaterial material = CgMaterial.load("mymod:shaders/terrain.shader");   // once
- * material.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+ * CgMaterial terrain = CgMaterial.load("mymod:shaders/terrain.shader");        // the same object every call
+ * CgMaterialInstance red = terrain.instance().vec4("_Color", 1f, 0f, 0f, 1f);  // once, kept in a field
  *
- * CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();        // each frame it draws
+ * CgWorldRenderer.get().draw(mesh, terrain).at(x, y, z).submit();             // each frame it draws
+ * CgWorldRenderer.get().draw(mesh, red).at(x, y + 2, z).submit();
  * }</pre>
  *
- * <h3>Caller-owned lifecycle</h3>
- * <p>{@code CgMaterial}, {@link com.crystalgraphics.gpu.resource.CgUniformBuffer},
- * and {@link com.crystalgraphics.gpu.resource.CgShaderBuffer} are
- * caller-owned objects. The caller must call {@code delete()} on each before
- * {@code CgEngineLifecycle.shutdown()}.</p>
+ * <ul>
+ *   <li>A keyword is another material: {@code terrain.keyword("MOSS", true)}, cached.</li>
+ *   <li>Nothing a factory hands you is yours to free; an instance is: {@code red.delete()}.</li>
+ * </ul>
  */
 package com.crystalgraphics.api.material;

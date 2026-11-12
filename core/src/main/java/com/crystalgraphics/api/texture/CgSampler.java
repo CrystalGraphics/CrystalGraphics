@@ -12,8 +12,8 @@ import java.util.Objects;
  * <pre>{@code
  * static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
  *
- * material.applyProperties(b -> b.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP));    // a soft edge, clamped
- * material.applyProperties(b -> b.sampler("_Scroll", 1, NOISE, CgSampler.BILINEAR_WRAP));   // the same image, tiled
+ * instance.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP);    // a soft edge, clamped
+ * instance.sampler("_Scroll", 1, NOISE, CgSampler.BILINEAR_WRAP);   // the same image, tiled
  * }</pre>
  *
  * <p>Your own, axis by axis, and a shadow map's comparison:</p>

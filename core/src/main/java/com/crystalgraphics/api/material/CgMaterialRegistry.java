@@ -220,22 +220,21 @@ public final class CgMaterialRegistry {
                         + " an array or a volume is made in code and bound as the object");
             }
         }
-        proxy.applyProperties(b -> {
-            for (Map.Entry<String, float[]> c : d.constants().entrySet()) {
-                float[] v = c.getValue();
-                if (v.length == 1) b.set1f(c.getKey(), v[0]);
-                else if (v.length == 2) b.vec2(c.getKey(), v[0], v[1]);
-                else if (v.length == 4) b.vec4(c.getKey(), v[0], v[1], v[2], v[3]);
-                else b.array(c.getKey(), v);
-            }
-            int unit = 0;
-            for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
-                CgSampler sampler = CgTextureSettings.sampler(t.getValue().sampler());
-                CgTexture texture = t.getValue().resolve();
-                if (sampler == null) b.sampler(t.getKey(), unit++, texture);
-                else b.sampler(t.getKey(), unit++, texture, sampler);
-            }
-        });
+        CgMaterialValues b = proxy.writer();
+        for (Map.Entry<String, float[]> c : d.constants().entrySet()) {
+            float[] v = c.getValue();
+            if (v.length == 1) b.set1f(c.getKey(), v[0]);
+            else if (v.length == 2) b.vec2(c.getKey(), v[0], v[1]);
+            else if (v.length == 4) b.vec4(c.getKey(), v[0], v[1], v[2], v[3]);
+            else b.array(c.getKey(), v);
+        }
+        int unit = 0;
+        for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
+            CgSampler sampler = CgTextureSettings.sampler(t.getValue().sampler());
+            CgTexture texture = t.getValue().resolve();
+            if (sampler == null) b.sampler(t.getKey(), unit++, texture);
+            else b.sampler(t.getKey(), unit++, texture, sampler);
+        }
         return m;
     }
 

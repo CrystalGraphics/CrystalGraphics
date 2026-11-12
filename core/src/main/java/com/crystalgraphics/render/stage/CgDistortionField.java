@@ -13,7 +13,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  *
  * // Or reads the offsets itself, a sampler2DArray summed over the layers in use:
  * CgDistortionField field = post.resources().get(CgFrameKeys.DISTORTION);
- * material.applyProperties(b -> b.sampler("_Fields", 0, field.offsets()).set1i("_FieldCount", field.count()));
+ * instance.sampler("_Fields", 0, field.offsets()).set1i("_FieldCount", field.count());
  * }</pre>
  *
  * <ul>

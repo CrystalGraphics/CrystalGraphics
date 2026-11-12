@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -30,6 +29,7 @@ import com.crystalgraphics.sequence.spawn.CgSequenceSpawned;
 import com.crystalgraphics.sequence.spawn.CgSequenceSpawner;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.world.CgAttachment;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * Makes a sequence's {@code post} spawnables: a volume on the post stack, as Unreal's spawnable post process volume, its
@@ -226,9 +226,8 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
      * {@code screen_point} (Kakarot's {@code UKoratPostProcessWorldToScreenComponent}): the followed place projected
      * through the world's camera into screen UV, written each frame.
      */
-    private static final class Blend implements CgSequenceTarget, Consumer<CgMaterialValues> {
+    private static final class Blend implements CgSequenceTarget {
         final CgPostBlendable blendable;
-        private int writing;
         final CgPostMaterial post;
         final CgRenderStage.Registration registration;
         @Nullable
@@ -267,8 +266,9 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         public void set(int slot, float[] in, int mask) {
             float[] v = values.get(slot);
             for (int i = 0; i < 4; i++) if ((mask & 1 << i) != 0) v[i] = in[i];
-            writing = slot;
-            accept(post.material());
+            CgMaterialInstance m = post.material();
+            if (widths.get(slot) == 1) m.set1f(names.get(slot), v[0]);
+            else m.vec4(names.get(slot), v[0], v[1], v[2], v[3]);
         }
 
         @Override
@@ -291,19 +291,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
             }
             uv[0] = x;
             uv[1] = y;
-            writing = -1;
-            accept(post.material());
-        }
-
-        /** Writes the value at slot {@link #writing}, or at -1 the screen point; reused, so a frame allocates nothing. */
-        @Override
-        public void accept(CgMaterialValues b) {
-            if (writing >= 0) {
-                float[] v = values.get(writing);
-                if (widths.get(writing) == 1) b.set1f(names.get(writing), v[0]);
-                else b.vec4(names.get(writing), v[0], v[1], v[2], v[3]);
-                return;
-            }
+            CgMaterialInstance b = post.material();
             if (blendable.screenVector() != null) b.vec4(blendable.screenVector(), uv[0], uv[1], 0f, 0f);
             if (blendable.screenX() != null) b.set1f(blendable.screenX(), uv[0]);
             if (blendable.screenY() != null) b.set1f(blendable.screenY(), uv[1]);

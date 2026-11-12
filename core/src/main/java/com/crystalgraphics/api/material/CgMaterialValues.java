@@ -8,7 +8,7 @@ import org.joml.Vector4f;
 
 /**
  * Writes a material's values by the names its {@code Properties { }} declares: a {@link CgMaterialInstance}'s setters,
- * and what a writer kept in a field is handed. Unreal's {@code UMaterialInstanceDynamic::SetScalarParameterValue},
+ * and what a method writing one pass's values takes, so it writes an instance and a kernel's dispatch alike. Unreal's {@code UMaterialInstanceDynamic::SetScalarParameterValue},
  * {@code SetVectorParameterValue} and {@code SetTextureParameterValue}.
  *
  * <pre>{@code
@@ -19,11 +19,13 @@ import org.joml.Vector4f;
  *         .sampler("_MainTex", 0, texture);
  * }</pre>
  *
- * <p>A writer kept in a field allocates nothing a frame:
+ * <p>One method for every target of the same values:
  *
  * <pre>{@code
- * private final Consumer<CgMaterialValues> writeAlpha = v -> v.set1f("_Alpha", alpha);
- * writeAlpha.accept(instance);
+ * private void grid(CgMaterialValues b) { b.vec4("_Grid", x, y, slices, 0f); }
+ *
+ * grid(applyInstance);
+ * grid(pass.dispatch(kernel, w, h, 1).values());
  * }</pre>
  *
  * <ul>

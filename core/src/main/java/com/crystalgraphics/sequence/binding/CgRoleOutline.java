@@ -1,7 +1,6 @@
 package com.crystalgraphics.sequence.binding;
 
 import com.crystalgraphics.api.material.CgMaterialInstance;
-import java.util.function.Consumer;
 
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -46,7 +45,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
     /** The post's colour for this slot before any key: what switching back to the materials' own puts there. */
     private final float[] postOwn = {0, 0, 0, 1};
     private final float[] colour = new float[4];
-    private final Consumer<CgMaterialValues> writeColour;
+    private final String colourParameter;
     private boolean keyed;
 
     /**
@@ -66,7 +65,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
         for (CgMaterialProperty p : this.post.properties()) {
             if (p.getName().equals(colourParameter)) System.arraycopy(p.getFloatValue(), 0, postOwn, 0, 4);
         }
-        writeColour = b -> b.vec4(colourParameter, colour[0], colour[1], colour[2], 1f);
+        this.colourParameter = colourParameter;
     }
 
     @Override
@@ -90,7 +89,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
             if (!on) System.arraycopy(postOwn, 0, colour, 0, 3);
             moved = true;
         }
-        if (moved) writeColour.accept(post);
+        if (moved) post.vec4(colourParameter, colour[0], colour[1], colour[2], 1f);
     }
 
     @Override

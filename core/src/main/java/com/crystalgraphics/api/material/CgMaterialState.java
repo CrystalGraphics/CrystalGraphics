@@ -21,8 +21,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgMaterialState ink = CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build();
- * CgMaterial decal = CgMaterial.newInstance("mymod:shaders/fx/ink.shader", ink);
- * decal.applyProperties(b -> b.set1f("_Clip", 0.33f));
+ * CgMaterialInstance decal = CgMaterial.load("mymod:shaders/fx/ink.shader", ink).instance().set1f("_Clip", 0.33f);
  * }</pre>
  *
  * <p>Drawn after every other translucent draw, as Unreal's separate translucency, still tested against the scene's

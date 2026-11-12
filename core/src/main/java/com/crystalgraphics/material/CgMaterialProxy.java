@@ -88,10 +88,7 @@ public final class CgMaterialProxy {
     /** The instance this is the proxy of; null for a material's. */
     @Nullable
     private CgMaterialInstance instance;
-    /** The values a material was made with, replayed into each of its instances and keyword variants. */
-    @Nullable
-    private List<Consumer<CgMaterialValues>> defaults;
-    /** Whether an instance or a variant was made of this material: its values are then fixed. */
+    /** Whether an instance or a variant was made of this material: its keywords are then fixed. */
     private boolean shared;
     /** A material's keyword variants by keyword mask, one table its whole family shares; null on an instance. */
     @Nullable
@@ -185,8 +182,35 @@ public final class CgMaterialProxy {
     /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
     private final Set<String> enabledView = Collections.unmodifiableSet(enabledKeywords);
 
-    /** Values written before its shader parsed, replayed once {@link #propStore} exists; null until one is. */
-    private List<Consumer<CgMaterialValues>> pendingApplyConsumers = null;
+    /**
+     * Values written while its shader does not parse, by name, the last of each: written into {@link #propStore} at the
+     * next parse. Null for none.
+     */
+    @Nullable
+    private Map<String, Held> held;
+
+    /** A value {@link #held} keeps: its kind, its numbers, an int's value or a sampler's unit, texture and state. */
+    private record Held(int kind, @Nullable float[] numbers, int unit, @Nullable CgTexture texture,
+                        @Nullable CgSampler sampler) {
+        static final int INT = 0, FLOAT = 1, VEC2 = 2, VEC3 = 3, VEC4 = 4, ARRAY = 5, SAMPLER = 6;
+
+        static Held of(int kind, float... numbers) {
+            return new Held(kind, numbers, 0, null, null);
+        }
+
+        void into(String name, CgMaterialValues to) {
+            float[] n = numbers;
+            switch (kind) {
+                case INT -> to.set1i(name, unit);
+                case FLOAT -> to.set1f(name, n[0]);
+                case VEC2 -> to.vec2(name, n[0], n[1]);
+                case VEC3 -> to.vec3(name, n[0], n[1], n[2]);
+                case VEC4 -> to.vec4(name, n[0], n[1], n[2], n[3]);
+                case ARRAY -> to.array(name, n);
+                default -> to.sampler(name, unit, texture, sampler);
+            }
+        }
+    }
 
     // ── forTest-only fields (null for real materials) ──────────────────────────
 
@@ -291,7 +315,6 @@ public final class CgMaterialProxy {
             CgMaterialProxy v = new CgMaterialProxy(cgMaterialShader, state);
             for (int i = 0; i < declared.size(); i++) if ((mask & 1 << i) != 0) v.enabledKeywords.add(declared.get(i));
             v.inherit(this);
-            v.defaults = defaults == null ? null : new ArrayList<>(defaults);
             v.family = members;
             CgMaterial made = materials.apply(v);
             members.put(mask, made);
@@ -319,25 +342,33 @@ public final class CgMaterialProxy {
         return p;
     }
 
-    /** Takes {@code base}'s values, buffers and test stand-ins, fixing base's values from now on. */
+    /** Copies {@code base}'s values, buffers and test stand-ins, fixing base's keywords from now on. */
     private void inherit(CgMaterialProxy base) {
         base.shared = true;
         renderState = base.renderState;
         renderQueue = base.renderQueue;
         testFeatureNames = base.testFeatureNames;
         if (base.buffers != null) buffers = new HashMap<>(base.buffers);
-        // A test material has no parse to build values from: its own start from its base's.
-        if (cgMaterialShader == null && base.propStore != null) {
+        base.syncPropsToParse();
+        if (base.propStore != null) {
             propStore = new CgMaterialProperties(cloneProperties(base.propStore.all()));
             for (int i = 0; i < propStore.all().size(); i++) propStore.all().get(i).copyValueFrom(base.propStore.all().get(i));
+            propsParse = base.propsParse;
         }
+        if (base.held != null) held = new HashMap<>(base.held);
         if (base.blockOverrides != null) blockOverrides = new IdentityHashMap<>(base.blockOverrides);
-        if (base.defaults != null) for (Consumer<CgMaterialValues> d : base.defaults) apply(d);
     }
 
     /**
-     * Writes values by name as {@link #applyProperties} does, without a consumer: an instance's setters. Allocates
-     * nothing once its shader has parsed.
+     * Writes its values by name: an instance's setters, and a material's as the registry makes it. Allocates nothing
+     * once its shader has parsed.
+     *
+     * <pre>{@code
+     * CgMaterialProxy.of(material).writer().set1f("_Alpha", 0.5f);   // as the registry makes it
+     * }</pre>
+     *
+     * <p>An instance or a keyword variant copies its material's values when it is made: what the material is written
+     * after reaches neither.</p>
      */
     public CgMaterialValues writer() {
         if (writer == null) writer = new Writer();
@@ -346,7 +377,7 @@ public final class CgMaterialProxy {
 
     private final class Writer implements CgMaterialValues {
 
-        /** The parsed values to write into, or null to queue the write until a parse. */
+        /** The parsed values to write into, or null to hold the write until a parse. */
         @Nullable
         private CgMaterialValues open() {
             changes++;
@@ -363,16 +394,16 @@ public final class CgMaterialProxy {
             return this;
         }
 
-        private CgMaterialValues later(Consumer<CgMaterialValues> write) {
-            if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
-            pendingApplyConsumers.add(write);
+        private CgMaterialValues hold(String name, Held value) {
+            if (held == null) held = new HashMap<>();
+            held.put(name, value);
             return this;
         }
 
         @Override
         public CgMaterialValues set1i(String name, int value) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.set1i(name, value));
+            if (to == null) return hold(name, new Held(Held.INT, null, value, null, null));
             to.set1i(name, value);
             return done();
         }
@@ -380,7 +411,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues set1f(String name, float value) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.set1f(name, value));
+            if (to == null) return hold(name, Held.of(Held.FLOAT, value));
             to.set1f(name, value);
             return done();
         }
@@ -388,7 +419,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues vec2(String name, float x, float y) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.vec2(name, x, y));
+            if (to == null) return hold(name, Held.of(Held.VEC2, x, y));
             to.vec2(name, x, y);
             return done();
         }
@@ -396,7 +427,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues vec3(String name, float x, float y, float z) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.vec3(name, x, y, z));
+            if (to == null) return hold(name, Held.of(Held.VEC3, x, y, z));
             to.vec3(name, x, y, z);
             return done();
         }
@@ -404,7 +435,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues vec4(String name, float x, float y, float z, float w) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.vec4(name, x, y, z, w));
+            if (to == null) return hold(name, Held.of(Held.VEC4, x, y, z, w));
             to.vec4(name, x, y, z, w);
             return done();
         }
@@ -412,10 +443,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues array(String name, float[] values) {
             CgMaterialValues to = open();
-            if (to == null) {
-                float[] copy = values.clone();
-                return later(v -> v.array(name, copy));
-            }
+            if (to == null) return hold(name, Held.of(Held.ARRAY, values.clone()));
             to.array(name, values);
             return done();
         }
@@ -423,7 +451,7 @@ public final class CgMaterialProxy {
         @Override
         public CgMaterialValues sampler(String name, int unit, CgTexture texture, @Nullable CgSampler sampler) {
             CgMaterialValues to = open();
-            if (to == null) return later(v -> v.sampler(name, unit, texture, sampler));
+            if (to == null) return hold(name, new Held(Held.SAMPLER, null, unit, texture, sampler));
             to.sampler(name, unit, texture, sampler);
             return done();
         }
@@ -487,51 +515,6 @@ public final class CgMaterialProxy {
     }
 
     // ── Property bindings ─────────────────────────────────────────────────────
-
-    /**
-     * Writes the values a material is made with (its definition's constants and textures): replayed into each of its
-     * instances and keyword variants. Before either is made of it; after, it throws.
-     *
-     * <pre>{@code
-     * CgMaterialProxy.of(material).applyProperties(b -> b.set1f("_Alpha", 0.5f));   // as the registry makes it
-     * }</pre>
-     *
-     * <p>An instance's values go through {@link #writer()}.</p>
-     *
-     * @return this for chaining
-     */
-    public CgMaterialProxy applyProperties(Consumer<CgMaterialValues> consumer) {
-        if (instance == null) {
-            if (shared) {
-                throw new IllegalStateException(this + "'s values are fixed once it has an instance or a variant:"
-                        + " set them on an instance");
-            }
-            if (defaults == null) defaults = new ArrayList<>();
-            defaults.add(consumer);
-        }
-        return apply(consumer);
-    }
-
-    private CgMaterialProxy apply(Consumer<CgMaterialValues> consumer) {
-        changes++;
-        checkNotDeleted();
-        // From the parse alone, so setting a property compiles nothing.
-        syncPropsToParse();
-
-        if (propStore == null) {
-            // The source does not parse, or a forTest material with no asset: replayed once properties exist.
-            if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
-            pendingApplyConsumers.add(consumer);
-            return this;
-        }
-        consumer.accept(propStore);
-        // Only a value that moved: rewriting the same opacity, or only a sampler, leaves the block as it is.
-        if (propStore.consumeBlockChanged()) {
-            capturePropsDirty = true;
-        }
-        propStore.consumeSamplerUnitChanged();
-        return this;
-    }
 
     /**
      * The properties its shader declares, and under {@code cg_use rows} the hidden row slots the parser adds, from the
@@ -894,10 +877,10 @@ public final class CgMaterialProxy {
      * {@link #buffer}. Compiles nothing.
      *
      * <pre>{@code
-     * material.applyProperties(b -> b.colorARGB("_Color", 0xFFFF0000));
-     * int red = material.captureBindings(table);
-     * material.applyProperties(b -> b.colorARGB("_Color", 0xFF0000FF));
-     * int blue = material.captureBindings(table);   // a different id; red still reads red
+     * instance.colorARGB("_Color", 0xFFFF0000);
+     * int red = CgMaterialProxy.of(instance).captureBindings(table);
+     * instance.colorARGB("_Color", 0xFF0000FF);
+     * int blue = CgMaterialProxy.of(instance).captureBindings(table);   // a different id; red still reads red
      * }</pre>
      *
      * <ul>
@@ -1283,7 +1266,7 @@ public final class CgMaterialProxy {
      * {@code sampler(name, unit, texture)} takes. -1 where it declares none of that name.
      *
      * <pre>{@code
-     * material.applyProperties(b -> b.sampler("_Map", material.samplerUnit("_Map"), map));
+     * instance.sampler("_Map", CgMaterialProxy.of(instance).samplerUnit("_Map"), map);
      * }</pre>
      */
     public int samplerUnit(String name) {
@@ -1402,9 +1385,9 @@ public final class CgMaterialProxy {
         arenaFloats = -1;
         capturePropsDirty = true;
 
-        if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
-            for (Consumer<CgMaterialValues> pending : pendingApplyConsumers) pending.accept(propStore);
-            pendingApplyConsumers.clear();
+        if (held != null) {
+            held.forEach((name, value) -> value.into(name, propStore));
+            held = null;
         }
     }
 

@@ -47,12 +47,14 @@ public class CgMaterialTest {
         assertArrayEquals("a second starts from the material's", new float[]{0.5f, 0.5f, 0.5f, 1f}, value(m.instance()), 1e-4f);
     }
 
-    @Test(expected = IllegalStateException.class)
-    public void aMaterialsValuesAreFixedOnceInstanced() {
+    @Test
+    public void anInstanceCopiesItsMaterialsValuesWhenMade() {
         CgMaterialProperty prop = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
         CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 2000, new CgMaterialProperties(Collections.singletonList(prop)));
-        m.instance();
-        CgMaterialProxy.of(m).applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+        CgMaterialProxy.of(m).writer().vec4("_Color", 1f, 0f, 0f, 1f);
+        CgMaterialInstance instance = m.instance();
+        CgMaterialProxy.of(m).writer().vec4("_Color", 0f, 0f, 1f, 1f);
+        assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, value(instance), 0f);
     }
 
     private static float[] value(CgMaterialInstance instance) {

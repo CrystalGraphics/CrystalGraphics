@@ -4,7 +4,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
 import java.util.Arrays;
-import java.util.function.Consumer;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
@@ -49,7 +48,6 @@ public final class CgCanvasGradient {
     /** An instance per mask and shape its values switch on. */
     private final CgMaterialInstances instances;
     private CgMaterialInstance current;
-    private final Consumer<CgMaterialValues> writer = this::write;
 
     private float[] positions = new float[STOPS_PER_DRAW];
     private int[] colors = new int[STOPS_PER_DRAW];
@@ -151,7 +149,7 @@ public final class CgCanvasGradient {
         boolean rounded = false;
         for (float r : radii) rounded |= r > 0f;
         current = instances.of(instances.material().keyword(WITH_MASK, rounded).keyword(RADIAL, radial));
-        writer.accept(current);
+        write(current);
         return this;
     }
 

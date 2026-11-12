@@ -48,7 +48,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * <pre>{@code
  * CgMeshDistanceFields.Entry field = fields.field(mesh, submesh, first, count);   // render thread; null until ready
  * fields.upload(recording);                                                        // each firing, before a pass reads it
- * material.applyProperties(b -> b.sampler("_MeshFields", unit, fields.atlas()));
+ * instance.sampler("_MeshFields", unit, fields.atlas());
  * }</pre>
  */
 final class CgMeshDistanceFields {

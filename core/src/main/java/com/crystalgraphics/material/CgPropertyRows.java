@@ -15,9 +15,8 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * each property is, through the int the parser gives it ({@code _cg_at<name>}, -1 for the material's own value).
  *
  * <pre>{@code
- * // the material, once: _Radius is the row's first vec4, _Core its second
- * material.applyProperties(b -> b.set1i(CgMaterialProperty.rowSlotName("_Radius"), 0)
- *                                .set1i(CgMaterialProperty.rowSlotName("_Core"), 1));
+ * // the instance, once: _Radius is the row's first vec4, _Core its second
+ * instance.set1i(CgMaterialProperty.rowSlotName("_Radius"), 0).set1i(CgMaterialProperty.rowSlotName("_Core"), 1);
  * // each frame, every draw's row written into one array, then uploaded once
  * data[at * 4] = radius;                           // a number takes its row vec4's x
  * System.arraycopy(core, 0, data, (at + 1) * 4, 4);

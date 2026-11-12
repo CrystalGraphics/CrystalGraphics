@@ -5,7 +5,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -111,11 +110,6 @@ public final class CgColourRegion implements CgPostEffect {
     private final CgPostMaterial layerDraw = CgPostMaterial.of(layerMaterial, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
-    private final Consumer<CgMaterialValues> write = this::write;
-    private final Consumer<CgMaterialValues> writeLayer = b -> {
-        write(b);
-        b.set1f("_Coverage", 1f);
-    };
     /** The keyword set its program has: shape, advanced and temperature packed; -1 before the first. */
     private int keyed = -1;
 
@@ -306,12 +300,13 @@ public final class CgColourRegion implements CgPostEffect {
         int light = CgWorldLight.at(x, y, z);
         blockLight = CgWorldLight.block(light);
         skyLight = CgWorldLight.sky(light);
-        write.accept(material);
+        write(material);
         draw.record(post);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
         CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
         if (layers == null) return;
-        writeLayer.accept(layerMaterial);
+        write(layerMaterial);
+        layerMaterial.set1f("_Coverage", 1f);
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (layers.look(k) != null) layerDraw.recordOver(post, layers.layer(k));
         }

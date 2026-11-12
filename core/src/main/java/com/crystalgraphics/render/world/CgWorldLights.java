@@ -50,7 +50,6 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.shader.CgBindingModel;
@@ -378,8 +377,6 @@ public final class CgWorldLights {
     private CgMaterialInstance applyPoints, applyShaped;
     private CgKernel gbufferKernel, tilesKernel, tileDepthKernel, sampleKernel, shadeKernel, temporalKernel, denoiseKernel;
     private CgGraphTexture gbuffer;
-    private final Consumer<CgMaterialValues> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
-            this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
     /**
      * The translucency lighting volume, and the one twice as deep holding its direction too: this firing's, or null; each
      * cascade's lowest corner from the eye and cell size.
@@ -401,16 +398,6 @@ public final class CgWorldLights {
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles, tileRanges;
     private float rayReach;
-    private final Consumer<CgMaterialValues> rangeValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f);
-    private final Consumer<CgMaterialValues> tileValues = b -> b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
-            .sampler("_Ranges", 0, this.tileRanges)
-            .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
-            .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
-            .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
-            .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
-            .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33())
-            .vec4("_EyeFrac", this.eyeFrac[0], this.eyeFrac[1], this.eyeFrac[2], 0f)
-            .vec4("_Reach", ENTITY_TILES.get() ? this.rayReach : 1.0e9f, this.sunOn ? 1f : 0f, SUN_RAY, 0f).set1i("_Entities", this.entities);
     /** Lights added from the CPU this frame that cast shadows. */
     private int shadowedAdded;
     /**
@@ -479,74 +466,16 @@ public final class CgWorldLights {
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
-    private final Consumer<CgMaterialValues> sampleValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
-            .vec4("_Trace", SCREEN_TRACE.get(), SCREEN_STEPS.get(), 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
-            .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
-            .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
-            .vec4("_Sun", this.sunOn ? 1f : 0f, this.sunMapped ? 1f : 0f, 0f, 0f)
-            .set1i("_Skip", skip())
-            .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
-            .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
-            .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
-            .sampler("_GBuffer", 6, this.gbuffer)
-            .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1)
-            .sampler("_EntityTiles", 8, this.entities > 0 ? this.entityTiles : CgFallbackTextures.BLACK_1x1));
-    private final Consumer<CgMaterialValues> windowValues = b -> CgWorldVoxelWindow.get().bind(b, 0);
     private int entities;
     /** The downsample factor the sample and shade passes read this frame: {@link #DOWNSAMPLE}'s mode. */
     private int downX = 2, downY = 2;
     /** The samples a downsampled pixel takes, as their block of the samples texture: {@link #SAMPLES}' layout. */
     private int sampleX = 2, sampleY = 2;
-    private final Consumer<CgMaterialValues> shadeValues = b -> this.gridValues.accept(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
-            .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
-            .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
-            .sampler("_GBuffer", 1, this.gbuffer).sampler("_Lightmap", 2, this.lightmap).set1i("_Scale", lightScale));
-    private final Consumer<CgMaterialValues> temporalValues = b -> this.gridValues.accept(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
-            .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : accumulated[0].previous())
-            .sampler("_LastMoments", 2, freshHistory ? shaded : accumulated[1].previous())
-            .sampler("_NowVis", 3, shadedVis)
-            .sampler("_LastVis", 4, freshHistory ? shadedVis : accumulated[2].previous())
-            .set1f("_Fresh", freshHistory ? 1f : 0f)
-            .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f).set1i("_Scale", lightScale));
-    private final Consumer<CgMaterialValues> denoiseValues = b -> this.gridValues.accept(b.sampler("_Lighting", 0, accumulated[0])
-            .sampler("_Moments", 1, accumulated[1]).sampler("_Vis", 2, accumulated[2])
-            .sampler("_GBuffer", 3, this.gbuffer)
-            .vec4("_Spatial", SPATIAL_RADIUS.get() / lightScale, 4f, 10000f, 2f)
-            .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f).set1i("_Scale", lightScale));
-    private final Consumer<CgMaterialValues> applyValues = b -> this.gridValues.accept(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
-            .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
-            .sampler("_Visibility", 1, shadowsOn ? filteredVis : CgFallbackTextures.WHITE_1x1)
-            .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, CgWorldAtmosphere.SUN_SHARE.get(), 0f, 0f)
-            .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
-            .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
-            .sampler("_GBuffer", 5, this.gbuffer));
-    private final Consumer<CgMaterialValues> applyWindow = b -> CgWorldVoxelWindow.get().bind(b, 2);
     /** Whether {@link #handSun} binds this firing's map. */
     private boolean handSunLive;
     private int handSunUnit;
-    private final Consumer<CgMaterialValues> handSunValues = b -> b
-            .sampler("_cg_SunMap", this.handSunUnit, this.handSunLive ? this.sunMap : CgFallbackTextures.WHITE_1x1)
-            .array("_cg_SunRows", this.sunRowData).vec4("_cg_Sun", this.handSunLive ? 1f : 0f, 0f, 0f, 0f)
-            .vec4("_cg_SunEye", eye.x, eye.y, eye.z, 0f);
     /** Whether {@link #hand} binds a grid holding lights. */
     private boolean handLive;
-    /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
-    private final Consumer<CgMaterialValues> handValues = b -> b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
-            .vec4("_cg_LightTile", tileU, tileV, 0f, 0f).vec4("_cg_LightZ", zParams[0], zParams[1], zParams[2], 0f)
-            .vec4("_cg_LightRays", rays[0], rays[1], rays[2], rays[3])
-            .vec4("_cg_LightView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
-            .vec4("_cg_LightView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
-            .vec4("_cg_LightView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
-            .vec4("_cg_LightEye", eye.x, eye.y, eye.z, 0f);
-    /** The grid's values onto the apply material, read from the fields this firing set. */
-    private final Consumer<CgMaterialValues> gridValues = b -> b.vec4("_Grid", gridX, gridY, SLICES, 0f)
-            .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
-            .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
-            .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
-            .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
-            .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
-            .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33())
-            .set1f("_DayFade", DAY_FADE.get());
     private double[] at = new double[3 * 64];
     private float[] light = new float[FLOATS * 64];
     private int added;
@@ -1258,8 +1187,8 @@ public final class CgWorldLights {
             CgMaterialInstance apply = (shadowsOn ? shapedExact : shapedAny) ? applyShaped : applyPoints;
             apply.buffer("CELLS", binned ? cells : none)
                     .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none);
-            applyValues.accept(apply);
-            applyWindow.accept(apply);
+            applyValues(apply);
+            applyWindow(apply);
             CgPipeline pipeline = CgMaterialProxy.of(apply).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
             CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
@@ -1282,7 +1211,7 @@ public final class CgWorldLights {
         }
         CgComputePass pass = recording.compute("world.lightsGBuffer", stage.constants()).readsDepth(stage.depth())
                 .timed(GPU_GBUFFER);
-        pass.dispatch(gbufferKernel, w, h, 1).image("GBUFFER", gbuffer).values(gbufferValues);
+        gbufferValues(pass.dispatch(gbufferKernel, w, h, 1).image("GBUFFER", gbuffer).values());
         pass.end();
     }
 
@@ -1386,35 +1315,37 @@ public final class CgWorldLights {
                 }
                 CgComputePass ranges = recording.compute("world.lightsTileDepth", stage.constants())
                         .readsDepth(stage.depth()).timed(GPU_TILE_DEPTH);
-                ranges.dispatch(tileDepthKernel, tileRanges.getWidth(), tileRanges.getHeight(), 1).image("RANGES", tileRanges)
-                        .values(rangeValues);
+                rangeValues(ranges.dispatch(tileDepthKernel, tileRanges.getWidth(), tileRanges.getHeight(), 1)
+                        .image("RANGES", tileRanges).values());
                 ranges.end();
                 CgComputePass tiled = recording.compute("world.lightsTiles", stage.constants()).timed(GPU_TILES);
-                tiled.dispatch(tilesKernel, tx, ty, 1).image("TILES", entityTiles).bind("ENTITIES", boxes).values(tileValues);
+                tileValues(tiled.dispatch(tilesKernel, tx, ty, 1).image("TILES", entityTiles).bind("ENTITIES", boxes).values());
                 tiled.end();
             }
             CgComputePass sampling = recording.compute("world.lightsSample", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_SAMPLE);
-            sampling.dispatch(sampleKernel, sw, sh, 1).image("SAMPLES", samples).bind("VIEWED", binned ? viewed : none)
-                    .bind("CELLS", binned ? cells : none).bind("INDICES", binned ? indices : none)
-                    .bind("ENTITIES", boxes != null ? boxes : none).values(sampleValues).values(windowValues);
+            CgMaterialValues sample = sampling.dispatch(sampleKernel, sw, sh, 1).image("SAMPLES", samples)
+                    .bind("VIEWED", binned ? viewed : none).bind("CELLS", binned ? cells : none)
+                    .bind("INDICES", binned ? indices : none).bind("ENTITIES", boxes != null ? boxes : none).values();
+            sampleValues(sample);
+            windowValues(sample);
             sampling.end();
             lightmap = stage.host().textures().lightmapTexture();
             if (lightmap == null) lightmap = CgFallbackTextures.WHITE_1x1;
             CgComputePass shading = recording.compute("world.lightsShade", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_SHADE);
-            shading.dispatch(shadeKernel, lw, lh, 1).image("SHADED", shaded).image("VISIBILITY", shadedVis)
-                    .bind("LIGHTS", binned ? list : none).values(shadeValues);
+            shadeValues(shading.dispatch(shadeKernel, lw, lh, 1).image("SHADED", shaded).image("VISIBILITY", shadedVis)
+                    .bind("LIGHTS", binned ? list : none).values());
             shading.end();
             CgComputePass accumulating = recording.compute("world.lightsTemporal", stage.constants())
                     .readsDepth(stage.depth()).timed(GPU_TEMPORAL);
-            accumulating.dispatch(temporalKernel, lw, lh, 1).image("LIGHTING", accumulated[0])
-                    .image("MOMENTS", accumulated[1]).image("VISIBILITY", accumulated[2]).values(temporalValues);
+            temporalValues(accumulating.dispatch(temporalKernel, lw, lh, 1).image("LIGHTING", accumulated[0])
+                    .image("MOMENTS", accumulated[1]).image("VISIBILITY", accumulated[2]).values());
             accumulating.end();
             CgComputePass filtering = recording.compute("world.lightsDenoise", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_DENOISE);
-            filtering.dispatch(denoiseKernel, lw, lh, 1).image("FILTERED", filtered).image("VISIBILITY", filteredVis)
-                    .values(denoiseValues);
+            denoiseValues(filtering.dispatch(denoiseKernel, lw, lh, 1).image("FILTERED", filtered)
+                    .image("VISIBILITY", filteredVis).values());
             filtering.end();
             return true;
         }
@@ -1559,6 +1490,116 @@ public final class CgWorldLights {
         sunRowStaging = ByteBuffer.allocateDirect(CASCADES * 16 * 4).order(ByteOrder.nativeOrder());
     }
 
+    // Each pass's values, read from the fields this firing set: written into a kernel through its dispatch's
+    // values() and into a material instance alike.
+
+    private void gbufferValues(CgMaterialValues b) {
+        gridValues(b.sampler("_Normals", 0, this.normalsNow() ? this.normals : CgFallbackTextures.BLACK_1x1));
+    }
+
+    private void rangeValues(CgMaterialValues b) {
+        b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f);
+    }
+
+    private void tileValues(CgMaterialValues b) {
+        b.vec4("_Screen", this.targetW, this.targetH, 0f, 0f)
+                .sampler("_Ranges", 0, this.tileRanges)
+                .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
+                .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33())
+                .vec4("_EyeFrac", this.eyeFrac[0], this.eyeFrac[1], this.eyeFrac[2], 0f)
+                .vec4("_Reach", ENTITY_TILES.get() ? this.rayReach : 1.0e9f, this.sunOn ? 1f : 0f, SUN_RAY, 0f).set1i("_Entities", this.entities);
+    }
+
+    private void sampleValues(CgMaterialValues b) {
+        gridValues(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
+                .vec4("_Trace", SCREEN_TRACE.get(), SCREEN_STEPS.get(), 0.02f, 0.005f).set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1])
+                .set1i("_EyeZ", eyeBlock[2]).vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f)
+                .set1i("_Entities", this.entities).set1i("_Casters", this.casterCount)
+                .vec4("_Sun", this.sunOn ? 1f : 0f, this.sunMapped ? 1f : 0f, 0f, 0f)
+                .set1i("_Skip", skip())
+                .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
+                .sampler("_CasterRows", 4, this.casterCount > 0 || this.sunMapped ? this.casters : CgFallbackTextures.BLACK_1x1)
+                .sampler("_MeshFields", 5, this.casterCount > 0 ? this.meshFields.atlas() : CgFallbackTextures.BLACK_1x1)
+                .sampler("_GBuffer", 6, this.gbuffer)
+                .sampler("_SunMap", 7, this.sunMapped ? this.sunMap : CgFallbackTextures.WHITE_1x1)
+                .sampler("_EntityTiles", 8, this.entities > 0 ? this.entityTiles : CgFallbackTextures.BLACK_1x1));
+    }
+
+    private void windowValues(CgMaterialValues b) {
+        CgWorldVoxelWindow.get().bind(b, 0);
+    }
+
+    private void shadeValues(CgMaterialValues b) {
+        gridValues(b.vec4("_Screen", targetW, targetH, this.downX, this.downY)
+                .sampler("_Samples", 0, samples).set1f("_MaxWeight", 20f)
+                .vec4("_SampleGrid", this.sampleX, this.sampleY, this.sampleX * this.sampleY, 0f)
+                .sampler("_GBuffer", 1, this.gbuffer).sampler("_Lightmap", 2, this.lightmap).set1i("_Scale", lightScale));
+    }
+
+    private void temporalValues(CgMaterialValues b) {
+        gridValues(b.vec4("_Eye", eye.x, eye.y, eye.z, 0f)
+                .sampler("_Now", 0, shaded).sampler("_Last", 1, freshHistory ? shaded : accumulated[0].previous())
+                .sampler("_LastMoments", 2, freshHistory ? shaded : accumulated[1].previous())
+                .sampler("_NowVis", 3, shadedVis)
+                .sampler("_LastVis", 4, freshHistory ? shadedVis : accumulated[2].previous())
+                .set1f("_Fresh", freshHistory ? 1f : 0f)
+                .vec4("_Frames", Math.min(4f, MAX_FRAMES.get()), MAX_FRAMES.get(), 1f, 0.03f).set1i("_Scale", lightScale));
+    }
+
+    private void denoiseValues(CgMaterialValues b) {
+        gridValues(b.sampler("_Lighting", 0, accumulated[0])
+                .sampler("_Moments", 1, accumulated[1]).sampler("_Vis", 2, accumulated[2])
+                .sampler("_GBuffer", 3, this.gbuffer)
+                .vec4("_Spatial", SPATIAL_RADIUS.get() / lightScale, 4f, 10000f, 2f)
+                .vec4("_Spread", 2f, 0.15f, MAX_FRAMES.get(), 0f).set1i("_Scale", lightScale));
+    }
+
+    private void applyValues(CgMaterialValues b) {
+        gridValues(b.set1f("_Shadows", shadowsOn ? 1f : 0f)
+                .sampler("_Shadowed", 0, shadowsOn ? filtered : CgFallbackTextures.BLACK_1x1)
+                .sampler("_Visibility", 1, shadowsOn ? filteredVis : CgFallbackTextures.WHITE_1x1)
+                .vec4("_Sun", shadowsOn && sunOn ? 1f : 0f, CgWorldAtmosphere.SUN_SHARE.get(), 0f, 0f)
+                .set1i("_EyeX", eyeBlock[0]).set1i("_EyeY", eyeBlock[1]).set1i("_EyeZ", eyeBlock[2])
+                .vec4("_EyeFrac", eyeFrac[0], eyeFrac[1], eyeFrac[2], 0f).set1i("_Scale", lightScale)
+                .sampler("_GBuffer", 5, this.gbuffer));
+    }
+
+    private void applyWindow(CgMaterialValues b) {
+        CgWorldVoxelWindow.get().bind(b, 2);
+    }
+
+    private void handSunValues(CgMaterialValues b) {
+        b.sampler("_cg_SunMap", this.handSunUnit, this.handSunLive ? this.sunMap : CgFallbackTextures.WHITE_1x1)
+                .array("_cg_SunRows", this.sunRowData).vec4("_cg_Sun", this.handSunLive ? 1f : 0f, 0f, 0f, 0f)
+                .vec4("_cg_SunEye", eye.x, eye.y, eye.z, 0f);
+    }
+
+    /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
+    private void handValues(CgMaterialValues b) {
+        b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
+                .vec4("_cg_LightTile", tileU, tileV, 0f, 0f).vec4("_cg_LightZ", zParams[0], zParams[1], zParams[2], 0f)
+                .vec4("_cg_LightRays", rays[0], rays[1], rays[2], rays[3])
+                .vec4("_cg_LightView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .vec4("_cg_LightView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .vec4("_cg_LightView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .vec4("_cg_LightEye", eye.x, eye.y, eye.z, 0f);
+    }
+
+    /** The grid's values, which the passes reading the grid share. */
+    private void gridValues(CgMaterialValues b) {
+        b.vec4("_Grid", gridX, gridY, SLICES, 0f)
+                .vec4("_Tile", tileU, tileV, 0f, 0f).vec4("_ZParams", zParams[0], zParams[1], zParams[2], 0f)
+                .vec4("_Rays", rays[0], rays[1], rays[2], rays[3])
+                .vec4("_ToView0", toView.m00(), toView.m10(), toView.m20(), toView.m30())
+                .vec4("_ToView1", toView.m01(), toView.m11(), toView.m21(), toView.m31())
+                .vec4("_ToView2", toView.m02(), toView.m12(), toView.m22(), toView.m32())
+                .vec4("_Depth", perspective.m22(), perspective.m32(), perspective.m23(), perspective.m33())
+                .set1f("_DayFade", DAY_FADE.get());
+    }
+
     /**
      * Binds the light grid to {@code material}, a program handed the world's lights ({@code handed_lights.glsl}): the
      * list, the cells and their indices as the last firing to bin lights left them, and where the grid lay. After
@@ -1571,7 +1612,7 @@ public final class CgWorldLights {
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
         proxy.buffer("WORLD_LIGHTS", handLive ? list : none).buffer("WORLD_LIGHT_CELLS", handLive ? cells : none)
                 .buffer("WORLD_LIGHT_INDICES", handLive ? indices : none);
-        handValues.accept(proxy.writer());
+        handValues(proxy.writer());
     }
 
     /**
@@ -1583,7 +1624,7 @@ public final class CgWorldLights {
         handSunLive = transparent && sunOn && sunMapped;
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
         handSunUnit = proxy.samplerUnit("_cg_SunMap");
-        handSunValues.accept(proxy.writer());
+        handSunValues(proxy.writer());
     }
 
     /** The world's lights on transparent surfaces this firing, for {@link CgBindingModel#LOCAL_LIGHTS}; null for none. */

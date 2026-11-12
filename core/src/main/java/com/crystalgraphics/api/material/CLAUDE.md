@@ -71,14 +71,15 @@ world.draw(mesh, hot).submit();                                      // a draw t
 hot.delete();                                                        // once nothing draws it
 ```
 
-- A writer kept in a field allocates nothing a frame: `writer.accept(instance)` (`CgMaterialValues`).
+- Values one method writes into several targets take a `CgMaterialValues`: an instance, or a kernel's
+  `dispatch.values()` (`CgWorldLights`' grid values reach both).
 - Values are stored on the instance's properties and kept until overwritten; the next capture repacks its block only
   if a value moved, so writing the same value again costs a comparison. Unknown names are ignored.
 - **Safe before any compile, and compiles nothing**: values are built from the shader's *parse*. Only a source that
-  does not parse queues the write, replayed once it does.
-- A material's own values (its definition's constants and textures) are written as it is made
-  (`CgMaterialProxy.applyProperties`, the registry's); after an instance or a variant is made of it they are fixed, and
-  writing them throws.
+  does not parse holds the write by name, the last of each, written in at its next parse.
+- A material's own values (its definition's constants and textures) are written as the registry makes it, through
+  `CgMaterialProxy.writer()`. An instance or a keyword variant copies them when it is made; nothing a consumer holds
+  writes a material.
 
 ### Shader Keywords / Variants
 

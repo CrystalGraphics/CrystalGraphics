@@ -20,7 +20,6 @@ import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
-import java.util.function.Consumer;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
@@ -70,7 +69,12 @@ public final class CgPostComposite {
     private int active;
     private boolean copy;
     private final Inputs inputs = new Inputs();
-    private final Consumer<CgMaterialValues> properties = b -> {
+    private static final int LAYER_SLOTS = 2;
+    private static final String[] LAYER = {"_Layer0", "_Layer1"}, LAYER_BLOOM = {"_Layer0Bloom", "_Layer1Bloom"},
+            LAYER_LUT = {"_Layer0Lut", "_Layer1Lut"}, LAYER_PARAMS = {"_LayerParams0", "_LayerParams1"};
+
+    /** Writes the inputs into the chosen variant's instance. */
+    private void write(CgMaterialValues b) {
         if (inputs.scene != null) b.sampler("_Scene", 0, inputs.scene);
         if (inputs.bloom != null) b.sampler("_Bloom", 0, inputs.bloom);   // a look without bloom leaves it unread
         if (inputs.subject != null) b.sampler("_Subject", 0, inputs.subject);
@@ -96,10 +100,7 @@ public final class CgPostComposite {
             b.vec4(LAYER_PARAMS[k], inputs.layers[k] != null ? 1f : 0f, inputs.layerBlooms[k] != null ? inputs.layerIntensity[k] : 0f,
                     inputs.layerLuts[k] != null ? 1f : 0f, 0f);
         }
-    };
-    private static final int LAYER_SLOTS = 2;
-    private static final String[] LAYER = {"_Layer0", "_Layer1"}, LAYER_BLOOM = {"_Layer0Bloom", "_Layer1Bloom"},
-            LAYER_LUT = {"_Layer0Lut", "_Layer1Lut"}, LAYER_PARAMS = {"_LayerParams0", "_LayerParams1"};
+    }
 
     /** What the composite's properties hold. */
     private static final class Inputs {
@@ -345,7 +346,7 @@ public final class CgPostComposite {
         CgMaterialInstance material = current[f];
         // Each variant's instance holds its own values: one chosen anew is written whatever the inputs.
         if (switched || !inputs.same(set[f])) {
-            properties.accept(material);
+            write(material);
             set[f].copyFrom(inputs);
         }
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);

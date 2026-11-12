@@ -120,11 +120,11 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *
      * <pre>{@code
      * CgGraphTexture smoke = CgGraphTexture.history("smoke", new CgTextureDesc(w, h, rgba16f));
-     * resolve.applyProperties(b -> b.sampler("_Now", 0, current).sampler("_Last", 1, smoke.previous()));
+     * resolve.sampler("_Now", 0, current).sampler("_Last", 1, smoke.previous());
      * CgRasterPass pass = rec.raster("graphTexture.smoke").color(smoke, CgLoad.load()).constants(constants);   // draws the next version
      * // ... the resolve's draw: this frame blended over the last, by a validity the caller keeps ...
      * pass.end();
-     * composite.applyProperties(b -> b.sampler("_Smoke", 0, smoke));   // a later pass: what that one drew
+     * composite.sampler("_Smoke", 0, smoke);   // a later pass: what that one drew
      * }</pre>
      *
      * <pre>{@code

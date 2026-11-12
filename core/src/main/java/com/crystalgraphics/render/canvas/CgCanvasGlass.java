@@ -4,7 +4,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
-import java.util.function.Consumer;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
@@ -120,7 +119,6 @@ public final class CgCanvasGlass {
     /** An instance per set of layers its values switch on. */
     private final CgMaterialInstances instances;
     private CgMaterialInstance current;
-    private final Consumer<CgMaterialValues> writer = this::write;
 
     private CgTexture blurred, sharp;
     private float width, height;
@@ -283,7 +281,7 @@ public final class CgCanvasGlass {
     public CgCanvasGlass apply() {
         if (blurred == null || sharp == null) throw new IllegalStateException("glass without a backdrop");
         current = instances.of(variant());
-        writer.accept(current);
+        write(current);
         return this;
     }
 

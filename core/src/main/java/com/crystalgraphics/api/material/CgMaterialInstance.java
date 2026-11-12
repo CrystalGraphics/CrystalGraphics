@@ -24,13 +24,6 @@ import java.util.List;
  * hot.delete();                                     // its owner's, once nothing draws it
  * }</pre>
  *
- * <p>A writer kept in a field allocates nothing a frame:
- *
- * <pre>{@code
- * private final Consumer<CgMaterialValues> write = v -> v.set1f("_Alpha", alpha);
- * write.accept(instance);
- * }</pre>
- *
  * <ul>
  *   <li>Another keyword is another material: {@code material.keyword("MOSS", true).instance()}.</li>
  *   <li>A name its shader does not declare is ignored: a keyword variant may leave a property out.</li>
