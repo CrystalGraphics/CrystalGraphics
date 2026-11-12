@@ -59,7 +59,7 @@ final class CgOverdrawPass {
         if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
             overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
         }
-        CgRasterPass pass = recording.raster("overdrawPass.overdrawTarget").color(overdrawTarget, CgWorldRenderer.CLEAR).constants(stage.constants()).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+        CgRasterPass pass = recording.raster("overdrawPass.overdrawTarget").color(overdrawTarget, CgWorldRenderer.CLEAR).constants(stage.constants()).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {

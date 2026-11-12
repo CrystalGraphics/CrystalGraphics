@@ -317,7 +317,7 @@ public final class CgPostStack {
             if (scene != null) {
                 // The composite encodes the scene into the host's target, which is every later renderer's again.
                 composite.scene(scene);
-                stage.retarget(null);
+                stage.retarget(null, null);
             }
             composite.record(stage.recording(), stage.target(), stage.constants());
             recordAt(CgPostPoint.AFTER_COMPOSITE, current, i);

@@ -67,8 +67,7 @@ public final class CgPreviewTarget {
         // most: up to 32x on a desktop card, resolved per preview.
         this.multisampledDepth = CgGraphTexture.requested(name + "_ms_depth",
                 CgTextureDesc.of(size, size, CgFormat.DEPTH24_PLUS_STENCIL8).withSamples(wanted));
-        this.multisampled = CgGraphTexture.requested(name + "_ms",
-                CgTextureDesc.of(size, size, RESOLVED).withSamples(wanted), multisampledDepth);
+        this.multisampled = CgGraphTexture.requested(name + "_ms", CgTextureDesc.of(size, size, RESOLVED).withSamples(wanted));
     }
 
     /**
@@ -79,7 +78,7 @@ public final class CgPreviewTarget {
         CgGraphTexture into = multisampled != null ? multisampled : resolved;
         CgRasterPass pass = recording.raster("shadergraph.preview").color(into, CgLoad.clear(0f, 0f, 0f, 0f))
                 .constants(camera).state(state).order(CgOrder.LOOKBACK);
-        if (into.depthOf() != null) pass.depth(into.depthOf(), CgLoad.clearDepth(1.0), CgDepthAccess.WRITE);
+        if (into == multisampled) pass.depth(multisampledDepth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE);
         return pass;
     }
 

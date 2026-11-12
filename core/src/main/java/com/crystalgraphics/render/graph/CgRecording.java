@@ -671,14 +671,23 @@ public final class CgRecording {
      * @param reads graph textures the body samples, so it runs after whatever writes them
      */
     public CgRequest callback(String name, @Nullable CgGraphTexture target, Runnable body, CgGraphTexture... reads) {
+        return callback(name, target, null, body, reads);
+    }
+
+    /**
+     * As {@link #callback(String, CgGraphTexture, Runnable, CgGraphTexture...)}, drawing with {@code depth}'s depth
+     * beside {@code target}: what a host draws into the stage's target with the stage's depth.
+     */
+    public CgRequest callback(String name, @Nullable CgGraphTexture target, @Nullable CgGraphTexture depth, Runnable body,
+                              CgGraphTexture... reads) {
         requireOpen();
         CgRequest request = new CgRequest(name);
-        CgPass.Callback pass = new CgPass.Callback(name, target, body, request);
+        CgPass.Callback pass = new CgPass.Callback(name, target, depth == target ? null : depth, body, request);
         add(pass);
         for (CgGraphTexture read : reads) read(pass, read, CgAccess.SAMPLED_READ);
-        if (target != null && target.depthOf() != null) {
-            read(pass, target.depthOf(), CgAccess.SAMPLED_READ);
-            write(pass, target.depthOf(), CgAccess.COLOR_WRITE);
+        if (pass.depth != null) {
+            read(pass, pass.depth, CgAccess.SAMPLED_READ);
+            write(pass, pass.depth, CgAccess.COLOR_WRITE);
         }
         if (target != null) write(pass, target, CgAccess.COLOR_WRITE);
         return request;
@@ -880,15 +889,6 @@ public final class CgRecording {
             readBits[slot] = access;
         }
         log(READ, p, slot, access, view);
-    }
-
-    /**
-     * The depth texture {@code from} draws with, read by {@code pass} reading {@code from}'s depth: a texture of the
-     * graph's, which it resolves and orders like any read. An external target's depth is its owner's, never declared.
-     */
-    void readDepthOf(CgPass pass, CgGraphTexture from) {
-        CgGraphTexture depth = from.depthOf();
-        if (depth != null && depth.kind() != CgGraphTexture.Kind.EXTERNAL) read(pass, depth, CgAccess.SAMPLED_READ);
     }
 
     void write(CgPass pass, CgGraphResource view, int access) {

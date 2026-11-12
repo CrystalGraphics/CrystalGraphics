@@ -29,6 +29,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * The layer passes: each graded draw drawn again into its look's layer, which its post look grades and composites
@@ -143,10 +144,8 @@ final class CgGradeLayerPass {
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (!gradeSeen[k]) continue;
             if (gradeTargets[k] == null || gradeSizes[k * 2] != w || gradeSizes[k * 2 + 1] != h) {
-                gradeTargets[k] = CgGraphTexture.transientTexture("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT),
-                        CgGraphTexture.current());
-                gradeApart[k] = CgGraphTexture.transientTexture("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT),
-                        CgGraphTexture.current());
+                gradeTargets[k] = CgGraphTexture.transientTexture("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
+                gradeApart[k] = CgGraphTexture.transientTexture("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
                 gradeSizes[k * 2] = w;
                 gradeSizes[k * 2 + 1] = h;
             }
@@ -271,9 +270,11 @@ final class CgGradeLayerPass {
     /** A layer pass into {@code target}: cleared, or over what is in it; tested against the scene's depth. */
     private CgRasterPass layerPassBegin(CgStageFrame stage, CgRecording recording, CgPassConstants constants,
                                         CgGraphTexture target, int k, boolean over, @Nullable CgGraphTexture scene) {
-        CgRasterPass pass = recording.raster("world.gradeLayer").color(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER).constants(constants)
+        // Drawn beside the host's depth, tested against it and reading it
+        CgRasterPass pass = recording.raster("world.gradeLayer").color(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER)
+                .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants)
                 .timed(k < 0 ? CgWorldRenderer.GPU_SEPARATE : CgWorldRenderer.GPU_GRADE)
-                .readsDepth(target, CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (scene != null) pass.readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         world.mediated(pass);
@@ -348,8 +349,7 @@ final class CgGradeLayerPass {
     void recordSeparate(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
         int w = Math.max(1, Math.round(world.targetWidth)), h = Math.max(1, Math.round(world.targetHeight));
         if (separateTarget == null || separateWidth != w || separateHeight != h) {
-            separateTarget = CgGraphTexture.transientTexture("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT),
-                    CgGraphTexture.current());
+            separateTarget = CgGraphTexture.transientTexture("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT));
             separateWidth = w;
             separateHeight = h;
         }

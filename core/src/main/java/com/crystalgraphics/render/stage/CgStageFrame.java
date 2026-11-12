@@ -79,6 +79,8 @@ public final class CgStageFrame {
     private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
     private CgGraphTexture target;
+    @Nullable
+    private CgGraphTexture depth;
     /** {@link #canvas()}: opened at its first draw in a turn, so a turn that draws nothing records nothing. */
     private final CgCanvas canvas = new CgCanvas();
     private final CgCanvas.Source canvasOpener = new CgCanvas.Source() {
@@ -151,16 +153,31 @@ public final class CgStageFrame {
     }
 
     /**
-     * Makes {@link #target()} answer {@code target} for the rest of this firing, or the host's target again for null:
-     * every renderer recording after drawing into it unawares. The HDR scene is the user.
+     * The depth the stage's renderers test and write: the host's target's, or, between {@link #retarget} and its
+     * undoing, the depth named there. A pass into {@link #target()} that tests depth declares it.
      *
      * <pre>{@code
-     * frame.retarget(scene);   // scene in
-     * frame.retarget(null);    // the composite, which encodes the scene back into the host's target
+     * recording.raster("mymod.glow").color(frame.target(), CgLoad.load())
+     *         .depth(frame.depth(), CgLoad.load(), CgDepthAccess.WRITE);
      * }</pre>
      */
-    public void retarget(@Nullable CgGraphTexture target) {
+    public CgGraphTexture depth() {
+        return depth != null ? depth : CgGraphTexture.current();
+    }
+
+    /**
+     * Makes {@link #target()} answer {@code target} and {@link #depth()} {@code depth} for the rest of this firing, or
+     * the host's target again for null: every renderer recording after drawing into it unawares. The HDR scene is the
+     * user.
+     *
+     * <pre>{@code
+     * frame.retarget(scene, sceneDepth);   // scene in: the host's depth, or a depth of its own
+     * frame.retarget(null, null);          // the composite, which encodes the scene back into the host's target
+     * }</pre>
+     */
+    public void retarget(@Nullable CgGraphTexture target, @Nullable CgGraphTexture depth) {
         this.target = target;
+        this.depth = target == null ? null : depth;
     }
 
     /**
@@ -240,7 +257,7 @@ public final class CgStageFrame {
             CgFrameScope.put(PYRAMID, pyramid);
             CgFrameScope.put(PYRAMID_HOST, host.target());
         }
-        CgGpuOps.depthPyramid(recording, target(), constants(), pyramid);
+        CgGpuOps.depthPyramid(recording, depth(), constants(), pyramid);
         CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
         return pyramid;
     }
@@ -330,7 +347,7 @@ public final class CgStageFrame {
     }
 
     private void openCanvas(CgCanvas canvas) {
-        canvas.recordInto(recording, target(), CgLoad.load(), canvasCamera());
+        canvas.recordInto(recording, target(), depth(), CgLoad.load(), canvasCamera());
         CgHostView view = host.view();
         canvas.origin(view.x(), view.y(), view.z());
     }
@@ -348,7 +365,7 @@ public final class CgStageFrame {
 
     /** Runs {@code body} at this point in the stage, on the host's target, with GL state restored after. */
     public CgRequest callback(String name, Runnable body) {
-        return recording.callback(name, target(), body);
+        return recording.callback(name, target(), depth(), body);
     }
 
     /**
@@ -401,6 +418,7 @@ public final class CgStageFrame {
         pyramidBuilt = false;
         rehearsing = false;
         target = null;
+        depth = null;
         long frame = CgFrameRing.frame();
         ordinal = frame == firingFrame ? ordinal + 1 : 0;
         firingFrame = frame;
@@ -414,6 +432,7 @@ public final class CgStageFrame {
         pyramidBuilt = false;
         rehearsing = true;
         target = null;
+        depth = null;
         viewProjection.set(host.view().projection()).mul(host.view().view());
         historyValid = false;
     }

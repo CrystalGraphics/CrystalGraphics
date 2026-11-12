@@ -224,13 +224,12 @@ public final class CgComputePass extends CgPass {
      */
     public CgComputePass readsDepth(CgGraphTexture from) {
         requireOpen();
-        if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
-            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
+        if (from.desc() != null && !from.desc().format().hasDepth()) {
+            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none: name its depth texture");
         }
         depthFrom = from;
         if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
-        recording.readDepthOf(this, from);
         return this;
     }
 

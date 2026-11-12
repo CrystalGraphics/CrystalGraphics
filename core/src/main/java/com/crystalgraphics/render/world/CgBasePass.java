@@ -15,6 +15,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * The base pass and its depth prepass ({@code EMeshPass::BasePass}, {@code DepthPass}): each draw of the firing's phase
@@ -44,8 +45,8 @@ final class CgBasePass {
      */
     void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                     boolean depthOnlyPass, boolean after, CgHostView view, boolean sceneGlows) {
-        CgRasterPass pass = recording.raster("world.base").color(stage.target(), CgLoad.load()).constants(constants).state(state)
-                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+        CgRasterPass pass = recording.raster("world.base").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants).state(state)
+                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (!depthOnlyPass) world.mediated(pass);

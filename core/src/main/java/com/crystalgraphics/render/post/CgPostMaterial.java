@@ -246,7 +246,7 @@ public final class CgPostMaterial implements CgPostEffect {
         } else if (material.readsSceneColor()) {
             pass.readsColor(colourOf, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         }
-        if (material.readsSceneDepth()) pass.readsDepth(screen, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (material.readsSceneDepth()) pass.readsDepth(post.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(drawn, material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);

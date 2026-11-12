@@ -43,7 +43,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** Where its storage comes from. */
     public enum Kind { EXTERNAL, TRANSIENT, REQUESTED, HISTORY }
 
-    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.EXTERNAL, "current", null, null, null, null);
+    private static final CgGraphTexture CURRENT = new CgGraphTexture(Kind.EXTERNAL, "current", null, null, null);
 
     private final Kind kind;
     @Nullable
@@ -51,9 +51,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** An imported texture's target; null for {@link #current()}, which the execution names. */
     @Nullable
     private final CgExternalTarget target;
-    /** The texture whose depth every pass into this one draws with ({@link #transientTexture(String, CgTextureDesc, CgGraphTexture)}). */
-    @Nullable
-    private final CgGraphTexture depthOf;
 
     /** Render thread only: the storage while resolved. */
     @Nullable
@@ -74,7 +71,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private Stencil stencilView;
 
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgExternalTarget target,
-                           @Nullable CgGraphTexture depthOf, @Nullable CgGraphTexture of) {
+                           @Nullable CgGraphTexture of) {
         super(name);
         if (desc != null && (desc.isCube() || desc.isVolume() && desc.levels() > 1)) {
             throw new IllegalArgumentException(name + ": the graph makes no cube, and a volume of one level: " + desc);
@@ -82,14 +79,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         this.kind = kind;
         this.desc = desc;
         this.target = target;
-        this.depthOf = depthOf;
         this.of = of;
         this.versions = kind == Kind.HISTORY && of == null ? new CgGraphStorage[2] : null;
     }
 
     /** A target someone else owns, used as it is: a made render target, a retained surface, a host's framebuffer. */
     public static CgGraphTexture imported(String name, CgExternalTarget target) {
-        CgGraphTexture texture = new CgGraphTexture(Kind.EXTERNAL, name, null, target, null, null);
+        CgGraphTexture texture = new CgGraphTexture(Kind.EXTERNAL, name, null, target, null);
         texture.storage = CgGraphStorage.imported(target);
         return texture;
     }
@@ -109,55 +105,12 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** Storage for this frame only, from the pool. */
     public static CgGraphTexture transientTexture(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null, null);
-    }
-
-    /**
-     * Storage for this frame only, colour alone, every pass into it drawing with {@code depthOf}'s depth: a linear
-     * scene drawn in place of the host's colour, tested against and writing the host's depth
-     * ({@code depthOf} {@link #current()}).
-     *
-     * <pre>{@code
-     * if (stage.host().target().lendsAttachments()) {
-     *     scene = CgGraphTexture.transientTexture("scene", new CgTextureDesc(w, h, rgba16f), CgGraphTexture.current());
-     * }
-     * }</pre>
-     *
-     * <ul>
-     *   <li>{@code desc} is one level of colour alone, {@code depthOf}'s size.</li>
-     *   <li>A target that lends no attachments (the window's, a multisampled one) draws it without depth, once, and logs
-     *       why: ask {@code lendsAttachments()} first and give the scene a depth of its own there.</li>
-     *   <li>A pass into it is ordered as a write of {@code depthOf} too, and may clear that depth only where it is a
-     *       texture of the graph's: an external target's is its owner's.</li>
-     * </ul>
-     */
-    public static CgGraphTexture transientTexture(String name, CgTextureDesc desc, CgGraphTexture depthOf) {
-        return new CgGraphTexture(Kind.TRANSIENT, name, colourAlone(name, desc), null, depthOf, null);
+        return new CgGraphTexture(Kind.TRANSIENT, name, desc, null, null);
     }
 
     /** Storage made on first use and kept until released. */
     public static CgGraphTexture requested(String name, CgTextureDesc desc) {
-        return new CgGraphTexture(Kind.REQUESTED, name, desc, null, null, null);
-    }
-
-    /**
-     * As {@link #transientTexture(String, CgTextureDesc, CgGraphTexture)}, its storage kept until released: a scene
-     * drawn in one stage's firing and read in a later one.
-     *
-     * <pre>{@code
-     * CgGraphTexture opaque = CgGraphTexture.requested("scene", new CgTextureDesc(w, h, rgba16f), CgGraphTexture.current());
-     * recording.release(opaque);   // at a resize, before a new one is made
-     * }</pre>
-     */
-    public static CgGraphTexture requested(String name, CgTextureDesc desc, CgGraphTexture depthOf) {
-        return new CgGraphTexture(Kind.REQUESTED, name, colourAlone(name, desc), null, depthOf, null);
-    }
-
-    private static CgTextureDesc colourAlone(String name, CgTextureDesc desc) {
-        if (desc.isDepth() || desc.levels() != 1 || desc.isArray() || desc.isVolume()) {
-            throw new IllegalArgumentException(name + ": a texture drawn with another's depth is one level of colour alone");
-        }
-        return desc;
+        return new CgGraphTexture(Kind.REQUESTED, name, desc, null, null);
     }
 
     /**
@@ -192,13 +145,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         if (desc.levels() != 1 || desc.isArray() || desc.isVolume()) {
             throw new IllegalArgumentException(name + ": a history is one level of a 2D texture");
         }
-        return new CgGraphTexture(Kind.HISTORY, name, desc, null, null, null);
+        return new CgGraphTexture(Kind.HISTORY, name, desc, null, null);
     }
 
     /** A history's version before its newest: what this frame blends over. Sampled only. */
     public CgGraphTexture previous() {
         if (kind != Kind.HISTORY || of != null) throw new IllegalStateException("only a history has a previous version: " + this);
-        if (previous == null) previous = new CgGraphTexture(Kind.HISTORY, name + ".previous", desc, null, null, this);
+        if (previous == null) previous = new CgGraphTexture(Kind.HISTORY, name + ".previous", desc, null, this);
         return previous;
     }
 
@@ -221,12 +174,6 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     /** Render thread: the next version becomes the newest, before a pass draws it. */
     void advance() {
         newest = 1 - newest;
-    }
-
-    /** The texture whose depth passes into this one draw with; null where they draw with its own. */
-    @Nullable
-    public CgGraphTexture depthOf() {
-        return depthOf;
     }
 
     public Kind kind() {

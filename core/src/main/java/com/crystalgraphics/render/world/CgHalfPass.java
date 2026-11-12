@@ -15,6 +15,7 @@ import com.crystalgraphics.render.stage.CgHostView;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * Half-resolution translucency: transparent draws marked {@code halfResolution()} drawn at half the target's size, then
@@ -59,7 +60,7 @@ final class CgHalfPass {
         }
         stage.constants().write(world.constantsBlock, 0);
         world.halfConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster("halfPass.halfTarget").color(halfTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+        CgRasterPass pass = recording.raster("halfPass.halfTarget").color(halfTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
         world.mediated(pass);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -88,8 +89,8 @@ final class CgHalfPass {
         }
         CgPipeline pipeline = upsample.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass add = recording.raster("halfPass.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
-                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
+        CgRasterPass add = recording.raster("halfPass.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
+                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
         CgChunkBuilder upsampled = recording.chunks().begin();
         upsampled.draw(pipeline, upsample.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
         upsampled.instance();

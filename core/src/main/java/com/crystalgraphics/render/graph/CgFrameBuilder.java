@@ -818,8 +818,8 @@ public final class CgFrameBuilder {
 
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
 
-    /** Whether {@code texture} is the current target, or drawn with its depth. */
+    /** Whether {@code texture} is the current target. */
     private static boolean usesCurrent(CgGraphTexture texture) {
-        return texture.isCurrent() || texture.depthOf() != null && texture.depthOf().isCurrent();
+        return texture.isCurrent();
     }
 }

@@ -946,7 +946,7 @@ public final class CgExecutor {
             } else if (pass instanceof CgPass.Callback callback) {
                 sharedDepthSource = null;   // what it executes may draw anything
                 try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_CALLBACK);
-                     Into ignored = intoCallback(callback.target)) {
+                     Into ignored = intoCallback(callback.target, callback.depth)) {
                     callback.body.run();
                 }
                 callback.request.complete();
@@ -2253,7 +2253,9 @@ public final class CgExecutor {
         CgFormat depthFormat = null;
         CgGraphTexture depthOf = pass.depthBeside();
         CgGraphStorage depthStorage = depthOf != null ? storage(depthOf) : storage;
-        CgGpuTexture depthTexture = depthOf != null ? besideDepth(target, depthStorage, w, h) : storage.depth();
+        // A depth only where the pass names one: its own beside its colour, or its target's
+        CgGpuTexture depthTexture = depthOf != null ? besideDepth(target, depthStorage, w, h)
+                : pass.depthNamed() ? storage.depth() : null;
         boolean clearDepth = depthTexture != null && load.clearsDepth();
         boolean clearStencil = depthTexture != null && load.clearsStencil();
         // A load's depth is far at 1: mirrored for a host whose depth runs far to near
@@ -2598,7 +2600,7 @@ public final class CgExecutor {
 
     /** Copies the depth of the target a pass reads besides its own, whole, and binds it. */
     private void copyDepthFrom(CgPass pass, CgGraphTexture from, CgTargetCopy copy, int unit) {
-        CgGraphTexture depth = from.depthOf() != null ? from.depthOf() : from;
+        CgGraphTexture depth = from;
         if (takes && depth.kind() != CgGraphTexture.Kind.EXTERNAL && storage(depth).sampledDepth() != null
                 && !(pass instanceof CgRasterPass raster && depthTexture(raster) == depth)) {
             // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
@@ -2812,10 +2814,9 @@ public final class CgExecutor {
      * with; null, the current target as it is, for none.
      */
     @Nullable
-    private Into intoCallback(@Nullable CgGraphTexture target) {
+    private Into intoCallback(@Nullable CgGraphTexture target, @Nullable CgGraphTexture depth) {
         if (target == null || target.isCurrent()) return null;
-        CgGraphStorage depth = target.depthOf() != null ? storage(target.depthOf()) : null;
-        return into(storage(target).asTarget(depth));
+        return into(storage(target).asTarget(depth != null ? storage(depth) : null));
     }
 
     /**

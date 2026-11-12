@@ -8445,6 +8445,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public pushScissor (IIII)V
   method public quad (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public quads (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public recording ()Z
   method public retainedCell ()Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
@@ -9367,7 +9368,6 @@ com/crystalgraphics/render/graph/CgGraphTexture
   access public,final
   extends com/crystalgraphics/render/graph/CgGraphResource
   implements com/crystalgraphics/api/texture/CgTexture
-  method public depthOf ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public desc ()Lcom/crystalgraphics/gpu/resource/CgTextureDesc;
   method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public getDepth ()I
@@ -9392,9 +9392,7 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public,static history (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static imported (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/graph/CgGraphTexture$Kind
   access public,final,enum
   extends java/lang/Enum
@@ -9493,6 +9491,7 @@ com/crystalgraphics/render/graph/CgRecording
   extends java/lang/Object
   method public <init> ()V
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
+  method public callback (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Ljava/lang/Runnable;[Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public callback (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphTexture;Ljava/lang/Runnable;[Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public chunks ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public clips ()Lcom/crystalgraphics/render/canvas/CgClipTable;
@@ -9649,6 +9648,7 @@ com/crystalgraphics/render/post/CgPostContext
   extends java/lang/Object
   method public composite ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public depth ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public distorted (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
@@ -10608,6 +10608,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public canvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public depth ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public guiScaledCanvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public historyValid ()Z
@@ -10619,7 +10620,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public projectWorld (DDDLorg/joml/Vector2f;)Z
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public resources ()Lcom/crystalgraphics/render/stage/CgFrameResources;
-  method public retarget (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public retarget (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public stage ()Lcom/crystalgraphics/render/stage/CgRenderStage;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/stage/CgStageHook

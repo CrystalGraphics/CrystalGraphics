@@ -432,7 +432,7 @@ public final class CgWorldLights {
     private final Matrix4f sunModel = new Matrix4f(), sunRotation = new Matrix4f(), viewToEye = new Matrix4f();
     private final Vector3f sunCentre = new Vector3f();
     private CgMaterial sunShadow;
-    private CgGraphTexture sunMap;
+    private CgGraphTexture sunMap;    /** The depth {@link #sunMap} is drawn with. */    private CgGraphTexture sunDepth;
     /**
      * Each cascade's rows, four texels after the casters' in {@link #casters}: eye-relative world to its uv (two), to
      * its depth from the light, then its view depths and depth bias.
@@ -1260,8 +1260,8 @@ public final class CgWorldLights {
             apply.applyProperties(applyWindow);
             CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
-            CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
-                    .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+            CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
+                    .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                     // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
                     .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
             CgChunkBuilder chunks = recording.chunks().begin();
@@ -1278,7 +1278,7 @@ public final class CgWorldLights {
         if (gbuffer == null || gbuffer.getWidth() != w || gbuffer.getHeight() != h) {
             gbuffer = CgGraphTexture.transientTexture("cg_world_lights.gbuffer", new CgTextureDesc(w, h, GBUFFER_FORMAT));
         }
-        CgComputePass pass = recording.compute("world.lightsGBuffer", stage.constants()).readsDepth(stage.target())
+        CgComputePass pass = recording.compute("world.lightsGBuffer", stage.constants()).readsDepth(stage.depth())
                 .timed(GPU_GBUFFER);
         pass.dispatch(gbufferKernel, w, h, 1).image("GBUFFER", gbuffer).values(gbufferValues);
         pass.end();
@@ -1383,7 +1383,7 @@ public final class CgWorldLights {
                             new CgTextureDesc(tx * (ENTITY_TILE / 4), ty * (ENTITY_TILE / 4), RANGES_FORMAT));
                 }
                 CgComputePass ranges = recording.compute("world.lightsTileDepth", stage.constants())
-                        .readsDepth(stage.target()).timed(GPU_TILE_DEPTH);
+                        .readsDepth(stage.depth()).timed(GPU_TILE_DEPTH);
                 ranges.dispatch(tileDepthKernel, tileRanges.getWidth(), tileRanges.getHeight(), 1).image("RANGES", tileRanges)
                         .values(rangeValues);
                 ranges.end();
@@ -1391,7 +1391,7 @@ public final class CgWorldLights {
                 tiled.dispatch(tilesKernel, tx, ty, 1).image("TILES", entityTiles).bind("ENTITIES", boxes).values(tileValues);
                 tiled.end();
             }
-            CgComputePass sampling = recording.compute("world.lightsSample", stage.constants()).readsDepth(stage.target())
+            CgComputePass sampling = recording.compute("world.lightsSample", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_SAMPLE);
             sampling.dispatch(sampleKernel, sw, sh, 1).image("SAMPLES", samples).bind("VIEWED", binned ? viewed : none)
                     .bind("CELLS", binned ? cells : none).bind("INDICES", binned ? indices : none)
@@ -1399,17 +1399,17 @@ public final class CgWorldLights {
             sampling.end();
             lightmap = stage.host().textures().lightmapTexture();
             if (lightmap == null) lightmap = CgFallbackTextures.WHITE_1x1;
-            CgComputePass shading = recording.compute("world.lightsShade", stage.constants()).readsDepth(stage.target())
+            CgComputePass shading = recording.compute("world.lightsShade", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_SHADE);
             shading.dispatch(shadeKernel, lw, lh, 1).image("SHADED", shaded).image("VISIBILITY", shadedVis)
                     .bind("LIGHTS", binned ? list : none).values(shadeValues);
             shading.end();
             CgComputePass accumulating = recording.compute("world.lightsTemporal", stage.constants())
-                    .readsDepth(stage.target()).timed(GPU_TEMPORAL);
+                    .readsDepth(stage.depth()).timed(GPU_TEMPORAL);
             accumulating.dispatch(temporalKernel, lw, lh, 1).image("LIGHTING", accumulated[0])
                     .image("MOMENTS", accumulated[1]).image("VISIBILITY", accumulated[2]).values(temporalValues);
             accumulating.end();
-            CgComputePass filtering = recording.compute("world.lightsDenoise", stage.constants()).readsDepth(stage.target())
+            CgComputePass filtering = recording.compute("world.lightsDenoise", stage.constants()).readsDepth(stage.depth())
                     .timed(GPU_DENOISE);
             filtering.dispatch(denoiseKernel, lw, lh, 1).image("FILTERED", filtered).image("VISIBILITY", filteredVis)
                     .values(denoiseValues);
@@ -1433,17 +1433,16 @@ public final class CgWorldLights {
             int res = SUN_RESOLUTION.get();
             casterTexture();
             if (sunMap == null || sunMap.getWidth() != 2 * res) {
-                CgGraphTexture depth = CgGraphTexture.transientTexture("cg_world_lights.sun_depth",
+                sunDepth = CgGraphTexture.transientTexture("cg_world_lights.sun_depth",
                         CgTextureDesc.of(2 * res, 2 * res, SUN_DEPTH_FORMAT));
-                sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", CgTextureDesc.of(2 * res, 2 * res, SUN_MAP_FORMAT),
-                        depth);
+                sunMap = CgGraphTexture.transientTexture("cg_world_lights.sun", CgTextureDesc.of(2 * res, 2 * res, SUN_MAP_FORMAT));
             }
             // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
             stage.defaults(sunConstants).resolution(2 * res, 2 * res);
             sunConstants.view.identity();
             sunConstants.projection.identity();
             CgRasterPass pass = recording.raster("world.sunMap").color(sunMap, SUN_CLEAR)
-                    .depth(sunMap.depthOf(), CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(sunConstants).timed(GPU_SUN);
+                    .depth(sunDepth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(sunConstants).timed(GPU_SUN);
             CgChunkBuilder chunks = recording.chunks().begin();
             float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
                     + sunDirection[2] * sunDirection[2]);

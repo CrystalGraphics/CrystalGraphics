@@ -82,6 +82,8 @@ public final class CgRasterPass extends CgPass {
     /** The depth it declares, or null; and what it does with it. */
     @Nullable
     private CgGraphTexture depth;
+    /** Whether it named a depth: its own declared, or its target's when it draws depth alone. */
+    private boolean depthNamed;
     private CgDepthAccess depthAccess;
     final float[] constants = new float[CgPassConstants.FLOATS];
     @Nullable
@@ -153,6 +155,7 @@ public final class CgRasterPass extends CgPass {
         layer = 0;
         load = colorLoad = depthLoad = CgLoad.load();
         depth = null;
+        depthNamed = false;
         depthAccess = CgDepthAccess.WRITE;
         constants.write(this.constants, 0);
         state = null;
@@ -348,6 +351,7 @@ public final class CgRasterPass extends CgPass {
             throw new IllegalArgumentException(this + ": " + texture + " is no depth texture");
         }
         depth = texture;
+        depthNamed = true;
         depthLoad = load;
         depthAccess = java.util.Objects.requireNonNull(access, "access");
         this.load = CgLoad.of(colorLoad, depthLoad);
@@ -416,15 +420,14 @@ public final class CgRasterPass extends CgPass {
      * }</pre>
      *
      * <ul>
-     *   <li>A texture drawn with another's depth reads that depth.</li>
-     *   <li>Throws here where {@code texture} has no depth, and at execution where an external target has none.</li>
+         *   <li>Throws here where {@code texture} has no depth, and at execution where an external target has none.</li>
      *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
      * </ul>
      */
     public CgRasterPass readsDepth(CgGraphTexture texture, int unit) {
         declaring();
         requireTarget();
-        return texture == target ? ownDepth(unit) : depthFrom(unit, texture);
+        return texture == target || texture == depth ? ownDepth(unit) : depthFrom(unit, texture);
     }
 
     /** The block its draws read as the frame's: time, camera, resolution. The recording's identity block unless set. */
@@ -483,18 +486,20 @@ public final class CgRasterPass extends CgPass {
         encodeTarget();
     }
 
-    /** What its draws test and write: its declared depth, else the depth its target draws with, else its target's own. */
+    /** What its draws test and write: its declared depth, else its target, whose own depth it may be. */
     CgGraphTexture depthTexture() {
-        CgGraphTexture t = target != null ? target : CgGraphTexture.current();
-        if (depth != null) return depth;
-        return t.depthOf() != null ? t.depthOf() : t;
+        return depth != null ? depth : target != null ? target : CgGraphTexture.current();
     }
 
     /** A depth of another texture it draws with, or null for its target's own or none. */
     @Nullable
     CgGraphTexture depthBeside() {
-        if (depth != null) return depth == target ? null : depth;
-        return target == null ? null : target.depthOf();
+        return depth == null || depth == target ? null : depth;
+    }
+
+    /** Whether it draws with a depth: one it declared, or its target's where it draws depth alone. */
+    boolean depthNamed() {
+        return depthNamed;
     }
 
     /** What it does with its depth. */
@@ -711,14 +716,13 @@ public final class CgRasterPass extends CgPass {
     }
 
     private CgRasterPass depthFrom(int unit, CgGraphTexture from) {
-        if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
-            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
+        if (from.desc() != null && !from.desc().format().hasDepth()) {
+            throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none: name its depth texture");
         }
         depthFrom = from;
         depthFromUnit = unit;
         if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
-        recording.readDepthOf(this, from);
         return this;
     }
 

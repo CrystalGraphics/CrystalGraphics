@@ -31,6 +31,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * "Draw this now", through the same recording, batching and executor as everything else: chunks into whatever
@@ -153,7 +154,8 @@ public final class CgImmediate implements AutoCloseable {
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgImmediate());
         CgImmediate immediate = BY_DEPTH.get(depth++);
         immediate.recording.reset();
-        immediate.pass = immediate.recording.raster("into.current").color(CgGraphTexture.current(), CgLoad.load()).constants(constants).state(state).order(order);
+        immediate.pass = immediate.recording.raster("immediate").color(CgGraphTexture.current(), CgLoad.load())
+                .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants).state(state).order(order);
         return immediate;
     }
 

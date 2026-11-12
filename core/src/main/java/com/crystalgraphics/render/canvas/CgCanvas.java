@@ -20,6 +20,7 @@ import org.joml.Matrix4fc;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * What 2D draws go into -- quads, curves, cells, triangles, text -- in the world or on the screen (Unreal's
@@ -346,6 +347,9 @@ public final class CgCanvas {
     private CgRecording recording;
     @Nullable
     private CgGraphTexture target;
+    /** The depth its draws test, or null. */
+    @Nullable
+    private CgGraphTexture depth;
     private CgLoad load = CgLoad.load();
     @Nullable
     private CgRasterPass pass;
@@ -373,6 +377,17 @@ public final class CgCanvas {
      * ends the pass that was open.
      */
     public void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load, CgPassConstants constants) {
+        recordInto(recording, target, target.kind() == CgGraphTexture.Kind.EXTERNAL ? target : null, load, constants);
+    }
+
+    /**
+     * As {@link #recordInto(CgRecording, CgGraphTexture, CgLoad, CgPassConstants)}, its draws testing {@code depth}: a
+     * stage's canvas over the HDR scene tests the scene's depth, as a slab in the world hides a pane behind it. Null
+     * draws without depth.
+     */
+    public void recordInto(CgRecording recording, CgGraphTexture target, @Nullable CgGraphTexture depth, CgLoad load,
+                           CgPassConstants constants) {
+        this.depth = depth;
         sealActive();
         source = null;
         endPass();
@@ -609,7 +624,8 @@ public final class CgCanvas {
 
     private void openPass() {
         System.arraycopy(pendingBlock, 0, passBlock, 0, CgPassConstants.FLOATS);
-        pass = recording.raster("canvas.target").color(target, load).constants(passConstants.read(passBlock, 0)).order(CgOrder.LOOKBACK);
+        pass = recording.raster("canvas").color(target, load).constants(passConstants.read(passBlock, 0)).order(CgOrder.LOOKBACK);
+        if (depth != null) pass.depth(depth, CgLoad.load(), CgDepthAccess.WRITE);
         viewOwner = pendingOwner;
         viewX = pendingX;
         viewY = pendingY;

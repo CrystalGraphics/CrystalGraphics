@@ -19,8 +19,8 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
  * CgTextureDesc sky   = CgTextureDesc.cube(512, CgFormat.RGBA16_FLOAT);                // six square faces
  * }</pre>
  *
- * <p>A pass drawing into a colour and a depth names two textures: the colour drawn with the depth
- * ({@code CgGraphTexture.transientTexture(name, desc, depth)}).</p>
+ * <p>A pass drawing into a colour and a depth names two textures: {@code rec.raster(name).color(colour, load)
+ * .depth(depth, load, access)}.</p>
  *
  * <ul>
  *   <li>A pass draws into level 0; a kernel writes any level ({@code CgDispatch.image(name, texture, level, -1)}), and

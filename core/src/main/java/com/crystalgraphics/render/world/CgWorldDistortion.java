@@ -25,6 +25,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 
 import java.util.Arrays;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * The world renderer's distortion: where each haze's Distortion pass is applied, the array layers they add into, and
@@ -223,8 +224,8 @@ final class CgWorldDistortion {
             CgMaterial material = apply(FINAL);
             CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null) {
-                CgRasterPass pass = recording.raster("worldDistortion.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
-                        .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                CgRasterPass pass = recording.raster("worldDistortion.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
+                        .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                         .timed(GPU_APPLY);
                 CgChunkBuilder chunks = recording.chunks().begin();
                 chunks.draw(pipeline, material.captureBindings(recording.bindings()), QUAD);
@@ -249,7 +250,7 @@ final class CgWorldDistortion {
         stage.constants().write(block, 0);
         constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
         CgRasterPass bend = recording.raster("worldDistortion.target").color(target, 0, layer, CLEAR).constants(constants).state(BEND_STATE)
-                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_BEND);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0, count = draws.count(); i < count; i++) {

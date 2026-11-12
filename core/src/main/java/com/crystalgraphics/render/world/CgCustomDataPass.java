@@ -56,6 +56,8 @@ final class CgCustomDataPass {
     final IdentityHashMap<CgRenderState, CgRenderState> customDataStates = new IdentityHashMap<>();
 
     CgGraphTexture customDataTarget;
+    /** The depth {@link #customDataTarget} is drawn with: the host's, or its own where the host lends none. */
+    private CgGraphTexture customDataDepth;
 
     CgMaterial depthIn;
 
@@ -77,16 +79,15 @@ final class CgCustomDataPass {
         CgFormat depth = stage.host().target().lendsAttachments() ? null : stage.host().depthFormat();
         boolean ownDepth = depth != null;
         if (customDataTarget == null || customDataTarget.getWidth() != w || customDataTarget.getHeight() != h
-                || customDataTarget.depthOf().isCurrent() == ownDepth) {
-            CgGraphTexture drawnWith = ownDepth
+                || customDataDepth.isCurrent() == ownDepth) {
+            customDataDepth = ownDepth
                     ? CgGraphTexture.transientTexture("cg_custom_data_depth", CgTextureDesc.of(w, h, depth))
                     : CgGraphTexture.current();
-            customDataTarget = CgGraphTexture.transientTexture("cg_custom_data", CgTextureDesc.of(w, h, CUSTOM_DATA_FORMAT),
-                    drawnWith);
+            customDataTarget = CgGraphTexture.transientTexture("cg_custom_data", CgTextureDesc.of(w, h, CUSTOM_DATA_FORMAT));
         }
         CgRasterPass pass = recording.raster("world.customData").color(customDataTarget, HOST_LIT_CLEAR)
                 .constants(stage.constants()).timed(GPU_CUSTOM_DATA);
-        if (ownDepth) pass.depth(customDataTarget.depthOf(), DEPTH_CLEAR, CgDepthAccess.WRITE);
+        pass.depth(customDataDepth, ownDepth ? DEPTH_CLEAR : CgLoad.load(), CgDepthAccess.WRITE);
         CgChunkBuilder chunks = recording.chunks().begin();
         if (ownDepth) {
             if (depthIn == null) depthIn = CgMaterial.newInstance(CgWorldRenderer.DEPTH_IN_SHADER);

@@ -663,24 +663,24 @@ public final class CgGpuOps {
     }
 
     /**
-     * The scene's depth as {@link #cull} reads it: level 0 the eye depth of each texel of {@code depthOf}'s depth
+     * The scene's depth as {@link #cull} reads it: level 0 the eye depth of each texel of {@code depth}
      * under {@code constants}' projection and depth convention, each level after it the farthest of what it covers.
-     * {@code pyramid} is {@link #PYRAMID_FORMAT} with mips, the size of {@code depthOf}. Recorded where it stands: after
+     * {@code pyramid} is {@link #PYRAMID_FORMAT} with mips, the size of {@code depth}. Recorded where it stands: after
      * whatever should hide the instances has drawn. One compute pass, a dispatch per six levels: two up to 4096 texels a
      * side ({@code depth_pyramid.compute}, SPD's tile through shared memory).
      *
      * <pre>{@code
-     * CgGraphTexture depth = CgGraphTexture.transientTexture("hiz",
+     * CgGraphTexture hiZ = CgGraphTexture.transientTexture("hiz",
      *         new CgTextureDesc(w, h, CgGpuOps.PYRAMID_FORMAT).withMips());
-     * CgGpuOps.depthPyramid(recording, CgGraphTexture.current(), constants, depth);
-     * cull.pyramid(depth);
+     * CgGpuOps.depthPyramid(recording, frame.depth(), constants, hiZ);   // a depth texture, or a target lending one
+     * cull.pyramid(hiZ);
      * }</pre>
      */
-    public static void depthPyramid(CgRecording recording, CgGraphTexture depthOf, CgPassConstants constants,
+    public static void depthPyramid(CgRecording recording, CgGraphTexture depth, CgPassConstants constants,
                                     CgGraphTexture pyramid) {
         if (pyramid.getLevels() < 2) throw new IllegalArgumentException(pyramid + " has one level: describe it withMips()");
         int w = pyramid.getWidth(), h = pyramid.getHeight(), last = pyramid.getLevels() - 1;
-        CgComputePass pass = recording.compute("cg.depthPyramid", constants).readsDepth(depthOf).timed(GPU_PYRAMID);
+        CgComputePass pass = recording.compute("cg.depthPyramid", constants).readsDepth(depth).timed(GPU_PYRAMID);
         for (int from = 0; from < last; from += PYRAMID_BATCH) {
             int made = Math.min(PYRAMID_BATCH, last - from);
             int gx = (size(w, from) + PYRAMID_TILE - 1) / PYRAMID_TILE, gy = (size(h, from) + PYRAMID_TILE - 1) / PYRAMID_TILE;

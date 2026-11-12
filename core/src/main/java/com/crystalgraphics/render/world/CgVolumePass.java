@@ -90,7 +90,7 @@ final class CgVolumePass {
         }
         stage.constants().write(world.constantsBlock, 0);
         world.halfConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster("world.volumes").color(volumeTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).color(volumeDepth, CgWorldRenderer.CLEAR).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+        CgRasterPass pass = recording.raster("world.volumes").color(volumeTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).color(volumeDepth, CgWorldRenderer.CLEAR).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
@@ -127,7 +127,7 @@ final class CgVolumePass {
         }
         if (!resolveKernel().isReady()) return volumeTarget;
         boolean fresh = volumeMade[ordinal] == CgFrameRing.frame();
-        CgComputePass resolving = recording.compute("world.volumeResolve", world.halfConstants).readsDepth(stage.target())
+        CgComputePass resolving = recording.compute("world.volumeResolve", world.halfConstants).readsDepth(stage.depth())
                 .timed(GPU_VOLUME_RESOLVE);
         resolving.dispatch(resolve, w, h, 1).image("RESOLVED", history).texture("_Now", volumeTarget)
                 .texture("_NowDepth", volumeDepth).texture("_Last", history.previous())

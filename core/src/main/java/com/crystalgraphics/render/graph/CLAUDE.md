@@ -182,27 +182,28 @@ chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS),
 - One blend serves both slots below GL 4.0 (`glBlendFunci` is 4.0): what a pipeline writes into slot 1 must suit the
   pass's blend.
 
-**A texture drawn with another's depth** (`CgGraphTexture.transientTexture(name, desc, depthOf)`, and `requested`'s
-twin): colour of its own, every pass into it testing and writing `depthOf`'s depth: the current target's, which is what
-the world's HDR scene is over the host's (`render/world/CLAUDE.md`), or a depth texture of the graph's, which is how a
-colour gets a depth at all now that a description is one texture. A pass into it attaches it at slot 0 and that depth unless it declares a
-`depth(...)` of its own; `readsDepth` of it reads that depth. It is ordered as a read and write of `depthOf` too.
+**A colour drawn with another texture's depth**: a description is one texture, so a pass drawing colour and depth
+names both, `color(colour, load)` and `depth(depth, load, access)`. The depth is the host's (an external target, as
+the world's HDR scene is drawn over the host's: `render/world/CLAUDE.md`) or a depth texture of the graph's. A pass
+attaches a depth only where it declares one: one into an external target that tests depth declares that target's
+(`depth(CgGraphTexture.current(), ...)`). It is ordered as a read and write of that depth too. A stage's renderers draw
+into `stage.target()` with `stage.depth()`, which the HDR scene sets with `retarget(scene, depth)`.
 
 ```java
-CgGraphTexture scene = CgGraphTexture.transientTexture("scene", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT),
-        CgGraphTexture.current());
-recording.raster("world.scene").color(scene, CgLoad.load()).constants(constants)
-        .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);   // the host's colour, copied whole
+CgGraphTexture scene = CgGraphTexture.transientTexture("scene", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
+recording.raster("world.scene").color(scene, CgLoad.load()).depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE)
+        .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)   // the host's colour, copied whole
+        .constants(constants);
 
 CgGraphTexture depth = CgGraphTexture.transientTexture("map_depth", CgTextureDesc.of(s, s, CgFormat.DEPTH32_FLOAT));
-CgGraphTexture map = CgGraphTexture.transientTexture("map", CgTextureDesc.of(s, s, CgFormat.R32_FLOAT), depth);
+CgGraphTexture map = CgGraphTexture.transientTexture("map", CgTextureDesc.of(s, s, CgFormat.R32_FLOAT));
 recording.raster("sun.map").color(map, CgLoad.clear(1e30f, 0, 0, 0))
         .depth(depth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(constants);   // clears both
 ```
 
 - Only a depth of the graph's may be cleared by a pass's `depth(...)`: an external target's is its owner's, and the pass throws.
-- A pass reading its depth (`readsDepth(map, unit)`) reads `depth` too, ordered and resolved like any read, and samples
-  it in place unless that pass draws with it.
+- A pass reading a depth (`readsDepth(depth, unit)`) names the depth texture; one that draws with it reads it as its
+  own, copied as its draws write it, and any other samples it in place or copies it once.
 
 - A target lending no attachments lends no depth: the recorder asks `lendsAttachments()` and gives its texture a depth
   of its own there. One drawn anyway draws without depth, logged once.

@@ -58,6 +58,11 @@ public final class CgPostContext {
         return stage.target();
     }
 
+    /** The depth of the scene the composite draws over ({@link CgStageFrame#depth()}). */
+    public CgGraphTexture depth() {
+        return stage.depth();
+    }
+
     /** The host's camera as pass constants ({@link CgStageFrame#constants()}). */
     public CgPassConstants constants() {
         return stage.constants();

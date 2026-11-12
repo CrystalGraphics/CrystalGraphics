@@ -1578,7 +1578,7 @@ pass.end();
 | `blur(pass, source, x, y, w, h, target, tx, ty, sigmaX, sigmaY, edge)` | a region blurred into place, a sigma an axis, taps past it held (`CLAMP`) or folded back in (`MIRROR`) |
 | `shrink(pass, source, x, y, w, h, target, tx, ty, tw, th)` | a region, fractional, shrunk into a smaller rect: each target texel the average of the source area it covers (an area resample: Pillow's `BOX`, OpenCV's `INTER_AREA`). A thumbnail |
 | `blurScaled(pass, source, x, y, w, h, target, sigma, edge)` | Skia's scale-then-blur: the region box-reduced by 1, 2 or 4 (the target's size says which; `blurScale(sigma)` picks it), then blurred there |
-| `depthPyramid(recording, depthOf, constants, pyramid)` | a target's depth as eye depth, each level the farthest it covers: what a cull tests against |
+| `depthPyramid(recording, depth, constants, pyramid)` | a depth texture (or a target lending one) as eye depth, each level the farthest it covers: what a cull tests against |
 | `cull(pass, cull, instances, [first,] count, out, counts, word)` | instances of one mesh culled as `CgWorldRenderer` culls a draw (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many; from record `first` for one range of a shared buffer |
 | `cull(pass, view, sets, out, counts)` | every set of a `CgCullSets` culled at once, each as the op above with order kept: two dispatches per instance buffer and one sort, however many sets |
 

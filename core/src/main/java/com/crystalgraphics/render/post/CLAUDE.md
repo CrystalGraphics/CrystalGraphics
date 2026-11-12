@@ -34,7 +34,7 @@ Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug
 and `crossfade.shader`; bloom's kernels in `shaders/env/compute/post/bloom.compute`; a post material's triangle and weight in `shaders/lib/post/post_material.glsl`.
 
 **The HDR scene**: when the firing carries `CgFrameKeys.SCENE`, the stack hands the
-composite the scene (`composite.scene`) and the stage its host target back (`retarget(null)`) before the composite
+composite the scene (`composite.scene`) and the stage its host target back (`retarget(null, null)`) before the composite
 records. The composite then always draws, in the copy form with `SCENE`: it reads the scene rather than a copy of the
 target, rolls a colour past white toward white keeping its hue (`c / peak` mixed toward white by
 `(peak - 1) / (peak + 2)`, halfway at 4x white: a hot core with a coloured fringe, where a clamp per channel bands, and

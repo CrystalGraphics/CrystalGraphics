@@ -33,6 +33,7 @@ import javax.annotation.Nullable;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * Smoke and gas in the air as a froxel grid over the view, Frostbite's and Unreal's volumetric fog: what each injector
@@ -313,8 +314,8 @@ public final class CgWorldMedia {
         if (!light.precache()) return;
         CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass pass = recording.raster("worldMedia.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
-                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
+        CgRasterPass pass = recording.raster("worldMedia.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
+                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
                 .timed(GPU_LIGHT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, light.captureBindings(recording.bindings()), FULLSCREEN);

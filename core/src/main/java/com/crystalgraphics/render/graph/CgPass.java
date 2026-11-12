@@ -128,9 +128,13 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     /** Code run with a target bound and GL state scoped: what is not recorded yet. */
     static final class Callback extends CgPass {
         final Runnable body;
+        /** A depth of another texture it draws with beside its target, or null. */
+        @Nullable
+        final CgGraphTexture depth;
 
-        Callback(String name, @Nullable CgGraphTexture target, Runnable body, CgRequest request) {
+        Callback(String name, @Nullable CgGraphTexture target, @Nullable CgGraphTexture depth, Runnable body, CgRequest request) {
             super(name, target, request);
+            this.depth = depth;
             this.body = body;
         }
     }
