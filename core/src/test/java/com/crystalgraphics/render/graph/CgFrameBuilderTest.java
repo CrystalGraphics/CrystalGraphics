@@ -262,7 +262,7 @@ public class CgFrameBuilderTest {
         CgRasterPass inner = raster(rec, layer);
         inner.add(quads(rec, 2, 1, 0));
         inner.end();
-        parent.add(sampling(rec, layer));
+        parent.reads(layer).add(sampling(rec, layer));   // declared after the layer's pass: read as it drew
         parent.end();
 
         CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
@@ -284,10 +284,10 @@ public class CgFrameBuilderTest {
         top.end();
         for (int k = 1; k <= 2; k++) {
             CgRasterPass down = rec.raster(k == 0 ? "raster chain" : "raster chain level " + k).color(chain, k, 0, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK);
-            down.add(sampling(rec, chain.level(k - 1)));
+            down.reads(chain.level(k - 1)).add(sampling(rec, chain.level(k - 1)));
             down.end();
         }
-        shown.add(sampling(rec, chain.level(2)));
+        shown.reads(chain.level(2)).add(sampling(rec, chain.level(2)));
         shown.end();
 
         CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
@@ -313,7 +313,7 @@ public class CgFrameBuilderTest {
         before.end();
         rec.copy(surface, 0, 0, 64, 64, backdrop, 0, 0, 64, 64, false);
         CgRasterPass after = raster(rec, surface);
-        after.add(sampling(rec, backdrop));
+        after.reads(backdrop).add(sampling(rec, backdrop));
         after.end();
 
         CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
@@ -340,7 +340,7 @@ public class CgFrameBuilderTest {
         under.end();
         CgPass.Include include = firing.include(built).timed(7);
         CgRasterPass composite = raster(firing, target);
-        composite.add(sampling(firing, picture));
+        composite.reads(picture).add(sampling(firing, picture));
         composite.end();
 
         CgFrame frame = builder.build(new CgFrameGraph().add(firing.seal()));

@@ -42,9 +42,12 @@ import java.util.Objects;
  *
  * <ul>
  *   <li>What a pass reads is ordered as of its declaration: the graph runs whatever wrote it before, whenever either
- *       was made. Declare before the first {@link #add}.</li>
- *   <li>A chunk whose bindings read a {@link CgGraphTexture}, or bind a {@link CgGraphBuffer} as storage, or whose
- *       indirect draw takes its count from one, makes this pass read it as of {@link #add} too.</li>
+ *       pass was made. Declare it before the draw that reads it; a pass held open while another records (a UI layer
+ *       composited into its parent) declares it after that pass, where the layer is drawn.</li>
+ *   <li>A draw names what it reads itself as it is added: the graph textures its bindings sample, the graph buffers
+ *       it binds as storage, its objects and its indirect count. Those are the pass's reads from there, as a
+ *       declaration is. A step binding a graph resource that neither its pass declared nor a draw named is refused
+ *       where the undeclared-access check is on (a dev run, the harness, tests; {@link CgGraphCheck}).</li>
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
@@ -210,26 +213,24 @@ public final class CgRasterPass extends CgPass {
         chunks.add(chunk);
         CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
-            if (chunk.indirectCount(d) instanceof CgGraphBuffer count) recording.read(this, count, CgAccess.COMPUTE_READ);
+            if (chunk.indirectCount(d) instanceof CgGraphBuffer count) named(count, CgAccess.COMPUTE_READ);
             if (chunk.objects(d) instanceof CgGraphBuffer objects) {
-                recording.read(this, objects, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+                named(objects, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
             for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
-                if (chunk.buffer(d, k) instanceof CgGraphBuffer read) {
-                    recording.read(this, read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
-                }
+                if (chunk.buffer(d, k) instanceof CgGraphBuffer read) named(read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
             int id = chunk.binding(d);
             for (int t = 0; t < table.textures(id); t++) {
                 CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));
                 if (graph != null) {
                     requireNotOwnArray(graph);
-                    recording.read(this, graph, CgAccess.SAMPLED_READ);
+                    named(graph, CgAccess.SAMPLED_READ);
                 }
             }
             for (int s = 0; s < table.storages(id); s++) {
                 if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
-                    recording.read(this, buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+                    named(buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
                 }
             }
         }
@@ -353,11 +354,16 @@ public final class CgRasterPass extends CgPass {
         return this;
     }
 
-    /** Samples {@code texture} in its draws: the graph runs whatever wrote it first. */
-    public CgRasterPass reads(CgGraphTexture texture) {
+    /**
+     * Samples {@code texture} in its draws, a graph texture or a view of one ({@code texture.level(k)}): the graph runs
+     * whatever wrote it first.
+     */
+    public CgRasterPass reads(CgTexture texture) {
         declaring();
-        if (target != null) requireNotOwnArray(texture);
-        recording.read(this, texture, CgAccess.SAMPLED_READ);
+        CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        if (graph == null) throw new IllegalArgumentException(this + " reads " + texture + ": a graph texture is declared, any other is a material's");
+        if (target != null) requireNotOwnArray(graph);
+        recording.read(this, graph, CgAccess.SAMPLED_READ);
         return this;
     }
 
@@ -441,6 +447,11 @@ public final class CgRasterPass extends CgPass {
         declaring();
         this.order = java.util.Objects.requireNonNull(order, "order");
         return this;
+    }
+
+    /** What a draw names, its own declaration as it is added (renderer.md § 4.2): read by the pass from here. */
+    private void named(CgGraphResource view, int access) {
+        recording.read(this, view, access);
     }
 
     /** CG_ENCODED_TARGET: the host's own colour is sRGB-encoded, every texture of ours holds what is written. */

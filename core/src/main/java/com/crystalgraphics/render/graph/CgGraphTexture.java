@@ -347,6 +347,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     @Override
     @Nullable
     public CgTextureView rhiView() {
+        if (CgGraphCheck.on()) CgGraphCheck.bound(this);   // a binding's: the executor reads storage()
         CgGraphStorage now = storage();
         return now == null || now.color(0) == null ? null : now.sampled(0).rhiView();
     }
@@ -492,6 +493,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         @Nullable
         public CgTextureView rhiView() {
+            if (CgGraphCheck.on()) CgGraphCheck.bound(texture);
             CgGraphStorage storage = texture.storage();
             CgGpuTexture depth = storage == null ? null : storage.depth();
             if (depth == null) return null;

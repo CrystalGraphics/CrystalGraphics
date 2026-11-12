@@ -14,4 +14,12 @@ public interface CgBufferHandle {
 
     /** Render thread: the GL buffer it reads now, or 0 outside the passes that resolve it. */
     int bufferId();
+
+    /**
+     * Render thread: {@link #bufferId()} as a draw's binding resolves it. A frame graph's buffer refuses here, where its
+     * undeclared-access check is on, outside the steps that recorded it.
+     */
+    default int boundId() {
+        return bufferId();
+    }
 }

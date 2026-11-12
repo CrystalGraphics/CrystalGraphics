@@ -830,6 +830,19 @@ public final class CgExecutor {
     }
 
     private void step(CgFrame frame, int s) {
+        if (!CgGraphCheck.on()) {
+            meteredStep(frame, s);
+            return;
+        }
+        CgPass before = CgGraphCheck.allow(frame, s, 1, null);
+        try {
+            meteredStep(frame, s);
+        } finally {
+            CgGraphCheck.allow(frame, s, -1, before);
+        }
+    }
+
+    private void meteredStep(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];
         CgCpuMeter meter = pass.meter;
         if (meter == null) {

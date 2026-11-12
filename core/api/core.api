@@ -8900,6 +8900,7 @@ com/crystalgraphics/render/draw/CgBoundResources
 com/crystalgraphics/render/draw/CgBufferHandle
   access public,abstract,interface
   extends java/lang/Object
+  method public boundId ()I
   method public,abstract bufferId ()I
 com/crystalgraphics/render/draw/CgChunkBuilder
   access public,final
@@ -9311,6 +9312,7 @@ com/crystalgraphics/render/graph/CgGraphBuffer
   access public,final
   extends com/crystalgraphics/render/graph/CgGraphResource
   implements com/crystalgraphics/render/draw/CgBufferHandle
+  method public boundId ()I
   method public bufferId ()I
   method public desc ()Lcom/crystalgraphics/render/graph/CgBufferDesc;
   method public isPreviousVersion ()Z
@@ -9472,8 +9474,8 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public level ()I
   method public noScissor ()Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public order (Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public reads (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public reads (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public reads (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public readsColor (Lcom/crystalgraphics/render/graph/CgGraphTexture;I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public readsDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public replaces ()Lcom/crystalgraphics/render/graph/CgRasterPass;

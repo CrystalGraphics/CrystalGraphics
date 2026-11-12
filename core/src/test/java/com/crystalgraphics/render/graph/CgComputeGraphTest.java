@@ -164,7 +164,7 @@ public class CgComputeGraphTest {
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
         c.bounds(0, 0, 8, 8);
-        draw.add(c.end());
+        draw.reads(cells).add(c.end());
         draw.end();
         CgFrame frame = build(rec);
         assertEquals(List.of("write", "raster target"), names(frame));
@@ -345,7 +345,7 @@ public class CgComputeGraphTest {
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
         c.bounds(0, 0, 8, 8);
-        draw.add(c.end());
+        draw.reads(counts).add(c.end());
         draw.end();
         CgFrame frame = build(rec);
 

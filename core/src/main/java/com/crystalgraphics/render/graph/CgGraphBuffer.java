@@ -167,6 +167,12 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
         return storage;
     }
 
+    @Override
+    public int boundId() {
+        if (CgGraphCheck.on()) CgGraphCheck.bound(this);
+        return bufferId();
+    }
+
     /** Render thread: the storage a write to a history makes its next version in. */
     int nextVersion() {
         return versions[1 - newest];

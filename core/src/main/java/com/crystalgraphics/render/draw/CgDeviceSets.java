@@ -270,7 +270,7 @@ public final class CgDeviceSets {
                 }
                 for (int s = 0; s < table.storages(id); s++) {
                     if (CgBindingModel.ofStorage(table.storagePoint(id, s)) != packed) continue;
-                    return whole(slot, table.storage(id, s).bufferId());
+                    return whole(slot, table.storage(id, s).boundId());
                 }
                 return bound(slot, packed);
             }

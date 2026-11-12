@@ -25,8 +25,15 @@ builder.recycle(frame);
 **Declared accesses** (Unreal's pass parameters). A raster pass states what it draws into and reads before its first
 draw: `color(texture, load)` (a second call is colour 1), `depth(texture, load, CgDepthAccess)`, `reads(texture)`,
 `reads(buffer)`, `indirect(buffer)`, `readsColor(texture, unit)` and `readsDepth(texture, unit)` (`cg_SceneColor`,
-`cg_DepthBuffer`), `texture(unit, texture)`; then `constants`, `state`, `order`. A read is ordered as of its declaration.
-Until every pass declares all it reads, a chunk's bindings add their graph textures and buffers as reads at `add` too.
+`cg_DepthBuffer`), `texture(unit, texture)`; then `constants`, `state`, `order`. A read is ordered as of its declaration:
+declare it before the draw that reads it, and a pass held open while another records (a layer composited into its
+parent) declares it after that pass. A draw names its own reads as it is added (`renderer.md` § 4.2): the graph
+textures its bindings sample, the graph buffers it binds as storage, its objects and indirect count.
+
+**The undeclared-access check** (`CgGraphCheck`, RDG's `bAllowRHIAccess`): while a step executes, the resources it
+recorded may be bound and no other; a binding resolving a graph texture (`rhiView()`) or buffer (`boundId()`) outside
+them is refused. `-Dcrystalgraphics.graph.check=throw|log|off`: `throw` in a dev client, the harness and tests, off in a
+jar. The executor's own resolution (`storage()`, `bufferId()`) is not a binding and is not checked.
 
 ```java
 rec.raster("world.glow")

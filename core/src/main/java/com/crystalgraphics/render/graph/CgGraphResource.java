@@ -8,6 +8,8 @@ package com.crystalgraphics.render.graph;
 public abstract sealed class CgGraphResource permits CgGraphTexture, CgGraphBuffer {
 
     final String name;
+    /** Render thread: how many executing steps recorded it, which may bind it ({@link CgGraphCheck}). */
+    int allowed;
 
     CgGraphResource(String name) {
         this.name = name;

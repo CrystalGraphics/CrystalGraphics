@@ -79,7 +79,7 @@ public class CgIndirectDrawTest {
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(pipeline, rec.bindings().begin().end(), CgMesh.quads(64)).indirect(live, 0, CgIndirect.INDICES, 6);
         c.instance();
-        draw.add(c.end());
+        draw.indirect(live).add(c.end());
         draw.end();
 
         CgFrame frame = build(rec);
@@ -106,7 +106,7 @@ public class CgIndirectDrawTest {
             c.draw(pipeline, bindings, quads);
             c.instance();
         }
-        draw.add(c.end());
+        draw.indirect(live).add(c.end());
         draw.end();
 
         CgFrame.Raster packed = build(rec).rasters[0];
@@ -161,7 +161,7 @@ public class CgIndirectDrawTest {
             c.draw(pipeline, bindings, quad);
             c.instance();
         }
-        draw.add(c.end());
+        draw.reads(records).indirect(live).add(c.end());
         draw.end();
 
         CgFrame frame = build(rec);

@@ -203,6 +203,7 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
 }
 
 tasks.named<Test>("test") {
+    systemProperty("crystalgraphics.graph.check", "throw")   // CgGraphCheck: undeclared accesses refused
     // The kits, for what a client loads of them (a puppet's model and clip): -Pkits=<namespace>=<dir>;...
     providers.gradleProperty("kits").orNull?.let { systemProperty("crystalgraphics.kits", it) }
     // Skinned glTFs loaded and cooked both ways: -PskinnedMeshes=<folder of .glb>,...

@@ -56,6 +56,7 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 
 | Variable | Takes | Default | |
 |---|---|---|---|
+| `crystalgraphics.graph.check` | throw, log, off | `throw` in a dev client, the harness and tests; off in a jar | A pass binding a graph texture or buffer that neither it declared nor one of its draws named is refused (`CgGraphCheck`, Unreal RDG's validation); `log` names each once and goes on. Read at launch. |
 | `crystalgraphics.compute.checked` | true, false | `false` | Kernels run as compute bounds-check every buffer and image access: one out of range is skipped, and the first of each dispatch logged once with its .compute line. Every access tests its index. Read at launch. |
 | `crystalgraphics.compute.emulateSubgroups` | true, false | `false` | Kernels run their subgroup operations emulated over the work group, as on a device without subgroups. Read at launch. |
 | `crystalgraphics.compute.logCompiles` | true, false | `false` | Log each kernel program compiled or started, by file and program key, with whether a dispatch waited. |
