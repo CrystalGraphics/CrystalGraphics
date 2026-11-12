@@ -54,6 +54,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A system's renderers made drawable: each slot renderer's and emitter renderer's material resolved against each look
@@ -92,7 +94,7 @@ final class CgVfxMaterials {
         final Map<String, Integer> slots;
         /** The signature its materials are shared by: the bound properties and their places. */
         final String signature;
-        final CgMaterial[] byKind = new CgMaterial[CgVfxSlot.Kind.values().length];
+        final CgMaterialInstance[] byKind = new CgMaterialInstance[CgVfxSlot.Kind.values().length];
 
         Resolved(CgVfxLook.Placed placed, CgMaterialDefinition definition, int[] source, int[] floats, float[] factor,
                  float[][] fixed, int vec4s, Map<String, Integer> slots, String signature) {
@@ -112,10 +114,10 @@ final class CgVfxMaterials {
     }
 
     /** Every material made, by material definition, then by kind and signature. */
-    private final Map<Object, Map<String, CgMaterial>> materials = new IdentityHashMap<>();
+    private final Map<Object, Map<String, CgMaterialInstance>> materials = new IdentityHashMap<>();
     /** A probe material per renderer material definition, made to read what its shader declares. */
     private final Map<CgMaterialDefinition, CgMaterial> definitionProbes = new IdentityHashMap<>();
-    private final List<CgMaterial> all = new ArrayList<>();
+    private final List<CgMaterialInstance> all = new ArrayList<>();
     /** This frame's rows, four floats a vec4, and how many vec4s are written. */
     private float[] rows = new float[256];
     private int rowCount;
@@ -207,7 +209,7 @@ final class CgVfxMaterials {
         }
         if (!overrides.isEmpty()) definition = CgMaterialDefinitions.derive(definition, overrides);
         CgMaterialDefinition material = definition;
-        CgMaterial probe = definitionProbes.computeIfAbsent(material, d -> CgMaterial.newInstance(d, null));
+        CgMaterial probe = definitionProbes.computeIfAbsent(material, CgMaterial::of);
         if (renderer instanceof CgVfxSpriteRendererProperties sprite) {
             // The sprite factory's settings, the renderer's own: rows, so renderers differing only in them share a draw.
             material.requireRow(FACING, who);
@@ -498,10 +500,10 @@ final class CgVfxMaterials {
     }
 
     /** {@code r}'s material for slots of {@code kind}: made at its first ask, shared by layers resolving alike. */
-    CgMaterial material(Resolved r, CgVfxSlot.Kind kind) {
-        CgMaterial material = r.byKind[kind.ordinal()];
+    CgMaterialInstance material(Resolved r, CgVfxSlot.Kind kind) {
+        CgMaterialInstance material = r.byKind[kind.ordinal()];
         if (material != null) return withClips(material);
-        Map<String, CgMaterial> mine = materials.computeIfAbsent(owner(r), l -> new HashMap<>());
+        Map<String, CgMaterialInstance> mine = materials.computeIfAbsent(owner(r), l -> new HashMap<>());
         String key = kind + "|" + r.signature;
         material = mine.get(key);
         if (material == null) {
@@ -518,10 +520,10 @@ final class CgVfxMaterials {
     /** The baked clips, as a shader declaring them reads them ({@code fx_sequence.glsl}). */
     private static final String CLIPS = "FX_CLIPS";
     /** Materials whose shader declares {@link #CLIPS}: each is pointed at the atlas's buffer as it is asked for. */
-    private final Map<CgMaterial, Boolean> clipReaders = new IdentityHashMap<>();
+    private final Map<CgMaterialInstance, Boolean> clipReaders = new IdentityHashMap<>();
 
     /** {@code material}, pointed at the baked clips' buffer where its shader reads them: the atlas grows it as it bakes. */
-    private CgMaterial withClips(CgMaterial material) {
+    private CgMaterialInstance withClips(CgMaterialInstance material) {
         if (clipReaders.containsKey(material)) material.buffer(CLIPS, CgVfxClipAtlas.buffer());
         return material;
     }
@@ -547,59 +549,58 @@ final class CgVfxMaterials {
     }
 
     /** A new material of {@code r} for slots of {@code kind}, from its definition, under its usage's keyword. */
-    private static CgMaterial made(Resolved r, CgVfxSlot.Kind kind) {
+    private static CgMaterialInstance made(Resolved r, CgVfxSlot.Kind kind) {
         String usage = usageKeyword(r);
-        CgMaterial material = CgMaterial.newInstance(r.definition, usage);
+        CgMaterial material = CgMaterial.of(r.definition, usage);
         // A clip's part places its vertices by its node whatever its usage: its program branches on FX_ON_SEQUENCE
         // inside the mesh-particle factory.
         boolean byKind = usage == null || !material.declaredKeywords().contains(usage) || kind == CgVfxSlot.Kind.SEQUENCE;
         if (byKind && material.declaredKeywords().contains(kind.keyword())) {
-            material.enableKeyword(kind.keyword());
+            material = material.keyword(kind.keyword(), true);
         }
         // The strip factory compiles the one strip kind its renderer draws.
         CgVfxRendererProperties renderer = r.placed.renderer();
         if (renderer instanceof CgVfxBeamRendererProperties) {
-            material.enableKeyword(CgMaterialShaderCompiler.STRIP_BEAM);
+            material = material.keyword(CgMaterialShaderCompiler.STRIP_BEAM, true);
         } else if (renderer instanceof CgVfxRibbonRendererProperties ribbon && ribbon.anim() != null) {
-            material.enableKeyword(CgMaterialShaderCompiler.STRIP_ANIM);
+            material = material.keyword(CgMaterialShaderCompiler.STRIP_ANIM, true);
         }
         if (kind == CgVfxSlot.Kind.SEQUENCE && !material.isKeywordEnabled(kind.keyword())) {
             throw new IllegalStateException(r.definition.id() + " draws a part a clip plays, but its shader declares no "
                     + kind.keyword() + ": place its vertices by FX_SEQUENCE_TO_WORLD (fx_sequence.glsl)");
         }
-        material.applyProperties(b -> {
-            for (Map.Entry<String, Integer> slot : r.slots.entrySet()) {
-                b.set1i(CgMaterialProperty.rowSlotName(slot.getKey()), slot.getValue());
-            }
-        });
-        return material;
+        CgMaterialInstance instance = material.instance();
+        for (Map.Entry<String, Integer> slot : r.slots.entrySet()) {
+            instance.set1i(CgMaterialProperty.rowSlotName(slot.getKey()), slot.getValue());
+        }
+        return instance;
     }
 
     /** The fluid shade each fluid material was last pointed at: the atlas makes it anew when its pool changes size. */
-    private final Map<CgMaterial, CgTexture> fluidShades = new IdentityHashMap<>();
+    private final Map<CgMaterialInstance, CgTexture> fluidShades = new IdentityHashMap<>();
 
     /** Points fluid {@code material} at the atlas's shade, UV grids and page tables, once each time the atlas made them. */
-    void fluid(CgMaterial material, CgTexture shade, CgTexture restA, CgTexture restB, CgTexture pages) {
+    void fluid(CgMaterialInstance material, CgTexture shade, CgTexture restA, CgTexture restB, CgTexture pages) {
         if (fluidShades.get(material) == shade) return;
         fluidShades.put(material, shade);
-        material.applyProperties(b -> b.sampler(CgVfxFluidAtlas.SHADE_SAMPLER, 0, shade)
+        material.sampler(CgVfxFluidAtlas.SHADE_SAMPLER, 0, shade)
                 .sampler(CgVfxFluidAtlas.REST_A_SAMPLER, 1, restA).sampler(CgVfxFluidAtlas.REST_B_SAMPLER, 2, restB)
-                .sampler(CgVfxFluidAtlas.PAGES_SAMPLER, 3, pages));
+                .sampler(CgVfxFluidAtlas.PAGES_SAMPLER, 3, pages);
     }
 
     /** The grid view each grid material was last pointed at: the atlas makes it anew in a new context. */
-    private final Map<CgMaterial, CgTexture> views = new IdentityHashMap<>();
+    private final Map<CgMaterialInstance, CgTexture> views = new IdentityHashMap<>();
 
     /** Points grid {@code material} at the atlas's view, light and page tables, once each time the atlas made them. */
-    void grid(CgMaterial material, CgTexture view, CgTexture light, CgTexture pages) {
+    void grid(CgMaterialInstance material, CgTexture view, CgTexture light, CgTexture pages) {
         if (views.get(material) == view) return;
         views.put(material, view);
-        material.applyProperties(b -> b.sampler(CgVfxGridAtlas.VIEW_SAMPLER, 0, view).sampler(CgVfxGridAtlas.LIGHT_SAMPLER, 1, light)
-                .sampler(CgVfxGridAtlas.PAGES_SAMPLER, 2, pages));
+        material.sampler(CgVfxGridAtlas.VIEW_SAMPLER, 0, view).sampler(CgVfxGridAtlas.LIGHT_SAMPLER, 1, light)
+                .sampler(CgVfxGridAtlas.PAGES_SAMPLER, 2, pages);
     }
 
     /** Each material's batch key: draws of one material given one key sort together. */
-    private final Map<CgMaterial, Integer> keys = new IdentityHashMap<>();
+    private final Map<CgMaterialInterface, Integer> keys = new IdentityHashMap<>();
 
     /**
      * A material's batch key, from what it is rather than when it was made, so a warm budget reordering creation never
@@ -612,13 +613,13 @@ final class CgVfxMaterials {
     }
 
     /** {@code material}'s batch key, 0 to 4095. */
-    int key(CgMaterial material) {
+    int key(CgMaterialInterface material) {
         Integer key = keys.get(material);
         return key == null ? 0 : key;
     }
 
     /** Every material made, for the system to bind its path texture on and warm. */
-    List<CgMaterial> all() {
+    List<CgMaterialInstance> all() {
         return all;
     }
 
@@ -759,7 +760,7 @@ final class CgVfxMaterials {
     }
 
     /** Warms {@code look}'s materials: one per draw and kind; those drawn at half size also in {@code halved}. */
-    void precache(CgVfxLook look, List<CgMaterial> warming, Set<CgMaterial> halved) {
+    void precache(CgVfxLook look, List<CgMaterialInstance> warming, Set<CgMaterialInstance> halved) {
         for (int i = 0; i < look.placed().size(); i++) precache(look, i, warming, halved);
         precacheParticles(look, warming);
     }
@@ -768,7 +769,7 @@ final class CgVfxMaterials {
      * {@link #precache}'s step for {@code look}'s {@code i}th draw, a warm-up's unit of work: a slot renderer on its
      * slot's kind, an emitter's renderer on its particles' (a clip's emitter is drawn by its parts).
      */
-    void precache(CgVfxLook look, int i, List<CgMaterial> warming, Set<CgMaterial> halved) {
+    void precache(CgVfxLook look, int i, List<CgMaterialInstance> warming, Set<CgMaterialInstance> halved) {
         CgVfxLook.Placed placed = look.placed().get(i);
         if (placed.slotRenderer() == null && placed.emitter().drawLayout() == CgVfxDrawLayout.SEQUENCE) return;
         // A light renderer draws no material: its particles join the world's light list.
@@ -776,21 +777,21 @@ final class CgVfxMaterials {
         if (placed.slotRenderer() != null && placed.slotRenderer().light() != null) return;
         CgVfxSlot.Kind kind = placed.slotRenderer() != null ? placed.slotRenderer().slot().kind() : CgVfxSlot.Kind.PARTICLES;
         for (Resolved r : resolutions(look, placed)) {
-            CgMaterial material = material(r, kind);
+            CgMaterialInstance material = material(r, kind);
             if (!warming.contains(material)) warming.add(material);
             if (halfResolution(placed, kind)) halved.add(material);
         }
     }
 
     /** {@link #precache}'s last step: a clip's parts, which draw their prefab's slot renderers on SEQUENCE materials. */
-    void precacheParticles(CgVfxLook look, List<CgMaterial> warming) {
+    void precacheParticles(CgVfxLook look, List<CgMaterialInstance> warming) {
         for (CgVfxEmitter emitter : look.emitters()) {
             CgVfxNodeClip clip = emitter.clip();
             if (clip == null) continue;
             CgVfxPrefab prefab = clip.prefab();
             for (int part = 0; part < prefab.firstPart(prefab.nodes()); part++) {
                 for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
-                    CgMaterial material = material(resolve(look, placed), CgVfxSlot.Kind.SEQUENCE);
+                    CgMaterialInstance material = material(resolve(look, placed), CgVfxSlot.Kind.SEQUENCE);
                     if (!warming.contains(material)) warming.add(material);
                 }
             }

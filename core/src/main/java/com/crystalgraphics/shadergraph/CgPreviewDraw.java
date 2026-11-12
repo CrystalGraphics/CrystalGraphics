@@ -9,6 +9,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import org.joml.Matrix4f;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /** One preview mesh at the origin, under a material and its chain of further passes, recorded into a pass. */
 final class CgPreviewDraw {
@@ -18,18 +19,17 @@ final class CgPreviewDraw {
     private CgPreviewDraw() {
     }
 
-    /** An identity object record per pass of {@code material}'s chain; custom slots zero. */
-    static void object(CgRecording recording, CgRasterPass pass, CgMaterial material, CgMesh mesh) {
+    /** {@code material}'s draw of {@code mesh} with an identity object record; custom slots zero. */
+    static void object(CgRecording recording, CgRasterPass pass, CgMaterialInterface material, CgMesh mesh) {
+        CgMaterialProxy proxy = CgMaterialProxy.of(material);
+        CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return;
         CgChunkBuilder chunks = recording.chunks().begin();
-        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-            if (pipeline == null) continue;
-            chunks.draw(pipeline, CgMaterialProxy.of(link).captureBindings(recording.bindings()), mesh);
-            int at = chunks.instance();
-            float[] data = chunks.data();
-            IDENTITY.get(data, at);
-            IDENTITY.get(data, at + 16);
-        }
+        chunks.draw(pipeline, proxy.captureBindings(recording.bindings()), mesh);
+        int at = chunks.instance();
+        float[] data = chunks.data();
+        IDENTITY.get(data, at);
+        IDENTITY.get(data, at + 16);
         pass.add(chunks.end());
     }
 }

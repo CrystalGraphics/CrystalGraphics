@@ -26,6 +26,7 @@ import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.github.bsideup.jabel.Desugar;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Every pipeline the engine keeps built: what a {@link CgPipelinePrecache} collector or request names. A material is
@@ -99,7 +100,7 @@ public final class CgPipelineList {
     }
 
     /** Keeps {@code material} built, its half-size passes too where {@code half}. */
-    public void add(CgMaterial material, boolean half) {
+    public void add(CgMaterialInterface material, boolean half) {
         add(material, half, false);
     }
 
@@ -107,7 +108,8 @@ public final class CgPipelineList {
      * Keeps {@code material} built, as a skinned mesh draws it too where {@code skinnedMesh}: every form in its skinned
      * vertex factory as well.
      */
-    public void add(CgMaterial material, boolean half, boolean skinnedMesh) {
+    public void add(CgMaterialInterface drawn, boolean half, boolean skinnedMesh) {
+        CgMaterial material = drawn.material();
         if (capturing != null) capturing.materials.add(material);
         Boolean had = halves.get(material);
         if (had == null) list.add(material);
@@ -178,20 +180,21 @@ public final class CgPipelineList {
         String key = shader + '|' + String.join(",", sorted);
         CgMaterial m = probes.get(key);
         if (m == null) {
-            m = CgMaterial.newInstance(shader);
-            for (String k : sorted) m.enableKeyword(k);
+            m = CgMaterial.load(shader);
+            for (String k : sorted) m = m.keyword(k, true);
             probes.put(key, m);
         }
         return m;
     }
 
     /** Keeps {@code material}'s own Forward pass built as it is, none of the world's forms: a material drawn over the screen. */
-    public void addPass(CgMaterial material) {
+    public void addPass(CgMaterialInterface material) {
         addPass(material, CgInstanceKind.OBJECT);
     }
 
-    /** As {@link #addPass(CgMaterial)}, for a material drawn on {@code kind}'s instances. */
-    public void addPass(CgMaterial material, CgInstanceKind kind) {
+    /** As {@link #addPass(CgMaterialInterface)}, for a material drawn on {@code kind}'s instances. */
+    public void addPass(CgMaterialInterface drawn, CgInstanceKind kind) {
+        CgMaterial material = drawn.material();
         if (capturing != null) capturing.passes.add(material);
         if (passes.containsKey(material)) return;
         passes.put(material, kind);
@@ -228,9 +231,9 @@ public final class CgPipelineList {
 
     private static CgMaterial material(CgMaterialManifest.Use use) {
         CgMaterialPermutation p = use.permutation();
-        CgMaterial m = CgMaterial.newInstance(p.shader(), p.state());
-        for (String k : p.keywords()) m.enableKeyword(k);
-        if (use.kind() != null && m.declaredKeywords().contains(use.kind())) m.enableKeyword(use.kind());
+        CgMaterial m = CgMaterial.load(p.shader(), p.state());
+        for (String k : p.keywords()) m = m.keyword(k, true);
+        if (use.kind() != null && m.declaredKeywords().contains(use.kind())) m = m.keyword(use.kind(), true);
         return m;
     }
 

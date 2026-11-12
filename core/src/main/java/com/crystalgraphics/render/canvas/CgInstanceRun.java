@@ -18,6 +18,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A batcher's queued records as draws (Unreal's {@code FCanvasBatchedElementRenderItem}): consecutive items under one
@@ -47,7 +48,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     private int capturedResets = -1;
 
     @Nullable
-    private CgMaterial material;
+    private CgMaterialInterface material;
     private int materialChanges;
     @Nullable
     private CgRenderState state;
@@ -79,7 +80,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
      * from here. The run of records before ends where any differs, or the material changed since the run began; the
      * canvas seals what another batcher drew first.
      */
-    void item(CgMaterial next, @Nullable CgRenderState override, CgTexture[] units, CgSampler[] sampled, int unitCount) {
+    void item(CgMaterialInterface next, @Nullable CgRenderState override, CgTexture[] units, CgSampler[] sampled, int unitCount) {
         canvas.claim(this);
         if (!canvas.recording()) {
             // Once a frame, not per draw: a chunk a deferral holds still names this table's snapshots.

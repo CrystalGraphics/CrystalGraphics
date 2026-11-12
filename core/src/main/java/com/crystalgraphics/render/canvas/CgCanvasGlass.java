@@ -5,6 +5,8 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
 import java.util.function.Consumer;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
  * A pane of glass over what is behind it: a blurred and a sharp copy of the backdrop, refracted through a lens at the
@@ -19,7 +21,7 @@ import java.util.function.Consumer;
  * CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);   // built, not yet submitted
  * pane.look(CgCanvasGlass.LIQUID).size(w, h).radii(12f)
  *     .backdrop(backdrop.capture(canvas, quad, CgCanvasGlass.LIQUID.blur(), pane.reach()))
- *     .apply();
+ *     .apply(quad);                                                             // the quad takes the pane's instance
  * quad.submit();
  *
  * pane.look(CgCanvasGlass.FROSTED).tint(0x40FFE0C0).apply();        // a preset, then a value of your own
@@ -115,7 +117,9 @@ public final class CgCanvasGlass {
     static final String WITH_REFRACTION = "WITH_REFRACTION", WITH_CHROMATIC = "WITH_CHROMATIC",
             WITH_SPECULAR = "WITH_SPECULAR", WITH_NOISE = "WITH_NOISE";
 
-    private final CgMaterial material;
+    /** An instance per set of layers its values switch on. */
+    private final CgMaterialInstances instances;
+    private CgMaterialInstance current;
     private final Consumer<CgMaterialValues> writer = this::write;
 
     private CgTexture blurred, sharp;
@@ -133,12 +137,13 @@ public final class CgCanvasGlass {
     private float lightX = -0.7071f, lightY = -0.7071f;
 
     public CgCanvasGlass(CgCanvasMaterials materials) {
-        this.material = materials.newGlass();
+        this.instances = new CgMaterialInstances(materials.glass());
+        this.current = instances.of(instances.material());
     }
 
-    /** What its quad draws under. */
-    public CgMaterial material() {
-        return material;
+    /** What its quad draws under: the instance {@link #apply} wrote. */
+    public CgMaterialInstance material() {
+        return current;
     }
 
     /** The box, in the units its quad is drawn in. */
@@ -258,11 +263,27 @@ public final class CgCanvasGlass {
         return this;
     }
 
-    /** Writes it into its material, for the next quad. */
+    /**
+     * Writes it into {@code quad}'s material, pointing the quad at it: for a quad built before the pane's values (its
+     * backdrop is captured over the quad), since the layers its values switch on are another instance.
+     *
+     * <pre>{@code
+     * CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);
+     * pane.look(look).backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach())).apply(quad);
+     * quad.submit();
+     * }</pre>
+     */
+    public CgCanvasGlass apply(CgQuadBatch.Quad quad) {
+        apply();
+        quad.material(current);
+        return this;
+    }
+
+    /** Writes it into its material, for a quad built after: {@code canvas.quad(pane.material())}. */
     public CgCanvasGlass apply() {
         if (blurred == null || sharp == null) throw new IllegalStateException("glass without a backdrop");
-        keywords();
-        material.applyProperties(writer);
+        current = instances.of(variant());
+        writer.accept(current);
         return this;
     }
 
@@ -275,16 +296,14 @@ public final class CgCanvasGlass {
      * }</pre>
      */
     public boolean precache() {
-        keywords();
-        return material.precache();
+        return variant().precache();
     }
 
-    private void keywords() {
+    /** Its material with the layers its values draw. */
+    private CgMaterial variant() {
         boolean refracts = ior > 1.001f && bezel > 0f;
-        material.toggleKeyword(WITH_REFRACTION, refracts);
-        material.toggleKeyword(WITH_CHROMATIC, refracts && chromatic > 0f);
-        material.toggleKeyword(WITH_SPECULAR, specular > 0f);
-        material.toggleKeyword(WITH_NOISE, noise > 0f);
+        return instances.material().keyword(WITH_REFRACTION, refracts).keyword(WITH_CHROMATIC, refracts && chromatic > 0f)
+                .keyword(WITH_SPECULAR, specular > 0f).keyword(WITH_NOISE, noise > 0f);
     }
 
     private void write(CgMaterialValues b) {

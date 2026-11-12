@@ -26,16 +26,16 @@ public class CgMaterialKeywordAllocationTest {
 
     @Test
     public void aVariantPastEightKeywordsResolvesWithoutAllocating() {
-        CgMaterial m = CgMaterial.fromSource(SOURCE);
-        for (int k = 0; k <= 10; k += 2) m.enableKeyword("K" + k);
+        CgMaterial even = CgMaterial.fromSource(SOURCE);
+        for (int k = 0; k <= 10; k += 2) even = even.keyword("K" + k, true);
+        CgMaterial m = even;
         CgPipeline a = CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT);
         assertSame(a, CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
-        m.enableKeyword("K9");
-        CgPipeline b = CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT);
+        CgPipeline b = CgMaterialProxy.of(m.keyword("K9", true)).pipeline(CgInstanceKind.OBJECT);
         assertNotSame(a, b);
-        m.disableKeyword("K9");
-        assertSame(a, CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
+        assertSame(m, m.keyword("K9", true).keyword("K9", false));
         CgAllocationProof.assertZero("CgMaterial.pipeline, 11 keywords", 2000, 20000,
                 () -> CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
+        CgAllocationProof.assertZero("CgMaterial.keyword, a variant made", 2000, 20000, () -> m.keyword("K9", true));
     }
 }

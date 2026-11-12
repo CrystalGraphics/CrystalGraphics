@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -27,7 +28,7 @@ final class CgPostCrossfade implements CgPostEffect {
     private static final CgFormat RGBA8 = CgFormat.RGBA8_UNORM;
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
-    private CgMaterial hold, fade;
+    private CgMaterialInstance hold, fade;
     private CgGraphTexture held, bound;
     private volatile float asked = Float.NaN;
     private float seconds;
@@ -78,10 +79,10 @@ final class CgPostCrossfade implements CgPostEffect {
     }
 
     private void draw(CgPostContext post, CgRecording recording, float share) {
-        if (fade == null) fade = CgMaterial.newInstance(FADE);
+        if (fade == null) fade = CgMaterial.load(FADE).instance();
         if (held != bound) {
             CgGraphTexture h = held;
-            fade.applyProperties(b -> b.sampler("_Held", 0, h));
+            fade.sampler("_Held", 0, h);
             bound = h;
         }
         CgPipeline pipeline = CgMaterialProxy.of(fade).pipeline(CgInstanceKind.OBJECT);
@@ -102,7 +103,7 @@ final class CgPostCrossfade implements CgPostEffect {
             if (held != null) recording.release(held);
             held = CgGraphTexture.requested("cg_post_held", new CgTextureDesc(w, h, RGBA8));
         }
-        if (hold == null) hold = CgMaterial.newInstance(HOLD);
+        if (hold == null) hold = CgMaterial.load(HOLD).instance();
         CgPipeline pipeline = CgMaterialProxy.of(hold).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return false;
         CgRasterPass pass = recording.raster("postCrossfade.held").color(held, CgLoad.clear(0f, 0f, 0f, 1f)).constants(post.constants())

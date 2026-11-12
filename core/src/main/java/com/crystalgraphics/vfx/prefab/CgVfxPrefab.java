@@ -183,7 +183,7 @@ public final class CgVfxPrefab {
             CgMaterialDefinition material = part.materials.get(0);
             float[] constant = material.constants().get(property);
             if (constant != null) return constant.clone();
-            for (CgMaterialProperty p : CgMaterial.newInstance(material, null).properties()) {
+            for (CgMaterialProperty p : CgMaterial.of(material).properties()) {
                 if (p.getName().equals(property)) return p.getFloatValue();
             }
             throw new CgAssetException(b.id + ": " + b.names.get(node) + " keys " + property + ", which " + material.id()

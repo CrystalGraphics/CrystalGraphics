@@ -21,6 +21,7 @@ import org.joml.Matrix4fc;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * What 2D draws go into -- quads, curves, cells, triangles, text -- in the world or on the screen (Unreal's
@@ -130,7 +131,7 @@ public final class CgCanvas {
      * A quad under {@code material}: the canvas's one scratch builder, to build and {@link CgQuadBatch.Quad#submit()}
      * in one expression.
      */
-    public CgQuadBatch.Quad quad(CgMaterial material) {
+    public CgQuadBatch.Quad quad(CgMaterialInterface material) {
         return quads.quad(material);
     }
 
@@ -144,7 +145,7 @@ public final class CgCanvas {
      * spatial node {@code spatial}, {@code texture} at unit 0 where not null: for code that bakes its own, as text does,
      * so a run of them is one copy. {@code origin}, {@code right} and {@code up} are final.
      */
-    public CgCanvas quads(CgMaterial material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src,
+    public CgCanvas quads(CgMaterialInterface material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src,
                           int from, int count, int spatial) {
         quads.records(material, state, texture, src, from, count, spatial);
         return this;
@@ -186,17 +187,17 @@ public final class CgCanvas {
     }
 
     /** A Bézier stroke or a line under {@code material}: the canvas's one scratch builder. */
-    public CgCurveBatch.Curve curve(CgMaterial material) {
+    public CgCurveBatch.Curve curve(CgMaterialInterface material) {
         return curves.curve(material);
     }
 
     /** A filled triangle under {@code material}: the canvas's one scratch builder. */
-    public CgCurveBatch.Triangle triangle(CgMaterial material) {
+    public CgCurveBatch.Triangle triangle(CgMaterialInterface material) {
         return curves.triangle(material);
     }
 
     /** A filled scanline cell under {@code material}: the canvas's one scratch builder. */
-    public CgCurveBatch.Cell cell(CgMaterial material) {
+    public CgCurveBatch.Cell cell(CgMaterialInterface material) {
         return curves.cell(material);
     }
 

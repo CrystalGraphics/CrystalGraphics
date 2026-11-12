@@ -22,6 +22,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.IdentityHashMap;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The custom data pass: each draw's custom data and shading model written where it is nearest, beside the host's depth,
@@ -59,7 +60,7 @@ final class CgCustomDataPass {
     /** The depth {@link #customDataTarget} is drawn with: the host's, or its own where the host lends none. */
     private CgGraphTexture customDataDepth;
 
-    CgMaterial depthIn;
+    CgMaterialInterface depthIn;
 
     CgCustomDataPass(CgWorldRenderer world) {
         this.world = world;
@@ -90,7 +91,7 @@ final class CgCustomDataPass {
         pass.depth(customDataDepth, ownDepth ? DEPTH_CLEAR : CgLoad.load(), CgDepthAccess.WRITE);
         CgChunkBuilder chunks = recording.chunks().begin();
         if (ownDepth) {
-            if (depthIn == null) depthIn = CgMaterial.newInstance(CgWorldRenderer.DEPTH_IN_SHADER);
+            if (depthIn == null) depthIn = CgMaterial.load(CgWorldRenderer.DEPTH_IN_SHADER).instance();
             CgPipeline copy = CgMaterialProxy.of(depthIn).pipeline(CgInstanceKind.OBJECT);
             if (copy != null) {
                 pass.readsDepth(CgGraphTexture.current());

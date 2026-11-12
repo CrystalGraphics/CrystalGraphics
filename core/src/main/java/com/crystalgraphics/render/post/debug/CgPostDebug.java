@@ -18,6 +18,7 @@ import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.stage.CgDistortionField;
 import com.crystalgraphics.render.stage.CgFrameKeys;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * Draws what bloom works from over the whole frame, last: one stage of its layers. Set by
@@ -36,7 +37,7 @@ public final class CgPostDebug implements CgPostEffect {
 
     /** {@link #OVERDRAW}, {@link #DISTORTION}, else bloom's stage. */
     private final int level;
-    private CgMaterial material;
+    private CgMaterialInstance material;
     private CgTexture bound;
     private int boundCount;
 
@@ -99,13 +100,12 @@ public final class CgPostDebug implements CgPostEffect {
             source = stages[k];
         }
         if (material == null) {
-            material = CgMaterial.newInstance(level == DISTORTION ? DISTORTION_SHADER : SHADER);
-            if (level == OVERDRAW) material.enableKeyword("HEAT");
+            CgMaterial shown = CgMaterial.load(level == DISTORTION ? DISTORTION_SHADER : SHADER);
+            material = (level == OVERDRAW ? shown.keyword("HEAT", true) : shown).instance();
         }
         if (source != bound || count != boundCount) {
-            int layers = count;
-            material.applyProperties(level == DISTORTION ? b -> b.sampler("_Fields", 0, source).set1i("_FieldCount", layers)
-                    : b -> b.sampler("_Source", 0, source));
+            if (level == DISTORTION) material.sampler("_Fields", 0, source).set1i("_FieldCount", count);
+            else material.sampler("_Source", 0, source);
             bound = source;
             boundCount = count;
         }

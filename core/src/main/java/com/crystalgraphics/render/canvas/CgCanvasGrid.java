@@ -4,6 +4,8 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
 import java.util.function.Consumer;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
  * A ruled grid over a box in one draw, antialiased at any scale and any cell size: Ben Golus's "Pristine Grid"
@@ -29,7 +31,9 @@ public final class CgCanvasGrid {
 
     static final String WITH_MASK = "WITH_MASK";
 
-    private final CgMaterial material;
+    /** An instance with its mask and one without. */
+    private final CgMaterialInstances instances;
+    private CgMaterialInstance current;
     private final Consumer<CgMaterialValues> writer = this::write;
 
     private float width, height, cellWidth = 16f, cellHeight = 16f, lineWidth = 1f;
@@ -37,12 +41,13 @@ public final class CgCanvasGrid {
     private final float[] radii = new float[8];
 
     public CgCanvasGrid(CgCanvasMaterials materials) {
-        this.material = materials.newGrid();
+        this.instances = new CgMaterialInstances(materials.grid());
+        this.current = instances.of(instances.material());
     }
 
-    /** What its quad draws under. */
-    public CgMaterial material() {
-        return material;
+    /** What its quad draws under: the instance {@link #apply} wrote. */
+    public CgMaterialInstance material() {
+        return current;
     }
 
     public CgCanvasGrid size(float width, float height) {
@@ -79,8 +84,8 @@ public final class CgCanvasGrid {
     public CgCanvasGrid apply() {
         boolean rounded = false;
         for (float r : radii) rounded |= r > 0f;
-        material.toggleKeyword(WITH_MASK, rounded);
-        material.applyProperties(writer);
+        current = instances.of(instances.material().keyword(WITH_MASK, rounded));
+        writer.accept(current);
         return this;
     }
 

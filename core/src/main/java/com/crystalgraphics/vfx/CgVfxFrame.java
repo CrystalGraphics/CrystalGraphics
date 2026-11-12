@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -221,12 +222,12 @@ public final class CgVfxFrame {
      */
     private static final class ProxyKey {
         private CgVfxParticlePool pool;
-        private CgMaterial material;
+        private CgMaterialInstance material;
         private CgVfxDrawLayout renderer;
         private Strip strip;
         private int factor;
 
-        ProxyKey set(CgVfxParticlePool pool, CgMaterial material, CgVfxDrawLayout renderer, Strip strip, int factor) {
+        ProxyKey set(CgVfxParticlePool pool, CgMaterialInstance material, CgVfxDrawLayout renderer, Strip strip, int factor) {
             this.pool = pool;
             this.material = material;
             this.renderer = renderer;
@@ -239,7 +240,7 @@ public final class CgVfxFrame {
             return pool;
         }
 
-        CgMaterial material() {
+        CgMaterialInstance material() {
             return material;
         }
 
@@ -438,7 +439,7 @@ public final class CgVfxFrame {
                 continue;
             }
             CgVfxTrace.count(DRAWS_MESH, 1);
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.MESH);
+            CgMaterialInstance material = materials.material(r, CgVfxSlot.Kind.MESH);
             CgMeshLods own = mesh != null ? mesh : placed.mesh();
             dress(own != null ? world.draw(own, material) : world.draw(system.sphereMesh(), material), effect, r, x, y, z,
                     transform, own != null ? own.reach() : 1f, presence, ex, ey, ez, ew).submit();
@@ -782,7 +783,7 @@ public final class CgVfxFrame {
     }
 
     /** A quad's or an arc's renderer: a record of its pool's merged draw, or a draw of its own when merging is off. */
-    private void quads(Renderers rs, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgMaterial material,
+    private void quads(Renderers rs, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgMaterialInstance material,
                        CgVfxParticlePool pool, CgVfxEmitter def, boolean arcs) {
         if (merged) {
             Renderer rd = rs.next(Shape.MERGED, placed, r, material);
@@ -912,7 +913,7 @@ public final class CgVfxFrame {
             look = null;
         }
 
-        Renderer next(Shape shape, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgMaterial material) {
+        Renderer next(Shape shape, CgVfxLook.Placed placed, CgVfxMaterials.Resolved r, CgMaterialInstance material) {
             if (count == list.length) list = Arrays.copyOf(list, count * 2);
             Renderer rd = list[count];
             if (rd == null) list[count] = rd = new Renderer();
@@ -939,7 +940,7 @@ public final class CgVfxFrame {
         Shape shape;
         CgVfxLook.Placed placed;
         CgVfxMaterials.Resolved r;
-        CgMaterial material;
+        CgMaterialInstance material;
         /** Its merged draw: {@code MERGED}, and {@code BEAM} unless merging is off. */
         Proxy proxy;
         /** {@code MESHES} and {@code SEQUENCE}: what it draws per particle (a part with none, the sphere), its radius. */
@@ -1061,7 +1062,7 @@ public final class CgVfxFrame {
      * and so does none; a material still compiling answers no. A look drawn through OIT must answer no too: it needs
      * neither the sort nor ordered instances.
      */
-    private static boolean blendsInOrder(CgMaterial material) {
+    private static boolean blendsInOrder(CgMaterialInstance material) {
         CgBlendState blend = CgMaterialProxy.of(material).getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
         return blend != null && blend.enabled() && blend.dstRgb() != GLC.GL_ONE;
     }
@@ -1182,7 +1183,7 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : look.on(slot)) {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.FLUID);
+            CgMaterialInstance material = materials.material(r, CgVfxSlot.Kind.FLUID);
             materials.fluid(material, shade, restA, restB, pages);
             effect.boundBox(ox + volumeBox[0], oy + volumeBox[1], oz + volumeBox[2], ox + volumeBox[3], oy + volumeBox[4], oz + volumeBox[5]);
             CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)
@@ -1220,7 +1221,7 @@ public final class CgVfxFrame {
         for (CgVfxLook.Placed placed : look.on(slot)) {
             if (skips(effect, placed)) continue;
             CgVfxMaterials.Resolved r = materials.resolve(look, placed);
-            CgMaterial material = materials.material(r, CgVfxSlot.Kind.GRID);
+            CgMaterialInstance material = materials.material(r, CgVfxSlot.Kind.GRID);
             materials.grid(material, view, light, pages);
             effect.boundBox(ox + volumeBox[0], oy + volumeBox[1], oz + volumeBox[2], ox + volumeBox[3], oy + volumeBox[4], oz + volumeBox[5]);
             CgWorldRenderer.Draw draw = world.draw(system.cubeMesh(), material)

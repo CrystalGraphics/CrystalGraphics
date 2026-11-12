@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * render-graph G0: what a recorder asks of a material — a pipeline key and a binding snapshot — answered with no GL
@@ -56,11 +57,9 @@ public class CgMaterialRecordingTest {
         assertSame(quad, CgPipeline.byId(quad.id()));
         assertNotSame(quad, CgMaterialProxy.of(a).pipeline(CgInstanceKind.CURVE));
 
-        a.enableKeyword("WITH_MASK");
-        CgPipeline masked = CgMaterialProxy.of(a).pipeline(CgInstanceKind.QUAD);
-        assertNotSame(quad, masked);
-        a.disableKeyword("WITH_MASK");
-        assertSame(quad, CgMaterialProxy.of(a).pipeline(CgInstanceKind.QUAD));
+        CgMaterial masked = a.keyword("WITH_MASK", true);
+        assertNotSame(quad, CgMaterialProxy.of(masked).pipeline(CgInstanceKind.QUAD));
+        assertSame(quad, CgMaterialProxy.of(masked.keyword("WITH_MASK", false)).pipeline(CgInstanceKind.QUAD));
 
         assertEquals("nothing compiled", 0, quad.shader().getRevisionNumber());
     }
@@ -86,21 +85,21 @@ public class CgMaterialRecordingTest {
 
     @Test
     public void aBlockIsANewVersionOnlyWhenAValueMoves() {
-        CgMaterial material = CgMaterial.fromSource(SOURCE);
+        CgMaterialInstance material = CgMaterial.fromSource(SOURCE).instance();
         CgBindingTable table = new CgBindingTable();
 
-        material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
+        material.set1f("_Alpha", 0.25f);
         int quarter = CgMaterialProxy.of(material).captureBindings(table);
         for (int frame = 0; frame < 3; frame++) assertEquals("unchanged: one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
-        material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
+        material.set1f("_Alpha", 0.25f);
         assertEquals("the same value written: still one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
 
-        material.applyProperties(p -> p.set1f("_Alpha", 0.75f));
+        material.set1f("_Alpha", 0.75f);
         int threeQuarters = CgMaterialProxy.of(material).captureBindings(table);
         assertNotEquals(quarter, threeQuarters);
         assertEquals(2, table.size());
 
-        material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
+        material.set1f("_Alpha", 0.25f);
         assertNotEquals("a value moved back is a new version", threeQuarters, CgMaterialProxy.of(material).captureBindings(table));
         assertTrue("the first snapshot still holds its own value", contains(table.blockFloats(quarter, 0), 0.25f));
         assertTrue(contains(table.blockFloats(threeQuarters, 0), 0.75f));
@@ -108,19 +107,19 @@ public class CgMaterialRecordingTest {
 
     @Test
     public void texturesAreHandlesAtTheirDeclaredUnits() {
-        CgMaterial material = CgMaterial.fromSource(SOURCE);
+        CgMaterialInstance material = CgMaterial.fromSource(SOURCE).instance();
         CgBindingTable table = new CgBindingTable();
         CgTexture atlas = new Handle(7);
         CgTexture other = new Handle(8);
 
-        material.applyProperties(p -> p.sampler("_SharpTex", 5, atlas));
+        material.sampler("_SharpTex", 5, atlas);
         int id = CgMaterialProxy.of(material).captureBindings(table);
         assertEquals(1, table.textures(id));
         assertEquals("the slot is the declaration index's, whatever the caller passed", CgBindingModel.packedTexture(1),
                 table.textureUnit(id, 0));
         assertEquals(7, ((CgTextureAbstract) table.texture(id, 0)).getId());
 
-        material.applyProperties(p -> p.sampler("_SharpTex", 1, other));
+        material.sampler("_SharpTex", 1, other);
         assertNotEquals(id, CgMaterialProxy.of(material).captureBindings(table));
     }
 

@@ -17,6 +17,7 @@ import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The base pass and its depth prepass ({@code EMeshPass::BasePass}, {@code DepthPass}): each draw of the firing's phase
@@ -63,29 +64,28 @@ final class CgBasePass {
             if (depthOnlyPass ? draws.phase[i] != CgWorldDraws.FORWARD_AND_PREPASS && !world.prepassed(i)
                     : draws.phase[i] == CgWorldDraws.APART || (draws.phase[i] == CgWorldDraws.AFTER) != after) continue;
             boolean glows = sceneGlows && draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
-            for (CgMaterial link = draws.materials[i]; link != null; link = depthOnlyPass ? null : CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(link) : CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-                boolean intoLayer = layered && layers.viaOutput[i];
-                if (glows && CgMaterialProxy.of(link).hasEmissivePass()) {
-                    CgPipeline folded = pipeline != null && world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
-                    if (folded != null) {
-                        commands.passDraw(chunks, intoLayer ? folded.as(CgPipelineForm.LAYER) : folded, link, recording, i);
-                        continue;
-                    }
-                    // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
-                    if (pipeline != null && !pipeline.state().writesNothing()) commands.passDraw(chunks, pipeline, link, recording, i);
-                    CgPipeline glow = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                    if (glow != null) commands.passDraw(chunks, glow, link, recording, i);
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(draws.materials[i]) : proxy.pipeline(CgInstanceKind.OBJECT);
+            boolean intoLayer = layered && layers.viaOutput[i];
+            if (glows && proxy.hasEmissivePass()) {
+                CgPipeline folded = pipeline != null && world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
+                if (folded != null) {
+                    commands.passDraw(chunks, intoLayer ? folded.as(CgPipelineForm.LAYER) : folded, draws.materials[i], recording, i);
                     continue;
                 }
-                if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
-                if (normals) {
-                    CgPipeline normalled = pipeline.as(CgPipelineForm.NORMALS);
-                    if (normalled != null) pipeline = normalled;
-                }
-                if (intoLayer) pipeline = pipeline.as(CgPipelineForm.LAYER);
-                commands.passDraw(chunks, pipeline, link, recording, i);
+                // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
+                if (pipeline != null && !pipeline.state().writesNothing()) commands.passDraw(chunks, pipeline, draws.materials[i], recording, i);
+                CgPipeline glow = proxy.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (glow != null) commands.passDraw(chunks, glow, draws.materials[i], recording, i);
+                continue;
             }
+            if (pipeline == null || (!depthOnlyPass && pipeline.state().writesNothing())) continue;
+            if (normals) {
+                CgPipeline normalled = pipeline.as(CgPipelineForm.NORMALS);
+                if (normalled != null) pipeline = normalled;
+            }
+            if (intoLayer) pipeline = pipeline.as(CgPipelineForm.LAYER);
+            commands.passDraw(chunks, pipeline, draws.materials[i], recording, i);
         }
         if (state == CgWorldRenderer.TRANSPARENT_STATE && !depthOnlyPass && !after) {
             world.distortion.addApplies(chunks, recording);

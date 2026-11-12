@@ -14,6 +14,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Canvas items drawn into a texture of their own, then drawn as images: what fades, tints or glows as one picture.
@@ -26,8 +27,8 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * <pre>{@code
  * CgCanvasRetainer retained = new CgCanvasRetainer("mymod.hud");   // once, kept
  * // Its two looks, asked for in a load task so they are built before the first frame
- * CgMaterial image = CgCanvasMaterials.SCREEN.image(CgBlendMode.PREMULTIPLIED);   // what it holds
- * CgMaterial silhouette = CgCanvasMaterials.SCREEN.mask(CgBlendMode.ADDITIVE);    // its shape, added in a colour
+ * CgMaterialInterface image = CgCanvasMaterials.SCREEN.image(CgBlendMode.PREMULTIPLIED);   // what it holds
+ * CgMaterialInterface silhouette = CgCanvasMaterials.SCREEN.mask(CgBlendMode.ADDITIVE);    // its shape, added in a colour
  *
  * // Each frame, at a stage, before anything on frame.canvas() reads it: paint, in units, at texels a unit
  * CgCanvas paint = retained.paint(frame.recording(), 400, 100, scale);
@@ -117,7 +118,7 @@ public final class CgCanvasRetainer {
      * A quad on {@code target} drawing its region at ({@code x}, {@code y}), {@code width} by {@code height} units as
      * painted, under {@code material}: its texture, UVs and size set. Place, pose, colour and submit it.
      */
-    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterial material, float x, float y, float width, float height) {
+    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterialInterface material, float x, float y, float width, float height) {
         return quad(target, material, 0, x, y, width, height);
     }
 
@@ -126,7 +127,7 @@ public final class CgCanvasRetainer {
      * sampler other than its first, as a retainer box's effect names its texture parameter
      * ({@code material.samplerUnit(name)}).
      */
-    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterial material, int unit, float x, float y, float width,
+    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterialInterface material, int unit, float x, float y, float width,
                                  float height) {
         if (texture == null) throw new IllegalStateException(name + " was never painted");
         float u0 = x * scale / texelsWide, u1 = (x + width) * scale / texelsWide;
@@ -180,7 +181,7 @@ public final class CgCanvasRetainer {
      * As {@link #quad(CgCanvas, CgMaterial, int, float, float, float, float)}, sampling the {@link #blur} that returned
      * {@code reduce}; 0 for the sharp image.
      */
-    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterial material, int unit, float x, float y, float width,
+    public CgQuadBatch.Quad quad(CgCanvas target, CgMaterialInterface material, int unit, float x, float y, float width,
                                  float height, int reduce) {
         CgQuadBatch.Quad quad = quad(target, material, unit, x, y, width, height);
         if (reduce == 0) return quad;

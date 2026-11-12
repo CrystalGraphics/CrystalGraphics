@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.distortion;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -40,7 +41,7 @@ public final class CgPostDistortion {
 
     private int bent;
     private final CgGraphTexture[] sources = new CgGraphTexture[BENDS], results = new CgGraphTexture[BENDS];
-    private final CgMaterial[] materials = new CgMaterial[BENDS];
+    private final CgMaterialInstance[] materials = new CgMaterialInstance[BENDS];
     /** What each material reads, the source then the offsets, as last bound, and the layers it sums. */
     private final CgTexture[][] bound = new CgTexture[BENDS][2];
     private final int[] boundCount = new int[BENDS];
@@ -70,12 +71,12 @@ public final class CgPostDistortion {
             results[k] = result = CgGraphTexture.transientTexture("cg_post_bent" + k, desc);
         }
         sources[k] = source;
-        CgMaterial material = materials[k];
-        if (material == null) materials[k] = material = CgMaterial.newInstance(SHADER);
+        CgMaterialInstance material = materials[k];
+        if (material == null) materials[k] = material = CgMaterial.load(SHADER).instance();
         CgTexture[] was = bound[k];
         if (was[0] != source || was[1] != offsets || boundCount[k] != count) {
-            material.applyProperties(b -> b.sampler("_Source", 0, source).sampler("_Fields", 1, offsets)
-                    .set1i("_FieldCount", count));
+            material.sampler("_Source", 0, source).sampler("_Fields", 1, offsets)
+                    .set1i("_FieldCount", count);
             was[0] = source;
             was[1] = offsets;
             boundCount[k] = count;

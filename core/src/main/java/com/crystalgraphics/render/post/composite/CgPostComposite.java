@@ -21,6 +21,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.function.Consumer;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
  * The post stack's one composite pass: every screen-wide look of the firing laid over the target in a single
@@ -55,8 +57,12 @@ public final class CgPostComposite {
     /** The keyword set's bit for {@code SCENE}, above every feature's. */
     private static final int SCENE_KEY = 1 << 30, SUBJECT_KEY = 1 << 29;
 
-    /** Per form: its material, the features its keywords are set to, and what its properties were last set to. */
-    private final CgMaterial[] materials = new CgMaterial[FORMS.length];
+    /**
+     * Per form: an instance per keyword variant, the one its features draw, the features it was chosen for, and what its
+     * properties were last set to.
+     */
+    private final CgMaterialInstances[] instances = new CgMaterialInstances[FORMS.length];
+    private final CgMaterialInstance[] current = new CgMaterialInstance[FORMS.length];
     private final int[] keyed = {-1, -1};
     private final Inputs[] set = {new Inputs(), new Inputs()};
 
@@ -320,22 +326,26 @@ public final class CgPostComposite {
         if (active == 0 && !fromScene) return;
         CgCompositeForm form = form();
         int f = form.ordinal();
-        CgMaterial material = materials[f];
-        if (material == null) material = materials[f] = CgMaterial.newInstance(form.shader);
+        CgMaterialInstances forms = instances[f];
+        if (forms == null) forms = instances[f] = new CgMaterialInstances(CgMaterial.load(form.shader));
         boolean subject = active(CgCompositeFeature.IMPACT) && inputs.subject != null;
         int keys = active | (fromScene ? SCENE_KEY : 0) | (subject ? SUBJECT_KEY : 0);
+        boolean switched = false;
         if (keys != keyed[f]) {
+            CgMaterial variant = forms.material();
             for (CgCompositeFeature feature : FEATURES) {
-                if (form == CgCompositeForm.COPY || feature.blend) material.toggleKeyword(feature.keyword, active(feature));
+                if (form == CgCompositeForm.COPY || feature.blend) variant = variant.keyword(feature.keyword, active(feature));
             }
-            if (form == CgCompositeForm.COPY) {
-                material.toggleKeyword("SCENE", fromScene);
-                material.toggleKeyword("SUBJECT", subject);
-            }
+            if (form == CgCompositeForm.COPY) variant = variant.keyword("SCENE", fromScene).keyword("SUBJECT", subject);
+            CgMaterialInstance chosen = forms.of(variant);
+            switched = chosen != current[f];
+            current[f] = chosen;
             keyed[f] = keys;
         }
-        if (!inputs.same(set[f])) {
-            material.applyProperties(properties);
+        CgMaterialInstance material = current[f];
+        // Each variant's instance holds its own values: one chosen anew is written whatever the inputs.
+        if (switched || !inputs.same(set[f])) {
+            properties.accept(material);
             set[f].copyFrom(inputs);
         }
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
@@ -352,7 +362,8 @@ public final class CgPostComposite {
     /** Forgets its materials, which the material registry frees with the context. */
     public void release() {
         for (int f = 0; f < FORMS.length; f++) {
-            materials[f] = null;
+            instances[f] = null;
+            current[f] = null;
             keyed[f] = -1;
             set[f].scene = null;
             set[f].bloom = null;

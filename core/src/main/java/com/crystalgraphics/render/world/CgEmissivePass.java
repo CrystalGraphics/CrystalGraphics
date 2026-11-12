@@ -25,6 +25,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The emissive passes ({@code "LightMode" = "Emissive"}): a draw's glow, light added into a target of its own that
@@ -92,16 +93,15 @@ final class CgEmissivePass {
             boolean covers = (draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER)
                     && draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             if (!emits[i] && !covers) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline forward = covers ? CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT) : null;
-                if (forward != null && !forward.state().writesNothing()) {
-                    CgPipeline occluder = forward.as(CgPipelineForm.COVER);
-                    if (occluder != null) commands.emissionDraw(chunks, occluder, link, recording, i);
-                }
-                if (!emits[i] || !CgMaterialProxy.of(link).hasEmissivePass()) continue;
-                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline forward = covers ? proxy.pipeline(CgInstanceKind.OBJECT) : null;
+            if (forward != null && !forward.state().writesNothing()) {
+                CgPipeline occluder = forward.as(CgPipelineForm.COVER);
+                if (occluder != null) commands.emissionDraw(chunks, occluder, draws.materials[i], recording, i);
             }
+            if (!emits[i] || !proxy.hasEmissivePass()) continue;
+            CgPipeline pipeline = proxy.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+            if (pipeline != null) commands.emissionDraw(chunks, pipeline, draws.materials[i], recording, i);
         }
         glow.add(chunks.end());
         glow.end();
@@ -144,10 +144,9 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline pipeline = CgMaterialProxy.of(link).hasEmissivePass() ? CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
-                if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
-            }
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline pipeline = proxy.hasEmissivePass() ? proxy.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
+            if (pipeline != null) commands.emissionDraw(chunks, pipeline, draws.materials[i], recording, i);
         }
         glow.add(chunks.end());
         glow.end();
@@ -202,11 +201,10 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                if (!CgMaterialProxy.of(link).hasEmissivePass()) continue;
-                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
-                if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
-            }
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            if (!proxy.hasEmissivePass()) continue;
+            CgPipeline pipeline = proxy.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+            if (pipeline != null) commands.emissionDraw(chunks, pipeline, draws.materials[i], recording, i);
         }
         glow.add(chunks.end());
         glow.end();

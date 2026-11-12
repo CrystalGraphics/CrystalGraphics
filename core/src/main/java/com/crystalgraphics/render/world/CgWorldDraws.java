@@ -12,6 +12,7 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 import java.util.Arrays;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The frame's world draws, flat: what {@link CgWorldRenderer.Draw#submit} wrote, one index a draw, read by every pass
@@ -55,7 +56,7 @@ final class CgWorldDraws {
     int[] customsStated = new int[64];
     float[] setScales = new float[64];
     CgGpuCount[] setCounts = new CgGpuCount[64];
-    CgMaterial[] materials = new CgMaterial[64];
+    CgMaterialInterface[] materials = new CgMaterialInterface[64];
     double[] positions = new double[64 * 3];
     float[] transforms = new float[64 * 16];
     float[] customs = new float[64 * 16];

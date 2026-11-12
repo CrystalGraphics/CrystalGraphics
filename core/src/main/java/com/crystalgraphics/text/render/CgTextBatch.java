@@ -44,6 +44,7 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A canvas's text: what {@link CgCanvas#text()} draws through. Resolves a draw's glyphs from the font registry's
@@ -305,7 +306,7 @@ public final class CgTextBatch {
     private static void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
                                      CgBufferHandle labels, boolean depthPass, boolean linearTarget) {
         if (count <= 0) return;
-        CgMaterial material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial(),
+        CgMaterialInterface material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial(),
                 linearTarget);
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
@@ -512,7 +513,7 @@ public final class CgTextBatch {
             int layer = replay != null ? replay.layer[r] : runLayer[r];
             CgTextLayer l = layer >= 0 ? layers.get(layer) : null;
             boolean additive = l != null && l.blend() == CgTextLayer.Blend.ADDITIVE;
-            CgMaterial material;
+            CgMaterialInterface material;
             CgRenderState state = null;
             if (l != null && l.paint().kind() == CgTextPaint.Kind.MATERIAL) {
                 if (l.paint().definition() == null) {

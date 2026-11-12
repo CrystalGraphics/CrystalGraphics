@@ -54,7 +54,7 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
             }
         });
         plan.pipelines(p -> {
-            for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.newInstance(m, null));
+            for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.of(m));
         });
     }
 

@@ -96,15 +96,14 @@ frame.canvas().quad(CgCanvasMaterials.WORLD.image()).world(x, y, z).pose(facing)
 
 - Blends: `ALPHA`, `PREMULTIPLIED` (a premultiplied texture), `ADDITIVE` (weighed by alpha), `MODULATE`,
   `SUBTRACT`. `OPAQUE` throws: an image at full alpha under `ALPHA` covers.
-- Each is one shared instance: never set a property on it. Values of your own are a `CgMaterial.newInstance` of
-  `CgCanvasMaterials.IMAGE_SHADER` (with `MASK` on for a mask).
+- Each is one shared material, never changed. Values of your own are an instance of it: `image(blend).instance()`.
 - The screen's alpha and additive ones, its box, curve, gradients and grids are built at load; the rest at their first
   ask, a frame or two before they draw.
 - **Every screen material antialiases its own edges** when a quad is rotated or sheared, and an image or box filters
   its texels, with no MSAA; axis-aligned items are untouched. The width is one unit of the canvas's space: a window
   pixel on `frame.canvas()`, softer by the scale on `guiScaledCanvas()`. In the world the scene's own antialiasing does.
-- A material of your own with the same look, for a property you set (a texture you keep): `newBox()`, `newCurve()`.
-  Never a property to fade with: that is the item's `opacity`.
+- Values of your own with the same look (a texture you keep): `box().instance()`, `curve().instance()`. Never a property
+  to fade with: that is the item's `opacity`.
 
 ### Boxes
 
@@ -276,7 +275,7 @@ CgCanvasGlass.Look look = CgCanvasGlass.LIQUID;
 CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);     // built, not yet submitted
 pane.look(look).size(w, h).radii(16f)
     .backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach()))     // what is behind that quad, blurred
-    .apply();
+    .apply(quad);                      // the quad takes the instance its layers draw with
 quad.submit();
 ```
 
@@ -288,7 +287,7 @@ CgRenderStage.WORLD_TRANSPARENT.register(100, frame -> {
     CgCanvas canvas = frame.canvas();
     CgCanvasGlass.Look look = CgCanvasGlass.FROSTED.scaled(1 / 32f);
     CgQuadBatch.Quad quad = canvas.quad(pane.material()).world(x, y, z).pose(facing).at(-1f, -0.5f).size(2f, 1f);
-    pane.look(look).size(2f, 1f).radii(0.25f).backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach())).apply();
+    pane.look(look).size(2f, 1f).radii(0.25f).backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach())).apply(quad);
     quad.submit();
 });
 ```
@@ -443,14 +442,14 @@ material between them: a hundred digits from one atlas are one draw. A different
 a new one. Alternating two materials item by item costs a draw per item, so group where you can. Nothing is
 ever wrong for not grouping, only slower.
 
-**An item draws with its material's values as they are when you submit it.** A property set between two
-items applies from the second:
+**An item draws with its instance's values as they are when you submit it.** A value set between two items
+applies from the second:
 
 ```java
-material.applyProperties(b -> b.vec4("_Tint", 1f, 0f, 0f, 1f));
-canvas.quad(material).at(0, 0).size(10, 10).submit();       // red
-material.applyProperties(b -> b.vec4("_Tint", 0f, 0f, 1f, 1f));
-canvas.quad(material).at(20, 0).size(10, 10).submit();      // blue, a second draw
+tinted.vec4("_Tint", 1f, 0f, 0f, 1f);
+canvas.quad(tinted).at(0, 0).size(10, 10).submit();         // red
+tinted.vec4("_Tint", 0f, 0f, 1f, 1f);
+canvas.quad(tinted).at(20, 0).size(10, 10).submit();        // blue, a second draw
 ```
 
 A value that changes per item belongs in `custom0..2`, which keeps one draw.
@@ -634,7 +633,7 @@ CgRenderer.executeNow(frame);
 | A `new CgCanvas()` inside a stage renderer | Draws immediately, outside the stage's order and target | `frame.canvas()` |
 | A new canvas every frame | Works, but allocates | Keep one in a field |
 | Moving an immediate canvas's camera between its draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |
-| Writing a material's block in place between items | Earlier items draw with the new values | Change it through `applyProperties`/`overrideBlock`, or per item with `custom0..2` |
+| Writing a material's block in place between items | Earlier items draw with the new values | Change it through the instance's setters, or per item with `custom0..2` |
 | A `world(...)` item on a GUI stage | The GUI canvas has no camera origin: placed as if at 0 | Project to pixels (§ 6) |
 | Forgetting to precache the material | Its first frame waits for the compile | [`PRECACHE.md`](PRECACHE.md) |
 

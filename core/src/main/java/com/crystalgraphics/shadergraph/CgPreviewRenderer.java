@@ -450,7 +450,6 @@ public final class CgPreviewRenderer {
         if (held != null && held.source().equals(source)) return held.material();
         Compiling next = compilingMaterials.get(nodeId);
         if (next == null || !next.source.equals(source)) {
-            if (next != null) next.material.delete();
             next = new Compiling(source, CgMaterial.fromSource(source));
             compilingMaterials.put(nodeId, next);
             CgTrace.add(CgChannels.SHADERGRAPH, "preview.materials.created", 1);
@@ -467,23 +466,18 @@ public final class CgPreviewRenderer {
             return null;
         }
         compilingMaterials.remove(nodeId);
-        if (held != null) held.material().delete();
         materials.put(nodeId, new HeldMaterial(source, next.material));
         return next.material;
     }
 
     private void dropMaterial(String nodeId) {
-        HeldMaterial held = materials.remove(nodeId);
-        if (held != null) held.material().delete();
-        Compiling next = compilingMaterials.remove(nodeId);
-        if (next != null) next.material.delete();
+        materials.remove(nodeId);
+        compilingMaterials.remove(nodeId);
     }
 
     private static void dropMaterialsOutside(Map<String, ?> held, Set<String> keep) {
         held.entrySet().removeIf(entry -> {
             if (keep.contains(entry.getKey())) return false;
-            Object value = entry.getValue();
-            (value instanceof Compiling compiling ? compiling.material : ((HeldMaterial) value).material()).delete();
             CgTrace.add(CgChannels.SHADERGRAPH, "preview.materials.dropped", 1);
             return true;
         });
@@ -586,9 +580,7 @@ public final class CgPreviewRenderer {
         emittedPreviews.clear();
         visibleIds.clear();
         poolKeys.clear();
-        for (HeldMaterial held : materials.values()) held.material().delete();
         materials.clear();
-        for (Compiling next : compilingMaterials.values()) next.material.delete();
         compilingMaterials.clear();
         compiling.clear();
         dirty.clear();

@@ -17,6 +17,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * Half-resolution translucency: transparent draws marked {@code halfResolution()} drawn at half the target's size, then
@@ -38,7 +40,7 @@ final class CgHalfPass {
 
     CgGraphTexture halfTarget;
 
-    CgMaterial upsample;
+    CgMaterialInstance upsample;
 
     CgTexture upsampleBound;
 
@@ -67,25 +69,24 @@ final class CgHalfPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.HALF) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null || commands.unready(pipeline, i)) continue;
-                if (draws.sets[i] != null) {
-                    commands.drawSet(chunks, pipeline, commands.bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(pipeline, commands.bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
-                commands.group(chunks, i);
-                commands.writeInstance(chunks, i);
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null || commands.unready(pipeline, i)) continue;
+            if (draws.sets[i] != null) {
+                commands.drawSet(chunks, pipeline, commands.bindingOf(draws.materials[i], recording), i);
+                continue;
             }
+            chunks.draw(pipeline, commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            commands.group(chunks, i);
+            commands.writeInstance(chunks, i);
         }
         pass.add(chunks.end());
         pass.end();
 
-        if (upsample == null) upsample = CgMaterial.newInstance(CgWorldRenderer.UPSAMPLE_SHADER);
+        if (upsample == null) upsample = CgMaterial.load(CgWorldRenderer.UPSAMPLE_SHADER).instance();
         if (halfTarget != upsampleBound) {
             CgTexture half = halfTarget;
-            upsample.applyProperties(b -> b.sampler("_Half", 0, half));
+            upsample.sampler("_Half", 0, half);
             upsampleBound = half;
         }
         CgPipeline pipeline = CgMaterialProxy.of(upsample).pipeline(CgInstanceKind.OBJECT);

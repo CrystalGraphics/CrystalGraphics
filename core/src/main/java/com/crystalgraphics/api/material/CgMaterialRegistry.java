@@ -20,6 +20,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
+import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.material.CgMaterialShader;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -48,7 +50,8 @@ public final class CgMaterialRegistry {
 
     // ── Instance ──────────────────────────────────────────────────────────────
 
-    private final Map<String, CgMaterial> materials = new LinkedHashMap<>();
+    /** Every material of a shader asset, by the state it draws under. */
+    private final Map<CgMaterialShader, Map<CgMaterialState, CgMaterial>> materials = new LinkedHashMap<>();
     /** Each definition's materials, by the draw keyword they carry ("" for none): one generation each. */
     private final Map<CgMaterialDefinition, Map<String, CgMaterial>> defined = new IdentityHashMap<>();
     private boolean deleted;
@@ -62,12 +65,18 @@ public final class CgMaterialRegistry {
      * @return the material, never {@code null}
      */
     public CgMaterial getOrCreate(String resourcePath) {
+        return of(CgMaterialShaderRegistry.get().getOrCreate(resourcePath), CgMaterialState.SHADER);
+    }
+
+    /** The material of {@code asset} drawn under {@code state}, made at its first ask. */
+    synchronized CgMaterial of(CgMaterialShader asset, CgMaterialState state) {
         checkNotDeleted();
-        CgMaterial existing = materials.get(resourcePath);
-        if (existing != null) return existing;
-        CgMaterial mat = CgMaterial.create(resourcePath);
-        materials.put(resourcePath, mat);
-        return mat;
+        Map<CgMaterialState, CgMaterial> byState = materials.computeIfAbsent(asset, a -> new HashMap<>(2));
+        CgMaterial had = byState.get(state);
+        if (had != null) return had;
+        CgMaterial made = new CgMaterial(new CgMaterialProxy(asset, state));
+        byState.put(state, made);
+        return made;
     }
 
     /**
@@ -178,7 +187,7 @@ public final class CgMaterialRegistry {
     /** Deletes {@code definition}'s materials: an old generation, once its last draw has executed. */
     public void release(CgMaterialDefinition definition) {
         Map<String, CgMaterial> byKeyword = defined.remove(definition);
-        if (byKeyword != null) for (CgMaterial m : byKeyword.values()) m.delete();
+        if (byKeyword != null) for (CgMaterial m : byKeyword.values()) CgMaterialProxy.of(m).delete();
     }
 
     /** The sampler type a texture of {@code texture}'s kind binds to. */
@@ -189,10 +198,12 @@ public final class CgMaterialRegistry {
         return CgMaterialProperty.Type.SAMPLER2D;
     }
 
-    static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
-        CgMaterial m = CgMaterial.newInstance(d.permutation().shader(), d.state());
-        for (String k : d.permutation().keywords()) m.enableKeyword(k);
-        if (drawKeyword != null && m.declaredKeywords().contains(drawKeyword)) m.enableKeyword(drawKeyword);
+    private static CgMaterial make(CgMaterialDefinition d, @Nullable String drawKeyword) {
+        CgMaterialProxy proxy = new CgMaterialProxy(
+                CgMaterialShaderRegistry.get().getOrCreate(d.permutation().shader(), d.state()), d.state());
+        for (String k : d.permutation().keywords()) proxy.enableKeyword(k);
+        if (drawKeyword != null && proxy.declaredKeywords().contains(drawKeyword)) proxy.enableKeyword(drawKeyword);
+        CgMaterial m = new CgMaterial(proxy);
         Map<String, CgMaterialProperty> samplers = new HashMap<>();
         for (CgMaterialProperty p : m.properties()) if (p.getType().isSampler()) samplers.put(p.getName(), p);
         for (Map.Entry<String, CgMaterialDefinition.Texture> t : d.textures().entrySet()) {
@@ -209,7 +220,7 @@ public final class CgMaterialRegistry {
                         + " an array or a volume is made in code and bound as the object");
             }
         }
-        m.applyProperties(b -> {
+        proxy.applyProperties(b -> {
             for (Map.Entry<String, float[]> c : d.constants().entrySet()) {
                 float[] v = c.getValue();
                 if (v.length == 1) b.set1f(c.getKey(), v[0]);
@@ -229,14 +240,11 @@ public final class CgMaterialRegistry {
     }
 
     /**
-     * Marks all shader assets dirty so they recompile on the next {@code bind()}.
-     * Delegates to {@link CgMaterialShaderRegistry#reloadAll()} — materials detect the
-     * revision change on next {@code bind()} without a per-material loop here.
-     * Wire this to your reload hook (F3+T / resource pack reload).
+     * Marks every material's shader asset dirty, so each recompiles at its next use and every material and instance
+     * made from it sees the new parse. Wire this to your reload hook (F3+T / resource pack reload).
      */
-    public void reloadAll() {
-        for (CgMaterial mat : materials.values())
-            mat.markDirty();
+    public synchronized void reloadAll() {
+        for (CgMaterialShader asset : materials.keySet()) asset.markDirty();
     }
 
     /**
@@ -250,10 +258,13 @@ public final class CgMaterialRegistry {
     public void deleteAll() {
         if (!deleted) {
             deleted = true;
-            for (CgMaterial mat : materials.values())
-                mat.delete();          // frees per-instance matPropsUbo
+            for (Map<CgMaterialState, CgMaterial> byState : materials.values()) {
+                for (CgMaterial mat : byState.values()) CgMaterialProxy.of(mat).delete();
+            }
             materials.clear();
-            for (Map<String, CgMaterial> byKeyword : defined.values()) for (CgMaterial mat : byKeyword.values()) mat.delete();
+            for (Map<String, CgMaterial> byKeyword : defined.values()) {
+                for (CgMaterial mat : byKeyword.values()) CgMaterialProxy.of(mat).delete();
+            }
             defined.clear();
         }
     }

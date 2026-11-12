@@ -19,6 +19,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Chunks drawn into textures a pass declares before any draw: its colours and depth with their loads, what it reads,
@@ -232,7 +233,7 @@ public final class CgRasterPass extends CgPass {
      *   <li>What it answers is valid until the pass's next {@code draw}, {@code add} or {@code end}.</li>
      * </ul>
      */
-    public CgDraw draw(CgMesh mesh, CgMaterial material) {
+    public CgDraw draw(CgMesh mesh, CgMaterialInterface material) {
         declaring();
         requireTarget();
         if (drawer == null) drawer = new CgDraw(this, recording);

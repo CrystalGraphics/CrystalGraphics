@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.function.Consumer;
 
@@ -33,7 +34,7 @@ final class CgTranslucencyComposition {
     static final String SHADER = "crystalgraphics:shaders/post/translucency_compose.shader";
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
-    private CgMaterial material;
+    private CgMaterialInstance material;
     // What the held binder sets, so binding allocates nothing
     private CgGraphTexture bound;
     private final Consumer<CgMaterialValues> bind = b -> b.sampler("_Translucency", 0, bound);
@@ -41,7 +42,7 @@ final class CgTranslucencyComposition {
     void record(CgPostContext post) {
         CgSeparateTranslucency apart = post.resources().get(CgSeparateTranslucency.KEY);
         if (apart == null) return;
-        if (material == null) material = CgMaterial.newInstance(SHADER);
+        if (material == null) material = CgMaterial.load(SHADER).instance();
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         if (apart.target() != null) over(post, pipeline, post.target(), apart.target());
@@ -55,7 +56,7 @@ final class CgTranslucencyComposition {
     private void over(CgPostContext post, CgPipeline pipeline, CgGraphTexture into, CgGraphTexture translucency) {
         CgRecording recording = post.recording();
         bound = translucency;
-        material.applyProperties(bind);
+        bind.accept(material);
         CgRasterPass pass = recording.raster("translucencyComposition.into").color(into, CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);

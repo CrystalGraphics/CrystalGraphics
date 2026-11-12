@@ -29,6 +29,7 @@ import java.util.Set;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Turns a world draw into the commands a pass records for it, as Unreal's {@code BuildMeshDrawCommands} and
@@ -60,7 +61,7 @@ final class CgMeshDrawCommands {
     final Matrix4f normal = new Matrix4f();
     final Vector3f eye = new Vector3f();
     final Vector3f forward = new Vector3f();
-    final IdentityHashMap<CgMaterial, Integer> bindings = new IdentityHashMap<>();
+    final IdentityHashMap<CgMaterialInterface, Integer> bindings = new IdentityHashMap<>();
     final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
     boolean skipUnready = CgWorldRenderer.SKIP_UNREADY.get();
     long unreadyDraws;
@@ -128,7 +129,7 @@ final class CgMeshDrawCommands {
     }
 
     /** Draw {@code i} through {@code pipeline} into a world pass, at its key and within its screen rect. */
-    void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+    void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterialInterface link, CgRecording recording, int i) {
         if (unready(pipeline, i)) return;
         if (draws.sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
@@ -141,7 +142,7 @@ final class CgMeshDrawCommands {
     }
 
     /** Draw {@code i} through {@code pipeline} into the emission pass, sorted by its key. */
-    void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterial link, CgRecording recording, int i) {
+    void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterialInterface link, CgRecording recording, int i) {
         if (unready(pipeline, i)) return;
         if (draws.sets[i] != null) {
             drawSet(chunks, pipeline, bindingOf(link, recording), i);
@@ -282,7 +283,7 @@ final class CgMeshDrawCommands {
     }
 
     /** A material's depth pass, its depth prepass, or its forward pass writing depth alone. */
-    CgPipeline depthPipeline(CgMaterial material) {
+    CgPipeline depthPipeline(CgMaterialInterface material) {
         if (CgMaterialProxy.of(material).hasDepthPass()) return CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
         CgPipeline forward = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (forward == null) return null;
@@ -294,7 +295,7 @@ final class CgMeshDrawCommands {
     }
 
     /** A material's snapshot in this recording, taken once per stage. */
-    int bindingOf(CgMaterial material, CgRecording recording) {
+    int bindingOf(CgMaterialInterface material, CgRecording recording) {
         Integer id = bindings.get(material);
         if (id == null) bindings.put(material, id = CgMaterialProxy.of(material).captureBindings(recording.bindings()));
         return id;

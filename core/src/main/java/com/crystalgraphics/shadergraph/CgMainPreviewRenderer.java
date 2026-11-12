@@ -514,7 +514,6 @@ public final class CgMainPreviewRenderer {
     private CgMaterial readyMaterial(String source) {
         if (heldMaterial != null && source.equals(heldSource)) return heldMaterial;
         if (compilingMaterial == null || !source.equals(compilingSource)) {
-            if (compilingMaterial != null) compilingMaterial.delete();
             compilingMaterial = CgMaterial.fromSource(source);
             compilingSource = source;
             compiles.clear();
@@ -530,7 +529,6 @@ public final class CgMainPreviewRenderer {
             return null;
         }
         compiles.clear();
-        if (heldMaterial != null) heldMaterial.delete();
         heldMaterial = compilingMaterial;
         heldSource = compilingSource;
         compilingMaterial = null;
@@ -569,10 +567,8 @@ public final class CgMainPreviewRenderer {
         if (deleted) return;
         targets.releaseAllWithin(scope);
         target = null;
-        if (heldMaterial != null) heldMaterial.delete();
         heldMaterial = null;
         heldSource = null;
-        if (compilingMaterial != null) compilingMaterial.delete();
         compilingMaterial = null;
         compilingSource = null;
         renderedSource = null;

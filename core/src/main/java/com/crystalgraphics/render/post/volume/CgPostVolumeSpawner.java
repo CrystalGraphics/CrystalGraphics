@@ -268,7 +268,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
             float[] v = values.get(slot);
             for (int i = 0; i < 4; i++) if ((mask & 1 << i) != 0) v[i] = in[i];
             writing = slot;
-            post.material().applyProperties(this);
+            accept(post.material());
         }
 
         @Override
@@ -292,7 +292,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
             uv[0] = x;
             uv[1] = y;
             writing = -1;
-            post.material().applyProperties(this);
+            accept(post.material());
         }
 
         /** Writes the value at slot {@link #writing}, or at -1 the screen point; reused, so a frame allocates nothing. */

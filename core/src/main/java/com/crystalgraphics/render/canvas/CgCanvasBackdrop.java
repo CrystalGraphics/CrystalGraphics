@@ -28,7 +28,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * CgCanvas canvas = frame.canvas();
  * CgQuadBatch.Quad quad = canvas.quad(pane.material()).world(x, y, z).pose(facing).at(-1f, -0.5f).size(2f, 1f);
  * pane.look(look).size(2f, 1f).radii(0.25f).backdrop(backdrop.capture(canvas, quad, look.blur(), pane.reach()))
- *     .apply();
+ *     .apply(quad);
  * quad.submit();
  * }</pre>
  *

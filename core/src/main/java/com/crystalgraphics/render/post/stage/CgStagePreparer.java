@@ -32,7 +32,7 @@ public final class CgStagePreparer implements CgAssetPreparer {
         plan.pipelines(p -> {
             for (CgStageDefinition.Volume v : stage.volumes()) CgPostStack.get().lookPasses(v.settings(), p);
             if (stage.fog() != null) p.addPass(CgHeightFog.SHADER);
-            for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.newInstance(m, null));
+            for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.of(m));
         });
         if (materials.isEmpty()) return;
         plan.preload(l -> {

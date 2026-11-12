@@ -29,6 +29,7 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * A post effect that is only a material: its {@code .shader} drawn over the whole screen at a point, at a weight it
@@ -39,7 +40,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * CgPostMaterial thermal = CgPostMaterial.of("mymod:shaders/post/thermal.shader", CgPostPoint.AFTER_COMPOSITE);
  * CgRenderStage.Registration on = CgPostStack.get().add(thermal);
  * thermal.weight(0.8f);                                       // each tick, as a track says; 0 draws nothing
- * thermal.material().applyProperties(b -> b.set1f("_Heat", 2f));
+ * thermal.material().set1f("_Heat", 2f);
  * on.close();                                                 // removes it
  * }</pre>
  *
@@ -94,7 +95,7 @@ public final class CgPostMaterial implements CgPostEffect {
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final CgFormat TARGET = CgFormat.RGBA16_FLOAT;
 
-    private final CgMaterial material;
+    private CgMaterialInstance material;
     private final CgPostPoint point;
     private final int order;
     private volatile float weight = 1f;
@@ -113,7 +114,7 @@ public final class CgPostMaterial implements CgPostEffect {
     private CgTexture bindTexture;
     private final Consumer<CgMaterialValues> bind = b -> b.sampler(bindName, bindUnit, bindTexture);
 
-    private CgPostMaterial(CgMaterial material, CgPostPoint point, int order) {
+    private CgPostMaterial(CgMaterialInstance material, CgPostPoint point, int order) {
         this.material = Objects.requireNonNull(material, "material");
         this.point = Objects.requireNonNull(point, "point");
         if (point == CgPostPoint.BEFORE_COMPOSITE) {
@@ -124,16 +125,34 @@ public final class CgPostMaterial implements CgPostEffect {
     }
 
     public static CgPostMaterial of(String shader, CgPostPoint point) {
-        return of(CgMaterial.newInstance(shader), point, 0);
+        return of(CgMaterial.load(shader).instance(), point, 0);
     }
 
     /** {@code material} at {@code point}, {@code order} among the effects there. */
-    public static CgPostMaterial of(CgMaterial material, CgPostPoint point, int order) {
+    public static CgPostMaterial of(CgMaterialInstance material, CgPostPoint point, int order) {
         return new CgPostMaterial(material, point, order);
     }
 
-    public CgMaterial material() {
+    /** The instance it draws, whose values its owner sets. */
+    public CgMaterialInstance material() {
         return material;
+    }
+
+    /**
+     * Draws {@code material} from now on: another keyword variant's instance, as a region switching shape draws. Render
+     * thread.
+     *
+     * <pre>{@code
+     * post.material(instances.of(base.keyword("SHAPE_BOX", true)));
+     * }</pre>
+     */
+    public CgPostMaterial material(CgMaterialInstance material) {
+        if (material != this.material) {
+            this.material = Objects.requireNonNull(material, "material");
+            resolved = null;
+            warm = false;
+        }
+        return this;
     }
 
     /** How much of it the shader is asked for, 0 to 1; 0 records nothing. Any thread. */
@@ -279,7 +298,7 @@ public final class CgPostMaterial implements CgPostEffect {
         bindName = name;
         bindUnit = CgMaterialProxy.of(material).samplerUnit(name);
         bindTexture = texture;
-        material.applyProperties(bind);
+        bind.accept(material);
     }
 
     /** Each pass's pipeline, resolved again when the shader parses again; false while one is not ready. */

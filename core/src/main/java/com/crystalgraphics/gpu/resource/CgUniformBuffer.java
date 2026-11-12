@@ -109,8 +109,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
 
     /**
      * Updates the format descriptor and resets the CPU-side writer staging buffer.
-     * Called by {@code CgMaterial.recompile()} when the properties layout changes
-     * between hot-reloads (e.g., properties added or removed).
+     * For a block whose layout changed between hot reloads (properties added or removed).
      *
      * @param newFormat the updated buffer format to apply
      */

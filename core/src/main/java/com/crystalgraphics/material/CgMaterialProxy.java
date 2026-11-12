@@ -58,6 +58,10 @@ import java.util.function.Function;
 import javax.annotation.Nullable;
 import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.api.texture.CgSampler;
 
 /**
  * What the renderer asks of a material (Unreal's {@code FMaterialRenderProxy}): its pipelines per pass and kind, its
@@ -74,11 +78,27 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  */
 public final class CgMaterialProxy {
 
-    /** Each material's proxy, as {@link CgMaterial} answers it; installed by its class. */
-    private static Function<CgMaterial, CgMaterialProxy> access;
+    /** Each material's and instance's proxy, as {@link CgMaterial} answers it; installed by its class. */
+    private static Function<CgMaterialInterface, CgMaterialProxy> access;
+    /** Makes the material of a new proxy; installed by {@link CgMaterial}'s class. */
+    private static Function<CgMaterialProxy, CgMaterial> materials;
 
-    /** The material this is the proxy of. */
+    /** The material this is the proxy of, or an instance's material. */
     private CgMaterial material;
+    /** The instance this is the proxy of; null for a material's. */
+    @Nullable
+    private CgMaterialInstance instance;
+    /** The values a material was made with, replayed into each of its instances and keyword variants. */
+    @Nullable
+    private List<Consumer<CgMaterialValues>> defaults;
+    /** Whether an instance or a variant was made of this material: its values are then fixed. */
+    private boolean shared;
+    /** A material's keyword variants by keyword mask, one table its whole family shares; null on an instance. */
+    @Nullable
+    private SparseVariants family;
+    /** {@link #writer()}'s, made once. */
+    @Nullable
+    private CgMaterialValues writer;
 
     private static final Logger LOGGER = LogManager.getLogger("CgMaterialProxy");
 
@@ -102,13 +122,6 @@ public final class CgMaterialProxy {
     /** Its render state where it is not its shader's: the blend and clip are its shader asset's, cull and depth write applied per pass here. */
     private final CgMaterialState state;
 
-    /**
-     * Last shader revision seen by this material instance.
-     * Starts at {@code -1}; set to {@link CgMaterialShader#getRevisionNumber()} after
-     * each successful {@link #onShaderRecompiled()} call. A mismatch triggers a rebuild.
-     */
-    private int lastKnownRevision = -1;
-
     // ── Per-instance state ─────────────────────────────────────────────────────
 
     /** Whether {@link #delete()} has been called. */
@@ -126,29 +139,11 @@ public final class CgMaterialProxy {
      */
     private int renderQueue = 2000;
 
-
-
     /**
-     * Partitioned view of all properties for this material instance. Null until first
-     * {@link #onShaderRecompiled()} call. Never reallocated after creation —
-     * {@link CgMaterialProperties#rebuild} updates it in-place on hot-reload.
+     * Its values by property, built from its shader's first parse. Never reallocated: {@link CgMaterialProperties#rebuild}
+     * updates it in place on a new parse.
      */
     private CgMaterialProperties propStore = null;
-
-    /**
-     * Per-instance UBO backing the non-sampler properties (CgMaterialBlock).
-     * Created on first {@link #onShaderRecompiled()} with UBO props, then reused
-     * (via {@code resetFormat}) forever — never deleted or nulled on subsequent recompiles.
-     *
-     * <p>{@link CgBufferLifetime#FRAME}: every draw of this material binds it first, and {@link #syncProps}
-     * uploads it at every bind, which {@link CgUniformBuffer#upload()} turns into nothing unless the bytes moved or
-     * this is the frame's first bind. The UI rewrites its blocks on nearly every draw, and orphaning cost a driver
-     * rename per rewrite.</p>
-     */
-    private CgUniformBuffer matPropsUbo = null;
-
-    /** Whether a block-backed property's value moved since the block was last packed. */
-    private boolean materialPropsDirty = true;
 
     /** Bumped by every call that may change what it draws: values, textures, keywords, buffers, blocks. */
     private int changes;
@@ -165,7 +160,7 @@ public final class CgMaterialProxy {
     @Nullable
     private CgParsedShader propsParse;
 
-    /** The properties block as a capture copies it: CPU only, unlike {@link #matPropsUbo}'s writer. */
+    /** The properties block as a capture copies it. */
     @Nullable
     private CgBufferWriter capturePacker;
     private boolean capturePropsDirty = true;
@@ -190,43 +185,8 @@ public final class CgMaterialProxy {
     /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
     private final Set<String> enabledView = Collections.unmodifiableSet(enabledKeywords);
 
-    /**
-     * Property-apply consumers buffered before {@code propStore} was first initialised.
-     * This happens when {@link #applyProperties} is called before the shader has parsed.
-     * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
-     * successful compile. Lazily allocated — null until first buffered call.
-     */
+    /** Values written before its shader parsed, replayed once {@link #propStore} exists; null until one is. */
     private List<Consumer<CgMaterialValues>> pendingApplyConsumers = null;
-
-    /**
-     * Optional chained material for multi-draw decorative effects (outline, additive glow,
-     * stencil fill, etc.).
-     *
-     * <p>Where a world pass draws this material, its draw executes first; then the chained material's draw executes
-     * immediately after with the same mesh and the same draw command. Ordering is deterministic
-     * and immediate — not deferred through a sort queue.</p>
-     *
-     * <p>Each chained material is a fully independent {@code CgMaterialProxy}: different shader,
-     * different render state, different properties, different keywords. This is NOT Unity's
-     * built-in multi-pass (multiple {@code Pass} blocks in one shader file compiled into one
-     * material). It is analogous to Godot's {@code next_pass}, but with guaranteed immediate
-     * ordering instead of Godot's sort-queue-based execution which has known ordering bugs.</p>
-     *
-     * <p>The CrystalShader {@code .shader} format handles the "different pass types in one
-     * material" axis via {@code LightMode} tags ({@code Forward}, {@code Depth},
-     * {@code Emissive}, {@code Distortion}). This field handles the orthogonal "same pass type, drawn twice for
-     * a visual effect" axis.</p>
-     *
-     * -- GETTER --
-     * Returns the chained material, or {@code null} if none.
-     */
-    private CgMaterialProxy nextPass = null;
-
-    /** The chained material, or {@code null} if none. */
-    @Nullable
-    public CgMaterial getNextPass() {
-        return nextPass == null ? null : nextPass.material;
-    }
 
     // ── forTest-only fields (null for real materials) ──────────────────────────
 
@@ -278,20 +238,195 @@ public final class CgMaterialProxy {
 
     // ── Factory ───────────────────────────────────────────────────────────────
 
-    /** The proxy of {@code material}: what the renderer asks of it. */
-    public static CgMaterialProxy of(CgMaterial material) {
+    /** The proxy of {@code material}, a material or an instance: what the renderer asks of it. */
+    public static CgMaterialProxy of(CgMaterialInterface material) {
         return access.apply(material);
     }
 
-    /** How {@link #of} reaches a material's proxy: {@link CgMaterial}'s, once. */
-    public static void install(Function<CgMaterial, CgMaterialProxy> access) {
+    /** How {@link #of} reaches a proxy, and how a new proxy's material is made: {@link CgMaterial}'s, once. */
+    public static void install(Function<CgMaterialInterface, CgMaterialProxy> access,
+                               Function<CgMaterialProxy, CgMaterial> materials) {
         if (CgMaterialProxy.access != null) throw new IllegalStateException("installed already");
         CgMaterialProxy.access = access;
+        CgMaterialProxy.materials = materials;
     }
 
-    /** The material this is the proxy of. */
+    /** The material this is the proxy of, or an instance's material: whose programs it draws. */
     public CgMaterial material() {
         return material;
+    }
+
+    /** What a draw names: the instance this is the proxy of, or its material. */
+    public CgMaterialInterface drawn() {
+        return instance != null ? instance : material;
+    }
+
+    /**
+     * The material of its family with keyword {@code name} on or off: made at the first ask with this one's values,
+     * then the same. Allocates nothing once made.
+     *
+     * @throws IllegalArgumentException if {@code on} and its shader declares no {@code #pragma cg_feature name}
+     */
+    public CgMaterial keyword(String name, boolean on) {
+        checkNotDeleted();
+        if (instance != null) throw new IllegalStateException("an instance's keywords are its material's");
+        if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
+        List<String> declared = getDeclaredFeatureNames();
+        int bit = declared.indexOf(name);
+        if (bit < 0) {
+            if (!on) return material;
+            throw new IllegalArgumentException("Keyword '" + name + "' is not declared as #pragma cg_feature in "
+                    + this);
+        }
+        if (enabledKeywords.contains(name) == on) return material;
+        int mask = keywordMask(declared);
+        return variant(on ? mask | 1 << bit : mask & ~(1 << bit), declared);
+    }
+
+    private CgMaterial variant(int mask, List<String> declared) {
+        SparseVariants members = family(declared);
+        synchronized (members) {
+            Object had = members.get(mask);
+            if (had != null) return (CgMaterial) had;
+            CgMaterialProxy v = new CgMaterialProxy(cgMaterialShader, state);
+            for (int i = 0; i < declared.size(); i++) if ((mask & 1 << i) != 0) v.enabledKeywords.add(declared.get(i));
+            v.inherit(this);
+            v.defaults = defaults == null ? null : new ArrayList<>(defaults);
+            v.family = members;
+            CgMaterial made = materials.apply(v);
+            members.put(mask, made);
+            return made;
+        }
+    }
+
+    private synchronized SparseVariants family(List<String> declared) {
+        if (family == null) {
+            family = new SparseVariants();
+            family.put(keywordMask(declared), material);
+        }
+        return family;
+    }
+
+    /** The proxy of a new instance of this material: its keywords and programs, its values to start from. */
+    public CgMaterialProxy instance(CgMaterialInstance owner) {
+        checkNotDeleted();
+        if (instance != null) throw new IllegalStateException("an instance of an instance: instance its material");
+        CgMaterialProxy p = new CgMaterialProxy(cgMaterialShader, state);
+        p.enabledKeywords.addAll(enabledKeywords);
+        p.material = material;
+        p.instance = owner;
+        p.inherit(this);
+        return p;
+    }
+
+    /** Takes {@code base}'s values, buffers and test stand-ins, fixing base's values from now on. */
+    private void inherit(CgMaterialProxy base) {
+        base.shared = true;
+        renderState = base.renderState;
+        renderQueue = base.renderQueue;
+        testFeatureNames = base.testFeatureNames;
+        if (base.buffers != null) buffers = new HashMap<>(base.buffers);
+        // A test material has no parse to build values from: its own start from its base's.
+        if (cgMaterialShader == null && base.propStore != null) {
+            propStore = new CgMaterialProperties(cloneProperties(base.propStore.all()));
+            for (int i = 0; i < propStore.all().size(); i++) propStore.all().get(i).copyValueFrom(base.propStore.all().get(i));
+        }
+        if (base.blockOverrides != null) blockOverrides = new IdentityHashMap<>(base.blockOverrides);
+        if (base.defaults != null) for (Consumer<CgMaterialValues> d : base.defaults) apply(d);
+    }
+
+    /**
+     * Writes values by name as {@link #applyProperties} does, without a consumer: an instance's setters. Allocates
+     * nothing once its shader has parsed.
+     */
+    public CgMaterialValues writer() {
+        if (writer == null) writer = new Writer();
+        return writer;
+    }
+
+    private final class Writer implements CgMaterialValues {
+
+        /** The parsed values to write into, or null to queue the write until a parse. */
+        @Nullable
+        private CgMaterialValues open() {
+            changes++;
+            checkNotDeleted();
+            syncPropsToParse();
+            return propStore;
+        }
+
+        private CgMaterialValues done() {
+            if (propStore.consumeBlockChanged()) {
+                capturePropsDirty = true;
+            }
+            propStore.consumeSamplerUnitChanged();
+            return this;
+        }
+
+        private CgMaterialValues later(Consumer<CgMaterialValues> write) {
+            if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
+            pendingApplyConsumers.add(write);
+            return this;
+        }
+
+        @Override
+        public CgMaterialValues set1i(String name, int value) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.set1i(name, value));
+            to.set1i(name, value);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues set1f(String name, float value) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.set1f(name, value));
+            to.set1f(name, value);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues vec2(String name, float x, float y) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.vec2(name, x, y));
+            to.vec2(name, x, y);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues vec3(String name, float x, float y, float z) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.vec3(name, x, y, z));
+            to.vec3(name, x, y, z);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues vec4(String name, float x, float y, float z, float w) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.vec4(name, x, y, z, w));
+            to.vec4(name, x, y, z, w);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues array(String name, float[] values) {
+            CgMaterialValues to = open();
+            if (to == null) {
+                float[] copy = values.clone();
+                return later(v -> v.array(name, copy));
+            }
+            to.array(name, values);
+            return done();
+        }
+
+        @Override
+        public CgMaterialValues sampler(String name, int unit, CgTexture texture, @Nullable CgSampler sampler) {
+            CgMaterialValues to = open();
+            if (to == null) return later(v -> v.sampler(name, unit, texture, sampler));
+            to.sampler(name, unit, texture, sampler);
+            return done();
+        }
     }
 
     /** Makes this the proxy of {@code material}: once, as the material is made. */
@@ -300,16 +435,6 @@ public final class CgMaterialProxy {
         this.material = material;
     }
 
-    /**
-     * Returns the cached material for {@code resourcePath}, loading it on first access.
-     * Delegates to {@link CgMaterialRegistry#get()} which caches by resource path.
-     *
-     * <p>For independent property values on the same shader, use {@link #newInstance(String)}.</p>
-     *
-     * @param resourcePath resource path to the {@code .shader} file,
-     *                     e.g. {@code "mymod:shaders/terrain.shader"}
-     * @return a ready-to-use {@code CgMaterialProxy}; the same instance is returned on repeated calls
-     */
     /**
      * What the driver said about this material's last failed compile, or null.
      *
@@ -321,15 +446,6 @@ public final class CgMaterialProxy {
     public String lastCompileError() {
         return cgMaterialShader == null ? null : cgMaterialShader.lastCompileError();
     }
-
-
-
-
-
-
-
-
-
 
     /** Its render state where it is not its shader's; {@link CgMaterialState#SHADER} for none. */
     public CgMaterialState state() {
@@ -373,43 +489,30 @@ public final class CgMaterialProxy {
     // ── Property bindings ─────────────────────────────────────────────────────
 
     /**
-     * Brings the properties block up to date for a bind, doing the least it can -- in the UI 79% of block
-     * uploads once carried the bytes already there:
-     * <ul>
-     *   <li>repacked only after a property's value actually moved ({@link #applyProperties}), not after a write
-     *       of the same value or of a sampler;</li>
-     *   <li>then {@link CgUniformBuffer#upload()}, which sends it only if the bytes differ from the last upload,
-     *       or on the frame's first bind, since the block lives on the frame ring.</li>
-     * </ul>
-     */
-    private void syncProps() {
-        if (materialPropsDirty) {
-            CgTrace.add(CgChannels.GL, PROPS_PACK, 1);
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            materialPropsDirty = false;
-        }
-        matPropsUbo.upload();
-    }
-
-    private static final int PROPS_PACK = CgTrace.name("material.propsPack");
-
-    /**
-     * Sets material property values by name. Only Properties block declarations are accepted.
-     * Matrix uniforms, raw buffers, and other non-property operations are not supported here;
-     * use {@code shader.bindings()} for those.
+     * Writes the values a material is made with (its definition's constants and textures): replayed into each of its
+     * instances and keyword variants. Before either is made of it; after, it throws.
      *
      * <pre>{@code
-     * material.applyProperties(b -> {
-     *     b.set1f("_Alpha", 0.5f);
-     *     b.vec4("_Color", 1f, 0f, 0f, 1f);
-     * });
+     * CgMaterialProxy.of(material).applyProperties(b -> b.set1f("_Alpha", 0.5f));   // as the registry makes it
      * }</pre>
      *
-     * @param consumer receives a property-routing bindings adapter; must not be null
+     * <p>An instance's values go through {@link #writer()}.</p>
+     *
      * @return this for chaining
      */
     public CgMaterialProxy applyProperties(Consumer<CgMaterialValues> consumer) {
+        if (instance == null) {
+            if (shared) {
+                throw new IllegalStateException(this + "'s values are fixed once it has an instance or a variant:"
+                        + " set them on an instance");
+            }
+            if (defaults == null) defaults = new ArrayList<>();
+            defaults.add(consumer);
+        }
+        return apply(consumer);
+    }
+
+    private CgMaterialProxy apply(Consumer<CgMaterialValues> consumer) {
         changes++;
         checkNotDeleted();
         // From the parse alone, so setting a property compiles nothing.
@@ -424,7 +527,6 @@ public final class CgMaterialProxy {
         consumer.accept(propStore);
         // Only a value that moved: rewriting the same opacity, or only a sampler, leaves the block as it is.
         if (propStore.consumeBlockChanged()) {
-            materialPropsDirty = true;
             capturePropsDirty = true;
         }
         propStore.consumeSamplerUnitChanged();
@@ -479,16 +581,17 @@ public final class CgMaterialProxy {
     // ── Keyword API ───────────────────────────────────────────────────────────
 
     /**
-     * Enables a feature-flag keyword declared via {@code #pragma cg_feature NAME} in the shader.
-     * Pipelines asked afterwards ({@link #pipeline(CgInstanceKind)}) use a variant with
-     * {@code #define NAME 1} injected into both vertex and fragment sources.
+     * Enables a keyword declared via {@code #pragma cg_feature NAME} on a material being made, before anything draws
+     * it or is made of it: the registry's, building a definition's material. Everyone else asks
+     * {@link #keyword(String, boolean)}. Parses, compiles nothing.
      *
-     * <p>Safe to call before any compile: the shader is parsed, not compiled, to validate the name.</p>
-     *
-     * @param name keyword name to enable; must be declared in the shader's {@code #pragma cg_feature} list
      * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
+     * @throws IllegalStateException once an instance or a variant was made of it
      */
     public void enableKeyword(String name) {
+        if (shared || family != null || instance != null) {
+            throw new IllegalStateException(this + "'s keywords are fixed once made: ask keyword(name, on)");
+        }
         changes++;
         checkNotDeleted();
         // The declared features are a parse product: validating a keyword compiles nothing.
@@ -499,23 +602,6 @@ public final class CgMaterialProxy {
                     "Keyword '" + name + "' is not declared as #pragma cg_feature in this shader");
         }
         enabledKeywords.add(name);
-    }
-
-    /**
-     * Disables a previously-enabled keyword. No-op if the keyword is not currently enabled.
-     *
-     * @param name keyword name to disable
-     */
-    public void disableKeyword(String name) {
-        changes++;
-        checkNotDeleted();
-        enabledKeywords.remove(name);
-    }
-
-    /** Disables all previously-enabled keyword. */
-    public void disableAllKeywords() {
-        checkNotDeleted();
-        enabledKeywords.clear();
     }
 
     /**
@@ -579,6 +665,10 @@ public final class CgMaterialProxy {
             for (int i = 0; i < k.length; i++) if (v[i] != null) put(k[i], v[i]);
         }
 
+        void forEach(Consumer<Object> each) {
+            for (Object v : values) if (v != null) each.accept(v);
+        }
+
         private static int mix(long key) {
             long h = key * 0x9E3779B97F4A7C15L;
             return (int) (h ^ (h >>> 32));
@@ -617,17 +707,6 @@ public final class CgMaterialProxy {
     public boolean isKeywordEnabled(String name) {
         checkNotDeleted();
         return enabledKeywords.contains(name);
-    }
-
-    /**
-     * Toggles keyword on/off according to the enabled boolean passed.
-     *
-     * @param name keyword name to query
-     */
-    public void toggleKeyword(String name, boolean enabled) {
-        changes++;
-        if (enabled && !isKeywordEnabled(name)) enableKeyword(name);
-        else if (!enabled && isKeywordEnabled(name)) disableKeyword(name);
     }
 
     // ── Draw-time API ─────────────────────────────────────────────────────────
@@ -686,10 +765,9 @@ public final class CgMaterialProxy {
      * render state. Compiles nothing; the program is resolved when a batch draws with it.
      *
      * <pre>{@code
-     * material.enableKeyword("WITH_MASK");
-     * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);
-     * int b = material.captureBindings(table);
-     * // record a draw with p and b; toggling the keyword after changes neither
+     * CgMaterialProxy proxy = CgMaterialProxy.of(material.keyword("WITH_MASK", true));
+     * CgPipeline p = proxy.pipeline(CgInstanceKind.QUAD);
+     * int b = proxy.captureBindings(table);
      * }</pre>
      *
      * @return null when the shader does not parse: there is nothing to draw
@@ -1256,14 +1334,6 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * Returns the material properties UBO, or {@code null} for sampler-only shaders.
-     * Engine-owned — do not delete.
-     */
-    public CgUniformBuffer materialBuffer() {
-        return matPropsUbo;
-    }
-
-    /**
      * Returns the numeric render queue priority for this material (default: 2000 = Geometry): its shader's as of the
      * last successful compile ({@link CgMaterialShader#getRenderQueue()}), moved by its state's blend
      * ({@link CgMaterialState#queue}).
@@ -1273,28 +1343,6 @@ public final class CgMaterialProxy {
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    /**
-     * Marks the backing shader asset dirty so it recompiles at its next use. Called by {@link CgMaterialRegistry#reloadAll()} during
-     * hot-reload (F3+T), but now delegates through to the shared asset.
-     *
-     * <p>If the material has already been deleted or has no shader asset (forTest), this is a no-op.</p>
-     */
-    public void markDirty() {
-        if (!deleted && cgMaterialShader != null) cgMaterialShader.markDirty();
-    }
-
-    /**
-     * Triggers a recompile of the backing shader asset, then rebuilds per-instance state.
-     *
-     * <p>Explicit recompilation; otherwise a dirty shader recompiles at its next use. No-op without a shader
-     * asset.</p>
-     */
-    public void recompile() {
-        if (cgMaterialShader == null) return;
-        cgMaterialShader.recompile();
-        onShaderRecompiled();
-    }
 
     /**
      * Frees the per-instance property UBO. After this call, the material is unusable.
@@ -1310,54 +1358,23 @@ public final class CgMaterialProxy {
             deleted = true;
             if (blockVersion != null) blockVersion.supersede();
             // Do NOT delete cgMaterialShader.getShader() — that is asset-owned, not instance-owned.
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
+            // A material's variants go with it; its instances are their owners'.
+            if (family != null && instance == null) {
+                synchronized (family) {
+                    family.forEach(m -> of((CgMaterial) m).delete());
+                }
             }
         }
+    }
+
+    @Override
+    public String toString() {
+        String what = cgMaterialShader == null ? "test material" : cgMaterialShader.getResourcePath();
+        return (instance != null ? "an instance of " : "") + what
+                + (enabledKeywords.isEmpty() ? "" : " " + enabledKeywords);
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Rebuilds per-instance state (propStore, matPropsUbo) after the shared shader asset
-     * has been successfully recompiled. Called from {@link #recompile()}.
-     *
-     * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
-     */
-    private void onShaderRecompiled() {
-        CgParsedShader parsed = cgMaterialShader.getLastParsed();
-        if (parsed == null) return;
-        // Parse products are now published even when the GLSL compile failed, so a non-null parse no
-        // longer implies a live program. Keep the old state in that case: building propStore and a
-        // per-instance UBO for a material with no working shader allocates GL objects for something
-        // that cannot draw, and hides the failure behind half-initialised state.
-        if (cgMaterialShader.hasCompileFailed()) return;
-
-        syncPropsToParse();   // a parse is in hand, so this always leaves a propStore
-
-        if (propStore.hasUboProps()) {
-            CgBufferLayout newFormat = propStore.buildUboFormat();
-            if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingModel.MATERIAL_BLOCK,
-                        CgBufferLifetime.FRAME);
-            } else {
-                matPropsUbo.resetFormat(newFormat);
-            }
-
-            // Upload property defaults immediately after successful compile/link (T7 behaviour).
-            materialPropsDirty = true;
-            syncProps();
-        } else {
-            // Shader dropped all non-sampler properties on hot-reload — free the instance UBO.
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
-            }
-        }
-
-        lastKnownRevision = cgMaterialShader.getRevisionNumber();
-    }
 
     /**
      * Builds {@link #propStore} from the shader's parse, or rebuilds it when the shader has parsed anew, keeping each
@@ -1383,7 +1400,6 @@ public final class CgMaterialProxy {
         }
         capturePacker = null;
         arenaFloats = -1;
-        materialPropsDirty = true;
         capturePropsDirty = true;
 
         if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
@@ -1421,34 +1437,5 @@ public final class CgMaterialProxy {
     private void checkNotDeleted() {
         if (deleted) throw new IllegalStateException("CgMaterialProxy has been deleted");
     }
-
-    // ── Multi-draw chain (decorative effects: outline, glow, stencil, etc.) ────
-
-    /**
-     * Chains another material to this one for multi-draw decorative effects.
-     *
-     * <p>Where a world pass draws this material, it draws first, then {@code next}
-     * draws immediately after with the same mesh. The chain is traversed in-order with
-     * deterministic, immediate execution — not via a sort queue.</p>
-     *
-     * <p>{@code next} must be a fully independent {@link CgMaterialProxy} with its own shader,
-     * render state, and properties. Typical uses: outline (enlarged backface pass),
-     * additive glow, stencil fill. Cycles are detected eagerly and throw
-     * {@link IllegalStateException}.</p>
-     *
-     * @param next the material to draw immediately after this one, or {@code null} to clear
-     * @return {@code this} for chaining
-     */
-    public CgMaterialProxy setNextPass(CgMaterialProxy next) {
-        CgMaterialProxy cursor = next;
-        while (cursor != null) {
-            if (cursor == this) throw new IllegalStateException("Cyclic nextPass chain detected, nextPass was set as this");
-            cursor = cursor.nextPass;
-        }
-        this.nextPass = next;
-        return this;
-    }
-
-
 
 }

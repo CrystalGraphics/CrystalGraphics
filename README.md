@@ -111,8 +111,8 @@ Draw a glass sphere into the world:
 
 ```java
 CgWorldRenderer world = CgWorldRenderer.get();
-CgMaterial glass = CgMaterial.load("mymod:shaders/glass.shader");
-glass.applyProperties(p -> p.vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f));   // pink glass instead of blue
+CgMaterialInstance glass = CgMaterial.load("mymod:shaders/glass.shader").instance()
+        .vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f);                       // pink glass instead of blue
 
 CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:glass",
         dt -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
@@ -126,7 +126,7 @@ The material it draws with:
 Tags { "RenderType" = "Transparent" }           // see-through, so it casts no shadow
 Queue = "Transparent"                           // drawn after solid things, back to front
 
-Properties {                                    // values the game can set (applyProperties above)
+Properties {                                    // values the game can set (vec4 above)
     _Tint ("Tint", color) = (0.6, 0.85, 1.0, 0.4)   // pale blue, 40% opaque, unless set otherwise
 }
 

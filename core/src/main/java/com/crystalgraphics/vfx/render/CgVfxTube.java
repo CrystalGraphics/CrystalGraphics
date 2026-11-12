@@ -12,6 +12,7 @@ import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.path.CgVfxPath;
 import org.joml.Matrix4f;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Draws a {@link CgVfxPath} as a tube: one static chunk mesh, {@link #SPANS} ring spans by {@link #SIDES} sides, drawn
@@ -79,7 +80,7 @@ public final class CgVfxTube {
      * origin of {@code effect}, sorted in its group, {@code size} times its rings: what {@code CgVfxFrame.tube} calls,
      * with the system's mesh and the layer's material, and the effect's header.
      */
-    public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterial material, CgVfxLook.Placed placed, CgVfxPath path,
+    public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterialInterface material, CgVfxLook.Placed placed, CgVfxPath path,
                        int row, CgVfxEffect<?> effect, float size, int valuesRow, float age, float seed, float presence) {
         int count = path.count();
         if (count < 2) return;

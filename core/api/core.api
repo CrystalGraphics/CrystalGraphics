@@ -23,9 +23,9 @@ com/crystalgraphics/animation/CgAnimInstance
   method public hideFromOwner (Ljava/lang/String;Lcom/crystalgraphics/animation/CgAnimInstance$Hide;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public layer (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimLayer;
   method public layer (Ljava/lang/String;Ljava/lang/String;I)Lcom/crystalgraphics/animation/CgAnimLayer;
-  method public material (I)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public material (ILcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public material (I)Lcom/crystalgraphics/api/material/CgMaterialInterface;
   method public material (ILcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public material (ILcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public materialSlots ()I
   method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public noCustomDepth ()Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -790,36 +790,30 @@ com/crystalgraphics/api/material/CgMaterial
   access public,final
   extends java/lang/Object
   field public,static,final MATERIAL_PROPERTIES_BLOCK Ljava/lang/String;
-  method public applyProperties (Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/api/material/CgMaterial;
+  implements com/crystalgraphics/api/material/CgMaterialInterface
   method public changes ()I
   method public declaredKeywords ()Ljava/util/List;
   method public declaresBuffer (Ljava/lang/String;)Z
-  method public delete ()V
-  method public disableAllKeywords ()V
-  method public disableKeyword (Ljava/lang/String;)V
-  method public enableKeyword (Ljava/lang/String;)V
   method public getMaterialId ()I
+  method public instance ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public isKeywordEnabled (Ljava/lang/String;)Z
+  method public keyword (Ljava/lang/String;Z)Lcom/crystalgraphics/api/material/CgMaterial;
   method public lastCompileError ()Ljava/lang/String;
-  method public markDirty ()V
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public names (Ljava/lang/String;)Z
   method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
   method public precache ()Z
   method public properties ()Ljava/util/List;
-  method public recompile ()V
-  method public setNextPass (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
-  method public toggleKeyword (Ljava/lang/String;Z)V
+  method public toString ()Ljava/lang/String;
   method public,static fromShader (Lcom/crystalgraphics/material/CgMaterialShader;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static fromSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static fromSource (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialState;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static load (Lcom/crystalgraphics/api/material/CgMaterialKey;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public,static newInstance (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public,static newInstance (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public,static newInstance (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialState;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static load (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialState;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static of (Lcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static of (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
 com/crystalgraphics/api/material/CgMaterialArchetypes
   access public,abstract,interface
   extends java/lang/Object
@@ -929,6 +923,54 @@ com/crystalgraphics/api/material/CgMaterialDomain
   method public,static ofSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static values ()[Lcom/crystalgraphics/api/material/CgMaterialDomain;
+com/crystalgraphics/api/material/CgMaterialInstance
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/material/CgMaterialInterface
+  implements com/crystalgraphics/api/material/CgMaterialValues
+  method public array (Ljava/lang/String;[F)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public changes ()I
+  method public colorARGB (Ljava/lang/String;I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public colorRGB (Ljava/lang/String;IF)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public delete ()V
+  method public getMaterialId ()I
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public precache ()Z
+  method public properties ()Ljava/util/List;
+  method public sampler (Ljava/lang/String;ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public sampler (Ljava/lang/String;ILcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public set1f (Ljava/lang/String;F)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public set1i (Ljava/lang/String;I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public toString ()Ljava/lang/String;
+  method public vec2 (Ljava/lang/String;FF)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public vec2 (Ljava/lang/String;Lorg/joml/Vector2f;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public vec3 (Ljava/lang/String;FFF)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public vec3 (Ljava/lang/String;Lorg/joml/Vector3f;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public vec4 (Ljava/lang/String;FFFF)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public vec4 (Ljava/lang/String;Lorg/joml/Vector4f;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+com/crystalgraphics/api/material/CgMaterialInstances
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/api/material/CgMaterial;)V
+  method public delete ()V
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public of (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+com/crystalgraphics/api/material/CgMaterialInterface
+  access public,abstract,interface
+  extends java/lang/Object
+  method public declaredKeywords ()Ljava/util/List;
+  method public declaresBuffer (Ljava/lang/String;)Z
+  method public isKeywordEnabled (Ljava/lang/String;)Z
+  method public lastCompileError ()Ljava/lang/String;
+  method public names (Ljava/lang/String;)Z
+  method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
+  method public properties ()Ljava/util/List;
+  method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
+  method public,abstract changes ()I
+  method public,abstract getMaterialId ()I
+  method public,abstract material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,abstract precache ()Z
 com/crystalgraphics/api/material/CgMaterialKey
   access public,final,record
   extends java/lang/Record
@@ -6727,13 +6769,11 @@ com/crystalgraphics/material/CgMaterialProxy
   method public declaredKeywords ()Ljava/util/List;
   method public declaresBuffer (Ljava/lang/String;)Z
   method public delete ()V
-  method public disableAllKeywords ()V
-  method public disableKeyword (Ljava/lang/String;)V
   method public discards ()Z
+  method public drawn ()Lcom/crystalgraphics/api/material/CgMaterialInterface;
   method public emissionInput ()Ljava/lang/String;
   method public enableKeyword (Ljava/lang/String;)V
   method public getMaterialId ()I
-  method public getNextPass ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public getPassRenderState (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public getPropertyForTest (Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty;
   method public getRenderQueue ()I
@@ -6745,12 +6785,12 @@ com/crystalgraphics/material/CgMaterialProxy
   method public hasDepthPrepass ()Z
   method public hasDistortionPass ()Z
   method public hasEmissivePass ()Z
+  method public instance (Lcom/crystalgraphics/api/material/CgMaterialInstance;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public isKeywordEnabled (Ljava/lang/String;)Z
+  method public keyword (Ljava/lang/String;Z)Lcom/crystalgraphics/api/material/CgMaterial;
   method public lastCompileError ()Ljava/lang/String;
   method public lastForwardPass ()Ljava/lang/String;
-  method public markDirty ()V
   method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public materialBuffer ()Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
   method public names (Ljava/lang/String;)Z
   method public overrideBlock (Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;Lcom/crystalgraphics/gpu/staging/CgBufferWriter;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public owner (Lcom/crystalgraphics/api/material/CgMaterial;)V
@@ -6764,20 +6804,19 @@ com/crystalgraphics/material/CgMaterialProxy
   method public readsExposure ()Z
   method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
-  method public recompile ()V
   method public samplerUnit (Ljava/lang/String;)I
-  method public setNextPass (Lcom/crystalgraphics/material/CgMaterialProxy;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public solid ()Z
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
   method public surfaceLit ()Z
-  method public toggleKeyword (Ljava/lang/String;Z)V
+  method public toString ()Ljava/lang/String;
+  method public writer ()Lcom/crystalgraphics/api/material/CgMaterialValues;
   method public writesCustomData ()Z
   method public writesDepth ()Z
   method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;I)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;ILcom/crystalgraphics/material/CgMaterialProperties;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;ILjava/util/List;)Lcom/crystalgraphics/material/CgMaterialProxy;
-  method public,static install (Ljava/util/function/Function;)V
-  method public,static of (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public,static install (Ljava/util/function/Function;Ljava/util/function/Function;)V
+  method public,static of (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/material/CgMaterialProxy;
 com/crystalgraphics/material/CgMaterialShader
   access public,final
   extends java/lang/Object
@@ -8443,10 +8482,10 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public breakPass ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public camera (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/render/canvas/CgCanvas;
-  method public cell (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public cell (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public chunksTaken ()J
   method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
-  method public curve (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public curve (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public endPass ()V
   method public flush ()V
   method public noScissor ()V
@@ -8455,8 +8494,8 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public popScissor ()V
   method public pushScissor (IFFFF)V
   method public pushScissor (IIII)V
-  method public quad (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
-  method public quads (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)Lcom/crystalgraphics/render/canvas/CgCanvas;
+  method public quad (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quads (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/camera/CgCamera;)V
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
@@ -8475,7 +8514,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public text ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public text (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
   method public textDegradedDraws ()J
-  method public triangle (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public triangle (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public view (IFF)V
   method public visible (Lorg/joml/Matrix4fc;FFFF)Z
 com/crystalgraphics/render/canvas/CgCanvas$Source
@@ -8512,6 +8551,7 @@ com/crystalgraphics/render/canvas/CgCanvasGlass
   field public,static,final PRISM Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
   method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public apply ()Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
+  method public apply (Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public backdrop (Lcom/crystalgraphics/render/canvas/CgCanvasBackdrop;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public backdrop (Lcom/crystalgraphics/render/canvas/CgCanvasBackdrop;FFIIII)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public chromatic (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
@@ -8520,7 +8560,7 @@ com/crystalgraphics/render/canvas/CgCanvasGlass
   method public light (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public look (Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public luminosity (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public noise (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public precache ()Z
   method public radii (F)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
@@ -8560,7 +8600,7 @@ com/crystalgraphics/render/canvas/CgCanvasGradient
   method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public angle (F)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public clearStops ()Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public radial (FFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public size (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
@@ -8576,7 +8616,7 @@ com/crystalgraphics/render/canvas/CgCanvasGrid
   method public cell (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public color (I)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public line (F)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public size (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
 com/crystalgraphics/render/canvas/CgCanvasLabels
@@ -8624,8 +8664,6 @@ com/crystalgraphics/render/canvas/CgCanvasMaterials
   method public imageArray (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public mask (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public maskArray (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public newBox ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public newCurve ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static precache (Lcom/crystalgraphics/render/world/CgPipelineList;)V
   method public,static releaseAll ()V
@@ -8638,9 +8676,9 @@ com/crystalgraphics/render/canvas/CgCanvasRetainer
   method public delete ()V
   method public end ()V
   method public paint (Lcom/crystalgraphics/render/graph/CgRecording;FFF)Lcom/crystalgraphics/render/canvas/CgCanvas;
-  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
-  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;IFFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
-  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterial;IFFFFI)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterialInterface;FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterialInterface;IFFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public quad (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/api/material/CgMaterialInterface;IFFFFI)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public release (Lcom/crystalgraphics/render/graph/CgRecording;)V
 com/crystalgraphics/render/canvas/CgClipTable
   access public,final
@@ -8689,7 +8727,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Cell
   method public clip (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public color (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
-  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public points (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
@@ -8710,7 +8748,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Curve
   method public from (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public from (FFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public line (FFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
-  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Curve;
@@ -8730,7 +8768,7 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Triangle
   method public cornerRadius (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public feather (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public gradient (IIFFFF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
-  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public opacity (F)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public p0 (FF)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
@@ -8763,7 +8801,7 @@ com/crystalgraphics/render/canvas/CgQuadBatch$Quad
   method public custom1 (FFFF)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public custom1 (I)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public custom2 (F)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
-  method public material (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public node (II)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public opacity (F)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
@@ -9494,7 +9532,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public damage ()[I
   method public damage (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public depth (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/graph/CgDepthAccess;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/graph/CgDraw;
   method public end ()V
   method public indirect (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public layer ()I
@@ -9697,14 +9735,15 @@ com/crystalgraphics/render/post/CgPostMaterial
   extends java/lang/Object
   implements com/crystalgraphics/render/post/CgPostEffect
   method public active (Lcom/crystalgraphics/render/post/CgPostContext;)Z
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public material (Lcom/crystalgraphics/api/material/CgMaterialInstance;)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public order ()I
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;)V
   method public recordOver (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public weight ()F
   method public weight (F)Lcom/crystalgraphics/render/post/CgPostMaterial;
-  method public,static of (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/render/post/CgPostPoint;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
+  method public,static of (Lcom/crystalgraphics/api/material/CgMaterialInstance;Lcom/crystalgraphics/render/post/CgPostPoint;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/render/post/CgPostPoint;)Lcom/crystalgraphics/render/post/CgPostMaterial;
 com/crystalgraphics/render/post/CgPostPoint
   access public,final,enum
@@ -10670,13 +10709,13 @@ com/crystalgraphics/render/world/CgPipelineList
   access public,final
   extends java/lang/Object
   field public,static,final MAX_WAIT_FRAMES I
-  method public add (Lcom/crystalgraphics/api/material/CgMaterial;Z)V
-  method public add (Lcom/crystalgraphics/api/material/CgMaterial;ZZ)V
+  method public add (Lcom/crystalgraphics/api/material/CgMaterialInterface;Z)V
+  method public add (Lcom/crystalgraphics/api/material/CgMaterialInterface;ZZ)V
   method public add (Lcom/crystalgraphics/api/material/CgMaterialManifest;)V
   method public add (Lcom/crystalgraphics/compute/CgKernel;)V
   method public add (Ljava/lang/String;[Ljava/lang/String;)V
-  method public addPass (Lcom/crystalgraphics/api/material/CgMaterial;)V
-  method public addPass (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/render/draw/CgInstanceKind;)V
+  method public addPass (Lcom/crystalgraphics/api/material/CgMaterialInterface;)V
+  method public addPass (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/render/draw/CgInstanceKind;)V
   method public addPass (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgInstanceKind;[Ljava/lang/String;)V
   method public addPass (Ljava/lang/String;[Ljava/lang/String;)V
   method public kernels (Ljava/lang/Runnable;)V
@@ -10847,9 +10886,9 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public distortionScale ()F
   method public distortionScale (F)V
   method public draw (Lcom/crystalgraphics/animation/CgAnimInstance;)V
-  method public draw (Lcom/crystalgraphics/animation/CgAnimInstance;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
-  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
-  method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public draw (Lcom/crystalgraphics/animation/CgAnimInstance;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public gradeDraws ()Z
   method public gradeDraws (Z)Lcom/crystalgraphics/render/world/CgWorldRenderer;
   method public halfResolution ()Z
@@ -19572,7 +19611,7 @@ com/crystalgraphics/vfx/render/CgVfxTube
   field public,static,final SIDES I
   field public,static,final SPANS I
   method public <init> ()V
-  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;Lcom/crystalgraphics/vfx/path/CgVfxPath;ILcom/crystalgraphics/vfx/CgVfxEffect;FIFFF)V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;Lcom/crystalgraphics/vfx/path/CgVfxPath;ILcom/crystalgraphics/vfx/CgVfxEffect;FIFFF)V
   method public,static mesh (Z)Lcom/crystalgraphics/api/mesh/CgMesh;
 com/crystalgraphics/vfx/scalability/CgVfxBudget
   access public,final

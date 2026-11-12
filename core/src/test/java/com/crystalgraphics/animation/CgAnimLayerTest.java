@@ -18,6 +18,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /** A layered slot takes its branch's bones from what it plays and its material curves onto the instance's own materials. */
 public class CgAnimLayerTest {
@@ -100,7 +101,7 @@ public class CgAnimLayerTest {
         return instance.pose().component(bone, new Matrix4f()).getNormalizedRotation(new Quaternionf());
     }
 
-    private static float scalar(CgMaterial m, String name) {
+    private static float scalar(CgMaterialInterface m, String name) {
         for (CgMaterialProperty p : m.properties()) if (p.getName().equals(name)) return p.getFloatValue()[0];
         throw new AssertionError(name + " not declared");
     }

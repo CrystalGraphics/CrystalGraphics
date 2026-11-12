@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -227,9 +228,9 @@ public final class CgVfxSystem {
     /** How many of {@link #materials}' materials have the path texture bound. */
     private int pathsBound;
     /** The materials a draw step just named, scratch for {@link #addWarming}. */
-    private final List<CgMaterial> warming = new ArrayList<>();
+    private final List<CgMaterialInstance> warming = new ArrayList<>();
     /** Those of them drawn at half size, whose half-size passes are requested too. */
-    private final Set<CgMaterial> halved = Collections.newSetFromMap(new IdentityHashMap<>());
+    private final Set<CgMaterialInstance> halved = Collections.newSetFromMap(new IdentityHashMap<>());
     /** Each look's precache request, and each re-warm a coalesce asked, until built. */
     private final List<CgPipelinePrecache.Request> lookRequests = new ArrayList<>();
     /** Each look's meshes read ahead, until read. */
@@ -1718,9 +1719,9 @@ public final class CgVfxSystem {
             boundTexture = path;
             pathsBound = 0;
         }
-        List<CgMaterial> all = materials.all();
+        List<CgMaterialInstance> all = materials.all();
         for (; pathsBound < all.size(); pathsBound++) {
-            all.get(pathsBound).applyProperties(b -> b.sampler(PATH_SAMPLER, 0, path));
+            all.get(pathsBound).sampler(PATH_SAMPLER, 0, path);
         }
     }
 }

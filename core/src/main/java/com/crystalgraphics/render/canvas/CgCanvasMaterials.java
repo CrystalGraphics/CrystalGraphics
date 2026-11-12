@@ -117,7 +117,7 @@ public final class CgCanvasMaterials {
     /** Lines, Bezier strokes, triangles and cells, alpha-blended: {@code canvas.curve(...)}, {@code triangle}, {@code cell}. */
     public synchronized CgMaterial curve() {
         if (curve == null) {
-            curve = newCurve();
+            curve = CgMaterial.load(CURVE_SHADER, state(CgBlendMode.ALPHA)).keyword("SCREEN", screen);
             curve.precache();
         }
         return curve;
@@ -154,7 +154,7 @@ public final class CgCanvasMaterials {
     /** Its blend is the shader's own: none of CgBlendMode's sums alpha alone or takes a max. */
     private CgMaterial rasterMaterial(String shader) {
         if (!screen) throw new IllegalStateException("coverage rasters on the screen's canvas: CgCanvasMaterials.SCREEN");
-        CgMaterial m = CgMaterial.newInstance(shader);
+        CgMaterial m = CgMaterial.load(shader);
         m.precache();
         return m;
     }
@@ -162,34 +162,25 @@ public final class CgCanvasMaterials {
     /** Boxes by shape, premultiplied: {@code quad(box()).custom2(shape)}. @see CgShapeTable */
     public synchronized CgMaterial box() {
         if (box == null) {
-            box = newBox();
+            box = CgMaterial.load(BOX_SHADER, state(CgBlendMode.PREMULTIPLIED));
             box.precache();
         }
         return box;
     }
 
-    /** A {@link #box()} of the caller's own, for properties it sets: {@code _MainTex}. */
-    public CgMaterial newBox() {
-        return CgMaterial.newInstance(BOX_SHADER, state(CgBlendMode.PREMULTIPLIED));
+    /** Gradients' material with no keyword on: {@link CgCanvasGradient}'s variants are of it. */
+    CgMaterial gradient() {
+        return CgMaterial.load(GRADIENT_SHADER, state(CgBlendMode.PREMULTIPLIED));
     }
 
-    /** A {@link #curve()} of the caller's own, for a keyword or a state it sets. */
-    public CgMaterial newCurve() {
-        CgMaterial m = CgMaterial.newInstance(CURVE_SHADER, state(CgBlendMode.ALPHA));
-        m.toggleKeyword("SCREEN", screen);
-        return m;
+    /** Grids' material with no keyword on. */
+    CgMaterial grid() {
+        return CgMaterial.load(GRID_SHADER, state(CgBlendMode.PREMULTIPLIED));
     }
 
-    CgMaterial newGradient() {
-        return CgMaterial.newInstance(GRADIENT_SHADER, state(CgBlendMode.PREMULTIPLIED));
-    }
-
-    CgMaterial newGrid() {
-        return CgMaterial.newInstance(GRID_SHADER, state(CgBlendMode.PREMULTIPLIED));
-    }
-
-    CgMaterial newGlass() {
-        return CgMaterial.newInstance(GLASS_SHADER, state(CgBlendMode.ALPHA));
+    /** Glass's material with no layer on. */
+    CgMaterial glass() {
+        return CgMaterial.load(GLASS_SHADER, state(CgBlendMode.ALPHA));
     }
 
     private synchronized CgMaterial get(int kind, CgBlendMode blend) {
@@ -200,9 +191,8 @@ public final class CgCanvasMaterials {
         CgMaterial m = made[at];
         if (m == null) {
             boolean array = kind == IMAGE_ARRAY || kind == MASK_ARRAY;
-            m = CgMaterial.newInstance(array ? IMAGE_ARRAY_SHADER : IMAGE_SHADER, state(blend));
-            m.toggleKeyword("MASK", kind == MASK || kind == MASK_ARRAY);
-            m.toggleKeyword("SCREEN", screen);
+            m = CgMaterial.load(array ? IMAGE_ARRAY_SHADER : IMAGE_SHADER, state(blend))
+                    .keyword("MASK", kind == MASK || kind == MASK_ARRAY).keyword("SCREEN", screen);
             m.precache();
             made[at] = m;
         }
@@ -237,15 +227,11 @@ public final class CgCanvasMaterials {
     private synchronized List<CgMaterial> probes() {
         if (probes.isEmpty()) {
             for (int v = 0; v < 4; v++) {
-                CgMaterial gradient = newGradient();
-                gradient.toggleKeyword(CgCanvasGradient.WITH_MASK, (v & 1) != 0);
-                gradient.toggleKeyword(CgCanvasGradient.RADIAL, (v & 2) != 0);
-                probes.add(gradient);
+                probes.add(gradient().keyword(CgCanvasGradient.WITH_MASK, (v & 1) != 0)
+                        .keyword(CgCanvasGradient.RADIAL, (v & 2) != 0));
             }
             for (int v = 0; v < 2; v++) {
-                CgMaterial grid = newGrid();
-                grid.toggleKeyword(CgCanvasGrid.WITH_MASK, v != 0);
-                probes.add(grid);
+                probes.add(grid().keyword(CgCanvasGrid.WITH_MASK, v != 0));
             }
             probes.addAll(glassProbes());
         }
@@ -262,8 +248,8 @@ public final class CgCanvasMaterials {
             String[] layers = {CgCanvasGlass.WITH_REFRACTION, CgCanvasGlass.WITH_CHROMATIC, CgCanvasGlass.WITH_SPECULAR,
                     CgCanvasGlass.WITH_NOISE};
             for (int set = 0; set < 1 << layers.length; set++) {
-                CgMaterial glass = newGlass();
-                for (int k = 0; k < layers.length; k++) glass.toggleKeyword(layers[k], (set & 1 << k) != 0);
+                CgMaterial glass = glass();
+                for (int k = 0; k < layers.length; k++) glass = glass.keyword(layers[k], (set & 1 << k) != 0);
                 glassProbes.add(glass);
             }
         }

@@ -31,7 +31,7 @@
 - **`cg_DepthBuffer` and `cg_SceneColor` are the graph's copies of the target** (`CgRasterPass.sceneDepth`,
   `sceneColor`): a reader sees every draw sorted before it except readers in a row with it, so a heat haze bends what is sorted
   under it and nothing above. `render/graph/AGENTS.md` § *Reading the target*.
-- **Material chains** (`setNextPass`) are drawn as further draws on the same instances, in the forward passes only.
+- **One material a draw.** A second look on the same mesh is a second draw, or a skinned instance's overlay.
 - **A Forward pass that writes nothing is skipped** (`CgRenderState.writesNothing()`: colour masked off, depth unwritten,
   stencil off): a pure haze or glow is all Distortion or Emissive pass. The overdraw view counts its Distortion pass.
 - **An indirect draw** (`.indirect(count, offset, mode, factor)`) carries its count into each pass's chunk. Its

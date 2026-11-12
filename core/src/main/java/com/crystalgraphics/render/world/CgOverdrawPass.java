@@ -21,6 +21,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The overdraw view's pass: every transparent draw counted again into a target of its own, one per fragment, and the
@@ -65,20 +66,19 @@ final class CgOverdrawPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-                // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.
-                if (pipeline != null && pipeline.state().writesNothing()) {
-                    pipeline = CgMaterialProxy.of(link).hasDistortionPass() ? CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
-                }
-                if (pipeline == null) continue;
-                if (draws.sets[i] != null) {
-                    commands.drawSet(chunks, pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
-                commands.writeInstance(chunks, i);
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
+            // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.
+            if (pipeline != null && pipeline.state().writesNothing()) {
+                pipeline = proxy.hasDistortionPass() ? proxy.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
             }
+            if (pipeline == null) continue;
+            if (draws.sets[i] != null) {
+                commands.drawSet(chunks, pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i], recording), i);
+                continue;
+            }
+            chunks.draw(pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            commands.writeInstance(chunks, i);
         }
         pass.add(chunks.end());
         pass.end();

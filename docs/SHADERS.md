@@ -404,15 +404,14 @@ Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at ru
 |---|---|
 | Max 31 per shader | Exceeding throws `CgShaderParseException` at parse time; past 8 a material's variants sit in a sparse table |
 | Uppercase only | Names must match `[A-Z][A-Z0-9_]*` |
-| Declared names only | `enableKeyword()` throws `IllegalArgumentException` for undeclared names |
-| Lazy compilation | Variant compiled on first `bind()` with that keyword set, then cached under a flat `ProgramKey` |
+| Declared names only | `keyword(name, true)` throws `IllegalArgumentException` for an undeclared name |
+| Lazy compilation | A variant's program is compiled at its first draw (or `precache()`), then cached under a flat `ProgramKey` |
 | OFF by default | No `#define` is injected unless explicitly enabled |
 | Lines stripped | `#pragma cg_feature` lines never appear in generated GLSL output |
 
 ```java
-material.enableKeyword("NORMAL_MAP");       // compiled + cached on next bind()
-material.disableKeyword("FOG_ON");
-boolean on = material.isKeywordEnabled("NORMAL_MAP"); // false by default
+CgMaterial mapped = material.keyword("NORMAL_MAP", true);   // another material, made once; material is unchanged
+boolean on = mapped.isKeywordEnabled("NORMAL_MAP");         // true; material's stays false
 ```
 
 ### Keywords a renderer switches: `#pragma cg_permutation`
@@ -523,7 +522,7 @@ the provider class's static init (which would make its buffer before a context e
 
 > **Do not attach these from Java.** A `CgQuadBatch.attachTo(material)` helper used to exist and
 > was removed. Attaching at first use loses to anything that compiles the shader earlier — notably
-> `CgMaterial.enableKeyword`, which recompiles on the spot when the shader has not been parsed yet.
+> a keyword lookup, which parses on the spot when the shader has not been parsed yet.
 > The result was GLSL built with `QUAD_DATA` undeclared, and because a failed compile leaves the
 > parsed feature list empty, it surfaced as **"Keyword 'X' is not declared as `#pragma cg_feature`"**
 > — naming a pragma that was present and correct. Declaring the dependency in the shader removes the
@@ -858,23 +857,18 @@ float t = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl
 - **A volume naming `CG_VOLUME_DEPTH`** is never dimmed: it draws the smoke itself.
 - The grid is 16 pixels a froxel across, so a dimmed edge is soft at that size.
 
-#### Pass Types vs. Multi-Draw Chains — Two Orthogonal Axes
+#### A second look on the same mesh
 
-The `.shader` format handles **pass type routing** via `LightMode` tags — one `Forward` pass, optionally a `Depth`, an `Emissive` and a `Distortion`. These are different rendering stages, not sequential draws of the same mesh.
-
-`CgMaterial.nextPass` handles the **orthogonal axis**: the same mesh drawn twice (or more) for decorative effects — outline, additive glow, stencil fill. Each entry in the chain is a fully independent `CgMaterial` with its own shader, render state, and properties. This is NOT Unity built-in multi-pass (multiple `Pass` blocks in one shader file). It is analogous to Godot's `next_pass` but with deterministic immediate ordering instead of Godot's sort-queue execution, which has known ordering bugs.
-
-`drawChain` traverses the chain for a hand-bound draw; a recorded one draws each link as its own draw on the same instances — `CgWorldRenderer` does it for every submitted draw.
+The `.shader` format routes **pass types** with `LightMode` tags: one `Forward` pass, optionally a `Depth`, an
+`Emissive` and a `Distortion`. A second look on the same mesh (an outline, a glow shell) is a second draw with its own
+material, as Unreal draws a mesh's overlay material:
 
 ```java
-// Outline effect: chain a second material that draws enlarged with inverted normals
-CgMaterial base    = CgMaterial.load("mymod:shaders/base.shader");
-CgMaterial outline = CgMaterial.load("mymod:shaders/outline.shader");
-base.setNextPass(outline);
-
-// A recorded draw takes the chain: base, then outline, on the same instances
 CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
+CgWorldRenderer.get().draw(mesh, outline).at(x, y, z).submit();   // its own material, the same mesh
 ```
+
+A skinned instance names one for every slot: `CgAnimInstance.overlay(material)`.
 
 #### MRT (Multiple Render Targets)
 
@@ -937,21 +931,15 @@ uvec2 model = CG_SHADING_MODEL_ID(uv);                // (model, type)
 ### Loading and Using a Material
 
 ```java
-CgMaterial mat = CgMaterial.load("mymod:shaders/terrain.shader"); // cached per path
-// CgMaterial.newInstance("...") creates a fresh non-cached instance
+CgMaterial mat = CgMaterial.load("mymod:shaders/terrain.shader");  // shared, cached per path: never changed
 
-// Properties (persist across frames until overwritten):
-mat.applyProperties(b -> {
-    b.set1f("_Roughness", 0.8f);
-    b.vec4("_Color", 1f, 0f, 0f, 1f);
-});
-// Safe to call before first bind() — buffered and replayed after compile
+// Values of your own: an instance (persist across frames until overwritten)
+CgMaterialInstance mine = mat.instance().set1f("_Roughness", 0.8f).vec4("_Color", 1f, 0f, 0f, 1f);
+// Safe before any compile: values are built from the parse
 
-// Keywords:
-mat.enableKeyword("NORMAL_MAP");       // compiles+caches variant lazily on next bind()
-mat.disableKeyword("FOG_ON");
-boolean on = mat.isKeywordEnabled("FOG_ON");  // false by default
-// Throws IllegalArgumentException for undeclared names
+// Keywords make other materials, cached:
+CgMaterial mapped = mat.keyword("NORMAL_MAP", true);                // throws for an undeclared name
+CgMaterialInstance mappedMine = mapped.instance();                   // values of your own on that variant
 ```
 
 ### A material's state: drawing one shader several ways
@@ -961,9 +949,9 @@ material instance overriding its parent's blend mode and two-sidedness. A shader
 draws under each as if it had authored it.
 
 ```java
-CgMaterial glow = CgMaterial.newInstance("mymod:shaders/fx/soft.shader",
+CgMaterial glow = CgMaterial.load("mymod:shaders/fx/soft.shader",
         CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build());
-CgMaterial ink = CgMaterial.newInstance("mymod:shaders/fx/ink.shader",
+CgMaterial ink = CgMaterial.load("mymod:shaders/fx/ink.shader",
         CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build());   // "Depth" = "Clip", threshold _Clip
 ```
 

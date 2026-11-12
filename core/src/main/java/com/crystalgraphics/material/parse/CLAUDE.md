@@ -161,7 +161,7 @@ body, and stripped from `parsePreambleDirectives` output so the line never reach
 
 That reverse check is the point of the whole mechanism. The buffer used to be attached from Java at
 a material's first use, so anything that compiled the shader earlier (notably
-`CgMaterial.enableKeyword`, which recompiles on the spot when the shader has not been parsed yet)
+a keyword lookup, which parses on the spot when the shader has not been parsed yet)
 produced GLSL with `QUAD_DATA` undeclared — and since a failed compile leaves the feature list
 empty, it surfaced as *"Keyword 'X' is not declared as #pragma cg_feature"*, naming a pragma that was
 present and correct.

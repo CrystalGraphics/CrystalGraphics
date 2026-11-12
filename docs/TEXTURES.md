@@ -144,8 +144,8 @@ CgMaterialDefinition pixelated = CgMaterialDefinition.of("mymod:pixelated", "mym
         .texture("_Noise", NOISE, CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP)
         .build();
 
-// The same on a live material.
-material.applyProperties(b -> b.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP));
+// The same on an instance.
+instance.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP);
 ```
 
 ```yaml
@@ -383,7 +383,7 @@ CgExternalTarget view = CgTextures.target("mymod.view", colour, depth);
 try (CgExecutor.Into ignored = CgExecutor.into(view)) {
     stage.fire();               // the stage draws into colour and depth
 }
-material.applyProperties(b -> b.sampler("_View", 0, colour));   // then anything samples it
+instance.sampler("_View", 0, colour);                          // then anything samples it
 ```
 
 - **Render thread, outside a recording.** Writes queued on the textures land first.

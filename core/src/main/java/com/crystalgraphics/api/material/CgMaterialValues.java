@@ -7,23 +7,23 @@ import org.joml.Vector3f;
 import org.joml.Vector4f;
 
 /**
- * Writes a material's values by the names its {@code Properties { }} declares: what
- * {@link CgMaterial#applyProperties} hands its writer. Unreal's {@code UMaterialInstanceDynamic::SetScalarParameterValue},
+ * Writes a material's values by the names its {@code Properties { }} declares: a {@link CgMaterialInstance}'s setters,
+ * and what a writer kept in a field is handed. Unreal's {@code UMaterialInstanceDynamic::SetScalarParameterValue},
  * {@code SetVectorParameterValue} and {@code SetTextureParameterValue}.
  *
  * <pre>{@code
- * material.applyProperties(v -> v
+ * instance
  *         .set1f("_Alpha", 0.5f)
  *         .vec4("_Color", 1f, 0f, 0f, 1f)
  *         .colorARGB("_Tint", 0xFF3080FF)
- *         .sampler("_MainTex", 0, texture));
+ *         .sampler("_MainTex", 0, texture);
  * }</pre>
  *
  * <p>A writer kept in a field allocates nothing a frame:
  *
  * <pre>{@code
  * private final Consumer<CgMaterialValues> writeAlpha = v -> v.set1f("_Alpha", alpha);
- * material.applyProperties(writeAlpha);
+ * writeAlpha.accept(instance);
  * }</pre>
  *
  * <ul>

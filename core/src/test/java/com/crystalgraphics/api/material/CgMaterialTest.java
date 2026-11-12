@@ -16,64 +16,6 @@ public class CgMaterialTest {
         return CgMaterial.forTest(CgRenderState.DEFAULT, 2000);
     }
 
-    // ── nextPass ──────────────────────────────────────────────────────────────
-
-    @Test
-    public void setNextPass_directCycle_throws() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        a.setNextPass(b);
-        try {
-            b.setNextPass(a);
-            fail("Expected IllegalStateException for cyclic chain");
-        } catch (IllegalStateException e) {
-            assertTrue(e.getMessage().contains("Cyclic"));
-        }
-    }
-
-    @Test
-    public void setNextPass_selfCycle_throws() {
-        CgMaterial a = mat();
-        try {
-            a.setNextPass(a);
-            fail("Expected IllegalStateException for self-cycle");
-        } catch (IllegalStateException e) {
-            assertTrue(e.getMessage().contains("Cyclic"));
-        }
-    }
-
-    @Test
-    public void setNextPass_longChainCycle_throws() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        CgMaterial c = mat();
-        a.setNextPass(b);
-        b.setNextPass(c);
-        try {
-            c.setNextPass(a);
-            fail("Expected IllegalStateException for 3-node cycle");
-        } catch (IllegalStateException e) {
-            assertTrue(e.getMessage().contains("Cyclic"));
-        }
-    }
-
-    @Test
-    public void setNextPass_null_clearsChain() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        a.setNextPass(b);
-        a.setNextPass(null);
-        assertNull(CgMaterialProxy.of(a).getNextPass());
-    }
-
-    @Test
-    public void getNextPass_returnsSetValue() {
-        CgMaterial a = mat();
-        CgMaterial b = mat();
-        a.setNextPass(b);
-        assertSame(b, CgMaterialProxy.of(a).getNextPass());
-    }
-
     // ── getRenderQueue ────────────────────────────────────────────────────────
 
     @Test
@@ -95,14 +37,26 @@ public class CgMaterialTest {
     }
 
     @Test
-    public void applyProperties_overridesDefault() {
+    public void anInstanceSetsItsOwnValuesAndLeavesItsMaterials() {
         CgMaterialProperty prop = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
         CgMaterialProperties props = new CgMaterialProperties(Collections.singletonList(prop));
         CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 2000, props);
+        CgMaterialInstance mine = m.instance().vec4("_Color", 1f, 0f, 0f, 1f);
+        assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, value(mine), 1e-4f);
+        assertArrayEquals(new float[]{0.5f, 0.5f, 0.5f, 1f}, m.getPropertyForTest("_Color").getFloatValue(), 1e-4f);
+        assertArrayEquals("a second starts from the material's", new float[]{0.5f, 0.5f, 0.5f, 1f}, value(m.instance()), 1e-4f);
+    }
 
-        m.applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+    @Test(expected = IllegalStateException.class)
+    public void aMaterialsValuesAreFixedOnceInstanced() {
+        CgMaterialProperty prop = CgMaterialProperty.fromDecl("_Color", "_Color", "vec4", "(0.5, 0.5, 0.5, 1.0)");
+        CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 2000, new CgMaterialProperties(Collections.singletonList(prop)));
+        m.instance();
+        CgMaterialProxy.of(m).applyProperties(b -> b.vec4("_Color", 1f, 0f, 0f, 1f));
+    }
 
-        float[] values = m.getPropertyForTest("_Color").getFloatValue();
-        assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, values, 1e-4f);
+    private static float[] value(CgMaterialInstance instance) {
+        for (CgMaterialProperty p : instance.properties()) if (p.getName().equals("_Color")) return p.getFloatValue();
+        throw new AssertionError("_Color not declared");
     }
 }

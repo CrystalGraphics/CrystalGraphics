@@ -67,15 +67,14 @@ final class CgSceneTarget {
         CgMaterial material(boolean depth) {
             if (depth) {
                 if (withDepth == null) {
-                    withDepth = CgMaterial.newInstance(shader);
-                    withDepth.enableKeyword("DEPTH");
-                    if (keyword != null) withDepth.enableKeyword(keyword);
+                    withDepth = CgMaterial.load(shader).keyword("DEPTH", true);
+                    if (keyword != null) withDepth = withDepth.keyword(keyword, true);
                 }
                 return withDepth;
             }
             if (material == null) {
-                material = CgMaterial.newInstance(shader);
-                if (keyword != null) material.enableKeyword(keyword);
+                material = CgMaterial.load(shader);
+                if (keyword != null) material = material.keyword(keyword, true);
             }
             return material;
         }

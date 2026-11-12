@@ -56,7 +56,7 @@ state: { blend: additive, two_sided: true }
 The same state on a material of your own, outside a look:
 
 ```java
-CgMaterial glow = CgMaterial.newInstance(SOFT, CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build());
+CgMaterial glow = CgMaterial.load(SOFT, CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build());
 CgWorldRenderer.get().draw(mesh, glow).at(x, y, z).submit();
 ```
 

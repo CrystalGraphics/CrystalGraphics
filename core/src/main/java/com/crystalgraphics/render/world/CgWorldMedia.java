@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -155,7 +156,7 @@ public final class CgWorldMedia {
     private CgKernel integrate;
     /** Whether this firing's air was lit: the composite has light to add. */
     private boolean lit;
-    private CgMaterial light;
+    private CgMaterialInstance light;
 
     CgWorldMedia() {
     }
@@ -311,7 +312,7 @@ public final class CgWorldMedia {
      */
     void composite(CgStageFrame stage, CgRecording recording, CgGraphTexture media) {
         if (!lit) return;
-        if (light == null) light = CgMaterial.newInstance(LIGHT_SHADER);
+        if (light == null) light = CgMaterial.load(LIGHT_SHADER).instance();
         if (!light.precache()) return;
         CgPipeline pipeline = CgMaterialProxy.of(light).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;

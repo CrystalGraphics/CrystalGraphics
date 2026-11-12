@@ -54,6 +54,8 @@ import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
@@ -373,7 +375,7 @@ public final class CgWorldLights {
     private int volumeCells;
     private float tileU, tileV;
     /** The apply, without and with the spots' and tubes' path ({@code CG_LIGHTS_SHAPED}). */
-    private CgMaterial applyPoints, applyShaped;
+    private CgMaterialInstance applyPoints, applyShaped;
     private CgKernel gbufferKernel, tilesKernel, tileDepthKernel, sampleKernel, shadeKernel, temporalKernel, denoiseKernel;
     private CgGraphTexture gbuffer;
     private final Consumer<CgMaterialValues> gbufferValues = b -> this.gridValues.accept(b.sampler("_Normals", 0,
@@ -1226,9 +1228,8 @@ public final class CgWorldLights {
     /** The apply's and the G-buffer's programs, made once; whether all three are built, polling those still compiling. */
     private boolean applyBuilt() {
         if (applyPoints == null) {
-            applyPoints = CgMaterial.newInstance(APPLY_SHADER);
-            applyShaped = CgMaterial.newInstance(APPLY_SHADER);
-            applyShaped.enableKeyword("CG_LIGHTS_SHAPED");
+            applyPoints = CgMaterial.load(APPLY_SHADER).instance();
+            applyShaped = CgMaterial.load(APPLY_SHADER).keyword("CG_LIGHTS_SHAPED", true).instance();
             gbufferKernel = CgCompute.load(GBUFFER_KERNELS).kernel("GBuffer");
             gbufferKernel.precache();
         }
@@ -1254,11 +1255,11 @@ public final class CgWorldLights {
             if (transparents && binned && VOLUME.get()) recordVolume(stage, recording, directional);
             if (!binned && !shadowsOn) return;
             CgGraphBuffer none = zeroes(recording);
-            CgMaterial apply = (shadowsOn ? shapedExact : shapedAny) ? applyShaped : applyPoints;
+            CgMaterialInstance apply = (shadowsOn ? shapedExact : shapedAny) ? applyShaped : applyPoints;
             apply.buffer("CELLS", binned ? cells : none)
-                    .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none)
-                    .applyProperties(applyValues);
-            apply.applyProperties(applyWindow);
+                    .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none);
+            applyValues.accept(apply);
+            applyWindow.accept(apply);
             CgPipeline pipeline = CgMaterialProxy.of(apply).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
             CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
@@ -1427,7 +1428,7 @@ public final class CgWorldLights {
      */
     private boolean recordSun(CgStageFrame stage, CgRecording recording) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SUN)) {
-            if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
+            if (sunShadow == null) sunShadow = CgMaterial.load(SUN_SHADOW_SHADER);
             if (!sunShadow.precache()) return false;
             CgPipeline pipeline = CgMaterialProxy.of(sunShadow).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return false;
@@ -1563,11 +1564,14 @@ public final class CgWorldLights {
      * list, the cells and their indices as the last firing to bin lights left them, and where the grid lay. After
      * {@link #record} in a transparent firing that is this firing's; in an opaque one, the last frame's.
      */
-    void hand(CgMaterial material, CgRecording recording) {
+    void hand(CgMaterialInterface material, CgRecording recording) {
         handLive = binned && list != null && cells != null;
         CgGraphBuffer none = zeroes(recording);
-        material.buffer("WORLD_LIGHTS", handLive ? list : none).buffer("WORLD_LIGHT_CELLS", handLive ? cells : none)
-                .buffer("WORLD_LIGHT_INDICES", handLive ? indices : none).applyProperties(handValues);
+        // The engine's values on whatever the draw names, shared or its own: a view's binding in a material's place.
+        CgMaterialProxy proxy = CgMaterialProxy.of(material);
+        proxy.buffer("WORLD_LIGHTS", handLive ? list : none).buffer("WORLD_LIGHT_CELLS", handLive ? cells : none)
+                .buffer("WORLD_LIGHT_INDICES", handLive ? indices : none);
+        handValues.accept(proxy.writer());
     }
 
     /**
@@ -1575,10 +1579,11 @@ public final class CgWorldLights {
      * firing's after {@link #apply} in a transparent firing, none in an opaque one, whose pixels the deferred pass
      * shadows.
      */
-    void handSun(CgMaterial material, boolean transparent) {
+    void handSun(CgMaterialInterface material, boolean transparent) {
         handSunLive = transparent && sunOn && sunMapped;
-        handSunUnit = CgMaterialProxy.of(material).samplerUnit("_cg_SunMap");
-        material.applyProperties(handSunValues);
+        CgMaterialProxy proxy = CgMaterialProxy.of(material);
+        handSunUnit = proxy.samplerUnit("_cg_SunMap");
+        handSunValues.accept(proxy.writer());
     }
 
     /** The world's lights on transparent surfaces this firing, for {@link CgBindingModel#LOCAL_LIGHTS}; null for none. */

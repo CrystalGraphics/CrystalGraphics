@@ -16,6 +16,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /** An emitter's renderers as a look places them and the materials resolve them: binds into rows, the factory's too. */
 public class CgVfxRendererMaterialsTest {
@@ -62,7 +63,7 @@ public class CgVfxRendererMaterialsTest {
         assertEquals("the facing is a constant of the row", -1, aligned.source[1]);
         assertEquals(CgVfxSpriteRendererProperties.FACE_ALIGNED, aligned.fixed[1][0], 0f);
         assertEquals(CgVfxSpriteRendererProperties.FACE_CAMERA, facing.fixed[1][0], 0f);
-        CgMaterial m = materials.material(aligned, CgVfxSlot.Kind.PARTICLES);
+        CgMaterialInstance m = materials.material(aligned, CgVfxSlot.Kind.PARTICLES);
         assertSame("renderers differing only in row values share a material", m,
                 materials.material(facing, CgVfxSlot.Kind.PARTICLES));
         assertNotEquals(aligned.slots.get("_Color"), aligned.slots.get("_cg_Facing"));

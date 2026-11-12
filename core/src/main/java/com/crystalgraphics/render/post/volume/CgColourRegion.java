@@ -27,6 +27,8 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgGradeLayers;
 import com.crystalgraphics.render.world.CgWorldLight;
 import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
  * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}. Its shape's alpha at each pixel's
@@ -99,10 +101,13 @@ public final class CgColourRegion implements CgPostEffect {
     private final Quaternionf turn = new Quaternionf();
     private final Vector3f scale = new Vector3f(1f);
 
-    private final CgMaterial material = CgMaterial.newInstance(SHADER);
+    /** An instance per keyword set its shape and ranges draw with. */
+    private final CgMaterialInstances materials = new CgMaterialInstances(CgMaterial.load(SHADER));
+    private CgMaterialInstance material = materials.of(materials.material());
     private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     /** The same grade over a graded layer: its offsets by the layer's coverage ({@code _Coverage}). */
-    private final CgMaterial layerMaterial = CgMaterial.newInstance(SHADER);
+    private final CgMaterialInstances layerMaterials = new CgMaterialInstances(CgMaterial.load(SHADER));
+    private CgMaterialInstance layerMaterial = layerMaterials.of(layerMaterials.material());
     private final CgPostMaterial layerDraw = CgPostMaterial.of(layerMaterial, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
@@ -301,12 +306,12 @@ public final class CgColourRegion implements CgPostEffect {
         int light = CgWorldLight.at(x, y, z);
         blockLight = CgWorldLight.block(light);
         skyLight = CgWorldLight.sky(light);
-        material.applyProperties(write);
+        write.accept(material);
         draw.record(post);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
         CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
         if (layers == null) return;
-        layerMaterial.applyProperties(writeLayer);
+        writeLayer.accept(layerMaterial);
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (layers.look(k) != null) layerDraw.recordOver(post, layers.layer(k));
         }
@@ -346,18 +351,14 @@ public final class CgColourRegion implements CgPostEffect {
         boolean advanced = advanced(), legacy = temperatureGraded() && temperatureType == Temperature.LEGACY;
         int key = shape.ordinal() | (advanced ? 4 : 0) | (legacy ? 8 : 0);
         if (key == keyed) return;
-        for (String k : ALL_KEYWORDS) {
-            material.disableKeyword(k);
-            layerMaterial.disableKeyword(k);
-        }
-        for (String k : keywords(shape, advanced, legacy ? Temperature.LEGACY : null)) {
-            material.enableKeyword(k);
-            layerMaterial.enableKeyword(k);
-        }
+        CgMaterial variant = materials.material();
+        for (String k : keywords(shape, advanced, legacy ? Temperature.LEGACY : null)) variant = variant.keyword(k, true);
+        material = materials.of(variant);
+        layerMaterial = layerMaterials.of(variant);
+        draw.material(material);
+        layerDraw.material(layerMaterial);
         keyed = key;
     }
-
-    private static final String[] ALL_KEYWORDS = {"SHAPE_BOX", "SHAPE_CYLINDER", "SHAPE_CONE", "ADVANCED", "TEMPERATURE_LEGACY"};
 
     /** Whether a range differs from neutral: Unreal's {@code bIsAdvanced}. */
     private boolean advanced() {

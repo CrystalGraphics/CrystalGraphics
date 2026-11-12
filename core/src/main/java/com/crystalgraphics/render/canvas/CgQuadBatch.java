@@ -21,6 +21,7 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A canvas's quads: what {@link CgCanvas#quad} builds. One instance record per quad ({@link CgQuadRecord}), batched
@@ -97,7 +98,7 @@ public final class CgQuadBatch {
         this.offNode = writer.offsetOf("node", CgGpuType.FLOAT);
     }
 
-    Quad quad(CgMaterial material) {
+    Quad quad(CgMaterialInterface material) {
         return scratch.reset().material(material);
     }
 
@@ -109,7 +110,7 @@ public final class CgQuadBatch {
         return run.pending();
     }
 
-    void records(CgMaterial material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src, int from,
+    void records(CgMaterialInterface material, @Nullable CgRenderState state, @Nullable CgTexture texture, float[] src, int from,
                  int count, int spatial) {
         if (count <= 0) return;
         float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY;
@@ -154,7 +155,7 @@ public final class CgQuadBatch {
      */
     public final class Quad {
 
-        private CgMaterial material;
+        private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
         private final CgTexture[] textures = new CgTexture[CgBindingTable.MAX_TEXTURES];
@@ -215,7 +216,7 @@ public final class CgQuadBatch {
         }
 
         /** What it draws with. */
-        public Quad material(CgMaterial material) {
+        public Quad material(CgMaterialInterface material) {
             this.material = material;
             return this;
         }

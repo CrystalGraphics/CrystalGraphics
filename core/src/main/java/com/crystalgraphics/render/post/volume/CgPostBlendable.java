@@ -85,7 +85,7 @@ public record CgPostBlendable(String name, @Nullable CgMaterialDefinition materi
     /** A post material of its own, at its material's point, {@code order} among that point's: a volume's priority. */
     public CgPostMaterial draw(int order) {
         if (material == null) throw new IllegalStateException(name + ": no material compiled, so nothing to draw");
-        return CgPostMaterial.of(CgMaterial.newInstance(material, null), point(), order);
+        return CgPostMaterial.of(CgMaterial.of(material).instance(), point(), order);
     }
 
     /**

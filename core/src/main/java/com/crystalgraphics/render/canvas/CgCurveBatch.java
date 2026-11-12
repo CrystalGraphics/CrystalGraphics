@@ -18,6 +18,7 @@ import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A canvas's vector items: strokes ({@link Curve}), filled triangles ({@link Triangle}) and tessellation cells
@@ -200,7 +201,7 @@ public final class CgCurveBatch {
         return run.pending();
     }
 
-    Curve curve(CgMaterial material) {
+    Curve curve(CgMaterialInterface material) {
         return scratchCurve.reset().material(material);
     }
 
@@ -242,7 +243,7 @@ public final class CgCurveBatch {
         private boolean cubicPending;
 
         @Nullable
-        private CgMaterial material;
+        private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
 
@@ -251,7 +252,7 @@ public final class CgCurveBatch {
         }
 
         /** What it draws with. */
-        public Curve material(CgMaterial material) {
+        public Curve material(CgMaterialInterface material) {
             this.material = material;
             return this;
         }
@@ -518,7 +519,7 @@ public final class CgCurveBatch {
 
     private final Triangle scratchTriangle = new Triangle();
 
-    Triangle triangle(CgMaterial material) {
+    Triangle triangle(CgMaterialInterface material) {
         return scratchTriangle.reset().material(material);
     }
 
@@ -553,7 +554,7 @@ public final class CgCurveBatch {
         private final Vector3f scratchP2 = new Vector3f();
 
         @Nullable
-        private CgMaterial material;
+        private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
 
@@ -562,7 +563,7 @@ public final class CgCurveBatch {
         }
 
         /** What it draws with. */
-        public Triangle material(CgMaterial material) {
+        public Triangle material(CgMaterialInterface material) {
             this.material = material;
             return this;
         }
@@ -766,7 +767,7 @@ public final class CgCurveBatch {
         }
     }
 
-    Cell cell(CgMaterial material) {
+    Cell cell(CgMaterialInterface material) {
         return scratchCell.reset().material(material);
     }
 
@@ -808,7 +809,7 @@ public final class CgCurveBatch {
         private final Vector3f scratch = new Vector3f();
 
         @Nullable
-        private CgMaterial material;
+        private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
 
@@ -817,7 +818,7 @@ public final class CgCurveBatch {
         }
 
         /** What it draws with. */
-        public Cell material(CgMaterial material) {
+        public Cell material(CgMaterialInterface material) {
             this.material = material;
             return this;
         }

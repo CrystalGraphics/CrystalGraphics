@@ -84,11 +84,10 @@ public final class ShippedPrograms {
                     each.accept(path, shader, forward.name(), keywords);
                 }
             }
-            CgMaterial material = CgMaterial.newInstance(path);
+            CgMaterial material = CgMaterial.load(path);
             if (parsed.renderQueue() < 3000 && forward != null && !CgMaterialProxy.of(material).hasDepthPass()
                     && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
                 failures.add(path + ": the generated depth pass did not link (see log)");
-            material.delete();
         }
         return programs;
     }

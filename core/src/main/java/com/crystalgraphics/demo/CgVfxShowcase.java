@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
@@ -20,6 +21,7 @@ import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import org.joml.Matrix4f;
 
 import java.util.Arrays;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Sixteen spheres, each a different effect drawn by one {@code .shader} -- physically based gold, copper, liquid
@@ -144,7 +146,8 @@ public final class CgVfxShowcase {
     /** This showcase's own. */
     private CgMesh floor;
     private final CgMaterial[] materials = new CgMaterial[COUNT];
-    private CgMaterial glow, corona, bolt, sky, horizon, seal, floorMaterial;
+    private CgMaterial glow, corona, bolt, sky, horizon, seal;
+    private CgMaterialInstance floorMaterial;
     private double gridX = Double.NaN, gridZ = Double.NaN;
     private final Matrix4f transform = new Matrix4f();
     /** The shield's three impacts this frame: per lane a direction from its centre and the seconds since it struck. */
@@ -298,7 +301,7 @@ public final class CgVfxShowcase {
             gridX = x;
             gridZ = z;
             float gx = (float) x, gz = (float) z;
-            floorMaterial.applyProperties(b -> b.vec4("_Grid", gx, gz, SPACING, HEIGHT));
+            floorMaterial.vec4("_Grid", gx, gz, SPACING, HEIGHT);
         }
         world.draw(floor, floorMaterial).at(x, y, z).submit();
         transform.identity().scale(80f);
@@ -323,7 +326,7 @@ public final class CgVfxShowcase {
         ensureResources();
         stage = CgPipelinePrecache.request(pipelines -> {
             for (CgMaterial material : materials) pipelines.add(material, false);
-            for (CgMaterial material : new CgMaterial[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
+            for (CgMaterialInterface material : new CgMaterialInterface[]{glow, corona, bolt, sky, horizon, seal, floorMaterial}) {
                 pipelines.add(material, false);
             }
         });
@@ -522,6 +525,6 @@ public final class CgVfxShowcase {
         sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
         horizon = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_horizon.shader");
         seal = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_seal.shader");
-        floorMaterial = CgMaterial.newInstance("crystalgraphics:shaders/demo/vfx_floor.shader");
+        floorMaterial = CgMaterial.load("crystalgraphics:shaders/demo/vfx_floor.shader").instance();
     }
 }

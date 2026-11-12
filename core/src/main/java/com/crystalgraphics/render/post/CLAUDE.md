@@ -75,7 +75,7 @@ returns. `CgPostEffectsTestScene` in the harness has one at each point.
 
 ```java
 final class Tint implements CgPostEffect {
-    private final CgMaterial material = CgMaterial.newInstance("mymod:shaders/tint.shader");   // #type none, Blend set
+    private final CgMaterial material = CgMaterial.load("mymod:shaders/tint.shader");   // #type none, Blend set
     public CgPostPoint point() { return CgPostPoint.AFTER_COMPOSITE; }
     public boolean active(CgPostContext post) { return strength > 0f; }
     public void record(CgPostContext post) {

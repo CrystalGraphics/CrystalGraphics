@@ -567,8 +567,8 @@ another. GL 3.3's sampler objects, one per distinct sampler for the session; Vul
 
 ```java
 static final CgTexture2D NOISE = CgTextures.of("mymod:textures/fx/noise.png");
-material.applyProperties(b -> b.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP));
-other.applyProperties(b -> b.sampler("_Scroll", 0, NOISE, CgSampler.TRILINEAR_WRAP));
+instance.sampler("_Mask", 0, NOISE, CgSampler.BILINEAR_CLAMP);
+other.sampler("_Scroll", 0, NOISE, CgSampler.TRILINEAR_WRAP);
 CgSampler strip = CgSampler.builder().filter(CgSampler.Filter.TRILINEAR)
         .address(CgSampler.Address.WRAP, CgSampler.Address.CLAMP).anisotropy(8).build();
 ```
@@ -903,7 +903,7 @@ CgCullState.BACK               // GL_BACK face culling
 `state.apply()` / `state.clear()` — always bracket render work to prevent GL state leaks.
 
 A material drawn under another blend, cull, depth write or clip than its shader's is a `CgMaterialState`
-(`CgMaterial.newInstance(path, state)`): [`SHADERS.md`](SHADERS.md) § *A material's state*.
+(`CgMaterial.load(path, state)`): [`SHADERS.md`](SHADERS.md) § *A material's state*.
 
 **Package guide**: `api/state/CLAUDE.md`
 

@@ -107,7 +107,7 @@ public final class CgGlassDemo {
             CgCanvasGlass.Look look = looks[i];
             panes[i].look(look).size(WIDTH, HEIGHT).radii(RADIUS)
                     .backdrop(backdrop.capture(canvas, quad, look.blur(), panes[i].reach()))
-                    .apply();
+                    .apply(quad);
             quad.submit();
         }
     }

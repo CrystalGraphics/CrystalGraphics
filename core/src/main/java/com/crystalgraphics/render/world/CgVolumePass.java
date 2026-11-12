@@ -22,6 +22,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
  * Volumes: half-size premultiplied draws marched into a target of their own, blended with their last frame per firing
@@ -52,7 +54,7 @@ final class CgVolumePass {
 
     static final CgFormat VOLUME_HISTORY_FORMAT = CgFormat.RGBA16_FLOAT;
 
-    CgMaterial composite;
+    CgMaterialInstance composite;
 
     CgTexture compositeBound;
 
@@ -96,20 +98,19 @@ final class CgVolumePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.VOLUME) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-                if (pipeline == null) continue;
-                CgPipeline folded = world.volumeFolds && CgMaterialProxy.of(link).hasEmissivePass() ? pipeline.as(CgPipelineForm.FOLD) : null;
-                CgPipeline marching = (folded != null ? folded : pipeline).as(CgPipelineForm.VOLUME);
-                if (marching == null || commands.unready(marching, i)) continue;
-                if (draws.sets[i] != null) {
-                    commands.drawSet(chunks, marching, commands.bindingOf(link, recording), i);
-                    continue;
-                }
-                chunks.draw(marching, commands.bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
-                commands.group(chunks, i);
-                commands.writeInstance(chunks, i);
+            CgMaterialProxy proxy = CgMaterialProxy.of(draws.materials[i]);
+            CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
+            if (pipeline == null) continue;
+            CgPipeline folded = world.volumeFolds && proxy.hasEmissivePass() ? pipeline.as(CgPipelineForm.FOLD) : null;
+            CgPipeline marching = (folded != null ? folded : pipeline).as(CgPipelineForm.VOLUME);
+            if (marching == null || commands.unready(marching, i)) continue;
+            if (draws.sets[i] != null) {
+                commands.drawSet(chunks, marching, commands.bindingOf(draws.materials[i], recording), i);
+                continue;
             }
+            chunks.draw(marching, commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            commands.group(chunks, i);
+            commands.writeInstance(chunks, i);
         }
         pass.add(chunks.end());
         pass.end();
@@ -145,10 +146,10 @@ final class CgVolumePass {
 
     /** The volumes {@link #recordVolumes} resolved, laid over the target first in the transparent pass. */
     void addComposite(CgChunkBuilder chunks, CgRecording recording) {
-        if (composite == null) composite = CgMaterial.newInstance(COMPOSITE_SHADER);
+        if (composite == null) composite = CgMaterial.load(COMPOSITE_SHADER).instance();
         if (compositeBound != world.volumeOut) {
             CgTexture volumes = world.volumeOut;
-            composite.applyProperties(b -> b.sampler("_Volumes", 0, volumes));
+            composite.sampler("_Volumes", 0, volumes);
             compositeBound = volumes;
         }
         CgPipeline pipeline = CgMaterialProxy.of(composite).pipeline(CgInstanceKind.OBJECT);

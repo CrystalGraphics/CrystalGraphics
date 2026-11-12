@@ -5,6 +5,8 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 
 import java.util.Arrays;
 import java.util.function.Consumer;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
  * A linear or radial gradient over a box, as CSS draws one: any number of stops, interpolated premultiplied, dithered,
@@ -44,7 +46,9 @@ public final class CgCanvasGradient {
     private static final String[] COLOR_PROPERTIES = {
             "_Color0", "_Color1", "_Color2", "_Color3", "_Color4", "_Color5", "_Color6", "_Color7"};
 
-    private final CgMaterial material;
+    /** An instance per mask and shape its values switch on. */
+    private final CgMaterialInstances instances;
+    private CgMaterialInstance current;
     private final Consumer<CgMaterialValues> writer = this::write;
 
     private float[] positions = new float[STOPS_PER_DRAW];
@@ -62,12 +66,13 @@ public final class CgCanvasGradient {
     private final float[] axis = new float[2];
 
     public CgCanvasGradient(CgCanvasMaterials materials) {
-        this.material = materials.newGradient();
+        this.instances = new CgMaterialInstances(materials.gradient());
+        this.current = instances.of(instances.material());
     }
 
-    /** What its quads draw under. */
-    public CgMaterial material() {
-        return material;
+    /** What its quads draw under: the instance {@link #window} wrote. */
+    public CgMaterialInstance material() {
+        return current;
     }
 
     /** The box it covers, in the units its quads are drawn in. */
@@ -145,9 +150,8 @@ public final class CgCanvasGradient {
         end = Math.min(first + STOPS_PER_DRAW - 1, last);
         boolean rounded = false;
         for (float r : radii) rounded |= r > 0f;
-        material.toggleKeyword(WITH_MASK, rounded);
-        material.toggleKeyword(RADIAL, radial);
-        material.applyProperties(writer);
+        current = instances.of(instances.material().keyword(WITH_MASK, rounded).keyword(RADIAL, radial));
+        writer.accept(current);
         return this;
     }
 

@@ -44,13 +44,13 @@ public final class CgMaterialProperties implements CgMaterialValues {
     private List<CgMaterialProperty> uboProps;
     private List<CgMaterialProperty> samplerProps;
 
-    /** Set when a sampler property's texture unit changes. Consumed by {@code CgMaterial.applyProperties}. */
+    /** Set when a sampler property's texture unit changes. Consumed by the proxy's writes. */
     private boolean samplerUnitChanged = false;
 
     /**
      * Set when a block-backed property's value actually moves -- not on a write of what is already there, and never
-     * by a sampler, whose value is bound per draw rather than packed. Consumed by {@code CgMaterial.applyProperties},
-     * which repacks and re-uploads the block only then.
+     * by a sampler, whose value is bound per draw rather than packed. Consumed by the proxy's writes, after which its
+     * next capture repacks the block.
      */
     private boolean blockChanged = false;
    
@@ -61,8 +61,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
 
     /**
      * Repopulates all internal state from a new property list without allocating
-     * a new {@code CgMaterialProperties} object. Called by {@code CgMaterial.recompile()}
-     * on every hot-reload after the first.
+     * a new {@code CgMaterialProperties} object: a new parse of its shader, keeping the values set.
      */
     public void rebuild(List<CgMaterialProperty> newAll) {
         partition(newAll);
@@ -98,7 +97,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
 
     /**
      * Builds the {@link CgBufferLayout} for {@code CgMaterialBlock} from the non-sampler
-     * properties. Called by {@code CgMaterial.recompile()} when {@link #hasUboProps()} is true.
+     * properties, where {@link #hasUboProps()}: the capture's packer and the shader map's block.
      */
     public CgBufferLayout buildUboFormat() {
         CgBufferLayout.Builder b = CgBufferLayout.builder("CgMaterialBlock", CgBufferLayout.MemoryLayout.STD140);
@@ -133,7 +132,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
 
     /**
      * Returns {@code true} and resets the flag if any sampler property's texture unit changed
-     * since the last call. Used by {@code CgMaterial.applyProperties} to invalidate wiredPrograms.
+     * since the last call. Consumed by the proxy's writes.
      */
     public boolean consumeSamplerUnitChanged() {
         boolean v = samplerUnitChanged;

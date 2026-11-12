@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -91,7 +92,7 @@ final class CgWorldDistortion {
     private CgGraphTexture offsets;
     /** Each slot's layer this firing, -1 when it draws nothing. */
     private final int[] layerOf = new int[SLOTS + 1];
-    private final CgMaterial[] applyMaterials = new CgMaterial[SLOTS + 1];
+    private final CgMaterialInstance[] applyMaterials = new CgMaterialInstance[SLOTS + 1];
     private final CgTexture[] applyBound = new CgTexture[SLOTS + 1];
     private final int[] applyLayer = new int[SLOTS + 1];
     private final CgPassConstants constants = new CgPassConstants();
@@ -205,7 +206,7 @@ final class CgWorldDistortion {
     /** Each apply placed in the transparent pass, sorted just before the draw it must not bend. */
     void addApplies(CgChunkBuilder chunks, CgRecording recording) {
         for (int a = 0; a < applies; a++) {
-            CgMaterial material = apply(applySlot[a]);
+            CgMaterialInstance material = apply(applySlot[a]);
             CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
             chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), QUAD).sortKey(applyKey[a]);
@@ -222,7 +223,7 @@ final class CgWorldDistortion {
         if (finalUsed) {
             recordBend(stage, recording, draws, FINAL, field.count());
             field.set(offsets, field.count() + 1);
-            CgMaterial material = apply(FINAL);
+            CgMaterialInstance material = apply(FINAL);
             CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null) {
                 CgRasterPass pass = recording.raster("worldDistortion.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
@@ -330,19 +331,19 @@ final class CgWorldDistortion {
 
     /** Starts the apply's program, which every slot shares; whether it is built. */
     boolean precache() {
-        if (applyMaterials[SLOTS] == null) applyMaterials[SLOTS] = CgMaterial.newInstance(APPLY_SHADER);
+        if (applyMaterials[SLOTS] == null) applyMaterials[SLOTS] = CgMaterial.load(APPLY_SHADER).instance();
         CgPipeline pipeline = CgMaterialProxy.of(applyMaterials[SLOTS]).pipeline(CgInstanceKind.OBJECT);
         return pipeline == null || pipeline.precache();
     }
 
     /** Slot {@code slot}'s apply, reading its layer. */
-    private CgMaterial apply(int slot) {
-        CgMaterial material = applyMaterials[slot];
-        if (material == null) applyMaterials[slot] = material = CgMaterial.newInstance(APPLY_SHADER);
+    private CgMaterialInstance apply(int slot) {
+        CgMaterialInstance material = applyMaterials[slot];
+        if (material == null) applyMaterials[slot] = material = CgMaterial.load(APPLY_SHADER).instance();
         CgTexture fields = offsets;
         int layer = layerOf[slot];
         if (fields != applyBound[slot] || layer != applyLayer[slot]) {
-            material.applyProperties(b -> b.sampler("_Distortion", 0, fields).set1i("_Layer", layer));
+            material.sampler("_Distortion", 0, fields).set1i("_Layer", layer);
             applyBound[slot] = fields;
             applyLayer[slot] = layer;
         }

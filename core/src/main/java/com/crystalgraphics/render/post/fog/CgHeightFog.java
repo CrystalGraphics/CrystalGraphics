@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.fog;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.api.material.CgMaterial;
@@ -46,7 +47,7 @@ public final class CgHeightFog implements CgPostEffect {
     private float maxOpacity = 1f, start, cutoff, weight = 1f;
     private double height;
 
-    private final CgMaterial material = CgMaterial.newInstance(SHADER);
+    private final CgMaterialInstance material = CgMaterial.load(SHADER).instance();
     private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_TRANSLUCENCY, 0);
     private final float[] fog0 = new float[4], fog1 = new float[4];
     private final Consumer<CgMaterialValues> write = this::write;
@@ -131,7 +132,7 @@ public final class CgHeightFog implements CgPostEffect {
         fog1[2] = cutoff;
         fog1[3] = 1f - maxOpacity;
         draw.weight(weight);
-        material.applyProperties(write);
+        write.accept(material);
         draw.record(post);
     }
 

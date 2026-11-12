@@ -35,7 +35,7 @@ import com.crystalgraphics.material.CgPropertyRows;
  * {@code CgQuadBatch.attachTo(material)} in Java — put the requirement arbitrarily far from the
  * shader that actually creates it, and failed in a way that pointed at the wrong thing entirely: the
  * buffer is only attached on a material's first draw, so anything that compiled the
- * shader earlier (notably {@code CgMaterial.enableKeyword}, which recompiles on the spot when the
+ * shader earlier (notably a keyword lookup, which parses on the spot when the
  * shader has not been parsed yet) produced GLSL with {@code QUAD_DATA} undeclared. The resulting
  * compile failure left the parsed feature list empty, and surfaced as
  * {@code "Keyword 'X' is not declared as #pragma cg_feature in this shader"} — naming a pragma that

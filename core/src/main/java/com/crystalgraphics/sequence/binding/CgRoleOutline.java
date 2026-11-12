@@ -1,5 +1,6 @@
 package com.crystalgraphics.sequence.binding;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.animation.CgAnimInstance;
@@ -39,7 +40,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
     public static final String SLOT = "outline";
 
     private final CgAnimInstance instance;
-    private final CgMaterial post;
+    private final CgMaterialInstance post;
     private final String slotParameter;
     private final int outlineSlot;
     /** The post's colour for this slot before any key: what switching back to the materials' own puts there. */
@@ -89,7 +90,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
             if (!on) System.arraycopy(postOwn, 0, colour, 0, 3);
             moved = true;
         }
-        if (moved) post.applyProperties(writeColour);
+        if (moved) writeColour.accept(post);
     }
 
     @Override

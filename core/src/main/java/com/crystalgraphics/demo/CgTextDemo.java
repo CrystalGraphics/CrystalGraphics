@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -210,8 +211,7 @@ public final class CgTextDemo {
                 .build();
         styles = new CgTextStyle[]{DAMAGE, NEON, HOLLOW, galaxyStyle, infernoStyle, rainbowStyle, electricStyle, EMBOSSED,
                 COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE, null};
-        warm = CgMaterial.newInstance(plasma, null);
-        warm.toggleKeyword("MSDF_MODE", true);
+        warm = CgMaterial.of(plasma).keyword("MSDF_MODE", true);
         // After the world renderer's draws and before the post stack, as world text with additive layers is drawn.
         drawing = CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 10, this::draw);
     }
@@ -375,6 +375,5 @@ public final class CgTextDemo {
     public void delete() {
         active = false;
         drawing.close();
-        warm.delete();
     }
 }

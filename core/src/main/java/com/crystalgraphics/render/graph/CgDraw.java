@@ -15,6 +15,7 @@ import org.joml.Matrix4fc;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A mesh drawn under a material in a raster pass, made by {@link CgRasterPass#draw}: one or more instances, each an
@@ -50,10 +51,6 @@ public final class CgDraw {
     private final Matrix4f normal = new Matrix4f();
     @Nullable
     private CgMesh mesh;
-    /** Each pass of the material's chain that draws meshes: its pipeline and its bindings. */
-    private CgPipeline[] pipelines = new CgPipeline[2];
-    private int[] bindings = new int[2];
-    private int links;
     /** The records written, by slot; the one being set, its first float in the table, or -1 for none yet. */
     private int[] slots = new int[8];
     private int slotCount;
@@ -82,21 +79,12 @@ public final class CgDraw {
         this.builder = CgChunkBuilder.pooling(recording.bindings(), recording.primitives());
     }
 
-    /** Opens a draw of {@code mesh} under every pass of {@code material}'s chain that draws meshes. */
-    CgDraw begin(CgMesh mesh, CgMaterial material) {
+    /** Opens a draw of {@code mesh} under {@code material}'s pass that draws meshes. */
+    CgDraw begin(CgMesh mesh, CgMaterialInterface material) {
         finish();
-        links = 0;
-        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
-            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
-            if (pipeline == null) continue;
-            if (links == pipelines.length) {
-                pipelines = Arrays.copyOf(pipelines, links * 2);
-                bindings = Arrays.copyOf(bindings, links * 2);
-            }
-            pipelines[links] = pipeline;
-            bindings[links++] = CgMaterialProxy.of(link).captureBindings(builder.bindings());
-        }
-        if (links == 0) throw new IllegalArgumentException(material + " has no pass that draws a mesh");
+        CgMaterialProxy proxy = CgMaterialProxy.of(material);
+        CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) throw new IllegalArgumentException(material + " has no pass that draws a mesh");
         if (!builder.isOpen()) builder.begin();
         this.mesh = mesh;
         slotCount = 0;
@@ -108,7 +96,7 @@ public final class CgDraw {
         sortKey = 0;
         group = null;
         bounded = false;
-        builder.draw(pipelines[0], bindings[0], mesh);
+        builder.draw(pipeline, proxy.captureBindings(builder.bindings()), mesh);
         open = true;
         return this;
     }
@@ -274,33 +262,12 @@ public final class CgDraw {
 
     // ── Landing ──────────────────────────────────────────────────────────
 
-    /** Ends the open draw: an instance where none was written, and the chain's other passes over the same records. */
+    /** Ends the open draw: an instance where none was written. */
     void finish() {
         if (!open) return;
         if (objects == null && slotCount == 0) record();
         open = false;
-        for (int l = 1; l < links; l++) {
-            builder.draw(pipelines[l], bindings[l], mesh);
-            if (submesh != -2) builder.range(submesh, rangeFirst, rangeCount);
-            if (count != null) {
-                if (each) builder.indirectEach(count, countMode, countFactor);
-                else builder.indirect(count, countOffset, countMode, countFactor);
-            }
-            for (int b = 0; b < bufferCount; b++) builder.buffer(bufferAt[b], buffers[b]);
-            if (sortKey != 0) builder.sortKey(sortKey);
-            if (group != null) builder.gpuGroup(group);
-            if (bounded) builder.bounds(x0, y0, x1, y1);
-            if (objects != null) {
-                builder.objects(objects, objectsFirst, objectsCount);
-                continue;
-            }
-            for (int k = 0; k < slotCount; k++) {
-                builder.primitive(slots[k]);
-                if (each) builder.countAt(countsAt[k]);
-            }
-        }
         mesh = null;
-        Arrays.fill(pipelines, 0, links, null);
         Arrays.fill(buffers, 0, bufferCount, null);
         count = objects = null;
         group = null;

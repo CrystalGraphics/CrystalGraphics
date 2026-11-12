@@ -146,7 +146,7 @@ is one array texture, each pass attaching its layer.
 ```java
 CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, CgFormat.RGBA16_FLOAT));
 CgRasterPass slot = rec.raster("field.slot").color(field, 0, k, CgLoad.CLEAR).constants(constants).state(additive);
-material.applyProperties(b -> b.sampler("_Fields", 0, field).set1i("_Count", used));   // texture(_Fields, vec3(uv, k))
+instance.sampler("_Fields", 0, field).set1i("_Count", used);                          // texture(_Fields, vec3(uv, k))
 rec.readback(field, 0, 0, 0, k, w, h, 1, data -> check(data));                         // layer k
 ```
 

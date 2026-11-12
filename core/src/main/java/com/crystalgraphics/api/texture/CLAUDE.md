@@ -20,8 +20,8 @@ a `CgFormat`; the GL triple behind one (`CgTextureType`) is `gpu/resource`'s. Th
 
 A texture is sampled by, first to last:
 
-1. **The binding's sampler**, where it names one: `b.sampler("_Mask", 0, MASK, CgSampler.NEAREST_CLAMP)` in
-   `applyProperties`, a definition builder's `texture(property, texture, filter, address)`, a material file's
+1. **The binding's sampler**, where it names one: `instance.sampler("_Mask", 0, MASK, CgSampler.NEAREST_CLAMP)` on
+   an instance, a definition builder's `texture(property, texture, filter, address)`, a material file's
    `sampler:` block.
 2. **The texture's own** (`sampler()`):
    - **a file's**: its settings file's (`noise.png`'s `noise.yaml`, `CgTextureSettings`), else plain — bilinear and
@@ -39,7 +39,7 @@ CgTexture2D lut = CgTextures.of("mymod.lut", CgTextureDesc.of(256, 256, CgFormat
 CgTexture2D tiles = CgTextures.of("mymod.tiles", CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM)).sampler(CgSampler.NEAREST_CLAMP);
 
 // Anything, sampled another way at one binding
-material.applyProperties(b -> b.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP));
+instance.sampler("_Noise", 0, NOISE, CgSampler.NEAREST_CLAMP);
 ```
 
 - `.sampler(...)` on a file's texture throws: say it in the settings file, or at the binding.

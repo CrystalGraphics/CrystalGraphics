@@ -1,5 +1,6 @@
 package com.crystalgraphics.animation;
 
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
@@ -28,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * A skeletal mesh posed by this engine: the clips it plays as sections on a timeline of its own, and each frame the
@@ -109,7 +111,7 @@ public final class CgAnimInstance {
     private boolean playing = true;
     private int palette = -1;
     /** Each submesh's material, Unreal's {@code OverrideMaterials}; null where none is set. */
-    private final CgMaterial[] materials;
+    private final CgMaterialInterface[] materials;
     /** Its bind pose's half diagonal in the mesh's units, and its placement's largest scale: what its bounds pad from. */
     private final float meshRadius;
     private float placedScale = 1f, boundsScale = 1f;
@@ -120,8 +122,8 @@ public final class CgAnimInstance {
     private float overlayMaxDistance;
     /** Its CustomDepth stencil value and write mask; -1 for not drawn there. */
     private int customDepthStencil = -1, customDepthMask;
-    /** Which slots hold its own copy of a material (Unreal's dynamic material instances), what {@link #scalar} sets. */
-    private final boolean[] own;
+    /** Each slot's own copy of a material (Unreal's dynamic material instances), what {@link #scalar} sets; null where shared. */
+    private final CgMaterialInstance[] owned;
     /** Per scalar name: which own slots declare it, and each one's default; made the first time the name is set. */
     private final Map<String, float[]> scalarDefaults = new HashMap<>();
     private final Map<String, float[][]> vectorDefaults = new HashMap<>();
@@ -135,9 +137,9 @@ public final class CgAnimInstance {
 
     public CgAnimInstance(CgSkeletalMesh mesh) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
-        this.materials = new CgMaterial[mesh.mesh().submeshCount()];
+        this.materials = new CgMaterialInterface[mesh.mesh().submeshCount()];
         this.slotOverlays = new CgMaterial[materials.length];
-        this.own = new boolean[materials.length];
+        this.owned = new CgMaterialInstance[materials.length];
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         this.meshRadius = (float) Math.sqrt(box.halfX() * box.halfX() + box.halfY() * box.halfY() + box.halfZ() * box.halfZ());
         this.pose = new CgPose(mesh.skeleton());
@@ -579,9 +581,9 @@ public final class CgAnimInstance {
      * world.draw(goku);   // in SUBMIT: every slot, skinned, in its material
      * }</pre>
      */
-    public CgAnimInstance material(int slot, @Nullable CgMaterial material) {
+    public CgAnimInstance material(int slot, @Nullable CgMaterialInterface material) {
         materials[slot] = material;
-        own[slot] = false;
+        owned[slot] = null;
         precache(material);
         scalarDefaults.clear();
         vectorDefaults.clear();
@@ -598,8 +600,7 @@ public final class CgAnimInstance {
      * }</pre>
      */
     public CgAnimInstance material(int slot, CgMaterialDefinition definition) {
-        materials[slot] = CgMaterial.newInstance(definition, null);
-        own[slot] = true;
+        materials[slot] = owned[slot] = CgMaterial.of(definition).instance();
         precache(materials[slot]);
         scalarDefaults.clear();
         vectorDefaults.clear();
@@ -645,26 +646,26 @@ public final class CgAnimInstance {
      * Queues {@code material}'s skinned forms to be built before it draws, as a component precaches its materials with
      * its vertex factory (Unreal's {@code PrecachePSOs}): whatever is set while loading is built there.
      */
-    private static void precache(@Nullable CgMaterial material) {
+    private static void precache(@Nullable CgMaterialInterface material) {
         if (material != null) CgPipelinePrecache.register("crystalgraphics:anim", pipelines -> pipelines.add(material, false, true));
     }
 
     /** Submesh {@code slot}'s material, or null where none is set. */
     @Nullable
-    public CgMaterial material(int slot) {
+    public CgMaterialInterface material(int slot) {
         return materials[slot];
     }
 
     /**
      * Sets the scalar {@code name} to {@code value} on each of its own materials that declares it: Unreal's
      * {@code SetScalarParameterValueOnMaterials} (MeshComponent.cpp:621). A material set with {@link
-     * #material(int, CgMaterial)} is shared and left alone. Client world's thread.
+     * #material(int, CgMaterialInterface)} is shared and left alone. Client world's thread.
      */
     public void scalar(String name, float value) {
         float[] defaults = declared(name);
         writer.name = name;
         writer.value = value;
-        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) materials[s].applyProperties(writer);
+        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) writer.accept(owned[s]);
     }
 
     /** Puts the scalar {@code name} back to each own material's default, as a curve no clip keys any more does. */
@@ -674,7 +675,7 @@ public final class CgAnimInstance {
         for (int s = 0; s < materials.length; s++) {
             if (Float.isNaN(defaults[s])) continue;
             writer.value = defaults[s];
-            materials[s].applyProperties(writer);
+            writer.accept(owned[s]);
         }
     }
 
@@ -690,7 +691,7 @@ public final class CgAnimInstance {
         writer.y = y;
         writer.z = z;
         writer.w = w;
-        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) materials[s].applyProperties(writer);
+        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) writer.accept(owned[s]);
         writer.vector = false;
     }
 
@@ -705,7 +706,7 @@ public final class CgAnimInstance {
             writer.y = defaults[s][1];
             writer.z = defaults[s][2];
             writer.w = defaults[s][3];
-            materials[s].applyProperties(writer);
+            writer.accept(owned[s]);
         }
         writer.vector = false;
     }
@@ -716,8 +717,8 @@ public final class CgAnimInstance {
         if (defaults != null) return defaults;
         defaults = new float[materials.length][];
         for (int s = 0; s < materials.length; s++) {
-            if (!own[s] || materials[s] == null) continue;
-            for (CgMaterialProperty p : materials[s].properties()) {
+            if (owned[s] == null) continue;
+            for (CgMaterialProperty p : owned[s].properties()) {
                 if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = Arrays.copyOf(p.getFloatValue(), 4);
             }
         }
@@ -732,8 +733,8 @@ public final class CgAnimInstance {
         defaults = new float[materials.length];
         Arrays.fill(defaults, Float.NaN);
         for (int s = 0; s < materials.length; s++) {
-            if (!own[s] || materials[s] == null) continue;
-            for (CgMaterialProperty p : materials[s].properties()) {
+            if (owned[s] == null) continue;
+            for (CgMaterialProperty p : owned[s].properties()) {
                 if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = p.getFloatValue()[0];
             }
         }

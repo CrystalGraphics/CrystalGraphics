@@ -5,80 +5,44 @@ import org.junit.Test;
 
 import java.util.Arrays;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertTrue;
 
-/**
- * Unit tests for the keyword enable/disable/isEnabled API in {@link CgMaterial}.
- *
- * <p>All tests use the {@code forTest} path — no GL context required.</p>
- */
+/** A keyword makes another material, cached: the material asked never changes. No GL context. */
 public class CgMaterialVariantTest {
 
     private static CgMaterial mat(String... featureNames) {
         return CgMaterial.forTest(CgRenderState.DEFAULT, 0, Arrays.asList(featureNames));
     }
 
-    // ── enable/disable/isEnabled ──────────────────────────────────────────────
-
     @Test
-    public void enableKeyword_valid_isKeywordEnabled() {
+    public void aKeywordMakesAnotherMaterialAndLeavesItsBase() {
         CgMaterial m = mat("SHADOWS_ON", "FOG");
-        m.enableKeyword("SHADOWS_ON");
-
-        assertTrue("SHADOWS_ON must be enabled after enableKeyword", m.isKeywordEnabled("SHADOWS_ON"));
-        assertFalse("FOG must not be enabled unless explicitly enabled", m.isKeywordEnabled("FOG"));
+        CgMaterial shadowed = m.keyword("SHADOWS_ON", true);
+        assertTrue(shadowed.isKeywordEnabled("SHADOWS_ON"));
+        assertFalse(shadowed.isKeywordEnabled("FOG"));
+        assertFalse("the base is immutable", m.isKeywordEnabled("SHADOWS_ON"));
     }
 
     @Test
-    public void disableKeyword_removesKeyword() {
-        CgMaterial m = mat("SHADOWS_ON");
-        m.enableKeyword("SHADOWS_ON");
-        assertTrue(m.isKeywordEnabled("SHADOWS_ON"));
-
-        m.disableKeyword("SHADOWS_ON");
-        assertFalse("SHADOWS_ON must not be enabled after disableKeyword", m.isKeywordEnabled("SHADOWS_ON"));
+    public void theSameKeywordsAnswerTheSameMaterial() {
+        CgMaterial m = mat("A", "B", "C");
+        CgMaterial ac = m.keyword("A", true).keyword("C", true);
+        assertSame(ac, m.keyword("C", true).keyword("A", true));
+        assertSame(ac, ac.keyword("A", true));
+        assertSame("switching one off goes back through the family", m, ac.keyword("A", false).keyword("C", false));
     }
 
     @Test
-    public void disableKeyword_noop_whenNotEnabled() {
+    public void switchingOffAKeywordNotOnAnswersItself() {
         CgMaterial m = mat("SHADOWS_ON");
-        m.disableKeyword("SHADOWS_ON"); // must not throw
-        assertFalse(m.isKeywordEnabled("SHADOWS_ON"));
-    }
-
-    @Test
-    public void enableKeyword_idempotent() {
-        CgMaterial m = mat("SHADOWS_ON");
-        m.enableKeyword("SHADOWS_ON");
-        m.enableKeyword("SHADOWS_ON"); // second call must not throw or duplicate state
-        assertTrue(m.isKeywordEnabled("SHADOWS_ON"));
+        assertSame(m, m.keyword("SHADOWS_ON", false));
+        assertSame(m, m.keyword("UNDECLARED_FEATURE", false));
     }
 
     @Test(expected = IllegalArgumentException.class)
-    public void enableKeyword_undeclared_throws() {
-        CgMaterial m = mat("SHADOWS_ON");
-        m.enableKeyword("UNDECLARED_FEATURE");
-    }
-
-    @Test
-    public void multipleKeywords_independentState() {
-        CgMaterial m = mat("A", "B", "C");
-        m.enableKeyword("A");
-        m.enableKeyword("C");
-
-        assertTrue(m.isKeywordEnabled("A"));
-        assertFalse(m.isKeywordEnabled("B"));
-        assertTrue(m.isKeywordEnabled("C"));
-    }
-
-    @Test
-    public void disableKeyword_leavesOthersEnabled() {
-        CgMaterial m = mat("A", "B");
-        m.enableKeyword("A");
-        m.enableKeyword("B");
-        m.disableKeyword("A");
-
-        assertFalse(m.isKeywordEnabled("A"));
-        assertTrue(m.isKeywordEnabled("B"));
+    public void anUndeclaredKeywordThrows() {
+        mat("SHADOWS_ON").keyword("UNDECLARED_FEATURE", true);
     }
 }
