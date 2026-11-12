@@ -90,6 +90,8 @@ final class CgMaterialFormat {
             "^void\\s+fragment\\s*\\(\\s*(?:in\\s+)?v2f\\s+\\w+\\s*,\\s*out\\s+\\w+\\s+\\w+\\s*\\)");
     private static final Pattern MESH_ATTRIBUTE = Pattern.compile("\\bcg_(?:Position|Normal|Color|TexCoord[0-3])\\b");
     private static final Pattern PROPERTY_NAME = Pattern.compile("([A-Za-z_]\\w*)\\s*\\(\\s*\"");
+    /** The space before a property entry that follows another on its line: {@code ... = 1  _Strength ("...}. */
+    private static final Pattern ENTRY_START = Pattern.compile("(?<=\\S)[ \\t]+(?=[A-Za-z_]\\w*\\s*\\(\\s*\")");
     private static final Pattern ARRAY_TYPE = Pattern.compile("(\\w+)\\[(\\d+)]");
     private static final Pattern POST_SURFACE_SIGNATURE = Pattern.compile(
             "^void\\s+surface\\s*\\(\\s*(?:in\\s+)?CgScreen\\s+\\w+\\s*,\\s*inout\\s+CgPostSurface\\s+(\\w+)\\s*\\)");
@@ -105,7 +107,8 @@ final class CgMaterialFormat {
     private static final List<String> POST_POINTS = new ArrayList<>();
 
     static {
-        for (CgPostPoint p : CgPostPoint.values()) POST_POINTS.add(p.name());
+        // Where a post material may draw (CgPostMaterial): BEFORE_COMPOSITE feeds the composite
+        for (CgPostPoint p : CgPostPoint.values()) if (p != CgPostPoint.BEFORE_COMPOSITE) POST_POINTS.add(p.name());
     }
 
     /** The v2f fields a material with no {@code vertex()} has filled, and with what. */
@@ -459,7 +462,9 @@ final class CgMaterialFormat {
         Map<String, String> m = properties(block(items, "Material"), List.of("Location", "SceneColorMargin"), path);
         String location = m.get("Location");
         if (location != null && !POST_POINTS.contains(location)) {
-            throw fail(path, "'Location " + location + "' is one of " + POST_POINTS);
+            throw fail(path, "'Location " + location + "' is one of " + POST_POINTS
+                    + (location.equals(CgPostPoint.BEFORE_COMPOSITE.name()) ? ": BEFORE_COMPOSITE feeds the composite, and"
+                    + " takes the engine's own passes" : ""));
         }
         if (block(items, "RenderState") != null) {
             throw fail(path, "'RenderState' is the engine's in a post material, which draws the whole screen");
@@ -522,7 +527,8 @@ final class CgMaterialFormat {
         refuseNamedBuffers(all, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
         out.append("Tags { \"RenderType\" = \"Transparent\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\" \"ColorSpace\" = \"Target\"");
-        if (m.containsKey("SceneColorMargin")) out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
+        // One triangle over the target, each pixel reading its own unless it says how far past it reads
+        out.append(" \"SceneColorMargin\" = \"").append(m.getOrDefault("SceneColorMargin", "0.001")).append('"');
         out.append(" }\nQueue = \"Overlay\"\n");
         StringBuilder targets = new StringBuilder();
         for (int s = 0; s < names.size() - 1; s++) {
@@ -752,12 +758,11 @@ final class CgMaterialFormat {
                 if (theirs.contains(own.group(1))) throw fail(path, "'" + own.group(1) + "' is " + owner + "'s: the engine binds it");
             }
         }
-        if (props != null) {
-            String text = props.text();
-            int close = text.lastIndexOf('}');
-            out.append(added.isEmpty() ? text : text.substring(0, close) + "\n    " + added + "\n}").append('\n');
-        } else if (!added.isEmpty()) {
-            out.append("Properties {\n    ").append(added).append("\n}\n");
+        // One entry a line, as the old parser reads them: a format file may write several on one
+        String own = props == null ? "" : ENTRY_START.matcher(props.body().strip()).replaceAll("\n    ");
+        if (!own.isEmpty() || !added.isEmpty()) {
+            out.append("Properties {\n    ").append(own).append(own.isEmpty() || added.isEmpty() ? "" : "\n    ")
+               .append(ENTRY_START.matcher(added).replaceAll("\n    ")).append("\n}\n");
         }
         Set<String> elements = bufferElements(items);
         for (Item i : items) {

@@ -1165,9 +1165,10 @@ public final class CgMaterialShader implements CgReloadable {
     /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
     private void requireMargin(CgParsedShader parsed, String source) {
         if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
-            throw new CgShaderParseException("[" + resourcePath + "] samples cg_SceneColor without a SceneColorMargin: "
-                    + "add the share of the target's height it samples past its geometry to the top-level Tags, "
-                    + "e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }");
+            throw new CgShaderParseException("[" + resourcePath + "] samples the scene's colour without a SceneColorMargin: "
+                    + "the share of the target's height it samples past its geometry, " + (parsed.domain() != null
+                    ? "e.g. Material { SceneColorMargin 0.05 } (0.001 for its own pixel alone)"
+                    : "in the top-level Tags, e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }"));
         }
     }
 
