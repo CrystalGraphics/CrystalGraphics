@@ -173,20 +173,20 @@ public final class CgTexture2D extends CgTextureAbstract {
     }
 
     /**
-     * Adopts a texture someone else owns, so the engine can sample it: a host's, imported by
-     * {@code CgHostImports} and named by {@link CgDeviceNames}.
+     * A device texture someone else owns, so a pass can bind it: a host's, imported by {@code CgHostImports}.
+     * {@code CgHostTextures.lightmapTexture()} is the one caller.
      *
      * <pre>{@code
-     * int name = CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
-     * CgTexture2D scene = CgTexture2D.wrap(name, width, height);
-     * scene.bind(unit);
-     * scene.delete();   // forgets it; the host's texture is untouched
+     * CgTexture2D lightmap = CgTexture2D.borrowed(CgHostImports.get().texture(hostHandle));
+     * pass.texture(unit, lightmap);
+     * lightmap.delete();   // forgets it; the host's texture is untouched
      * }</pre>
      *
-     * <p>Uploads throw: its storage and parameters are its owner's. Not cached.</p>
+     * <p>Its size is the texture's. Writes throw: its storage is its owner's. Not cached.</p>
      */
-    public static CgTexture2D wrap(int textureId, int width, int height) {
-        return new CgTexture2D(textureId, width, height);
+    public static CgTexture2D borrowed(CgGpuTexture texture) {
+        CgGpuTexture.Desc desc = texture.desc();
+        return new CgTexture2D(CgDeviceNames.name(texture), desc.width(), desc.height());
     }
 
     /**

@@ -80,7 +80,7 @@ import static org.lwjgl.vulkan.VK12.vkSignalSemaphore;
  * }
  *
  * CgVulkanDevice device = host.openDevice(width, height);   // the device over the host, installed
- * int color = host.importTexture(gameColorTexture);         // a name the engine knows the host's image by
+ * CgGpuTexture color = host.importTexture(gameColorTexture); // the host's image as a device texture, wrapped once
  * host.endHostFrame();                                // once per host frame, before the host submits it
  * host.closeAfterLastSubmit();                        // at the host's shutdown signal
  * }</pre>
@@ -332,8 +332,8 @@ public abstract class HostedVulkanHost<T> implements CgVulkanHost {
     }
 
     /** The host's texture by the name the engine knows it by, the same name for as long as the texture lives. */
-    public final int importTexture(T texture) {
-        return imported(texture).name();
+    public final CgGpuTexture importTexture(T texture) {
+        return imported(texture).wrapped();
     }
 
     /**

@@ -387,8 +387,8 @@ public final class CgWorldProbe {
         settingsChecks(env);
 
         CgHostTextures textures = host.textures();
-        check("textures.block-atlas", textures.blockAtlas() != 0, "atlas " + textures.blockAtlas());
-        info("textures.lightmap", textures.lightmap() != 0 ? "present" : "absent on this version");
+        check("textures.block-atlas", textures.blockAtlas() != null, "atlas " + textures.blockAtlas());
+        info("textures.lightmap", textures.lightmap() != null ? "present" : "absent on this version");
         startTextures = textures.version();
         startGameTime = env.gameTime();
 

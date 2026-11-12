@@ -6042,11 +6042,11 @@ com/crystalgraphics/gpu/resource/CgTexture2D
   method public uploadRegion (IIIIILjava/nio/ByteBuffer;II)V
   method public write (IIIIILcom/crystalgraphics/platform/rhi/format/CgFormat;Lcom/crystalgraphics/gpu/CgUploadLease;)V
   method public write (IIIIILcom/crystalgraphics/platform/rhi/format/CgFormat;Ljava/nio/ByteBuffer;)V
+  method public,static borrowed (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureSettings;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static missing ()Lcom/crystalgraphics/gpu/resource/CgTexture2D;
-  method public,static wrap (III)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
 com/crystalgraphics/gpu/resource/CgTexture2DArray
   access public,final
   extends com/crystalgraphics/gpu/resource/CgTextureAbstract
@@ -10645,13 +10645,13 @@ com/crystalgraphics/render/stage/CgHostTextures
   access public,final
   extends java/lang/Object
   method public <init> ()V
-  method public blockAtlas ()I
+  method public blockAtlas ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public blockAtlas (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public blockAtlasHeight ()I
   method public blockAtlasWidth ()I
-  method public importedBlockAtlas (III)Lcom/crystalgraphics/render/stage/CgHostTextures;
-  method public importedLightmap (III)Lcom/crystalgraphics/render/stage/CgHostTextures;
-  method public lightmap ()I
+  method public importedBlockAtlas (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public importedLightmap (Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public lightmap ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public lightmap (Ljava/lang/Object;II)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public lightmapHeight ()I
   method public lightmapTexture ()Lcom/crystalgraphics/api/texture/CgTexture;

@@ -1,11 +1,12 @@
 package com.crystalgraphics.render.stage;
 
-import com.crystalgraphics.platform.rhi.CgHostImports;
-import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
+import com.crystalgraphics.platform.rhi.CgHostImports;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 
+import javax.annotation.Nullable;
 import java.util.Objects;
 
 /**
@@ -17,40 +18,40 @@ import java.util.Objects;
  * CgHostTextures host = frame.host().textures();
  * pass.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, host.lightmapTexture());   // what cg_Lightmap reads
  *
- * // a host, with the camera, every frame: imported only when the texture object changes
+ * // a host, every frame: imported only when the handle changes
  * CgRenderStage.WORLD_OPAQUE.host().textures().lightmap(lightTexture, 16, 16).blockAtlas(atlas, w, h);
+ * // a host that imports its own (the Vulkan host), or the harness handing a texture of ours
+ * textures.importedLightmap(host.importTexture(image), 16, 16);
  * }</pre>
  *
  * <ul>
- *   <li>Borrowed: nothing of ours deletes them. A name is 0 where the host gives none (the harness, no level).</li>
- *   <li>Imported once per host texture object ({@link CgHostImports#texture}, named by {@link CgDeviceNames}): again only when the host hands a
- *       different one, by {@code equals} (a resource reload, the lightmap remade). On the Vulkan host an import is a
- *       wrap, so never per frame.</li>
- *   <li>{@link #version} changes with every import, for a holder that wraps a name in a {@code CgTexture2D}.</li>
+ *   <li>Borrowed: nothing of ours deletes them. Null where the host gives none (the harness, no level).</li>
+ *   <li>A handle is imported once ({@link CgHostImports#texture}): again only when the host hands a different one, by
+ *       {@code equals} (a resource reload, the lightmap remade). On the Vulkan host an import is a wrap, so never per
+ *       frame.</li>
+ *   <li>{@link #version} changes whenever either texture does.</li>
  * </ul>
  */
 public final class CgHostTextures {
 
     private Object lightmapHandle, atlasHandle;
-    private int lightmap, atlas;
+    @Nullable private CgGpuTexture lightmap, atlas;
     private int lightmapWidth, lightmapHeight, atlasWidth, atlasHeight;
     private int version;
     private CgTexture2D lightmapTexture;
 
-    /** The lightmap's texture name: u is block light, v sky light, 0 to 15 each across it; 0 when absent. */
-    public int lightmap() {
+    /** The lightmap: u is block light, v sky light, 0 to 15 each across it; null when absent. */
+    @Nullable
+    public CgGpuTexture lightmap() {
         return lightmap;
     }
 
-    /**
-     * The lightmap as a texture to bind, the pass binding of {@code cg_Lightmap}: wrapped once per host texture, and
-     * white where the host gives none.
-     */
+    /** The lightmap as a texture to bind, the pass binding of {@code cg_Lightmap}: white where the host gives none. */
     public CgTexture lightmapTexture() {
-        if (lightmap == 0) return CgFallbackTextures.WHITE_1x1;
-        if (lightmapTexture == null || lightmapTexture.getId() != lightmap) {
+        if (lightmap == null) return CgFallbackTextures.WHITE_1x1;
+        if (lightmapTexture == null || lightmapTexture.rhiTexture() != lightmap) {
             if (lightmapTexture != null) lightmapTexture.delete();
-            lightmapTexture = CgTexture2D.wrap(lightmap, Math.max(lightmapWidth, 1), Math.max(lightmapHeight, 1));
+            lightmapTexture = CgTexture2D.borrowed(lightmap);
         }
         return lightmapTexture;
     }
@@ -63,8 +64,9 @@ public final class CgHostTextures {
         return lightmapHeight;
     }
 
-    /** The block atlas's texture name; 0 when absent. */
-    public int blockAtlas() {
+    /** The block atlas; null when absent. */
+    @Nullable
+    public CgGpuTexture blockAtlas() {
         return atlas;
     }
 
@@ -76,7 +78,7 @@ public final class CgHostTextures {
         return atlasHeight;
     }
 
-    /** Changes whenever either name does. */
+    /** Changes whenever either texture does. */
     public int version() {
         return version;
     }
@@ -85,8 +87,7 @@ public final class CgHostTextures {
     public CgHostTextures lightmap(Object hostHandle, int width, int height) {
         if (!Objects.equals(hostHandle, lightmapHandle)) {
             lightmapHandle = hostHandle;
-            lightmap = hostHandle == null ? 0 : CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
-            version++;
+            setLightmap(hostHandle == null ? null : CgHostImports.get().texture(hostHandle));
         }
         lightmapWidth = width;
         lightmapHeight = height;
@@ -97,8 +98,7 @@ public final class CgHostTextures {
     public CgHostTextures blockAtlas(Object hostHandle, int width, int height) {
         if (!Objects.equals(hostHandle, atlasHandle)) {
             atlasHandle = hostHandle;
-            atlas = hostHandle == null ? 0 : CgDeviceNames.name(CgHostImports.get().texture(hostHandle));
-            version++;
+            setAtlas(hostHandle == null ? null : CgHostImports.get().texture(hostHandle));
         }
         atlasWidth = width;
         atlasHeight = height;
@@ -106,27 +106,21 @@ public final class CgHostTextures {
     }
 
     /**
-     * Host side: this frame's lightmap as a name the host already imported, for a host with its own cached import (the
-     * Vulkan host's {@code importTexture}, which wraps its image as a device texture); 0 for none.
+     * Host side: this frame's lightmap, already a device texture: one the host imported itself (the Vulkan host's
+     * {@code importTexture}) or one of ours; null for none.
      */
-    public CgHostTextures importedLightmap(int name, int width, int height) {
-        if (name != lightmap || lightmapHandle != null) {
-            lightmapHandle = null;
-            lightmap = name;
-            version++;
-        }
+    public CgHostTextures importedLightmap(@Nullable CgGpuTexture texture, int width, int height) {
+        lightmapHandle = null;
+        setLightmap(texture);
         lightmapWidth = width;
         lightmapHeight = height;
         return this;
     }
 
     /** Host side: this frame's block atlas, as {@link #importedLightmap}. */
-    public CgHostTextures importedBlockAtlas(int name, int width, int height) {
-        if (name != atlas || atlasHandle != null) {
-            atlasHandle = null;
-            atlas = name;
-            version++;
-        }
+    public CgHostTextures importedBlockAtlas(@Nullable CgGpuTexture texture, int width, int height) {
+        atlasHandle = null;
+        setAtlas(texture);
         atlasWidth = width;
         atlasHeight = height;
         return this;
@@ -134,15 +128,24 @@ public final class CgHostTextures {
 
     /** Host side: another frame's textures, as the transparent stage takes the opaque one's. */
     public CgHostTextures set(CgHostTextures o) {
-        if (!Objects.equals(lightmapHandle, o.lightmapHandle) || !Objects.equals(atlasHandle, o.atlasHandle)) version++;
         lightmapHandle = o.lightmapHandle;
         atlasHandle = o.atlasHandle;
-        lightmap = o.lightmap;
-        atlas = o.atlas;
+        setLightmap(o.lightmap);
+        setAtlas(o.atlas);
         lightmapWidth = o.lightmapWidth;
         lightmapHeight = o.lightmapHeight;
         atlasWidth = o.atlasWidth;
         atlasHeight = o.atlasHeight;
         return this;
+    }
+
+    private void setLightmap(@Nullable CgGpuTexture texture) {
+        if (texture != lightmap) version++;
+        lightmap = texture;
+    }
+
+    private void setAtlas(@Nullable CgGpuTexture texture) {
+        if (texture != atlas) version++;
+        atlas = texture;
     }
 }
