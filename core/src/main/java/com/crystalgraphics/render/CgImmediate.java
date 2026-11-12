@@ -1,6 +1,15 @@
 package com.crystalgraphics.render;
 
 import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
+import com.crystalgraphics.platform.rhi.command.CgPassDesc;
+import com.crystalgraphics.platform.rhi.command.CgCommandList;
+import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.platform.rhi.CgRHI;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.CgDeviceSection;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -203,6 +212,74 @@ public final class CgImmediate implements AutoCloseable {
             BUILDER.recycle(frame);
         } finally {
             GRAPH.clear();
+        }
+    }
+
+    // ── A target's clears and copies, outside a graph ──────────────────────────
+
+    /**
+     * Clears {@code target} now, outside any graph: its colour to {@code (r, g, b, a)} where {@code color}, its depth to
+     * {@code depth} (GL's convention, far at 1, mirrored for a host whose depth runs far to near) where {@code clearDepth},
+     * its stencil to {@code stencil} where {@code clearStencil}. Render thread, outside a recording. In a graph, a pass's
+     * {@code CgLoad.clear} is the clear.
+     *
+     * <pre>{@code
+     * CgImmediate.clear(view, true, 0.5f, 0.7f, 1f, 1f, true, 1.0, true, 0);   // sky, far, no stencil
+     * CgImmediate.clear(view, false, 0, 0, 0, 0, true, 1.0, false, 0);          // depth alone, for the overlays
+     * }</pre>
+     */
+    public static void clear(CgExternalTarget target, boolean color, float r, float g, float b, float a,
+                             boolean clearDepth, double depth, boolean clearStencil, int stencil) {
+        CgTextureView colorView = color ? target.color() : null;
+        CgTextureView depthView = clearDepth || clearStencil ? target.depth() : null;
+        if (colorView == null && depthView == null) return;
+        float far = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - depth : depth);
+        List<CgPassDesc.Color> colors = colorView == null ? List.of() : List.of(new CgPassDesc.Color(colorView,
+                CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.StoreOp.STORE));
+        CgPassDesc.Depth depthDesc = depthView == null ? null : new CgPassDesc.Depth(depthView,
+                clearDepth ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, far,
+                clearStencil ? CgPassDesc.LoadOp.CLEAR : CgPassDesc.LoadOp.LOAD, stencil, CgPassDesc.StoreOp.STORE, false);
+        CgDeviceSection.begin();
+        try {
+            // From rest and back, as every use outside a graph leaves a texture (CgAccess.RESTING)
+            CgCommandList list = CgRHI.get().encoder();
+            if (colorView != null) list.imageBarrier(colorView.texture(), CgAccess.RESTING, CgAccess.COLOR_WRITE);
+            if (depthView != null) list.imageBarrier(depthView.texture(), CgAccess.RESTING, CgAccess.DEPTH_WRITE);
+            list.beginPass(new CgPassDesc("clear " + target.label(), colors, depthDesc, target.width(), target.height())).end();
+            if (colorView != null) list.imageBarrier(colorView.texture(), CgAccess.COLOR_WRITE, CgAccess.RESTING);
+            if (depthView != null) list.imageBarrier(depthView.texture(), CgAccess.DEPTH_WRITE, CgAccess.RESTING);
+        } finally {
+            CgDeviceSection.end();
+        }
+    }
+
+    /**
+     * Copies {@code from}'s colour into {@code to}'s at the same size, unfiltered: a frame drawn into a target of yours
+     * presented to the window ({@code CgExternalTarget.host(0, w, h)}). Render thread, outside a recording.
+     */
+    public static void copyColor(CgExternalTarget from, CgExternalTarget to) {
+        copy(from, to, false);
+    }
+
+    /**
+     * {@link #copyColor}, with the depth too where {@code depth}: both targets' depth formats must match.
+     *
+     * @throws IllegalArgumentException where either lacks what is copied
+     */
+    public static void copy(CgExternalTarget from, CgExternalTarget to, boolean depth) {
+        if (from.color() == null || to.color() == null || depth && (from.depth() == null || to.depth() == null)) {
+            throw new IllegalArgumentException("a copy from " + from + " into " + to + ": both need what is copied");
+        }
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().blit(from.color(), 0, 0, from.width(), from.height(), to.color(), 0, 0, from.width(),
+                    from.height(), CgGpuSampler.Filter.NEAREST);
+            if (depth) {
+                CgRHI.get().encoder().blit(from.depth(), 0, 0, from.width(), from.height(), to.depth(), 0, 0, from.width(),
+                        from.height(), CgGpuSampler.Filter.NEAREST);
+            }
+        } finally {
+            CgDeviceSection.end();
         }
     }
 }

@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.texture;
+package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.gl.format.GLFormats;
@@ -9,11 +9,9 @@ import javax.annotation.Nullable;
 
 
 /**
- * Typed enum of all supported GL texture formats.
- *
- * <p>Single source of truth for the (internalFormat, baseFormat, type) triple
- * for both regular textures and FBO attachments. Used by the texture classes and by
- * {@code CgFrameBufferFormat} ({@code .color(0, CgTextureType.RGBA8)}) in Phase 2.</p>
+ * The GL (internalFormat, baseFormat, type) triple behind each texture format: the texture classes' own, and the
+ * upload and readback paths that convert texels. The API names a {@link CgFormat}; {@link #format()} and
+ * {@link #of(CgFormat)} map between them.
  *
  * <p>Zero hex literals — all GL values come from LWJGL imports.</p>
  *

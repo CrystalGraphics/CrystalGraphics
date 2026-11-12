@@ -114,8 +114,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Framebuffers
 | Path | What it covers |
 |---|---|
-| `api/framebuffer/CLAUDE.md` | `CgFrameBufferFormat` builder API, validation rules, equality |
-| `gpu/resource/CLAUDE.md` | `CgFrameBuffer` dispatch architecture, `CgFrameBufferRegistry`, ownership model |
+| `gpu/resource/CLAUDE.md` | The texture and buffer classes, the texture cache, targets of yours, readbacks |
 
 ### Textures
 | Path | What it covers |

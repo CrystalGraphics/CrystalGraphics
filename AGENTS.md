@@ -160,7 +160,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Work on the VFX rewrite toward Unreal parity (`vfx-aaa`) | `plan/crystalgraphics/vfx-aaa/aaa-rules.md` first: binding | `vfx/CLAUDE.md` § *AAA parity* |
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
 | Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
-| Create a framebuffer, texture, mesh or shader buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/framebuffer`, `api/texture`, `api/mesh`, `gpu/resource` |
+| Create a texture, a target of yours, a mesh or a buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/texture`, `api/buffer`, `api/mesh`, `gpu/resource` |
 | Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gpu/resource`, `render/graph` |
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
@@ -206,7 +206,7 @@ the list is refreshed. Refresh it before a release (`docs/PRECACHE.md` § *The s
 
 **Public API first** — always use the highest abstraction layer available. `CgMaterial.load()` not raw GLSL; `CgMeshLoader.load()` not `GL15.glGenBuffers()`. Check package guides to find what already exists before writing raw GL.
 
-**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: `CgFrameBuffer.create()`, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgRHI.onDeviceThread()` itself.
+**GL-thread rule** — all GL object creation, upload, and deletion must happen on the GL thread within an active context. This includes: a texture's storage, shader compilation. Violations produce silent garbage or driver crashes. **Meshes are data**, built and edited on any thread, and the mesh store places them on the render thread. **Textures are the exception, through `CgDeferral`** (`gpu/`): an object owns one, all its device work goes through it, and where the device may not be driven the work waits for the render thread, before the next frame executes. A new GPU object that must work off the render thread does the same rather than branching on `CgRHI.onDeviceThread()` itself.
 
 **Vertex data via `CgVertexWriter`** — never write vertex bytes via raw `ByteBuffer.putFloat()`. All vertex packing goes through `CgVertexWriter.forBuffer()`. Index buffer `putShort()`/`putInt()` is the only exception.
 

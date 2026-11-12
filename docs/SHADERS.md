@@ -1370,8 +1370,7 @@ Images { VOXELS ("Voxels", r8ui, writeonly, 3d) }
 ```
 
 ```java
-CgFrameBufferFormat r8ui = CgFrameBufferFormat.builder("voxels").color(0, CgTextureType.R8UI).build();
-CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, r8ui));
+CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(128, 96, 128, CgFormat.R8_UINT));
 pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);
 step.dispatch(move, n).texture("_Wind", wind);
 recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 new slices from z 32: 128 * 96 * 16 bytes
@@ -1379,8 +1378,9 @@ int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()),
 ```
 
 - One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws. A volume of your
-  own, with its sampling and mip levels, is imported through `CgFrameBuffer.createVolume(name, texture3d)`, a kernel
-  writing each level as `image(name, volume, level, -1)`.
+  own, with its sampling and mip levels (`CgTextures.volume(name, desc)`), is imported through
+  `CgGraphTexture.imported(name, CgTextures.target(name, volume, null))`, a kernel writing each level as
+  `image(name, volume, level, -1)`.
 - Its format's type is its filter: linear, nearest for an integer type, clamped at every face.
 - Below compute an `image` kernel writes a volume in one draw, an instance a slice placed by a geometry stage's
   `gl_Layer`, and one loading the volume it writes is refused.
@@ -1445,8 +1445,7 @@ chunks.draw(rocks.pipeline(CgInstanceKind.OBJECT), bindings, rock).objects(visib
       .indirect(visibleCount, 0, CgIndirect.INSTANCES, 1);
 
 // An image: written by a kernel, sampled by the material's first sampler in a pass recorded after it
-CgFrameBufferFormat rgba8 = CgFrameBufferFormat.builder("heat").color(0, CgTextureType.RGBA8).build();
-CgGraphTexture heat = CgGraphTexture.transientTexture("heat", new CgTextureDesc(256, 256, rgba8));
+CgGraphTexture heat = CgGraphTexture.transientTexture("heat", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
 CgComputePass shade = rec.compute("heat");
 shade.dispatch(heatKernel, 256, 256, 1).image("HEAT", heat);
 shade.end();
@@ -1482,8 +1481,8 @@ CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDI
 - **Rows with their count** (`CgGpuOps.readRows`): the sink gets the count as the GPU wrote it, which may pass the
   capacity, and at most the capacity's rows (`rows.limit()` is their bytes). The capacity's rows are copied whatever
   the count, so size the capacity to the stream.
-- Outside a graph, `CgReadback.buffer(glBuffer, offset, size, sink)` and `CgReadback.pixels(fbo, x, y, w, h, type,
-  sink)` do the same on GL names.
+- Outside a graph, `CgReadback.buffer(buffer, offset, size, sink)` and `CgReadback.texture(texture, level, x, y, w,
+  h, sink)` do the same on a buffer or a texture of yours.
 
 ### Beside the drawing: `async()`
 

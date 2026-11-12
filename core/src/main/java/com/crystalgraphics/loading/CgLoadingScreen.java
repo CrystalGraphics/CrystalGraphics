@@ -1,5 +1,9 @@
 package com.crystalgraphics.loading;
 
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import java.util.ArrayList;
@@ -19,11 +23,9 @@ import org.apache.logging.log4j.Logger;
 
 import org.joml.Matrix4f;
 
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gpu.resource.CgTextureType;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.compute.CgCompute;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.gpu.resource.CgTextureAbstract;
 import com.crystalgraphics.loading.task.CgLoadPlan;
@@ -156,9 +158,10 @@ public final class CgLoadingScreen {
     private static final float WARM_FOV = (float) Math.toRadians(70), WARM_NEAR = 0.05f, WARM_FAR = 512f;
     private static final Matrix4f WARM_VIEW = new Matrix4f(),
             WARM_PROJECTION = new Matrix4f().perspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR);
-    private static CgFrameBuffer warmTarget;
+    private static CgTexture2D warmColour, warmDepth;
+    private static CgExternalTarget warmTarget;
     /** The host world's depth format, as {@link #hostWorld} described it; its convention is the lifecycle's. */
-    private static CgTextureType worldDepth = CgTextureType.DEPTH24_STENCIL8;
+    private static CgFormat worldDepth = CgFormat.DEPTH24_PLUS_STENCIL8;
 
     private CgLoadingScreen() {
     }
@@ -505,13 +508,14 @@ public final class CgLoadingScreen {
      */
     private static void warmFrame() {
         if (warmTarget == null) {
-            warmTarget = CgFrameBuffer.create("cg_loading_world", WARM_SIZE, WARM_SIZE, CgFrameBufferFormat
-                    .builder("cg_loading_world").color(0, CgTextureType.RGBA8).depth(worldDepth).build());
+            warmColour = CgTextures.of("cg_loading_world", CgTextureDesc.of(WARM_SIZE, WARM_SIZE, CgFormat.RGBA8_UNORM));
+            warmDepth = CgTextures.of("cg_loading_world.depth", CgTextureDesc.of(WARM_SIZE, WARM_SIZE, worldDepth));
+            warmTarget = CgTextures.target("cg_loading_world", warmColour, warmDepth);
         }
-        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget.external())) {
+        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
             CgGraphicsLifecycle.inWorldDepth(() -> {
                 for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget.external()).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                     stage.fire();
                 }
                 return true;
@@ -527,10 +531,10 @@ public final class CgLoadingScreen {
      * first {@link #draw}; GL's standard depth into {@code DEPTH24_STENCIL8} otherwise. Render thread.
      *
      * <pre>{@code
-     * CgLoadingScreen.hostWorld(CgTextureType.DEPTH32F, true, true);   // Minecraft 26.2: reversed, 0..1, D32_FLOAT
+     * CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true, true);   // Minecraft 26.2: reversed, 0..1, D32_FLOAT
      * }</pre>
      */
-    public static void hostWorld(CgTextureType depth, boolean reversed, boolean zeroToOne) {
+    public static void hostWorld(CgFormat depth, boolean reversed, boolean zeroToOne) {
         if (depth == worldDepth && reversed == CgGraphicsLifecycle.worldDepthReversed()
                 && (reversed && zeroToOne) == CgGraphicsLifecycle.worldDepthZeroToOne()) return;
         worldDepth = depth;
@@ -540,7 +544,9 @@ public final class CgLoadingScreen {
         if (reversed) WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_FAR, WARM_NEAR, zeroToOne);
         else WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR, zeroToOne);
         if (warmTarget != null) {
-            warmTarget.delete();
+            warmColour.release();
+            warmDepth.release();
+            warmColour = warmDepth = null;
             warmTarget = null;
         }
     }

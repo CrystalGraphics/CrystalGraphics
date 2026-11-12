@@ -123,7 +123,7 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
   a raster pass into a volume and a copy of one throw.
 - One colour level. Its format decides the filter: linear, nearest for an integer format, clamped.
   A volume of the caller's own, with its sampling and mip levels, is imported: `CgGraphTexture.imported(name,
-  CgFrameBuffer.createVolume(name, texture3d).external())`, each level a kernel's `image(name, volume, level, -1)`
+  CgTextures.target(name, volume, null))`, each level a kernel's `image(name, volume, level, -1)`
   (`CgNoiseVolumes` bakes its chains so).
 - Below compute an `image` kernel writes a volume in one draw, an instance a slice; one that loads the volume it writes is refused
   there, as for any image other than 2D. The CPU tier reads a volume whole and writes it whole.

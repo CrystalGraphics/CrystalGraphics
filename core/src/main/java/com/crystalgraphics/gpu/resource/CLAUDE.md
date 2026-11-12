@@ -15,7 +15,7 @@ via the singleton `CgTextureManager`.
 |------|------|
 | `CgTextureManager.java` | Singleton cache + reload + fallback. See below. |
 | `CgTextureAbstract.java` | Shared base: id, `Texels`, dimensions, its own `sampler()` and `setSampler` (refused once shared), bind, delete, `checkUsable`, and the load at first use (below). |
-| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, settings])` (cached, loaded at first use), `missing()` (the checkerboard), `create(name, desc)` (empty, of the description's levels, written by a kernel, a pass or `write` rather than generated); `storage(...)` is `CgFrameBuffer`'s. Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, its settings the sampling. |
+| `CgTexture2D.java` | Single 2D texture (`GL_TEXTURE_2D`). `create(path[, settings])` (cached, loaded at first use), `missing()` (the checkerboard), `create(name, desc)` (empty, of the description's levels, written by a kernel, a pass or `write` rather than generated). Two `upload()` overloads, and `uploadRegion` for a region of one level (what `CgRecording.update` writes a graph texture with). `bindLevel(unit, level)` binds a view of one level. A path ending in `.hdr` is a Radiance image (`util/io/CgRadianceHdr`), uploaded as half floats. A path ending in `.cgtex` is a cooked texture (`util/io/CgCookedTexture`): its levels land from one lease, as BC7 blocks where `CgCapabilities.bc7()` holds, else decoded by `CgBc7` to RGBA8 on the loading thread; the file decides format and levels, its settings the sampling. |
 | `CgTexture2DArray.java` | 2D-array texture (`GL_TEXTURE_2D_ARRAY`). `create(paths...)` (cached, loaded at first use, images of different sizes centred); `create(name, desc)` for incremental uploads, `growLayers` (new storage, the old layers copied on the GPU). |
 | `CgTextureAbstract.java` | The shared base. Owns the texture's `CgDeferral` (`gpu/`): all its device work goes through it, so `CgTexture2D`, `CgTexture2DArray`, `CgTexture3D` and `CgTextureCubemap` are made, filled, grown and deleted from any thread, their work waiting for the render thread where the device may not be driven. `getId`/`bind` run what is queued first; an id is 0 until then off the render thread. Pixels for waiting work are copied once into a `CgUploadLease` by the thread that passed them (`gpu/CgUploads`), and land with no copy on the render thread; `CgTexture2D.uploadRegion` and `CgTexture3D.uploadRegion` also take a lease its producer wrote. |
 | `CgTexture3D.java` | 3D texture (`GL_TEXTURE_3D`). `create(paths...)` (cached, loaded at first use); `create(name, desc)` through its `CgDeferral`, any thread, `uploadRegion` for a box of one level and `generateMipmaps()` from level 0: a volume a kernel, a bake or an upload fills, and a frame-graph volume's storage. |
@@ -132,63 +132,16 @@ Also loaded with this folder:
 
 @../../../../../../../../docs/ENGINE_API.md
 
-## Framebuffers
+## Targets
 
-> Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
+There are no framebuffers. A pass draws into a `CgExternalTarget`: textures of yours (`CgTextures.target(name, colour,
+depth)`), or a host's framebuffer named once (`CgExternalTarget.host(fbo, w, h)`, 0 the window's). An execution takes
+one as its current target through `CgExecutor.into(target)`; a graph imports one with `CgGraphTexture.imported`.
 
-A `CgFrameBuffer` is a set of device textures a pass draws into: colour slots and a depth, as a
-`CgFrameBufferFormat` lays them out. There is no GL framebuffer object behind an owned one. Nothing binds it: an
-execution takes it as its current target through `CgExecutor.into(target)`, and a graph pass attaches its textures.
-
-### Names
-
-Every framebuffer has an `int` name (`getId()`), what the frame graph, readbacks and a host frame's
-`mainFramebuffer` key by:
-
-- **Owned**: a name the engine gives it, from `0x40000000` up, above any a GL driver hands out.
-  `CgFrameBuffer.owned(id)` finds it until deleted.
-- **Wrapped** (`wrap(name, fbo, w, h)`): a host's framebuffer, its attachments imported (`CgHostImports`);
-  framebuffer 0 is the window's. Owns nothing; `delete()` does nothing.
-
-`CgFrameBuffer.attachment(fbo, depth, w, h)` answers a texture view for either kind: an owned one's own, else the
-import. Use it, never `CgHostImports.attachment`, wherever a name may be ours.
-
-### What it does
-
-| Concern | |
-|---|---|
-| `create` (registry, by name and format), `createOwned`, `createOnDevice` (with `Images` placing each slot: the graph's transients), `createVolume` (a `CgTexture3D`, nothing draws into it; or around one the caller made, its sampling and levels kept), `createArray` (a `CgTexture2DArray`) | factories |
-| `rhiColor(slot)`, `rhiDepth()` — the device textures a pass attaches | attachments |
-| `getColorTexture(slot)`, `getDepthTexture()` — the sampleable textures; null for an attach-only slot | attachments |
-| A renderbuffer or multisampled slot is an attach-only device texture: a pass attaches it, nothing samples it | attachments |
-| `clear*` — a render pass of its own with clear loads; depth in GL's convention, mirrored for a reversed host | device |
-| `readColor` (RGBA8), `readTexture`/`readTextureFloats` (static, any texture as RGBA8 / RGBA32F) — read now, waiting for the GPU, rows bottom first | device |
-| `copyColorTo(fbo)`, `copyColorAndDepthTo(fbo)` — a blit into another framebuffer at the same size: a main target into the window | device |
-| `depthTypeOf(fbo, w, h)` — a framebuffer's depth type, from its attachment's format | names |
-| `resize`, `delete` — remake or release its textures; the name stays until deleted | lifecycle |
-
-### Registry
-
-```java
-CgFrameBuffer fbo = CgFrameBuffer.create("shadow_map", 1024, 1024, SHADOW_FORMAT);   // cached by name and format
-CgFrameBuffer hdr = CgFrameBuffer.createScreenSized("hdr_buffer", HDR_FORMAT);       // resized in place
-CgGraphicsLifecycle.onResize(newWidth, newHeight);
-```
-
-`CgFrameBufferRegistry` holds what `create` and `createScreenSized` made; `deleteAll()` at shutdown. A
-`createOwned` framebuffer is the caller's to resize and delete.
-
-### Reading a framebuffer back without a stall — `CgPixelReadback`
-
-```java
-CgPixelReadback readback = new CgPixelReadback(3);
-readback.request(fbo.getId(), fbo.getWidth(), fbo.getHeight(), 256, tag);   // shrink on the device, queue the read
-readback.poll(pixels -> use(pixels.tag(), pixels.rgb()));                     // every frame; never waits
-```
-
-`readColor` waits for the GPU to finish everything before it. This halves the source with linear blits, then reads it
-back through `CgReadback` (`gpu/resource`), landing a frame or two later. Copy the landed bytes out in ONE bulk `get`: a
-get per byte from the mapped buffer measured 2-3 ms for a 256x144 picture.
+- A target is the textures' storage as it is now: make it again after a texture is remade (a resize).
+- Outside a graph, `CgImmediate.clear(target, ...)` and `CgImmediate.copy(from, to, depth)` are a render pass and a
+  blit of their own; in one, a pass's `CgLoad` and `rec.copy`.
+- A texture is read back by itself: `CgReadback.texture`, `rec.readback`, or `CgReadback.now` waiting for the GPU.
 
 ---
 
@@ -309,7 +262,7 @@ CgQuadIndexBuffer (global singleton)
 | `FrameRingStreamBuffer.java` | The two ring tiers, persistent and mapped. |
 | `RetainedStreamBuffer.java` | Shader-buffer storage: staged in the ring, copied in at offset 0. |
 | `CgQuadIndexBuffer.java` | Global shared quad IBO. Pattern `[0,1,2,2,3,0,...]`. Max 16384 quads. Doubling growth. |
-| `CgReadback.java` | A buffer range, a framebuffer region or a 3D texture's box (`slices`, each slice attached in turn to one framebuffer bound for reading) read back without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown |
+| `CgReadback.java` | A buffer range, a texture's region (`texture(texture, level, x, y, w, h, sink)`) or a 3D texture's box read back without a stall; `now(view, ...)` reads one waiting for the GPU, for a check or a capture. Without a stall: copied on the GPU into pooled staging, handed to a sink from `poll()` in `tickFrame` once `CgFrameRing` has retired the frame it was issued in (its own fence is queried only where the host has ended no frame: a query of a young fence waits for a threaded driver to drain). On the `PERSISTENT` tier the staging is mapped once, coherent, and read with no GL call; below it each delivery maps it, which on a threaded driver waits for the queue to drain. What `CgRecording.readback` and `CgPixelReadback` use. In-flight reads are dropped at teardown |
 | `CgBufferReadback.java` | A buffer's words read now, a stall: for a count a draw needs this frame (G33) and the CPU tier's copies |
 
 ---

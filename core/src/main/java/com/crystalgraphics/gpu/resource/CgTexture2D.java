@@ -4,7 +4,6 @@ import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -27,8 +26,6 @@ import javax.annotation.Nullable;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.EnumSet;
-import java.util.Set;
 import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -189,55 +186,6 @@ public final class CgTexture2D extends CgTextureAbstract {
         return new CgTexture2D(CgDeviceNames.name(texture), desc.width(), desc.height());
     }
 
-    /**
-     * An empty texture made on the installed device ({@code CgRHI}), known by the name {@link CgDeviceNames} gives
-     * it: what the frame graph makes its attachments as. Render thread.
-     *
-     * <pre>{@code
-     * colour = CgTexture2D.onDevice("bloom", w, h, Texels.made(CgFormat.RGBA16_FLOAT, levels), levels);
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Its storage is immutable: uploads and resizes throw, as on a wrapped texture.</li>
-     *   <li>{@link #delete} releases it through the device, once the frames reading it retire.</li>
-     * </ul>
-     */
-    static CgTexture2D onDevice(String label, int width, int height, Texels spec, int levels) {
-        return onDevice(CgRHI.get().createTexture(deviceDesc(label, width, height, spec, levels)), spec);
-    }
-
-    /**
-     * What {@link #onDevice(String, int, int, Texels, int)} makes: a 2D texture of {@code spec}'s format,
-     * sampled, copied, an attachment, and a storage image where the device can make the format one.
-     */
-    static CgGpuTexture.Desc deviceDesc(String label, int width, int height, Texels spec, int levels) {
-        CgFormat format = GLFormats.of(spec.getGlInternalFormat());
-        Set<CgGpuTexture.Usage> usage = format.hasDepth()
-                ? EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED, CgGpuTexture.Usage.COPY_SRC,
-                        CgGpuTexture.Usage.COPY_DST)
-                : CgRHI.get().supports(format, CgGpuTexture.Usage.STORAGE) ? CgGpuTexture.Usage.ALL
-                : EnumSet.complementOf(EnumSet.of(CgGpuTexture.Usage.STORAGE));
-        return new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, format, width, height, 1, levels, 1, usage);
-    }
-
-    /**
-     * {@code image}, a texture {@link #deviceDesc} describes, made by the caller: as {@code onDevice}'s, which
-     * {@link #delete} releases. The frame graph's placed transients.
-     *
-     * <pre>{@code
-     * CgGpuTexture image = memory.place(heap, offset, CgTexture2D.deviceDesc("bloom", w, h, spec, 1));
-     * CgTexture2D bloom = CgTexture2D.onDevice(image, spec);
-     * }</pre>
-     */
-    static CgTexture2D onDevice(CgGpuTexture image, Texels spec) {
-        CgGpuTexture.Desc desc = image.desc();
-        int width = desc.width(), height = desc.height(), levels = desc.mips();
-        CgTexture2D tex = new CgTexture2D(CgDeviceNames.name(image), width, height, spec, false);
-        tex.levels = levels;
-        tex.image = image;
-        return tex;
-    }
-
     @Override
     protected int mips() {
         return getLevels();
@@ -302,11 +250,6 @@ public final class CgTexture2D extends CgTextureAbstract {
     public CgTexture2D sampler(CgSampler sampler) {
         setSampler(sampler);
         return this;
-    }
-
-    /** {@link CgFrameBuffer}'s attachment storage, of its own {@code Texels}. */
-    static CgTexture2D storage(int width, int height, Texels spec, int levels) {
-        return doCreate(width, height, null, spec.getGlBaseFormat(), spec.getGlType(), spec, null, levels);
     }
 
     // ── Upload ────────────────────────────────────────────────────────

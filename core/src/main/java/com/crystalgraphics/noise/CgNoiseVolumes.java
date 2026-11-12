@@ -4,7 +4,6 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import com.crystalgraphics.gpu.resource.CgEngineTextures;
 import com.crystalgraphics.gpu.resource.CgTexture3D;
 import com.crystalgraphics.loading.task.CgLoadPlan;
@@ -84,8 +83,8 @@ public final class CgNoiseVolumes {
     /** Repeating, and read across a chain where it has one. */
     private static final CgSampler SAMPLER = CgSampler.TRILINEAR_WRAP;
 
-    /** Each volume's storage, owning it: what a kernel binds. */
-    private static final CgFrameBuffer[] STORAGE = new CgFrameBuffer[NAMES.length];
+    /** Each volume, made at install: what a kernel writes, answered by its name once baked. */
+    private static final CgTexture3D[] MADE = new CgTexture3D[NAMES.length];
     /** Each volume once baked; until then its name answers {@link #pending} or {@link #pendingWavelet}. */
     private static final CgTexture3D[] VOLUMES = new CgTexture3D[NAMES.length];
     /** One zero texel each, answering a name until the bake lands, so no sampler3D is left unbound. */
@@ -107,15 +106,15 @@ public final class CgNoiseVolumes {
 
     /** Makes the volumes for the current context and starts their bake. Render thread. */
     public static void install() {
-        if (STORAGE[0] != null) return;
+        if (MADE[0] != null) return;
         pending = zero("crystalgraphics.noise.pending", CgFormat.RGBA16_FLOAT, 8, GLC.GL_RGBA);
         pendingWavelet = zero("crystalgraphics.noise.pendingWavelet", CgFormat.R16_FLOAT, 2, GLC.GL_RED);
         for (int i = 0; i < RGBA; i++) {
-            STORAGE[i] = CgFrameBuffer.createVolume(NAMES[i], CgTextures.volume(NAMES[i],
-                    CgTextureDesc.volume(SIZE, SIZE, SIZE, CgFormat.RGBA16_FLOAT).withMips()).sampler(SAMPLER));
+            MADE[i] = CgTextures.volume(NAMES[i], CgTextureDesc.volume(SIZE, SIZE, SIZE, CgFormat.RGBA16_FLOAT).withMips())
+                    .sampler(SAMPLER);
         }
-        STORAGE[WAVELET_AT] = CgFrameBuffer.createVolume(WAVELET, CgTextures.volume(WAVELET,
-                CgTextureDesc.volume(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, CgFormat.R16_FLOAT)).sampler(SAMPLER));
+        MADE[WAVELET_AT] = CgTextures.volume(WAVELET,
+                CgTextureDesc.volume(WAVELET_TILE, WAVELET_TILE, WAVELET_TILE, CgFormat.R16_FLOAT)).sampler(SAMPLER);
         int expected = generation;
         CgLoadPlan.get().task("crystalgraphics:noise").render(task -> generation != expected || bake(task)).start();
     }
@@ -124,8 +123,8 @@ public final class CgNoiseVolumes {
     public static void release() {
         generation++;
         for (int i = 0; i < NAMES.length; i++) {
-            if (STORAGE[i] != null) STORAGE[i].delete();
-            STORAGE[i] = null;
+            if (MADE[i] != null) MADE[i].release();
+            MADE[i] = null;
             VOLUMES[i] = null;
         }
         if (pending != null) pending.delete();
@@ -146,12 +145,12 @@ public final class CgNoiseVolumes {
             }
         }
         CgGraphTexture[] volumes = new CgGraphTexture[NAMES.length];
-        for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], STORAGE[i].external());
+        for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], CgTextures.target(NAMES[i], MADE[i], null));
         try (CgImmediate.Compute run = CgImmediate.compute("crystalgraphics.noiseBake")) {
             rgba(run, volumes);
             wavelet(run, volumes[WAVELET_AT]);
         }
-        for (int i = 0; i < NAMES.length; i++) VOLUMES[i] = (CgTexture3D) STORAGE[i].getColorTexture(0);
+        System.arraycopy(MADE, 0, VOLUMES, 0, NAMES.length);
         return true;
     }
 

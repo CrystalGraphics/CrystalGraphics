@@ -42,7 +42,6 @@ import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.material.CgMaterialShader;
-import com.crystalgraphics.gpu.resource.CgFrameBufferRegistry;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
@@ -473,7 +472,6 @@ public final class CgGraphicsLifecycle {
 
     private static void resizeTargets(int width, int height) {
         CgExecutor.forgetHostTargets();
-        CgFrameBufferRegistry.get().onResize(width, height);
 
         currentWidth = width;
         currentHeight = height;
@@ -691,7 +689,6 @@ public final class CgGraphicsLifecycle {
         CgExecutor.destroyAll();
 
         // Step 9: All owned framebuffers — must be first.
-        CgFrameBufferRegistry.get().deleteAll();
 
         // Upload staging, once every texture above has given back its queued leases.
         CgUploads.releaseAll();

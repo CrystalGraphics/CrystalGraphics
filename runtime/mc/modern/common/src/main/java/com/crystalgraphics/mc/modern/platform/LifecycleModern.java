@@ -10,7 +10,7 @@ import com.crystalgraphics.mc.modern.platform.world.WorldEventsModern;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
-import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.platform.CgPlatform;
@@ -248,7 +248,7 @@ public final class LifecycleModern {
         // The world frame it fires draws as the world will: 26.2's reversed 0..1 depth into D32_FLOAT, so a Vulkan
         // pipeline it builds is the world's
         //? if >=26.2 {
-        /*CgLoadingScreen.hostWorld(CgTextureType.DEPTH32F, true,
+        /*CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true,
                 RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
         *///?}
         CgDeviceSection.begin();

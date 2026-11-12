@@ -7,6 +7,11 @@ import com.crystalgraphics.gpu.resource.CgTextureCubemap;
 import com.crystalgraphics.gpu.resource.CgTextureSettings;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
+import com.crystalgraphics.gpu.resource.CgTextureAbstract;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
+
+import javax.annotation.Nullable;
 import java.util.Locale;
 
 /**
@@ -242,6 +247,37 @@ public final class CgTextures {
      */
     public static CgTextureCubemap cube(String name, CgTextureDesc desc) {
         return CgTextureCubemap.create(name, desc);
+    }
+
+    /**
+     * Textures of yours as a target a pass draws into, or a graph imports: a colour, a depth, or both of one size. Render
+     * thread, outside a recording: what is queued on them lands first.
+     *
+     * <pre>{@code
+     * CgTexture2D colour = CgTextures.of("mymod.view", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
+     * CgTexture2D depth = CgTextures.of("mymod.view.depth", CgTextureDesc.of(w, h, CgFormat.DEPTH32_FLOAT));
+     * CgExternalTarget view = CgTextures.target("mymod.view", colour, depth);
+     * try (CgExecutor.Into ignored = CgExecutor.into(view)) { stage.fire(); }
+     * CgGraphTexture picture = CgGraphTexture.imported("picture", CgTextures.target("picture", colour, null));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Make it once and keep it: a target is the textures' storage as it is now, so make it again after a texture
+     *       is remade (a resize).</li>
+     * </ul>
+     */
+    public static CgExternalTarget target(String name, @Nullable CgTexture colour, @Nullable CgTexture depth) {
+        return CgExternalTarget.of(name, storage(colour), storage(depth));
+    }
+
+    @Nullable
+    private static CgGpuTexture storage(@Nullable CgTexture texture) {
+        if (texture == null) return null;
+        CgTextureAbstract own = (CgTextureAbstract) texture;
+        own.getId();   // lands what is queued
+        CgGpuTexture storage = own.rhiTexture();
+        if (storage == null) throw new IllegalStateException(texture + " has no storage yet");
+        return storage;
     }
 
     private static String[] numbered(String pattern, int count) {

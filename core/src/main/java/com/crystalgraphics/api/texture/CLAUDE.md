@@ -4,8 +4,8 @@
 
 ## What This Package Is
 
-Public, backend-agnostic API for textures: the interface, the one-call front door, how a binding samples, and the
-format enum frame buffers still describe slots with. The concrete 2D / 2D-array / 3D / cubemap classes live in
+Public, backend-agnostic API for textures: the interface, the one-call front door, and how a binding samples. A format is
+a `CgFormat`; the GL triple behind one (`CgTextureType`) is `gpu/resource`'s. The concrete 2D / 2D-array / 3D / cubemap classes live in
 `gpu/resource/` and implement `CgTexture` directly; a file's settings are `gpu/resource/CgTextureSettings`.
 
 ## Type Map
@@ -15,7 +15,6 @@ format enum frame buffers still describe slots with. The concrete 2D / 2D-array 
 | `CgTexture` | The single common interface: `getWidth()/getHeight()`, `sampler()` (its own sampling, where a binding names none), `delete()`, `isDeleted()`, `isMissing()` (its files would not load). A texture from files loads at its first use: `gpu/resource/CLAUDE.md`. |
 | `CgTextures` | The front door. From files: `of(path)` 2D, `frames(pattern, count)` / `frames(paths...)` 2D array, `volume(pattern, count)` / `volume(paths...)` 3D, `cube(path)` six faces stacked `w x 6w`, `cube(six paths)`. Made: `create(name, CgTextureDesc)`. A `.hdr`/`.exr` path loads as RGBA16F. |
 | `CgSampler` | How a texture is sampled: `Filter` (`NEAREST`, `BILINEAR`, `TRILINEAR`), `Address` per axis (`WRAP`, `CLAMP`, `MIRROR`, `BORDER`), `compare` (`CgCompare`, a shadow map's), `anisotropy(n)`. A value; `builder()`, presets (`BILINEAR_CLAMP`, `TRILINEAR_WRAP`, `NEAREST_BORDER`, `SHADOW`, ...). The device's sampler objects are `render/draw/CgDeviceSamplers`'. |
-| `CgTextureType` | Typed enum of GL format constants, the (internalFormat, baseFormat, type) triple; `format()` is its `CgFormat`. Left for `CgFrameBufferFormat`'s slots until frame buffers go (R2e). New code names a `CgFormat`. |
 
 ## Sampling: three places, one winner
 

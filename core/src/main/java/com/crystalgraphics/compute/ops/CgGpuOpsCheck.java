@@ -1,5 +1,8 @@
 package com.crystalgraphics.compute.ops;
 
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.gpu.resource.CgTexelConvert;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -7,9 +10,8 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.compute.CgComputeSelfTest;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gpu.resource.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgReplayedReads;
 import com.crystalgraphics.compute.ops.CgGpuOps.Element;
@@ -17,7 +19,6 @@ import com.crystalgraphics.compute.ops.CgGpuOps.Filter;
 import com.crystalgraphics.compute.ops.CgGpuOps.Fold;
 import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.compute.CgCheckBuffers;
 import com.crystalgraphics.render.CgImmediate;
@@ -396,8 +397,8 @@ public final class CgGpuOpsCheck {
         final int w, h, channels;
         /** One rounding to the format, at a value of 1: a texel may differ by it per write. */
         final double ulp;
-        final CgFrameBuffer[] chains = new CgFrameBuffer[Filter.values().length];
-        final CgFrameBuffer blurSource, blurTarget, levelBlur, regionTarget, scaledTarget, shrinkTarget, meanTarget;
+        final CgTexture2D[] chains = new CgTexture2D[Filter.values().length];
+        final CgTexture2D blurSource, blurTarget, levelBlur, regionTarget, scaledTarget, shrinkTarget, meanTarget;
         /** The region the region and scaled blurs read, and where the region blur lands. */
         final int rx, ry, rw, rh, tx, ty;
         /** A shrink's fractional source box, and the rect it lands in at the corner of {@link #shrinkTarget}. */
@@ -413,8 +414,7 @@ public final class CgGpuOpsCheck {
             name = type + " " + w + "x" + h;
             channels = type == CgTextureType.R16F || type == CgTextureType.R32F ? 1 : 4;
             ulp = type == CgTextureType.RGBA8 ? 1.0 / 255 : type == CgTextureType.R32F ? 1e-5 : 1.0 / 1024;
-            CgFrameBufferFormat format = CgFrameBufferFormat.builder("cg_ops_check_" + type.name().toLowerCase())
-                    .color(0, type).build();
+            CgFormat format = type.format();
             float[] data = new float[w * h * 4];
             for (int i = 0; i < data.length; i++) {
                 float unit = (CgRng.rng(w * 131 + h, i, 2, type.ordinal()) >>> 8) / (float) (1 << 24);
@@ -443,13 +443,14 @@ public final class CgGpuOpsCheck {
             meanTarget = texture(format, 1, data, 1, 1);
         }
 
-        CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data) {
+        CgTexture2D texture(CgFormat format, int levels, float[] data) {
             return texture(format, levels, data, w, h);
         }
 
-        CgFrameBuffer texture(CgFrameBufferFormat format, int levels, float[] data, int width, int height) {
-            CgFrameBuffer fb = CgFrameBuffer.createOwned("ops-check " + name, width, height, format, levels);
-            CgGpuTexture image = fb.rhiColor(0);
+        CgTexture2D texture(CgFormat format, int levels, float[] data, int width, int height) {
+            CgTexture2D fb = CgTextures.of("ops-check " + name, new CgTextureDesc(width, height, format, levels));
+            fb.getId();
+            CgGpuTexture image = fb.rhiTexture();
             ByteBuffer pixels = CgTexelConvert.fromRgba32f(data, image.desc().format(), width * height);
             CgDeviceSection.begin();
             try {
@@ -462,29 +463,29 @@ public final class CgGpuOpsCheck {
 
         void record(CgComputePass pass) {
             for (Filter filter : Filter.values()) {
-                CgGpuOps.downsample(pass, CgGraphTexture.imported("chain", chains[filter.ordinal()].external()), filter);
+                CgGpuOps.downsample(pass, CgGraphTexture.imported("chain", CgTextures.target("chain", chains[filter.ordinal()], null)), filter);
             }
-            CgGpuOps.blur(pass, CgGraphTexture.imported("blur source", blurSource.external()),
-                    CgGraphTexture.imported("blur target", blurTarget.external()), SIGMA);
-            CgGraphTexture level = CgGraphTexture.imported("level blur", levelBlur.external());
+            CgGpuOps.blur(pass, CgGraphTexture.imported("blur source", CgTextures.target("blur source", blurSource, null)),
+                    CgGraphTexture.imported("blur target", CgTextures.target("blur target", blurTarget, null)), SIGMA);
+            CgGraphTexture level = CgGraphTexture.imported("level blur", CgTextures.target("level blur", levelBlur, null));
             CgGpuOps.downsample(pass, level, 0, 1, Filter.AVERAGE);
             CgGpuOps.blur(pass, level, 1, level, 1, LEVEL_SIGMA);
-            CgGraphTexture source = CgGraphTexture.imported("blur source", blurSource.external());
-            CgGpuOps.blur(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("region target", regionTarget.external()), tx, ty,
+            CgGraphTexture source = CgGraphTexture.imported("blur source", CgTextures.target("blur source", blurSource, null));
+            CgGpuOps.blur(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("region target", CgTextures.target("region target", regionTarget, null)), tx, ty,
                     SIGMA, LEVEL_SIGMA, CgGpuOps.Edge.MIRROR);
-            CgGpuOps.blurScaled(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("scaled target", scaledTarget.external()),
+            CgGpuOps.blurScaled(pass, source, rx, ry, rw, rh, CgGraphTexture.imported("scaled target", CgTextures.target("scaled target", scaledTarget, null)),
                     SCALED_SIGMA, CgGpuOps.Edge.MIRROR);
-            CgGpuOps.shrink(pass, source, shx, shy, shw, shh, CgGraphTexture.imported("shrink target", shrinkTarget.external()),
+            CgGpuOps.shrink(pass, source, shx, shy, shw, shh, CgGraphTexture.imported("shrink target", CgTextures.target("shrink target", shrinkTarget, null)),
                     1, 1, stw, sth);
-            CgGpuOps.shrink(pass, source, 0, 0, w, h, CgGraphTexture.imported("mean target", meanTarget.external()), 0, 0, 1, 1);
+            CgGpuOps.shrink(pass, source, 0, 0, w, h, CgGraphTexture.imported("mean target", CgTextures.target("mean target", meanTarget, null)), 0, 0, 1, 1);
         }
 
         void expect(List<String> failures, CgReplayedReads reads) {
             this.reads = reads;
             for (Filter filter : Filter.values()) {
-                CgFrameBuffer chain = chains[filter.ordinal()];
+                CgTexture2D chain = chains[filter.ordinal()];
                 float[] above = read(chain, 0);
-                for (int l = 1; l < chain.getColorLevels(); l++) {
+                for (int l = 1; l < chain.getLevels(); l++) {
                     float[] made = read(chain, l);
                     compare(failures, filter + " level " + l, made, downsample(above, l - 1, filter), l, 1);
                     above = made;
@@ -669,13 +670,13 @@ public final class CgGpuOpsCheck {
         }
 
         /** Level {@code level} of the colour, as RGBA floats. */
-        float[] read(CgFrameBuffer fb, int level) {
+        float[] read(CgTexture2D fb, int level) {
             return reads.rgba(level(fb, level), size(w, level), size(h, level), type);
         }
 
         /** Level {@code level} of {@code fb}'s colour, as a read takes it. */
-        CgTextureView level(CgFrameBuffer fb, int level) {
-            return CgTextureView.attachment(fb.rhiColor(0), level, 0);
+        CgTextureView level(CgTexture2D fb, int level) {
+            return CgTextureView.attachment(fb.rhiTexture(), level, 0);
         }
 
         static int size(int size, int level) {
@@ -683,14 +684,14 @@ public final class CgGpuOpsCheck {
         }
 
         void delete() {
-            for (CgFrameBuffer chain : chains) chain.delete();
-            blurSource.delete();
-            blurTarget.delete();
-            levelBlur.delete();
-            regionTarget.delete();
-            scaledTarget.delete();
-            shrinkTarget.delete();
-            meanTarget.delete();
+            for (CgTexture2D chain : chains) chain.release();
+            blurSource.release();
+            blurTarget.release();
+            levelBlur.release();
+            regionTarget.release();
+            scaledTarget.release();
+            shrinkTarget.release();
+            meanTarget.release();
         }
     }
 

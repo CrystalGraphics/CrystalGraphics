@@ -140,8 +140,8 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         delete();
     }
 
-    /** {@link CgFrameBuffer}'s array storage, of one layer or more. */
-    static CgTexture2DArray allocate(int width, int height, int layers, CgFormat format) {
+    /** {@link #create(String, CgTextureDesc)}'s storage, of one layer or more. */
+    private static CgTexture2DArray allocate(int width, int height, int layers, CgFormat format) {
         Texels spec = Texels.made(format, 1);
         if (width <= 0 || height <= 0)
             throw new IllegalArgumentException("width/height must be positive, got: " + width + "x" + height);

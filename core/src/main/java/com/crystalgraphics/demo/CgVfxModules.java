@@ -1,5 +1,8 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -7,12 +10,9 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.mesh.CgProceduralMesh;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
@@ -108,8 +108,6 @@ public final class CgVfxModules {
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
     private static final String SHEET_KERNELS = "crystalgraphics:shaders/demo/vfx_modules_sheets.compute";
-    private static final CgFrameBufferFormat SHEET_FORMAT =
-            CgFrameBufferFormat.builder("vfx-modules sheet").color(0, CgTextureType.RGBA8).build();
     /** The station grid: columns along x, rows along z, toward the camera. */
     private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f, 45f, 63f, 81f};
 
@@ -2589,7 +2587,7 @@ public final class CgVfxModules {
     }
 
     /** A flipbook sheet or stamp, and the kernel of {@code vfx_modules_sheets.compute} that fills it. */
-    private record Sheet(CgFrameBuffer storage, CgKernel kernel, int columns, int cell) {
+    private record Sheet(CgTexture2D storage, CgKernel kernel, int columns, int cell) {
     }
 
     /**
@@ -2597,11 +2595,12 @@ public final class CgVfxModules {
      * texels written by {@code kernel} at the first {@link #submit} once it is built. Its program starts compiling here.
      */
     private CgTexture2D sheet(String kernel, int columns, int rows, int cell) {
-        CgFrameBuffer storage = CgFrameBuffer.createOwned("vfx-modules " + kernel, columns * cell, rows * cell, SHEET_FORMAT);
+        CgTexture2D storage = CgTextures.of("vfx-modules " + kernel,
+                CgTextureDesc.of(columns * cell, rows * cell, CgFormat.RGBA8_UNORM));
         Sheet sheet = new Sheet(storage, CgCompute.load(SHEET_KERNELS).kernel(kernel).precache(), columns, cell);
         sheets.add(sheet);
         unbaked.add(sheet);
-        return (CgTexture2D) storage.getColorTexture(0);
+        return storage;
     }
 
     /** Whether every sheet's kernel is built: then {@link #bakeSheets} waits on nothing. */
@@ -2617,9 +2616,9 @@ public final class CgVfxModules {
         if (unbaked.isEmpty() || !sheetsReady()) return;
         try (CgImmediate.Compute run = CgImmediate.compute("demo.modules.sheets")) {
             for (Sheet sheet : unbaked) {
-                CgFrameBuffer storage = sheet.storage();
+                CgTexture2D storage = sheet.storage();
                 run.dispatch(sheet.kernel(), storage.getWidth(), storage.getHeight(), 1)
-                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", storage.external()))
+                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", CgTextures.target("vfx-modules sheet", storage, null)))
                         .set("_Columns", sheet.columns()).set("_Cell", sheet.cell());
             }
         }
@@ -2751,7 +2750,7 @@ public final class CgVfxModules {
         } else {
             vfx.clear();
         }
-        for (Sheet sheet : sheets) sheet.storage().delete();
+        for (Sheet sheet : sheets) sheet.storage().release();
         sheets.clear();
         unbaked.clear();
     }

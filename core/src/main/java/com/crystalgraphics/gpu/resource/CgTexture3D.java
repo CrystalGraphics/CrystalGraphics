@@ -139,7 +139,7 @@ public final class CgTexture3D extends CgTextureAbstract {
     }
 
 
-    /** {@link #create}'s storage, of any depth: a fallback's and {@link CgFrameBuffer}'s 1x1x1 included. */
+    /** {@link #create(String, CgTextureDesc)}'s storage, of any depth: a fallback's 1x1x1 included. */
     static CgTexture3D made(int width, int height, int depth, CgFormat format, int levels) {
         Texels spec = Texels.made(format, levels);
         if (width <= 0 || height <= 0 || depth <= 0) {

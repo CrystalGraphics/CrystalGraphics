@@ -5,21 +5,17 @@ import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
-import net.minecraft.client.renderer.OpenGlHelper;
+import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.lwjgl.opengl.ARBFramebufferObject;
-import org.lwjgl.opengl.ContextCapabilities;
-import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GLContext;
 
 /**
  * Integration test mod that verifies the CrystalGraphics GL redirect layer
- * and framebuffer abstraction are correctly working in a real GL context.
+ * and render targets of its own are correctly working in a real GL context.
  *
  * <p>On the first render tick after initialization, this mod runs a series
  * of self-check tests and then prints a PASS/FAIL summary and exits the
@@ -27,17 +23,17 @@ import org.lwjgl.opengl.GLContext;
  *
  * <h3>Tests Performed</h3>
  * <ol>
- *   <li>Single-attachment FBO creation — verifies basic framebuffer setup</li>
- *   <li>Multi-attachment FBO creation — verifies MRT framebuffers</li>
- *   <li>Packed depth-stencil path — verifies depth/stencil attachment</li>
- *   <li>Depth-only FBO — verifies depth-only shadow map style framebuffer</li>
+ *   <li>A colour and a depth texture as one target</li>
+ *   <li>Two colours and a depth: the textures a pass with two attachments draws into</li>
+ *   <li>A packed depth-stencil texture as a target's depth</li>
+ *   <li>A target of depth alone: a shadow map's</li>
  * </ol>
  *
  * <h3>Dev Environment Only</h3>
  * <p>This mod is intended for development and CI testing only.  It is not
  * included in production builds and should never be shipped to end users.</p>
  *
- * @see CgFrameBuffer
+ * @see CgTextures#target
  */
 @Mod(
     modid = "crystalgraphics_test",
@@ -102,75 +98,62 @@ public class CrystalGraphicsIntegrationTest {
 
 
     private void testSingleAttachmentFbo() {
-        CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_single")
-                .color(0, CgTextureType.RGBA8)
-                .depth(CgTextureType.DEPTH24_STENCIL8)
-                .build();
-        CgFrameBuffer fbo = CgFrameBuffer.create("test_single", 64, 64, fmt);
+        CgTexture2D colour = texture("test_single", 64, CgFormat.RGBA8_UNORM);
+        CgTexture2D depth = texture("test_single.depth", 64, CgFormat.DEPTH24_PLUS_STENCIL8);
         try {
-            CgTexture colorTex = fbo.getColorTexture(0);
-            if (colorTex == null) {
-                throw new AssertionError("Color texture at slot 0 is null");
-            }
-            if (colorTex.rhiView() == null) {
-                throw new AssertionError("Color texture at slot 0 has no device view");
-            }
-            System.out.println("[CrystalGraphics]     Single FBO ok: id=" + fbo.getId());
+            CgExternalTarget target = CgTextures.target("test_single", colour, depth);
+            if (target.color() == null || target.depth() == null) throw new AssertionError("a target without both attachments");
+            if (colour.rhiView() == null) throw new AssertionError("colour has no device view");
+            System.out.println("[CrystalGraphics]     Single target ok: " + target);
         } finally {
-            fbo.delete();
+            colour.release();
+            depth.release();
         }
     }
 
     private void testMultiAttachmentFbo() {
-        CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_mrt")
-                .color(0, CgTextureType.RGBA8)
-                .color(1, CgTextureType.RGBA8)
-                .depth(CgTextureType.DEPTH24_STENCIL8)
-                .build();
-        CgFrameBuffer fbo = CgFrameBuffer.create("test_mrt", 256, 256, fmt);
+        CgTexture2D t0 = texture("test_mrt0", 256, CgFormat.RGBA8_UNORM);
+        CgTexture2D t1 = texture("test_mrt1", 256, CgFormat.RGBA8_UNORM);
+        CgTexture2D depth = texture("test_mrt.depth", 256, CgFormat.DEPTH24_PLUS_STENCIL8);
         try {
-            CgTexture t0 = fbo.getColorTexture(0);
-            CgTexture t1 = fbo.getColorTexture(1);
-            if (t0 == null || t0.rhiView() == null) {
-                throw new AssertionError("Color slot 0 invalid");
-            }
-            if (t1 == null || t1.rhiView() == null) {
-                throw new AssertionError("Color slot 1 invalid");
-            }
-            System.out.println("[CrystalGraphics]     MRT FBO ok: id=" + fbo.getId());
+            CgExternalTarget target = CgTextures.target("test_mrt", t0, depth);
+            if (t0.rhiView() == null) throw new AssertionError("colour 0 invalid");
+            if (t1.rhiView() == null) throw new AssertionError("colour 1 invalid");
+            System.out.println("[CrystalGraphics]     MRT textures ok: " + target);
         } finally {
-            fbo.delete();
+            t0.release();
+            t1.release();
+            depth.release();
         }
     }
 
 
     private void testPackedDepthStencil() {
-        CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_ds")
-                .color(0, CgTextureType.RGBA8)
-                .depth(CgTextureType.DEPTH24_STENCIL8)
-                .build();
-        CgFrameBuffer fbo = CgFrameBuffer.create("test_ds", 64, 64, fmt);
+        CgTexture2D colour = texture("test_ds", 64, CgFormat.RGBA8_UNORM);
+        CgTexture2D depth = texture("test_ds.depth", 64, CgFormat.DEPTH24_PLUS_STENCIL8);
         try {
-            System.out.println("[CrystalGraphics]     Packed DS FBO ok: id=" + fbo.getId());
+            CgExternalTarget target = CgTextures.target("test_ds", colour, depth);
+            if (!target.depth().texture().desc().format().hasStencil()) throw new AssertionError("no stencil");
+            System.out.println("[CrystalGraphics]     Packed DS ok: " + target);
         } finally {
-            fbo.delete();
+            colour.release();
+            depth.release();
         }
     }
 
     private void testDepthOnlyFbo() {
-        CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("test_depth_only")
-                .depth(CgTextureType.DEPTH24)
-                .build();
-        CgFrameBuffer fbo = CgFrameBuffer.create("test_depth_only", 64, 64, fmt);
+        CgTexture2D depth = texture("test_depth_only", 64, CgFormat.DEPTH24_PLUS);
         try {
-            CgTexture depthTex = fbo.getDepthTexture();
-            if (depthTex == null) {
-                throw new AssertionError("Depth texture is null");
-            }
-            System.out.println("[CrystalGraphics]     Depth-only FBO ok: id=" + fbo.getId());
+            CgExternalTarget target = CgTextures.target("test_depth_only", null, depth);
+            if (target.depth() == null) throw new AssertionError("depth is null");
+            System.out.println("[CrystalGraphics]     Depth-only target ok: " + target);
         } finally {
-            fbo.delete();
+            depth.release();
         }
+    }
+
+    private static CgTexture2D texture(String name, int size, CgFormat format) {
+        return CgTextures.of(name, CgTextureDesc.of(size, size, format));
     }
 
     private void runTest(String name, Runnable test) {

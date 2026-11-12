@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferRecords;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.canvas.CgClipTable;
@@ -215,7 +215,7 @@ public final class CgRecording {
         return keep(CgGraphTexture.transientTexture(name, new CgTextureDesc(width, height, format)));
     }
 
-    /** A transient buffer of {@code bytes} for {@code usage}, kept as {@link #scratch(String, int, int, CgFrameBufferFormat)} keeps a texture. */
+    /** A transient buffer of {@code bytes} for {@code usage}, kept as {@link #scratch(String, int, int, CgFormat)} keeps a texture. */
     public CgGraphBuffer scratch(String name, long bytes, CgBufferUsage usage) {
         requireOpen();
         if (scratchUsed < scratch.size() && scratch.get(scratchUsed) instanceof CgGraphBuffer kept) {
@@ -616,7 +616,7 @@ public final class CgRecording {
                               CgReadback.Sink sink) {
         requireOpen();
         if (texture.isCurrent()) {
-            throw new IllegalArgumentException("the current target is no texture; read it with CgReadback.pixels");
+            throw new IllegalArgumentException("the current target is no texture; import it with CgTextures.target and read it with rec.readback");
         }
         region(texture, level, x, y, z, w, h, d, "a readback");
         CgRequest request = new CgRequest("readback " + texture.name());

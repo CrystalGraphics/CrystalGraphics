@@ -1,7 +1,6 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
@@ -31,15 +30,6 @@ record Texels(CgTextureType type, boolean mipmapped, CgSampler sampler) {
         CgTextureType type = CgTextureType.of(format);
         if (type == null) throw new IllegalArgumentException("no texture of " + format);
         return type;
-    }
-
-    /**
-     * A target's texture: no chain of its own, an integer type nearest and any other linear across whatever levels a
-     * pass or kernel makes.
-     */
-    static Texels target(CgTextureType type) {
-        boolean integer = type.format().numeric() == CgFormat.Numeric.INT;
-        return new Texels(type, false, integer ? CgSampler.NEAREST_CLAMP : CgSampler.TRILINEAR_CLAMP);
     }
 
     /** A texture from {@code path} as its settings file says, or loaded plain where it has none. */

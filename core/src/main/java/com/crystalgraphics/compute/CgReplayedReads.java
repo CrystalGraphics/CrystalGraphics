@@ -1,7 +1,7 @@
 package com.crystalgraphics.compute;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.texture.CgTextureType;
+import com.crystalgraphics.gpu.resource.CgTextureType;
 import com.crystalgraphics.gpu.resource.CgBufferReadback;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -92,15 +92,7 @@ public final class CgReplayedReads {
         return words;
     }
 
-    /**
-     * A {@code width} x {@code height} region at the origin of {@code framebuffer}'s colour attachment 0, in
-     * {@code type}'s base format and pixel type, rows bottom first: what {@link CgReadback#pixels} reads.
-     */
-    public ByteBuffer pixels(int framebuffer, int width, int height, CgTextureType type) {
-        return pixels(CgReadback.colorOf(framebuffer, width, height, type), width, height, type);
-    }
-
-    /** As {@link #pixels(int, int, int, CgTextureType)}, of {@code view}'s level and layer: a mip level of a target. */
+    /** {@code view}'s level and layer, {@code width} x {@code height} texels of {@code type}: a target's, or a mip level of one. */
     public ByteBuffer pixels(CgTextureView view, int width, int height, CgTextureType type) {
         int size = width * height * CgReadback.pixelBytes(type);
         CgTextureRegion region = CgReadback.region(view, 0, 0, width, height);
@@ -120,11 +112,6 @@ public final class CgReplayedReads {
      * {@link #pixels} as RGBA floats, as {@code glGetTexImage(GL_RGBA, GL_FLOAT)} gives them: a unorm byte over 255,
      * a channel the type lacks 0, and alpha 1. For an 8-bit, half-float or float colour type.
      */
-    public float[] rgba(int framebuffer, int width, int height, CgTextureType type) {
-        return rgba(CgReadback.colorOf(framebuffer, width, height, type), width, height, type);
-    }
-
-    /** {@link #rgba(int, int, int, CgTextureType)} of {@code view}'s level and layer. */
     public float[] rgba(CgTextureView view, int width, int height, CgTextureType type) {
         ByteBuffer bytes = pixels(view, width, height, type);
         int channels = type.glBaseFormat == GLC.GL_RED ? 1 : type.glBaseFormat == GLC.GL_RG ? 2

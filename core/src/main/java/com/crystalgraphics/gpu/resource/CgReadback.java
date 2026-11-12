@@ -7,9 +7,9 @@ import com.crystalgraphics.platform.rhi.resource.CgTextureRegion;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
-import com.crystalgraphics.api.texture.CgTextureType;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -21,6 +21,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import com.crystalgraphics.api.texture.CgTexture;
 
 /**
  * Reads a buffer range or a texture region back without a stall: copied by the device into its readback memory and
@@ -35,8 +36,8 @@ import java.util.List;
  * // a texture's region, texels as it holds them, tightly packed
  * CgReadback.texture(heightMap, CgTextureRegion.of2D(0, 0, 0, 64, 64), data -> keep(data));
  *
- * // a framebuffer's colour attachment 0 as its type: rows bottom first
- * CgReadback.pixels(heightFbo.getId(), 0, 0, 64, 64, CgTextureType.R32F, data -> data.asFloatBuffer().get(heights));
+ * // a texture of yours, level 0: rows from its row 0
+ * CgReadback.texture(heights, 0, 0, 0, 64, 64, data -> data.asFloatBuffer().get(field));
  *
  * // told when it can never arrive
  * CgReadback.buffer(stats, 0, 64, new CgReadback.Sink() {
@@ -153,32 +154,47 @@ public final class CgReadback {
     }
 
     /**
-     * Reads a {@code width} x {@code height} region at {@code (x, y)} of {@code framebuffer}'s colour attachment 0,
-     * which holds {@code type}: {@code width * height * } {@link #pixelBytes} bytes, rows bottom first. Framebuffer 0 is
-     * the window's.
+     * Reads a {@code width} x {@code height} region at {@code (x, y)} of {@code texture}'s level {@code level}: texels
+     * tightly packed as its format holds them, rows from its row 0. Render thread, outside a recording; the sink runs
+     * frames later. In a graph, {@code rec.readback} orders it after the writers.
      *
-     * @throws IllegalArgumentException where nothing is attached, or the attachment's texels are not {@code type}'s size
+     * @throws IllegalStateException for a texture with no storage yet
      */
-    public static void pixels(int framebuffer, int x, int y, int width, int height, CgTextureType type, Sink sink) {
+    public static void texture(CgTexture texture, int level, int x, int y, int width, int height, Sink sink) {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException("a readback of " + width + "x" + height);
-        CgTextureView color = colorOf(framebuffer, x + width, y + height, type);
-        texture(color.texture(), region(color, x, y, width, height), sink);
+        CgTextureAbstract own = (CgTextureAbstract) texture;
+        own.getId();   // lands what is queued
+        CgGpuTexture storage = own.rhiTexture();
+        if (storage == null) throw new IllegalStateException(texture + " has no storage to read");
+        texture(storage, new CgTextureRegion(level, x, y, 0, width, height, 1), sink);
     }
 
     /**
-     * {@code framebuffer}'s colour attachment 0 as a device texture's level and layer, read as {@code type}: what
-     * {@link #pixels} reads. {@code width} x {@code height} is framebuffer 0's size at least.
+     * {@code width} x {@code height} texels at {@code (x, y)} of {@code view}'s level and layer, read now, waiting for
+     * the GPU: RGBA8, or RGBA32F in native order where {@code floats}, whatever the texture holds (a single channel
+     * answers in R). Rows from the texture's row 0. Render thread, outside a recording: a check or a capture, never a
+     * frame's work, which {@link #texture} reads without waiting.
+     *
+     * <pre>{@code
+     * ByteBuffer picture = CgReadback.now(target.color(), 0, 0, w, h, false);
+     * }</pre>
      */
-    public static CgTextureView colorOf(int framebuffer, int width, int height, CgTextureType type) {
-        if (!type.isColor()) throw new IllegalArgumentException("a readback reads colour, not " + type);
-        CgTextureView color = CgFrameBuffer.attachment(framebuffer, false, width, height);
-        if (color == null) throw new IllegalArgumentException("framebuffer " + framebuffer + " has no colour attachment 0");
-        long texel = color.texture().desc().format().bytes(1, 1, 1);
-        if (texel != pixelBytes(type)) {
-            throw new IllegalArgumentException("framebuffer " + framebuffer + " holds " + color.texture().desc().format()
-                    + ", not " + type);
+    public static ByteBuffer now(CgTextureView view, int x, int y, int width, int height, boolean floats) {
+        CgGpuTexture texture = view.texture();
+        CgFormat format = texture.desc().format();
+        CgTextureRegion region = region(view, x, y, width, height);
+        int texels = width * height;
+        ByteBuffer raw = ByteBuffer.allocateDirect((int) format.bytes(width, height, 1)).order(ByteOrder.nativeOrder());
+        CgDeviceSection.begin();
+        try {
+            CgRHI.get().encoder().readTexture(texture, region, raw);
+        } finally {
+            CgDeviceSection.end();
         }
-        return color;
+        ByteBuffer out = ByteBuffer.allocateDirect(texels * (floats ? 16 : 4)).order(ByteOrder.nativeOrder());
+        if (floats) CgTexelConvert.toRgba32f(raw, format, texels, out);
+        else CgTexelConvert.toRgba8(raw, format, texels, out);
+        return out;
     }
 
     /** The region at {@code (x, y)} of {@code view}'s level and layer. */

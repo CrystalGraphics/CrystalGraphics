@@ -1,9 +1,11 @@
 package com.crystalgraphics.compute;
 
+import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
-import com.crystalgraphics.api.texture.CgTextureType;
-import com.crystalgraphics.gpu.resource.CgFrameBuffer;
+import com.crystalgraphics.gpu.resource.CgTextureType;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.render.CgImmediate;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -14,6 +16,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -44,10 +47,6 @@ public final class CgComputeSelfTest {
     private static final int N = 64, SPAWN_CAPACITY = 128, COUNTED = 256, PICTURE = 64, ACCUM = 16;
     /** Enough elements for many work groups, and the appends they make. */
     private static final int BIG = 200_000, MANY = (BIG + 2) / 3;
-    private static final CgFrameBufferFormat RGBA8 = CgFrameBufferFormat.builder("compute_self_test_rgba8")
-            .color(0, CgTextureType.RGBA8).build();
-    private static final CgFrameBufferFormat RGBA32F = CgFrameBufferFormat.builder("compute_self_test_rgba32f")
-            .color(0, CgTextureType.RGBA32F).build();
     private static boolean ran;
     /** The first run's reads, while they arrive. */
     private static CgReplayedReads requested;
@@ -150,8 +149,8 @@ public final class CgComputeSelfTest {
             int doubled = buffer(new int[COUNTED]);
             int after = buffer(new int[COUNTED]);
             int bits = buffer(new int[N * BIT_WORDS]);
-            CgFrameBuffer picture = image("picture", PICTURE, RGBA8, 0f, 0f, 0f, 1f);
-            CgFrameBuffer accum = image("accum", ACCUM, RGBA32F, 0f, 0f, 0f, 0f);
+            CgTexture2D picture = image("picture", PICTURE, CgFormat.RGBA8_UNORM, 0f, 0f, 0f, 1f);
+            CgTexture2D accum = image("accum", ACCUM, CgFormat.RGBA32_FLOAT, 0f, 0f, 0f, 0f);
             try {
                 CgGraphBuffer gInts = CgGraphBuffer.imported("ints", ints, N * 4);
                 CgGraphBuffer gFloats = CgGraphBuffer.imported("floats", floats, N * 8);
@@ -172,8 +171,8 @@ public final class CgComputeSelfTest {
                 CgGraphBuffer gDoubled = CgGraphBuffer.imported("doubled", doubled, COUNTED * 4L);
                 CgGraphBuffer gAfter = CgGraphBuffer.imported("after", after, COUNTED * 4L);
                 CgGraphBuffer gBits = CgGraphBuffer.imported("bits", bits, N * BIT_WORDS * 4L);
-                CgGraphTexture gPicture = CgGraphTexture.imported("picture", picture.external());
-                CgGraphTexture gAccum = CgGraphTexture.imported("accum", accum.external());
+                CgGraphTexture gPicture = CgGraphTexture.imported("picture", CgTextures.target("picture", picture, null));
+                CgGraphTexture gAccum = CgGraphTexture.imported("accum", CgTextures.target("accum", accum, null));
 
                 CgRecording rec = new CgRecording();
                 rec.fill(gSpawnCount, 0);
@@ -233,8 +232,8 @@ public final class CgComputeSelfTest {
                         halves, args, big, many, manyCount, doubled, after, bits}) {
                     CgCheckBuffers.release(b);
                 }
-                picture.delete();
-                accum.delete();
+                picture.release();
+                accum.release();
             }
             return new Result(tier, List.copyOf(failures));
         }
@@ -280,8 +279,8 @@ public final class CgComputeSelfTest {
             expectWords("MANY", got, words(MANY, i -> 3 * i));
         }
 
-        private void expectPicture(CgFrameBuffer picture) {
-            ByteBuffer pixels = reads.pixels(picture.getId(), PICTURE, PICTURE, CgTextureType.RGBA8);
+        private void expectPicture(CgTexture2D picture) {
+            ByteBuffer pixels = reads.pixels(picture.rhiView(), PICTURE, PICTURE, CgTextureType.RGBA8);
             int wrong = 0;
             String first = null;
             for (int y = 0; y < PICTURE; y++) {
@@ -298,8 +297,8 @@ public final class CgComputeSelfTest {
             if (wrong > 0) failures.add("PICTURE differs in " + wrong + " texels, " + first);
         }
 
-        private void expectAccum(CgFrameBuffer accum) {
-            ByteBuffer pixels = reads.pixels(accum.getId(), ACCUM, ACCUM, CgTextureType.RGBA32F);
+        private void expectAccum(CgTexture2D accum) {
+            ByteBuffer pixels = reads.pixels(accum.rhiView(), ACCUM, ACCUM, CgTextureType.RGBA32F);
             int wrong = 0;
             String first = null;
             for (int y = 0; y < ACCUM; y++) {
@@ -459,9 +458,13 @@ public final class CgComputeSelfTest {
         return CgCheckBuffers.words(words);
     }
 
-    private static CgFrameBuffer image(String name, int size, CgFrameBufferFormat format, float r, float g, float b, float a) {
-        CgFrameBuffer fbo = CgFrameBuffer.createOwned("compute_self_test_" + name, size, size, format);
-        fbo.clearColor(r, g, b, a);
-        return fbo;
+    /** A {@code size} x {@code size} texture of {@code format}, every texel {@code (r, g, b, a)}. */
+    private static CgTexture2D image(String name, int size, CgFormat format, float r, float g, float b, float a) {
+        CgTexture2D texture = CgTextures.of("compute_self_test_" + name, CgTextureDesc.of(size, size, format));
+        ByteBuffer texels = ByteBuffer.allocateDirect(size * size * 16).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < size * size; i++) texels.putFloat(r).putFloat(g).putFloat(b).putFloat(a);
+        texture.write(0, 0, 0, size, size, CgFormat.RGBA32_FLOAT, texels.flip());
+        texture.getId();
+        return texture;
     }
 }

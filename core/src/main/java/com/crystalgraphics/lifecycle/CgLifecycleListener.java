@@ -49,12 +49,12 @@ import com.crystalgraphics.loading.CgLoadingScreen;
  * }</pre>
  *
  * <pre>{@code
- * // a renderer: GL objects made with the context and freed before it goes
+ * // a renderer: GPU objects made with the context and freed before it goes
  * CgEngineLifecycle.addListener(new CgLifecycleListener() {
  *     @Override public void onContextInit(int width, int height) {
- *         target = CgFrameBuffer.createOwned("mymod:glow", width, height, CgFrameBufferFormat.RGBA8_WITH_DEPTH);
+ *         glow = CgTextures.of("mymod:glow", CgTextureDesc.of(width, height, CgFormat.RGBA8_UNORM));
  *     }
- *     @Override public void onContextDestroy() { target.delete(); }
+ *     @Override public void onContextDestroy() { glow.release(); }
  * });
  * }</pre>
  *

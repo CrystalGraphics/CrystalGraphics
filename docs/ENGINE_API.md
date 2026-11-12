@@ -492,27 +492,28 @@ Easy to get wrong: `effectiveGroup()` is valid only after the schedule has run; 
 
 ## Core Framework Systems
 
-### Framebuffers
+### Targets
 
-`CgFrameBuffer` is the unified FBO abstraction. Create it via `CgFrameBufferFormat` builder — the format describes all attachments, each a device texture.
+There are no framebuffers. A target is textures of yours a pass draws into — a colour, a depth, or both of one size —
+or a host's framebuffer, named once (`CgExternalTarget.host(fbo, w, h)`).
 
 ```java
-CgFrameBufferFormat fmt = CgFrameBufferFormat.builder("my_fbo")
-        .color(0, CgTextureType.RGBA8)            // slot 0 → texture attachment
-        .color(1, CgTextureType.RGBA16F)           // slot 1 → texture attachment
-        .depth(CgTextureType.DEPTH24_STENCIL8)     // depth → texture attachment
-        .depthRbo(CgTextureType.DEPTH24_STENCIL8)  // (or: depth → renderbuffer)
-        .build();
-CgFrameBuffer fbo = CgFrameBuffer.create("my_fbo", width, height, fmt); // or CgFrameBuffer.createScreenSized("my_fbo", fmt);
-try (CgExecutor.Into ignored = CgExecutor.into(fbo)) {   // the current target of what executes, nothing bound
+CgTexture2D colour = CgTextures.of("mymod.view", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
+CgTexture2D depth = CgTextures.of("mymod.view.depth", CgTextureDesc.of(w, h, CgFormat.DEPTH32_FLOAT));
+CgExternalTarget view = CgTextures.target("mymod.view", colour, depth);   // make again after a resize
+try (CgExecutor.Into ignored = CgExecutor.into(view)) {   // the current target of what executes
     stage.fire();
 }
-fbo.delete();   // only valid on owned FBOs; CgFrameBuffer.wrap() names a host's
+CgImmediate.clear(view, true, 0f, 0f, 0f, 1f, true, 1.0, false, 0);     // outside a graph; in one, a pass's CgLoad
+colour.release();
+depth.release();
 ```
 
-`CgFrameBufferRegistry` — cache for screen-sized FBOs that auto-resize on window resize.
+- A graph imports one as any texture of its own: `CgGraphTexture.imported("view", view)`.
+- A made texture is drawable and writable by a kernel wherever its format allows; nothing marks it a target.
+- Read one back by its texture (`CgReadback.texture`, `rec.readback`), never by a framebuffer.
 
-**Package guides**: `api/framebuffer/CLAUDE.md` · `gpu/resource/CLAUDE.md`
+**Package guides**: `api/texture/CLAUDE.md` · `gpu/resource/CLAUDE.md`
 
 ### Textures
 
@@ -847,7 +848,7 @@ readback: a fence query or a map waits for a threaded driver to drain its queue.
 ```java
 CgReadback.buffer(counts, 0, 4, data -> alive = data.getInt(0));                     // render thread
 recording.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));            // in a frame graph, ordered
-CgPixelReadback thumbnails = new CgPixelReadback(3);                                 // a framebuffer, shrunk first
+CgReadback.texture(picture, 0, 0, 0, w, h, data -> save(data));                       // a texture of yours, outside a graph
 ```
 
 - The data is valid only inside the sink, in native order: copy out what you keep.
@@ -1059,12 +1060,12 @@ public final class MyRenderer implements CgLifecycleListener {
     public static final MyRenderer INSTANCE = new MyRenderer();   // used as is when present
 
     @Override public void onContextInit(int width, int height) {
-        glow = CgFrameBuffer.createOwned("mymod:glow", width, height, CgFrameBufferFormat.RGBA8_WITH_DEPTH);
+        glow = CgTextures.of("mymod:glow", CgTextureDesc.of(width, height, CgFormat.RGBA8_UNORM));
     }
     @Override public void onLoad(CgLoadPlan plan) {                 // built behind the loading screen
         plan.task("mymod:runes").work(ctx -> Runes.bake(ctx)).start();
     }
-    @Override public void onContextDestroy() { glow.delete(); }
+    @Override public void onContextDestroy() { glow.release(); }
 }
 ```
 
@@ -1126,11 +1127,11 @@ called here. **Call these and nothing else** — do not free individual registri
 // At each frame's end, and before drawing outside a world pass — a menu, a title screen, any GUI (GL thread):
 // the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after shutdown()
 CgEngineLifecycle.ensureGraphicsContext(viewportWidth, viewportHeight);
-// Initialises: CgBindingPoints, CgFrameBufferRegistry, CgFallbackTextures, and installs CgWorldRenderer
+// Initialises: CgBindingPoints, CgFallbackTextures, and installs CgWorldRenderer
 
 // On window resize (GL thread):
 CgGraphicsLifecycle.onResize(newWidth, newHeight);
-// Triggers recreation of all screen-sized FBOs in CgFrameBufferRegistry
+// The host's targets are forgotten (CgExternalTarget.forgetHosts); a target of yours you make again at the new size
 
 // On GL context destruction (GL thread):
 CgEngineLifecycle.shutdown();
@@ -1160,10 +1161,9 @@ CgEngineLifecycle.shutdown();
 | 6c | `CgStreamBuffer.releaseShared()` | The staging ring retained shader buffers are uploaded through |
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/UBO resources |
-| 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference (the framebuffer is freed by step 9) |
+| 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference |
 | 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
-| 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Before step 9, since a target holds framebuffers |
-| 9 | `CgFrameBufferRegistry.get().deleteAll()` | All owned FBOs |
+| 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Its targets' textures go with it |
 
 > **The backend closes last, and not in `shutdown()`.** Every deletion above goes through it, and a
 > device releases memory when its frames retire, so whoever built a device-backed backend closes it after:
@@ -1179,6 +1179,5 @@ All registries are **singletons accessed via `.get()`**. You normally interact w
 | `CgMaterialRegistry` | `CgMaterialRegistry.get()` | All `CgMaterial` instances (per-instance UBOs) | `reloadAll()` on hot-reload; `deleteAll()` on teardown (via lifecycle) |
 | `CgMaterialShaderRegistry` | `CgMaterialShaderRegistry.get()` | Shared `CgMaterialShader` GL program assets | Internal — managed by `CgMaterialRegistry` |
 | `CgTextureManager` | `CgTextureManager.get()` | All `CgTexture` instances (2D, array, 3D, cubemap) | `getOrCreate(path)` for cached texture load; `reloadAll()` on F3+T |
-| `CgFrameBufferRegistry` | `CgFrameBufferRegistry.get()` | Screen-sized FBOs that auto-resize | `getOrCreate(name, format)` for screen-sized FBOs |
 | `CgShaderBufferRegistry` | `CgShaderBufferRegistry.get()` | User-attached SSBO/UBO objects | `deleteAll()` on teardown (via lifecycle) |
 | `CgFontRegistry` | `CgFontRegistry.get()` | Glyph atlas textures (bitmap/MSDF/MTSDF) + background generation executor | `releaseAll()` on teardown (via lifecycle); parameterized constructors remain public for harness testing of custom atlas sizes/configs — see `text/cache/CLAUDE.md` |
