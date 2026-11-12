@@ -11,7 +11,6 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -314,8 +313,8 @@ public final class CgWorldMedia {
         if (!light.precache()) return;
         CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
+        CgRasterPass pass = recording.raster("worldMedia.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
+                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
                 .timed(GPU_LIGHT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, light.captureBindings(recording.bindings()), FULLSCREEN);

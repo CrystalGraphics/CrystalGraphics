@@ -16,7 +16,7 @@ import com.crystalgraphics.render.stage.CgStageFrame;
  *
  * <pre>{@code
  * CgGraphTexture subject = post.resources().get(CgFrameKeys.SUBJECT);
- * CgRasterPass pass = post.recording().raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED);
+ * CgRasterPass pass = post.recording().raster("postContext.target").color(post.target(), CgLoad.load()).constants(post.constants());
  * post.composite().bloom(level1, intensity);   // at BEFORE_COMPOSITE: an input of the one composite pass
  * CgGraphTexture bent = post.distorted(subject);   // a side input bent as the scene was
  * }</pre>

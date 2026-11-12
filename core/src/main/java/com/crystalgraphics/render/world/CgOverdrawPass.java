@@ -6,7 +6,6 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -60,8 +59,7 @@ final class CgOverdrawPass {
         if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
             overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
         }
-        CgRasterPass pass = recording.raster(overdrawTarget, CgWorldRenderer.CLEAR, stage.constants(), null,
-                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+        CgRasterPass pass = recording.raster("overdrawPass.overdrawTarget").color(overdrawTarget, CgWorldRenderer.CLEAR).constants(stage.constants()).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {

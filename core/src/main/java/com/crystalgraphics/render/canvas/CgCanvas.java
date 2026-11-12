@@ -609,7 +609,7 @@ public final class CgCanvas {
 
     private void openPass() {
         System.arraycopy(pendingBlock, 0, passBlock, 0, CgPassConstants.FLOATS);
-        pass = recording.raster(target, load, passConstants.read(passBlock, 0), null, CgOrder.LOOKBACK);
+        pass = recording.raster("canvas.target").color(target, load).constants(passConstants.read(passBlock, 0)).order(CgOrder.LOOKBACK);
         viewOwner = pendingOwner;
         viewX = pendingX;
         viewY = pendingY;

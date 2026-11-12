@@ -7,7 +7,6 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -87,7 +86,7 @@ final class CgPostCrossfade implements CgPostEffect {
         }
         CgPipeline pipeline = fade.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass pass = recording.raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED);
+        CgRasterPass pass = recording.raster("postCrossfade.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, fade.captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, share);
@@ -106,8 +105,8 @@ final class CgPostCrossfade implements CgPostEffect {
         if (hold == null) hold = CgMaterial.newInstance(HOLD);
         CgPipeline pipeline = hold.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return false;
-        CgRasterPass pass = recording.raster(held, CgLoad.clear(0f, 0f, 0f, 1f), post.constants(), null, CgOrder.SORTED)
-                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, post.target());
+        CgRasterPass pass = recording.raster("postCrossfade.held").color(held, CgLoad.clear(0f, 0f, 0f, 1f)).constants(post.constants())
+                .readsColor(post.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, hold.captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);

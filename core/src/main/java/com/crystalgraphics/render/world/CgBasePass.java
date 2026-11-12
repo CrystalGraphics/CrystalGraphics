@@ -7,7 +7,6 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
@@ -45,17 +44,17 @@ final class CgBasePass {
      */
     void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                     boolean depthOnlyPass, boolean after, CgHostView view, boolean sceneGlows) {
-        CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+        CgRasterPass pass = recording.raster("world.base").color(stage.target(), CgLoad.load()).constants(constants).state(state)
+                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
         if (!depthOnlyPass) world.mediated(pass);
         boolean normals = world.normalsInto != null && state == CgWorldRenderer.OPAQUE_STATE && !depthOnlyPass;
-        if (normals) pass.attachmentIfTaken(world.normalsInto);
+        if (normals) pass.colorIfTaken(world.normalsInto, CgLoad.load());
         // The graded layer beside the scene: its draws write it too, as their second output (T12 L3)
         CgGradeLayerPass layers = world.gradeLayerPass;
         boolean layered = layers.outputSlot >= 0 && state == CgWorldRenderer.TRANSPARENT_STATE && !depthOnlyPass;
-        if (layered) pass.attachmentIfTaken(layers.gradeTargets[layers.outputSlot]);
+        if (layered) pass.colorIfTaken(layers.gradeTargets[layers.outputSlot], CgLoad.load());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP || world.halfSize(i)) continue;

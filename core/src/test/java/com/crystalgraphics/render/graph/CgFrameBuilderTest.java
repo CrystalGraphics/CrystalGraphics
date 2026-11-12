@@ -76,7 +76,7 @@ public class CgFrameBuilderTest {
     }
 
     private CgRasterPass raster(CgRecording rec, CgGraphTexture target) {
-        return rec.raster(target, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
+        return rec.raster("raster " + target.name()).color(target, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK);
     }
 
     private static final String READER = """
@@ -112,8 +112,8 @@ public class CgFrameBuilderTest {
         CgMaterial haze = CgMaterial.fromSource(READER);
         CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
-        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
-                .sceneColor(5);
+        CgGraphTexture t = CgGraphTexture.requested("t", DESC);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t, 5);
         // Margin: 0.05 of 64 plus a texel, 4.2 pixels.
         pass.add(keyed(rec, material, quads, 1, 0, 0, 10, 10));
         pass.add(keyed(rec, haze, reads, 2, 20, 20, 30, 30));    // a copy...
@@ -152,8 +152,8 @@ public class CgFrameBuilderTest {
         assertFalse(quads.shader().readsSceneColor());
 
         CgRecording rec = new CgRecording();
-        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
-                .sceneColor(5);
+        CgGraphTexture t = CgGraphTexture.requested("t", DESC);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t, 5);
         pass.add(keyed(rec, haze, reads, 5));      // after the second plain draw: a copy of its own
         pass.add(keyed(rec, material, quads, 1));
         pass.add(keyed(rec, haze, reads, 2));      // first reader: a copy
@@ -210,8 +210,8 @@ public class CgFrameBuilderTest {
         CgMaterial apply = CgMaterial.fromSource(DEPTH_WRITING_READER), seal = CgMaterial.fromSource(DEPTH_READER);
         CgPipeline writes = apply.pipeline(CgInstanceKind.QUAD), reads = seal.pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
-        CgRasterPass pass = rec.raster(CgGraphTexture.requested("t", DESC), CgLoad.load(), constants, null, CgOrder.SORTED)
-                .sceneDepth(6);
+        CgGraphTexture t = CgGraphTexture.requested("t", DESC);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsDepth(t, 6);
         pass.add(keyed(rec, apply, writes, 1));
         pass.add(keyed(rec, seal, reads, 2));
         pass.end();
@@ -283,7 +283,7 @@ public class CgFrameBuilderTest {
         top.add(quads(rec, 1, 1, 0));
         top.end();
         for (int k = 1; k <= 2; k++) {
-            CgRasterPass down = rec.raster(chain, k, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
+            CgRasterPass down = rec.raster(k == 0 ? "raster chain" : "raster chain level " + k).color(chain, k, 0, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK);
             down.add(sampling(rec, chain.level(k - 1)));
             down.end();
         }
@@ -299,8 +299,7 @@ public class CgFrameBuilderTest {
         assertSame("a level's view is made once", chain.level(1), chain.level(1));
         assertEquals(16, chain.level(2).getWidth());
         assertThrows(IllegalArgumentException.class, () -> chain.level(chain.getLevels()));
-        assertThrows(IllegalArgumentException.class, () -> new CgRecording().raster(CgGraphTexture.requested("flat", DESC),
-                1, CgLoad.load(), constants, null, CgOrder.LOOKBACK));
+        assertThrows(IllegalArgumentException.class, () -> new CgRecording().raster("frameBuilderTest.DESC").color(CgGraphTexture.requested("flat", DESC), 1, 0, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK));
     }
 
     @Test

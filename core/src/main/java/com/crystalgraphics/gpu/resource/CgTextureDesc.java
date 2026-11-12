@@ -28,7 +28,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
  *       trilinearly.</li>
  *   <li>A <b>volume</b> is written by kernels that declare it a {@code 3d} image and sampled as a {@code sampler3D}; no
  *       pass draws into it. It may hold levels, which its maker fills.</li>
- *   <li>An <b>array</b> is drawn into a layer at a time ({@code rec.raster(texture, 0, layer, ...)}) and sampled whole as
+ *   <li>An <b>array</b> is drawn into a layer at a time ({@code rec.raster(name).color(texture, 0, layer, load)}) and sampled whole as
  *       a {@code sampler2DArray}. One colour level.</li>
  *   <li>A <b>cube</b> is six square faces, sampled as a {@code samplerCube}: yours, never the graph's.</li>
  *   <li>A depth format is one 2D level.</li>
@@ -133,7 +133,7 @@ public record CgTextureDesc(int width, int height, int depth, CgFormat format, i
      *
      * <pre>{@code
      * CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, CgFormat.RGBA16_FLOAT));
-     * CgRasterPass slot2 = rec.raster(field, 0, 2, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED);
+     * CgRasterPass slot2 = rec.raster("textureDesc.field").color(field, 0, 2, CgLoad.clear(0, 0, 0, 0)).constants(constants);
      * }</pre>
      */
     public static CgTextureDesc array(int width, int height, int layers, CgFormat format) {

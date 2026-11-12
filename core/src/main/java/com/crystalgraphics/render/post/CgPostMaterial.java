@@ -13,7 +13,6 @@ import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -234,21 +233,20 @@ public final class CgPostMaterial implements CgPostEffect {
 
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline,
                       CgGraphTexture colourOf) {
-        CgRasterPass pass = recording.raster(into, load, post.constants(), null, CgOrder.SORTED)
+        CgRasterPass pass = recording.raster("post.material").color(into, load).constants(post.constants())
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, post.stage().host().textures().lightmapTexture());
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         CgPipeline drawn = depthless(pipeline);
         if (material.readsSceneColor() && into == colourOf) {
-            pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            pass.readsColor(into, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
             // Its one full-screen triangle writes every pixel: read the scene where it stands, not a copy of it
             CgBlendState blend = drawn.state().getBlend();
             if ((blend == null || !blend.enabled()) && !material.discards()) pass.replaces();
         } else if (material.readsSceneColor()) {
-            pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, colourOf);
+            pass.readsColor(colourOf, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         }
-        if (material.readsSceneDepth() && into == screen) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
-        else if (material.readsSceneDepth()) pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, screen);
+        if (material.readsSceneDepth()) pass.readsDepth(screen, CgBindingPoints.DEPTH_TEXTURE_UNIT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(drawn, material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);

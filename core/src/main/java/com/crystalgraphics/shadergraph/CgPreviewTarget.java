@@ -13,6 +13,7 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * One preview's render target: a multisampled texture to draw into, and a plain one to read from. Both are requested
@@ -76,7 +77,10 @@ public final class CgPreviewTarget {
      */
     public CgRasterPass begin(CgRecording recording, CgPassConstants camera, CgRenderState state) {
         CgGraphTexture into = multisampled != null ? multisampled : resolved;
-        return recording.raster(into, CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0), camera, state, CgOrder.LOOKBACK);
+        CgRasterPass pass = recording.raster("shadergraph.preview").color(into, CgLoad.clear(0f, 0f, 0f, 0f))
+                .constants(camera).state(state).order(CgOrder.LOOKBACK);
+        if (into.depthOf() != null) pass.depth(into.depthOf(), CgLoad.clearDepth(1.0), CgDepthAccess.WRITE);
+        return pass;
     }
 
     /** Ends {@code pass} and records the multisample resolve into {@link #texture()}. */

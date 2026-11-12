@@ -10,7 +10,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
@@ -272,12 +271,11 @@ final class CgGradeLayerPass {
     /** A layer pass into {@code target}: cleared, or over what is in it; tested against the scene's depth. */
     private CgRasterPass layerPassBegin(CgStageFrame stage, CgRecording recording, CgPassConstants constants,
                                         CgGraphTexture target, int k, boolean over, @Nullable CgGraphTexture scene) {
-        CgRasterPass pass = recording.raster(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER, constants, null,
-                        CgOrder.SORTED)
+        CgRasterPass pass = recording.raster("world.gradeLayer").color(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER).constants(constants)
                 .timed(k < 0 ? CgWorldRenderer.GPU_SEPARATE : CgWorldRenderer.GPU_GRADE)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                .readsDepth(target, CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        if (scene != null) pass.sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, scene);
+        if (scene != null) pass.readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
         world.mediated(pass);
         return pass;
     }

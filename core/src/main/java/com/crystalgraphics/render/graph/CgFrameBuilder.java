@@ -568,7 +568,7 @@ public final class CgFrameBuilder {
             frame.readsCurrentDepth |= pass.colorFrom().isCurrent();
         }
         // Drawn with the current target's depth: the execution needs that target opened, noted before any pass binds.
-        if (pass.target != null && pass.target.depthOf() != null && pass.target.depthOf().isCurrent()) {
+        if (pass.depthBeside() != null && pass.depthBeside().isCurrent()) {
             frame.readsCurrentDepth = true;
         }
         if (pass.target == null || pass.target.isCurrent()) frame.rastersCurrent = true;

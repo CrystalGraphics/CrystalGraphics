@@ -4,7 +4,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.material.CgMaterialTestSupport;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgAllocationProof;
@@ -62,7 +61,7 @@ public class CgFrameGraphAllocationTest {
     }
 
     private void frame() {
-        CgRasterPass pass = rec.raster(target, CgLoad.load(), constants, null, CgOrder.SORTED);
+        CgRasterPass pass = rec.raster("frameGraphAllocationTest.target").color(target, CgLoad.load()).constants(constants);
         for (int c = 0; c < 8; c++) {
             boolean glows = (c & 1) == 1;
             CgChunkBuilder chunk = rec.chunks().begin();

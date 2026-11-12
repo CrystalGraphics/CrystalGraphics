@@ -86,7 +86,7 @@ final class CgTargetCopy {
 
     /**
      * Copies {@code source}'s depth whole, for a pass reading another target's
-     * ({@link CgRasterPass#sceneDepth(int, CgGraphTexture)}); throws, naming {@code pass}, where it has none.
+     * ({@link CgRasterPass#readsDepth}); throws, naming {@code pass}, where it has none.
      */
     void copyDepth(CgGraphStorage source, CgPass pass, CgTexturePool pool) {
         if (source.depth() == null) throw new IllegalStateException(pass + " reads the depth of " + source + ", which has none");

@@ -1674,10 +1674,9 @@ public final class CgExecutor {
         return pass.target != null ? pass.target : CgGraphTexture.current();
     }
 
-    /** The texture whose depth {@code pass} tests and writes: its target's, or the one its target draws with. */
+    /** The texture whose depth {@code pass} tests and writes: its declared one, its target's, or its target's pairing. */
     private static CgGraphTexture depthTexture(CgRasterPass pass) {
-        CgGraphTexture target = targetOf(pass);
-        return target.depthOf() != null ? target.depthOf() : target;
+        return pass.depthTexture();
     }
 
     /** {@code pass}'s second attachment: its own, or inside a merged run the run's. */
@@ -1710,7 +1709,7 @@ public final class CgExecutor {
         for (int i = frame.accessFrom[k]; i < frame.accessFrom[k + 1]; i++) {
             CgGraphResource view = frame.accessView[i];
             int bits = frame.accessBits[i];
-            if (view == first.target.depthOf()) {
+            if (view == first.depthBeside()) {
                 // Drawn with another's depth, a pass names it read and written: ordered on it, sampling none of it.
                 if ((bits & ~(CgAccess.COLOR_WRITE | CgAccess.SAMPLED_READ)) != 0) return false;
             } else if ((view == first.target || view == attachment || view == next.attachment())
@@ -2239,7 +2238,7 @@ public final class CgExecutor {
             deviceFormats.add(texture.desc().format());
         }
         CgFormat depthFormat = null;
-        CgGraphTexture depthOf = target.depthOf();
+        CgGraphTexture depthOf = pass.depthBeside();
         CgGraphStorage depthStorage = depthOf != null ? storage(depthOf) : storage;
         CgGpuTexture depthTexture = depthOf != null ? besideDepth(target, depthStorage, w, h) : storage.depth();
         boolean clearDepth = depthTexture != null && load.clearsDepth();
@@ -2624,7 +2623,7 @@ public final class CgExecutor {
         return sharedDepth;
     }
 
-    /** Copies another target's colour whole, for a pass reading it ({@link CgRasterPass#sceneColor(int, CgGraphTexture)}). */
+    /** Copies another target's colour whole, for a pass reading it ({@link CgRasterPass#readsColor(CgGraphTexture)}). */
     private void copyColorFrom(CgRasterPass pass) {
         CgTargetCopy copy = pass.colorFromCopy();
         copy.copyColor(storage(pass.colorFrom()), POOL);

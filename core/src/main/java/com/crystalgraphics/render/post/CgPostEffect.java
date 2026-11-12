@@ -9,8 +9,8 @@ package com.crystalgraphics.render.post;
  *     public CgPostPoint point() { return CgPostPoint.AFTER_COMPOSITE; }
  *     public boolean active(CgPostContext post) { return enabled; }
  *     public void record(CgPostContext post) {
- *         CgRasterPass pass = post.recording().raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED)
- *                 .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
+ *         CgRasterPass pass = post.recording().raster("mymod.outline").color(post.target(), CgLoad.load()).constants(post.constants())
+ *                 .readsDepth(post.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
  *         // ... a full-screen triangle reading cg_DepthBuffer ...
  *         pass.end();
  *     }

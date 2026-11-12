@@ -13,7 +13,6 @@ import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgBufferDesc;
@@ -53,6 +52,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
@@ -268,7 +268,7 @@ public final class CgWorldLights {
     /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, drawn with a depth test's. */
     private static final CgFormat SUN_MAP_FORMAT = CgFormat.R32_FLOAT, SUN_DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT;
     /** Nothing cast: a depth past any receiver's. */
-    private static final CgLoad SUN_CLEAR = CgLoad.clear(1.0e30f, 0f, 0f, 0f).andDepth(1.0);
+    private static final CgLoad SUN_CLEAR = CgLoad.clear(1.0e30f, 0f, 0f, 0f);
     private static final CgVar.Num SUN_DISTANCE = CgVar.number("crystalgraphics.world.sunShadowDistance", 96f, 8f, 512f,
             CgVar.DEV, "Blocks from the eye the sun's shadow map reaches, in four cascades: Unreal's "
                     + "DynamicShadowDistanceMovableLight.");
@@ -1260,8 +1260,8 @@ public final class CgWorldLights {
             apply.applyProperties(applyWindow);
             CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
-            CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                    .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+            CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
+                    .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
                     // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
                     .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
             CgChunkBuilder chunks = recording.chunks().begin();
@@ -1278,7 +1278,7 @@ public final class CgWorldLights {
         if (gbuffer == null || gbuffer.getWidth() != w || gbuffer.getHeight() != h) {
             gbuffer = CgGraphTexture.transientTexture("cg_world_lights.gbuffer", new CgTextureDesc(w, h, GBUFFER_FORMAT));
         }
-        CgComputePass pass = recording.compute("world.lightsGBuffer", stage.constants()).sceneDepth(stage.target())
+        CgComputePass pass = recording.compute("world.lightsGBuffer", stage.constants()).readsDepth(stage.target())
                 .timed(GPU_GBUFFER);
         pass.dispatch(gbufferKernel, w, h, 1).image("GBUFFER", gbuffer).values(gbufferValues);
         pass.end();
@@ -1383,7 +1383,7 @@ public final class CgWorldLights {
                             new CgTextureDesc(tx * (ENTITY_TILE / 4), ty * (ENTITY_TILE / 4), RANGES_FORMAT));
                 }
                 CgComputePass ranges = recording.compute("world.lightsTileDepth", stage.constants())
-                        .sceneDepth(stage.target()).timed(GPU_TILE_DEPTH);
+                        .readsDepth(stage.target()).timed(GPU_TILE_DEPTH);
                 ranges.dispatch(tileDepthKernel, tileRanges.getWidth(), tileRanges.getHeight(), 1).image("RANGES", tileRanges)
                         .values(rangeValues);
                 ranges.end();
@@ -1391,7 +1391,7 @@ public final class CgWorldLights {
                 tiled.dispatch(tilesKernel, tx, ty, 1).image("TILES", entityTiles).bind("ENTITIES", boxes).values(tileValues);
                 tiled.end();
             }
-            CgComputePass sampling = recording.compute("world.lightsSample", stage.constants()).sceneDepth(stage.target())
+            CgComputePass sampling = recording.compute("world.lightsSample", stage.constants()).readsDepth(stage.target())
                     .timed(GPU_SAMPLE);
             sampling.dispatch(sampleKernel, sw, sh, 1).image("SAMPLES", samples).bind("VIEWED", binned ? viewed : none)
                     .bind("CELLS", binned ? cells : none).bind("INDICES", binned ? indices : none)
@@ -1399,17 +1399,17 @@ public final class CgWorldLights {
             sampling.end();
             lightmap = stage.host().textures().lightmapTexture();
             if (lightmap == null) lightmap = CgFallbackTextures.WHITE_1x1;
-            CgComputePass shading = recording.compute("world.lightsShade", stage.constants()).sceneDepth(stage.target())
+            CgComputePass shading = recording.compute("world.lightsShade", stage.constants()).readsDepth(stage.target())
                     .timed(GPU_SHADE);
             shading.dispatch(shadeKernel, lw, lh, 1).image("SHADED", shaded).image("VISIBILITY", shadedVis)
                     .bind("LIGHTS", binned ? list : none).values(shadeValues);
             shading.end();
             CgComputePass accumulating = recording.compute("world.lightsTemporal", stage.constants())
-                    .sceneDepth(stage.target()).timed(GPU_TEMPORAL);
+                    .readsDepth(stage.target()).timed(GPU_TEMPORAL);
             accumulating.dispatch(temporalKernel, lw, lh, 1).image("LIGHTING", accumulated[0])
                     .image("MOMENTS", accumulated[1]).image("VISIBILITY", accumulated[2]).values(temporalValues);
             accumulating.end();
-            CgComputePass filtering = recording.compute("world.lightsDenoise", stage.constants()).sceneDepth(stage.target())
+            CgComputePass filtering = recording.compute("world.lightsDenoise", stage.constants()).readsDepth(stage.target())
                     .timed(GPU_DENOISE);
             filtering.dispatch(denoiseKernel, lw, lh, 1).image("FILTERED", filtered).image("VISIBILITY", filteredVis)
                     .values(denoiseValues);
@@ -1442,7 +1442,8 @@ public final class CgWorldLights {
             stage.defaults(sunConstants).resolution(2 * res, 2 * res);
             sunConstants.view.identity();
             sunConstants.projection.identity();
-            CgRasterPass pass = recording.raster(sunMap, SUN_CLEAR, sunConstants, null, CgOrder.SORTED).timed(GPU_SUN);
+            CgRasterPass pass = recording.raster("world.sunMap").color(sunMap, SUN_CLEAR)
+                    .depth(sunMap.depthOf(), CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(sunConstants).timed(GPU_SUN);
             CgChunkBuilder chunks = recording.chunks().begin();
             float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
                     + sunDirection[2] * sunDirection[2]);

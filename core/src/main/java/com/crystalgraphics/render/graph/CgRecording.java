@@ -3,7 +3,6 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferRecords;
-import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
@@ -39,8 +38,8 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
  * CgRecording rec = new CgRecording();
  * CgGraphTexture layer = CgGraphTexture.transientTexture("fade", desc);
  *
- * CgRasterPass frame = rec.raster(surface, CgLoad.load(), constants, uiState, CgOrder.LOOKBACK);
- * CgRasterPass inner = rec.raster(layer, CgLoad.clear(0, 0, 0, 0), constants, uiState, CgOrder.LOOKBACK);
+ * CgRasterPass frame = rec.raster("recording.surface").color(surface, CgLoad.load()).constants(constants).state(uiState).order(CgOrder.LOOKBACK);
+ * CgRasterPass inner = rec.raster("recording.layer").color(layer, CgLoad.clear(0, 0, 0, 0)).constants(constants).state(uiState).order(CgOrder.LOOKBACK);
  * inner.add(rec.chunks().begin() ... .end());
  * inner.end();                                     // the layer is written
  * frame.add(compositeOf(layer));                   // reads it: the graph runs `inner` first
@@ -236,60 +235,32 @@ public final class CgRecording {
     }
 
     /**
-     * A raster pass into {@code target}.
-     *
-     * @param state the render state a pipeline's unset slots take, or null to leave them as the target has them
-     */
-    public CgRasterPass raster(CgGraphTexture target, CgLoad load, CgPassConstants constants,
-                               @Nullable CgRenderState state, CgOrder order) {
-        return raster(target, 0, load, constants, state, order);
-    }
-
-    /**
-     * A raster pass into mip level {@code level} of {@code target}: one step of a chain drawn level by level, reading
-     * the level before it through {@link CgGraphTexture#level}. The viewport is the level's size, which
-     * {@code constants}' resolution should be too; a level above 0 has no depth.
+     * A raster pass named {@code name}, which declares what it draws into and reads before its first draw
+     * ({@link CgRasterPass}): Unreal's {@code AddPass} with its parameters.
      *
      * <pre>{@code
-     * CgRasterPass down = rec.raster(bloom, 2, CgLoad.load(), constants.resolution(w >> 2, h >> 2), null, CgOrder.LOOKBACK);
+     * CgRasterPass pass = rec.raster("bloom.source")
+     *         .color(glow, CgLoad.clear(0, 0, 0, 0))
+     *         .reads(sceneColor)
+     *         .constants(constants);
+     * pass.add(chunk);
+     * pass.end();
      * }</pre>
-     */
-    public CgRasterPass raster(CgGraphTexture target, int level, CgLoad load, CgPassConstants constants,
-                               @Nullable CgRenderState state, CgOrder order) {
-        return raster(target, level, 0, load, constants, state, order);
-    }
-
-    /**
-     * A raster pass into layer {@code layer} of an array {@code target} ({@code CgTextureDesc.array}). Each layer is a
-     * target of its own: its load clears or keeps that layer alone. Sampled, the array is read whole, so no pass draws
-     * into an array it samples.
      *
-     * <pre>{@code
-     * for (int k = 0; k < used; k++) {
-     *     CgRasterPass slot = rec.raster(field, 0, k, CgLoad.clear(0, 0, 0, 0), constants, additive, CgOrder.SORTED);
-     *     // ... slot k's draws ...
-     *     slot.end();
-     * }
-     * }</pre>
+     * <ul>
+     *   <li>{@code name} is what traces and logs call it: a constant, so a steady frame allocates none.</li>
+     *   <li>Its constants are the identity block at the time now until {@link CgRasterPass#constants} sets them.</li>
+     * </ul>
      */
-    public CgRasterPass raster(CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
-                               @Nullable CgRenderState state, CgOrder order) {
+    public CgRasterPass raster(String name) {
         requireOpen();
-        if (level < 0 || level >= target.getLevels()) throw new IllegalArgumentException(target + " has no level " + level);
-        if (target.isVolume()) {
-            throw new IllegalArgumentException(target + " is a volume: kernels write it as a 3d image, and no pass draws into one");
-        }
-        if (layer < 0 || layer >= target.getLayers()) {
-            throw new IllegalArgumentException(target + " has " + target.getLayers() + " layers, not layer " + layer);
-        }
+        CgPassConstants constants = identity.time(CgFrameClock.seconds());
         CgRasterPass pass;
         if (rastersUsed < rasters.size()) {
             pass = rasters.get(rastersUsed);
-            pass.reuse(pass.named(target, level, layer) ? pass.name : rasterName(target, level, layer), target, level,
-                    layer, load, constants, state, order);
+            pass.reuse(name, constants);
         } else {
-            pass = new CgRasterPass(this, rasterName(target, level, layer), target, level, layer, load, constants, state,
-                    order);
+            pass = new CgRasterPass(this, name, constants);
             rasters.add(pass);
         }
         rastersUsed++;
@@ -297,9 +268,6 @@ public final class CgRecording {
         return pass;
     }
 
-    private static String rasterName(CgGraphTexture target, int level, int layer) {
-        return "raster " + target.name() + (level == 0 ? "" : " level " + level) + (layer == 0 ? "" : " layer " + layer);
-    }
 
     /** A compute pass whose kernels read the frame block as identity matrices and the time now. */
     public CgComputePass compute(String name) {

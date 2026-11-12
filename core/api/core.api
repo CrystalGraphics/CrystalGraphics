@@ -6201,6 +6201,7 @@ com/crystalgraphics/job/CgHostThread
   method public run (Ljava/lang/Runnable;)V
   method public,static answerThrough (Ljava/util/function/Supplier;)V
   method public,static drainFrames ()V
+  method public,static here ()Lcom/crystalgraphics/platform/service/CgGameThreads$Binding;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/job/CgHostThread;
   method public,static values ()[Lcom/crystalgraphics/job/CgHostThread;
 com/crystalgraphics/job/CgHostThread$Queue
@@ -9216,10 +9217,17 @@ com/crystalgraphics/render/graph/CgComputePass
   method public dispatchIndirect (Lcom/crystalgraphics/compute/CgKernel;Lcom/crystalgraphics/render/graph/CgGraphBuffer;J)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public dispatches ()Ljava/util/List;
   method public end ()V
+  method public readsDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
-  method public sceneDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public timed (I)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public timed (Lcom/crystalgraphics/render/CgGpuBudget;)Lcom/crystalgraphics/render/graph/CgComputePass;
+com/crystalgraphics/render/graph/CgDepthAccess
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final READ Lcom/crystalgraphics/render/graph/CgDepthAccess;
+  field public,static,final WRITE Lcom/crystalgraphics/render/graph/CgDepthAccess;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgDepthAccess;
+  method public,static values ()[Lcom/crystalgraphics/render/graph/CgDepthAccess;
 com/crystalgraphics/render/graph/CgDispatch
   access public,final
   extends java/lang/Object
@@ -9419,7 +9427,6 @@ com/crystalgraphics/render/graph/CgLoad
   access public,final
   extends java/lang/Object
   method public a ()F
-  method public andDepth (D)Lcom/crystalgraphics/render/graph/CgLoad;
   method public andStencil (I)Lcom/crystalgraphics/render/graph/CgLoad;
   method public b ()F
   method public clears ()Z
@@ -9434,6 +9441,7 @@ com/crystalgraphics/render/graph/CgLoad
   method public stencil ()I
   method public stencilOp ()Lcom/crystalgraphics/platform/rhi/command/CgPassDesc$LoadOp;
   method public,static clear (FFFF)Lcom/crystalgraphics/render/graph/CgLoad;
+  method public,static clearDepth (D)Lcom/crystalgraphics/render/graph/CgLoad;
   method public,static load ()Lcom/crystalgraphics/render/graph/CgLoad;
 com/crystalgraphics/render/graph/CgPass
   access public,abstract
@@ -9450,24 +9458,29 @@ com/crystalgraphics/render/graph/CgRasterPass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public attachment ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public attachment (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public attachmentIfTaken (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public chunks ()Ljava/util/List;
+  method public color (Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/render/graph/CgLoad;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public color (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public colorIfTaken (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public damage ()[I
   method public damage (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public depth (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/graph/CgDepthAccess;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public end ()V
+  method public indirect (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public layer ()I
   method public level ()I
   method public noScissor ()Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public order (Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public reads (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public reads (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public readsColor (Lcom/crystalgraphics/render/graph/CgGraphTexture;I)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public readsDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public replaces ()Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public sceneColor (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public sceneColor (ILcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public sceneDepth (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public sceneDepth (ILcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIFFFF)I
   method public scissor (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public scissor (IIIII)I
+  method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public texture (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public timed (I)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public timed (Lcom/crystalgraphics/render/CgGpuBudget;)Lcom/crystalgraphics/render/graph/CgRasterPass;
@@ -9496,9 +9509,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public operations ()I
   method public pass (I)Lcom/crystalgraphics/render/graph/CgPass;
   method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
-  method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
-  method public raster (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public raster (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public readback (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gpu/resource/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public readback (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIIIILcom/crystalgraphics/gpu/resource/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public readback (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIILcom/crystalgraphics/gpu/resource/CgReadback$Sink;)Lcom/crystalgraphics/render/graph/CgRequest;

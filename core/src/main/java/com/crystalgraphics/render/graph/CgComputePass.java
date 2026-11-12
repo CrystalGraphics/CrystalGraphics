@@ -209,10 +209,10 @@ public final class CgComputePass extends CgPass {
 
     /**
      * Its kernels sample {@code from}'s depth as {@code cg_DepthBuffer}, copied once an execution, as a raster pass's
-     * {@link CgRasterPass#sceneDepth(int, CgGraphTexture)}: where a stage's passes read the scene, every one of them.
+     * {@link CgRasterPass#readsDepth}: where a stage's passes read the scene, every one of them.
      *
      * <pre>{@code
-     * CgComputePass lights = recording.compute("world.lightsSample", stage.constants()).sceneDepth(stage.target());
+     * CgComputePass lights = recording.compute("world.lightsSample", stage.constants()).readsDepth(stage.target());
      * lights.dispatch(sample, width, height, 1).image("SAMPLES", samples);
      * lights.end();
      * }</pre>
@@ -222,7 +222,7 @@ public final class CgComputePass extends CgPass {
      *   <li>Give the pass the host's depth convention ({@code CgStageFrame.constants}), or eye depths disagree.</li>
      * </ul>
      */
-    public CgComputePass sceneDepth(CgGraphTexture from) {
+    public CgComputePass readsDepth(CgGraphTexture from) {
         requireOpen();
         if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");

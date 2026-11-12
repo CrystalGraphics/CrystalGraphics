@@ -43,7 +43,6 @@ import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.text.render.CgTextMaterials;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -1875,7 +1874,7 @@ public final class CgWorldRenderer {
             if (normalTarget != null) recording.release(normalTarget);
             normalTarget = CgGraphTexture.requested("cg_world.normals", new CgTextureDesc(w, h, NORMAL_FORMAT));
         }
-        recording.raster(normalTarget, CLEAR, stage.constants(), null, CgOrder.SORTED).end();
+        recording.raster("worldRenderer.normalTarget").color(normalTarget, CLEAR).constants(stage.constants()).end();
         pointLights.normals(normalTarget);
         return normalTarget;
     }

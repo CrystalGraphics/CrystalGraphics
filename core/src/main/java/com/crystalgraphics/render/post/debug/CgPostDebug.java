@@ -7,7 +7,6 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -111,7 +110,7 @@ public final class CgPostDebug implements CgPostEffect {
         }
         CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass pass = post.recording().raster(post.target(), CgLoad.load(), post.constants(), null, CgOrder.SORTED);
+        CgRasterPass pass = post.recording().raster("postDebug.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = post.recording().chunks().begin();
         chunks.draw(pipeline, material.captureBindings(post.recording().bindings()), FULLSCREEN);
         chunks.instance();

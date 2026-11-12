@@ -153,7 +153,7 @@ public final class CgImmediate implements AutoCloseable {
         if (BY_DEPTH.size() == depth) BY_DEPTH.add(new CgImmediate());
         CgImmediate immediate = BY_DEPTH.get(depth++);
         immediate.recording.reset();
-        immediate.pass = immediate.recording.raster(CgGraphTexture.current(), CgLoad.load(), constants, state, order);
+        immediate.pass = immediate.recording.raster("into.current").color(CgGraphTexture.current(), CgLoad.load()).constants(constants).state(state).order(order);
         return immediate;
     }
 

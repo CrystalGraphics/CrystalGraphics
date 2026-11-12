@@ -469,7 +469,7 @@ CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame
 A pass of your own drawing what the kernels wrote is charged the same way, so the budget holds the drawing too:
 
 ```java
-CgRasterPass draw = recording.raster(target, CgLoad.load(), camera, null, CgOrder.SORTED).timed(SPARKS);
+CgRasterPass draw = recording.raster("sparks.draw").color(target, CgLoad.load()).constants(camera).timed(SPARKS);
 ```
 
 At run time, from a setting or a debug overlay:

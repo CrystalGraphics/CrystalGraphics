@@ -43,13 +43,13 @@ public final class CgFrameKeys {
 
     /**
      * Unreal's CustomDepth and CustomStencil, the stage's size: its depth (DEPTH32F_STENCIL8) is the nearest depth of the
-     * draws marked {@code customDepth}, tested against each other alone, read with {@code sceneDepth(unit, it)}; its
+     * draws marked {@code customDepth}, tested against each other alone, read with {@code readsDepth(it, unit)}; its
      * stencil is theirs, read through {@link CgGraphTexture#stencil()}. Published at the end of {@code WORLD_TRANSPARENT}
      * in a firing where such a draw is in view. A post material naming {@code CG_CUSTOM_STENCIL(uv)} is handed it.
      *
      * <pre>{@code
      * CgGraphTexture mask = frame.resources().get(CgFrameKeys.CUSTOM_DEPTH);
-     * pass.sceneDepth(unit, mask);                                                   // CustomDepth
+     * pass.readsDepth(mask, unit);                                                   // CustomDepth
      * material.applyProperties(b -> b.sampler("_CustomStencil", 0, mask.stencil())); // usampler2D: texelFetch(...).r
      * }</pre>
      */

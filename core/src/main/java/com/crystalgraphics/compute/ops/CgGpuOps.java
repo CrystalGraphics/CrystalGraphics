@@ -680,7 +680,7 @@ public final class CgGpuOps {
                                     CgGraphTexture pyramid) {
         if (pyramid.getLevels() < 2) throw new IllegalArgumentException(pyramid + " has one level: describe it withMips()");
         int w = pyramid.getWidth(), h = pyramid.getHeight(), last = pyramid.getLevels() - 1;
-        CgComputePass pass = recording.compute("cg.depthPyramid", constants).sceneDepth(depthOf).timed(GPU_PYRAMID);
+        CgComputePass pass = recording.compute("cg.depthPyramid", constants).readsDepth(depthOf).timed(GPU_PYRAMID);
         for (int from = 0; from < last; from += PYRAMID_BATCH) {
             int made = Math.min(PYRAMID_BATCH, last - from);
             int gx = (size(w, from) + PYRAMID_TILE - 1) / PYRAMID_TILE, gy = (size(h, from) + PYRAMID_TILE - 1) / PYRAMID_TILE;

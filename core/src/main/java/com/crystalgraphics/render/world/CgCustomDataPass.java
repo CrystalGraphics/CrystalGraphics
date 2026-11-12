@@ -8,7 +8,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -22,6 +21,7 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.IdentityHashMap;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * The custom data pass: each draw's custom data and shading model written where it is nearest, beside the host's depth,
@@ -49,7 +49,7 @@ final class CgCustomDataPass {
      */
     static final CgLoad HOST_LIT_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f);
 
-    static final CgLoad HOST_LIT_DEPTH_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
+    static final CgLoad DEPTH_CLEAR = CgLoad.clearDepth(1.0).andStencil(0);
 
 
     /** A custom-data pipeline's state tested against the host's depth and writing none ({@link #recordCustomData}). */
@@ -84,14 +84,15 @@ final class CgCustomDataPass {
             customDataTarget = CgGraphTexture.transientTexture("cg_custom_data", CgTextureDesc.of(w, h, CUSTOM_DATA_FORMAT),
                     drawnWith);
         }
-        CgRasterPass pass = recording.raster(customDataTarget, ownDepth ? HOST_LIT_DEPTH_CLEAR : HOST_LIT_CLEAR, stage.constants(), null,
-                CgOrder.SORTED).timed(GPU_CUSTOM_DATA);
+        CgRasterPass pass = recording.raster("world.customData").color(customDataTarget, HOST_LIT_CLEAR)
+                .constants(stage.constants()).timed(GPU_CUSTOM_DATA);
+        if (ownDepth) pass.depth(customDataTarget.depthOf(), DEPTH_CLEAR, CgDepthAccess.WRITE);
         CgChunkBuilder chunks = recording.chunks().begin();
         if (ownDepth) {
             if (depthIn == null) depthIn = CgMaterial.newInstance(CgWorldRenderer.DEPTH_IN_SHADER);
             CgPipeline copy = depthIn.pipeline(CgInstanceKind.OBJECT);
             if (copy != null) {
-                pass.sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
+                pass.readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
                 chunks.draw(copy, depthIn.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
                 chunks.instance();
             }

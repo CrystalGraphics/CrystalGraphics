@@ -18,20 +18,33 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Chunks drawn into one target: its load, its pass constants, the render state its pipelines' unset slots take,
- * and how its draws may be batched. Made with {@link CgRecording#raster}; ended before the recording is sealed.
+ * Chunks drawn into textures a pass declares before any draw: its colours and depth with their loads, what it reads,
+ * its pass constants, the render state its pipelines' unset slots take, and how its draws may be batched. Unreal's
+ * render-graph pass with its parameters. Made with {@link CgRecording#raster(String)}; ended before the recording is
+ * sealed.
  *
  * <pre>{@code
- * CgRasterPass pass = recording.raster(layer, CgLoad.clear(0, 0, 0, 0), constants, uiState, CgOrder.LOOKBACK);
+ * CgRasterPass pass = rec.raster("ui.layer")
+ *         .color(layer, CgLoad.clear(0, 0, 0, 0))
+ *         .constants(constants).state(uiState).order(CgOrder.LOOKBACK);
  * pass.add(chunk);
  * pass.add(otherChunk);
  * pass.end();                // the layer's contents are complete: a draw recorded after this reads them
+ *
+ * rec.raster("world.glow")
+ *         .color(glow, CgLoad.clear(0, 0, 0, 0))
+ *         .color(normals, CgLoad.load())                                 // colour 1
+ *         .depth(sceneDepth, CgLoad.load(), CgDepthAccess.WRITE)
+ *         .reads(noise)                                                   // a graph texture its draws sample
+ *         .readsDepth(sceneDepth, CgBindingPoints.DEPTH_TEXTURE_UNIT)     // cg_DepthBuffer
+ *         .constants(constants);
  * }</pre>
  *
  * <ul>
+ *   <li>What a pass reads is ordered as of its declaration: the graph runs whatever wrote it before, whenever either
+ *       was made. Declare before the first {@link #add}.</li>
  *   <li>A chunk whose bindings read a {@link CgGraphTexture}, or bind a {@link CgGraphBuffer} as storage, or whose
- *       indirect draw takes its count from one, makes this pass read it as of {@link #add}: the graph runs the pass
- *       that wrote it first, whenever either was made.</li>
+ *       indirect draw takes its count from one, makes this pass read it as of {@link #add} too.</li>
  *   <li>A recorder that must read its own target mid-pass (a backdrop) ends the pass, copies, and opens another
  *       on the same target with {@link CgLoad#load()}.</li>
  *   <li>A chunk is drawn under the scissor set when it was added, as a command buffer's set-scissor works:
@@ -42,12 +55,12 @@ import java.util.Objects;
  *       record under a spatial node is placed through. Records at node 0 are already in the target's space.</li>
  *   <li>{@link #texture} binds a texture for the whole pass, with its constants: what every draw of it samples at a
  *       fixed unit.</li>
- *   <li>{@link #sceneColor} and {@link #sceneDepth} let its draws sample the target itself: a draw whose shader reads
- *       {@code cg_SceneColor} or {@code cg_DepthBuffer} sees every draw of the pass sorted before it. The graph copies
- *       the target before the first such draw and again wherever a draw since wrote what it reads; readers in a row
- *       share a copy, so they never see each other. A colour copy is cut to its readers' bounds grown by their
- *       shader's {@code SceneColorMargin} tag, so a reader with no bounds copies the whole target.
- *       {@link #sceneDepth(int, CgGraphTexture)} samples another target's depth instead, copied once.</li>
+ *   <li>{@link #readsColor} and {@link #readsDepth} of its own colour let its draws sample the target itself: a draw
+ *       whose shader reads {@code cg_SceneColor} or {@code cg_DepthBuffer} sees every draw of the pass sorted before
+ *       it. The graph copies the target before the first such draw and again wherever a draw since wrote what it
+ *       reads; readers in a row share a copy, so they never see each other. A colour copy is cut to its readers'
+ *       bounds grown by their shader's {@code SceneColorMargin} tag, so a reader with no bounds copies the whole
+ *       target. Of another texture, it is copied once, whole, when the pass begins.</li>
  *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
  *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
  * </ul>
@@ -60,7 +73,13 @@ public final class CgRasterPass extends CgPass {
     int level;
     /** The layer of an array target it draws into; 0 for any other. */
     int layer;
+    /** Its whole load: its colour's, with its depth's depth and stencil. */
     CgLoad load;
+    private CgLoad colorLoad, depthLoad;
+    /** The depth it declares, or null; and what it does with it. */
+    @Nullable
+    private CgGraphTexture depth;
+    private CgDepthAccess depthAccess;
     final float[] constants = new float[CgPassConstants.FLOATS];
     @Nullable
     CgRenderState state;
@@ -93,13 +112,13 @@ public final class CgRasterPass extends CgPass {
     /** Its copy of its target, made when it first declares a read of it. */
     @Nullable
     private CgTargetCopy targetCopy;
-    /** Another target whose depth its draws sample ({@link #sceneDepth(int, CgGraphTexture)}), the unit, and the copy. */
+    /** Another target whose depth its draws sample ({@link #readsDepth}), the unit, and the copy. */
     @Nullable
     private CgGraphTexture depthFrom;
     private int depthFromUnit = -1;
     @Nullable
     private CgTargetCopy depthFromCopy;
-    /** Another target whose colour its draws sample ({@link #sceneColor(int, CgGraphTexture)}), the unit, and the copy. */
+    /** Another target whose colour its draws sample ({@link #readsColor}), the unit, and the copy. */
     @Nullable
     private CgGraphTexture colorFrom;
     private int colorFromUnit = -1;
@@ -117,32 +136,24 @@ public final class CgRasterPass extends CgPass {
     /** How many of them this pass binds: the arrays are kept, grown by doubling, across the pass's reuse. */
     private int textureCount;
 
-    CgRasterPass(CgRecording recording, String name, CgGraphTexture target, int level, int layer, CgLoad load,
-                 CgPassConstants constants, @Nullable CgRenderState state, CgOrder order) {
-        super(name, target, null);
+    CgRasterPass(CgRecording recording, String name, CgPassConstants constants) {
+        super(name, null, null);
         this.recording = recording;
-        reuse(name, target, level, layer, load, constants, state, order);
+        reuse(name, constants);
     }
 
-    /** Makes this pass a new one into {@code target}: its recording's, after a reset, so a steady frame allocates none. */
-    void reuse(String name, CgGraphTexture target, int level, int layer, CgLoad load, CgPassConstants constants,
-               @Nullable CgRenderState state, CgOrder order) {
-        if (target.depthOf() != null && target.depthOf().kind() == CgGraphTexture.Kind.EXTERNAL
-                && (load.clearsDepth() || load.clearsStencil())) {
-            throw new IllegalArgumentException(name + " would clear " + target.depthOf() + "'s depth, someone else's: "
-                    + target + " draws with it");
-        }
+    /** Makes this pass a new one named {@code name}: its recording's, after a reset, so a steady frame allocates none. */
+    void reuse(String name, CgPassConstants constants) {
         this.name = name;
-        this.target = target;
-        namedFor = target.name();
-        this.level = level;
-        this.layer = layer;
-        this.load = load;
+        this.target = null;
+        level = 0;
+        layer = 0;
+        load = colorLoad = depthLoad = CgLoad.load();
+        depth = null;
+        depthAccess = CgDepthAccess.WRITE;
         constants.write(this.constants, 0);
-        // CG_ENCODED_TARGET: the host's own colour is sRGB-encoded, every texture of ours holds what is written
-        this.constants[CgPassConstants.ENCODED_TARGET] = target.isCurrent() ? 1f : 0f;
-        this.state = state;
-        this.order = order;
+        state = null;
+        order = CgOrder.SORTED;
         gpuZone = -1;
         budget = null;
         chunks.clear();
@@ -178,6 +189,7 @@ public final class CgRasterPass extends CgPass {
     void clearReferences() {
         chunks.clear();
         target = null;
+        depth = null;
         state = null;
         depthFrom = null;
         colorFrom = null;
@@ -186,21 +198,13 @@ public final class CgRasterPass extends CgPass {
         dropTextures();
     }
 
-    /** Whether {@link #name} is already what a pass into {@code target} at this level and layer is called. */
-    boolean named(CgGraphTexture target, int level, int layer) {
-        return level == this.level && layer == this.layer && target.name().equals(namedFor);
-    }
-
-    /** The target name {@link #name} was made from. */
-    private String namedFor;
-
     private static final int[] NO_UNITS = new int[0];
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
 
     /** Appends a chunk, in painter's order. */
     public CgRasterPass add(CgDrawChunk chunk) {
-        if (ended) throw new IllegalStateException(this + " has ended");
-        recording.requireOpen();
+        declaring();
+        requireTarget();
         if (chunks.size() == chunkScissor.length) chunkScissor = Arrays.copyOf(chunkScissor, chunkScissor.length * 2);
         chunkScissor[chunks.size()] = scissor;
         chunks.add(chunk);
@@ -230,6 +234,261 @@ public final class CgRasterPass extends CgPass {
             }
         }
         return this;
+    }
+
+    /**
+     * Draws into {@code texture}: its first colour, level 0 and layer 0, or a second beside it. {@code load} clears
+     * colour or keeps it; a depth is declared with {@link #depth}.
+     *
+     * <pre>{@code
+     * rec.raster("ui.layer").color(layer, CgLoad.clear(0, 0, 0, 0));
+     * rec.raster("world.opaque").color(scene, CgLoad.load()).color(normals, CgLoad.load());   // normals are colour 1
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A second colour loads as the first does (one colour load a pass), has the first's size, one colour slot
+     *       and no depth, beside a first drawn at level 0 and layer 0. A pipeline writes it only where its program has a
+     *       location-1 output ({@code CgPipeline.slotWrites}); for every other draw the slot is masked off.</li>
+     *   <li>Beside an external target, the target must lend its attachments ({@code CgExternalTarget.lendsAttachments()}):
+     *       the window's lends none, and throws; {@link #colorIfTaken} draws without it instead.</li>
+     *   <li>One blend serves both slots below GL 4.0: what a pipeline writes at location 1 must suit the pass's.</li>
+     * </ul>
+     */
+    public CgRasterPass color(CgGraphTexture texture, CgLoad load) {
+        return target == null ? color(texture, 0, 0, load) : second(texture, load);
+    }
+
+    /**
+     * Draws into mip level {@code level} and layer {@code layer} of {@code texture}, its first colour: one step of a chain
+     * drawn level by level, reading the level before it through {@link CgGraphTexture#level}, or one layer of an array.
+     *
+     * <pre>{@code
+     * rec.raster("bloom.down").color(bloom, 2, 0, CgLoad.load()).constants(constants.resolution(w >> 2, h >> 2));
+     * for (int k = 0; k < used; k++) rec.raster("field.slot").color(field, 0, k, CgLoad.clear(0, 0, 0, 0));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The viewport is the level's size, which the constants' resolution should be too; a level above 0 has no
+     *       depth.</li>
+     *   <li>Each layer of an array is a target of its own: its load clears or keeps that layer alone. Sampled, the array
+     *       is read whole, so no pass draws into an array it samples.</li>
+     * </ul>
+     */
+    public CgRasterPass color(CgGraphTexture texture, int level, int layer, CgLoad load) {
+        declaring();
+        if (target != null) {
+            if (level != 0 || layer != 0) throw new IllegalArgumentException(this + ": a second colour is level 0, layer 0");
+            return second(texture, load);
+        }
+        requireColorLoad(load);
+        if (level < 0 || level >= texture.getLevels()) throw new IllegalArgumentException(texture + " has no level " + level);
+        if (texture.isVolume()) {
+            throw new IllegalArgumentException(texture + " is a volume: kernels write it as a 3d image, and no pass draws into one");
+        }
+        if (layer < 0 || layer >= texture.getLayers()) {
+            throw new IllegalArgumentException(texture + " has " + texture.getLayers() + " layers, not layer " + layer);
+        }
+        target = texture;
+        this.level = level;
+        this.layer = layer;
+        colorLoad = load;
+        this.load = CgLoad.of(colorLoad, depthLoad);
+        encodeTarget();
+        return this;
+    }
+
+    /**
+     * As a second {@link #color}, for an optimisation with a fallback of its own: where the target takes no second
+     * attachment (an external one lending none, or one of another size), the pass draws into the first alone, what its
+     * draws write at location 1 is lost, and it says why once in the log.
+     */
+    public CgRasterPass colorIfTaken(CgGraphTexture texture, CgLoad load) {
+        if (target == null) throw new IllegalStateException(this + ": colorIfTaken is a second colour; declare color(...) first");
+        second(texture, load);
+        attachmentOptional = true;
+        return this;
+    }
+
+    private CgRasterPass second(CgGraphTexture texture, CgLoad load) {
+        declaring();
+        if (attachment != null) throw new IllegalStateException(this + " draws into two colours already");
+        if (!sameColorLoad(load, colorLoad)) throw new IllegalArgumentException(this + ": a second colour loads as the first");
+        if (level != 0 || layer != 0) throw new IllegalStateException(this + " draws level " + level + " layer " + layer
+                + ", and takes a second colour only at level 0, layer 0");
+        if (texture == target) throw new IllegalArgumentException(this + " already draws into " + texture);
+        attachment = texture;
+        recording.read(this, texture, CgAccess.COLOR_WRITE);
+        return this;
+    }
+
+    /**
+     * Tests against {@code texture}'s depth, and writes it unless {@code access} is {@link CgDepthAccess#READ}.
+     * {@code load} clears depth and stencil or keeps them. A pass declaring a depth and no colour draws depth alone.
+     *
+     * <pre>{@code
+     * rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 1)).depth(pictureDepth, CgLoad.clearDepth(1), CgDepthAccess.WRITE);
+     * rec.raster("world.base").color(scene, CgLoad.load()).depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>{@code texture} is a depth texture, or an external target, whose depth is the one it lends. An external
+     *       target's depth is its owner's: never cleared here.</li>
+     *   <li>Beside a colour of another texture, it has the colour's size, or the pass draws without it and logs why.</li>
+     * </ul>
+     */
+    public CgRasterPass depth(CgGraphTexture texture, CgLoad load, CgDepthAccess access) {
+        declaring();
+        if (depth != null) throw new IllegalStateException(this + " declares a depth already: " + depth);
+        if (load.clearsColor()) throw new IllegalArgumentException(this + ": a depth's load clears depth, not colour");
+        if (texture.kind() == CgGraphTexture.Kind.EXTERNAL && (load.clearsDepth() || load.clearsStencil())) {
+            throw new IllegalArgumentException(this + " would clear " + texture + "'s depth, someone else's");
+        }
+        if (texture.kind() != CgGraphTexture.Kind.EXTERNAL && texture.desc() != null && !texture.desc().isDepth()) {
+            throw new IllegalArgumentException(this + ": " + texture + " is no depth texture");
+        }
+        depth = texture;
+        depthLoad = load;
+        depthAccess = java.util.Objects.requireNonNull(access, "access");
+        this.load = CgLoad.of(colorLoad, depthLoad);
+        return this;
+    }
+
+    /** Samples {@code texture} in its draws: the graph runs whatever wrote it first. */
+    public CgRasterPass reads(CgGraphTexture texture) {
+        declaring();
+        if (target != null) requireNotOwnArray(texture);
+        recording.read(this, texture, CgAccess.SAMPLED_READ);
+        return this;
+    }
+
+    /** Reads {@code buffer} in its draws, as storage or vertex data: the graph runs whatever wrote it first. */
+    public CgRasterPass reads(CgGraphBuffer buffer) {
+        declaring();
+        recording.read(this, buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+        return this;
+    }
+
+    /** Takes its indirect draws' arguments or counts from {@code buffer}, which a kernel writes first. */
+    public CgRasterPass indirect(CgGraphBuffer buffer) {
+        declaring();
+        recording.read(this, buffer, CgAccess.COMPUTE_READ);
+        return this;
+    }
+
+    /**
+     * Lets draws whose shader reads {@code cg_SceneColor} sample {@code texture}'s colour at {@code unit}. Of its own
+     * colour, as it stands after every draw sorted before them; of another texture, as it stands after every write to
+     * it recorded before this call, copied once, whole, when the pass begins, in that texture's format. Declare its
+     * colour first.
+     *
+     * <pre>{@code
+     * rec.raster("world.distortion").color(scene, CgLoad.load())
+     *         .readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+     * rec.raster("world.scene").color(scene, CgLoad.load())
+     *         .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);   // the host's picture
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A pass into a mip level or layer above 0 reads no copy of its own colour, and throws.</li>
+     * </ul>
+     */
+    public CgRasterPass readsColor(CgGraphTexture texture, int unit) {
+        declaring();
+        requireTarget();
+        return texture == target ? ownColor(unit) : colorFrom(unit, texture);
+    }
+
+    /**
+     * Lets draws whose shader reads {@code cg_DepthBuffer} sample {@code texture}'s depth at {@code unit}. Of its own
+     * colour's depth, as it stands after every draw sorted before them; of another texture, as it stands after every
+     * write to it recorded before this call, copied once, whole, when the pass begins, at that texture's size, so readers
+     * sample by normalized uv ({@code gl_FragCoord.xy / CG_RESOLUTION}). Declare its colour first.
+     *
+     * <pre>{@code
+     * rec.raster("world.glow").color(glow, CgLoad.clear(0, 0, 0, 0))
+     *         .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);   // occluded by the scene
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A texture drawn with another's depth reads that depth.</li>
+     *   <li>Throws here where {@code texture} has no depth, and at execution where an external target has none.</li>
+     *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
+     * </ul>
+     */
+    public CgRasterPass readsDepth(CgGraphTexture texture, int unit) {
+        declaring();
+        requireTarget();
+        return texture == target ? ownDepth(unit) : depthFrom(unit, texture);
+    }
+
+    /** The block its draws read as the frame's: time, camera, resolution. The recording's identity block unless set. */
+    public CgRasterPass constants(CgPassConstants constants) {
+        declaring();
+        constants.write(this.constants, 0);
+        encodeTarget();
+        return this;
+    }
+
+    /** The render state its pipelines' unset slots take; null, the default, leaves them as the target has them. */
+    public CgRasterPass state(@Nullable CgRenderState state) {
+        declaring();
+        this.state = state;
+        return this;
+    }
+
+    /** How its draws may be reordered for batching: {@link CgOrder#SORTED} unless set. */
+    public CgRasterPass order(CgOrder order) {
+        declaring();
+        this.order = java.util.Objects.requireNonNull(order, "order");
+        return this;
+    }
+
+    /** CG_ENCODED_TARGET: the host's own colour is sRGB-encoded, every texture of ours holds what is written. */
+    private void encodeTarget() {
+        if (target != null) constants[CgPassConstants.ENCODED_TARGET] = target.isCurrent() ? 1f : 0f;
+    }
+
+    private void declaring() {
+        if (ended) throw new IllegalStateException(this + " has ended");
+        recording.requireOpen();
+    }
+
+    private static boolean sameColorLoad(CgLoad a, CgLoad b) {
+        return a.color() == b.color() && (!a.clearsColor() || a.r() == b.r() && a.g() == b.g() && a.b() == b.b() && a.a() == b.a());
+    }
+
+    private static void requireColorLoad(CgLoad load) {
+        if (load.clearsDepth() || load.clearsStencil()) {
+            throw new IllegalArgumentException("a colour's load clears colour: clear depth and stencil in depth(...)");
+        }
+    }
+
+    /** Its target: its first colour, or the depth of a pass drawing depth alone. */
+    private void requireTarget() {
+        if (target != null) return;
+        if (depth == null) throw new IllegalStateException(this + " declares no colour or depth");
+        target = depth;
+        depth = null;
+        encodeTarget();
+    }
+
+    /** What its draws test and write: its declared depth, else the depth its target draws with, else its target's own. */
+    CgGraphTexture depthTexture() {
+        CgGraphTexture t = target != null ? target : CgGraphTexture.current();
+        if (depth != null) return depth;
+        return t.depthOf() != null ? t.depthOf() : t;
+    }
+
+    /** A depth of another texture it draws with, or null for its target's own or none. */
+    @Nullable
+    CgGraphTexture depthBeside() {
+        if (depth != null) return depth == target ? null : depth;
+        return target == null ? null : target.depthOf();
+    }
+
+    /** What it does with its depth. */
+    CgDepthAccess depthAccess() {
+        return depthAccess;
     }
 
     /**
@@ -362,7 +621,7 @@ public final class CgRasterPass extends CgPass {
 
     /** Binds {@code texture} at {@code unit} for every draw of this pass. A graph texture is read as of this call. */
     public CgRasterPass texture(int unit, CgTexture texture) {
-        if (ended) throw new IllegalStateException(this + " has ended");
+        declaring();
         int n = textureCount++;
         if (n == textureUnits.length) {
             textureUnits = Arrays.copyOf(textureUnits, Math.max(4, n * 2));
@@ -372,7 +631,7 @@ public final class CgRasterPass extends CgPass {
         textures[n] = texture;
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
         if (graph != null) {
-            requireNotOwnArray(graph);
+            if (target != null) requireNotOwnArray(graph);
             recording.read(this, graph, CgAccess.SAMPLED_READ);
         }
         return this;
@@ -385,18 +644,7 @@ public final class CgRasterPass extends CgPass {
         }
     }
 
-    /**
-     * Lets draws whose shader reads {@code cg_SceneColor} sample the target's colour at {@code unit}, as it stands
-     * after every draw sorted before them. A pass into a mip level above 0 takes no copy.
-     *
-     * <pre>{@code
-     * recording.raster(target, CgLoad.load(), constants, state, CgOrder.SORTED)
-     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
-     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT);
-     * }</pre>
-     */
-    public CgRasterPass sceneColor(int unit) {
-        if (ended) throw new IllegalStateException(this + " has ended");
+    private CgRasterPass ownColor(int unit) {
         requireLevelZero();
         sceneColorUnit = unit;
         if (targetCopy == null) targetCopy = keptCopy();
@@ -405,12 +653,13 @@ public final class CgRasterPass extends CgPass {
 
     /**
      * Says its first draw writes every pixel of its target, unblended, discarding none: a full-screen post pass. Its
-     * {@link #sceneColor} then needs no copy of the target, as Unreal's post passes write a new texture rather than
-     * copy SceneColor: the pass draws into fresh storage and samples the target's storage as it found it.
+     * {@link #readsColor} of its own colour then needs no copy of the target, as Unreal's post passes write a new
+     * texture rather than copy SceneColor: the pass draws into fresh storage and samples the target's storage as it
+     * found it.
      *
      * <pre>{@code
-     * recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
-     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).replaces();
+     * rec.raster("post.grade").color(scene, CgLoad.load())
+     *         .readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).replaces();
      * }</pre>
      *
      * <ul>
@@ -420,7 +669,7 @@ public final class CgRasterPass extends CgPass {
      * </ul>
      */
     public CgRasterPass replaces() {
-        if (ended) throw new IllegalStateException(this + " has ended");
+        declaring();
         replaces = true;
         return this;
     }
@@ -429,9 +678,7 @@ public final class CgRasterPass extends CgPass {
         return replaces;
     }
 
-    /** As {@link #sceneColor}, for the target's depth and {@code cg_DepthBuffer}. */
-    public CgRasterPass sceneDepth(int unit) {
-        if (ended) throw new IllegalStateException(this + " has ended");
+    private CgRasterPass ownDepth(int unit) {
         requireLevelZero();
         sceneDepthUnit = unit;
         if (targetCopy == null) targetCopy = keptCopy();
@@ -452,27 +699,7 @@ public final class CgRasterPass extends CgPass {
         if (layer != 0) throw new IllegalStateException(this + " draws layer " + layer + ", and reads no copy of its target");
     }
 
-    /**
-     * Lets draws whose shader reads {@code cg_DepthBuffer} sample {@code from}'s depth at {@code unit}, as it stands
-     * after every write to it recorded before this call: a glow or bloom pass into a target of its own, occluded by
-     * the scene. Copied once, whole, when the pass begins, at {@code from}'s size, so readers sample by normalized uv
-     * ({@code gl_FragCoord.xy / CG_RESOLUTION}) and the pass's target may be any size.
-     *
-     * <pre>{@code
-     * recording.raster(glow, CgLoad.clear(0, 0, 0, 0), frame.defaults(new CgPassConstants()), null, CgOrder.SORTED)
-     *         .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, CgGraphTexture.current());
-     * }</pre>
-     *
-     * <ul>
-     *   <li>{@link CgGraphTexture#current()} is the target the execution was opened into.</li>
-     *   <li>A texture drawn with another's depth ({@link CgGraphTexture#depthOf()}) reads that depth.</li>
-     *   <li>Throws here where {@code from}'s format has no depth, and at execution where an external target has none.</li>
-     *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
-     * </ul>
-     */
-    public CgRasterPass sceneDepth(int unit, CgGraphTexture from) {
-        if (ended) throw new IllegalStateException(this + " has ended");
-        if (from == target) return sceneDepth(unit);
+    private CgRasterPass depthFrom(int unit, CgGraphTexture from) {
         if (from.depthOf() == null && from.desc() != null && !from.desc().format().hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none");
         }
@@ -484,23 +711,7 @@ public final class CgRasterPass extends CgPass {
         return this;
     }
 
-    /**
-     * Lets draws sample {@code from}'s colour at {@code unit}, as it stands after every write to it recorded before this
-     * call, copied once, whole, when the pass begins: a pass into a target of its own reading the host's picture.
-     *
-     * <pre>{@code
-     * recording.raster(scene, CgLoad.load(), constants, null, CgOrder.SORTED)
-     *         .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT, CgGraphTexture.current());
-     * }</pre>
-     *
-     * <ul>
-     *   <li>The copy has {@code from}'s colour format.</li>
-     *   <li>Not {@code target} itself: that is {@link #sceneColor(int)}.</li>
-     * </ul>
-     */
-    public CgRasterPass sceneColor(int unit, CgGraphTexture from) {
-        if (ended) throw new IllegalStateException(this + " has ended");
-        if (from == target) throw new IllegalArgumentException(this + " reads its own target: use sceneColor(unit)");
+    private CgRasterPass colorFrom(int unit, CgGraphTexture from) {
         colorFrom = from;
         colorFromUnit = unit;
         if (colorFromCopy == null) colorFromCopy = keptColorFrom != null ? keptColorFrom : (keptColorFrom = new CgTargetCopy());
@@ -561,57 +772,13 @@ public final class CgRasterPass extends CgPass {
         return textures[i];
     }
 
-    /**
-     * Draws into {@code texture} as colour attachment 1 beside the target, keeping what it holds: the world's normals
-     * written by the same draws as its colour. A pipeline writes it only where its program has a location-1 output
-     * ({@code CgPipeline.slotWrites}); for every other draw the slot is masked off.
-     *
-     * <pre>{@code
-     * recording.raster(normals, CgLoad.clear(0, 0, 0, 0), constants, null, CgOrder.SORTED).end();   // cleared first
-     * CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), constants, state, CgOrder.SORTED)
-     *         .attachment(normals);
-     * chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);
-     * }</pre>
-     *
-     * <ul>
-     *   <li>{@code texture} has the target's size, one colour slot and no depth; the target is level 0 and layer 0.</li>
-     *   <li>Beside an external target, the target must lend its attachments
-     *       ({@code CgExternalTarget.lendsAttachments()}): the window's lends none, and throws.</li>
-     *   <li>One blend serves both slots below GL 4.0: what a pipeline writes at location 1 must suit the pass's.</li>
-     * </ul>
-     */
-    public CgRasterPass attachment(CgGraphTexture texture) {
-        if (ended) throw new IllegalStateException(this + " has ended");
-        if (level != 0 || layer != 0) throw new IllegalStateException(this + " draws level " + level + " layer " + layer
-                + ", and takes a second attachment only at level 0, layer 0");
-        if (texture == target) throw new IllegalArgumentException(this + " already draws into " + texture);
-        attachment = texture;
-        recording.read(this, texture, CgAccess.COLOR_WRITE);
-        return this;
-    }
-
-    /**
-     * As {@link #attachment}, for an optimisation with a fallback of its own: where the target takes no second
-     * attachment (an external one lending none, or one of another size), the pass draws into the target alone, what its
-     * draws write at location 1 is lost, and it says why once in the log.
-     *
-     * <pre>{@code
-     * if (stage.host().target().lendsAttachments()) pass.attachmentIfTaken(emission);
-     * }</pre>
-     */
-    public CgRasterPass attachmentIfTaken(CgGraphTexture texture) {
-        attachment(texture);
-        attachmentOptional = true;
-        return this;
-    }
-
     boolean attachmentOptional() {
         return attachmentOptional;
     }
 
-    /** Its second colour attachment ({@link #attachment}), or null. */
+    /** Its second colour, or null. */
     @Nullable
-    public CgGraphTexture attachment() {
+    CgGraphTexture attachment() {
         return attachment;
     }
 
@@ -625,11 +792,13 @@ public final class CgRasterPass extends CgPass {
     public void end() {
         if (ended) throw new IllegalStateException(this + " has already ended");
         recording.requireOpen();
+        requireTarget();
         ended = true;
-        if (target.depthOf() != null) {
+        CgGraphTexture beside = depthBeside();
+        if (beside != null) {
             // It tests and writes another's depth: ordered after what wrote it, before what reads it.
-            recording.read(this, target.depthOf(), CgAccess.SAMPLED_READ);
-            recording.write(this, target.depthOf(), CgAccess.COLOR_WRITE);
+            recording.read(this, beside, CgAccess.SAMPLED_READ);
+            recording.write(this, beside, CgAccess.COLOR_WRITE);
         }
         recording.write(this, target, CgAccess.COLOR_WRITE);
         if (attachment != null) recording.write(this, attachment, CgAccess.COLOR_WRITE);

@@ -9,7 +9,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -224,8 +223,8 @@ final class CgWorldDistortion {
             CgMaterial material = apply(FINAL);
             CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null) {
-                CgRasterPass pass = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                        .sceneColor(CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT)
+                CgRasterPass pass = recording.raster("worldDistortion.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
+                        .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                         .timed(GPU_APPLY);
                 CgChunkBuilder chunks = recording.chunks().begin();
                 chunks.draw(pipeline, material.captureBindings(recording.bindings()), QUAD);
@@ -249,9 +248,8 @@ final class CgWorldDistortion {
         layerOf[slot] = layer;
         stage.constants().write(block, 0);
         constants.read(block, 0).resolution(target.getWidth(), target.getHeight());
-        CgRasterPass bend = recording.raster(target, 0, layer, CLEAR, constants, BEND_STATE,
-                        CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+        CgRasterPass bend = recording.raster("worldDistortion.target").color(target, 0, layer, CLEAR).constants(constants).state(BEND_STATE)
+                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_BEND);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0, count = draws.count(); i < count; i++) {

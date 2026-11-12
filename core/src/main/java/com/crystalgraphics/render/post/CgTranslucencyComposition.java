@@ -8,7 +8,6 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -56,7 +55,7 @@ final class CgTranslucencyComposition {
         CgRecording recording = post.recording();
         bound = translucency;
         material.applyProperties(bind);
-        CgRasterPass pass = recording.raster(into, CgLoad.load(), post.constants(), null, CgOrder.SORTED);
+        CgRasterPass pass = recording.raster("translucencyComposition.into").color(into, CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);

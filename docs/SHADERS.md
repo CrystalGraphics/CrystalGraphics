@@ -1498,7 +1498,7 @@ CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(order, frame -> {
 CgComputePass cull = recording.compute("instances.cull", constants).async();
 cull.dispatch(cullKernel, count).bind("INSTANCES", instances).counter("VISIBLE", visible, 0);
 cull.end();
-recording.raster(shadowMap, ...);
+recording.raster("mymod.shadow").depth(shadowMap, CgLoad.clearDepth(1), CgDepthAccess.WRITE) ...;
 ```
 
 **Mark every pass that fits.** `async()` is opt-in, not optional: a pass that fits and is left in order costs the

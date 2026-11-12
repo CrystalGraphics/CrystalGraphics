@@ -5,7 +5,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -60,8 +59,7 @@ final class CgHalfPass {
         }
         stage.constants().write(world.constantsBlock, 0);
         world.halfConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster(halfTarget, CgWorldRenderer.CLEAR, world.halfConstants, CgWorldRenderer.TRANSPARENT_STATE,
-                        CgOrder.SORTED).sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT, stage.target())
+        CgRasterPass pass = recording.raster("halfPass.halfTarget").color(halfTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_HALF);
         world.mediated(pass);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -90,8 +88,8 @@ final class CgHalfPass {
         }
         CgPipeline pipeline = upsample.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgRasterPass add = recording.raster(stage.target(), CgLoad.load(), stage.constants(), null, CgOrder.SORTED)
-                .sceneDepth(CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
+        CgRasterPass add = recording.raster("halfPass.target").color(stage.target(), CgLoad.load()).constants(stage.constants())
+                .readsDepth(stage.target(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_HALF_ADD);
         CgChunkBuilder upsampled = recording.chunks().begin();
         upsampled.draw(pipeline, upsample.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
         upsampled.instance();

@@ -4,8 +4,8 @@ package com.crystalgraphics.render.draw;
  * How a pass may reorder its draws into batches.
  *
  * <pre>{@code
- * recording.raster(target, CgLoad.load(), constants, uiState, CgOrder.LOOKBACK);   // the UI, anything 2D
- * recording.raster(target, CgLoad.load(), constants, worldState, CgOrder.SORTED);  // the world, keys written per draw
+ * recording.raster("order.target").color(target, CgLoad.load()).constants(constants).state(uiState).order(CgOrder.LOOKBACK);   // the UI, anything 2D
+ * recording.raster("order.target").color(target, CgLoad.load()).constants(constants).state(worldState);  // the world, keys written per draw
  * }</pre>
  */
 public enum CgOrder {

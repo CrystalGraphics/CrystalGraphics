@@ -201,7 +201,7 @@ public final class CgStageFrame {
 
     /** A raster pass onto the host's target under {@code constants}, loading what is there. */
     public CgRasterPass pass(CgPassConstants constants, CgOrder order) {
-        return recording.raster(target(), CgLoad.load(), constants, null, order);
+        return recording.raster("stageFrame.target").color(target(), CgLoad.load()).constants(constants).order(order);
     }
 
     /**

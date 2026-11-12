@@ -130,8 +130,7 @@ public class CgComputeGraphTest {
 
     /** A raster pass into a requested texture of its own, touching nothing else. */
     private void draw(CgRecording rec, String target) {
-        CgRasterPass pass = rec.raster(CgGraphTexture.requested(target, CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
-                CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
+        CgRasterPass pass = rec.raster("raster " + target).color(CgGraphTexture.requested(target, CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(rec.bindings()));
         c.instance();
@@ -159,8 +158,7 @@ public class CgComputeGraphTest {
         CgComputePass write = rec.compute("write");
         write.dispatch(produce, 64).bind("DST", cells);
         write.end();
-        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
-                CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
+        CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(3, cells).end();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
@@ -341,8 +339,7 @@ public class CgComputeGraphTest {
         add.dispatch(consume, 64).bind("SRC", counts).bind("DST", copy);
         add.end();
         rec.copy(copy, 0, counts, 0, DESC.bytes());
-        CgRasterPass draw = rec.raster(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)),
-                CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK);
+        CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(3, counts).end();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
@@ -531,7 +528,7 @@ public class CgComputeGraphTest {
         assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Flat"), 8, 8, 1).image("FLAT", volume));
         assertThrows(IllegalArgumentException.class, () -> pass.dispatch(images.kernel("Deep"), 8, 8, 8).texture("_Grid", flat));
         assertThrows(IllegalArgumentException.class,
-                () -> new CgRecording().raster(volume, CgLoad.load(), new CgPassConstants(), null, CgOrder.LOOKBACK));
+                () -> new CgRecording().raster("computeGraphTest.volume").color(volume, CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK));
         assertThrows(IllegalArgumentException.class, () -> CgGraphTexture.transientTexture("deep", CgTextureDesc.volume(8, 8, 8, r32f).withMips(2)));
 
         // An image is a colour texture: a depth one binds as nothing a kernel writes.

@@ -168,7 +168,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * <pre>{@code
      * CgGraphTexture smoke = CgGraphTexture.history("smoke", new CgTextureDesc(w, h, rgba16f));
      * resolve.applyProperties(b -> b.sampler("_Now", 0, current).sampler("_Last", 1, smoke.previous()));
-     * CgRasterPass pass = rec.raster(smoke, CgLoad.load(), constants, null, CgOrder.SORTED);   // draws the next version
+     * CgRasterPass pass = rec.raster("graphTexture.smoke").color(smoke, CgLoad.load()).constants(constants);   // draws the next version
      * // ... the resolve's draw: this frame blended over the last, by a validity the caller keeps ...
      * pass.end();
      * composite.applyProperties(b -> b.sampler("_Smoke", 0, smoke));   // a later pass: what that one drew
@@ -263,7 +263,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *
      * <pre>{@code
      * for (int k = 1; k < bloom.getLevels(); k++) {         // each level drawn from the one above
-     *     CgRasterPass down = rec.raster(bloom, k, CgLoad.load(), constants, null, CgOrder.LOOKBACK);
+     *     CgRasterPass down = rec.raster("graphTexture.bloom").color(bloom, k, 0, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK);
      *     int reads = rec.bindings().withTexture(downsample.captureBindings(rec.bindings()), 0, bloom.level(k - 1));
      *     CgChunkBuilder c = rec.chunks().begin();
      *     c.draw(downsample.pipeline(CgInstanceKind.OBJECT), reads, CgMesh.quads(1));   // a fullscreen #type none quad

@@ -5,7 +5,6 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -19,6 +18,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgDepthAccess;
 
 /**
  * Unreal's CustomDepth pass ({@code EMeshPass::CustomDepth}): every draw marked {@code customDepth} drawn depth-only into
@@ -45,7 +45,7 @@ final class CgCustomDepthPass {
     /** CustomDepth and CustomStencil (CgFrameKeys.CUSTOM_DEPTH): Unreal's PF_DepthStencil, cleared to far and 0. */
     static final CgFormat CUSTOM_DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT_STENCIL8;
 
-    static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clear(0f, 0f, 0f, 0f).andDepth(1.0).andStencil(0);
+    static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clearDepth(1.0).andStencil(0);
 
     static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
 
@@ -85,7 +85,8 @@ final class CgCustomDepthPass {
         if (customDepthTarget == null || customDepthTarget.getWidth() != w || customDepthTarget.getHeight() != h) {
             customDepthTarget = CgGraphTexture.transientTexture("cg_custom_depth", CgTextureDesc.of(w, h, CUSTOM_DEPTH_FORMAT));
         }
-        CgRasterPass pass = recording.raster(customDepthTarget, CUSTOM_DEPTH_CLEAR, stage.constants(), null, CgOrder.SORTED)
+        CgRasterPass pass = recording.raster("world.customDepth")
+                .depth(customDepthTarget, CUSTOM_DEPTH_CLEAR, CgDepthAccess.WRITE).constants(stage.constants())
                 .timed(GPU_CUSTOM_DEPTH);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {

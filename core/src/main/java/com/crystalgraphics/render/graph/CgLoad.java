@@ -8,14 +8,16 @@ import com.crystalgraphics.platform.rhi.command.CgPassDesc;
  *
  * <pre>{@code
  * CgLoad.load()                          // draw over what the target holds
- * CgLoad.clear(0, 0, 0, 0)               // a layer: transparent first
- * CgLoad.clear(0, 0, 0, 1).andDepth(1)   // a preview with a depth buffer
- * CgLoad.clear(0, 0, 0, 0).andDepth(1).andStencil(0)   // a mask: depth and stencil too
+ * CgLoad.clear(0, 0, 0, 0)               // a colour: transparent first
+ * CgLoad.clearDepth(1)                   // a depth: far first
+ * CgLoad.clearDepth(1).andStencil(0)     // a depth and its stencil
+ *
+ * rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 1)).depth(depth, CgLoad.clearDepth(1), CgDepthAccess.WRITE);
  * }</pre>
  *
  * <ul>
  *   <li>Depth values are far at 1, near at 0; the executor mirrors them for a host whose depth runs far to near.</li>
- *   <li>An aspect the target lacks is ignored: a depth clear on a target of colour alone does nothing.</li>
+ *   <li>A colour's load clears colour alone and a depth's depth and stencil alone: each throws for the other's.</li>
  * </ul>
  */
 public final class CgLoad {
@@ -51,9 +53,17 @@ public final class CgLoad {
         return new CgLoad(CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.LoadOp.LOAD, 1, CgPassDesc.LoadOp.LOAD, 0);
     }
 
-    /** This load, clearing depth to {@code value} as well. */
-    public CgLoad andDepth(double value) {
-        return new CgLoad(color, r, g, b, a, CgPassDesc.LoadOp.CLEAR, value, stencilOp, stencil);
+    /** Clear depth to {@code value}, far at 1; stencil kept. A depth's load ({@link CgRasterPass#depth}). */
+    public static CgLoad clearDepth(double value) {
+        return new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.CLEAR, value, CgPassDesc.LoadOp.LOAD, 0);
+    }
+
+    /** A pass's whole load: {@code color}'s colour, {@code depth}'s depth and stencil. */
+    static CgLoad of(CgLoad color, CgLoad depth) {
+        if (!depth.clearsDepth() && !depth.clearsStencil()) return color;
+        if (!color.clearsColor()) return depth;
+        return new CgLoad(color.color, color.r, color.g, color.b, color.a, depth.depthOp, depth.depth, depth.stencilOp,
+                depth.stencil);
     }
 
     /** This load, clearing stencil to {@code value} as well: a target with a stencil attachment. */
