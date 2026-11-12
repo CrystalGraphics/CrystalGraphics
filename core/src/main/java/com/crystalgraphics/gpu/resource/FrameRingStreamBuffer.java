@@ -57,11 +57,25 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
 
     @Override
     public ByteBuffer map(int sizeBytes) {
-        reserve(sizeBytes);
+        reserve(sizeBytes);   // may allocate(), which drops the slices
+        // A slice per place and size, kept: a caller mapping the same upload frame after frame (a mesh ring's page)
+        // reuses its region's, where a new view a call was an allocation a frame
+        for (int i = 0; i < sliceCount; i++) {
+            if (sliceAt[i] == mappedAt && slices[i].capacity() == sizeBytes) return (ByteBuffer) slices[i].clear();
+        }
         ByteBuffer view = mapping.duplicate();
         view.limit(mappedAt + sizeBytes).position(mappedAt);
-        return view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
+        ByteBuffer slice = view.slice().order(ByteOrder.nativeOrder());   // slice() resets the order
+        int k = sliceCount < slices.length ? sliceCount++ : nextSlice++ % slices.length;
+        slices[k] = slice;
+        sliceAt[k] = mappedAt;
+        return slice;
     }
+
+    /** {@link #map}'s slices, by where each starts; dropped when the buffer is made again. */
+    private final ByteBuffer[] slices = new ByteBuffer[2 * CgFrameRing.FRAMES];
+    private final int[] sliceAt = new int[2 * CgFrameRing.FRAMES];
+    private int sliceCount, nextSlice;
 
     /** Writes through one view of the whole mapping, positioned per upload. */
     @Override
@@ -168,6 +182,8 @@ final class FrameRingStreamBuffer extends CgStreamBuffer {
         floats = mapping.asFloatBuffer();
         ints = mapping.asIntBuffer();
         bytes = mapping.duplicate();
+        java.util.Arrays.fill(slices, null);
+        sliceCount = 0;
         cursor = 0;
         regionBase = CgFrameRing.region(Math.max(frame, 0)) * regionBytes;
     }

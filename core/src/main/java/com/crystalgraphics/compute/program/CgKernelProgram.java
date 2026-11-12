@@ -215,8 +215,13 @@ public final class CgKernelProgram {
         if (!CgRHI.installed()) return true;
         CgRHI rhi = CgRHI.get();
         deviceParts(rhi);
-        return rhi.prepareProgram(deviceLayout, deviceModule);
+        // Ready stays ready: asked every frame, and the modules' varargs array is an allocation a call
+        if (!prepared) prepared = rhi.prepareProgram(deviceLayout, deviceModule);
+        return prepared;
     }
+
+    /** Whether {@link #deviceReady} found it built on the device it is made for. */
+    private boolean prepared;
 
     /** Its module and layout on {@code rhi}, made once a device: what its pipeline is made of. */
     private void deviceParts(CgRHI rhi) {
@@ -294,6 +299,7 @@ public final class CgKernelProgram {
         pipelineOf = null;
         devicePipeline = null;
         deviceModule = null;
+        prepared = false;
     }
 
     private static int groups(int count, int size) {
