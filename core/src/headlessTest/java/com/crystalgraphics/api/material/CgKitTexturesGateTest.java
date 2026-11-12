@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.gpu.resource.CgTextureAbstract;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.gpu.resource.CgTextureCubemap;
@@ -64,7 +65,7 @@ public class CgKitTexturesGateTest {
             String path = p.toAbsolutePath().toString().replace('\\', '/');
             try {
                 CgTexture texture = CgMaterialRegistry.texture(path);
-                if (texture.getWidth() < 1 || texture.isMissing()) failed.add(path + ": would not load");
+                if (texture.getWidth() < 1 || texture instanceof CgTextureAbstract made && made.isMissing()) failed.add(path + ": would not load");
                 else if (texture instanceof CgTextureCubemap) cubes++;
                 else floats++;
             } catch (RuntimeException e) {
