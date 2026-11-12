@@ -42,6 +42,9 @@ final class CgMaterialFormat {
     /** The material's {@code surface()}, renamed. */
     static final String MATERIAL_SURFACE = "cg_MaterialSurface";
 
+    /** The prefix of a v2f field passing a factory parameter to the fragment: {@code _cg_in_Particle_color}. */
+    static final String PASSED = "_cg_in_";
+
     /**
      * A lowered file.
      *
@@ -85,13 +88,15 @@ final class CgMaterialFormat {
     private static final Pattern GLOBAL_FRAGMENT_SIGNATURE = Pattern.compile(
             "^void\\s+fragment\\s*\\(\\s*(?:in\\s+)?v2f\\s+\\w+\\s*,\\s*out\\s+\\w+\\s+\\w+\\s*\\)");
     private static final Pattern MESH_ATTRIBUTE = Pattern.compile("\\bcg_(?:Position|Normal|Color|TexCoord[0-3])\\b");
+    private static final Pattern PROPERTY_NAME = Pattern.compile("([A-Za-z_]\\w*)\\s*\\(\\s*\"");
+    private static final Pattern ARRAY_TYPE = Pattern.compile("(\\w+)\\[(\\d+)]");
 
     /** The v2f fields a material with no {@code vertex()} has filled, and with what. */
     private static final Map<String, String[]> AUTO_FIELDS = Map.of(
             "uv0", new String[]{"vec2", "v.uv0"}, "uv1", new String[]{"vec2", "v.uv1"},
             "uv2", new String[]{"vec2", "v.uv2"}, "uv3", new String[]{"vec2", "v.uv3"},
             "color", new String[]{"vec4", "v.color"},
-            "normal", new String[]{"vec3", "normalize(CG_NORMAL_MATRIX * v.normal)"},
+            "normal", new String[]{"vec3", "v.normal"},
             "world", new String[]{"vec3", "v.world"},
             "light", new String[]{"vec2", "CG_OBJECT_LIGHT"});
 
@@ -269,6 +274,7 @@ final class CgMaterialFormat {
         for (String decl : CgStructureParser.v2fDeclarations(v2fBody)) {
             Matcher f = V2F_FIELD.matcher(decl);
             if (!f.matches()) throw fail(path, "Invalid v2f field: '" + decl + "'");
+            if (f.group(3).startsWith(PASSED)) throw fail(path, "v2f field '" + f.group(3) + "' takes the engine's prefix");
             if (vertex != null) continue;
             String[] auto = AUTO_FIELDS.get(f.group(3));
             if (auto == null) {
@@ -277,6 +283,15 @@ final class CgMaterialFormat {
             }
             if (!auto[0].equals(f.group(2))) throw fail(path, "v2f field '" + f.group(3) + "' is a " + auto[0]);
             autoFill.append("        o.").append(f.group(3)).append(" = ").append(auto[1]).append(";\n");
+        }
+
+        // The factory's parameters surface() reads, each passed as an interpolator
+        refuseOtherParameters(code, factory, path);
+        StringBuilder passOut = new StringBuilder(), passIn = new StringBuilder();
+        for (String[] p : passedParameters(factory, functions, surface)) {
+            v2fBody += "\n    " + p[0] + " " + p[1] + ";";
+            passOut.append("        o.").append(p[1]).append(" = ").append(p[2]).append(";\n");
+            passIn.append("        ").append(p[2]).append(" = i.").append(p[1]).append(";\n");
         }
 
         // The preamble: keywords, engine buffers, tags, queue
@@ -296,11 +311,12 @@ final class CgMaterialFormat {
         if (clipDepth || masked) out.append(" \"Depth\" = \"Clip\"");
         if (prepass) out.append(" \"Depth\" = \"Prepass\"");
         if (margin != null) out.append(" \"SceneColorMargin\" = \"").append(margin).append('"');
+        factory.tags().forEach((k, v) -> out.append(" \"").append(k).append("\" = \"").append(v).append('"'));
         out.append(" }\n");
         String queue = sky ? "Background" : masked ? "AlphaTest" : !translucent ? "Geometry"
                 : pass.equals("AfterDistortion") ? "AfterDistortion" : pass.equals("Overlay") ? "Overlay" : "Transparent";
         out.append("Queue = \"").append(queue).append("\"\n");
-        appendData(out, items);
+        appendData(out, items, factory, path);
         out.append("struct v2f {").append(v2fBody).append("};\n");
 
         // The Forward pass
@@ -331,13 +347,14 @@ final class CgMaterialFormat {
         if (!color) out.append("        ColorMask 0\n");
         out.append("    }\n");
         out.append("#include \"crystalgraphics:shaders/env/material.glsl\"\n").append(SURFACE_DEFAULTS);
+        if (!factory.declarations().isBlank()) out.append(factory.declarations().strip()).append('\n');
         appendCode(out, code, vertex, surface, functions);
         out.append("    void vertex(out v2f o) {\n        CgVertex v;\n");
         for (String l : factory.fill().strip().split("\n")) out.append("        ").append(l.strip()).append('\n');
         if (vertex != null) out.append("        ").append(MATERIAL_VERTEX).append("(v, o);\n");
-        out.append(autoFill);
+        out.append(autoFill).append(passOut);
         out.append("        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);\n    }\n");
-        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n")
+        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n").append(passIn)
            .append("        CgSurface s = cg_SurfaceDefaults();\n")
            .append("        ").append(MATERIAL_SURFACE).append("(i, s);\n");
         if (named.contains("pixelDepthOffset")) out.append("        CG_PIXEL_DEPTH_OFFSET(s.pixelDepthOffset);\n");
@@ -364,7 +381,7 @@ final class CgMaterialFormat {
             out.append("Pass {\n    Tags { \"LightMode\" = \"Distortion\" }\n    RenderState {\n");
             if (depthTest.equals("Off")) out.append("        DepthTest ALWAYS\n");
             out.append("        Cull ").append(cull).append("\n    }\n")
-               .append("    void fragment(in v2f i, out vec4 offset) {\n")
+               .append("    void fragment(in v2f i, out vec4 offset) {\n").append(passIn)
                .append("        CgSurface s = cg_SurfaceDefaults();\n")
                .append("        ").append(MATERIAL_SURFACE).append("(i, s);\n")
                .append("        offset = CG_DISTORTION(s.refraction, s.refractionSplit, s.refractionDepth);\n    }\n}\n");
@@ -402,7 +419,7 @@ final class CgMaterialFormat {
             out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
         }
         out.append(" }\nQueue = \"Overlay\"\n");
-        appendData(out, items);
+        appendData(out, items, null, path);
         Item v2f = struct(items, "v2f");
         out.append("struct v2f {").append(v2f == null ? "" : v2f.body()).append("};\n");
         out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\" }\n");
@@ -502,10 +519,31 @@ final class CgMaterialFormat {
         return out;
     }
 
-    /** Properties, then the structs a buffer holds, then Buffers: where the old parser reads them. */
-    private static void appendData(StringBuilder out, List<Item> items) {
+    /**
+     * Properties (the factory's after the material's), then the structs a buffer holds, then Buffers: where the old
+     * parser reads them.
+     */
+    private static void appendData(StringBuilder out, List<Item> items, @Nullable CgVertexFactory.Factory factory,
+                                   String path) {
         Item props = block(items, "Properties"), buffers = block(items, "Buffers");
-        if (props != null) out.append(props.text()).append('\n');
+        String added = factory == null ? "" : factory.properties().strip();
+        if (!added.isEmpty() && props != null) {
+            Matcher own = PROPERTY_NAME.matcher(props.body());
+            Set<String> theirs = new LinkedHashSet<>();
+            for (Matcher m = PROPERTY_NAME.matcher(added); m.find(); ) theirs.add(m.group(1));
+            while (own.find()) {
+                if (theirs.contains(own.group(1))) {
+                    throw fail(path, "'" + own.group(1) + "' is VertexFactory " + factory.name() + "'s: its draws bind it");
+                }
+            }
+        }
+        if (props != null) {
+            String text = props.text();
+            int close = text.lastIndexOf('}');
+            out.append(added.isEmpty() ? text : text.substring(0, close) + "\n    " + added + "\n}").append('\n');
+        } else if (!added.isEmpty()) {
+            out.append("Properties {\n    ").append(added).append("\n}\n");
+        }
         Set<String> elements = bufferElements(items);
         for (Item i : items) {
             if (i.kind() == Kind.STRUCT && elements.contains(i.name())) out.append(i.text()).append('\n');
@@ -590,6 +628,64 @@ final class CgMaterialFormat {
                         + " through what draws it (VertexFactory, PerDrawValues On, a ui Primitive), never by naming it");
             }
         }
+    }
+
+    /**
+     * The factory's parameter fields {@code surface()} and its helpers name, each {@code {v2f type, v2f field,
+     * expression}}: a field a dotted name reaches, or that reaches it ({@code cg_Tube.ring} passes every ring field,
+     * {@code cg_Particle.color.rgb} the colour); an array field one interpolator an element.
+     */
+    private static List<String[]> passedParameters(CgVertexFactory.Factory factory, Map<String, List<Item>> functions,
+                                                   Item surface) {
+        List<String[]> out = new ArrayList<>();
+        String variable = factory.parameters();
+        if (variable == null) return out;
+        Set<String> chains = new LinkedHashSet<>();
+        Pattern chain = Pattern.compile("\\b" + Pattern.quote(variable) + "\\b((?:\\s*\\.\\s*\\w+)*)");
+        boolean whole = false;   // passed whole, as to cg_dynamic_parameter(cg_Particle, ...)
+        for (String name : reach(functions, surface)) {
+            for (Item f : functions.get(name)) {
+                Matcher m = chain.matcher(f.body());
+                while (m.find()) {
+                    if (m.group(1).isEmpty()) whole = true;
+                    else chains.add(m.group(1).replaceAll("\\s", "").substring(1));
+                }
+            }
+        }
+        for (Map.Entry<String, String> field : factory.parameterFields().entrySet()) {
+            String k = field.getKey();
+            boolean named = whole;
+            for (String c : chains) named |= c.equals(k) || c.startsWith(k + ".") || k.startsWith(c + ".");
+            if (!named) continue;
+            String v2f = PASSED + variable.replaceFirst("^cg_", "") + "_" + k.replace('.', '_');
+            Matcher array = ARRAY_TYPE.matcher(field.getValue());
+            if (array.matches()) {
+                for (int e = 0; e < Integer.parseInt(array.group(2)); e++) {
+                    out.add(new String[]{array.group(1), v2f + "_" + e, variable + "." + k + "[" + e + "]"});
+                }
+            } else {
+                out.add(new String[]{field.getValue(), v2f, variable + "." + k});
+            }
+        }
+        return out;
+    }
+
+    /** A factory's parameters named under another factory: they hold nothing there. */
+    private static void refuseOtherParameters(List<Item> code, CgVertexFactory.Factory factory, String path) {
+        StringBuilder all = new StringBuilder();
+        for (Item i : code) all.append(i.text()).append('\n');
+        Map<String, List<String>> owners = new LinkedHashMap<>();
+        for (CgVertexFactory.Factory f : CgVertexFactory.all()) {
+            if (f.parameters() != null && !f.parameters().equals(factory.parameters())) {
+                owners.computeIfAbsent(f.parameters(), k -> new ArrayList<>()).add(f.name());
+            }
+        }
+        owners.forEach((variable, names) -> {
+            if (Pattern.compile("\\b" + Pattern.quote(variable) + "\\b").matcher(all).find()) {
+                throw fail(path, "'" + variable + "' is what VertexFactory " + String.join(" or ", names)
+                        + " passes, not " + factory.name());
+            }
+        });
     }
 
     private static boolean namesGlobals(List<Item> code) {

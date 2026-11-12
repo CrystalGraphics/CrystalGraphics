@@ -613,6 +613,8 @@ final class CgStructureParser {
             throw new CgShaderParseException("[" + resourcePath + "] Name '" + name + "' in " + context
                     + " contains '__', which GLSL reserves");
         }
+        // A factory parameter the material format's lowering passes, which refuses the prefix in an authored v2f
+        if (name.startsWith(CgMaterialFormat.PASSED)) return;
         for (String prefix : RESERVED_PREFIXES) {
             if (name.startsWith(prefix)) {
                 throw new CgShaderParseException(

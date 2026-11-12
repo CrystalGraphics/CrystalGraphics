@@ -1,7 +1,9 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.vfx.render.CgVfxVertexFactories;
 import com.github.bsideup.jabel.Desugar;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -15,39 +17,134 @@ import java.util.Map;
  *
  * <pre>{@code
  * // A factory of a mod's own, registered before any material naming it is parsed:
- * CgVertexFactory.register(new CgVertexFactory.Factory("Ribbons", "none",
- *         "v.position = ribbon_position(CG_VERTEX_ID); v.normal = vec3(0.0, 1.0, 0.0); v.color = vec4(1.0);\n"
- *         + "v.uv0 = ribbon_uv(CG_VERTEX_ID); v.uv1 = v.uv0; v.uv2 = v.uv0; v.uv3 = v.uv0;\n"
- *         + "v.world = (CG_OBJECT_TO_WORLD * vec4(v.position, 1.0)).xyz;",
- *         false, List.of("myribbons")));
+ * CgVertexFactory.register(CgVertexFactory.builder("Ribbons")
+ *         .vertexType("none")
+ *         .buffers("myribbons")                                    // engine buffer tokens its draws bind
+ *         .declarations("#include \"mymod:shaders/ribbon.glsl\"\nRibbonPoint cg_Ribbon;")
+ *         .fill("""
+ *                 cg_Ribbon = ribbon_point(CG_VERTEX_ID);
+ *                 v.position = cg_Ribbon.local; v.normal = cg_Ribbon.normal; v.color = vec4(1.0);
+ *                 v.uv0 = cg_Ribbon.uv; v.uv1 = v.uv0; v.uv2 = v.uv0; v.uv3 = v.uv0;
+ *                 v.world = cg_Ribbon.world;
+ *                 """)
+ *         .parameters("cg_Ribbon", Map.of("width", "float", "segment", "flat int"))
+ *         .build());
+ * }</pre>
+ *
+ * <p>A material then reads the factory's parameters by name, in {@code vertex()} and {@code surface()} alike; each
+ * field {@code surface()} names is passed to the fragment as an interpolator, and only those:</p>
+ *
+ * <pre>{@code
+ * Material { VertexFactory Ribbons }
+ * void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(cg_Ribbon.width); }
  * }</pre>
  *
  * <ul>
- *   <li>The engine registers {@code Mesh} and {@code Procedural}; the VFX engine registers its particle and tube
- *       factories.</li>
+ *   <li>The engine registers {@code Mesh} and {@code Procedural}; the VFX engine its particle and tube factories
+ *       ({@link CgVfxVertexFactories}).</li>
  *   <li>{@code fill} runs in the vertex stage with {@code CgVertex v} declared; it sets every field, {@code world}
- *       last. The vertex format's attributes ({@code cg_Position}, ...) and the engine's tokens' macros are in scope.</li>
+ *       last, and the parameters struct. The vertex format's attributes ({@code cg_Position}, ...), the engine's tokens'
+ *       macros and the declarations are in scope.</li>
+ *   <li>{@code v.normal} is world-space, {@code v.world} camera-relative.</li>
+ *   <li>A parameter field typed {@code vec4[4]} passes as four interpolators; an integer field must be {@code flat}.</li>
  *   <li>A name registered twice throws.</li>
  * </ul>
  */
 public final class CgVertexFactory {
 
     /**
-     * One factory.
+     * One factory; made with {@link #builder(String)}.
      *
-     * @param name          what {@code VertexFactory} names
-     * @param vertexType    the {@code CgVertexFormat} key its program reads: {@code spatial} for a mesh, {@code none}
-     *                      where nothing is fetched
-     * @param fill          GLSL statements filling {@code CgVertex v} in the vertex stage
-     * @param placesNothing whether the material must place each vertex itself, with a {@code vertex()} assigning
-     *                      {@code v.world}
-     * @param engineBuffers the engine buffers ({@code CgEngineBufferRegistry} tokens) its draws bind
+     * @param name            what {@code VertexFactory} names
+     * @param vertexType      the {@code CgVertexFormat} key its program reads: {@code spatial} for a mesh, {@code none}
+     *                        where nothing is fetched
+     * @param fill            GLSL statements filling {@code CgVertex v} (and the parameters) in the vertex stage
+     * @param placesNothing   whether the material must place each vertex itself, with a {@code vertex()} assigning
+     *                        {@code v.world}
+     * @param engineBuffers   the engine buffers ({@code CgEngineBufferRegistry} tokens) its draws bind
+     * @param declarations    GLSL at file scope, both stages, before the material's code: includes, the parameters
+     *                        struct's variable
+     * @param properties      {@code Properties { }} entries its draws bind (a material may not declare them again)
+     * @param tags            material-level tags its renderer reads (a tube's {@code "Tube"})
+     * @param parameters      the variable a material reads its parameters from ({@code cg_Particle}); null for none
+     * @param parameterFields each field of it a fragment may read, dotted for a nested one, to its v2f type
      */
     @Desugar
     public record Factory(String name, String vertexType, String fill, boolean placesNothing,
-                          List<String> engineBuffers) {
+                          List<String> engineBuffers, String declarations, String properties, Map<String, String> tags,
+                          @Nullable String parameters, Map<String, String> parameterFields) {
         public Factory {
             engineBuffers = Collections.unmodifiableList(new ArrayList<>(engineBuffers));
+            tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
+            parameterFields = Collections.unmodifiableMap(new LinkedHashMap<>(parameterFields));
+        }
+    }
+
+    /** Builds a {@link Factory}: {@code vertexType} and {@code fill} are required. */
+    public static final class Builder {
+        private final String name;
+        private String vertexType, fill, declarations = "", properties = "", parameters;
+        private boolean placesNothing;
+        private final List<String> buffers = new ArrayList<>();
+        private final Map<String, String> tags = new LinkedHashMap<>(), fields = new LinkedHashMap<>();
+
+        private Builder(String name) {
+            this.name = name;
+        }
+
+        /** The {@code CgVertexFormat} key its program reads: {@code spatial}, or {@code none} where nothing is fetched. */
+        public Builder vertexType(String type) {
+            this.vertexType = type;
+            return this;
+        }
+
+        /** GLSL statements filling {@code CgVertex v} and the parameters, in the vertex stage. */
+        public Builder fill(String glsl) {
+            this.fill = glsl;
+            return this;
+        }
+
+        /** The material must place each vertex itself: a {@code vertex()} assigning {@code v.world}. */
+        public Builder placesNothing() {
+            this.placesNothing = true;
+            return this;
+        }
+
+        /** Engine buffer tokens its draws bind. */
+        public Builder buffers(String... tokens) {
+            buffers.addAll(List.of(tokens));
+            return this;
+        }
+
+        /** GLSL at file scope in both stages, before the material's code. */
+        public Builder declarations(String glsl) {
+            this.declarations = glsl;
+            return this;
+        }
+
+        /** {@code Properties { }} entries its draws bind, as a {@code .shader} writes them. */
+        public Builder properties(String entries) {
+            this.properties = entries;
+            return this;
+        }
+
+        /** A material-level tag its renderer reads. */
+        public Builder tag(String key, String value) {
+            tags.put(key, value);
+            return this;
+        }
+
+        /** The parameters variable and each field a fragment may read, to its v2f type ({@code "flat int"}). */
+        public Builder parameters(String variable, Map<String, String> fields) {
+            this.parameters = variable;
+            this.fields.putAll(fields);
+            return this;
+        }
+
+        public Factory build() {
+            if (vertexType == null || fill == null) throw new IllegalStateException(name + ": vertexType and fill are required");
+            return new Factory(name, vertexType, fill, placesNothing, buffers, declarations, properties, tags, parameters,
+                    fields);
         }
     }
 
@@ -57,20 +154,23 @@ public final class CgVertexFactory {
     /** No mesh: a draw of a vertex count, each vertex placed by the material's {@code vertex()}. */
     public static final String PROCEDURAL = "Procedural";
 
+    /** The {@code Mesh} factory's fill: a mesh's vertex, placed by its draw's transform. */
+    public static final String MESH_FILL = """
+            v.position = cg_Position;
+            v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+            v.color = cg_Color;
+            v.uv0 = cg_TexCoord0;
+            v.uv1 = cg_TexCoord1;
+            v.uv2 = cg_TexCoord2;
+            v.uv3 = cg_TexCoord3;
+            v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+            """;
+
     private static final Map<String, Factory> FACTORIES = new LinkedHashMap<>();
 
     static {
-        register(new Factory(MESH, "spatial", """
-                v.position = cg_Position;
-                v.normal = cg_Normal;
-                v.color = cg_Color;
-                v.uv0 = cg_TexCoord0;
-                v.uv1 = cg_TexCoord1;
-                v.uv2 = cg_TexCoord2;
-                v.uv3 = cg_TexCoord3;
-                v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
-                """, false, List.of()));
-        register(new Factory(PROCEDURAL, "none", """
+        register(builder(MESH).vertexType("spatial").fill(MESH_FILL).build());
+        register(builder(PROCEDURAL).vertexType("none").placesNothing().fill("""
                 v.position = vec3(0.0);
                 v.normal = vec3(0.0, 1.0, 0.0);
                 v.color = vec4(1.0);
@@ -79,10 +179,17 @@ public final class CgVertexFactory {
                 v.uv2 = vec2(0.0);
                 v.uv3 = vec2(0.0);
                 v.world = vec3(0.0);
-                """, true, List.of()));
+                """).build());
+        // The VFX engine's, as CgEngineBufferRegistry registers the particle buffers: present wherever a material parses
+        for (Factory f : CgVfxVertexFactories.all()) register(f);
     }
 
     private CgVertexFactory() {}
+
+    /** A builder for a factory named {@code name}. */
+    public static Builder builder(String name) {
+        return new Builder(name);
+    }
 
     /** Registers {@code factory} under its name. */
     public static synchronized void register(Factory factory) {
@@ -99,5 +206,10 @@ public final class CgVertexFactory {
     /** Every registered factory's name, in registration order. */
     public static synchronized List<String> names() {
         return List.copyOf(FACTORIES.keySet());
+    }
+
+    /** Every registered factory, in registration order. */
+    public static synchronized List<Factory> all() {
+        return List.copyOf(FACTORIES.values());
     }
 }

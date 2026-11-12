@@ -1228,18 +1228,38 @@ com/crystalgraphics/api/material/CgVertexFactory
   access public,final
   extends java/lang/Object
   field public,static,final MESH Ljava/lang/String;
+  field public,static,final MESH_FILL Ljava/lang/String;
   field public,static,final PROCEDURAL Ljava/lang/String;
+  method public,static all ()Ljava/util/List;
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
   method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;
   method public,static names ()Ljava/util/List;
   method public,static register (Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;)V
+com/crystalgraphics/api/material/CgVertexFactory$Builder
+  access public,final
+  extends java/lang/Object
+  method public buffers ([Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public build ()Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;
+  method public declarations (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public fill (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public parameters (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public placesNothing ()Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public properties (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public tag (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
+  method public vertexType (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Builder;
 com/crystalgraphics/api/material/CgVertexFactory$Factory
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;Ljava/util/Map;)V
+  method public declarations ()Ljava/lang/String;
   method public engineBuffers ()Ljava/util/List;
   method public fill ()Ljava/lang/String;
   method public name ()Ljava/lang/String;
+  method public parameterFields ()Ljava/util/Map;
+  method public parameters ()Ljava/lang/String;
   method public placesNothing ()Z
+  method public properties ()Ljava/lang/String;
+  method public tags ()Ljava/util/Map;
   method public vertexType ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -19662,6 +19682,15 @@ com/crystalgraphics/vfx/render/CgVfxTube
   method public <init> ()V
   method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/vfx/look/CgVfxLook$Placed;Lcom/crystalgraphics/vfx/path/CgVfxPath;ILcom/crystalgraphics/vfx/CgVfxEffect;FIFFF)V
   method public,static mesh (Z)Lcom/crystalgraphics/api/mesh/CgMesh;
+com/crystalgraphics/vfx/render/CgVfxVertexFactories
+  access public,final
+  extends java/lang/Object
+  field public,static,final MESH_PARTICLES Ljava/lang/String;
+  field public,static,final SPRITES Ljava/lang/String;
+  field public,static,final TUBE Ljava/lang/String;
+  field public,static,final TUBE_CLOSED Ljava/lang/String;
+  field public,static,final TUBE_VOLUME Ljava/lang/String;
+  method public,static all ()Ljava/util/List;
 com/crystalgraphics/vfx/scalability/CgVfxBudget
   access public,final
   extends java/lang/Object

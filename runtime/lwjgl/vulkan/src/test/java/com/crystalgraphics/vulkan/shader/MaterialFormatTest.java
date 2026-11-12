@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeSet;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -46,7 +47,10 @@ public class MaterialFormatTest {
     private static final String[][] PAIRS = {
             {"opaque", "opaque.old"}, {"masked", "masked.old"}, {"translucent", "translucent.old"},
             {"glow", "glow.old"}, {"haze", "haze.old"}, {"waves", "waves.old"}, {"sparks", "sparks.old"},
-            {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"}};
+            {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"},
+            // F3: the VFX factories
+            {"sprite", "crystalgraphics:shaders/vfx/particle/sprite"}, {"bits", "bits.old"},
+            {"body_core", "crystalgraphics:shaders/vfx/beam/body_core"}, {"volume", "volume.old"}};
 
     private static ShadercGlslCompiler compiler, bare;
 
@@ -86,7 +90,8 @@ public class MaterialFormatTest {
             assertEquals(what + "permutations", was.permutations().dimensions(), now.permutations().dimensions());
             assertEquals(what + "engine buffers", was.engineBuffers(), now.engineBuffers());
             assertEquals(what + "buffers", was.buffers().size(), now.buffers().size());
-            assertEquals(what + "properties", names(was.properties()), names(now.properties()));
+            assertEquals(what + "properties", new TreeSet<>(names(was.properties())), new TreeSet<>(names(now.properties())));
+            assertEquals(what + "tube", was.tube(), now.tube());
             assertEquals(what + "pass count", was.passes().size(), now.passes().size());
             for (int p = 0; p < was.passes().size(); p++) {
                 CgParsedPass a = was.passes().get(p), b = now.passes().get(p);
@@ -97,7 +102,7 @@ public class MaterialFormatTest {
                 assertEquals(what + a.lightMode() + " cull", slot(ra.getCull(), CgCullState.BACK), slot(rb.getCull(), CgCullState.BACK));
                 assertEquals(what + a.lightMode() + " stencil", slot(ra.getStencil(), CgStencilState.DISABLED), slot(rb.getStencil(), CgStencilState.DISABLED));
                 assertEquals(what + a.lightMode() + " writes nothing", ra.writesNothing(), rb.writesNothing());
-                assertEquals(what + a.lightMode() + " v2f", CgShaderParser.parseV2fFields(a), CgShaderParser.parseV2fFields(b));
+                assertEquals(what + a.lightMode() + " v2f", CgShaderParser.parseV2fFields(a), authored(b));
             }
             assertEquals(what + "glow merge", CgMaterialShaderCompiler.emissionMerge(was),
                     CgMaterialShaderCompiler.emissionMerge(now));
@@ -108,8 +113,10 @@ public class MaterialFormatTest {
     public void everyPassAndVariantBuildsOnTheDevice() {
         List<String> failures = new ArrayList<>();
         int programs = 0;
-        for (String[] pair : PAIRS) {
-            String path = path(pair[0]);
+        List<String> shapes = new ArrayList<>(List.of("puff"));
+        for (String[] pair : PAIRS) shapes.add(pair[0]);
+        for (String shape : shapes) {
+            String path = path(shape);
             CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreate(path);
             shader.recompile();   // another test may have parsed it, compiling nothing
             if (shader.hasCompileFailed()) {
@@ -171,6 +178,33 @@ public class MaterialFormatTest {
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("SHAPE_BOX"));
         }
+    }
+
+    @Test
+    public void onlyTheParticleFieldsNamedReachTheFragment() {
+        assertEquals(List.of("uv0", "_cg_in_Particle_color", "_cg_in_Particle_relativeTime"),
+                fieldNames(parse(path("puff")).passes().get(0)));
+    }
+
+    @Test
+    public void aRingNamedPassesTheWholeRing() {
+        List<String> fields = fieldNames(parse(path("volume")).passes().get(0));
+        assertTrue(fields.toString(), fields.containsAll(List.of("_cg_in_Tube_ring_position", "_cg_in_Tube_ring_radius",
+                "_cg_in_Tube_ring_intensity", "_cg_in_Tube_origin")));
+        assertFalse(fields.toString(), fields.contains("_cg_in_Tube_row"));
+    }
+
+    /** The v2f a material authored: its own fields, not the factory parameters the lowering passes. */
+    private static List<CgShaderParser.V2fField> authored(CgParsedPass pass) {
+        List<CgShaderParser.V2fField> out = new ArrayList<>();
+        for (CgShaderParser.V2fField f : CgShaderParser.parseV2fFields(pass)) if (!f.name().startsWith("_cg_")) out.add(f);
+        return out;
+    }
+
+    private static List<String> fieldNames(CgParsedPass pass) {
+        List<String> out = new ArrayList<>();
+        for (CgShaderParser.V2fField f : CgShaderParser.parseV2fFields(pass)) out.add(f.name());
+        return out;
     }
 
     private static CgParsedShader parse(String path) {

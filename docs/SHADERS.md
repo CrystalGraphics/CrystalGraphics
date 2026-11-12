@@ -35,7 +35,20 @@ void surface(in v2f i, inout CgSurface s) {
 - **The outputs it names decide its passes**: `emissive` a glow, `refraction` a bend; a translucent material naming
   neither `baseColor` nor `opacity` draws no colour.
 - **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
-  `gl_Position`. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns `v.world`.
+  `gl_Position`. `v.normal` is world-space. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns
+  `v.world`.
+- **`VertexFactory` is what draws it** (`CgVertexFactory`): `Mesh` (default), `Procedural`, and the VFX engine's
+  `Sprites`, `MeshParticles` (a particle renderer: `cg_Particle`, Unreal's particle parameters) and `Tube`,
+  `TubeClosed`, `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex is, and `_FxPath` bound for you).
+  A factory's parameters read in `surface()` reach the fragment field by field, only those named:
+
+```glsl
+Material { BlendMode Translucent  VertexFactory Sprites }
+void surface(in v2f i, inout CgSurface s) {
+    s.baseColor = cg_Particle.color.rgb;                     // passes the colour, nothing else
+    s.opacity = cg_Particle.color.a * (1.0 - cg_Particle.relativeTime);
+}
+```
 - **No `#pragma`**: `Keywords { }`, `PerDrawValues On` (per-draw values), and `CG_GLOBAL_*` or the world's lights
   found by name.
 - **No parameter is special by its name**: `MaskClip` is the opacity mask's threshold, `_EmissionColor` and `_Clip`

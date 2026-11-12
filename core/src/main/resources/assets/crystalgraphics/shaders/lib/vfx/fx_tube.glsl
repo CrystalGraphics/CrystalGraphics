@@ -47,6 +47,20 @@ struct FxTubeVertex {
     vec4 header;
 };
 
+// cg_Tube: where on its path a #domain surface material's vertex is, under the tube factories (CgVfxVertexFactories).
+// A volume's ring is its chunk's first, its angle and cap 0.
+struct CgTube {
+    FxRing ring;     // the vertex's ring, relative to origin
+    float angle;     // 0..1 around the tube; -1 at a closed tube's end centres
+    float cap;       // -1 on the first ring, 1 on the last, 0 between
+    vec4 header;     // the path's ring count, length in blocks, seed, age in seconds
+    int row;         // the path's row in _FxPath
+    int first;       // the chunk's first ring
+    int owned;       // how many rings from the first the chunk owns
+    float size;      // the layer's size: its rings' radii scale
+    vec3 origin;     // the effect's origin, camera-relative
+};
+
 // One vertex of a CgVfxTube chunk. uv is the chunk mesh's (ring within the chunk, angle 0..1, -1 at a closed mesh's
 // end centres); radiusScale multiplies
 // the ring's radius; capPush moves the first and last rings out along the axis by that many radii, so a volume's hull

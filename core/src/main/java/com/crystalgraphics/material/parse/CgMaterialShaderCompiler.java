@@ -541,7 +541,9 @@ public final class CgMaterialShaderCompiler {
         boolean cullingIsOff = (cull != null && cull == CgCullState.NONE);
         // A material format's vertex() is code this check cannot see: World Position Offset lives there.
         boolean noMaterialVertex = !vertexBody.contains(CgMaterialFormat.MATERIAL_VERTEX);
-        return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff && noMaterialVertex;
+        // A particle is placed by its factory, never by the object's transform.
+        boolean noParticleFactory = !vertexBody.contains("cg_material_vertex(");
+        return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff && noMaterialVertex && noParticleFactory;
     }
 
     /** Whether the pass's vertex body names a buffer of the material's: it places vertices from a kernel's output. */
