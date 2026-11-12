@@ -3061,18 +3061,6 @@ com/crystalgraphics/platform/service/CgHostResources$Host
   method public,abstract namespaces ()Ljava/util/Set;
   method public,abstract open (Ljava/lang/String;Ljava/lang/String;)Ljava/io/InputStream;
   method public,abstract openStack (Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
-com/crystalgraphics/platform/service/CgHostWindow
-  access public,final
-  extends java/lang/Object
-  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
-  method public,static height ()I
-  method public,static width ()I
-com/crystalgraphics/platform/service/CgHostWindow$Host
-  access public,abstract,interface
-  extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgHostWindow$Host;
-  method public,abstract height ()I
-  method public,abstract width ()I
 com/crystalgraphics/platform/service/CgI18n
   access public,final
   extends java/lang/Object
