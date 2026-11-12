@@ -1,5 +1,8 @@
 package com.crystalgraphics.compute.source;
 
+import com.crystalgraphics.api.buffer.CgBufferField;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
+
 import java.util.List;
 
 /**
@@ -27,6 +30,27 @@ public record CgBufferDecl(String name, String display, String element, CgBuffer
 
     /** {@code _cg_STATE}: the array the generated accessors index. */
     public String array() { return "_cg_" + name; }
+
+    /**
+     * Refuses {@code layout} unless it is this buffer's element field for field: one stride, and each of its fields at
+     * the shader's offset with the shader's type.
+     *
+     * @throws IllegalArgumentException naming both, and the first difference
+     */
+    public void check(CgBufferLayout layout) {
+        String both = layout.getGlslName() + " (" + layout.getStride() + " bytes) against " + name + "'s " + element
+                + " (" + stride + " bytes)";
+        if (layout.getStride() != stride) throw new IllegalArgumentException(both + ": the strides differ");
+        for (int i = 0; i < layout.getFieldCount(); i++) {
+            CgBufferField f = layout.getField(i);
+            CgElementField theirs = field(f.getName());
+            if (theirs == null) throw new IllegalArgumentException(both + ": the shader has no " + f.getName());
+            if (theirs.offset() != f.getByteOffset() || !theirs.type().equals(f.getType().getGlslName())) {
+                throw new IllegalArgumentException(both + ": " + f.getName() + " is " + f.getType().getGlslName() + " at "
+                        + f.getByteOffset() + " here, " + theirs.type() + " at " + theirs.offset() + " there");
+            }
+        }
+    }
 
     /** The field of that name, or null. */
     public CgElementField field(String name) {

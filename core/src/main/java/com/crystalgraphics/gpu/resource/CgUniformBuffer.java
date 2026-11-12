@@ -2,7 +2,7 @@ package com.crystalgraphics.gpu.resource;
 
 
 import com.crystalgraphics.render.draw.CgBoundResources;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
@@ -73,19 +73,19 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @param format          typed format descriptor (mandatory)
      * @param bindingLocation the GL binding slot to use
      */
-    public CgUniformBuffer(String name, CgBufferFormat format, int bindingLocation) {
+    public CgUniformBuffer(String name, CgBufferLayout format, int bindingLocation) {
         super(name, format, CgStreamBuffer.Use.UNIFORM, bindingLocation);
     }
 
     /**
      * Engine-internal: a UBO at a raw binding slot, with the contents' {@link CgBufferLifetime}. User code takes
-     * {@link #create(CgBufferFormat, String, int, CgBufferLifetime)}.
+     * {@link #create(CgBufferLayout, String, int, CgBufferLifetime)}.
      *
      * <pre>{@code
      * CgUniformBuffer props = new CgUniformBuffer("CgMaterialProperties", format, binding, CgBufferLifetime.FRAME);
      * }</pre>
      */
-    public CgUniformBuffer(String name, CgBufferFormat format, int bindingLocation, CgBufferLifetime lifetime) {
+    public CgUniformBuffer(String name, CgBufferLayout format, int bindingLocation, CgBufferLifetime lifetime) {
         super(name, format, CgStreamBuffer.Use.UNIFORM, bindingLocation, lifetime);
     }
 
@@ -100,12 +100,12 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @param userIndex 0-based user slot index (0 = first user slot after engine range)
      * @return a new {@code CgUniformBuffer}
      */
-    public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex) {
+    public static CgUniformBuffer create(CgBufferLayout format, String name, int userIndex) {
         return create(format, name, userIndex, CgBufferLifetime.RETAINED);
     }
 
-    /** As {@link #create(CgBufferFormat, String, int)}, with the contents' {@link CgBufferLifetime}. */
-    public static CgUniformBuffer create(CgBufferFormat format, String name, int userIndex, CgBufferLifetime lifetime) {
+    /** As {@link #create(CgBufferLayout, String, int)}, with the contents' {@link CgBufferLifetime}. */
+    public static CgUniformBuffer create(CgBufferLayout format, String name, int userIndex, CgBufferLifetime lifetime) {
         return new CgUniformBuffer(name, format, CgBindingPoints.USER_START_UBO + userIndex, lifetime);
     }
 
@@ -133,7 +133,7 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      *
      * @param newFormat the updated buffer format to apply
      */
-    public void resetFormat(CgBufferFormat newFormat) {
+    public void resetFormat(CgBufferLayout newFormat) {
         super.resetFormat(newFormat);
         writer.resetFormat(newFormat);
     }

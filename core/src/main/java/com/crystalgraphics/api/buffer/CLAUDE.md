@@ -1,4 +1,4 @@
-# api/buffer — GPU Buffer Format Descriptors
+# api/buffer — buffers and their layouts
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../../../AGENTS.md)
 
@@ -7,18 +7,43 @@
 Typed format descriptors for GPU buffer layouts (UBOs and SSBOs). The buffer-domain
 complement to `api/vertex/` (`CgVertexFormat`, `CgAttribType`). No GL calls — pure data.
 
-`CgGpuType` and `CgBufferFormat` play the same role for shader buffer fields that
+`CgGpuType` and `CgBufferLayout` play the same role for shader buffer fields that
 `CgAttribType` and `CgVertexFormat` play for vertex attributes. **Do not conflate them:**
 `CgAttribType` operates at the GL primitive level (FLOAT, UNSIGNED_BYTE); `CgGpuType`
 operates at the GLSL compound-type level (mat4, vec4, mat3).
+
+## The consumer API
+
+```java
+static final CgBufferLayout SPARK = CgBufferLayout.std430("Spark").vec4("positionLife").vec4("velocitySeed").build();
+
+// rewritten every frame: this frame's memory, a graph buffer
+CgGraphBuffer sparks = rec.upload("mymod.sparks", SPARK, n, records -> {
+    for (Spark s : live) records.next().vec4("positionLife", s.x, s.y, s.z, s.life).vec4("velocitySeed", s.vx, s.vy, s.vz, s.seed);
+});
+// kept across frames: written when it changes, any thread
+CgBuffer heights = CgBuffers.create("mymod.heights", HEIGHT, cells);
+heights.write(first, count, records -> ...);
+
+material.buffer("SPARKS", sparks);                   // the shader's Buffers { SPARKS ("Sparks", Spark, readonly) }
+pass.dispatch(kernel, cells).bind("HEIGHTS", heights);
+```
+
+- A `CgBuffer` bound by a material or a kernel is checked against the shader's struct (`CgBufferDecl.check`): one
+  stride, each field at the shader's offset with its type; a mismatch throws naming both.
+- `CgBufferRecords.next()` is a zeroed record written by field name; unwritten records are zero.
+- `rec.upload` reuses its records and handle frame to frame (no allocation once warm); `CgBuffer` keeps a CPU copy and
+  uploads it whole on each write, landed before the next frame (`CgDeferral`).
 
 ## Type Map
 
 | Type | Role |
 |------|------|
 | `CgGpuType` | Enum of GLSL compound field types. Each entry carries: `floatComponents` (logical floats), `dataBytes` (raw data size), `alignedBytes` (bytes in std140/std430 slot including padding), `alignment` (byte alignment requirement), `glslName`. `getFloatCount()` = `alignedBytes / 4`. Values are spec-derived from OpenGL 4.5 §7.6.2.2. |
-| `CgBufferField` | Immutable value object for a single named field: `name`, `type (CgGpuType)`, `byteOffset`, `floatOffset` (derived). Package-private constructor — only `CgBufferFormat.Builder` creates these. Value equality on (name, type, byteOffset). |
-| `CgBufferFormat` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `glslName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
+| `CgBufferField` | Immutable value object for a single named field: `name`, `type (CgGpuType)`, `byteOffset`, `floatOffset` (derived). Package-private constructor — only `CgBufferLayout.Builder` creates these. Value equality on (name, type, byteOffset). |
+| `CgBufferLayout` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `glslName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
+| `CgBuffer`, `CgBuffers` | A buffer of yours kept across frames: `CgBuffers.create(name, layout, count)`, `write(first, count, records -> ...)`, `release()`, `graphBuffer()` (an import the graph orders). A `CgBufferHandle`. |
+| `CgBufferRecords` | What a write's lambda fills: `next()` per record. Made by `CgBuffer` and `CgRecording.upload`. |
 | `CgObjectBuffer` | Marker/capability interface for all GPU-resident shader-accessible buffer objects (SSBO, UBO). `bind()`, `unbind()`, `delete()`, `isDeleted()`, `getGlBufferId()`. |
 | `CgBufferLifetime` | How long a shader buffer's contents must stay readable, passed to every SSBO/UBO factory (`CgShaderBufferRegistry.getOrCreate`/`getOrCreateUbo`, `CgShaderBuffer.create`, `CgUniformBuffer.create`); the factories without it mean `RETAINED`. `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan or driver rename; a `CgUniformBuffer` makes the per-frame upload a compare when nothing moved. `RETAINED`: readable until the next upload — its own storage at offset 0, each upload staged in the ring and copied in. |
 
@@ -47,15 +72,15 @@ operates at the GLSL compound-type level (mat4, vec4, mat3).
 ### Why sampler types are absent
 
 `sampler2D`, `sampler2DArray`, etc. are opaque GLSL types — illegal inside buffer blocks per
-GLSL §4.1.7. They are intentionally absent from `CgGpuType` and `CgBufferFormat`. For
+GLSL §4.1.7. They are intentionally absent from `CgGpuType` and `CgBufferLayout`. For
 bindless texture handles use `UVEC2` (2 × uint32 = one 64-bit GL handle) or `UINT64`
 (single uint64_t, requires ARB_gpu_shader_int64).
 
 ## Builder Pattern
 
 ```java
-CgBufferFormat objectFmt = CgBufferFormat
-    .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
+CgBufferLayout objectFmt = CgBufferLayout
+    .builder("cg_object", CgBufferLayout.MemoryLayout.STD430)
     .mat4("modelMatrix")   // floats 0–15
     .mat4("normalMatrix")  // floats 16–31
     .vec4("custom0")       // floats 32–35
@@ -83,7 +108,7 @@ The engine's own formats live beside what fills them, in `render/draw`:
 
 ## How Format-Aware Writing Works
 
-1. Build a `CgBufferFormat` once (or use a pre-built constant).
+1. Build a `CgBufferLayout` once (or use a pre-built constant).
 2. Create `CgBufferWriter(staging, format)` — format-aware constructor.
 3. `writer.beginRecord()` → calls `staging.reserveAndZero(floatCount)`, records `recordStartIdx`.
 4. Named writes scatter values: `writer.mat4("modelMatrix", m)` computes

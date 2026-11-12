@@ -1,7 +1,7 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -36,8 +36,8 @@ public final class CgTextMaterials {
     public static final String TEXT_SHADER = "crystalgraphics:shaders/canvas/text.shader";
 
     /** {@code TextData}: the gamma correction and a label depth pass's discard. */
-    private static final CgBufferFormat TEXT_DATA_FORMAT = CgBufferFormat
-            .builder("TextData", CgBufferFormat.MemoryLayout.STD140)
+    private static final CgBufferLayout TEXT_DATA_FORMAT = CgBufferLayout
+            .builder("TextData", CgBufferLayout.MemoryLayout.STD140)
             .vec4("u_TextGammaSmall")
             .vec4("u_TextGammaLarge")
             .vec4("u_TextGammaRamp")

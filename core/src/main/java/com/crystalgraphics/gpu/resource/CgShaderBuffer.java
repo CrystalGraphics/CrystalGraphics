@@ -3,7 +3,7 @@ package com.crystalgraphics.gpu.resource;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
@@ -61,10 +61,10 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>Factory</h3>
- * <p>{@link #create(String, CgBufferFormat, int)} makes an SSBO, through core GL 4.3 or the ARB extension
+ * <p>{@link #create(String, CgBufferLayout, int)} makes an SSBO, through core GL 4.3 or the ARB extension
  * ({@link CgCapabilities#shaderBufferPath()}); the TBO path is unhooked ({@code docs/TBO_PATH.md}). The {@code userIndex}
  * is 0-based; {@link CgBindingPoints} is added internally. Use
- * {@link #createInternal(String, CgBufferFormat, int)} for engine-reserved binding points.</p>
+ * {@link #createInternal(String, CgBufferLayout, int)} for engine-reserved binding points.</p>
  *
  * <h3>Shader binding</h3>
  * <p>The material compiler declares its block, named {@link #getName()}, at {@link #bindingLocation}'s binding: a
@@ -109,7 +109,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /** Format descriptor. Required — all shader buffers must have a typed format. */
     @Getter
-    private CgBufferFormat format;
+    private CgBufferLayout format;
 
     /**
      * How long an upload stays readable, as asked at creation. {@link #isOnFrameRing()} is what the storage
@@ -120,10 +120,10 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
 
     /**
      * Updates the format descriptor of this buffer without recreating GL resources.
-     * Called by {@link CgUniformBuffer#resetFormat(CgBufferFormat)} when a material
+     * Called by {@link CgUniformBuffer#resetFormat(CgBufferLayout)} when a material
      * is recompiled with a changed properties layout.
      */
-    protected void resetFormat(CgBufferFormat newFormat) {
+    protected void resetFormat(CgBufferLayout newFormat) {
         this.format = newFormat;
     }
 
@@ -164,15 +164,15 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @param use             what the storage is read as
      * @param bindingLocation binding point; immutable after construction
      */
-    protected CgShaderBuffer(String name, CgBufferFormat format, CgStreamBuffer.Use use, int bindingLocation) {
+    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, int bindingLocation) {
         this(name, format, use, bindingLocation, CgBufferLifetime.RETAINED);
     }
 
     /** @param lifetime {@link CgBufferLifetime#FRAME} takes the frame ring ({@link CgStreamBuffer#createFrameLocal}) */
-    protected CgShaderBuffer(String name, CgBufferFormat format, CgStreamBuffer.Use use, int bindingLocation,
+    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, int bindingLocation,
                              CgBufferLifetime lifetime) {
         Objects.requireNonNull(name,   "name is required");
-        Objects.requireNonNull(format, "CgBufferFormat is required");
+        Objects.requireNonNull(format, "CgBufferLayout is required");
         Objects.requireNonNull(lifetime, "CgBufferLifetime is required");
         this.name             = name;
         this.bindingLocation  = bindingLocation;
@@ -204,12 +204,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @return a {@link CgShaderStorageBuffer}
      * @throws UnsupportedOperationException where the context reads no storage blocks
      */
-    public static CgShaderBuffer create(String name, CgBufferFormat format, int userIndex) {
+    public static CgShaderBuffer create(String name, CgBufferLayout format, int userIndex) {
         return create(name, format, userIndex, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #create(String, CgBufferFormat, int)}, with the contents' {@link CgBufferLifetime}.
+     * As {@link #create(String, CgBufferLayout, int)}, with the contents' {@link CgBufferLifetime}.
      *
      * <pre>{@code
      * CgShaderBuffer particles = CgShaderBuffer.create("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
@@ -219,7 +219,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * mesh.drawInstanced(n);
      * }</pre>
      */
-    public static CgShaderBuffer create(String name, CgBufferFormat format, int userIndex, CgBufferLifetime lifetime) {
+    public static CgShaderBuffer create(String name, CgBufferLayout format, int userIndex, CgBufferLifetime lifetime) {
         return createInternal(name, format, CgBindingPoints.USER_START_SSBO + userIndex, lifetime);
     }
 
@@ -235,14 +235,14 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @return a {@link CgShaderStorageBuffer}
      * @throws UnsupportedOperationException where the context reads no storage blocks
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint) {
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, int bindingPoint) {
         return createInternal(name, format, bindingPoint, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #createInternal(String, CgBufferFormat, int)}, with the contents' {@link CgBufferLifetime}.
+     * As {@link #createInternal(String, CgBufferLayout, int)}, with the contents' {@link CgBufferLifetime}.
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, int bindingPoint,
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, int bindingPoint,
                                                 CgBufferLifetime lifetime) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path != CgCapabilities.ShaderBufferPath.SSBO_GL43 && path != CgCapabilities.ShaderBufferPath.SSBO_ARB) {
@@ -264,12 +264,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @return a {@link CgShaderStorageBuffer}
      * @throws UnsupportedOperationException where the context reads no storage blocks
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding) {
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding) {
         return createInternal(name, format, binding.resolve());
     }
 
-    /** As {@link #createInternal(String, CgBufferFormat, CgBindingPoints.Binding)}, with a {@link CgBufferLifetime}. */
-    public static CgShaderBuffer createInternal(String name, CgBufferFormat format, CgBindingPoints.Binding binding,
+    /** As {@link #createInternal(String, CgBufferLayout, CgBindingPoints.Binding)}, with a {@link CgBufferLifetime}. */
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding,
                                                 CgBufferLifetime lifetime) {
         return createInternal(name, format, binding.resolve(), lifetime);
     }
@@ -358,7 +358,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      *
      * @param data       backing float array of the caller's own accumulation buffer
      * @param floatCount number of valid floats in {@code data} (must be a whole
-     *                   multiple of {@link CgBufferFormat#getFloatCount()})
+     *                   multiple of {@link CgBufferLayout#getFloatCount()})
      * @throws IllegalStateException if a {@link #beginWrite(int)} session is currently open
      */
     public void uploadRaw(float[] data, int floatCount) {

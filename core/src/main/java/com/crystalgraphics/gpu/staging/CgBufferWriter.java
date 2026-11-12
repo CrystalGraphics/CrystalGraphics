@@ -2,7 +2,7 @@ package com.crystalgraphics.gpu.staging;
 
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.api.buffer.CgBufferField;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.gpu.resource.CgUniformBuffer;
 import org.joml.Matrix3f;
@@ -14,7 +14,7 @@ import java.util.Objects;
 /**
  * Format-aware staged float writer backed by a {@link CgStagingBuffer}.
  *
- * <p>For non-vertex-format buffer payloads (UBOs, SSBOs). Requires a {@link CgBufferFormat} — all shader buffers
+ * <p>For non-vertex-format buffer payloads (UBOs, SSBOs). Requires a {@link CgBufferLayout} — all shader buffers
  * carry a typed format. {@link #beginRecord()}/{@link #endRecord()} bracket each
  * logical record.</p>
  *
@@ -39,7 +39,7 @@ public final class CgBufferWriter {
     private final CgStagingBuffer staging;
 
     /** Format descriptor. Always non-null — all shader buffers must carry a typed format. */
-    private CgBufferFormat format;
+    private CgBufferLayout format;
 
     /**
      * Start index within the staging array for the current record.
@@ -51,8 +51,8 @@ public final class CgBufferWriter {
      * @param staging backing staging buffer
      * @param format  the buffer format driving named writes; must not be {@code null}
      */
-    public CgBufferWriter(CgStagingBuffer staging, CgBufferFormat format) {
-        Objects.requireNonNull(format, "CgBufferFormat is required — CgBufferWriter is format-aware only");
+    public CgBufferWriter(CgStagingBuffer staging, CgBufferLayout format) {
+        Objects.requireNonNull(format, "CgBufferLayout is required — CgBufferWriter is format-aware only");
         this.staging = staging;
         this.format = format;
     }
@@ -433,7 +433,7 @@ public final class CgBufferWriter {
      * Called by {@link CgUniformBuffer#resetFormat}
      * when a material's properties layout changes between hot-reloads.
      */
-    public void resetFormat(CgBufferFormat newFormat) {
+    public void resetFormat(CgBufferLayout newFormat) {
         this.format = newFormat;
         staging.reset();
     }

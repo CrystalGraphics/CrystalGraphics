@@ -22,14 +22,14 @@ import java.util.Map;
  * deferred to v2). A scalar after a {@code vec3} sits in its last four bytes, as GLSL places it:</p>
  *
  * <pre>{@code
- * CgBufferFormat.builder("Corner", STD430).vec3("origin").float_("fade").vec4("color").build();
+ * CgBufferLayout.builder("Corner", STD430).vec3("origin").float_("fade").vec4("color").build();
  * // origin at 0, fade at 12, color at 16: stride 32
  * }</pre>
  *
  * <h3>Usage</h3>
  * <pre>{@code
- * CgBufferFormat objectFmt = CgBufferFormat
- *     .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
+ * CgBufferLayout objectFmt = CgBufferLayout
+ *     .builder("cg_object", CgBufferLayout.MemoryLayout.STD430)
  *     .mat4("modelMatrix")
  *     .mat4("normalMatrix")
  *     .vec4("custom0")
@@ -46,7 +46,7 @@ import java.util.Map;
  * Arrays require different stride calculations between std140 (each element padded to 16 bytes)
  * and std430 (element stride = type.alignedBytes). Deferred to keep v1 alignment code simple.</p>
  */
-public final class CgBufferFormat {
+public final class CgBufferLayout {
 
     /**
      * Memory layout rules for buffer fields.
@@ -86,7 +86,7 @@ public final class CgBufferFormat {
     private final String glslName;
     private final int hash;
 
-    private CgBufferFormat(CgBufferField[] fields, Map<String, CgBufferField> fieldMap,
+    private CgBufferLayout(CgBufferField[] fields, Map<String, CgBufferField> fieldMap,
                             int stride, MemoryLayout memoryLayout, String glslName) {
         this.fields      = fields;
         this.fieldMap    = fieldMap;
@@ -94,6 +94,23 @@ public final class CgBufferFormat {
         this.memoryLayout = memoryLayout;
         this.glslName    = glslName;
         this.hash        = computeHash(fields, stride, memoryLayout);
+    }
+
+    /**
+     * A struct laid out as a storage buffer's ({@code std430}), named as the shader names it.
+     *
+     * <pre>{@code
+     * static final CgBufferLayout SPARK = CgBufferLayout.std430("Spark").vec4("positionLife").vec4("velocitySeed").build();
+     * // the shader: struct Spark { vec4 positionLife; vec4 velocitySeed; };
+     * }</pre>
+     */
+    public static Builder std430(String structName) {
+        return new Builder(structName, MemoryLayout.STD430);
+    }
+
+    /** A struct laid out as a uniform block's ({@code std140}). */
+    public static Builder std140(String structName) {
+        return new Builder(structName, MemoryLayout.STD140);
     }
 
     /** Creates a new format builder with the given GLSL struct type name and memory layout. */
@@ -122,7 +139,7 @@ public final class CgBufferFormat {
         CgBufferField f = fieldMap.get(name);
         if (f == null) {
             throw new IllegalArgumentException(
-                "No field '" + name + "' in CgBufferFormat '" + glslName + "'. "
+                "No field '" + name + "' in CgBufferLayout '" + glslName + "'. "
                 + "Declared fields: " + Arrays.toString(fields));
         }
         return f;
@@ -146,7 +163,7 @@ public final class CgBufferFormat {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        CgBufferFormat that = (CgBufferFormat) o;
+        CgBufferLayout that = (CgBufferLayout) o;
         return stride == that.stride
                 && memoryLayout == that.memoryLayout
                 && Arrays.equals(fields, that.fields);
@@ -159,7 +176,7 @@ public final class CgBufferFormat {
 
     @Override
     public String toString() {
-        return "CgBufferFormat{" + glslName + ", " + memoryLayout
+        return "CgBufferLayout{" + glslName + ", " + memoryLayout
                 + ", stride=" + stride + " bytes (" + getFloatCount() + " floats)"
                 + ", fields=" + Arrays.toString(fields) + "}";
     }
@@ -263,20 +280,20 @@ public final class CgBufferFormat {
          *
          * @throws IllegalStateException if no fields were added
          */
-        public CgBufferFormat build() {
+        public CgBufferLayout build() {
             if (fields.isEmpty()) {
-                throw new IllegalStateException("CgBufferFormat must have at least one field");
+                throw new IllegalStateException("CgBufferLayout must have at least one field");
             }
             CgBufferField[] arr = fields.toArray(new CgBufferField[0]);
             Map<String, CgBufferField> map = new HashMap<>(arr.length * 2);
             for (CgBufferField f : arr) {
                 if (map.put(f.getName(), f) != null) {
                     throw new IllegalStateException(
-                        "Duplicate field name '" + f.getName() + "' in CgBufferFormat '" + glslName + "'");
+                        "Duplicate field name '" + f.getName() + "' in CgBufferLayout '" + glslName + "'");
                 }
             }
             // std140/std430 both require a struct's own overall size (its per-element
-            // stride when used in an array, e.g. every CgBufferFormat here — SSBO
+            // stride when used in an array, e.g. every CgBufferLayout here — SSBO
             // records are always arrays of this struct) to be rounded up to a multiple
             // of 16 (the base alignment of vec4), on top of each individual field's own
             // alignment already applied by add() above. Every supported field type here
@@ -291,7 +308,7 @@ public final class CgBufferFormat {
             // here desyncs every record after the first — each subsequent instance's
             // fields get read from the wrong byte offset, worse with each index.
             int stride = roundUpTo16(cursor);
-            return new CgBufferFormat(arr, map, stride, memoryLayout, glslName);
+            return new CgBufferLayout(arr, map, stride, memoryLayout, glslName);
         }
 
         private static int roundUpTo16(int bytes) {

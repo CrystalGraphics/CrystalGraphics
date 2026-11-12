@@ -138,7 +138,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 ### Buffers
 | Path | What it covers |
 |---|---|
-| `api/buffer/CLAUDE.md` | `CgGpuType`, `CgBufferField`, `CgBufferFormat` builder, std140/std430 alignment rules |
+| `api/buffer/CLAUDE.md` | `CgGpuType`, `CgBufferField`, `CgBufferLayout` builder, std140/std430 alignment rules |
 | `gpu/resource/CLAUDE.md` | `CgStreamBuffer` tiers (persistent ring → mapped ring), retained storage staged through the ring, the frame clock `CgFrameRing`, `CgQuadIndexBuffer` |
 | `gpu/resource/CLAUDE.md` | `CgShaderBuffer` (SSBO), `CgUniformBuffer` (UBO), `CgShaderBufferRegistry`, binding point rules |
 | `gpu/staging/CLAUDE.md` | `CgStagingBuffer`, `CgVertexWriter` (all vertex packing goes here), `CgBufferWriter` |

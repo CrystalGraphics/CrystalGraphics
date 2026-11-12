@@ -1,10 +1,10 @@
 package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
@@ -21,7 +21,7 @@ public final class CgParameterCollectionBuffer {
     /** The {@code attach()} macro the env file reads values through. */
     public static final String MACRO_NAME = "GLOBAL_DATA";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgGlobal", STD430).vec4("value").build();
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgGlobal", STD430).vec4("value").build();
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal("CgGlobals", FORMAT, CgBindingPoints.GLOBALS, CgBufferLifetime.FRAME);

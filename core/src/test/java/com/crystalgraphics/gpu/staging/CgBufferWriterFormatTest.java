@@ -1,6 +1,6 @@
 package com.crystalgraphics.gpu.staging;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import org.joml.Matrix4f;
 import org.junit.Test;
 
@@ -16,8 +16,8 @@ public class CgBufferWriterFormatTest {
 
     @Test
     public void singleMat4Format_allSixteenFloatsWritten() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("single_mat4", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("single_mat4", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("m")
                 .build();
         CgStagingBuffer staging = new CgStagingBuffer(fmt.getFloatCount(), 1);
@@ -56,8 +56,8 @@ public class CgBufferWriterFormatTest {
 
     @Test
     public void partialWrite_unwrittenSlotIsZeroed() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("partial", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("partial", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("a")
                 .mat4("b")
                 .vec4("c")
@@ -88,8 +88,8 @@ public class CgBufferWriterFormatTest {
 
     @Test
     public void multiRecord_eachRecordIndependentlyZeroed() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("multi", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("multi", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("model")
                 .vec4("color")
                 .vec4("extra")
@@ -138,8 +138,8 @@ public class CgBufferWriterFormatTest {
 
     @Test
     public void largeFormat_unwrittenFieldsZero_writtenFieldsMatch() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("large", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("large", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("f0")
                 .mat4("f1")
                 .vec4("f2")
@@ -194,8 +194,8 @@ public class CgBufferWriterFormatTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void wrongFieldName_throwsIllegalArgument() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("t", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("t", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("real")
                 .build();
         CgStagingBuffer staging = new CgStagingBuffer(fmt.getFloatCount(), 1);
@@ -208,8 +208,8 @@ public class CgBufferWriterFormatTest {
 
     @Test(expected = IllegalStateException.class)
     public void typeMismatch_mat4FieldCalledAsVec4_throws() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("t", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("t", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("bigField")
                 .build();
         CgStagingBuffer staging = new CgStagingBuffer(fmt.getFloatCount(), 1);
@@ -220,8 +220,8 @@ public class CgBufferWriterFormatTest {
 
     @Test(expected = IllegalStateException.class)
     public void typeMismatch_vec4FieldCalledAsMat4_throws() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("t", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("t", CgBufferLayout.MemoryLayout.STD430)
                 .vec4("smallField")
                 .build();
         CgStagingBuffer staging = new CgStagingBuffer(fmt.getFloatCount(), 1);
@@ -234,8 +234,8 @@ public class CgBufferWriterFormatTest {
 
     @Test
     public void fiveRecords_zeroFieldsDoNotBleedAcrossRecords() {
-        CgBufferFormat fmt = CgBufferFormat
-                .builder("bleed", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout fmt = CgBufferLayout
+                .builder("bleed", CgBufferLayout.MemoryLayout.STD430)
                 .mat4("model")
                 .vec4("color")
                 .build();

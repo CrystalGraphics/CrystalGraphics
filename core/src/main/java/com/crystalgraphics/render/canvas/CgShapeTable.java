@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
@@ -72,7 +72,7 @@ public final class CgShapeTable {
         return count < 1f ? 1f : Math.min(count, MAX_TILES);
     }
 
-    private static final CgBufferFormat FORMAT = CgBufferFormat.builder("ShapeEntry", CgBufferFormat.MemoryLayout.STD430)
+    private static final CgBufferLayout FORMAT = CgBufferLayout.builder("ShapeEntry", CgBufferLayout.MemoryLayout.STD430)
             .vec4("meta").vec4("radiiX").vec4("radiiY").vec4("borderWidths")
             .vec4("fillColor").vec4("borderColor").vec4("borderTop").vec4("borderBottom")
             .vec4("sliceBorder").vec4("sliceOuterUv").vec4("sliceInnerUv").vec4("sliceTiles").vec4("sliceMode")

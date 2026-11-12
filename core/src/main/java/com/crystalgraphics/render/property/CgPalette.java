@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.property;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
@@ -35,7 +35,7 @@ public final class CgPalette {
     /** The macro a shader reads an entry through. */
     public static final String MACRO_NAME = "PALETTE_DATA";
 
-    private static final CgBufferFormat FORMAT = CgBufferFormat.builder("PaletteEntry", CgBufferFormat.MemoryLayout.STD430)
+    private static final CgBufferLayout FORMAT = CgBufferLayout.builder("PaletteEntry", CgBufferLayout.MemoryLayout.STD430)
             .vec4("toTarget0").vec4("toTarget1")
             .vec4("fromFragment0").vec4("fromFragment1")
             .vec4("effect")

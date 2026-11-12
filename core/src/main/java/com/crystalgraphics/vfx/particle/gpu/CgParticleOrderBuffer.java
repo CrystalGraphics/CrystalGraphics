@@ -1,10 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
@@ -25,7 +25,7 @@ public final class CgParticleOrderBuffer {
     /** The {@code attach()} macro the particle macros read the order through. */
     public static final String MACRO_NAME = "PARTICLE_ORDER_DATA";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticleOrder", STD430).float_("index").build();
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgParticleOrder", STD430).float_("index").build();
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal("CgParticleOrderBuffer", FORMAT, CgBindingPoints.PARTICLE_ORDER, CgBufferLifetime.FRAME);

@@ -1,7 +1,7 @@
 package com.crystalgraphics.material.parse;
 
 import com.crystalgraphics.api.buffer.CgBufferField;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexAttribute;
@@ -14,7 +14,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * {@link CgVertexFormat}: its attributes pulled from the mesh store's words.
  *
  * <p>No GL calls, no instance state. All core methods are package-private and take raw
- * {@code (CgBufferFormat, String)} parameters — no {@code CgShaderBuffer} required.
+ * {@code (CgBufferLayout, String)} parameters — no {@code CgShaderBuffer} required.
  * This is the test seam: unit tests call core methods directly without a GL context.</p>
  *
  * <p>Public facade methods delegate to the core methods and accept the typed wrapper objects
@@ -53,7 +53,7 @@ public final class CgGlslEmitter {
      *
      * @throws IllegalArgumentException if the block is not a whole number of vec4s or is larger than {@code stride}
      */
-    public static String emitArena(CgBufferFormat format, CgBindingModel.Slot slot, int stride) {
+    public static String emitArena(CgBufferLayout format, CgBindingModel.Slot slot, int stride) {
         int bytes = format.getFloatCount() * 4;
         if (bytes % 16 != 0 || bytes > stride) {
             throw new IllegalArgumentException("a block of " + bytes + " bytes in an arena of " + stride + " a slot");
@@ -212,15 +212,15 @@ public final class CgGlslEmitter {
      *                   interface name; must match exactly for {@code wireShader()} to succeed
      * @param macroName  the user-facing macro, e.g. {@code "FONT_METRICS"}
      */
-    static String emitSsbo(CgBufferFormat format, String bufferName, String macroName) {
+    static String emitSsbo(CgBufferLayout format, String bufferName, String macroName) {
         return emitSsbo(format, bufferName, macroName, true, null);
     }
 
     /**
-     * {@link #emitSsbo(CgBufferFormat, String, String)}, writable where {@code readonly} is false: what a kernel
+     * {@link #emitSsbo(CgBufferLayout, String, String)}, writable where {@code readonly} is false: what a kernel
      * declares an engine buffer as. Bound at {@code slot}, or where the program is wired with none.
      */
-    public static String emitSsbo(CgBufferFormat format, String bufferName, String macroName, boolean readonly,
+    public static String emitSsbo(CgBufferLayout format, String bufferName, String macroName, boolean readonly,
                                   CgBindingModel.Slot slot) {
         String structName = format.getGlslName();
         String arrayName  = "_cg_" + lowerFirst(structName) + "Arr";
@@ -248,12 +248,12 @@ public final class CgGlslEmitter {
      * @param blockName the value of {@code CgUniformBuffer.getName()} — used as the GLSL
      *                  block name; must match exactly for {@code wireShader()} to succeed
      */
-    public static String emitUbo(CgBufferFormat format, String blockName) {
+    public static String emitUbo(CgBufferLayout format, String blockName) {
         return emitUbo(format, blockName, null);
     }
 
-    /** {@link #emitUbo(CgBufferFormat, String)} bound at {@code slot}, or where the program is wired with none. */
-    public static String emitUbo(CgBufferFormat format, String blockName, CgBindingModel.Slot slot) {
+    /** {@link #emitUbo(CgBufferLayout, String)} bound at {@code slot}, or where the program is wired with none. */
+    public static String emitUbo(CgBufferLayout format, String blockName, CgBindingModel.Slot slot) {
         StringBuilder sb = new StringBuilder(128);
         if (slot != null) sb.append(slot.glsl());
         sb.append("layout(std140) uniform ").append(blockName).append(" {\n");
@@ -267,7 +267,7 @@ public final class CgGlslEmitter {
     }
 
     /** Emits a {@code struct <structName> { fields };} declaration from the format. */
-    private static void appendStructDecl(StringBuilder sb, CgBufferFormat format, String structName) {
+    private static void appendStructDecl(StringBuilder sb, CgBufferLayout format, String structName) {
         sb.append("struct ").append(structName).append(" {\n");
         for (int i = 0; i < format.getFieldCount(); i++) {
             CgBufferField field = format.getField(i);

@@ -1,6 +1,6 @@
 package com.crystalgraphics.material.parse;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
@@ -86,7 +86,7 @@ public class CgPropertyRowsTest {
     @Test
     public void theBlockHoldsRenamedFields() {
         CgParsedShader parsed = CgShaderParser.parse(ROWS, "test:rows.shader");
-        CgBufferFormat block = new CgMaterialProperties(parsed.properties()).buildUboFormat();
+        CgBufferLayout block = new CgMaterialProperties(parsed.properties()).buildUboFormat();
         assertTrue(block.toString().contains("_cgm_Radius"));
         assertTrue(block.toString().contains("_cgm_Bands_2"));
         assertTrue(block.toString().contains("_cg_at_Radius"));

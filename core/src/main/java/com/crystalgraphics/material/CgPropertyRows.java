@@ -1,10 +1,10 @@
 package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
@@ -36,7 +36,7 @@ public final class CgPropertyRows {
     /** The {@code attach()} macro the env file reads rows through. */
     public static final String MACRO_NAME = "ROWS_DATA";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgPropertyRow", STD430).vec4("value").build();
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgPropertyRow", STD430).vec4("value").build();
 
     /** Floats a row vec4 takes in {@link #upload}'s array. */
     public static final int VEC4_FLOATS = 4;

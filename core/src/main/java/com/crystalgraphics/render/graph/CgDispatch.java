@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.gpu.resource.CgTexture3D;
+import com.crystalgraphics.api.buffer.CgBuffer;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -186,6 +187,16 @@ public final class CgDispatch {
     /** {@code buffer}, whole, as declared buffer {@code name}. */
     public CgDispatch bind(String name, CgGraphBuffer buffer) {
         return bind(name, buffer, 0, 0);
+    }
+
+    /**
+     * A buffer of yours as declared buffer {@code name}, ordered as any buffer the graph did not make.
+     *
+     * @throws IllegalArgumentException where its layout is not the declared element's
+     */
+    public CgDispatch bind(String name, CgBuffer buffer) {
+        bufferDecl(name).check(buffer.layout());
+        return bind(name, buffer.graphBuffer(), 0, 0);
     }
 
     /** {@code size} bytes of {@code buffer} from {@code offset} as declared buffer {@code name}; size 0 for the rest. */

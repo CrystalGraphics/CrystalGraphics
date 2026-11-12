@@ -6,10 +6,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Regression coverage for {@link CgBufferFormat.Builder#build()}'s final stride rounding.
+ * Regression coverage for {@link CgBufferLayout.Builder#build()}'s final stride rounding.
  *
  * <p>std140/std430 both require a struct's own overall size — its per-element stride
- * when used in an array, which every {@code CgBufferFormat} here always is (SSBO
+ * when used in an array, which every {@code CgBufferLayout} here always is (SSBO
  * records) — to be rounded up to a multiple of 16 (the base alignment of {@code vec4}),
  * on top of each individual field's own alignment. Before this was fixed, {@code build()}
  * used the raw field-sum cursor as the stride with no final rounding; every format that
@@ -23,13 +23,13 @@ import static org.junit.Assert.assertTrue;
  * glyph at a time in {@code CgQuadBatch}-based rendering once a struct's raw field sum
  * stopped landing on a 16-byte boundary by luck.
  */
-public class CgBufferFormatTest {
+public class CgBufferLayoutTest {
 
     @Test
     public void build_roundsStrideUpTo16_whenFieldsAlreadyAligned() {
         // vec3(16) + vec3(16) + vec3(16) + vec2(8) + vec2(8) + vec4(16) = 80 bytes,
         // already a multiple of 16 — the case every pre-existing format happened to hit.
-        CgBufferFormat f = CgBufferFormat.builder("AlreadyAligned", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout f = CgBufferLayout.builder("AlreadyAligned", CgBufferLayout.MemoryLayout.STD430)
                 .vec3("origin").vec3("right").vec3("up")
                 .vec2("uv0").vec2("uv1")
                 .vec4("color")
@@ -43,7 +43,7 @@ public class CgBufferFormatTest {
         // Same as above plus one trailing float: raw field sum is 84 bytes — NOT a
         // multiple of 16 — reproducing CgQuadBatch.INSTANCE_FORMAT's exact shape
         // (origin/right/up/uv0/uv1/color/atlasLayer). Must round up to 96, not stay at 84.
-        CgBufferFormat f = CgBufferFormat.builder("TrailingScalar", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout f = CgBufferLayout.builder("TrailingScalar", CgBufferLayout.MemoryLayout.STD430)
                 .vec3("origin").vec3("right").vec3("up")
                 .vec2("uv0").vec2("uv1")
                 .vec4("color")
@@ -57,7 +57,7 @@ public class CgBufferFormatTest {
 
     @Test
     public void build_scalarAfterVec3TakesItsTail_asGlslPlacesIt() {
-        CgBufferFormat f = CgBufferFormat.builder("Corner", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout f = CgBufferLayout.builder("Corner", CgBufferLayout.MemoryLayout.STD430)
                 .vec3("origin").float_("fade").vec3("right").vec2("uv").vec4("color").build();
         assertEquals(12, f.getField("fade").getByteOffset());
         assertEquals(16, f.getField("right").getByteOffset());
@@ -68,7 +68,7 @@ public class CgBufferFormatTest {
 
     @Test
     public void build_mat3ColumnsStayPadded() {
-        CgBufferFormat f = CgBufferFormat.builder("M", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout f = CgBufferLayout.builder("M", CgBufferLayout.MemoryLayout.STD430)
                 .add("m", CgGpuType.MAT3).float_("after").build();
         assertEquals(48, f.getField("after").getByteOffset());
     }
@@ -77,13 +77,13 @@ public class CgBufferFormatTest {
     public void build_strideIsAlwaysAMultipleOf16_forArbitraryFieldCombinations() {
         // A handful of field-count parities that could plausibly land off a 16-byte
         // boundary if the rounding were ever removed again.
-        assertTrue(isMultipleOf16(CgBufferFormat.builder("OneFloat", CgBufferFormat.MemoryLayout.STD430)
+        assertTrue(isMultipleOf16(CgBufferLayout.builder("OneFloat", CgBufferLayout.MemoryLayout.STD430)
                 .float_("a").build().getStride()));
-        assertTrue(isMultipleOf16(CgBufferFormat.builder("ThreeFloats", CgBufferFormat.MemoryLayout.STD430)
+        assertTrue(isMultipleOf16(CgBufferLayout.builder("ThreeFloats", CgBufferLayout.MemoryLayout.STD430)
                 .float_("a").float_("b").float_("c").build().getStride()));
-        assertTrue(isMultipleOf16(CgBufferFormat.builder("Vec3PlusFloat", CgBufferFormat.MemoryLayout.STD430)
+        assertTrue(isMultipleOf16(CgBufferLayout.builder("Vec3PlusFloat", CgBufferLayout.MemoryLayout.STD430)
                 .vec3("v").float_("f").build().getStride()));
-        assertTrue(isMultipleOf16(CgBufferFormat.builder("FiveVec2", CgBufferFormat.MemoryLayout.STD430)
+        assertTrue(isMultipleOf16(CgBufferLayout.builder("FiveVec2", CgBufferLayout.MemoryLayout.STD430)
                 .vec2("a").vec2("b").vec2("c").vec2("d").vec2("e").build().getStride()));
     }
 

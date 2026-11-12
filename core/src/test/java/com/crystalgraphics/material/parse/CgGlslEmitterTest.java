@@ -1,7 +1,7 @@
 package com.crystalgraphics.material.parse;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
-import com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
+import com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout;
 import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -20,17 +20,17 @@ import static org.junit.Assert.*;
 public class CgGlslEmitterTest {
 
     // F1 — all VEC4 (simplest happy path); stride=48, texels=3
-    static final CgBufferFormat ALL_VEC4 = CgBufferFormat.builder("InstanceData", MemoryLayout.STD430)
+    static final CgBufferLayout ALL_VEC4 = CgBufferLayout.builder("InstanceData", MemoryLayout.STD430)
         .vec4("color").vec4("emissive").vec4("params").build();
 
     // F2 — all MAT4; stride=128, texels=8
-    static final CgBufferFormat ALL_MAT4 = CgBufferFormat.builder("TransformPair", MemoryLayout.STD430)
+    static final CgBufferLayout ALL_MAT4 = CgBufferLayout.builder("TransformPair", MemoryLayout.STD430)
         .mat4("modelA").mat4("modelB").build();
 
     // F3 — mixed VEC2 + FLOAT packing into shared texels; stride=48, texels=3
     // bbox @0/texel0, uv0 @16/texel1.xy, uv1 @24/texel1.zw,
     // advance @32/texel2.x, bearing @36/texel2.y, descent @40/texel2.z, pad @44/texel2.w
-    static final CgBufferFormat PACKED_SMALL = CgBufferFormat.builder("GlyphMetrics", MemoryLayout.STD430)
+    static final CgBufferLayout PACKED_SMALL = CgBufferLayout.builder("GlyphMetrics", MemoryLayout.STD430)
         .vec4("bbox")
         .vec2("uv0")
         .vec2("uv1")
@@ -42,7 +42,7 @@ public class CgGlslEmitterTest {
 
     // F4 — VEC3 + MAT4 + VEC4; stride=96, texels=6
     // transform @0/texels0-3, color @64/texel4.xyz, params @80/texel5
-    static final CgBufferFormat VEC3_FORMAT = CgBufferFormat.builder("LightData", MemoryLayout.STD430)
+    static final CgBufferLayout VEC3_FORMAT = CgBufferLayout.builder("LightData", MemoryLayout.STD430)
         .mat4("transform")
         .vec3("color")
         .vec4("params")
@@ -50,7 +50,7 @@ public class CgGlslEmitterTest {
 
     // F5 — MAT3; stride=80, texels=5
     // origin @0/texel0, normalMat @16/texels1-3, extra @64/texel4
-    static final CgBufferFormat MAT3_FORMAT = CgBufferFormat.builder("NormalData", MemoryLayout.STD430)
+    static final CgBufferLayout MAT3_FORMAT = CgBufferLayout.builder("NormalData", MemoryLayout.STD430)
         .vec4("origin")
         .mat3("normalMat")
         .vec4("extra")
@@ -58,7 +58,7 @@ public class CgGlslEmitterTest {
 
     // F6 — MAT4 + MAT3 + VEC4; stride=128, texels=8
     // bindPose @0/texels0-3, normalMat @64/texels4-6, weights @112/texel7
-    static final CgBufferFormat MIXED_MAT = CgBufferFormat.builder("SkinData", MemoryLayout.STD430)
+    static final CgBufferLayout MIXED_MAT = CgBufferLayout.builder("SkinData", MemoryLayout.STD430)
         .mat4("bindPose")
         .mat3("normalMat")
         .vec4("weights")
@@ -66,7 +66,7 @@ public class CgGlslEmitterTest {
 
     // F7 — UVEC2 (bindless handle) — SSBO-only; stride=32
     // uvec2 @0 (align 8), vec4 @16 (align 16)
-    static final CgBufferFormat BINDLESS = CgBufferFormat.builder("TexturePool", MemoryLayout.STD430)
+    static final CgBufferLayout BINDLESS = CgBufferLayout.builder("TexturePool", MemoryLayout.STD430)
         .uvec2("handle").vec4("uvRect").build();
 
     @Test
@@ -113,7 +113,7 @@ public class CgGlslEmitterTest {
 
     @Test
     public void testUbo_simpleFields() {
-        CgBufferFormat f = CgBufferFormat.builder("SceneParams", MemoryLayout.STD140)
+        CgBufferLayout f = CgBufferLayout.builder("SceneParams", MemoryLayout.STD140)
             .vec4("ambientColor").float_("exposure").vec4("fogColor").build();
         String out = CgGlslEmitter.emitUbo(f, "SceneParams");
 
@@ -129,7 +129,7 @@ public class CgGlslEmitterTest {
 
     @Test
     public void testUbo_matrixFields() {
-        CgBufferFormat f = CgBufferFormat.builder("CameraExtras", MemoryLayout.STD140)
+        CgBufferLayout f = CgBufferLayout.builder("CameraExtras", MemoryLayout.STD140)
             .mat4("prevViewProj").vec4("jitter").build();
         String out = CgGlslEmitter.emitUbo(f, "CameraExtras");
 
@@ -140,7 +140,7 @@ public class CgGlslEmitterTest {
 
     @Test
     public void testUbo_blockNameUsedForBlock() {
-        CgBufferFormat f = CgBufferFormat.builder("SomeData", MemoryLayout.STD140)
+        CgBufferLayout f = CgBufferLayout.builder("SomeData", MemoryLayout.STD140)
             .vec4("value").build();
         String out = CgGlslEmitter.emitUbo(f, "MyCustomBlock");
 
@@ -149,7 +149,7 @@ public class CgGlslEmitterTest {
 
     @Test
     public void testUbo_noInstanceName() {
-        CgBufferFormat f = CgBufferFormat.builder("SceneParams2", MemoryLayout.STD140)
+        CgBufferLayout f = CgBufferLayout.builder("SceneParams2", MemoryLayout.STD140)
             .vec4("ambientColor").build();
         String out = CgGlslEmitter.emitUbo(f, "SceneParams2");
 
@@ -217,7 +217,7 @@ public class CgGlslEmitterTest {
     /** The block as a struct padded to the slot, its array at the material block's slot, each value loaded from the draw's. */
     @Test
     public void arena_theBlockAsAPaddedStructAndEachValueLoaded() {
-        CgBufferFormat block = CgBufferFormat.builder("CgMaterialBlock", MemoryLayout.STD140).vec4("_Color").float_("_Speed").build();
+        CgBufferLayout block = CgBufferLayout.builder("CgMaterialBlock", MemoryLayout.STD140).vec4("_Color").float_("_Speed").build();
         String out = CgGlslEmitter.emitArena(block, CgBindingModel.MATERIAL_BLOCK, 256);
         int bytes = block.getFloatCount() * 4;
         assertTrue(out, out.contains("struct CgMaterialData {\n    vec4 _Color;\n    float _Speed;\n    vec4 _cg_pad["
@@ -230,7 +230,7 @@ public class CgGlslEmitterTest {
 
     @Test(expected = IllegalArgumentException.class)
     public void arena_aBlockLargerThanItsSlotIsRefused() {
-        CgBufferFormat block = CgBufferFormat.builder("CgMaterialBlock", MemoryLayout.STD140).mat4("a").mat4("b").mat4("c")
+        CgBufferLayout block = CgBufferLayout.builder("CgMaterialBlock", MemoryLayout.STD140).mat4("a").mat4("b").mat4("c")
                 .mat4("d").mat4("e").build();
         CgGlslEmitter.emitArena(block, CgBindingModel.MATERIAL_BLOCK, 256);
     }

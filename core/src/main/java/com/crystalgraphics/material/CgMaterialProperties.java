@@ -1,7 +1,7 @@
 package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
@@ -98,11 +98,11 @@ public final class CgMaterialProperties implements CgMaterialValues {
     // ── UBO / sampler dispatch ────────────────────────────────────────────────
 
     /**
-     * Builds the {@link CgBufferFormat} for {@code CgMaterialBlock} from the non-sampler
+     * Builds the {@link CgBufferLayout} for {@code CgMaterialBlock} from the non-sampler
      * properties. Called by {@code CgMaterial.recompile()} when {@link #hasUboProps()} is true.
      */
-    public CgBufferFormat buildUboFormat() {
-        CgBufferFormat.Builder b = CgBufferFormat.builder("CgMaterialBlock", CgBufferFormat.MemoryLayout.STD140);
+    public CgBufferLayout buildUboFormat() {
+        CgBufferLayout.Builder b = CgBufferLayout.builder("CgMaterialBlock", CgBufferLayout.MemoryLayout.STD140);
         for (CgMaterialProperty p : uboProps) p.addToFormatBuilder(b);
         return b.build();
     }

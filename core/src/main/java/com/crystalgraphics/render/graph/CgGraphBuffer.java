@@ -36,6 +36,9 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
     @Nullable
     private final CgBufferDesc desc;
     private final long size;
+    /** An import's owner where the import follows it: its storage asked at each use. */
+    @Nullable
+    private CgBufferHandle owner;
     /** For {@link #previous()}'s view: the history it reads, else null. */
     @Nullable
     private final CgGraphBuffer of;
@@ -88,6 +91,16 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
     public static CgGraphBuffer imported(String name, int glBuffer, long size) {
         if (glBuffer == 0) throw new IllegalArgumentException("'" + name + "' imports buffer 0");
         return new CgGraphBuffer(Kind.IMPORTED, name, null, size, glBuffer, null);
+    }
+
+    /**
+     * A buffer of {@code owner}'s, {@code size} bytes of it, its storage whatever the owner holds when a pass runs: a
+     * {@code CgBuffer} a kernel binds.
+     */
+    public static CgGraphBuffer imported(String name, CgBufferHandle owner, long size) {
+        CgGraphBuffer buffer = new CgGraphBuffer(Kind.IMPORTED, name, null, size, 0, null);
+        buffer.owner = owner;
+        return buffer;
     }
 
     /** A history's version before its newest: what a draw interpolates from. Read-only. */
@@ -148,6 +161,7 @@ public final class CgGraphBuffer extends CgGraphResource implements CgBufferHand
     /** Render thread: the buffer a read binds now — a history's newest version, or its previous. 0 if unresolved. */
     @Override
     public int bufferId() {
+        if (owner != null) return owner.bufferId();
         if (of != null) return of.versions[1 - of.newest];
         if (versions != null) return versions[newest];
         return storage;

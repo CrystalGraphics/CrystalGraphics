@@ -1,18 +1,18 @@
 package com.crystalgraphics.api.buffer;
 
 /**
- * Describes a single named field within a {@link CgBufferFormat}.
+ * Describes a single named field within a {@link CgBufferLayout}.
  *
  * <p>Instances are immutable value objects. The {@code byteOffset} is computed
- * at format build time by the {@link CgBufferFormat.Builder}, applying the
+ * at format build time by the {@link CgBufferLayout.Builder}, applying the
  * std140/std430 alignment rules for the field's {@link CgGpuType}.</p>
  *
  * <p>The {@code floatOffset} is derived from {@code byteOffset} and is only valid
  * when {@code byteOffset} is divisible by 4 — always true for the field types in
  * {@link CgGpuType}.</p>
  *
- * <p>The constructor is package-private. Only {@link CgBufferFormat.Builder} creates
- * instances; external code receives them via {@link CgBufferFormat#getField(String)}.</p>
+ * <p>The constructor is package-private. Only {@link CgBufferLayout.Builder} creates
+ * instances; external code receives them via {@link CgBufferLayout#getField(String)}.</p>
  */
 public final class CgBufferField {
 
@@ -21,7 +21,7 @@ public final class CgBufferField {
     private final int byteOffset;
     private final int floatOffset;
 
-    /** Package-private — only {@link CgBufferFormat.Builder} may instantiate. */
+    /** Package-private — only {@link CgBufferLayout.Builder} may instantiate. */
     /* package */ CgBufferField(String name, CgGpuType type, int byteOffset) {
         this.name        = name;
         this.type        = type;

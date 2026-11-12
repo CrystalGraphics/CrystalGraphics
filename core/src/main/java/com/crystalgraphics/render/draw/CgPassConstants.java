@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -40,8 +40,8 @@ public final class CgPassConstants {
      * {@code CgViewBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, the
      * previous frame's view-projection, and the frame's index, history validity and target encoding.
      */
-    public static final CgBufferFormat VIEW_FORMAT = CgBufferFormat
-            .builder(VIEW_BLOCK, CgBufferFormat.MemoryLayout.STD140)
+    public static final CgBufferLayout VIEW_FORMAT = CgBufferLayout
+            .builder(VIEW_BLOCK, CgBufferLayout.MemoryLayout.STD140)
             .mat4("cg_ViewMatrix")
             .mat4("cg_ProjMatrix")
             .vec4("cg_Time")
@@ -54,8 +54,8 @@ public final class CgPassConstants {
             .build();
 
     /** {@code CgEnvironmentBlock} in std140: the sun with the daylight, the fog colour, the fog's reach and the sun's share. */
-    public static final CgBufferFormat ENVIRONMENT_FORMAT = CgBufferFormat
-            .builder(ENVIRONMENT_BLOCK, CgBufferFormat.MemoryLayout.STD140)
+    public static final CgBufferLayout ENVIRONMENT_FORMAT = CgBufferLayout
+            .builder(ENVIRONMENT_BLOCK, CgBufferLayout.MemoryLayout.STD140)
             .vec4("cg_SunDirection")
             .vec4("cg_FogColor")
             .vec4("cg_FogParams")

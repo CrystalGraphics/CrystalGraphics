@@ -1,6 +1,6 @@
 package com.crystalgraphics.gpu.staging;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -18,8 +18,8 @@ import static org.junit.Assert.*;
 public class CgBufferWriterColorTest {
 
     /** One vec4 field, so slots 0..3 of the record are exactly r,g,b,a. */
-    private static final CgBufferFormat FORMAT = CgBufferFormat
-            .builder("ColorTest", CgBufferFormat.MemoryLayout.STD430)
+    private static final CgBufferLayout FORMAT = CgBufferLayout
+            .builder("ColorTest", CgBufferLayout.MemoryLayout.STD430)
             .vec4("tint")
             .build();
 
@@ -97,8 +97,8 @@ public class CgBufferWriterColorTest {
     /** Writing a colour to a non-VEC4 field must fail loudly rather than scribble. */
     @Test
     public void color_rejectsANonVec4Field() {
-        CgBufferFormat wrong = CgBufferFormat
-                .builder("WrongTest", CgBufferFormat.MemoryLayout.STD430)
+        CgBufferLayout wrong = CgBufferLayout
+                .builder("WrongTest", CgBufferLayout.MemoryLayout.STD430)
                 .vec2("tint")
                 .build();
         CgStagingBuffer staging = new CgStagingBuffer(wrong.getFloatCount(), 1);

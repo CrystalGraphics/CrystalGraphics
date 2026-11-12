@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 
 /**
@@ -21,7 +21,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
  */
 public final class CgQuadRecord {
 
-    private static final CgBufferFormat FORMAT = CgInstanceKind.QUAD.format();
+    private static final CgBufferLayout FORMAT = CgInstanceKind.QUAD.format();
     public static final int FLOATS = FORMAT.getFloatCount();
     public static final int ORIGIN = FORMAT.getField("origin").getFloatOffset();
     public static final int RIGHT = FORMAT.getField("right").getFloatOffset();

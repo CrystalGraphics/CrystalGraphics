@@ -1,10 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
@@ -25,7 +25,7 @@ public final class CgParticleBeamBuffer {
     /** The {@code attach()} macro the beam factory reads the runs through. */
     public static final String MACRO_NAME = "PARTICLE_BEAM_DATA";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticleBeam", STD430).vec4("value").build();
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgParticleBeam", STD430).vec4("value").build();
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
             .getOrCreateInternal("CgParticleBeamBuffer", FORMAT, CgBindingPoints.PARTICLE_BEAMS, CgBufferLifetime.FRAME);

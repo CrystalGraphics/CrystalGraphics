@@ -1,7 +1,7 @@
 package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
@@ -391,7 +391,7 @@ public final class CgMaterialProperty {
     // ── Format builder ────────────────────────────────────────────────────────
 
     /**
-     * Adds this property's type and name as a field in the given {@link CgBufferFormat.Builder}.
+     * Adds this property's type and name as a field in the given {@link CgBufferLayout.Builder}.
      * Called by {@link CgMaterialProperties#buildUboFormat()} to construct the
      * {@code CgMaterialBlock} format.
      * Must only be called on non-sampler properties.
@@ -402,7 +402,7 @@ public final class CgMaterialProperty {
      * @param b the format builder to add this field to
      * @throws IllegalStateException if called on a sampler property
      */
-    public void addToFormatBuilder(CgBufferFormat.Builder b) {
+    public void addToFormatBuilder(CgBufferLayout.Builder b) {
         String field = blockName();
         switch (type) {
             case FLOAT:

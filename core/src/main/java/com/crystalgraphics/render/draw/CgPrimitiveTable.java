@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 
 import java.util.Arrays;
 
@@ -26,8 +26,8 @@ import java.util.Arrays;
 public final class CgPrimitiveTable {
 
     /** One record: model, normal matrix (its 3x3 read as a mat3), custom0..3. */
-    public static final CgBufferFormat FORMAT = CgBufferFormat
-            .builder("cg_object", CgBufferFormat.MemoryLayout.STD430)
+    public static final CgBufferLayout FORMAT = CgBufferLayout
+            .builder("cg_object", CgBufferLayout.MemoryLayout.STD430)
             .mat4("modelMatrix")
             .mat4("normalMatrix")
             .vec4("custom0")

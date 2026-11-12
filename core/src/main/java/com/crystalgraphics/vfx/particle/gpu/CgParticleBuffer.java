@@ -1,10 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
@@ -33,7 +33,7 @@ public final class CgParticleBuffer {
      * it and 1 (for kinds that land on a floor); color: rgb multiplying a look's colours, then the opacity again; scale:
      * each axis's scale of its size, then its age in seconds.
      */
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgParticle", STD430)
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgParticle", STD430)
             .vec4("place")
             .vec4("motion")
             .vec4("state")

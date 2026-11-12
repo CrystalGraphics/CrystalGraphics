@@ -17,7 +17,7 @@ import com.crystalgraphics.gpu.staging.CgBufferWriter;
  * <p><strong>Note</strong>: this enum covers standalone field types only.
  * Array-of-scalars stride differs between std140 and std430 (std140 pads each element
  * to 16 bytes; std430 does not). Array fields are not supported in v1 — see
- * TODO v2 in {@link CgBufferFormat}.</p>
+ * TODO v2 in {@link CgBufferLayout}.</p>
  *
  * <p><strong>Sampler types absent</strong>: {@code sampler2D}, {@code sampler2DArray}, etc.
  * are opaque GLSL types and are illegal inside buffer blocks per GLSL §4.1.7.
@@ -135,7 +135,7 @@ public enum CgGpuType {
 
     /**
      * Returns the bytes this type occupies in a std140 or std430 block, including
-     * intra-field alignment padding. This is the value used by {@link CgBufferFormat}
+     * intra-field alignment padding. This is the value used by {@link CgBufferLayout}
      * when computing field offsets and the total stride.
      */
     public int getAlignedBytes() {

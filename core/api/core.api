@@ -105,7 +105,7 @@ com/crystalgraphics/animation/CgBonePalettes
   extends java/lang/Object
   field public,static,final BLOCK_NAME Ljava/lang/String;
   field public,static,final BONE_FLOATS I
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
   method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
@@ -413,6 +413,19 @@ com/crystalgraphics/api/animation/CgSocket
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/api/animation/CgSocket;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/api/animation/CgSocket;
+com/crystalgraphics/api/buffer/CgBuffer
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/render/draw/CgBufferHandle
+  method public bufferId ()I
+  method public bytes ()J
+  method public count ()I
+  method public graphBuffer ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public layout ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
+  method public name ()Ljava/lang/String;
+  method public release ()V
+  method public toString ()Ljava/lang/String;
+  method public write (IILjava/util/function/Consumer;)V
 com/crystalgraphics/api/buffer/CgBufferField
   access public,final
   extends java/lang/Object
@@ -423,7 +436,7 @@ com/crystalgraphics/api/buffer/CgBufferField
   method public getType ()Lcom/crystalgraphics/api/buffer/CgGpuType;
   method public hashCode ()I
   method public toString ()Ljava/lang/String;
-com/crystalgraphics/api/buffer/CgBufferFormat
+com/crystalgraphics/api/buffer/CgBufferLayout
   access public,final
   extends java/lang/Object
   method public equals (Ljava/lang/Object;)Z
@@ -432,40 +445,42 @@ com/crystalgraphics/api/buffer/CgBufferFormat
   method public getFieldCount ()I
   method public getFloatCount ()I
   method public getGlslName ()Ljava/lang/String;
-  method public getMemoryLayout ()Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;
+  method public getMemoryLayout ()Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;
   method public getStride ()I
   method public hashCode ()I
   method public toString ()Ljava/lang/String;
-  method public,static builder (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-com/crystalgraphics/api/buffer/CgBufferFormat$Builder
+  method public,static builder (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public,static std140 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public,static std430 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+com/crystalgraphics/api/buffer/CgBufferLayout$Builder
   access public,final
   extends java/lang/Object
-  method public add (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgGpuType;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public bool_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public build ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
-  method public float_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public int64 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public int_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public ivec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public ivec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public ivec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public mat3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public mat4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public uint (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public uint64 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public uvec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public uvec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public uvec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public vec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public vec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-  method public vec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;
-com/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout
+  method public add (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgGpuType;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public bool_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public build ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
+  method public float_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public int64 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public int_ (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public ivec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public ivec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public ivec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public mat3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public mat4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public uint (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public uint64 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public uvec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public uvec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public uvec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public vec2 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public vec3 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+  method public vec4 (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;
+com/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final STD140 Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;
-  field public,static,final STD430 Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;
-  method public,static values ()[Lcom/crystalgraphics/api/buffer/CgBufferFormat$MemoryLayout;
+  field public,static,final STD140 Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;
+  field public,static,final STD430 Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;
+  method public,static values ()[Lcom/crystalgraphics/api/buffer/CgBufferLayout$MemoryLayout;
 com/crystalgraphics/api/buffer/CgBufferLifetime
   access public,final,enum
   extends java/lang/Enum
@@ -473,6 +488,19 @@ com/crystalgraphics/api/buffer/CgBufferLifetime
   field public,static,final RETAINED Lcom/crystalgraphics/api/buffer/CgBufferLifetime;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/buffer/CgBufferLifetime;
   method public,static values ()[Lcom/crystalgraphics/api/buffer/CgBufferLifetime;
+com/crystalgraphics/api/buffer/CgBufferRecords
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
+  method public begin (I)V
+  method public end ()I
+  method public floats ()[F
+  method public layout ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
+  method public next ()Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
+com/crystalgraphics/api/buffer/CgBuffers
+  access public,final
+  extends java/lang/Object
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;I)Lcom/crystalgraphics/api/buffer/CgBuffer;
 com/crystalgraphics/api/buffer/CgGpuType
   access public,final,enum
   extends java/lang/Enum
@@ -4250,7 +4278,7 @@ com/crystalgraphics/compute/emit/CgPropertyBlock
   method public defaults ()[F
   method public defaultsInto ([F)V
   method public floats ()I
-  method public format ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public format ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public has (Ljava/lang/String;)Z
   method public hasValues ()Z
   method public isInteger (Ljava/lang/String;)Z
@@ -4519,6 +4547,7 @@ com/crystalgraphics/compute/source/CgBufferDecl
   method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/compute/source/CgBufferAccess;IZZILjava/util/List;)V
   method public access ()Lcom/crystalgraphics/compute/source/CgBufferAccess;
   method public array ()Ljava/lang/String;
+  method public check (Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
   method public display ()Ljava/lang/String;
   method public element ()Ljava/lang/String;
   method public field (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgElementField;
@@ -5923,9 +5952,9 @@ com/crystalgraphics/gpu/resource/CgShaderBuffer
   field protected,final writer Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
   field public,static,final COMPARE_LIMIT_FLOATS I
   implements com/crystalgraphics/api/buffer/CgObjectBuffer
-  method protected <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;I)V
-  method protected <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)V
-  method protected resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferFormat;)V
+  method protected <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;I)V
+  method protected <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)V
+  method protected resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
   method protected,abstract noteInternal ()V
   method protected,final uploadData ([FI)V
   method public beginWrite (I)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
@@ -5934,7 +5963,7 @@ com/crystalgraphics/gpu/resource/CgShaderBuffer
   method public endRecord ()V
   method public endWrite ()V
   method public getBindingLocation ()I
-  method public getFormat ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public getFormat ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public getGlBufferId ()I
   method public getLastWrittenCount ()I
   method public getLifetime ()Lcom/crystalgraphics/api/buffer/CgBufferLifetime;
@@ -5946,23 +5975,23 @@ com/crystalgraphics/gpu/resource/CgShaderBuffer
   method public noteBound ()V
   method public uploadRaw ([FI)V
   method public writer ()Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
-  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static create (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static createInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/gpu/resource/CgShaderBufferRegistry
   access public,final
   extends java/lang/Object
   method public deleteAll ()V
-  method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public getOrCreateInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public getOrCreateInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
-  method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
-  method public getOrCreateUboInternal (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;I)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public getOrCreate (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public getOrCreateInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public getOrCreateInternal (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public getOrCreateUbo (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public getOrCreateUboInternal (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
   method public ownerOf (Lcom/crystalgraphics/api/CgBindingPoints$Binding;)Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
   method public,static get ()Lcom/crystalgraphics/gpu/resource/CgShaderBufferRegistry;
 com/crystalgraphics/gpu/resource/CgShaderStorageBuffer
@@ -6208,16 +6237,16 @@ com/crystalgraphics/gpu/resource/CgTextureSettings
 com/crystalgraphics/gpu/resource/CgUniformBuffer
   access public,final
   extends com/crystalgraphics/gpu/resource/CgShaderBuffer
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;I)V
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferFormat;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)V
-  method public resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferFormat;)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;I)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)V
+  method public resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
   method public upload ()V
-  method public,static create (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
-  method public,static create (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public,static create (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public,static create (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;ILcom/crystalgraphics/api/buffer/CgBufferLifetime;)Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
 com/crystalgraphics/gpu/staging/CgBufferWriter
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/gpu/staging/CgStagingBuffer;Lcom/crystalgraphics/api/buffer/CgBufferFormat;)V
+  method public <init> (Lcom/crystalgraphics/gpu/staging/CgStagingBuffer;Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
   method public beginRecord ()Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
   method public bool_ (Ljava/lang/String;Z)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
   method public color (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
@@ -6236,7 +6265,7 @@ com/crystalgraphics/gpu/staging/CgBufferWriter
   method public rawCursor ()I
   method public rawData ()[F
   method public reset ()Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
-  method public resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferFormat;)V
+  method public resetFormat (Lcom/crystalgraphics/api/buffer/CgBufferLayout;)V
   method public uint (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
   method public uint64 (Ljava/lang/String;J)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
   method public uvec2 (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/staging/CgBufferWriter;
@@ -6793,7 +6822,7 @@ com/crystalgraphics/material/CgMaterialProperties
   method public all ()Ljava/util/List;
   method public array (Ljava/lang/String;[F)Lcom/crystalgraphics/api/material/CgMaterialValues;
   method public bindSamplerTextures ()V
-  method public buildUboFormat ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public buildUboFormat ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public captureSamplers (Lcom/crystalgraphics/render/draw/CgBindingTable;)V
   method public consumeBlockChanged ()Z
   method public consumeSamplerUnitChanged ()Z
@@ -6812,7 +6841,7 @@ com/crystalgraphics/material/CgMaterialProperties
 com/crystalgraphics/material/CgMaterialProperty
   access public,final
   extends java/lang/Object
-  method public addToFormatBuilder (Lcom/crystalgraphics/api/buffer/CgBufferFormat$Builder;)V
+  method public addToFormatBuilder (Lcom/crystalgraphics/api/buffer/CgBufferLayout$Builder;)V
   method public bindSamplerTexture ()V
   method public blockName ()Ljava/lang/String;
   method public blockName (I)Ljava/lang/String;
@@ -6932,14 +6961,14 @@ com/crystalgraphics/material/CgMaterialShaderRegistry
 com/crystalgraphics/material/CgParameterCollectionBuffer
   access public,final
   extends java/lang/Object
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
   method public,static upload ([FI)V
 com/crystalgraphics/material/CgPropertyRows
   access public,final
   extends java/lang/Object
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   field public,static,final VEC4_FLOATS I
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
@@ -6979,11 +7008,11 @@ com/crystalgraphics/material/parse/CgGlslEmitter
   extends java/lang/Object
   field public,static,final ARENA_BLOCK Ljava/lang/String;
   field public,static,final VERTEX_BLOCK Ljava/lang/String;
-  method public,static emitArena (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;I)Ljava/lang/String;
-  method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Ljava/lang/String;ZLcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
+  method public,static emitArena (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;I)Ljava/lang/String;
+  method public,static emitSsbo (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;Ljava/lang/String;ZLcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitSsbo (Lcom/crystalgraphics/api/material/CgAttachedBuffer;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
-  method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;)Ljava/lang/String;
-  method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferFormat;Ljava/lang/String;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
+  method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;)Ljava/lang/String;
+  method public,static emitUbo (Lcom/crystalgraphics/api/buffer/CgBufferLayout;Ljava/lang/String;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
   method public,static emitUbo (Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;)Ljava/lang/String;
 com/crystalgraphics/material/parse/CgMaterialShaderCompiler
   access public,final
@@ -9141,7 +9170,7 @@ com/crystalgraphics/render/draw/CgInstanceKind
   field public,static,final OBJECT_ID_BLOCK_NAME Ljava/lang/String;
   field public,static,final QUAD Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public floats ()I
-  method public format ()Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  method public format ()Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public stride ()I
   method public,static of (I)Lcom/crystalgraphics/render/draw/CgInstanceKind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/draw/CgInstanceKind;
@@ -9169,14 +9198,14 @@ com/crystalgraphics/render/draw/CgPassConstants
   field public,static,final ENCODED_TARGET I
   field public,static,final ENVIRONMENT_BLOCK Ljava/lang/String;
   field public,static,final ENVIRONMENT_FLOATS I
-  field public,static,final ENVIRONMENT_FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final ENVIRONMENT_FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final FLOATS I
   field public,static,final SUN_X F
   field public,static,final SUN_Y F
   field public,static,final SUN_Z F
   field public,static,final VIEW_BLOCK Ljava/lang/String;
   field public,static,final VIEW_FLOATS I
-  field public,static,final VIEW_FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final VIEW_FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public <init> ()V
   method public camera (FFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public cameraFromView ()Lcom/crystalgraphics/render/draw/CgPassConstants;
@@ -9250,7 +9279,7 @@ com/crystalgraphics/render/draw/CgPrimitiveTable
   access public,final
   extends java/lang/Object
   field public,static,final FLOATS I
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   method public <init> ()V
   method public add ()I
   method public add ([FII)I
@@ -9339,6 +9368,7 @@ com/crystalgraphics/render/graph/CgComputePass
 com/crystalgraphics/render/graph/CgDispatch
   access public,final
   extends java/lang/Object
+  method public bind (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBuffer;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public bind (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public bind (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJ)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public counter (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphBuffer;J)Lcom/crystalgraphics/render/graph/CgDispatch;
@@ -9427,6 +9457,7 @@ com/crystalgraphics/render/graph/CgGraphBuffer
   method public toString ()Ljava/lang/String;
   method public,static history (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgBufferDesc;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static imported (Ljava/lang/String;IJ)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
+  method public,static imported (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;J)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static persistent (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgBufferDesc;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static transientBuffer (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgBufferDesc;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
 com/crystalgraphics/render/graph/CgGraphBuffer$Kind
@@ -9630,6 +9661,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;J[III)V
   method public update (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIIIILjava/nio/ByteBuffer;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public update (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIIILjava/nio/ByteBuffer;)Lcom/crystalgraphics/render/graph/CgRequest;
+  method public upload (Ljava/lang/String;Lcom/crystalgraphics/api/buffer/CgBufferLayout;ILjava/util/function/Consumer;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
 com/crystalgraphics/render/graph/CgRehearsal
   access public,final
   extends java/lang/Object
@@ -17902,20 +17934,20 @@ com/crystalgraphics/vfx/particle/form/CgVfxSpawnInput
 com/crystalgraphics/vfx/particle/gpu/CgParticleBeamBuffer
   access public,final
   extends java/lang/Object
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/vfx/particle/gpu/CgParticleBuffer
   access public,final
   extends java/lang/Object
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   field public,static,final RECORD_FLOATS I
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/vfx/particle/gpu/CgParticleOrderBuffer
   access public,final
   extends java/lang/Object
-  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferFormat;
+  field public,static,final FORMAT Lcom/crystalgraphics/api/buffer/CgBufferLayout;
   field public,static,final MACRO_NAME Ljava/lang/String;
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/vfx/particle/gpu/CgVfxCurveDomain

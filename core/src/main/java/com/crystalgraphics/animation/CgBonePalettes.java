@@ -1,7 +1,7 @@
 package com.crystalgraphics.animation;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
@@ -10,7 +10,7 @@ import org.joml.Matrix4fc;
 
 import java.util.Arrays;
 
-import static com.crystalgraphics.api.buffer.CgBufferFormat.MemoryLayout.STD430;
+import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
@@ -41,7 +41,7 @@ public final class CgBonePalettes {
     /** The buffer's block (or sampler) name in a skinned program: a constant, so wiring by it loads nothing. */
     public static final String BLOCK_NAME = "CgBonePalettes";
 
-    public static final CgBufferFormat FORMAT = CgBufferFormat.builder("CgBoneRow", STD430).vec4("row").build();
+    public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgBoneRow", STD430).vec4("row").build();
 
     /** Floats one bone takes: three rows of four. */
     public static final int BONE_FLOATS = 12;

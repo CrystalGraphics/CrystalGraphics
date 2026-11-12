@@ -4,7 +4,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -27,6 +27,7 @@ import com.crystalgraphics.material.parse.CgShaderParser;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBlockVersion;
+import com.crystalgraphics.api.buffer.CgBuffer;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgMaterialArena;
@@ -1020,6 +1021,7 @@ public final class CgMaterial {
         if (parsed == null || parsed.buffer(name) == null) {
             throw new IllegalArgumentException("'" + name + "' is no buffer this material's Buffers { } declares");
         }
+        if (buffer instanceof CgBuffer own) parsed.buffer(name).check(own.layout());
         if (buffers == null) buffers = new HashMap<>();
         buffers.put(name, Objects.requireNonNull(buffer, "buffer"));
         return this;
@@ -1062,7 +1064,7 @@ public final class CgMaterial {
     /** The properties block packed as it is now, repacked only after a value moved. */
     private CgBufferWriter capturePacker() {
         if (capturePacker == null) {
-            CgBufferFormat format = propStore.buildUboFormat();
+            CgBufferLayout format = propStore.buildUboFormat();
             capturePacker = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
             capturePropsDirty = true;
         }
@@ -1472,7 +1474,7 @@ public final class CgMaterial {
         syncPropsToParse();   // a parse is in hand, so this always leaves a propStore
 
         if (propStore.hasUboProps()) {
-            CgBufferFormat newFormat = propStore.buildUboFormat();
+            CgBufferLayout newFormat = propStore.buildUboFormat();
             if (matPropsUbo == null) {
                 matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO,
                         CgBufferLifetime.FRAME);

@@ -9,7 +9,7 @@
  *       (FLOAT, VEC2, VEC3, VEC4, MAT3, MAT4, INT, UINT, BOOL) with std140/std430 size and alignment data</li>
  *   <li>{@link com.crystalgraphics.api.buffer.CgBufferField} — immutable value object
  *       describing a single named field within a buffer format (name, type, byte offset)</li>
- *   <li>{@link com.crystalgraphics.api.buffer.CgBufferFormat} — immutable format descriptor
+ *   <li>{@link com.crystalgraphics.api.buffer.CgBufferLayout} — immutable format descriptor
  *       built via a fluent builder; auto-computes field offsets with correct std140/std430 alignment padding</li>
  * </ul>
  *

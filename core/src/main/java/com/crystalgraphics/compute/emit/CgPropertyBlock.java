@@ -1,7 +1,7 @@
 package com.crystalgraphics.compute.emit;
 
 import com.crystalgraphics.api.buffer.CgBufferField;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
@@ -29,7 +29,7 @@ import java.util.Map;
 public final class CgPropertyBlock {
 
     @Nullable
-    private final CgBufferFormat format;
+    private final CgBufferLayout format;
     private final float[] defaults;
     private final List<String> samplers;
     /** The {@code sampler3D} ones. */
@@ -37,7 +37,7 @@ public final class CgPropertyBlock {
     /** Its value fields by name: a dispatch sets each by name every frame. */
     private final Map<String, CgBufferField> fields = new HashMap<>();
 
-    private CgPropertyBlock(@Nullable CgBufferFormat format, float[] defaults, List<String> samplers, List<String> volumes) {
+    private CgPropertyBlock(@Nullable CgBufferLayout format, float[] defaults, List<String> samplers, List<String> volumes) {
         this.format = format;
         this.defaults = defaults;
         this.samplers = samplers;
@@ -55,7 +55,7 @@ public final class CgPropertyBlock {
         samplers = Collections.unmodifiableList(samplers);
         volumes = Collections.unmodifiableList(volumes);
         if (!all.hasUboProps()) return new CgPropertyBlock(null, new float[0], samplers, volumes);
-        CgBufferFormat format = all.buildUboFormat();
+        CgBufferLayout format = all.buildUboFormat();
         CgBufferWriter writer = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
         all.writeUboProps(writer);
         float[] defaults = Arrays.copyOf(writer.rawData(), format.getFloatCount());
@@ -69,7 +69,7 @@ public final class CgPropertyBlock {
 
     /** The block's layout, std140; null without values. */
     @Nullable
-    public CgBufferFormat format() {
+    public CgBufferLayout format() {
         return format;
     }
 

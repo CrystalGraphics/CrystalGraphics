@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 
 import org.junit.Test;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
 
@@ -41,7 +41,7 @@ public class CgPropertyTableTest {
     @Test
     public void aTableIsLaidOutAVec4AnElement() {
         List<CgMaterialProperty> props = CgShaderParser.parse(SOURCE, "test:table").properties();
-        CgBufferFormat block = new CgMaterialProperties(props).buildUboFormat();
+        CgBufferLayout block = new CgMaterialProperties(props).buildUboFormat();
         CgMaterialProperty p = props.get(0);
         int base = block.getField(p.blockName(0)).getByteOffset();
         for (int i = 0; i < 64; i++) assertEquals(base + 16 * i, block.getField(p.blockName(i)).getByteOffset());

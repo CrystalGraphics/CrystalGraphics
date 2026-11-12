@@ -1,6 +1,6 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgUniformBuffer;
 import lombok.Getter;
@@ -81,8 +81,8 @@ public final class CgAttachedBuffer {
                 "macroName must be an uppercase GLSL-style identifier (e.g. \"FONT_METRICS\"); got: " + macroName);
         }
 
-        CgBufferFormat format = buffer.getFormat();
-        if (format.getMemoryLayout() != CgBufferFormat.MemoryLayout.STD430) {
+        CgBufferLayout format = buffer.getFormat();
+        if (format.getMemoryLayout() != CgBufferLayout.MemoryLayout.STD430) {
             throw new IllegalArgumentException(
                 "An engine token's storage buffer is STD430 (an SSBO); a uniform block takes CgAttachedBuffer.of(CgUniformBuffer).");
         }
@@ -90,11 +90,11 @@ public final class CgAttachedBuffer {
         String structName = format.getGlslName();
         if (structName == null || !structName.matches("^[A-Za-z_][A-Za-z0-9_]*$")) {
             throw new IllegalArgumentException(
-                "CgBufferFormat glslName \"" + structName + "\" is not a valid GLSL identifier");
+                "CgBufferLayout glslName \"" + structName + "\" is not a valid GLSL identifier");
         }
         if (structName.startsWith("gl_")) {
             throw new IllegalArgumentException(
-                "CgBufferFormat glslName \"" + structName + "\" is not a valid GLSL identifier");
+                "CgBufferLayout glslName \"" + structName + "\" is not a valid GLSL identifier");
         }
 
         String ssboArrayName = "_cg_" + lowerFirst(structName) + "Arr";
@@ -112,7 +112,7 @@ public final class CgAttachedBuffer {
         if (buffer == null) {
             throw new IllegalArgumentException("buffer must not be null");
         }
-        if (buffer.getFormat().getMemoryLayout() != CgBufferFormat.MemoryLayout.STD140) {
+        if (buffer.getFormat().getMemoryLayout() != CgBufferLayout.MemoryLayout.STD140) {
             throw new IllegalArgumentException(
                 "of(CgUniformBuffer) requires a STD140 buffer. Got: "
                 + buffer.getFormat().getMemoryLayout());

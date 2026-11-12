@@ -2,7 +2,7 @@ package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.buffer.CgGpuType;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -49,7 +49,7 @@ import javax.annotation.Nullable;
  */
 public final class CgQuadBatch {
 
-    private static final CgBufferFormat INSTANCE_FORMAT = CgInstanceKind.QUAD.format();
+    private static final CgBufferLayout INSTANCE_FORMAT = CgInstanceKind.QUAD.format();
     private static final String GPU_BUFFER_NAME = "CgQuadBatchInstances";
     /** The macro name the {@code quad} token binds the record under; {@code cg_env.glsl}'s macros name it. */
     public static final String MACRO_NAME = "QUAD_DATA";

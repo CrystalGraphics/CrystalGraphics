@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
@@ -71,7 +71,7 @@ public final class CgClipTable {
     /** How many entries one draw can be clipped by. {@code clip.glsl}'s {@code CG_CLIP_MAX_DEPTH} must agree. */
     public static final int MAX_DEPTH = 4;
 
-    private static final CgBufferFormat FORMAT = CgBufferFormat.builder("ClipEntry", CgBufferFormat.MemoryLayout.STD430)
+    private static final CgBufferLayout FORMAT = CgBufferLayout.builder("ClipEntry", CgBufferLayout.MemoryLayout.STD430)
             .vec4("toLocal0").vec4("toLocal1")
             .vec4("outer").vec4("outerRx").vec4("outerRy")
             .vec4("inner").vec4("innerRx").vec4("innerRy")

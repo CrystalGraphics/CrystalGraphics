@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.api.buffer.CgBufferLayout;
+import com.crystalgraphics.api.buffer.CgBufferRecords;
 import com.crystalgraphics.api.framebuffer.CgFrameBufferFormat;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -24,6 +26,7 @@ import java.util.Collections;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 
@@ -109,6 +112,16 @@ public final class CgRecording {
     private int fetchesUsed;
     private final List<CgPass.Update> updates = new ArrayList<>();
     private int updatesUsed;
+    /** {@link #upload}'s slots, reused frame to frame: each its records and the buffer they last filled. */
+    private final List<Upload> uploads = new ArrayList<>();
+    private int uploadsUsed;
+
+    private static final class Upload {
+        CgBufferRecords records;
+        CgGraphBuffer buffer;
+        String name;
+        long bytes;
+    }
     private final List<CgPass.Include> includes = new ArrayList<>();
     private int includesUsed;
     /** {@link #compute(String)}'s frame block: identity, its time set per call. */
@@ -414,6 +427,49 @@ public final class CgRecording {
         fillsUsed++;
         add(fill);
         write(fill, buffer, CgAccess.COPY_WRITE);
+    }
+
+    /**
+     * {@code count} records of {@code layout} written now, uploaded into this frame's memory: a buffer for this frame
+     * only, which a material or a kernel binds by name.
+     *
+     * <pre>{@code
+     * static final CgBufferLayout SPARK = CgBufferLayout.std430("Spark").vec4("positionLife").vec4("velocitySeed").build();
+     *
+     * CgGraphBuffer sparks = rec.upload("mymod.sparks", SPARK, live.size(), records -> {
+     *     for (Spark s : live) {
+     *         records.next().vec4("positionLife", s.x, s.y, s.z, s.life).vec4("velocitySeed", s.vx, s.vy, s.vz, s.seed);
+     *     }
+     * });
+     * sparkMaterial.buffer("SPARKS", sparks);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Allocates nothing once warm: the records and the handle are this recording's, reused frame to frame.</li>
+     *   <li>Records left unwritten are zero. For data kept across frames, {@code CgBuffers.create}.</li>
+     * </ul>
+     */
+    public CgGraphBuffer upload(String name, CgBufferLayout layout, int count, Consumer<CgBufferRecords> writer) {
+        requireOpen();
+        Upload u;
+        if (uploadsUsed < uploads.size()) u = uploads.get(uploadsUsed);
+        else uploads.add(u = new Upload());
+        uploadsUsed++;
+        if (u.records == null || u.records.layout() != layout) u.records = new CgBufferRecords(layout);
+        int records = Math.max(count, 1);
+        long bytes = (long) layout.getStride() * records;
+        if (u.buffer == null || u.bytes != bytes || !u.name.equals(name)) {
+            u.buffer = CgGraphBuffer.transientBuffer(name,
+                    CgBufferDesc.elements(records, layout.getStride(), CgBufferUsage.STORAGE, CgBufferUsage.COPY));
+            u.name = name;
+            u.bytes = bytes;
+        }
+        u.records.begin(count);
+        writer.accept(u.records);
+        int floats = u.records.end();
+        if (floats > 0) update(u.buffer, 0, u.records.floats(), 0, floats);
+        else fill(u.buffer, 0);
+        return u.buffer;
     }
 
     /** Writes {@code data}'s remaining bytes into {@code buffer} at {@code offset}, copied now. */
@@ -792,6 +848,7 @@ public final class CgRecording {
         fetchesUsed = 0;
         recycle(updates, updatesUsed);
         updatesUsed = 0;
+        uploadsUsed = 0;
         recycle(includes, includesUsed);
         includesUsed = 0;
         chunks.reset();

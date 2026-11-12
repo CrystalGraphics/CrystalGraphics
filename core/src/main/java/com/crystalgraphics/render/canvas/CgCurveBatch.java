@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -49,7 +49,7 @@ import javax.annotation.Nullable;
 public final class CgCurveBatch {
 
     /** Fixed per-instance record format shared by every {@code CgCurveBatch} instance. */
-    private static final CgBufferFormat INSTANCE_FORMAT = CgInstanceKind.CURVE.format();
+    private static final CgBufferLayout INSTANCE_FORMAT = CgInstanceKind.CURVE.format();
 
     private static final String GPU_BUFFER_NAME = "CgCurveBatchInstances";
 

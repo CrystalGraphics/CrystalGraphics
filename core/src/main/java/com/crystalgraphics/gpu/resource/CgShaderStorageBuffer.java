@@ -2,7 +2,7 @@ package com.crystalgraphics.gpu.resource;
 
 
 import com.crystalgraphics.render.draw.CgBoundResources;
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
@@ -36,7 +36,7 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      * @param bindingLocation immutable GL binding point
      * @param lifetime        {@link CgBufferLifetime#FRAME} for the frame ring, bound by range
      */
-    CgShaderStorageBuffer(String name, CgBufferFormat format,
+    CgShaderStorageBuffer(String name, CgBufferLayout format,
                           CgCapabilities.ShaderBufferPath path, int bindingLocation, CgBufferLifetime lifetime) {
         super(name, format, CgStreamBuffer.Use.STORAGE, bindingLocation, lifetime);
         this.path = path;

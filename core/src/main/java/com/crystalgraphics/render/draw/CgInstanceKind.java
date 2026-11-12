@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.api.buffer.CgBufferFormat;
+import com.crystalgraphics.api.buffer.CgBufferLayout;
 
 /**
  * What a draw's instances are: the record each one writes and the geometry every instance expands. A batch never
@@ -41,15 +41,15 @@ public enum CgInstanceKind {
 
     private static final CgInstanceKind[] BY_ORDINAL = values();
 
-    private final CgBufferFormat format;
+    private final CgBufferLayout format;
     /** Floats a record takes in the array: the format's, which rounds to 16 bytes, but for OBJECT's id pair, 8. */
     private final int floats;
 
-    CgInstanceKind(CgBufferFormat format) {
+    CgInstanceKind(CgBufferLayout format) {
         this(format, format.getFloatCount());
     }
 
-    CgInstanceKind(CgBufferFormat format, int floats) {
+    CgInstanceKind(CgBufferLayout format, int floats) {
         this.format = format;
         this.floats = floats;
     }
@@ -60,7 +60,7 @@ public enum CgInstanceKind {
     }
 
     /** The std430 record one instance writes. */
-    public CgBufferFormat format() {
+    public CgBufferLayout format() {
         return format;
     }
 
@@ -74,9 +74,9 @@ public enum CgInstanceKind {
         return floats * Float.BYTES;
     }
 
-    private static CgBufferFormat quadFormat() {
-        return CgBufferFormat
-                .builder("QuadInstance", CgBufferFormat.MemoryLayout.STD430)
+    private static CgBufferLayout quadFormat() {
+        return CgBufferLayout
+                .builder("QuadInstance", CgBufferLayout.MemoryLayout.STD430)
                 // fade: 1 - the item's opacity, in origin's tail. Stored inverted so a record written without it is
                 // opaque. CG_QUAD_OPACITY reads it.
                 .vec3("origin").float_("fade").vec3("right").vec3("up")
@@ -109,13 +109,13 @@ public enum CgInstanceKind {
     }
 
     /** {@code cg_env.glsl}'s {@code cg_ObjectIds} entry: a slot of the table and a material slot, as bits in floats. */
-    private static CgBufferFormat objectIdFormat() {
-        return CgBufferFormat.builder("cg_object_id", CgBufferFormat.MemoryLayout.STD430).uint("id").uint("material").build();
+    private static CgBufferLayout objectIdFormat() {
+        return CgBufferLayout.builder("cg_object_id", CgBufferLayout.MemoryLayout.STD430).uint("id").uint("material").build();
     }
 
-    private static CgBufferFormat curveFormat() {
-        return CgBufferFormat
-                .builder("CurveInstance", CgBufferFormat.MemoryLayout.STD430)
+    private static CgBufferLayout curveFormat() {
+        return CgBufferLayout
+                .builder("CurveInstance", CgBufferLayout.MemoryLayout.STD430)
                 // fade: 1 - the item's opacity, in p0's tail, as the quad record's. CG_CURVE_OPACITY reads it.
                 .vec3("p0").float_("fade").vec3("p1").vec3("p2")
                 .vec4("color0").vec4("color1")
