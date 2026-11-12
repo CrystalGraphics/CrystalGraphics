@@ -11,6 +11,7 @@ import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.util.io.CgIO;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -233,8 +234,8 @@ public final class CgShaderParser {
             // Lowered onto the passes the old format writes, then parsed as one.
             CgMaterialFormat.Lowered lowered = CgMaterialFormat.lower(source, resourcePath);
             CgParsedShader parsed = parseLocating(lowered.source(), resourcePath);
-            requireMaskClip(parsed.properties(), lowered.maskClip(), resourcePath);
-            return parsed.inFormat(lowered.domain(), lowered.maskClip(), lowered.separate());
+            requireMaskClip(parsed.properties(), lowered.format().maskClip(), resourcePath);
+            return parsed.inFormat(lowered.format());
         }
 
         // ── Step 1: top-level validations ──────────────────────────────────
@@ -536,9 +537,11 @@ public final class CgShaderParser {
                     throw new CgShaderParseException("[" + resourcePath + "] Pass '" + passName + "' is a " + lightMode
                             + " pass: only a Forward pass draws into a \"Target\"");
                 }
-                postTargets.add(new CgParsedShader.PostTarget(passName, target, targetScale(passTags, passName, resourcePath)));
-            } else if (passTags.containsKey("Scale")) {
-                throw new CgShaderParseException("[" + resourcePath + "] Pass '" + passName + "' has a \"Scale\" and no \"Target\"");
+                postTargets.add(new CgParsedShader.PostTarget(passName, target, targetScale(passTags, passName, resourcePath),
+                        targetFormat(passTags, passName, resourcePath)));
+            } else if (passTags.containsKey("Scale") || passTags.containsKey("Format")) {
+                throw new CgShaderParseException("[" + resourcePath + "] Pass '" + passName + "' has a \""
+                        + (passTags.containsKey("Scale") ? "Scale" : "Format") + "\" and no \"Target\"");
             }
         }
         validatePostTargets(props, passes, postTargets, resourcePath);
@@ -557,7 +560,7 @@ public final class CgShaderParser {
                 buffers.buffers(),
                 buffers.structs(),
                 Collections.unmodifiableList(postTargets),
-                emissionInput, implicitFeatures, null, null, false);
+                emissionInput, implicitFeatures, null);
     }
 
     /** A {@code MaskClip} naming a parameter names a float one the file declares. */
@@ -595,6 +598,20 @@ public final class CgShaderParser {
         }
         throw new CgShaderParseException("[" + resourcePath + "] " + what + " \"" + name + "\", which is no sampler2D property:"
                 + " declare it, e.g. " + name + " (\"...\", sampler2D) = \"black\"");
+    }
+
+    /** A target's {@code "Format"}: a colour {@code CgFormat}'s name, {@code RGBA16_FLOAT} when absent. */
+    static CgFormat targetFormat(Map<String, String> tags, String pass, String resourcePath) {
+        String raw = tags.get("Format");
+        if (raw == null) return CgFormat.RGBA16_FLOAT;
+        try {
+            CgFormat f = CgFormat.valueOf(raw);
+            if (!f.hasDepth() && !f.hasStencil() && !f.compressed()) return f;
+        } catch (IllegalArgumentException ignored) {
+            // named below
+        }
+        throw new CgShaderParseException("[" + resourcePath + "] Pass '" + pass + "' has \"Format\" = \"" + raw
+                + "\": a colour CgFormat's name, as RGBA16_FLOAT");
     }
 
     /** A target's {@code "Scale"}: its share of the post target on each side, in (0, 1], 1 when absent. */

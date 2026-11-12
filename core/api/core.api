@@ -6841,6 +6841,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public pipeline (Lcom/crystalgraphics/api/material/CgRenderPassVariant;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public pipeline (Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public pipeline (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
+  method public postLocation ()Ljava/lang/String;
   method public postTargets ()Ljava/util/List;
   method public precache ()Z
   method public properties ()Ljava/util/List;
@@ -7040,7 +7041,7 @@ com/crystalgraphics/material/parse/CgParsedPass
 com/crystalgraphics/material/parse/CgParsedShader
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/material/parse/CgPermutationDomain;Ljava/util/List;ILjava/lang/String;FZZZZZZZZZZZLcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;Lcom/crystalgraphics/material/parse/CgParsedShader$Tube;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/material/CgMaterialDomain;Ljava/lang/String;Z)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/material/parse/CgPermutationDomain;Ljava/util/List;ILjava/lang/String;FZZZZZZZZZZZLcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;Lcom/crystalgraphics/material/parse/CgParsedShader$Tube;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/material/parse/CgParsedShader$Format;)V
   method public buffer (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgBufferDecl;
   method public bufferStructs ()Ljava/lang/String;
   method public buffers ()Ljava/util/List;
@@ -7051,6 +7052,7 @@ com/crystalgraphics/material/parse/CgParsedShader
   method public engineBuffers ()Ljava/util/List;
   method public featureNames ()Ljava/util/List;
   method public fogged ()Z
+  method public format ()Lcom/crystalgraphics/material/parse/CgParsedShader$Format;
   method public getPassByLightMode (Ljava/lang/String;)Lcom/crystalgraphics/material/parse/CgParsedPass;
   method public getPassByName (Ljava/lang/String;)Lcom/crystalgraphics/material/parse/CgParsedPass;
   method public handedLights ()Z
@@ -7064,6 +7066,7 @@ com/crystalgraphics/material/parse/CgParsedShader
   method public mediated ()Z
   method public passes ()Ljava/util/List;
   method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
+  method public postLocation ()Ljava/lang/String;
   method public postTargets ()Ljava/util/List;
   method public properties ()Ljava/util/List;
   method public readsObjectRecord ()Z
@@ -7091,10 +7094,22 @@ com/crystalgraphics/material/parse/CgParsedShader$DepthMode
   field public,static,final PREPASS Lcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;
   method public,static values ()[Lcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;
+com/crystalgraphics/material/parse/CgParsedShader$Format
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/api/material/CgMaterialDomain;Ljava/lang/String;ZLjava/lang/String;)V
+  method public domain ()Lcom/crystalgraphics/api/material/CgMaterialDomain;
+  method public maskClip ()Ljava/lang/String;
+  method public postLocation ()Ljava/lang/String;
+  method public separateTranslucency ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/material/parse/CgParsedShader$PostTarget
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;F)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;FLcom/crystalgraphics/platform/rhi/format/CgFormat;)V
+  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public pass ()Ljava/lang/String;
   method public property ()Ljava/lang/String;
   method public scale ()F
@@ -9813,6 +9828,7 @@ com/crystalgraphics/render/post/CgPostMaterial
   method public weight ()F
   method public weight (F)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public,static of (Lcom/crystalgraphics/api/material/CgMaterialInstance;Lcom/crystalgraphics/render/post/CgPostPoint;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/render/post/CgPostPoint;)Lcom/crystalgraphics/render/post/CgPostMaterial;
 com/crystalgraphics/render/post/CgPostPoint
   access public,final,enum

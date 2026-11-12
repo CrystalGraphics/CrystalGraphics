@@ -7,7 +7,7 @@
 // the vertex (World Position Offset), or assign it outright where the material places its own vertices.
 struct CgVertex {
     vec3 position;   // object space, as the factory read it
-    vec3 normal;     // object space
+    vec3 normal;     // world space
     vec4 color;      // white where the factory has none
     vec2 uv0;        // a set the mesh lacks repeats the one before it
     vec2 uv1;
@@ -31,4 +31,34 @@ struct CgSurface {
     uvec2 shadingModelId;    // (1, 0): a model and type a post material reads
     vec2 light;              // the draw's (block, sky) light
     float volumeDepth;       // 0: a volume's eye distance, for the volume pass
+};
+
+// What a #domain post material's surface() takes: the pixel of the screen it writes.
+struct CgScreen {
+    vec2 uv;                 // 0..1 across the target
+    vec2 pixel;              // gl_FragCoord.xy
+};
+
+// A post material's outputs.
+struct CgPostSurface {
+    vec3 color;              // the scene's colour at uv where surface() reads it before writing: what the pixel becomes
+    float opacity;           // 1: how much of color replaces the scene
+};
+
+// What a #domain ui material's surface() takes: the canvas element under the pixel.
+struct CgUiInput {
+    vec2 uv;                 // the element's texture coordinates (a quad's uv rect; a curve's, t along it)
+    vec2 param;              // 0..1 across the element, past either end on an antialiased edge
+    vec2 local;              // the pixel inside the element, in its units
+    vec2 size;               // the element's size, in the same units
+    vec4 color;              // its colour (a quad's color, a curve's along it, a text's paint)
+    vec4 custom0;            // its two free values
+    vec4 custom1;
+};
+
+// A ui material's outputs; clip, opacity and premultiplying are the engine's.
+struct CgUiSurface {
+    vec4 color;              // the element's colour, straight alpha
+    float coverage;          // the element's antialiased edge: how much of the pixel it covers
+    bool premultiplied;      // false: color is already premultiplied (a layer drawn at screen resolution)
 };

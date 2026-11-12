@@ -26,7 +26,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 
@@ -83,7 +82,7 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
  *       {@code "ColorSpace" = "Target"} so its colour is written as read, and with the {@code "SceneColorMargin"} it
  *       samples past its own pixel (0.001 for its own alone). A pass into a target reads the scene the same way.</li>
  *   <li>The weight is per draw ({@code POST_WEIGHT}), so animating it leaves the material's properties alone.</li>
- *   <li>A pass's target is RGBA16F, cleared before it draws. {@code CG_RESOLUTION} is still the screen's: a pass
+ *   <li>A pass's target is its {@code "Format"} (RGBA16F by default), cleared before it draws. {@code CG_RESOLUTION} is still the screen's: a pass
  *       reading its input's texels asks {@code textureSize}.</li>
  *   <li>{@code Tags { "Emission" = "_Mask" }} binds the scene, where glows are added, to the {@code sampler2D} it
  *       names: the mask a glare reads.</li>
@@ -92,7 +91,6 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
 public final class CgPostMaterial implements CgPostEffect {
 
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
-    private static final CgFormat TARGET = CgFormat.RGBA16_FLOAT;
 
     private CgMaterialInstance material;
     private final CgPostPoint point;
@@ -120,6 +118,25 @@ public final class CgPostMaterial implements CgPostEffect {
 
     public static CgPostMaterial of(String shader, CgPostPoint point) {
         return of(CgMaterial.load(shader).instance(), point, 0);
+    }
+
+    /**
+     * A {@code #domain post} file at the {@code Location} it names.
+     *
+     * <pre>{@code
+     * CgPostStack.get().add(CgPostMaterial.of("mymod:shaders/post/desaturate.shader"));   // Material { Location AFTER_WORLD }
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where the file names no {@code Location}, or does not parse
+     */
+    public static CgPostMaterial of(String shader) {
+        CgMaterialInstance material = CgMaterial.load(shader).instance();
+        String location = CgMaterialProxy.of(material).postLocation();
+        if (location == null) {
+            throw new IllegalArgumentException(shader + " names no Location (Material { Location AFTER_WORLD }): pass a"
+                    + " CgPostPoint to of(shader, point)");
+        }
+        return of(material, CgPostPoint.valueOf(location), 0);
     }
 
     /** {@code material} at {@code point}, {@code order} among the effects there. */
@@ -220,8 +237,8 @@ public final class CgPostMaterial implements CgPostEffect {
             int w = Math.max(1, Math.round(screenW * target.scale()));
             int h = Math.max(1, Math.round(screenH * target.scale()));
             CgGraphTexture into = textures[t];
-            if (into == null || into.getWidth() != w || into.getHeight() != h) {
-                textures[t] = into = CgGraphTexture.transientTexture("cg_post_pass_" + t, new CgTextureDesc(w, h, TARGET, 1));
+            if (into == null || into.getWidth() != w || into.getHeight() != h || into.format() != target.format()) {
+                textures[t] = into = CgGraphTexture.transientTexture("cg_post_pass_" + t, new CgTextureDesc(w, h, target.format(), 1));
             }
             draw(recording, into, CgLoad.CLEAR, post, pipelines[t], screen);
             bind(target.property(), into);

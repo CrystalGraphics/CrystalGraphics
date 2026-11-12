@@ -3,6 +3,7 @@ package com.crystalgraphics.material.parse;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgVertexFactory;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
+import com.crystalgraphics.render.post.CgPostPoint;
 import com.github.bsideup.jabel.Desugar;
 
 import javax.annotation.Nullable;
@@ -54,10 +55,10 @@ final class CgMaterialFormat {
      * @param separate  whether it draws after every other translucent draw ({@code TranslucencyPass Separate})
      */
     @Desugar
-    record Lowered(String source, CgMaterialDomain domain, @Nullable String maskClip, boolean separate) {
+    record Lowered(String source, CgParsedShader.Format format) {
     }
 
-    private enum Kind { DIRECTIVE, BLOCK, STRUCT, FUNCTION, DECLARATION }
+    private enum Kind { DIRECTIVE, BLOCK, STEP, STRUCT, FUNCTION, DECLARATION }
 
     /** One top-level item: a {@code #} line, a block, a struct, a function or any other declaration. */
     @Desugar
@@ -90,6 +91,22 @@ final class CgMaterialFormat {
     private static final Pattern MESH_ATTRIBUTE = Pattern.compile("\\bcg_(?:Position|Normal|Color|TexCoord[0-3])\\b");
     private static final Pattern PROPERTY_NAME = Pattern.compile("([A-Za-z_]\\w*)\\s*\\(\\s*\"");
     private static final Pattern ARRAY_TYPE = Pattern.compile("(\\w+)\\[(\\d+)]");
+    private static final Pattern POST_SURFACE_SIGNATURE = Pattern.compile(
+            "^void\\s+surface\\s*\\(\\s*(?:in\\s+)?CgScreen\\s+\\w+\\s*,\\s*inout\\s+CgPostSurface\\s+(\\w+)\\s*\\)");
+    private static final Pattern CG_POST_PARAM = Pattern.compile("\\bCgPostSurface\\s+(\\w+)\\s*[,)]");
+    private static final Pattern UI_SURFACE_SIGNATURE = Pattern.compile(
+            "^void\\s+surface\\s*\\(\\s*(?:in\\s+)?CgUiInput\\s+\\w+\\s*,\\s*inout\\s+CgUiSurface\\s+\\w+\\s*\\)");
+    /** {@code CG_STEP(name, uv)} or {@code CG_STEP_SIZE(name)}: an earlier step's target, its name group 2. */
+    private static final Pattern STEP_READ = Pattern.compile("\\bCG_STEP(_SIZE)?\\s*\\(\\s*(\\w+)\\s*[,)]");
+    private static final Pattern STEP_SAMPLE = Pattern.compile("\\bCG_STEP\\s*\\(\\s*(\\w+)\\s*,");
+    private static final Pattern STEP_SIZE = Pattern.compile("\\bCG_STEP_SIZE\\s*\\(\\s*(\\w+)\\s*\\)");
+    /** The sampler a post step's target is bound to: {@code _Step_bright}. */
+    private static final String STEP_PREFIX = "_Step_";
+    private static final List<String> POST_POINTS = new ArrayList<>();
+
+    static {
+        for (CgPostPoint p : CgPostPoint.values()) POST_POINTS.add(p.name());
+    }
 
     /** The v2f fields a material with no {@code vertex()} has filled, and with what. */
     private static final Map<String, String[]> AUTO_FIELDS = Map.of(
@@ -154,11 +171,15 @@ final class CgMaterialFormat {
             throw fail(path, "'" + t.substring(start, eol).trim() + "' is no domain: surface, post, ui, decal or global");
         }
         List<Item> items = scan(t, source, eol, path);
+        if (domain != CgMaterialDomain.POST) {
+            for (Item i : items) if (i.kind() == Kind.STEP) throw fail(path, "'Step' is a #domain post material's");
+        }
         return switch (domain) {
             case SURFACE -> lowerSurface(items, path);
             case GLOBAL -> lowerGlobal(items, path);
-            case POST, UI, TEXT -> throw fail(path, "'#domain " + line.group(1) + "' is not parsed yet: it arrives with F4"
-                    + " (renderer-milestones.md, P2.5)");
+            case POST -> lowerPost(items, path);
+            case UI -> lowerUi(items, path);
+            case TEXT -> throw fail(path, "'#domain text' is no domain: text is #domain ui with Primitive Text");
             case DECAL -> throw fail(path, "'#domain decal' has no renderer until R11");
         };
     }
@@ -316,7 +337,7 @@ final class CgMaterialFormat {
         String queue = sky ? "Background" : masked ? "AlphaTest" : !translucent ? "Geometry"
                 : pass.equals("AfterDistortion") ? "AfterDistortion" : pass.equals("Overlay") ? "Overlay" : "Transparent";
         out.append("Queue = \"").append(queue).append("\"\n");
-        appendData(out, items, factory, path);
+        appendData(out, items, factory.properties(), "VertexFactory " + factory.name(), path);
         out.append("struct v2f {").append(v2fBody).append("};\n");
 
         // The Forward pass
@@ -386,7 +407,8 @@ final class CgMaterialFormat {
                .append("        ").append(MATERIAL_SURFACE).append("(i, s);\n")
                .append("        offset = CG_DISTORTION(s.refraction, s.refractionSplit, s.refractionDepth);\n    }\n}\n");
         }
-        return new Lowered(out.toString(), CgMaterialDomain.SURFACE, maskClip, pass.equals("Separate"));
+        return new Lowered(out.toString(),
+                new CgParsedShader.Format(CgMaterialDomain.SURFACE, maskClip, pass.equals("Separate"), null));
     }
 
     // ── global ──────────────────────────────────────────────────────────────────
@@ -419,14 +441,333 @@ final class CgMaterialFormat {
             out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
         }
         out.append(" }\nQueue = \"Overlay\"\n");
-        appendData(out, items, null, path);
+        appendData(out, items, "", "", path);
         Item v2f = struct(items, "v2f");
         out.append("struct v2f {").append(v2f == null ? "" : v2f.body()).append("};\n");
         out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\" }\n");
         if (state != null) out.append("    ").append(state.text()).append('\n');
         appendCode(out, code, vertex, fragment, functions);
         out.append(vertex.text()).append('\n').append(fragment.text()).append("\n}\n");
-        return new Lowered(out.toString(), CgMaterialDomain.GLOBAL, null, false);
+        return new Lowered(out.toString(), new CgParsedShader.Format(CgMaterialDomain.GLOBAL, null, false, null));
+    }
+
+    // ── post ────────────────────────────────────────────────────────────────────
+
+    private static Lowered lowerPost(List<Item> items, String path) {
+        Map<String, String> m = properties(block(items, "Material"), List.of("Location", "SceneColorMargin"), path);
+        String location = m.get("Location");
+        if (location != null && !POST_POINTS.contains(location)) {
+            throw fail(path, "'Location " + location + "' is one of " + POST_POINTS);
+        }
+        if (block(items, "RenderState") != null) {
+            throw fail(path, "'RenderState' is the engine's in a post material, which draws the whole screen");
+        }
+        List<Item> code = code(items, path);
+        Map<String, List<Item>> functions = functions(code);
+        for (String engine : List.of("vertex", "fragment")) {
+            if (functions.containsKey(engine)) throw fail(path, "'" + engine + "(' is the engine's in a post material: write surface()");
+        }
+        for (Item i : code) {
+            if (STEP_READ.matcher(i.text()).find()) throw fail(path, "'CG_STEP' reads an earlier step: in a Step's own code");
+        }
+        List<Item> steps = new ArrayList<>();
+        for (Item i : items) if (i.kind() == Kind.STEP) steps.add(i);
+        Item single = only(functions, "surface", path);
+        if (steps.isEmpty() == (single == null)) {
+            throw fail(path, steps.isEmpty() ? "'void surface(in CgScreen i, inout CgPostSurface s)' is missing"
+                    : "a post material with Steps writes surface() in each Step, not beside them");
+        }
+
+        // Each step's settings and code; one surface() is a step of its own
+        List<String> names = new ArrayList<>();
+        List<Map<String, String>> settings = new ArrayList<>();
+        List<List<Item>> stepCode = new ArrayList<>();
+        if (single != null) {
+            names.add(null);
+            settings.add(Map.of());
+            stepCode.add(List.of());
+        }
+        for (Item step : steps) {
+            String body = blankComments(step.body());
+            int paren = body.indexOf('(');
+            int split = paren < 0 ? body.length() : body.lastIndexOf('\n', paren) + 1;
+            Map<String, String> s = pairs(body.substring(0, split), List.of("Target", "Scale"), "Step " + step.name(), path);
+            if (names.contains(step.name())) throw fail(path, "'Step " + step.name() + "' twice");
+            boolean last = step == steps.get(steps.size() - 1);
+            if (last && !s.isEmpty()) throw fail(path, "'Step " + step.name() + "' is the last, drawn onto the scene: no Target or Scale");
+            if (!last && !s.containsKey("Target")) {
+                throw fail(path, "'Step " + step.name() + "' needs a Target (a CgFormat, as RGBA16_FLOAT): only the last draws onto the scene");
+            }
+            List<Item> own = code(scan(body, step.body(), split, path), path);
+            for (Item i : own) {
+                Matcher read = STEP_READ.matcher(i.text());
+                while (read.find()) {
+                    if (!names.contains(read.group(2))) {
+                        throw fail(path, "'Step " + step.name() + "' reads '" + read.group(2) + "', which is no earlier step");
+                    }
+                }
+            }
+            names.add(step.name());
+            settings.add(s);
+            stepCode.add(own);
+        }
+
+        StringBuilder out = new StringBuilder("#type none\n");
+        keywordPragmas(out, keywords(block(items, "Keywords"), path), false);
+        List<Item> all = new ArrayList<>(code);
+        stepCode.forEach(all::addAll);
+        Set<String> uses = namesGlobals(all) ? Set.of("globals") : Set.of();
+        refuseNamedBuffers(all, uses, path);
+        for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
+        out.append("Tags { \"RenderType\" = \"Transparent\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\" \"ColorSpace\" = \"Target\"");
+        if (m.containsKey("SceneColorMargin")) out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
+        out.append(" }\nQueue = \"Overlay\"\n");
+        StringBuilder targets = new StringBuilder();
+        for (int s = 0; s < names.size() - 1; s++) {
+            targets.append(STEP_PREFIX).append(names.get(s)).append(" (\"Step ").append(names.get(s))
+                   .append("\", sampler2D) = \"black\"\n    ");
+        }
+        appendData(out, items, targets.toString(), "the post material's steps", path);
+        out.append("struct v2f { vec2 uv; };\n");
+
+        for (int s = 0; s < names.size(); s++) {
+            List<Item> passCode = new ArrayList<>(code);
+            passCode.addAll(stepCode.get(s));
+            Map<String, List<Item>> passFunctions = functions(passCode);
+            Item surface = only(passFunctions, "surface", path);
+            if (surface == null) throw fail(path, "'Step " + names.get(s) + "' writes no surface()");
+            Matcher sig = POST_SURFACE_SIGNATURE.matcher(surface.text());
+            if (!sig.find()) throw fail(path, "'surface(' is 'void surface(in CgScreen i, inout CgPostSurface s)'");
+            Set<String> reached = reach(passFunctions, surface);
+            boolean readsColor = false, namesOpacity = false;
+            for (String f : reached) {
+                for (Item fn : passFunctions.get(f)) {
+                    String param = f.equals("surface") ? sig.group(1) : null;
+                    Matcher p = param != null ? null : CG_POST_PARAM.matcher(fn.text().substring(0, fn.text().indexOf('{')));
+                    List<String> params = new ArrayList<>();
+                    if (param != null) params.add(param);
+                    while (p != null && p.find()) params.add(p.group(1));
+                    for (String q : params) {
+                        readsColor |= reads(fn.body(), q, "color");
+                        namesOpacity |= Pattern.compile("\\b" + Pattern.quote(q) + "\\s*\\.\\s*opacity\\b").matcher(fn.body()).find();
+                    }
+                }
+            }
+            out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\"");
+            if (names.get(s) != null) out.append(" \"Name\" = \"").append(names.get(s)).append('"');
+            Map<String, String> set = settings.get(s);
+            if (set.containsKey("Target")) {
+                out.append(" \"Target\" = \"").append(STEP_PREFIX).append(names.get(s)).append('"')
+                   .append(" \"Format\" = \"").append(set.get("Target")).append('"');
+            }
+            if (set.containsKey("Scale")) out.append(" \"Scale\" = \"").append(set.get("Scale")).append('"');
+            out.append(" }\n    RenderState {\n        Blend OFF\n        DepthTest ALWAYS\n        DepthWrite OFF\n        Cull OFF\n    }\n")
+               .append("#include \"crystalgraphics:shaders/lib/post/post_material.glsl\"\n")
+               .append("#include \"crystalgraphics:shaders/env/material.glsl\"\n");
+            StringBuilder body = new StringBuilder();
+            appendCode(body, passCode, null, surface, passFunctions);
+            String sized = STEP_SIZE.matcher(body).replaceAll("textureSize(" + STEP_PREFIX + "$1, 0)");
+            out.append(STEP_SAMPLE.matcher(sized).replaceAll("texture(" + STEP_PREFIX + "$1,"));
+            out.append("    void vertex(out v2f o) {\n")
+               .append("        o.uv = post_fullscreen_uv(CG_VERTEX_ID);\n")
+               .append("        gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);\n    }\n")
+               .append("    void fragment(in v2f i, out vec4 fragColor) {\n")
+               .append("        CgScreen _cg_screen;\n        _cg_screen.uv = i.uv;\n        _cg_screen.pixel = gl_FragCoord.xy;\n")
+               .append("        CgPostSurface s;\n")
+               .append("        s.color = ").append(readsColor ? "CG_SCENE_COLOR(i.uv).rgb" : "vec3(0.0)").append(";\n")
+               .append("        s.opacity = 1.0;\n")
+               .append("        ").append(MATERIAL_SURFACE).append("(_cg_screen, s);\n")
+               .append("        fragColor = vec4(").append(namesOpacity ? "mix(CG_SCENE_COLOR(i.uv).rgb, s.color, s.opacity)" : "s.color")
+               .append(", 1.0);\n    }\n}\n");
+        }
+        return new Lowered(out.toString(), new CgParsedShader.Format(CgMaterialDomain.POST, null, false, location));
+    }
+
+    /** Whether {@code body} reads {@code param.field}: names it anywhere but as the target of a plain assignment. */
+    private static boolean reads(String body, String param, String field) {
+        Matcher m = Pattern.compile("\\b" + Pattern.quote(param) + "\\s*\\.\\s*" + field + "\\b(\\s*=(?!=))?").matcher(body);
+        while (m.find()) if (m.group(1) == null) return true;
+        return false;
+    }
+
+    // ── ui ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * A canvas element a {@code #domain ui} material is drawn on: its engine buffers, keywords, properties, queue,
+     * v2f, vertex, and the fragment around {@code surface()} (which fills {@code CgUiInput _cg_ui} and
+     * {@code CgUiSurface s} before it, and writes {@code fragColor} after).
+     */
+    @Desugar
+    private record Primitive(List<String> buffers, String declarations, String properties, String queue, String v2f,
+                             String vertex, String before, String after) {
+    }
+
+    /** Premultiplied and clamped, as a blend unit clamps; a layer's colour premultiplied already. */
+    private static final String UI_OUT = """
+            if (s.premultiplied) {
+                fragColor = s.color * _cg_k;
+            } else {
+                float _cg_a = clamp(s.color.a * _cg_k, 0.0, 1.0);
+                fragColor = vec4(clamp(s.color.rgb, 0.0, 1.0) * _cg_a, _cg_a);
+            }
+            """;
+
+    private static final Map<String, Primitive> PRIMITIVES = Map.of(
+            // CgQuadBatch's quads: the box, images, gradients
+            "Quad", new Primitive(List.of("quad", "clip", "shape"), "", "", "Transparent",
+                    "vec2 " + PASSED + "param;",
+                    """
+                    o._cg_in_param = CG_QUAD_EDGE_PARAM;
+                    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_EDGE_WORLD_POS(o._cg_in_param), 1.0);
+                    """,
+                    """
+                    float _cg_clip = CG_CLIP_QUAD_COVERAGE;
+                    CgUiInput _cg_ui;
+                    _cg_ui.param = i._cg_in_param;
+                    _cg_ui.uv = CG_QUAD_EDGE_UV(_cg_ui.param);
+                    _cg_ui.size = vec2(length(CG_QUAD_RIGHT), length(CG_QUAD_UP));
+                    _cg_ui.local = _cg_ui.param * _cg_ui.size;
+                    _cg_ui.color = CG_QUAD_COLOR;
+                    _cg_ui.custom0 = CG_QUAD_CUSTOM0;
+                    _cg_ui.custom1 = CG_QUAD_CUSTOM1;
+                    CgUiSurface s;
+                    s.color = _cg_ui.color;
+                    s.coverage = CG_QUAD_EDGE_COVERAGE(_cg_ui.param);
+                    s.premultiplied = false;
+                    """,
+                    "float _cg_k = s.coverage * _cg_clip * CG_QUAD_OPACITY;\n" + UI_OUT),
+            // CgCurveBatch's strokes, triangles and cells; SCREEN: a 2D camera, each point from gl_FragCoord
+            "Curve", new Primitive(List.of("curve", "clip"),
+                    "#pragma cg_feature SCREEN\n#include \"crystalgraphics:shaders/lib/stroke.glsl\"\n", "", "Transparent",
+                    "vec2 " + PASSED + "posXy;",
+                    """
+                    vec3 _cg_world = CG_CURVE_WORLD_POS;
+                    o._cg_in_posXy = _cg_world.xy;
+                    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(_cg_world, 1.0);
+                    """,
+                    """
+                    float _cg_clip = CG_CLIP_CURVE_COVERAGE;
+                    #ifdef SCREEN
+                    mat4 _cg_camera = cg_ProjMatrix * cg_ViewMatrix;
+                    vec2 _cg_ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
+                    vec2 _cg_p = inverse(mat2(_cg_camera[0].xy, _cg_camera[1].xy)) * (_cg_ndc - _cg_camera[3].xy);
+                    #else
+                    vec2 _cg_p = i._cg_in_posXy;
+                    #endif
+                    float _cg_t;
+                    float _cg_cover = curve_instance_coverage(_cg_p, CG_CURVE_P0.xy, CG_CURVE_P1.xy, CG_CURVE_P2.xy,
+                            CG_CURVE_WIDTHS, CG_CURVE_FEATHER, int(CG_CURVE_FLAGS + 0.5), CG_CURVE_GRADIENT, _cg_t);
+                    CgUiInput _cg_ui;
+                    _cg_ui.param = vec2(_cg_t, 0.0);
+                    _cg_ui.uv = _cg_ui.param;
+                    _cg_ui.local = _cg_p;
+                    _cg_ui.size = vec2(0.0);
+                    _cg_ui.color = mix(CG_CURVE_COLOR0, CG_CURVE_COLOR1, _cg_t);
+                    _cg_ui.custom0 = vec4(0.0);
+                    _cg_ui.custom1 = vec4(0.0);
+                    CgUiSurface s;
+                    s.color = _cg_ui.color;
+                    s.coverage = _cg_cover;
+                    s.premultiplied = false;
+                    """,
+                    """
+                    if ((s.premultiplied ? s.color.a : s.color.a * s.coverage * CG_CURVE_OPACITY) <= (1.0 / 255.0)) discard;
+                    float _cg_k = s.coverage * _cg_clip * CG_CURVE_OPACITY;
+                    """ + UI_OUT),
+            // CgTextBatch's glyph layers: cg_text_layer covers and premultiplies the paint surface() leaves
+            "Text", new Primitive(List.of("quad", "clip", "text"),
+                    "#pragma cg_feature MSDF_MODE\n#pragma cg_feature WORLD_LABEL\n#pragma cg_permutation MSDF_MODE WORLD_LABEL\n",
+                    "_MainTex (\"Atlas Texture\", sampler2DArray) = \"white\"\n"
+                            + "    _Gradients (\"Gradient ramps\", sampler2D) = \"white\"",
+                    "Overlay",
+                    "vec2 _cg_in_uv; vec4 _cg_in_color; float _cg_in_layer; vec2 _cg_in_param; vec4 _cg_in_gammaSmall; vec4 _cg_in_gammaLarge;",
+                    """
+                    #ifdef WORLD_LABEL
+                    int _cg_label = int(QUAD_DATA(CG_INSTANCE_ID).node);
+                    vec3 _cg_local = QUAD_DATA(CG_INSTANCE_ID).origin + CG_VERTEX_CORNER.x * QUAD_DATA(CG_INSTANCE_ID).right
+                            + CG_VERTEX_CORNER.y * QUAD_DATA(CG_INSTANCE_ID).up;
+                    gl_Position = cg_ProjMatrix * (cg_Objects[_cg_label].modelMatrix * vec4(_cg_local, 1.0));
+                    #else
+                    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
+                    #endif
+                    o._cg_in_uv = CG_QUAD_UV;
+                    o._cg_in_color = CG_QUAD_COLOR;
+                    o._cg_in_layer = CG_QUAD_ATLAS_LAYER;
+                    o._cg_in_param = CG_VERTEX_CORNER;
+                    o._cg_in_gammaSmall = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaSmall);
+                    o._cg_in_gammaLarge = text_gamma_terms(CG_QUAD_COLOR.rgb, u_TextGammaLarge);
+                    """,
+                    """
+                    CgUiInput _cg_ui;
+                    _cg_ui.param = i._cg_in_param;
+                    _cg_ui.uv = i._cg_in_uv;
+                    _cg_ui.size = vec2(length(QUAD_DATA(CG_INSTANCE_ID).right), length(QUAD_DATA(CG_INSTANCE_ID).up));
+                    _cg_ui.local = _cg_ui.param * _cg_ui.size;
+                    _cg_ui.color = i._cg_in_color;
+                    _cg_ui.custom0 = CG_QUAD_CUSTOM0;
+                    _cg_ui.custom1 = CG_QUAD_CUSTOM1;
+                    CgUiSurface s;
+                    s.color = _cg_ui.color;
+                    if (CG_QUAD_CUSTOM0.w > 0.0) s.color *= texture(_Gradients, vec2(cg_text_gradient_t(_cg_ui.param), CG_QUAD_CUSTOM0.w));
+                    s.coverage = 1.0;
+                    s.premultiplied = false;
+                    """,
+                    """
+                    fragColor = cg_text_layer(_MainTex, _cg_ui.uv, i._cg_in_layer, _cg_ui.param, s.color, i._cg_in_gammaSmall,
+                            i._cg_in_gammaLarge) * s.coverage;
+                    """));
+
+    private static Lowered lowerUi(List<Item> items, String path) {
+        Map<String, String> m = properties(block(items, "Material"), List.of("Primitive"), path);
+        String kind = m.getOrDefault("Primitive", "Quad");
+        Primitive primitive = PRIMITIVES.get(kind);
+        if (primitive == null) throw fail(path, "'Primitive " + kind + "' is Quad, Curve or Text");
+        if (block(items, "RenderState") != null) {
+            throw fail(path, "'RenderState' is the engine's in a ui material: premultiplied, over what is drawn before it");
+        }
+        List<Item> code = code(items, path);
+        Map<String, List<Item>> functions = functions(code);
+        for (String engine : List.of("vertex", "fragment")) {
+            if (functions.containsKey(engine)) throw fail(path, "'" + engine + "(' is the engine's in a ui material: write surface()");
+        }
+        if (struct(items, "v2f") != null) throw fail(path, "'struct v2f' is the engine's in a ui material: surface() takes CgUiInput");
+        Item surface = only(functions, "surface", path);
+        if (surface == null || !UI_SURFACE_SIGNATURE.matcher(surface.text()).find()) {
+            throw fail(path, "'void surface(in CgUiInput i, inout CgUiSurface s)' is a ui material's");
+        }
+        for (Item i : code) {
+            if (i.kind() == Kind.FUNCTION && i.text().contains("gl_Position")) throw fail(path, "'gl_Position' is the engine's in a ui material");
+        }
+
+        StringBuilder out = new StringBuilder("#type none\n");
+        out.append(primitive.declarations().lines().filter(l -> l.startsWith("#pragma")).map(l -> l + "\n")
+                .reduce("", String::concat));
+        keywordPragmas(out, keywords(block(items, "Keywords"), path), false);
+        Set<String> uses = new LinkedHashSet<>(primitive.buffers());
+        if (namesGlobals(code)) uses.add("globals");
+        refuseNamedBuffers(code, uses, path);
+        for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
+        out.append("Tags { \"RenderType\" = \"Transparent\" }\nQueue = \"").append(primitive.queue()).append("\"\n");
+        appendData(out, items, primitive.properties(), "Primitive " + kind, path);
+        out.append("struct v2f { ").append(primitive.v2f()).append(" };\n");
+        out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\" }\n    RenderState {\n")
+           .append("        Blend ONE ONE_MINUS_SRC_ALPHA\n        Cull OFF\n        DepthTest LEQUAL\n        DepthWrite OFF\n    }\n")
+           .append("#include \"crystalgraphics:shaders/env/material.glsl\"\n");
+        primitive.declarations().lines().filter(l -> l.startsWith("#include")).forEach(l -> out.append(l).append('\n'));
+        appendCode(out, code, null, surface, functions);
+        out.append("    void vertex(out v2f o) {\n");
+        indent(out, primitive.vertex());
+        out.append("    }\n    void fragment(in v2f i, out vec4 fragColor) {\n");
+        indent(out, primitive.before());
+        out.append("        ").append(MATERIAL_SURFACE).append("(_cg_ui, s);\n");
+        indent(out, primitive.after());
+        out.append("    }\n}\n");
+        return new Lowered(out.toString(), new CgParsedShader.Format(CgMaterialDomain.UI, null, false, null));
+    }
+
+    /** {@code glsl}'s lines into {@code out}, under a function's indent; a directive stays at the line's start. */
+    private static void indent(StringBuilder out, String glsl) {
+        for (String l : glsl.strip().split("\n")) out.append(l.startsWith("#") ? "" : "        ").append(l).append('\n');
     }
 
     // ── shared ──────────────────────────────────────────────────────────────────
@@ -470,6 +811,17 @@ final class CgMaterialFormat {
                 i = s < n && t.charAt(s) == ';' ? s + 1 : close + 1;
                 continue;
             }
+            if (word.equals("Step")) {
+                // Step name { Target FORMAT Scale s  void surface(...) { } }: a post material's step
+                Matcher name = IDENT.matcher(t);
+                if (!name.find(k) || name.start() != k) throw fail(path, "'Step' takes a name: Step bright { ... }");
+                int open = skipWs(t, name.end());
+                if (open >= n || t.charAt(open) != '{') throw fail(path, "'Step " + name.group() + "' takes a { } block");
+                int close = CgStructureParser.matchBrace(t, open);
+                items.add(new Item(Kind.STEP, name.group(), source.substring(i, close + 1), source.substring(open + 1, close)));
+                i = close + 1;
+                continue;
+            }
             if (OLD.contains(word)) {
                 throw fail(path, "'" + word + "' is the old format's: a #domain file has no passes, tags or queue;"
                         + " Material { } says how it draws");
@@ -509,7 +861,7 @@ final class CgMaterialFormat {
         Set<String> elements = bufferElements(items);
         List<Item> out = new ArrayList<>();
         for (Item i : items) {
-            if (i.kind() == Kind.BLOCK) continue;
+            if (i.kind() == Kind.BLOCK || i.kind() == Kind.STEP) continue;
             if (i.kind() == Kind.STRUCT && (i.name().equals("v2f") || elements.contains(i.name()))) continue;
             if (i.kind() == Kind.FUNCTION && (i.name().equals(MATERIAL_VERTEX) || i.name().equals(MATERIAL_SURFACE))) {
                 throw fail(path, "'" + i.name() + "' is the engine's name");
@@ -520,21 +872,18 @@ final class CgMaterialFormat {
     }
 
     /**
-     * Properties (the factory's after the material's), then the structs a buffer holds, then Buffers: where the old
-     * parser reads them.
+     * Properties ({@code added}, the engine's for {@code owner}, after the material's), then the structs a buffer holds,
+     * then Buffers: where the old parser reads them.
      */
-    private static void appendData(StringBuilder out, List<Item> items, @Nullable CgVertexFactory.Factory factory,
-                                   String path) {
+    private static void appendData(StringBuilder out, List<Item> items, String added, String owner, String path) {
         Item props = block(items, "Properties"), buffers = block(items, "Buffers");
-        String added = factory == null ? "" : factory.properties().strip();
+        added = added.strip();
         if (!added.isEmpty() && props != null) {
             Matcher own = PROPERTY_NAME.matcher(props.body());
             Set<String> theirs = new LinkedHashSet<>();
             for (Matcher m = PROPERTY_NAME.matcher(added); m.find(); ) theirs.add(m.group(1));
             while (own.find()) {
-                if (theirs.contains(own.group(1))) {
-                    throw fail(path, "'" + own.group(1) + "' is VertexFactory " + factory.name() + "'s: its draws bind it");
-                }
+                if (theirs.contains(own.group(1))) throw fail(path, "'" + own.group(1) + "' is " + owner + "'s: the engine binds it");
             }
         }
         if (props != null) {
@@ -714,15 +1063,17 @@ final class CgMaterialFormat {
 
     /** A {@code Material { }} block's {@code Name Value} pairs, each name one of {@code allowed}. */
     private static Map<String, String> properties(@Nullable Item block, List<String> allowed, String path) {
+        return block == null ? new LinkedHashMap<>() : pairs(block.body(), allowed, "Material", path);
+    }
+
+    /** {@code body}'s {@code Name Value} pairs, each name one of {@code allowed}; {@code what} names the block. */
+    private static Map<String, String> pairs(String body, List<String> allowed, String what, String path) {
         Map<String, String> out = new LinkedHashMap<>();
-        if (block == null) return out;
-        String[] tokens = block.body().trim().split("\\s+");
+        String[] tokens = body.trim().split("\\s+");
         if (tokens.length == 1 && tokens[0].isEmpty()) return out;
-        if (tokens.length % 2 != 0) throw fail(path, "'Material' holds Name Value pairs: '" + block.body().trim() + "'");
+        if (tokens.length % 2 != 0) throw fail(path, "'" + what + "' holds Name Value pairs: '" + body.trim() + "'");
         for (int i = 0; i < tokens.length; i += 2) {
-            if (!allowed.contains(tokens[i])) {
-                throw fail(path, "'" + tokens[i] + "' is no Material property here: " + allowed);
-            }
+            if (!allowed.contains(tokens[i])) throw fail(path, "'" + tokens[i] + "' is no " + what + " setting here: " + allowed);
             if (out.put(tokens[i], tokens[i + 1]) != null) throw fail(path, "'" + tokens[i] + "' twice");
         }
         return out;

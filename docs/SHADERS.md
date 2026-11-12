@@ -54,7 +54,28 @@ void surface(in v2f i, inout CgSurface s) {
 - **No parameter is special by its name**: `MaskClip` is the opacity mask's threshold, `_EmissionColor` and `_Clip`
   are ordinary parameters.
 - `#domain global` is a raw `RenderState`, `vertex(out v2f o)` and `fragment(in v2f i, out vec4 c)`: the engine's own
-  passes. `post` and `ui` are not parsed yet.
+  passes.
+- `#domain post` writes `surface(in CgScreen i, inout CgPostSurface s)`, or one per `Step`; the engine draws the
+  screen. `CgPostMaterial.of(path)` draws it at its `Material { Location ... }`:
+
+```glsl
+#domain post
+Material { Location AFTER_COMPOSITE }
+Step half {
+    Target RGBA16_FLOAT  Scale 0.5                           // a CgFormat; every step but the last has one
+    void surface(in CgScreen i, inout CgPostSurface s) { s.color = CG_SCENE_COLOR(i.uv).rgb; }
+}
+Step over {                                                  // the last draws onto the scene
+    void surface(in CgScreen i, inout CgPostSurface s) {
+        s.color = CG_STEP(half, i.uv).rgb;                   // CG_STEP_SIZE(half): its texels
+        s.opacity = 0.5;                                     // naming opacity mixes over the scene
+    }
+}
+```
+
+- `#domain ui` writes `surface(in CgUiInput i, inout CgUiSurface s)` on a canvas `Primitive` (`Quad`, `Curve`,
+  `Text`); clip, opacity, the antialiased edge and premultiplying are the engine's, so its canvas state is
+  `PREMULTIPLIED`. `s.color` is straight alpha unless `s.premultiplied`; `s.coverage` replaces the edge.
 
 The whole format, every property and output: plan `renderer/shader-format.md`. The rest of this document is the old
 format, which every shader still in it parses as before.

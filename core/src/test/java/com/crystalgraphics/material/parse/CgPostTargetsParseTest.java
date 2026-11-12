@@ -1,5 +1,6 @@
 package com.crystalgraphics.material.parse;
 
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import org.junit.Test;
 
 import java.util.List;
@@ -31,12 +32,12 @@ public class CgPostTargetsParseTest {
     public void eachPassButTheLastDrawsIntoItsTargetInOrder() {
         CgParsedShader parsed = CgShaderParser.parse(post(" \"Emission\" = \"_Mask\"", SAMPLERS,
                 "\"Name\" = \"Down\" \"Target\" = \"_Half\" \"Scale\" = \"0.5\"",
-                "\"Name\" = \"Blur\" \"Target\" = \"_Blur\" \"Scale\" = \"0.25\"",
+                "\"Name\" = \"Blur\" \"Target\" = \"_Blur\" \"Scale\" = \"0.25\" \"Format\" = \"RG11B10_UFLOAT\"",
                 "\"Name\" = \"Over\""), "test:post");
         List<CgParsedShader.PostTarget> targets = parsed.postTargets();
         assertEquals(2, targets.size());
-        assertEquals(new CgParsedShader.PostTarget("Down", "_Half", 0.5f), targets.get(0));
-        assertEquals(new CgParsedShader.PostTarget("Blur", "_Blur", 0.25f), targets.get(1));
+        assertEquals(new CgParsedShader.PostTarget("Down", "_Half", 0.5f, CgFormat.RGBA16_FLOAT), targets.get(0));
+        assertEquals(new CgParsedShader.PostTarget("Blur", "_Blur", 0.25f, CgFormat.RG11B10_UFLOAT), targets.get(1));
         assertEquals("_Mask", parsed.emissionInput());
     }
 

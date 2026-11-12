@@ -1,6 +1,8 @@
 package com.crystalgraphics.vulkan.shader;
 
+import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -50,7 +52,13 @@ public class MaterialFormatTest {
             {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"},
             // F3: the VFX factories
             {"sprite", "crystalgraphics:shaders/vfx/particle/sprite"}, {"bits", "bits.old"},
-            {"body_core", "crystalgraphics:shaders/vfx/beam/body_core"}, {"volume", "volume.old"}};
+            {"body_core", "crystalgraphics:shaders/vfx/beam/body_core"}, {"volume", "volume.old"},
+            // F4: post and ui. A ui pair names the canvas state each is drawn under (CgCanvasMaterials): the format's
+            // template is premultiplied out, so the curve, straight alpha today, is drawn PREMULTIPLIED once converted
+            {"height_fog", "crystalgraphics:shaders/post/height_fog"}, {"post_chain", "post_chain.old"},
+            {"box", "crystalgraphics:shaders/canvas/box", "PREMULTIPLIED", "PREMULTIPLIED"},
+            {"curve", "crystalgraphics:shaders/canvas/curve", "ALPHA", "PREMULTIPLIED"},
+            {"text", "crystalgraphics:shaders/canvas/text"}};
 
     private static ShadercGlslCompiler compiler, bare;
 
@@ -74,6 +82,13 @@ public class MaterialFormatTest {
         for (String[] pair : PAIRS) {
             CgParsedShader now = parse(path(pair[0])), was = parse(path(pair[1]));
             String what = pair[0] + ": ";
+            boolean sameBlend = true;
+            if (pair.length > 2) {
+                was = was.withState(state(pair[2]), pair[1]);
+                now = now.withState(state(pair[3]), pair[0]);
+                sameBlend = pair[2].equals(pair[3]);
+            }
+            boolean ui = now.domain() == CgMaterialDomain.UI, post = now.domain() == CgMaterialDomain.POST;
             assertNotNull(what + "not in the format", now.domain());
             assertEquals(what + "vertex type", was.shaderType(), now.shaderType());
             assertEquals(what + "queue", was.renderQueue(), now.renderQueue());
@@ -92,17 +107,26 @@ public class MaterialFormatTest {
             assertEquals(what + "buffers", was.buffers().size(), now.buffers().size());
             assertEquals(what + "properties", new TreeSet<>(names(was.properties())), new TreeSet<>(names(now.properties())));
             assertEquals(what + "tube", was.tube(), now.tube());
+            assertEquals(what + "post targets", was.postTargets(), now.postTargets());
             assertEquals(what + "pass count", was.passes().size(), now.passes().size());
             for (int p = 0; p < was.passes().size(); p++) {
                 CgParsedPass a = was.passes().get(p), b = now.passes().get(p);
                 assertEquals(what + "pass " + p, a.lightMode(), b.lightMode());
                 CgRenderState ra = a.renderState(), rb = b.renderState();
-                assertEquals(what + a.lightMode() + " blend", slot(ra.getBlend(), CgBlendState.DISABLED), slot(rb.getBlend(), CgBlendState.DISABLED));
-                assertEquals(what + a.lightMode() + " depth", slot(ra.getDepth(), CgDepthState.TEST_WRITE), slot(rb.getDepth(), CgDepthState.TEST_WRITE));
-                assertEquals(what + a.lightMode() + " cull", slot(ra.getCull(), CgCullState.BACK), slot(rb.getCull(), CgCullState.BACK));
+                if (sameBlend) {
+                    assertEquals(what + a.lightMode() + " blend", slot(ra.getBlend(), CgBlendState.DISABLED), slot(rb.getBlend(), CgBlendState.DISABLED));
+                } else {
+                    assertEquals(what + "premultiplied", CgBlendMode.PREMULTIPLIED.state(), rb.getBlend());
+                }
+                // CgPostMaterial draws every pass depthless, its one full-screen triangle facing the camera
+                if (!post) {
+                    assertEquals(what + a.lightMode() + " depth", slot(ra.getDepth(), CgDepthState.TEST_WRITE), slot(rb.getDepth(), CgDepthState.TEST_WRITE));
+                    assertEquals(what + a.lightMode() + " cull", slot(ra.getCull(), CgCullState.BACK), slot(rb.getCull(), CgCullState.BACK));
+                }
                 assertEquals(what + a.lightMode() + " stencil", slot(ra.getStencil(), CgStencilState.DISABLED), slot(rb.getStencil(), CgStencilState.DISABLED));
                 assertEquals(what + a.lightMode() + " writes nothing", ra.writesNothing(), rb.writesNothing());
-                assertEquals(what + a.lightMode() + " v2f", CgShaderParser.parseV2fFields(a), authored(b));
+                // A ui material's v2f is its primitive's, never authored
+                if (!ui) assertEquals(what + a.lightMode() + " v2f", CgShaderParser.parseV2fFields(a), authored(b));
             }
             assertEquals(what + "glow merge", CgMaterialShaderCompiler.emissionMerge(was),
                     CgMaterialShaderCompiler.emissionMerge(now));
@@ -192,6 +216,16 @@ public class MaterialFormatTest {
         assertTrue(fields.toString(), fields.containsAll(List.of("_cg_in_Tube_ring_position", "_cg_in_Tube_ring_radius",
                 "_cg_in_Tube_ring_intensity", "_cg_in_Tube_origin")));
         assertFalse(fields.toString(), fields.contains("_cg_in_Tube_row"));
+    }
+
+    @Test
+    public void aPostFileSaysWhereItDraws() {
+        assertEquals("BEFORE_TRANSLUCENCY", parse(path("height_fog")).postLocation());
+        assertEquals(CgMaterialDomain.POST, parse(path("post_chain")).domain());
+    }
+
+    private static CgMaterialState state(String blend) {
+        return CgMaterialState.builder().blend(CgBlendMode.valueOf(blend)).build();
     }
 
     /** The v2f a material authored: its own fields, not the factory parameters the lowering passes. */

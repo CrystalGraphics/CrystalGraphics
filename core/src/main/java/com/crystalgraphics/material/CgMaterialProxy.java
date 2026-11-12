@@ -787,6 +787,17 @@ public final class CgMaterialProxy {
     }
 
     /**
+     * A {@code #domain post} material's {@code Location}, the {@code CgPostPoint} its file names; null where it names
+     * none, and while the shader does not parse.
+     */
+    @Nullable
+    public String postLocation() {
+        checkNotDeleted();
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed == null ? null : parsed.postLocation();
+    }
+
+    /**
      * The name of its last Forward pass: a multi-pass post material's, the one drawing over the scene after every
      * pass in {@link #postTargets()}. Null while the shader does not parse.
      *
