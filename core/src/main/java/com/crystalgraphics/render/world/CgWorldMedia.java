@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -312,13 +313,13 @@ public final class CgWorldMedia {
         if (!lit) return;
         if (light == null) light = CgMaterial.newInstance(LIGHT_SHADER);
         if (!light.precache()) return;
-        CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(light).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster("worldMedia.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
                 .readsDepth(stage.depth()).texture(CgBindingModel.MEDIA, media)
                 .timed(GPU_LIGHT);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, light.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(light).captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -91,14 +92,14 @@ final class CgEmissivePass {
             boolean covers = (draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER)
                     && draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
             if (!emits[i] && !covers) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline forward = covers ? link.pipeline(CgInstanceKind.OBJECT) : null;
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline forward = covers ? CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT) : null;
                 if (forward != null && !forward.state().writesNothing()) {
                     CgPipeline occluder = forward.as(CgPipelineForm.COVER);
                     if (occluder != null) commands.emissionDraw(chunks, occluder, link, recording, i);
                 }
-                if (!emits[i] || !link.hasEmissivePass()) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                if (!emits[i] || !CgMaterialProxy.of(link).hasEmissivePass()) continue;
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
             }
         }
@@ -143,8 +144,8 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.hasEmissivePass() ? link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline pipeline = CgMaterialProxy.of(link).hasEmissivePass() ? CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT) : null;
                 if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
             }
         }
@@ -201,9 +202,9 @@ final class CgEmissivePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                if (!link.hasEmissivePass()) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                if (!CgMaterialProxy.of(link).hasEmissivePass()) continue;
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (pipeline != null) commands.emissionDraw(chunks, pipeline, link, recording, i);
             }
         }

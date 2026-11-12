@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -259,7 +260,7 @@ final class CgVfxMaterials {
             material.requireRow(SYSTEM_TURN, who);
             rowValues.put(SYSTEM_TURN, SYSTEM_TURN);
         }
-        if (probe.readsExposure()) {
+        if (CgMaterialProxy.of(probe).readsExposure()) {
             // Its effect's exposure, written per effect: a kit's look sets it for each of its effects.
             material.requireRow(EXPOSURE, who);
             rowValues.put(EXPOSURE, EXPOSURE);

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgCompute;
@@ -133,7 +134,7 @@ public class CgComputeGraphTest {
     private void draw(CgRecording rec, String target) {
         CgRasterPass pass = rec.raster("raster " + target).color(CgGraphTexture.requested(target, CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(rec.bindings()));
+        c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), CgMaterialProxy.of(material).captureBindings(rec.bindings()));
         c.instance();
         c.bounds(0, 0, 8, 8);
         pass.add(c.end());
@@ -162,7 +163,7 @@ public class CgComputeGraphTest {
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), cells).end();
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
+        c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
         c.bounds(0, 0, 8, 8);
         draw.reads(cells).add(c.end());
@@ -348,7 +349,7 @@ public class CgComputeGraphTest {
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), counts).end();
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
+        c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
         c.bounds(0, 0, 8, 8);
         draw.reads(counts).add(c.end());

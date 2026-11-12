@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -66,8 +67,8 @@ final class CgHalfPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.HALF) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null || commands.unready(pipeline, i)) continue;
                 if (draws.sets[i] != null) {
                     commands.drawSet(chunks, pipeline, commands.bindingOf(link, recording), i);
@@ -87,12 +88,12 @@ final class CgHalfPass {
             upsample.applyProperties(b -> b.sampler("_Half", 0, half));
             upsampleBound = half;
         }
-        CgPipeline pipeline = upsample.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(upsample).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass add = recording.raster("halfPass.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
                 .readsDepth(stage.depth()).timed(GPU_HALF_ADD);
         CgChunkBuilder upsampled = recording.chunks().begin();
-        upsampled.draw(pipeline, upsample.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
+        upsampled.draw(pipeline, CgMaterialProxy.of(upsample).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
         upsampled.instance();
         add.add(upsampled.end());
         add.end();

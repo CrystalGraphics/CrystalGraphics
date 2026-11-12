@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgCompute;
@@ -95,10 +96,10 @@ final class CgVolumePass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.VOLUME) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
                 if (pipeline == null) continue;
-                CgPipeline folded = world.volumeFolds && link.hasEmissivePass() ? pipeline.as(CgPipelineForm.FOLD) : null;
+                CgPipeline folded = world.volumeFolds && CgMaterialProxy.of(link).hasEmissivePass() ? pipeline.as(CgPipelineForm.FOLD) : null;
                 CgPipeline marching = (folded != null ? folded : pipeline).as(CgPipelineForm.VOLUME);
                 if (marching == null || commands.unready(marching, i)) continue;
                 if (draws.sets[i] != null) {
@@ -150,11 +151,11 @@ final class CgVolumePass {
             composite.applyProperties(b -> b.sampler("_Volumes", 0, volumes));
             compositeBound = volumes;
         }
-        CgPipeline pipeline = composite.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(composite).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         // First of the pass: every surface after it is dimmed by the smoke in front of it (CgWorldMedia), so one
         // behind the smoke must not have been covered by it too.
-        chunks.draw(pipeline, composite.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
+        chunks.draw(pipeline, CgMaterialProxy.of(composite).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
         chunks.instance();
     }
 }

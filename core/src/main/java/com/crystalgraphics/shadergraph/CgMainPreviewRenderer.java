@@ -1,5 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -339,7 +340,7 @@ public final class CgMainPreviewRenderer {
             // picture stays.
             if (!fallbackCompiles.done()) {
                 if (!fallbackCompiles.failed()) {
-                    fallbackCompiles.add(recording.compile(fallbackMaterial().pipeline(CgInstanceKind.OBJECT)));
+                    fallbackCompiles.add(recording.compile(CgMaterialProxy.of(fallbackMaterial()).pipeline(CgInstanceKind.OBJECT)));
                 }
                 return currentTexture();
             }
@@ -520,7 +521,7 @@ public final class CgMainPreviewRenderer {
         }
         if (compiles.failed()) throw new IllegalStateException(compiles.failure());
         if (!compiles.done()) {
-            CgPipeline pipeline = compilingMaterial.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(compilingMaterial).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) {
                 String error = compilingMaterial.lastCompileError();
                 throw new IllegalStateException(error != null ? error : "the preview shader does not parse");

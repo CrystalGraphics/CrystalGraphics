@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -64,11 +65,11 @@ final class CgOverdrawPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
                 // A pass writing nothing is skipped; a pure haze's cost is its Distortion pass.
                 if (pipeline != null && pipeline.state().writesNothing()) {
-                    pipeline = link.hasDistortionPass() ? link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
+                    pipeline = CgMaterialProxy.of(link).hasDistortionPass() ? CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT) : null;
                 }
                 if (pipeline == null) continue;
                 if (draws.sets[i] != null) {

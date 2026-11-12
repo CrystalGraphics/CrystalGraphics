@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -189,10 +190,10 @@ final class CgGradeLayerPass {
         if (phase != CgWorldDraws.FORWARD && phase != CgWorldDraws.FORWARD_AND_PREPASS && phase != CgWorldDraws.AFTER) return false;
         boolean glows = draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
         boolean skinned = commands.skinnedDraw(i);
-        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
-            if (glows && link.hasEmissivePass()) {
+            if (glows && CgMaterialProxy.of(link).hasEmissivePass()) {
                 // Its glow only folded into its colour: a glow drawn apart is an Emissive pass, which takes no layer form
                 CgPipeline folded = world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                 if (folded == null || !built(folded.as(CgPipelineForm.LAYER), skinned)) return false;
@@ -285,27 +286,27 @@ final class CgGradeLayerPass {
     void layerDraws(CgChunkBuilder chunks, CgRecording recording, CgCamera view, int i) {
         boolean glows = draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
         boolean solid = draws.queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD;
-        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
             if (solid) {
                 // It covers what is behind it whatever alpha its fragment writes; its glow adds, as before the
                 // transparent pass, into the scene
                 layerDraw(chunks, pipeline.as(CgPipelineForm.SOLID), link, recording, i);
-                if (glows && link.hasEmissivePass()) {
-                    layerDraw(chunks, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), link, recording, i);
+                if (glows && CgMaterialProxy.of(link).hasEmissivePass()) {
+                    layerDraw(chunks, CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT), link, recording, i);
                 }
                 continue;
             }
             // The same programs the transparent pass draws it with, so the layer holds what it adds there
-            if (glows && link.hasEmissivePass()) {
+            if (glows && CgMaterialProxy.of(link).hasEmissivePass()) {
                 CgPipeline folded = world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                 if (folded != null) {
                     layerDraw(chunks, folded, link, recording, i);
                     continue;
                 }
                 if (!pipeline.state().writesNothing()) layerDraw(chunks, pipeline, link, recording, i);
-                CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                CgPipeline glow = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                 if (glow != null) layerDraw(chunks, glow, link, recording, i);
                 continue;
             }
@@ -338,8 +339,8 @@ final class CgGradeLayerPass {
 
     /** Whether every program draw {@code i} draws has a layer form. */
     boolean layerable(int i) {
-        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null && !pipeline.state().writesNothing() && layered(pipeline) == null) return false;
         }
         return true;

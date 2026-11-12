@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgBufferHandle;
@@ -85,15 +86,15 @@ public final class CgDraw {
     CgDraw begin(CgMesh mesh, CgMaterial material) {
         finish();
         links = 0;
-        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
             if (links == pipelines.length) {
                 pipelines = Arrays.copyOf(pipelines, links * 2);
                 bindings = Arrays.copyOf(bindings, links * 2);
             }
             pipelines[links] = pipeline;
-            bindings[links++] = link.captureBindings(builder.bindings());
+            bindings[links++] = CgMaterialProxy.of(link).captureBindings(builder.bindings());
         }
         if (links == 0) throw new IllegalArgumentException(material + " has no pass that draws a mesh");
         if (!builder.isOpen()) builder.begin();

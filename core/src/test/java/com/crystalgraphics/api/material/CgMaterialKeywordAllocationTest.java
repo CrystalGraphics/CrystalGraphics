@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import org.junit.Test;
 
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -27,14 +28,14 @@ public class CgMaterialKeywordAllocationTest {
     public void aVariantPastEightKeywordsResolvesWithoutAllocating() {
         CgMaterial m = CgMaterial.fromSource(SOURCE);
         for (int k = 0; k <= 10; k += 2) m.enableKeyword("K" + k);
-        CgPipeline a = m.pipeline(CgInstanceKind.OBJECT);
-        assertSame(a, m.pipeline(CgInstanceKind.OBJECT));
+        CgPipeline a = CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT);
+        assertSame(a, CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
         m.enableKeyword("K9");
-        CgPipeline b = m.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline b = CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT);
         assertNotSame(a, b);
         m.disableKeyword("K9");
-        assertSame(a, m.pipeline(CgInstanceKind.OBJECT));
+        assertSame(a, CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
         CgAllocationProof.assertZero("CgMaterial.pipeline, 11 keywords", 2000, 20000,
-                () -> m.pipeline(CgInstanceKind.OBJECT));
+                () -> CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
     }
 }

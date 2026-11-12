@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -1232,7 +1233,7 @@ public final class CgWorldLights {
             gbufferKernel.precache();
         }
         // The pipelines the draws bind: a material's precache answered for a program its pipeline still waited on.
-        CgPipeline points = applyPoints.pipeline(CgInstanceKind.OBJECT), shaped = applyShaped.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline points = CgMaterialProxy.of(applyPoints).pipeline(CgInstanceKind.OBJECT), shaped = CgMaterialProxy.of(applyShaped).pipeline(CgInstanceKind.OBJECT);
         if (points == null || shaped == null) return false;
         return points.precache() & shaped.precache() & gbufferKernel.isReady();
     }
@@ -1258,14 +1259,14 @@ public final class CgWorldLights {
                     .buffer("INDICES", binned ? indices : none).buffer("VIEWED", binned ? viewed : none)
                     .applyProperties(applyValues);
             apply.applyProperties(applyWindow);
-            CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(apply).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
             CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
                     .readsDepth(stage.depth()).readsColor(stage.target())
                     // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
                     .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
             CgChunkBuilder chunks = recording.chunks().begin();
-            chunks.draw(pipeline, apply.captureBindings(recording.bindings()), FULLSCREEN);
+            chunks.draw(pipeline, CgMaterialProxy.of(apply).captureBindings(recording.bindings()), FULLSCREEN);
             chunks.instance();
             add.add(chunks.end());
             add.end();
@@ -1428,7 +1429,7 @@ public final class CgWorldLights {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SUN)) {
             if (sunShadow == null) sunShadow = CgMaterial.newInstance(SUN_SHADOW_SHADER);
             if (!sunShadow.precache()) return false;
-            CgPipeline pipeline = sunShadow.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(sunShadow).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return false;
             int res = SUN_RESOLUTION.get();
             casterTexture();
@@ -1453,7 +1454,7 @@ public final class CgWorldLights {
             toView.invertAffine(viewToEye);
             float distance = SUN_DISTANCE.get(), back = SUN_TRACE.get();
             float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
-            int binding = sunShadow.captureBindings(recording.bindings());
+            int binding = CgMaterialProxy.of(sunShadow).captureBindings(recording.bindings());
             float[] rows = sunRowData;
             int count = SUN_CASCADES.get();
             for (int k = 0; k < CASCADES; k++) {
@@ -1576,7 +1577,7 @@ public final class CgWorldLights {
      */
     void handSun(CgMaterial material, boolean transparent) {
         handSunLive = transparent && sunOn && sunMapped;
-        handSunUnit = material.samplerUnit("_cg_SunMap");
+        handSunUnit = CgMaterialProxy.of(material).samplerUnit("_cg_SunMap");
         material.applyProperties(handSunValues);
     }
 

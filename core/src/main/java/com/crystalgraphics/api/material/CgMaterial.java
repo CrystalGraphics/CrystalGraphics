@@ -1,55 +1,17 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.trace.CgTrace;
-import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.gpu.resource.CgBufferLifetime;
-import com.crystalgraphics.material.CgShader;
-import com.crystalgraphics.api.state.CgBlendState;
-import com.crystalgraphics.api.state.CgDepthState;
-import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.compute.source.CgBufferDecl;
-import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
-import com.crystalgraphics.gpu.resource.CgShaderBuffer;
-import com.crystalgraphics.gpu.resource.CgUniformBuffer;
-import com.crystalgraphics.gpu.staging.CgBufferWriter;
-import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgParsedPass;
 import com.crystalgraphics.material.parse.CgPermutationDomain;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParser;
-import com.crystalgraphics.render.CgWarmBudget;
-import com.crystalgraphics.render.draw.CgBindingTable;
-import com.crystalgraphics.render.draw.CgBlockVersion;
-import com.crystalgraphics.api.buffer.CgBuffer;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.render.draw.CgBufferHandle;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgMaterialArena;
-import com.crystalgraphics.render.draw.CgPipeline;
-import lombok.Getter;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Consumer;
 import javax.annotation.Nullable;
-import com.crystalgraphics.material.CgAttachedBuffer;
-import com.crystalgraphics.render.shader.CgBindingModel;
+import java.util.List;
+import java.util.function.Consumer;
 
 /**
  * User-facing material handle backed by a shared {@link CgMaterialShader} asset.
@@ -88,13 +50,13 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * Each distinct (variant, keyword-set) combination is compiled lazily and cached.</p>
  * <pre>{@code
  * material.enableKeyword("SHADOWS_ON");
- * CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);   // {"SHADOWS_ON"}'s program, built at its first draw
+ * world.draw(mesh, material).submit();     // {"SHADOWS_ON"}'s program, built at its first draw
  * }</pre>
  *
  * <h3>Hot-reload</h3>
  * <p>Hot-reload is asset-level: {@link CgMaterialShader#markDirty()} is set on the shared asset,
  * which increments its {@link CgMaterialShader#getRevisionNumber()} on the next successful
- * compile. The next capture ({@link #captureBindings}) sees the new parse and rebuilds the properties, keeping each
+ * compile. The next draw sees the new parse and rebuilds the properties, keeping each
  * value whose property kept its name and type.</p>
  *
  * <h3>Ownership</h3>
@@ -107,221 +69,43 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  */
 public final class CgMaterial {
 
-    private static final Logger LOGGER = LogManager.getLogger("CgMaterial");
-
-    /** Monotonically incrementing counter — produces unique per-instance IDs across all materials. */
-    private static final AtomicInteger NEXT_MATERIAL_ID = new AtomicInteger(0);
-
-    /** Stable per-instance integer ID. Assigned at construction, never changes. */
-    private final int materialId = NEXT_MATERIAL_ID.getAndIncrement();
-
     /** Block name of the engine-managed material properties UBO. */
-    public static final String MATERIAL_PROPERTIES_BLOCK = "CgMaterialBlock";
+    public static final String MATERIAL_PROPERTIES_BLOCK = CgMaterialProxy.MATERIAL_PROPERTIES_BLOCK;
 
-    // ── Shared shader asset (asset-level, not instance-level) ─────────────────
-
-    /**
-     * Shared shader asset for this material. Owns compilation, render state, render queue,
-     * and attached buffers. {@code null} for materials created via {@link #forTest}.
-     */
-    private final CgMaterialShader cgMaterialShader;
-
-    /** Its render state where it is not its shader's: the blend and clip are its shader asset's, cull and depth write applied per pass here. */
-    private final CgMaterialState state;
-
-    /**
-     * Last shader revision seen by this material instance.
-     * Starts at {@code -1}; set to {@link CgMaterialShader#getRevisionNumber()} after
-     * each successful {@link #onShaderRecompiled()} call. A mismatch triggers a rebuild.
-     */
-    private int lastKnownRevision = -1;
-
-    // ── Per-instance state ─────────────────────────────────────────────────────
-
-    /** Whether {@link #delete()} has been called. */
-    private boolean deleted;
-
-    /**
-     * Fallback render state for materials created via {@link #forTest(CgRenderState, int)}.
-     * In real materials, render state is per-pass and fetched via {@link #getPassRenderState(CgRenderPassVariant)}.
-     */
-    private CgRenderState renderState = CgRenderState.DEFAULT;
-
-    /**
-     * Fallback render queue for materials created via {@link #forTest(CgRenderState, int)}.
-     * In real materials this is delegated to {@link CgMaterialShader#getRenderQueue()}.
-     */
-    private int renderQueue = 2000;
-
-
-
-    /**
-     * Partitioned view of all properties for this material instance. Null until first
-     * {@link #onShaderRecompiled()} call. Never reallocated after creation —
-     * {@link CgMaterialProperties#rebuild} updates it in-place on hot-reload.
-     */
-    private CgMaterialProperties propStore = null;
-
-    /**
-     * Per-instance UBO backing the non-sampler properties (CgMaterialBlock).
-     * Created on first {@link #onShaderRecompiled()} with UBO props, then reused
-     * (via {@code resetFormat}) forever — never deleted or nulled on subsequent recompiles.
-     *
-     * <p>{@link CgBufferLifetime#FRAME}: every draw of this material binds it first, and {@link #syncProps}
-     * uploads it at every bind, which {@link CgUniformBuffer#upload()} turns into nothing unless the bytes moved or
-     * this is the frame's first bind. The UI rewrites its blocks on nearly every draw, and orphaning cost a driver
-     * rename per rewrite.</p>
-     */
-    private CgUniformBuffer matPropsUbo = null;
-
-    /** Whether a block-backed property's value moved since the block was last packed. */
-    private boolean materialPropsDirty = true;
-
-    /** Bumped by every call that may change what it draws: values, textures, keywords, buffers, blocks. */
-    private int changes;
-
-    /**
-     * How many times something that may change what it draws was set: a canvas starts a new draw where this moved, so
-     * a value set between two items takes effect at the second.
-     */
-    public int changes() {
-        return changes;
+    static {
+        CgMaterialProxy.install(m -> m.proxy);
     }
 
-    /** The parse {@link #propStore} was built from: a new parse rebuilds it, keeping the values set. */
-    @Nullable
-    private CgParsedShader propsParse;
+    /** What the renderer asks of it ({@link CgMaterialProxy#of}). */
+    private final CgMaterialProxy proxy;
 
-    /** The properties block as a capture copies it: CPU only, unlike {@link #matPropsUbo}'s writer. */
-    @Nullable
-    private CgBufferWriter capturePacker;
-    private boolean capturePropsDirty = true;
-    /** The properties block as captures last saw it: a new version only after a value moved. */
-    @Nullable
-    private CgBlockVersion blockVersion;
-    private static final int BLOCK_WRITES = CgTrace.name("material.block-writes");
-    /** This instance's own contents for uniform blocks attached to the shared shader, read in their place. */
-    private Map<CgShaderBuffer, CgBufferWriter> blockOverrides;
-
-    /** Forward then Emissive pipelines by instance kind and keyword mask, for {@link #pipelinesParse}. */
-    @Nullable
-    private CgPipeline[] pipelines;
-    @Nullable
-    private CgParsedShader pipelinesParse;
-
-    /**
-     * Active feature-flag keywords declared via {@code #pragma cg_feature}.
-     * Only names present in {@link CgParsedShader#featureNames()} are accepted.
-     */
-    private final Set<String> enabledKeywords = new LinkedHashSet<>();
-    /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
-    private final Set<String> enabledView = Collections.unmodifiableSet(enabledKeywords);
-
-    /**
-     * Property-apply consumers buffered before {@code propStore} was first initialised.
-     * This happens when {@link #applyProperties} is called before the shader has parsed.
-     * Drained into {@code propStore} inside {@link #onShaderRecompiled()} after the first
-     * successful compile. Lazily allocated — null until first buffered call.
-     */
-    private List<Consumer<CgMaterialValues>> pendingApplyConsumers = null;
-
-    /**
-     * Optional chained material for multi-draw decorative effects (outline, additive glow,
-     * stencil fill, etc.).
-     *
-     * <p>Where a world pass draws this material, its draw executes first; then the chained material's draw executes
-     * immediately after with the same mesh and the same draw command. Ordering is deterministic
-     * and immediate — not deferred through a sort queue.</p>
-     *
-     * <p>Each chained material is a fully independent {@code CgMaterial}: different shader,
-     * different render state, different properties, different keywords. This is NOT Unity's
-     * built-in multi-pass (multiple {@code Pass} blocks in one shader file compiled into one
-     * material). It is analogous to Godot's {@code next_pass}, but with guaranteed immediate
-     * ordering instead of Godot's sort-queue-based execution which has known ordering bugs.</p>
-     *
-     * <p>The CrystalShader {@code .shader} format handles the "different pass types in one
-     * material" axis via {@code LightMode} tags ({@code Forward}, {@code Depth},
-     * {@code Emissive}, {@code Distortion}). This field handles the orthogonal "same pass type, drawn twice for
-     * a visual effect" axis.</p>
-     *
-     * -- GETTER --
-     * Returns the chained material, or {@code null} if none.
-     */
-    @Getter
-    private CgMaterial nextPass = null;
-
-    // ── forTest-only fields (null for real materials) ──────────────────────────
-
-    /**
-     * Declared feature names injected for the forTest path (used by
-     * {@link #enableKeyword(String)} validation in forTest mode).
-     */
-    private List<String> testFeatureNames;
-
-    // ── Immutable key for the forTest program cache ────────────────────────────
-
-    /** Cache key for active keywords on the forTest path. Set-equality for keywords. */
-    private static final class ForTestKey {
-        final Set<String> keywords;
-
-        ForTestKey(Set<String> keywords) {
-            this.keywords = Collections.unmodifiableSet(new LinkedHashSet<>(keywords));
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof ForTestKey)) return false;
-            return keywords.equals(((ForTestKey) o).keywords);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(keywords);
-        }
+    CgMaterial(CgMaterialProxy proxy) {
+        this.proxy = proxy;
+        proxy.owner(this);
     }
 
-    // ── Constructors (private — use factory methods) ──────────────────────────
-
-    /** Private no-arg constructor used by {@link #forTest} overloads. */
-    private CgMaterial() {
-        this.cgMaterialShader = null;
-        this.state = CgMaterialState.SHADER;
+    /** Made by {@link CgMaterialRegistry} alone; external callers use {@link #load}. */
+    static CgMaterial create(String resourcePath) {
+        return new CgMaterial(new CgMaterialProxy(CgMaterialShaderRegistry.get().getOrCreate(resourcePath)));
     }
 
-    /** Private constructor used by {@link #create(String)}, {@link #newInstance(String)}, and {@link #fromShader(CgMaterialShader)}. */
-    private CgMaterial(CgMaterialShader asset) {
-        this(asset, CgMaterialState.SHADER);
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue) {
+        return new CgMaterial(CgMaterialProxy.forTest(renderState, renderQueue));
     }
 
-    private CgMaterial(CgMaterialShader asset, CgMaterialState state) {
-        this.cgMaterialShader = asset;
-        this.state = state;
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue, CgMaterialProperties propStore) {
+        return new CgMaterial(CgMaterialProxy.forTest(renderState, renderQueue, propStore));
+    }
+
+    static CgMaterial forTest(CgRenderState renderState, int renderQueue, List<String> featureNames) {
+        return new CgMaterial(CgMaterialProxy.forTest(renderState, renderQueue, featureNames));
+    }
+
+    CgMaterialProperty getPropertyForTest(String name) {
+        return proxy.getPropertyForTest(name);
     }
 
     // ── Factory ───────────────────────────────────────────────────────────────
-
-    /**
-     * Returns the cached material for {@code resourcePath}, loading it on first access.
-     * Delegates to {@link CgMaterialRegistry#get()} which caches by resource path.
-     *
-     * <p>For independent property values on the same shader, use {@link #newInstance(String)}.</p>
-     *
-     * @param resourcePath resource path to the {@code .shader} file,
-     *                     e.g. {@code "mymod:shaders/terrain.shader"}
-     * @return a ready-to-use {@code CgMaterial}; the same instance is returned on repeated calls
-     */
-    /**
-     * What the driver said about this material's last failed compile, or null.
-     *
-     * <p>Forwarded from the shader so a <b>generated</b> material's owner can act on it: a graph-emitted
-     * shader that the driver refuses is a message the user needs, and the line number in it maps back to
-     * the node that wrote the line. For a shipped asset this is still just the log.</p>
-     */
-    @Nullable
-    public String lastCompileError() {
-        return cgMaterialShader == null ? null : cgMaterialShader.lastCompileError();
-    }
 
     /**
      * The material a {@code material} asset's definition draws as, shared by every caller: its archetype, state,
@@ -381,8 +165,7 @@ public final class CgMaterial {
      * @return a fresh {@code CgMaterial} instance; never the same object as a prior call
      */
     public static CgMaterial newInstance(String resourcePath) {
-        CgMaterialShader asset = CgMaterialShaderRegistry.get().getOrCreate(resourcePath);
-        return new CgMaterial(asset);
+        return new CgMaterial(new CgMaterialProxy(CgMaterialShaderRegistry.get().getOrCreate(resourcePath)));
     }
 
     /**
@@ -401,7 +184,7 @@ public final class CgMaterial {
      * </ul>
      */
     public static CgMaterial newInstance(String resourcePath, CgMaterialState state) {
-        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreate(resourcePath, state), state);
+        return new CgMaterial(new CgMaterialProxy(CgMaterialShaderRegistry.get().getOrCreate(resourcePath, state), state));
     }
 
     /**
@@ -416,7 +199,7 @@ public final class CgMaterial {
      */
     public static CgMaterial fromShader(CgMaterialShader shaderAsset) {
         if (shaderAsset == null) throw new IllegalArgumentException("shaderAsset must not be null");
-        return new CgMaterial(shaderAsset);
+        return new CgMaterial(new CgMaterialProxy(shaderAsset));
     }
 
     /**
@@ -445,85 +228,40 @@ public final class CgMaterial {
      * @throws IllegalArgumentException if {@code source} is null or empty
      */
     public static CgMaterial fromSource(String source) {
-        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreateGenerated(source));
+        return new CgMaterial(new CgMaterialProxy(CgMaterialShaderRegistry.get().getOrCreateGenerated(source)));
     }
 
     /** {@link #fromSource(String)} drawn under {@code state}, as {@link #newInstance(String, CgMaterialState)} is. */
     public static CgMaterial fromSource(String source, CgMaterialState state) {
-        return new CgMaterial(CgMaterialShaderRegistry.get().getOrCreateGenerated(source, state), state);
+        return new CgMaterial(new CgMaterialProxy(CgMaterialShaderRegistry.get().getOrCreateGenerated(source, state), state));
+    }
+
+    // ── What a consumer sets and reads ────────────────────────────────────────
+
+    /**
+     * How many times something that may change what it draws was set: a canvas starts a new draw where this moved, so
+     * a value set between two items takes effect at the second.
+     */
+    public int changes() {
+        return proxy.changes();
+    }
+
+    /**
+     * What the driver said about this material's last failed compile, or null.
+     *
+     * <p>Forwarded from the shader so a <b>generated</b> material's owner can act on it: a graph-emitted
+     * shader that the driver refuses is a message the user needs, and the line number in it maps back to
+     * the node that wrote the line. For a shipped asset this is still just the log.</p>
+     */
+    @Nullable
+    public String lastCompileError() {
+        return proxy.lastCompileError();
     }
 
     /** Its render state where it is not its shader's; {@link CgMaterialState#SHADER} for none. */
     public CgMaterialState state() {
-        return state;
+        return proxy.state();
     }
-
-    /**
-     * Creates a new {@code CgMaterial} from a {@code .shader} file.
-     * Called only by {@link CgMaterialRegistry}; external callers use {@link #load}.
-     */
-    static CgMaterial create(String resourcePath) {
-        CgMaterialShader asset = CgMaterialShaderRegistry.get().getOrCreate(resourcePath);
-        return new CgMaterial(asset);
-    }
-
-    static CgMaterial forTest(CgRenderState renderState, int renderQueue) {
-        CgMaterial m = new CgMaterial();
-        m.renderState = renderState;
-        m.renderQueue = renderQueue;
-        return m;
-    }
-
-    static CgMaterial forTest(CgRenderState renderState, int renderQueue, CgMaterialProperties propStore) {
-        CgMaterial m = forTest(renderState, renderQueue);
-        m.propStore = propStore;
-        return m;
-    }
-
-    /**
-     * Creates a test material with declared feature names for unit-testing keyword
-     * enable/disable validation without a real GL context.
-     *
-     * @param renderState  render state for this test material
-     * @param renderQueue  render queue priority
-     * @param featureNames declared feature names to accept in {@link #enableKeyword(String)}
-     * @return a test material with keyword validation backed by the given names
-     */
-    static CgMaterial forTest(CgRenderState renderState, int renderQueue,
-                               List<String> featureNames) {
-        CgMaterial m = forTest(renderState, renderQueue);
-        m.testFeatureNames = Collections.unmodifiableList(new ArrayList<>(featureNames));
-        return m;
-    }
-
-    CgMaterialProperty getPropertyForTest(String name) {
-        if (propStore == null) return null;
-        return propStore.all().stream().filter(p -> p.getName().equals(name)).findFirst().orElse(null);
-    }
-
-    // ── Property bindings ─────────────────────────────────────────────────────
-
-    /**
-     * Brings the properties block up to date for a bind, doing the least it can -- in the UI 79% of block
-     * uploads once carried the bytes already there:
-     * <ul>
-     *   <li>repacked only after a property's value actually moved ({@link #applyProperties}), not after a write
-     *       of the same value or of a sampler;</li>
-     *   <li>then {@link CgUniformBuffer#upload()}, which sends it only if the bytes differ from the last upload,
-     *       or on the frame's first bind, since the block lives on the frame ring.</li>
-     * </ul>
-     */
-    private void syncProps() {
-        if (materialPropsDirty) {
-            CgTrace.add(CgChannels.GL, PROPS_PACK, 1);
-            propStore.writeUboProps(matPropsUbo.writer());
-            matPropsUbo.endRecord();
-            materialPropsDirty = false;
-        }
-        matPropsUbo.upload();
-    }
-
-    private static final int PROPS_PACK = CgTrace.name("material.propsPack");
 
     /**
      * Sets material property values by name. Only Properties block declarations are accepted.
@@ -541,24 +279,7 @@ public final class CgMaterial {
      * @return this for chaining
      */
     public CgMaterial applyProperties(Consumer<CgMaterialValues> consumer) {
-        changes++;
-        checkNotDeleted();
-        // From the parse alone, so setting a property compiles nothing.
-        syncPropsToParse();
-
-        if (propStore == null) {
-            // The source does not parse, or a forTest material with no asset: replayed once properties exist.
-            if (pendingApplyConsumers == null) pendingApplyConsumers = new ArrayList<>();
-            pendingApplyConsumers.add(consumer);
-            return this;
-        }
-        consumer.accept(propStore);
-        // Only a value that moved: rewriting the same opacity, or only a sampler, leaves the block as it is.
-        if (propStore.consumeBlockChanged()) {
-            materialPropsDirty = true;
-            capturePropsDirty = true;
-        }
-        propStore.consumeSamplerUnitChanged();
+        proxy.applyProperties(consumer);
         return this;
     }
 
@@ -571,16 +292,12 @@ public final class CgMaterial {
      * }</pre>
      */
     public List<CgMaterialProperty> properties() {
-        checkNotDeleted();
-        syncPropsToParse();
-        return propStore == null ? Collections.emptyList() : propStore.all();
+        return proxy.properties();
     }
 
     /** The keywords its shader declares ({@code #pragma cg_feature}), from the parse alone. */
     public List<String> declaredKeywords() {
-        checkNotDeleted();
-        if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
-        return getDeclaredFeatureNames();
+        return proxy.declaredKeywords();
     }
 
     /**
@@ -588,9 +305,7 @@ public final class CgMaterial {
      * every combination a precache of the shader builds.
      */
     public CgPermutationDomain permutations() {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed == null ? CgPermutationDomain.EMPTY : parsed.permutations();
+        return proxy.permutations();
     }
 
     /**
@@ -602,16 +317,12 @@ public final class CgMaterial {
      * }</pre>
      */
     public boolean declaresBuffer(String name) {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.buffer(name) != null;
+        return proxy.declaresBuffer(name);
     }
-
-    // ── Keyword API ───────────────────────────────────────────────────────────
 
     /**
      * Enables a feature-flag keyword declared via {@code #pragma cg_feature NAME} in the shader.
-     * Pipelines asked afterwards ({@link #pipeline(CgInstanceKind)}) use a variant with
+     * Draws afterwards use a variant with
      * {@code #define NAME 1} injected into both vertex and fragment sources.
      *
      * <p>Safe to call before any compile: the shader is parsed, not compiled, to validate the name.</p>
@@ -620,16 +331,7 @@ public final class CgMaterial {
      * @throws IllegalArgumentException if {@code name} is not declared as a feature in this shader
      */
     public void enableKeyword(String name) {
-        changes++;
-        checkNotDeleted();
-        // The declared features are a parse product: validating a keyword compiles nothing.
-        if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
-        List<String> declared = getDeclaredFeatureNames();
-        if (!declared.contains(name)) {
-            throw new IllegalArgumentException(
-                    "Keyword '" + name + "' is not declared as #pragma cg_feature in this shader");
-        }
-        enabledKeywords.add(name);
+        proxy.enableKeyword(name);
     }
 
     /**
@@ -638,106 +340,13 @@ public final class CgMaterial {
      * @param name keyword name to disable
      */
     public void disableKeyword(String name) {
-        changes++;
-        checkNotDeleted();
-        enabledKeywords.remove(name);
+        proxy.disableKeyword(name);
     }
 
     /** Disables all previously-enabled keyword. */
     public void disableAllKeywords() {
-        checkNotDeleted();
-        enabledKeywords.clear();
+        proxy.disableAllKeywords();
     }
-
-    /**
-     * The forward program per keyword set, indexed by {@link #keywordMask}, for the shader revision in
-     * {@link #variantsRevision}. A UI material is bound hundreds of times a frame with its keywords toggled between
-     * draws, and each resolve built a program key and copied the keyword set: most of what a busy frame allocated.
-     */
-    @Nullable
-    private CgShader[] variants;
-    private int variantsRevision = -1;
-    @Nullable
-    private List<String> variantsDeclared;
-
-    /** Keyword sets cached in a dense table, 2^n of them; past this, {@link SparseVariants}. */
-    private static final int DENSE_KEYWORDS = 8;
-    /** {@code CgInstanceKind.values().length}, once: {@code values()} copies its array each call. */
-    private static final int KINDS = CgInstanceKind.values().length;
-    /** The most keywords a shader declares (the parser's cap): a mask's width, an int's non-negative bits. */
-    private static final int MAX_KEYWORDS = 31;
-
-    /**
-     * A sparse long-keyed cache of keyword variants: open addressing, so a lookup allocates nothing. For a shader past
-     * {@link #DENSE_KEYWORDS}, whose 2^n table would be mostly empty.
-     */
-    private static final class SparseVariants {
-        private long[] keys = new long[16];
-        private Object[] values = new Object[16];
-        private int size;
-
-        Object get(long key) {
-            int mask = keys.length - 1;
-            for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
-                if (values[i] == null) return null;
-                if (keys[i] == key) return values[i];
-            }
-        }
-
-        void put(long key, Object value) {
-            if ((size + 1) * 2 > keys.length) grow();
-            int mask = keys.length - 1;
-            for (int i = mix(key) & mask; ; i = (i + 1) & mask) {
-                if (values[i] == null) {
-                    keys[i] = key;
-                    values[i] = value;
-                    size++;
-                    return;
-                }
-                if (keys[i] == key) {
-                    values[i] = value;
-                    return;
-                }
-            }
-        }
-
-        private void grow() {
-            long[] k = keys;
-            Object[] v = values;
-            keys = new long[k.length * 2];
-            values = new Object[k.length * 2];
-            size = 0;
-            for (int i = 0; i < k.length; i++) if (v[i] != null) put(k[i], v[i]);
-        }
-
-        private static int mix(long key) {
-            long h = key * 0x9E3779B97F4A7C15L;
-            return (int) (h ^ (h >>> 32));
-        }
-    }
-
-    @Nullable
-    private SparseVariants sparseVariants, sparsePipelines;
-
-    /** The enabled keywords as bits over the declared features, or -1 past the 31 a shader may declare. */
-    private int keywordMask() {
-        return keywordMask(getDeclaredFeatureNames());
-    }
-
-    private int keywordMask(List<String> declared) {
-        if (declared.size() > MAX_KEYWORDS) return -1;
-        int mask = 0;
-        for (int i = 0; i < declared.size(); i++) {
-            if (enabledKeywords.contains(declared.get(i))) mask |= 1 << i;
-        }
-        return mask;
-    }
-
-    /** The forward pass's render state, and the parse it was read from. */
-    @Nullable
-    private CgRenderState forwardRenderState;
-    @Nullable
-    private CgParsedShader forwardRenderStateParse;
 
     /**
      * Returns {@code true} if the given keyword is currently enabled on this material instance.
@@ -746,8 +355,7 @@ public final class CgMaterial {
      * @return {@code true} if enabled, {@code false} otherwise
      */
     public boolean isKeywordEnabled(String name) {
-        checkNotDeleted();
-        return enabledKeywords.contains(name);
+        return proxy.isKeywordEnabled(name);
     }
 
     /**
@@ -756,599 +364,20 @@ public final class CgMaterial {
      * @param name keyword name to query
      */
     public void toggleKeyword(String name, boolean enabled) {
-        changes++;
-        if (enabled && !isKeywordEnabled(name)) enableKeyword(name);
-        else if (!enabled && isKeywordEnabled(name)) disableKeyword(name);
+        proxy.toggleKeyword(name, enabled);
     }
 
-    // ── Draw-time API ─────────────────────────────────────────────────────────
-
-    /**
-     * {@code -Dcrystalgraphics.shader.parallelCompile=false} makes {@link #precache} answer ready at once, so the
-     * first bind compiles on the spot: the escape hatch for a driver that misreports completion.
-     */
-    private static final boolean PARALLEL_COMPILE = CgVar.bool("crystalgraphics.shader.parallelCompile", true,
-            CgVar.DEV | CgVar.RESTART, "Materials compile ahead of their first bind where the driver links on its own"
-                    + " threads; false compiles at the first bind: for a driver that misreports completion.").get();
-
-    /**
-     * Starts this material's compile without waiting for it, and says whether its Forward pipeline's program would
-     * now build without waiting on the driver. What a caller that must never stall a frame polls instead of drawing.
-     *
-     * <pre>{@code
-     * CgMaterial next = CgMaterial.fromSource(source);
-     * // each frame:
-     * if (next.precache()) {        // compiled, or failed: next.lastCompileError() says which
-     *     current.delete();
-     *     current = next;
-     * }
-     * draw(current.pipeline(kind));  // the old picture until the new one is ready
-     * }</pre>
-     *
-     * <p>False on the frame it starts a compile, always: where the driver cannot report progress, that frame is
-     * the head start its own compile threads get. False too while the frame's {@link CgWarmBudget} is spent, so
-     * many materials precached at once spread over frames. Drawing before it answers true waits for the compile, as
-     * a material that was never precached does.</p>
-     *
-     * <p>It compiles the Forward pass. A depth program the shader does not author is generated the first time a Depth
-     * pipeline or {@link #hasCompiledDepthPass} asks for it.</p>
-     */
     public boolean precache() {
-        checkNotDeleted();
-        if (cgMaterialShader == null || !PARALLEL_COMPILE) return true;
-        if (!cgMaterialShader.isDirty() && !cgMaterialShader.isPending()) return true;
-        if (!CgWarmBudget.allows()) return false;
-        long start = System.nanoTime();
-        try {
-            if (cgMaterialShader.isDirty()) {
-                cgMaterialShader.submitRecompile(true);
-                return false;
-            }
-            return cgMaterialShader.pollPending();
-        } finally {
-            CgWarmBudget.spend(System.nanoTime() - start);
-        }
+        return proxy.precache();
     }
 
-    // ── Recording ─────────────────────────────────────────────────────────────
-
-    /**
-     * This material's pipeline for {@code kind}: its Forward pass under the keywords enabled now, with that pass's
-     * render state. Compiles nothing; the program is resolved when a batch draws with it.
-     *
-     * <pre>{@code
-     * material.enableKeyword("WITH_MASK");
-     * CgPipeline p = material.pipeline(CgInstanceKind.QUAD);
-     * int b = material.captureBindings(table);
-     * // record a draw with p and b; toggling the keyword after changes neither
-     * }</pre>
-     *
-     * @return null when the shader does not parse: there is nothing to draw
-     */
-    @Nullable
-    public CgPipeline pipeline(CgInstanceKind kind) {
-        return pipeline(CgRenderPassVariant.FORWARD, kind);
-    }
-
-    /**
-     * The passes of a multi-pass post material that draw into targets of their own, in order; empty for one pass, and
-     * while the shader does not parse. The same list until the shader parses again.
-     */
-    public List<CgParsedShader.PostTarget> postTargets() {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed == null ? Collections.emptyList() : parsed.postTargets();
-    }
-
-    /**
-     * The name of its last Forward pass: a multi-pass post material's, the one drawing over the scene after every
-     * pass in {@link #postTargets()}. Null while the shader does not parse.
-     *
-     * <pre>{@code
-     * CgPipeline over = material.pipeline(material.lastForwardPass(), CgInstanceKind.OBJECT);
-     * }</pre>
-     */
-    @Nullable
-    public String lastForwardPass() {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null) return null;
-        String last = null;
-        String forward = CgRenderPassVariant.FORWARD.lightModeName();
-        for (CgParsedPass p : parsed.passes()) if (forward.equals(p.lightMode())) last = p.name();
-        return last;
-    }
-
-    /** The {@code sampler2D} a post material reads what glows through ({@code "Emission"} tag); null for none. */
-    @Nullable
-    public String emissionInput() {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed == null ? null : parsed.emissionInput();
-    }
-
-    /**
-     * As {@link #pipeline(CgInstanceKind)}, for the Forward pass named {@code pass} under its own render state: one
-     * pass of a material drawing several in turn, as a multi-pass post material does.
-     *
-     * <pre>{@code
-     * CgPipeline down = material.pipeline("Down", CgInstanceKind.OBJECT);   // Pass { Tags { "Name" = "Down" ... } }
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Its keywords are the material's, as the first Forward pass's are; a {@code CgMaterialState} does not reach
-     *       it.</li>
-     *   <li>Each call makes a key: hold the answer for as long as the shader's revision holds.</li>
-     * </ul>
-     *
-     * @return null when the shader does not parse or has no such pass
-     */
-    @Nullable
-    public CgPipeline pipeline(String pass, CgInstanceKind kind) {
-        checkNotDeleted();
-        if (cgMaterialShader == null) return null;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null) return null;
-        CgParsedPass own = parsed.getPassByName(pass);
-        if (own == null) return null;
-        return CgPipeline.pass(cgMaterialShader, pass, enabledKeywords, own.renderState(), kind);
-    }
-
-    /**
-     * As {@link #pipeline(CgInstanceKind)}, for any pass. Keywords apply to {@link CgRenderPassVariant#FORWARD},
-     * {@link CgRenderPassVariant#EMISSIVE} and {@link CgRenderPassVariant#DISTORTION} only.
-     *
-     * @return null when the shader does not parse
-     */
-    @Nullable
-    public CgPipeline pipeline(CgRenderPassVariant pass, CgInstanceKind kind) {
-        checkNotDeleted();
-        if (cgMaterialShader == null) return null;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null) return null;
-        int slot = pass == CgRenderPassVariant.FORWARD ? 0 : pass == CgRenderPassVariant.EMISSIVE ? 1
-                : pass == CgRenderPassVariant.DISTORTION ? 2 : -1;
-        List<String> declared = parsed.featureNames();
-        int mask = keywordMask(declared);
-        if (slot < 0 || mask < 0) {
-            return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
-        }
-        int kinds = KINDS;
-        if (declared.size() > DENSE_KEYWORDS) {
-            // Past eight keywords a dense table would be 2^n entries a kind: a sparse one, keyed by slot, kind and mask.
-            if (pipelinesParse != parsed || sparsePipelines == null) {
-                sparsePipelines = new SparseVariants();
-                pipelinesParse = parsed;
-            }
-            long key = (long) (slot * kinds + kind.ordinal()) << MAX_KEYWORDS | mask;
-            CgPipeline pipeline = (CgPipeline) sparsePipelines.get(key);
-            if (pipeline == null) {
-                pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
-                sparsePipelines.put(key, pipeline);
-            }
-            return pipeline;
-        }
-        int variants = 1 << declared.size();
-        if (pipelinesParse != parsed || pipelines == null) {
-            pipelines = new CgPipeline[3 * kinds * variants];
-            pipelinesParse = parsed;
-        }
-        int at = (slot * kinds + kind.ordinal()) * variants + mask;
-        CgPipeline pipeline = pipelines[at];
-        if (pipeline == null) {
-            pipelines[at] = pipeline = CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
-        }
-        return pipeline;
-    }
-
-    /**
-     * Snapshots what a draw of this material reads, as it is now, into {@code table}: the properties block's bytes,
-     * each sampler's texture at its declared unit, any buffer attached with {@link #attach}, and each buffer bound with
-     * {@link #buffer}. Compiles nothing.
-     *
-     * <pre>{@code
-     * material.applyProperties(b -> b.colorARGB("_Color", 0xFFFF0000));
-     * int red = material.captureBindings(table);
-     * material.applyProperties(b -> b.colorARGB("_Color", 0xFF0000FF));
-     * int blue = material.captureBindings(table);   // a different id; red still reads red
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Equal snapshots answer one id, so two draws of one material with the same values batch.</li>
-     *   <li>An attached buffer is bound as it is when the draw executes, not copied.</li>
-     *   <li>A sampler's unit is its index among the shader's declared samplers, whatever unit
-     *       {@code sampler(name, unit, texture)} was given.</li>
-     * </ul>
-     *
-     * @return the snapshot's id in {@code table}
-     */
-    public int captureBindings(CgBindingTable table) {
-        checkNotDeleted();
-        syncPropsToParse();
-        List<CgBufferDecl> declared = propsParse == null ? List.of() : propsParse.buffers();
-        for (int i = 0; i < declared.size(); i++) {
-            String name = declared.get(i).name();
-            if (buffers == null || buffers.get(name) == null) {
-                throw new IllegalStateException("this material reads buffer " + name + ", and nothing is bound to it: "
-                        + "material.buffer(\"" + name + "\", buffer)");
-            }
-        }
-        table.begin();
-        if (propStore != null) {
-            if (propStore.hasUboProps()) {
-                CgBlockVersion version = blockVersion();
-                table.block(CgBindingModel.MATERIAL_BLOCK, version);
-            }
-            propStore.captureSamplers(table);
-        }
-        if (cgMaterialShader != null) captureEngineBlocks(table);
-        capturePerDrawEngineBuffers(table);
-        for (int i = 0; i < declared.size(); i++) {
-            table.storage(CgBindingModel.buffer(i), buffers.get(declared.get(i).name()));
-        }
-        return table.end();
-    }
-
-    /** What {@link #buffer} bound, by declared name. */
-    @Nullable
-    private Map<String, CgBufferHandle> buffers;
-
-    /**
-     * Binds {@code buffer} as buffer {@code name} of the shader's {@code Buffers { }}, which each pass reads as
-     * {@code NAME(i)}: usually a frame graph's buffer a kernel writes, which the graph orders the draw after.
-     *
-     * <pre>{@code
-     * // sparks.shader, at material scope:
-     * //   struct Spark { vec4 positionLife; vec4 velocitySeed; };
-     * //   Buffers { SPARKS ("Sparks", Spark, readonly) }
-     * sparkMaterial.buffer("SPARKS", sparks);
-     * world.draw(CgMesh.quads(capacity), sparkMaterial).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
-     * }</pre>
-     *
-     * <ul>
-     *   <li>Captured as a texture is: a draw recorded before the call reads what was bound then.</li>
-     *   <li>Recorded draws read it ({@link #captureBindings}).</li>
-     *   <li>Every declared buffer is bound before the first capture, which throws naming one that is not.</li>
-     * </ul>
-     *
-     * @throws IllegalArgumentException if the shader declares no buffer {@code name}
-     */
     public CgMaterial buffer(String name, CgBufferHandle buffer) {
-        changes++;
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null || parsed.buffer(name) == null) {
-            throw new IllegalArgumentException("'" + name + "' is no buffer this material's Buffers { } declares");
-        }
-        if (buffer instanceof CgBuffer own) parsed.buffer(name).check(own.layout());
-        if (buffers == null) buffers = new HashMap<>();
-        buffers.put(name, Objects.requireNonNull(buffer, "buffer"));
+        proxy.buffer(name, buffer);
         return this;
     }
 
-    /**
-     * The properties block as it is now, persistent: a new version only after a value moved (counted,
-     * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame. In its shader's arena
-     * where its values live there.
-     */
-    private CgBlockVersion blockVersion() {
-        CgBlockVersion current = blockVersion;
-        CgMaterialArena arena = arena();
-        if (current != null && !capturePropsDirty && current.arena() == arena) return current;
-        CgBufferWriter packer = capturePacker();
-        if (current != null) current.supersede();
-        blockVersion = current = arena != null ? CgBlockVersion.in(arena, packer.rawData(), packer.rawCursor())
-                : CgBlockVersion.of(packer.rawData(), packer.rawCursor());
-        CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
-        return current;
-    }
-
-    /** Its shader's arena where its values live there ({@link CgParsedShader#valuesInArena}); null otherwise. */
-    @Nullable
-    private CgMaterialArena arena() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasUboProps()) return null;
-        if (arenaFloats < 0) arenaFloats = propStore.buildUboFormat().getFloatCount();
-        return cgMaterialShader.arena(arenaFloats);
-    }
-
-    /** The properties block's float count, for {@link #arena}; -1 until asked after a parse rebuilt the properties. */
-    private int arenaFloats = -1;
-
-    /** The properties block packed as it is now, repacked only after a value moved. */
-    private CgBufferWriter capturePacker() {
-        if (capturePacker == null) {
-            CgBufferLayout format = propStore.buildUboFormat();
-            capturePacker = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
-            capturePropsDirty = true;
-        }
-        if (capturePropsDirty) {
-            propStore.writeUboProps(capturePacker);
-            capturePropsDirty = false;
-        }
-        return capturePacker;
-    }
-
-    /**
-     * Gives this material its own contents for {@code block}, a uniform block attached to the shader every instance
-     * of it shares: {@link #captureBindings} keeps {@code contents} instead of the block's own writer. For a renderer
-     * that keeps per-instance values in a shared block, so two instances recording at once cannot read each other's.
-     *
-     * <pre>{@code
-     * CgBufferWriter mine = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
-     * material.overrideBlock(sharedBlock, mine);
-     * mine.reset().beginRecord().mat4("u_Projection", projection);   // what this instance's next capture keeps
-     * }</pre>
-     */
-    public CgMaterial overrideBlock(CgUniformBuffer block, CgBufferWriter contents) {
-        changes++;
-        if (blockOverrides == null) blockOverrides = new IdentityHashMap<>();
-        blockOverrides.put(block, contents);
-        return this;
-    }
-
-    /**
-     * The uniform blocks of the engine tokens the shader names, kept by value as written now, since their owner
-     * rewrites them before the draw executes. A token's storage buffer the executor binds itself.
-     */
-    private void captureEngineBlocks(CgBindingTable table) {
-        List<CgAttachedBuffer> buffers = cgMaterialShader.engineBuffers();
-        for (int i = 0; i < buffers.size(); i++) {
-            CgAttachedBuffer buffer = buffers.get(i);
-            if (!buffer.isUbo()) continue;
-            CgShaderBuffer target = buffer.getBuffer();
-            CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
-            CgBufferWriter written = override != null ? override : target.writer();
-            if (written.rawCursor() > 0) {
-                table.block(target.slot(), written.rawData(), 0, written.rawCursor());
-            } else {
-                table.buffer(target);
-            }
-        }
-    }
-
-    /**
-     * The engine buffers no executor binds ({@code CgEngineBufferRegistry.Provider.perDraw}), from the parse: a draw
-     * captured before its material's first compile, which attaches them, binds them too.
-     */
-    private void capturePerDrawEngineBuffers(CgBindingTable table) {
-        if (propsParse == null) return;
-        List<String> tokens = propsParse.engineBuffers();
-        for (int i = 0; i < tokens.size(); i++) {
-            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(tokens.get(i));
-            if (provider.perDraw()) table.buffer(provider.buffer().get());
-        }
-    }
-
-    // ── Accessors ─────────────────────────────────────────────────────────────
-
-    /**
-     * Returns the render state for the given pass variant from the last successful compile.
-     * Falls back to the per-instance {@code renderState} field for forTest materials.
-     *
-     * <p>For FORWARD: resolves via the first Forward-lit pass. For the others: resolves by
-     * LightMode tag name. Returns {@link CgRenderState#DEFAULT} when the pass is not found.</p>
-     *
-     * @param variant the pass variant whose render state to retrieve; must not be null
-     * @return render state for the pass; never {@code null}
-     */
-    public CgRenderState getPassRenderState(CgRenderPassVariant variant) {
-        if (cgMaterialShader == null) return renderState;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null) return CgRenderState.DEFAULT;
-        if (variant == CgRenderPassVariant.FORWARD) {
-            if (forwardRenderState != null && forwardRenderStateParse == parsed) return forwardRenderState;
-            CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            CgRenderState own = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.renderState();
-            forwardRenderState = state.onPass(own, true);
-            forwardRenderStateParse = parsed;
-            return forwardRenderState;
-        }
-        CgRenderState own = cgMaterialShader.getRenderState(variant.lightModeName());
-        if (state.cull() == null) return own;
-        // One derived state per pass's own, so its pipeline is the same object every frame.
-        CgRenderState[] held = passStates;
-        int at = variant.ordinal() * 2;
-        if (held != null && held[at] == own) return held[at + 1];
-        CgRenderState[] next = held == null ? new CgRenderState[CgRenderPassVariant.values().length * 2] : held.clone();
-        next[at] = own;
-        next[at + 1] = state.onPass(own, false);
-        passStates = next;
-        return next[at + 1];
-    }
-
-    /** Each pass's own state and its state under {@link #state}'s cull, by variant: replaced whole, never edited. */
-    @Nullable
-    private volatile CgRenderState[] passStates;
-
-    /**
-     * Returns {@code true} when this material has an explicitly authored Depth pass in the
-     * last successful parse. Based on parse-time pass presence — use to gate a Depth pipeline
-     * ({@link #pipeline(CgRenderPassVariant, CgInstanceKind)}).
-     *
-     * <p>This is a parse-state check (explicit authored {@code [Depth]} block only).
-     * To also detect auto-generated depth variants produced by {@code recompile()},
-     * use {@link #hasCompiledDepthPass()} instead.</p>
-     *
-     * @see #hasCompiledDepthPass()
-     */
-    public boolean hasDepthPass() {
-        return cgMaterialShader != null && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
-    }
-
-    /**
-     * Whether this material authors an Emissive pass: the world renderer then draws it into the bloom target too. A
-     * parse, never a compile, so it is answered on any thread.
-     */
-    public boolean hasEmissivePass() {
-        if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
-    }
-
-    /**
-     * Whether its light follows the draw's exposure ({@code _cg_Exposure}): a {@code cg_use rows} shader whose Forward
-     * colour is {@code "ColorSpace" = "Linear"}, or that has an Emissive pass. A parse, never a compile.
-     *
-     * <pre>{@code
-     * if (material.readsExposure()) material.definition().requireRow("_cg_Exposure", who);   // written per draw
-     * }</pre>
-     */
-    public boolean readsExposure() {
-        if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.engineBuffers().contains(CgShaderParser.ROWS) && (parsed.linearLight()
-                || parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null);
-    }
-
-    /**
-     * Whether its shader says {@code "Depth" = "Prepass"}: the world renderer draws its depth where {@code cg_Clip}
-     * passes ({@code CgPipeline.depthPrepass}) before every transparent draw of the firing. A parse, never a compile.
-     */
-    public boolean hasDepthPrepass() {
-        if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.depthMode() == CgParsedShader.DepthMode.PREPASS;
-    }
-
-    /**
-     * Whether its Forward draw writes depth ({@code "Depth" = "Clip"}, or {@code DepthWrite ON}). A transparent one then
-     * draws first in its group, before what blends over it. A prepass is not this: its depth is drawn before every
-     * transparent draw, and its blend keeps its order, so what is behind its thin edge never blends over it. A parse,
-     * never a compile.
-     */
-    public boolean writesDepth() {
-        if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null) return false;
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        CgDepthState depth = forward == null ? null : forward.renderState().getDepth();
-        return depth != null && depth.write();
-    }
-
-    /**
-     * Whether its Forward draw is a solid: it writes depth and blends nothing (Unreal's opaque blend mode), whatever its
-     * queue. Such a draw casts shadows as an opaque one does; a translucent one never does. A parse, never a compile.
-     *
-     * <pre>{@code
-     * if (material.solid()) lights.caster(...);   // debris drawn late, lit in its own program
-     * }</pre>
-     */
-    public boolean solid() {
-        if (!writesDepth()) return false;
-        CgParsedPass forward = cgMaterialShader.ensureParsed().getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        CgBlendState blend = forward.renderState().getBlend();
-        return blend == null || !blend.enabled();
-    }
-
-    /**
-     * Whether this material authors a Distortion pass: the world renderer then adds it into the distortion target, which
-     * bends the scene after the transparent pass. A parse, never a compile.
-     */
-    public boolean hasDistortionPass() {
-        if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.DISTORTION.lightModeName()) != null;
-    }
-
-    /**
-     * Returns {@code true} when a compiled depth prepass GL program exists for this material.
-     *
-     * <p>Unlike {@link #hasDepthPass()} (which checks for an explicit authored
-     * {@code [Depth]} pass), this method also returns {@code true} for auto-generated depth
-     * variants produced by {@link CgMaterialShader#recompile()}
-     * during {@code CgMaterialShaderMap.autoGenDepth()}. It is the correct query for
-     * a depth prepass deciding whether to bind {@code DEPTH} or fall back to the forward pass.</p>
-     *
-     * @return {@code true} if a compiled depth variant program is available
-     */
-    public boolean hasCompiledDepthPass() {
-        return cgMaterialShader != null && cgMaterialShader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName());
-    }
-
-    /**
-     * Returns a stable integer ID unique to this {@code CgMaterial} instance.
-     * Assigned at construction from a monotonically incrementing counter.
-     * The world renderer's opaque sort key takes it as the 16-bit material id — more reliable than {@code System.identityHashCode}
-     * which can collide for different live instances.
-     *
-     * @return the per-instance stable material ID (non-negative, unique per instance)
-     */
     public int getMaterialId() {
-        return materialId;
-    }
-
-    /**
-     * Whether a pass of this material samples the scene's depth ({@code cg_DepthBuffer}), so a world renderer takes a
-     * depth snapshot only when something reads it. True for a material not parsed yet: a needless copy beats an
-     * unset texture.
-     */
-    public boolean readsSceneDepth() {
-        return cgMaterialShader == null || cgMaterialShader.readsSceneDepth();
-    }
-
-    /**
-     * Whether its shader is {@code "Lighting" = "Surface"}: lit by the direction of the world's lights at its normal,
-     * so the world's lights write their directional volume in a frame that draws it. False until it is parsed.
-     */
-    public boolean surfaceLit() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
-        return parsed != null && parsed.surfaceLit();
-    }
-
-    /**
-     * Whether its shader writes custom data or a shading model ({@code CG_CUSTOM_DATA_OUT}, {@code CG_SHADING_MODEL_OUT}):
-     * the world renderer draws its opaque draws again into the custom data, in a frame a post material reads it. False
-     * until it is parsed.
-     */
-    public boolean writesCustomData() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
-        return parsed != null && parsed.writesCustomData();
-    }
-
-    /** Whether its shader reads the scene textures it is handed ({@code CG_CUSTOM_STENCIL(}, {@code CG_CUSTOM_DATA(}, ...). */
-    public boolean handedScene() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.handedScene();
-    }
-
-    /**
-     * Whether its shader reads the world's lights it is handed ({@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}):
-     * the world renderer binds the light grid to its draws. Parses it if nothing has: its first draw's capture needs
-     * the grid bound. False for a shader that cannot be parsed.
-     */
-    public boolean handedLights() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.handedLights();
-    }
-
-    /**
-     * Whether its shader reads the sun's shadow it is handed ({@code CG_DIRECTIONAL_SHADOW}): the world renderer binds the
-     * sun's shadow map to its draws. Parses it if nothing has. False for a shader that cannot be parsed.
-     */
-    public boolean handedSun() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.handedSun();
-    }
-
-    /**
-     * The texture unit sampler property {@code name} is wired to: its index among its shader's samplers, what
-     * {@code sampler(name, unit, texture)} takes. -1 where it declares none of that name.
-     *
-     * <pre>{@code
-     * material.applyProperties(b -> b.sampler("_Map", material.samplerUnit("_Map"), map));
-     * }</pre>
-     */
-    public int samplerUnit(String name) {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null) return -1;
-        int unit = 0;
-        for (CgMaterialProperty p : parsed.properties()) {
-            if (!p.getType().isSampler()) continue;
-            if (p.getName().equals(name)) return unit;
-            unit++;
-        }
-        return -1;
+        return proxy.getMaterialId();
     }
 
     /**
@@ -1364,46 +393,8 @@ public final class CgMaterial {
      * </ul>
      */
     public boolean names(String identifier) {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null) return false;
-        Pattern word = Pattern.compile("\\b" + Pattern.quote(identifier) + "\\b");
-        for (CgParsedPass pass : parsed.passes()) {
-            if (word.matcher(pass.globalDecls()).find() || word.matcher(pass.vertexBody()).find()
-                    || word.matcher(pass.fragmentBody()).find()) {
-                return true;
-            }
-        }
-        return false;
+        return proxy.names(identifier);
     }
-
-    /** As {@link #readsSceneDepth()}, for the scene's colour ({@code cg_SceneColor}). */
-    public boolean readsSceneColor() {
-        return cgMaterialShader == null || cgMaterialShader.readsSceneColor();
-    }
-
-    /** Whether its shader may discard a fragment ({@code discard}, {@code cg_Clip}); true until parsed. */
-    public boolean discards() {
-        return cgMaterialShader == null || cgMaterialShader.discards();
-    }
-
-    /**
-     * Returns the material properties UBO, or {@code null} for sampler-only shaders.
-     * Engine-owned — do not delete.
-     */
-    public CgUniformBuffer materialBuffer() {
-        return matPropsUbo;
-    }
-
-    /**
-     * Returns the numeric render queue priority for this material (default: 2000 = Geometry): its shader's as of the
-     * last successful compile ({@link CgMaterialShader#getRenderQueue()}), moved by its state's blend
-     * ({@link CgMaterialState#queue}).
-     */
-    public int getRenderQueue() {
-        return state.queue(cgMaterialShader != null ? cgMaterialShader.getRenderQueue() : renderQueue);
-    }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     /**
      * Marks the backing shader asset dirty so it recompiles at its next use. Called by {@link CgMaterialRegistry#reloadAll()} during
@@ -1412,7 +403,7 @@ public final class CgMaterial {
      * <p>If the material has already been deleted or has no shader asset (forTest), this is a no-op.</p>
      */
     public void markDirty() {
-        if (!deleted && cgMaterialShader != null) cgMaterialShader.markDirty();
+        proxy.markDirty();
     }
 
     /**
@@ -1422,9 +413,7 @@ public final class CgMaterial {
      * asset.</p>
      */
     public void recompile() {
-        if (cgMaterialShader == null) return;
-        cgMaterialShader.recompile();
-        onShaderRecompiled();
+        proxy.recompile();
     }
 
     /**
@@ -1437,149 +426,11 @@ public final class CgMaterial {
      * <p>Idempotent — subsequent calls are no-ops.</p>
      */
     public void delete() {
-        if (!deleted) {
-            deleted = true;
-            if (blockVersion != null) blockVersion.supersede();
-            // Do NOT delete cgMaterialShader.getShader() — that is asset-owned, not instance-owned.
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
-            }
-        }
+        proxy.delete();
     }
 
-    // ── Private helpers ───────────────────────────────────────────────────────
-
-    /**
-     * Rebuilds per-instance state (propStore, matPropsUbo) after the shared shader asset
-     * has been successfully recompiled. Called from {@link #recompile()}.
-     *
-     * <p>No-op if the shader's parse result is null (compile failed — keep old state).</p>
-     */
-    private void onShaderRecompiled() {
-        CgParsedShader parsed = cgMaterialShader.getLastParsed();
-        if (parsed == null) return;
-        // Parse products are now published even when the GLSL compile failed, so a non-null parse no
-        // longer implies a live program. Keep the old state in that case: building propStore and a
-        // per-instance UBO for a material with no working shader allocates GL objects for something
-        // that cannot draw, and hides the failure behind half-initialised state.
-        if (cgMaterialShader.hasCompileFailed()) return;
-
-        syncPropsToParse();   // a parse is in hand, so this always leaves a propStore
-
-        if (propStore.hasUboProps()) {
-            CgBufferLayout newFormat = propStore.buildUboFormat();
-            if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingModel.MATERIAL_BLOCK,
-                        CgBufferLifetime.FRAME);
-            } else {
-                matPropsUbo.resetFormat(newFormat);
-            }
-
-            // Upload property defaults immediately after successful compile/link (T7 behaviour).
-            materialPropsDirty = true;
-            syncProps();
-        } else {
-            // Shader dropped all non-sampler properties on hot-reload — free the instance UBO.
-            if (matPropsUbo != null) {
-                matPropsUbo.delete();
-                matPropsUbo = null;
-            }
-        }
-
-        lastKnownRevision = cgMaterialShader.getRevisionNumber();
-    }
-
-    /**
-     * Builds {@link #propStore} from the shader's parse, or rebuilds it when the shader has parsed anew, keeping each
-     * value whose property kept its name and type. CPU only: what a capture and a property write need, before any
-     * compile.
-     */
-    private void syncPropsToParse() {
-        if (cgMaterialShader == null) return;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        if (parsed == null || parsed == propsParse) return;
-        propsParse = parsed;
-        List<CgMaterialProperty> clones = cloneProperties(parsed.properties());
-        if (propStore == null) {
-            propStore = new CgMaterialProperties(clones);
-        } else {
-            Map<String, CgMaterialProperty> oldValues = new HashMap<>();
-            for (CgMaterialProperty p : propStore.all()) oldValues.put(p.getName(), p);
-            for (CgMaterialProperty clone : clones) {
-                CgMaterialProperty old = oldValues.get(clone.getName());
-                if (old != null && old.getType() == clone.getType()) clone.copyValueFrom(old);
-            }
-            propStore.rebuild(clones);
-        }
-        capturePacker = null;
-        arenaFloats = -1;
-        materialPropsDirty = true;
-        capturePropsDirty = true;
-
-        if (pendingApplyConsumers != null && !pendingApplyConsumers.isEmpty()) {
-            for (Consumer<CgMaterialValues> pending : pendingApplyConsumers) pending.accept(propStore);
-            pendingApplyConsumers.clear();
-        }
-    }
-
-    /**
-     * Returns the declared feature names for this material.
-     * For real materials: from the last successful parse. For forTest: from {@code testFeatureNames}.
-     */
-    private List<String> getDeclaredFeatureNames() {
-        if (cgMaterialShader != null && cgMaterialShader.getLastParsed() != null) {
-            return cgMaterialShader.getLastParsed().featureNames();
-        }
-        if (testFeatureNames != null) {
-            return testFeatureNames;
-        }
-        return Collections.emptyList();
-    }
-
-    /**
-     * Returns a fresh list of per-instance property clones from a shared parsed property list.
-     * Each property is cloned via {@link CgMaterialProperty#copyWithDefaults()} so that each
-     * material instance has independent, mutable property objects.
-     */
-    private static List<CgMaterialProperty> cloneProperties(List<CgMaterialProperty> source) {
-        List<CgMaterialProperty> result = new ArrayList<>(source.size());
-        for (CgMaterialProperty p : source)
-            result.add(p.copyWithDefaults());
-        return result;
-    }
-
-    private void checkNotDeleted() {
-        if (deleted) throw new IllegalStateException("CgMaterial has been deleted");
-    }
-
-    // ── Multi-draw chain (decorative effects: outline, glow, stencil, etc.) ────
-
-    /**
-     * Chains another material to this one for multi-draw decorative effects.
-     *
-     * <p>Where a world pass draws this material, it draws first, then {@code next}
-     * draws immediately after with the same mesh. The chain is traversed in-order with
-     * deterministic, immediate execution — not via a sort queue.</p>
-     *
-     * <p>{@code next} must be a fully independent {@link CgMaterial} with its own shader,
-     * render state, and properties. Typical uses: outline (enlarged backface pass),
-     * additive glow, stencil fill. Cycles are detected eagerly and throw
-     * {@link IllegalStateException}.</p>
-     *
-     * @param next the material to draw immediately after this one, or {@code null} to clear
-     * @return {@code this} for chaining
-     */
     public CgMaterial setNextPass(CgMaterial next) {
-        CgMaterial cursor = next;
-        while (cursor != null) {
-            if (cursor == this) throw new IllegalStateException("Cyclic nextPass chain detected, nextPass was set as this");
-            cursor = cursor.nextPass;
-        }
-        this.nextPass = next;
+        proxy.setNextPass(next == null ? null : next.proxy);
         return this;
     }
-
-
-
 }

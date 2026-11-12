@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
@@ -209,7 +210,7 @@ public final class CgPostStack {
     /** Whether an active post material reads the scene textures it is handed ({@code handed_scene.glsl}). */
     private boolean readsScene() {
         for (CgPostEffect e : effects) {
-            if (e instanceof CgPostMaterial m && m.weight() > 0f && m.material().handedScene()) return true;
+            if (e instanceof CgPostMaterial m && m.weight() > 0f && CgMaterialProxy.of(m.material()).handedScene()) return true;
         }
         return false;
     }

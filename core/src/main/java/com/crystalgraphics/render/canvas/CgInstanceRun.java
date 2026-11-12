@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgSampler;
@@ -115,11 +116,11 @@ final class CgInstanceRun implements CgCanvas.Drawing {
 
     /** The material as it is now, under the item's render state, its textures laid over. */
     private void capture() {
-        pipeline = material.pipeline(kind);
+        pipeline = CgMaterialProxy.of(material).pipeline(kind);
         if (pipeline != null && state != null) pipeline = pipeline.withState(state);
         captured = canvas.recording() ? canvas.bindings() : own;
         capturedResets = captured.resets();
-        int snapshot = material.captureBindings(captured);
+        int snapshot = CgMaterialProxy.of(material).captureBindings(captured);
         for (int unit = 0; unit < textures.length; unit++) {
             if (textures[unit] != null) snapshot = captured.withTexture(snapshot, unit, textures[unit], samplers[unit]);
         }

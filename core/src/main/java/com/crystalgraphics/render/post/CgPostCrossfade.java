@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -83,11 +84,11 @@ final class CgPostCrossfade implements CgPostEffect {
             fade.applyProperties(b -> b.sampler("_Held", 0, h));
             bound = h;
         }
-        CgPipeline pipeline = fade.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(fade).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster("postCrossfade.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, fade.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(fade).captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, share);
         pass.add(chunks.end());
         pass.end();
@@ -102,12 +103,12 @@ final class CgPostCrossfade implements CgPostEffect {
             held = CgGraphTexture.requested("cg_post_held", new CgTextureDesc(w, h, RGBA8));
         }
         if (hold == null) hold = CgMaterial.newInstance(HOLD);
-        CgPipeline pipeline = hold.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(hold).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return false;
         CgRasterPass pass = recording.raster("postCrossfade.held").color(held, CgLoad.clear(0f, 0f, 0f, 1f)).constants(post.constants())
                 .readsColor(post.target());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, hold.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(hold).captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);
         pass.add(chunks.end());
         pass.end();

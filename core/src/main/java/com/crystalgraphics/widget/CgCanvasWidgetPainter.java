@@ -1,5 +1,6 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -295,7 +296,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
             return;
         }
         CgMaterial m = material(effect);
-        int unit = m.samplerUnit(textureParameter);
+        int unit = CgMaterialProxy.of(m).samplerUnit(textureParameter);
         if (unit < 0) throw new IllegalStateException(effect.id() + " has no sampler " + textureParameter);
         retainer.quad(canvas, m, unit, x, y, w, h, reduce).at(-pad, -pad).pose(pose).color(linear(r, g, b, a)).submit();
     }

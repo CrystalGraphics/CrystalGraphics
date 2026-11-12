@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.distortion;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -79,14 +80,14 @@ public final class CgPostDistortion {
             was[1] = offsets;
             boundCount[k] = count;
         }
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return source;
         camera.write(block, 0);
         constants.read(block, 0).resolution(desc.width(), desc.height());
         CgRasterPass pass = recording.raster("postDistortion.result").color(result, CgLoad.CLEAR).constants(constants)
                 .timed(GPU_BEND);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

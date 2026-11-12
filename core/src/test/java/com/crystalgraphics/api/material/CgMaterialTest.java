@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.material;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
@@ -62,7 +63,7 @@ public class CgMaterialTest {
         CgMaterial b = mat();
         a.setNextPass(b);
         a.setNextPass(null);
-        assertNull(a.getNextPass());
+        assertNull(CgMaterialProxy.of(a).getNextPass());
     }
 
     @Test
@@ -70,7 +71,7 @@ public class CgMaterialTest {
         CgMaterial a = mat();
         CgMaterial b = mat();
         a.setNextPass(b);
-        assertSame(b, a.getNextPass());
+        assertSame(b, CgMaterialProxy.of(a).getNextPass());
     }
 
     // ── getRenderQueue ────────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ public class CgMaterialTest {
     @Test
     public void getRenderQueue_returnsConstructedValue() {
         CgMaterial m = CgMaterial.forTest(CgRenderState.DEFAULT, 3000);
-        assertEquals(3000, m.getRenderQueue());
+        assertEquals(3000, CgMaterialProxy.of(m).getRenderQueue());
     }
 
     // ── T7: property defaults ─────────────────────────────────────────────────

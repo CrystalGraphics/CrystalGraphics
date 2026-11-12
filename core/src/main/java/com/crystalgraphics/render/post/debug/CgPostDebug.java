@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.debug;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -108,11 +109,11 @@ public final class CgPostDebug implements CgPostEffect {
             bound = source;
             boundCount = count;
         }
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = post.recording().raster("postDebug.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = post.recording().chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(post.recording().bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(post.recording().bindings()), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

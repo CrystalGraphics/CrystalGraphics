@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -90,17 +91,17 @@ final class CgCustomDataPass {
         CgChunkBuilder chunks = recording.chunks().begin();
         if (ownDepth) {
             if (depthIn == null) depthIn = CgMaterial.newInstance(CgWorldRenderer.DEPTH_IN_SHADER);
-            CgPipeline copy = depthIn.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline copy = CgMaterialProxy.of(depthIn).pipeline(CgInstanceKind.OBJECT);
             if (copy != null) {
                 pass.readsDepth(CgGraphTexture.current());
-                chunks.draw(copy, depthIn.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
+                chunks.draw(copy, CgMaterialProxy.of(depthIn).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
                 chunks.instance();
             }
         }
         for (int i = 0; i < draws.count; i++) {
-            if (draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD || !draws.materials[i].writesCustomData()) continue;
+            if (draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD || !CgMaterialProxy.of(draws.materials[i]).writesCustomData()) continue;
             if (world.classify(i, CgWorldRenderer.OPAQUE, view) == CgWorldDraws.SKIP) continue;
-            CgPipeline forward = draws.materials[i].pipeline(CgInstanceKind.OBJECT);
+            CgPipeline forward = CgMaterialProxy.of(draws.materials[i]).pipeline(CgInstanceKind.OBJECT);
             CgPipeline data = forward == null ? null : forward.as(CgPipelineForm.CUSTOM_DATA);
             if (data == null) continue;
             CgRenderState own = data.state();

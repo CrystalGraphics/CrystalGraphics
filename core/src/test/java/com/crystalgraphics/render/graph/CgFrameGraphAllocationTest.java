@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.material.CgMaterialTestSupport;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -55,8 +56,8 @@ public class CgFrameGraphAllocationTest {
         CgMaterialTestSupport.resetShaderRegistry();
         opaque = CgMaterial.fromSource(SOURCE);
         glow = CgMaterial.fromSource(GLOW);
-        opaqueQuads = opaque.pipeline(CgInstanceKind.QUAD);
-        glowQuads = glow.pipeline(CgInstanceKind.QUAD);
+        opaqueQuads = CgMaterialProxy.of(opaque).pipeline(CgInstanceKind.QUAD);
+        glowQuads = CgMaterialProxy.of(glow).pipeline(CgInstanceKind.QUAD);
         target = CgGraphTexture.requested("alloc-scene", DESC);
     }
 
@@ -65,7 +66,7 @@ public class CgFrameGraphAllocationTest {
         for (int c = 0; c < 8; c++) {
             boolean glows = (c & 1) == 1;
             CgChunkBuilder chunk = rec.chunks().begin();
-            chunk.draw(glows ? glowQuads : opaqueQuads, (glows ? glow : opaque).captureBindings(rec.bindings()))
+            chunk.draw(glows ? glowQuads : opaqueQuads, CgMaterialProxy.of((glows ? glow : opaque)).captureBindings(rec.bindings()))
                     .sortKey(c);
             for (int i = 0; i < 32; i++) {
                 int at = chunk.instance();

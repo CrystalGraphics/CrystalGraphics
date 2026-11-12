@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -74,7 +75,7 @@ final class CgCustomDepthPass {
         for (int i = 0; i < draws.count; i++) {
             int queue = draws.queues[i];
             boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
-            boolean in = draws.customDepths[i] >= 0 && (!transparent || draws.materials[i].writesDepth())
+            boolean in = draws.customDepths[i] >= 0 && (!transparent || CgMaterialProxy.of(draws.materials[i]).writesDepth())
                     && world.classify(i, transparent ? CgWorldRenderer.TRANSPARENT : CgWorldRenderer.OPAQUE, view) != CgWorldDraws.SKIP;
             inCustomDepth[i] = in;
             if (!in) continue;

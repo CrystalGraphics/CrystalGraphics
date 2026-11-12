@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -170,7 +171,7 @@ public final class CgPostMaterial implements CgPostEffect {
     private boolean precacheAll() {
         boolean ready = true;
         if (pipelines.length == 0) {
-            CgPipeline p = material.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline p = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             return p == null || p.precache();
         }
         for (CgPipeline p : pipelines) ready &= p.precache();
@@ -181,7 +182,7 @@ public final class CgPostMaterial implements CgPostEffect {
     public void record(CgPostContext post) {
         if (!resolve()) return;
         // One pass: the first Forward pass, under the material's state. Several: the last, which draws over the scene.
-        CgPipeline pipeline = over != null ? over : material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = over != null ? over : CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRecording recording = post.recording();
         if (emissionInput != null) {
@@ -189,7 +190,7 @@ public final class CgPostMaterial implements CgPostEffect {
             if (scene == null) return;
             bind(emissionInput, scene);
         }
-        if (material.handedScene()) {
+        if (CgMaterialProxy.of(material).handedScene()) {
             // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.
             CgGraphTexture custom = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
             CgGraphTexture normals = post.resources().get(CgFrameKeys.WORLD_NORMALS);
@@ -227,7 +228,7 @@ public final class CgPostMaterial implements CgPostEffect {
      */
     public void recordOver(CgPostContext post, CgGraphTexture over) {
         if (!resolve() || textures.length > 0) return;
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline != null) draw(post.recording(), over, CgLoad.load(), post, pipeline, over);
     }
 
@@ -238,17 +239,17 @@ public final class CgPostMaterial implements CgPostEffect {
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         CgPipeline drawn = depthless(pipeline);
-        if (material.readsSceneColor() && into == colourOf) {
+        if (CgMaterialProxy.of(material).readsSceneColor() && into == colourOf) {
             pass.readsColor(into);
             // Its one full-screen triangle writes every pixel: read the scene where it stands, not a copy of it
             CgBlendState blend = drawn.state().getBlend();
-            if ((blend == null || !blend.enabled()) && !material.discards()) pass.replaces();
-        } else if (material.readsSceneColor()) {
+            if ((blend == null || !blend.enabled()) && !CgMaterialProxy.of(material).discards()) pass.replaces();
+        } else if (CgMaterialProxy.of(material).readsSceneColor()) {
             pass.readsColor(colourOf);
         }
-        if (material.readsSceneDepth()) pass.readsDepth(post.depth());
+        if (CgMaterialProxy.of(material).readsSceneDepth()) pass.readsDepth(post.depth());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(drawn, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(drawn, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);
         pass.add(chunks.end());
         pass.end();
@@ -276,30 +277,30 @@ public final class CgPostMaterial implements CgPostEffect {
     private void bind(String name, CgTexture texture) {
         // Its own unit: a second input on unit 0 would take the first's.
         bindName = name;
-        bindUnit = material.samplerUnit(name);
+        bindUnit = CgMaterialProxy.of(material).samplerUnit(name);
         bindTexture = texture;
         material.applyProperties(bind);
     }
 
     /** Each pass's pipeline, resolved again when the shader parses again; false while one is not ready. */
     private boolean resolve() {
-        List<CgParsedShader.PostTarget> targets = material.postTargets();
+        List<CgParsedShader.PostTarget> targets = CgMaterialProxy.of(material).postTargets();
         if (targets != resolved) {
             CgPipeline[] made = new CgPipeline[targets.size()];
             for (int t = 0; t < made.length; t++) {
-                made[t] = material.pipeline(targets.get(t).pass(), CgInstanceKind.OBJECT);
+                made[t] = CgMaterialProxy.of(material).pipeline(targets.get(t).pass(), CgInstanceKind.OBJECT);
                 if (made[t] == null) return false;
             }
             CgPipeline last = null;
             if (made.length > 0) {
-                String name = material.lastForwardPass();
-                last = name == null ? null : material.pipeline(name, CgInstanceKind.OBJECT);
+                String name = CgMaterialProxy.of(material).lastForwardPass();
+                last = name == null ? null : CgMaterialProxy.of(material).pipeline(name, CgInstanceKind.OBJECT);
                 if (last == null) return false;
             }
             over = last;
             pipelines = made;
             textures = new CgGraphTexture[made.length];
-            emissionInput = material.emissionInput();
+            emissionInput = CgMaterialProxy.of(material).emissionInput();
             resolved = targets;
         }
         return true;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -456,7 +457,7 @@ public final class CgPreviewRenderer {
         }
         if (next.compiles.failed()) throw new IllegalStateException(next.compiles.failure());
         if (!next.compiles.done()) {
-            CgPipeline pipeline = next.material.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(next.material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) {
                 String error = next.material.lastCompileError();
                 throw new IllegalStateException(error != null ? error : "the preview shader does not parse");

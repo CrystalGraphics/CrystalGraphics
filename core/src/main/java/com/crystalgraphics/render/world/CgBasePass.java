@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -62,10 +63,10 @@ final class CgBasePass {
             if (depthOnlyPass ? draws.phase[i] != CgWorldDraws.FORWARD_AND_PREPASS && !world.prepassed(i)
                     : draws.phase[i] == CgWorldDraws.APART || (draws.phase[i] == CgWorldDraws.AFTER) != after) continue;
             boolean glows = sceneGlows && draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
-            for (CgMaterial link = draws.materials[i]; link != null; link = depthOnlyPass ? null : link.getNextPass()) {
-                CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(link) : link.pipeline(CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = depthOnlyPass ? null : CgMaterialProxy.of(link).getNextPass()) {
+                CgPipeline pipeline = depthOnlyPass ? commands.depthPipeline(link) : CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
                 boolean intoLayer = layered && layers.viaOutput[i];
-                if (glows && link.hasEmissivePass()) {
+                if (glows && CgMaterialProxy.of(link).hasEmissivePass()) {
                     CgPipeline folded = pipeline != null && world.mergeEmission ? pipeline.as(CgPipelineForm.FOLD) : null;
                     if (folded != null) {
                         commands.passDraw(chunks, intoLayer ? folded.as(CgPipelineForm.LAYER) : folded, link, recording, i);
@@ -73,7 +74,7 @@ final class CgBasePass {
                     }
                     // Its glow follows its colour: SORTED is stable, so a draw of the same key after it covers both.
                     if (pipeline != null && !pipeline.state().writesNothing()) commands.passDraw(chunks, pipeline, link, recording, i);
-                    CgPipeline glow = link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
+                    CgPipeline glow = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);
                     if (glow != null) commands.passDraw(chunks, glow, link, recording, i);
                     continue;
                 }

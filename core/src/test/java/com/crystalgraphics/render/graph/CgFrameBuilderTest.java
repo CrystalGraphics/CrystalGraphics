@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.material.CgMaterialTestSupport;
@@ -50,13 +51,13 @@ public class CgFrameBuilderTest {
     public void setUp() {
         CgMaterialTestSupport.resetShaderRegistry();
         material = CgMaterial.fromSource(SOURCE);
-        quads = material.pipeline(CgInstanceKind.QUAD);
+        quads = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
     }
 
     /** A chunk of quads, each one record whose first float is {@code tag}, laid left to right. */
     private CgDrawChunk quads(CgRecording rec, float tag, int count, float x) {
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(quads, material.captureBindings(rec.bindings()));
+        c.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings()));
         for (int i = 0; i < count; i++) {
             int at = c.instance();
             c.data()[at] = tag;
@@ -97,7 +98,7 @@ public class CgFrameBuilderTest {
     private CgDrawChunk keyed(CgRecording rec, CgMaterial of, CgPipeline pipeline, long key,
                               float x0, float y0, float x1, float y1) {
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(pipeline, of.captureBindings(rec.bindings())).sortKey(key);
+        c.draw(pipeline, CgMaterialProxy.of(of).captureBindings(rec.bindings())).sortKey(key);
         c.instance();
         c.bounds(x0, y0, x1, y1);
         return c.end();
@@ -110,7 +111,7 @@ public class CgFrameBuilderTest {
     @Test
     public void aCopyIsCutToWhatItsReadersSample() {
         CgMaterial haze = CgMaterial.fromSource(READER);
-        CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
+        CgPipeline reads = CgMaterialProxy.of(haze).pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
         CgGraphTexture t = CgGraphTexture.requested("t", DESC);
         CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t);
@@ -147,7 +148,7 @@ public class CgFrameBuilderTest {
     @Test
     public void aReaderGetsACopyOfWhatDrewBeforeIt() {
         CgMaterial haze = CgMaterial.fromSource(READER);
-        CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
+        CgPipeline reads = CgMaterialProxy.of(haze).pipeline(CgInstanceKind.QUAD);
         assertTrue(reads.shader().readsSceneColor());
         assertFalse(quads.shader().readsSceneColor());
 
@@ -208,7 +209,7 @@ public class CgFrameBuilderTest {
     @Test
     public void aReadersDepthWriteIsCopiedForTheNextReader() {
         CgMaterial apply = CgMaterial.fromSource(DEPTH_WRITING_READER), seal = CgMaterial.fromSource(DEPTH_READER);
-        CgPipeline writes = apply.pipeline(CgInstanceKind.QUAD), reads = seal.pipeline(CgInstanceKind.QUAD);
+        CgPipeline writes = CgMaterialProxy.of(apply).pipeline(CgInstanceKind.QUAD), reads = CgMaterialProxy.of(seal).pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
         CgGraphTexture t = CgGraphTexture.requested("t", DESC);
         CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsDepth(t);
@@ -403,7 +404,7 @@ public class CgFrameBuilderTest {
         CgRecording rec = new CgRecording();
         CgRasterPass pass = raster(rec, CgGraphTexture.requested("surface", DESC));
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(quads, material.captureBindings(rec.bindings()));
+        c.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings()));
         for (int i = 0; i < 3; i++) {
             int at = c.instance();
             c.data()[at] = 7;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgBlendMode;
@@ -100,7 +101,7 @@ public final class CgTextMaterials {
         return PAINTS.computeIfAbsent(new PaintKey(definition, msdf), k -> {
             CgMaterial m = CgMaterial.newInstance(definition, null);
             m.toggleKeyword("MSDF_MODE", msdf);
-            m.overrideBlock(TEXT_DATA_UBO, block(CgTextGamma.initial(), 0f));
+            CgMaterialProxy.of(m).overrideBlock(TEXT_DATA_UBO, block(CgTextGamma.initial(), 0f));
             return m;
         });
     }
@@ -110,7 +111,7 @@ public final class CgTextMaterials {
      * as the built-in instances are. Null when its pipeline is not built yet.
      */
     static synchronized CgRenderState paintState(CgMaterial material, boolean screen, boolean additive) {
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.QUAD);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
         if (pipeline == null) return null;
         return PAINT_STATES.computeIfAbsent(new StateKey(pipeline.state(), screen, additive), k -> {
             CgRenderState s = k.state().withBlend((additive ? CgBlendMode.ADDITIVE : CgBlendMode.PREMULTIPLIED).state());
@@ -131,7 +132,7 @@ public final class CgTextMaterials {
             m = state != null ? CgMaterial.newInstance(TEXT_SHADER, state) : CgMaterial.newInstance(TEXT_SHADER);
             m.toggleKeyword("MSDF_MODE", key.msdf());
             m.toggleKeyword("WORLD_LABEL", key.label());
-            m.overrideBlock(TEXT_DATA_UBO, key.linear() ? linearBlock() : block(key.gamma(), key.depthPass() ? DEPTH_PASS_CUT : 0f));
+            CgMaterialProxy.of(m).overrideBlock(TEXT_DATA_UBO, key.linear() ? linearBlock() : block(key.gamma(), key.depthPass() ? DEPTH_PASS_CUT : 0f));
             m.applyProperties(v -> v.sampler("_Gradients", 1, CgTextGradients.texture()));
             MATERIALS.put(key, m);
         }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -20,10 +21,10 @@ final class CgPreviewDraw {
     /** An identity object record per pass of {@code material}'s chain; custom slots zero. */
     static void object(CgRecording recording, CgRasterPass pass, CgMaterial material, CgMesh mesh) {
         CgChunkBuilder chunks = recording.chunks().begin();
-        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            CgPipeline pipeline = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
-            chunks.draw(pipeline, link.captureBindings(recording.bindings()), mesh);
+            chunks.draw(pipeline, CgMaterialProxy.of(link).captureBindings(recording.bindings()), mesh);
             int at = chunks.instance();
             float[] data = chunks.data();
             IDENTITY.get(data, at);

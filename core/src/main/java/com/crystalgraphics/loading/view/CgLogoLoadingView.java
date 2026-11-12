@@ -1,5 +1,6 @@
 package com.crystalgraphics.loading.view;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.List;
 
 import javax.annotation.Nullable;
@@ -212,7 +213,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     @Override
     public void warm(int width, int height) {
         loadLockup();
-        ready = CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache() && lockupLoad.isDone();
+        ready = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.QUAD).precache() && lockupLoad.isDone();
         if (SHOW_TASKS.get()) lookUpFace();
     }
 
@@ -221,7 +222,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     public boolean ready() {
         if (ready) return true;
         loadLockup();
-        boolean fx = CgMaterial.load(FX).pipeline(CgInstanceKind.QUAD).precache();
+        boolean fx = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.QUAD).precache();
         return ready = fx && lockupLoad.isDone();
     }
 

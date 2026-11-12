@@ -185,13 +185,14 @@ draw(current.pipeline(kind));   // the old picture until the new one is ready
 
 ### Recording — `pipeline(kind)` and `captureBindings(table)`
 
-What a recorder asks of a material (`render-graph` G0; `render/draw/CLAUDE.md`). **Neither touches the device**,
-so a recorder may run on any thread:
+What the engine's recorders ask of a material, through its internal proxy (`material.CgMaterialProxy`, Unreal's
+`FMaterialRenderProxy`; a consumer draws through `world.draw` or `pass.draw` and never asks). **Neither touches the
+device**, so a recorder may run on any thread:
 
 ```java
-CgPipeline p = material.pipeline(CgInstanceKind.QUAD);   // Forward pass, keywords enabled now; a CPU key
-int b = material.captureBindings(table);                  // block bytes now; textures/buffers as handles
-CgPipeline glow = material.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);   // ask hasEmissivePass() first
+CgPipeline p = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);   // Forward pass, keywords enabled now; a CPU key
+int b = CgMaterialProxy.of(material).captureBindings(table);                  // block bytes now; textures/buffers as handles
+CgPipeline glow = CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);   // ask hasEmissivePass() first
 ```
 
 - Forward and Emissive pipelines take the enabled keywords and are cached per kind and keyword set, so asking every

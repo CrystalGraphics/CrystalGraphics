@@ -792,54 +792,25 @@ com/crystalgraphics/api/material/CgMaterial
   field public,static,final MATERIAL_PROPERTIES_BLOCK Ljava/lang/String;
   method public applyProperties (Ljava/util/function/Consumer;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public captureBindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
   method public changes ()I
   method public declaredKeywords ()Ljava/util/List;
   method public declaresBuffer (Ljava/lang/String;)Z
   method public delete ()V
   method public disableAllKeywords ()V
   method public disableKeyword (Ljava/lang/String;)V
-  method public discards ()Z
-  method public emissionInput ()Ljava/lang/String;
   method public enableKeyword (Ljava/lang/String;)V
   method public getMaterialId ()I
-  method public getNextPass ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public getPassRenderState (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)Lcom/crystalgraphics/api/state/CgRenderState;
-  method public getRenderQueue ()I
-  method public handedLights ()Z
-  method public handedScene ()Z
-  method public handedSun ()Z
-  method public hasCompiledDepthPass ()Z
-  method public hasDepthPass ()Z
-  method public hasDepthPrepass ()Z
-  method public hasDistortionPass ()Z
-  method public hasEmissivePass ()Z
   method public isKeywordEnabled (Ljava/lang/String;)Z
   method public lastCompileError ()Ljava/lang/String;
-  method public lastForwardPass ()Ljava/lang/String;
   method public markDirty ()V
-  method public materialBuffer ()Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
   method public names (Ljava/lang/String;)Z
-  method public overrideBlock (Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;Lcom/crystalgraphics/gpu/staging/CgBufferWriter;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
-  method public pipeline (Lcom/crystalgraphics/api/material/CgRenderPassVariant;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
-  method public pipeline (Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
-  method public pipeline (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
-  method public postTargets ()Ljava/util/List;
   method public precache ()Z
   method public properties ()Ljava/util/List;
-  method public readsExposure ()Z
-  method public readsSceneColor ()Z
-  method public readsSceneDepth ()Z
   method public recompile ()V
-  method public samplerUnit (Ljava/lang/String;)I
   method public setNextPass (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public solid ()Z
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
-  method public surfaceLit ()Z
   method public toggleKeyword (Ljava/lang/String;Z)V
-  method public writesCustomData ()Z
-  method public writesDepth ()Z
   method public,static fromShader (Lcom/crystalgraphics/material/CgMaterialShader;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static fromSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static fromSource (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialState;)Lcom/crystalgraphics/api/material/CgMaterial;
@@ -6742,6 +6713,71 @@ com/crystalgraphics/material/CgMaterialProperty$Type
   method public,static fromPropertyType (Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty$Type;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty$Type;
   method public,static values ()[Lcom/crystalgraphics/material/CgMaterialProperty$Type;
+com/crystalgraphics/material/CgMaterialProxy
+  access public,final
+  extends java/lang/Object
+  field public,static,final MATERIAL_PROPERTIES_BLOCK Ljava/lang/String;
+  method public <init> ()V
+  method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;)V
+  method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;Lcom/crystalgraphics/api/material/CgMaterialState;)V
+  method public applyProperties (Ljava/util/function/Consumer;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public captureBindings (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
+  method public changes ()I
+  method public declaredKeywords ()Ljava/util/List;
+  method public declaresBuffer (Ljava/lang/String;)Z
+  method public delete ()V
+  method public disableAllKeywords ()V
+  method public disableKeyword (Ljava/lang/String;)V
+  method public discards ()Z
+  method public emissionInput ()Ljava/lang/String;
+  method public enableKeyword (Ljava/lang/String;)V
+  method public getMaterialId ()I
+  method public getNextPass ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public getPassRenderState (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)Lcom/crystalgraphics/api/state/CgRenderState;
+  method public getPropertyForTest (Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty;
+  method public getRenderQueue ()I
+  method public handedLights ()Z
+  method public handedScene ()Z
+  method public handedSun ()Z
+  method public hasCompiledDepthPass ()Z
+  method public hasDepthPass ()Z
+  method public hasDepthPrepass ()Z
+  method public hasDistortionPass ()Z
+  method public hasEmissivePass ()Z
+  method public isKeywordEnabled (Ljava/lang/String;)Z
+  method public lastCompileError ()Ljava/lang/String;
+  method public lastForwardPass ()Ljava/lang/String;
+  method public markDirty ()V
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public materialBuffer ()Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;
+  method public names (Ljava/lang/String;)Z
+  method public overrideBlock (Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;Lcom/crystalgraphics/gpu/staging/CgBufferWriter;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public owner (Lcom/crystalgraphics/api/material/CgMaterial;)V
+  method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
+  method public pipeline (Lcom/crystalgraphics/api/material/CgRenderPassVariant;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
+  method public pipeline (Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
+  method public pipeline (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgInstanceKind;)Lcom/crystalgraphics/render/draw/CgPipeline;
+  method public postTargets ()Ljava/util/List;
+  method public precache ()Z
+  method public properties ()Ljava/util/List;
+  method public readsExposure ()Z
+  method public readsSceneColor ()Z
+  method public readsSceneDepth ()Z
+  method public recompile ()V
+  method public samplerUnit (Ljava/lang/String;)I
+  method public setNextPass (Lcom/crystalgraphics/material/CgMaterialProxy;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public solid ()Z
+  method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
+  method public surfaceLit ()Z
+  method public toggleKeyword (Ljava/lang/String;Z)V
+  method public writesCustomData ()Z
+  method public writesDepth ()Z
+  method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;I)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;ILcom/crystalgraphics/material/CgMaterialProperties;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public,static forTest (Lcom/crystalgraphics/api/state/CgRenderState;ILjava/util/List;)Lcom/crystalgraphics/material/CgMaterialProxy;
+  method public,static install (Ljava/util/function/Function;)V
+  method public,static of (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/material/CgMaterialProxy;
 com/crystalgraphics/material/CgMaterialShader
   access public,final
   extends java/lang/Object

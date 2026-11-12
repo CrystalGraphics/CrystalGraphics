@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.function.Consumer;
 
 import com.crystalgraphics.api.material.CgMaterial;
@@ -41,7 +42,7 @@ final class CgTranslucencyComposition {
         CgSeparateTranslucency apart = post.resources().get(CgSeparateTranslucency.KEY);
         if (apart == null) return;
         if (material == null) material = CgMaterial.newInstance(SHADER);
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         if (apart.target() != null) over(post, pipeline, post.target(), apart.target());
         CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
@@ -57,7 +58,7 @@ final class CgTranslucencyComposition {
         material.applyProperties(bind);
         CgRasterPass pass = recording.raster("translucencyComposition.into").color(into, CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);
         pass.add(chunks.end());
         pass.end();

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.composite;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -337,12 +338,12 @@ public final class CgPostComposite {
             material.applyProperties(properties);
             set[f].copyFrom(inputs);
         }
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster("post.composite").color(target, CgLoad.load()).constants(constants).timed(GPU);
         if (form == CgCompositeForm.COPY && !fromScene) pass.readsColor(target);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

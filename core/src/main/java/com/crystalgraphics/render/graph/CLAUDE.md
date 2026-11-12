@@ -128,7 +128,7 @@ CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, Cg
 
 CgRasterPass down = rec.raster("bloom.down").color(bloom, 3, 0, CgLoad.load()).constants(constants)
         .order(CgOrder.LOOKBACK);   // into level 3
-int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, bloom.level(2));
+int reads = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, bloom.level(2));
 ```
 
 - A pass into level k has the level's viewport, and no depth above level 0; its constants' resolution is the caller's.
@@ -192,7 +192,7 @@ pass attaches the host's colour and depth as imported textures, so the host's ow
 recording.raster("world.normalsClear").color(normals, CgLoad.CLEAR).constants(constants).end();
 CgRasterPass pass = recording.raster("world.opaque").color(CgGraphTexture.current(), CgLoad.load())
         .color(normals, CgLoad.load()).constants(constants).state(state);
-chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);    // writes both slots
+chunks.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);    // writes both slots
 ```
 
 - `texture` is the target's size (GL would draw into the intersection, quietly): the executor throws otherwise.

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -75,7 +76,7 @@ public class CgStageExecuteAllocationTest {
     public void aFiringExecutesWithoutAllocating() {
         assumeTrue(CgThreadAllocation.available());
         CgMaterial material = CgMaterial.fromSource(SOURCE);
-        CgPipeline quads = material.pipeline(CgInstanceKind.QUAD);
+        CgPipeline quads = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
         CgRenderStage stage = CgRenderStage.define("test:execute_allocation");
         stage.host().set(0f, 64, 64, 0);
         CgStageFrame frame = new CgStageFrame(stage);
@@ -85,7 +86,7 @@ public class CgStageExecuteAllocationTest {
             CgRasterPass pass = frame.pass(frame.defaults(constants), CgOrder.SORTED);
             for (int c = 0; c < 4; c++) {
                 CgChunkBuilder chunk = frame.recording().chunks().begin();
-                chunk.draw(quads, material.captureBindings(frame.recording().bindings())).sortKey(c);
+                chunk.draw(quads, CgMaterialProxy.of(material).captureBindings(frame.recording().bindings())).sortKey(c);
                 for (int i = 0; i < 16; i++) {
                     int at = chunk.instance();
                     chunk.data()[at] = i;

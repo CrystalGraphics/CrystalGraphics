@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -206,7 +207,7 @@ public final class CgPipelineList {
     /** Its program committed, then its Forward pipeline built: a pass's program follows no setting. */
     private boolean passBuilt(CgMaterial material) {
         if (!material.precache()) return false;
-        CgPipeline p = material.pipeline(passes.get(material));
+        CgPipeline p = CgMaterialProxy.of(material).pipeline(passes.get(material));
         return p == null || p.precache();
     }
 
@@ -390,12 +391,12 @@ public final class CgPipelineList {
         int named = 0;
         for (CgMaterial m : passesUnbuilt) {
             if (named++ == LOGGED_NAMES) break;
-            line.append(named == 1 ? "; passes " : ", ").append(m.pipeline(passes.get(m)));
+            line.append(named == 1 ? "; passes " : ", ").append(CgMaterialProxy.of(m).pipeline(passes.get(m)));
         }
         named = 0;
         for (CgMaterial m : pending.keySet()) {
             if (named++ == LOGGED_NAMES) break;
-            line.append(named == 1 ? "; materials " : ", ").append(m.pipeline(CgInstanceKind.OBJECT));
+            line.append(named == 1 ? "; materials " : ", ").append(CgMaterialProxy.of(m).pipeline(CgInstanceKind.OBJECT));
         }
         CgPipelinePrecache.LOGGER.info(line.toString());
     }

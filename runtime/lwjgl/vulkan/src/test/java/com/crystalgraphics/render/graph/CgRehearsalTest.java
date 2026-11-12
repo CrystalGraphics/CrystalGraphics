@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -60,7 +61,7 @@ public class CgRehearsalTest {
     @Test
     public void aRehearsalExecutesWhatItRecords() {
         CgMaterial material = CgMaterial.fromSource(SOURCE);
-        CgPipeline quads = material.pipeline(CgInstanceKind.QUAD);
+        CgPipeline quads = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
         CgGraphTexture target = CgGraphTexture.current();   // the device's 64x64 target, as a stage's host
         CgPassConstants constants = new CgPassConstants().resolution(64, 64);
         CgRehearsal.Act cast = rehearsal -> {
@@ -68,7 +69,7 @@ public class CgRehearsalTest {
             CgRasterPass pass = rec.raster("rehearsalTest.target").color(target, CgLoad.load()).constants(constants);
             for (int c = 0; c < 6; c++) {
                 CgChunkBuilder chunk = rec.chunks().begin();
-                chunk.draw(quads, material.captureBindings(rec.bindings())).sortKey(c);
+                chunk.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings())).sortKey(c);
                 for (int i = 0; i < 24; i++) {
                     int at = chunk.instance();
                     chunk.data()[at] = i;

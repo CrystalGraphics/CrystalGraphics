@@ -1374,7 +1374,7 @@ CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(
 pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);
 step.dispatch(move, n).texture("_Wind", wind);
 recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 new slices from z 32: 128 * 96 * 16 bytes
-int reads = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, voxels);   // a material's sampler3D
+int reads = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, voxels);   // a material's sampler3D
 ```
 
 - One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws. A volume of your
@@ -1451,7 +1451,7 @@ CgGraphTexture heat = CgGraphTexture.transientTexture("heat", CgTextureDesc.of(2
 CgComputePass shade = rec.compute("heat");
 shade.dispatch(heatKernel, 256, 256, 1).image("HEAT", heat);
 shade.end();
-int bindings = rec.bindings().withTexture(material.captureBindings(rec.bindings()), 0, heat);
+int bindings = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, heat);
 ```
 
 - `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the

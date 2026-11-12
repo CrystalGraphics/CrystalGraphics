@@ -17,8 +17,8 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 
 ```java
 // recording, any thread:
-CgPipeline p = material.pipeline(CgInstanceKind.QUAD);
-int bindings = material.captureBindings(table);
+CgPipeline p = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
+int bindings = CgMaterialProxy.of(material).captureBindings(table);
 int pass = constants.capture(table);
 
 // execution, render thread:

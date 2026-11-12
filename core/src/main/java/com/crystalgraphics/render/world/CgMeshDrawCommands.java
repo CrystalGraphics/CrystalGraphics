@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -282,11 +283,11 @@ final class CgMeshDrawCommands {
 
     /** A material's depth pass, its depth prepass, or its forward pass writing depth alone. */
     CgPipeline depthPipeline(CgMaterial material) {
-        if (material.hasDepthPass()) return material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
-        CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
+        if (CgMaterialProxy.of(material).hasDepthPass()) return CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
+        CgPipeline forward = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (forward == null) return null;
-        if (material.hasDepthPrepass()) return forward.as(CgPipelineForm.DEPTH);
-        CgRenderState own = material.getPassRenderState(CgRenderPassVariant.FORWARD);
+        if (CgMaterialProxy.of(material).hasDepthPrepass()) return forward.as(CgPipelineForm.DEPTH);
+        CgRenderState own = CgMaterialProxy.of(material).getPassRenderState(CgRenderPassVariant.FORWARD);
         CgRenderState colourless = depthOnly.get(own);
         if (colourless == null) depthOnly.put(own, colourless = own.withColorMask(CgColorMask.NONE));
         return forward.withState(colourless);
@@ -295,7 +296,7 @@ final class CgMeshDrawCommands {
     /** A material's snapshot in this recording, taken once per stage. */
     int bindingOf(CgMaterial material, CgRecording recording) {
         Integer id = bindings.get(material);
-        if (id == null) bindings.put(material, id = material.captureBindings(recording.bindings()));
+        if (id == null) bindings.put(material, id = CgMaterialProxy.of(material).captureBindings(recording.bindings()));
         return id;
     }
 }

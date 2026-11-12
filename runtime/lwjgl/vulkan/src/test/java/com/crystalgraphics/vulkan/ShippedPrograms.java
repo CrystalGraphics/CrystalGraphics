@@ -1,5 +1,6 @@
 package com.crystalgraphics.vulkan;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.material.CgMaterialShader;
@@ -84,7 +85,7 @@ public final class ShippedPrograms {
                 }
             }
             CgMaterial material = CgMaterial.newInstance(path);
-            if (parsed.renderQueue() < 3000 && forward != null && !material.hasDepthPass()
+            if (parsed.renderQueue() < 3000 && forward != null && !CgMaterialProxy.of(material).hasDepthPass()
                     && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
                 failures.add(path + ": the generated depth pass did not link (see log)");
             material.delete();

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -205,9 +206,9 @@ final class CgWorldDistortion {
     void addApplies(CgChunkBuilder chunks, CgRecording recording) {
         for (int a = 0; a < applies; a++) {
             CgMaterial material = apply(applySlot[a]);
-            CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
-            chunks.draw(pipeline, material.captureBindings(recording.bindings()), QUAD).sortKey(applyKey[a]);
+            chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), QUAD).sortKey(applyKey[a]);
             chunks.bounds(applyRect[a * 4], applyRect[a * 4 + 1], applyRect[a * 4 + 2], applyRect[a * 4 + 3]);
             applyInstance(chunks, applyRect, a * 4);
         }
@@ -222,13 +223,13 @@ final class CgWorldDistortion {
             recordBend(stage, recording, draws, FINAL, field.count());
             field.set(offsets, field.count() + 1);
             CgMaterial material = apply(FINAL);
-            CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+            CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline != null) {
                 CgRasterPass pass = recording.raster("worldDistortion.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
                         .readsColor(stage.target()).readsDepth(stage.depth())
                         .timed(GPU_APPLY);
                 CgChunkBuilder chunks = recording.chunks().begin();
-                chunks.draw(pipeline, material.captureBindings(recording.bindings()), QUAD);
+                chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), QUAD);
                 chunks.bounds(finalRect[0], finalRect[1], finalRect[2], finalRect[3]);
                 applyInstance(chunks, finalRect, 0);
                 pass.add(chunks.end());
@@ -330,7 +331,7 @@ final class CgWorldDistortion {
     /** Starts the apply's program, which every slot shares; whether it is built. */
     boolean precache() {
         if (applyMaterials[SLOTS] == null) applyMaterials[SLOTS] = CgMaterial.newInstance(APPLY_SHADER);
-        CgPipeline pipeline = applyMaterials[SLOTS].pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(applyMaterials[SLOTS]).pipeline(CgInstanceKind.OBJECT);
         return pipeline == null || pipeline.precache();
     }
 

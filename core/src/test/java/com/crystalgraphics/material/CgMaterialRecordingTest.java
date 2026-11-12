@@ -51,16 +51,16 @@ public class CgMaterialRecordingTest {
         CgMaterial a = CgMaterial.fromSource(SOURCE);
         CgMaterial b = CgMaterial.fromSource(SOURCE);
 
-        CgPipeline quad = a.pipeline(CgInstanceKind.QUAD);
-        assertSame("one asset, one state, one kind: one pipeline", quad, b.pipeline(CgInstanceKind.QUAD));
+        CgPipeline quad = CgMaterialProxy.of(a).pipeline(CgInstanceKind.QUAD);
+        assertSame("one asset, one state, one kind: one pipeline", quad, CgMaterialProxy.of(b).pipeline(CgInstanceKind.QUAD));
         assertSame(quad, CgPipeline.byId(quad.id()));
-        assertNotSame(quad, a.pipeline(CgInstanceKind.CURVE));
+        assertNotSame(quad, CgMaterialProxy.of(a).pipeline(CgInstanceKind.CURVE));
 
         a.enableKeyword("WITH_MASK");
-        CgPipeline masked = a.pipeline(CgInstanceKind.QUAD);
+        CgPipeline masked = CgMaterialProxy.of(a).pipeline(CgInstanceKind.QUAD);
         assertNotSame(quad, masked);
         a.disableKeyword("WITH_MASK");
-        assertSame(quad, a.pipeline(CgInstanceKind.QUAD));
+        assertSame(quad, CgMaterialProxy.of(a).pipeline(CgInstanceKind.QUAD));
 
         assertEquals("nothing compiled", 0, quad.shader().getRevisionNumber());
     }
@@ -68,7 +68,7 @@ public class CgMaterialRecordingTest {
     @Test
     public void pipelinesInternAcrossThreads() throws Exception {
         CgMaterial material = CgMaterial.fromSource(SOURCE);
-        CgPipeline expected = material.pipeline(CgInstanceKind.QUAD);
+        CgPipeline expected = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             List<Future<CgPipeline>> answers = new ArrayList<>();
@@ -90,18 +90,18 @@ public class CgMaterialRecordingTest {
         CgBindingTable table = new CgBindingTable();
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
-        int quarter = material.captureBindings(table);
-        for (int frame = 0; frame < 3; frame++) assertEquals("unchanged: one version", quarter, material.captureBindings(table));
+        int quarter = CgMaterialProxy.of(material).captureBindings(table);
+        for (int frame = 0; frame < 3; frame++) assertEquals("unchanged: one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
         material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
-        assertEquals("the same value written: still one version", quarter, material.captureBindings(table));
+        assertEquals("the same value written: still one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.75f));
-        int threeQuarters = material.captureBindings(table);
+        int threeQuarters = CgMaterialProxy.of(material).captureBindings(table);
         assertNotEquals(quarter, threeQuarters);
         assertEquals(2, table.size());
 
         material.applyProperties(p -> p.set1f("_Alpha", 0.25f));
-        assertNotEquals("a value moved back is a new version", threeQuarters, material.captureBindings(table));
+        assertNotEquals("a value moved back is a new version", threeQuarters, CgMaterialProxy.of(material).captureBindings(table));
         assertTrue("the first snapshot still holds its own value", contains(table.blockFloats(quarter, 0), 0.25f));
         assertTrue(contains(table.blockFloats(threeQuarters, 0), 0.75f));
     }
@@ -114,14 +114,14 @@ public class CgMaterialRecordingTest {
         CgTexture other = new Handle(8);
 
         material.applyProperties(p -> p.sampler("_SharpTex", 5, atlas));
-        int id = material.captureBindings(table);
+        int id = CgMaterialProxy.of(material).captureBindings(table);
         assertEquals(1, table.textures(id));
         assertEquals("the slot is the declaration index's, whatever the caller passed", CgBindingModel.packedTexture(1),
                 table.textureUnit(id, 0));
         assertEquals(7, ((CgTextureAbstract) table.texture(id, 0)).getId());
 
         material.applyProperties(p -> p.sampler("_SharpTex", 1, other));
-        assertNotEquals(id, material.captureBindings(table));
+        assertNotEquals(id, CgMaterialProxy.of(material).captureBindings(table));
     }
 
     /** A texture by id alone, no GL. */

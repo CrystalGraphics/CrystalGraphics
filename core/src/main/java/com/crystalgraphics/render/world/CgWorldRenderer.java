@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
@@ -768,54 +769,54 @@ public final class CgWorldRenderer {
     boolean precache(CgMaterial material, boolean halfResolution, boolean skinned, CgPipelineList.Settings settings) {
         boolean ready = true;
         boolean layersOnDevice = CgExecutor.drawsOnDevice();
-        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            ready &= builtAs(skinned, link.pipeline(CgInstanceKind.OBJECT));
-            if (link.hasDepthPass()) ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
-            CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            ready &= builtAs(skinned, CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT));
+            if (CgMaterialProxy.of(link).hasDepthPass()) ready &= builtAs(skinned, CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
+            CgPipeline forward = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (forward != null) ready &= builtAs(skinned, forward.as(CgPipelineForm.DEPTH));
             // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
             // whether or not they ask now, so the frame that starts asking compiles nothing.
-            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
+            if (forward != null && CgMaterialProxy.of(link).getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 ready &= builtAs(skinned, forward.as(CgPipelineForm.NORMALS));
-                if (link.writesCustomData()) ready &= builtAs(skinned, forward.as(CgPipelineForm.CUSTOM_DATA));
+                if (CgMaterialProxy.of(link).writesCustomData()) ready &= builtAs(skinned, forward.as(CgPipelineForm.CUSTOM_DATA));
             }
-            if (link.hasEmissivePass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT));
+            if (CgMaterialProxy.of(link).hasEmissivePass()) {
+                ready &= builtAs(skinned, CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT));
                 if (forward != null && settings.mergeEmission()) ready &= builtAs(skinned, forward.as(CgPipelineForm.FOLD));
             }
-            if (forward != null && link.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
-                    && link.readsExposure()) {
+            if (forward != null && CgMaterialProxy.of(link).getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD
+                    && CgMaterialProxy.of(link).readsExposure()) {
                 // An effect's opaque or masked draw graded: its Forward pass covering its layer, and its glow
                 ready &= builtAs(skinned, gradeLayerPass.layered(forward.as(CgPipelineForm.SOLID)));
-                if (link.hasEmissivePass()) {
-                    ready &= builtAs(skinned, gradeLayerPass.layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
+                if (CgMaterialProxy.of(link).hasEmissivePass()) {
+                    ready &= builtAs(skinned, gradeLayerPass.layered(CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
-            if (forward != null && link.getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
+            if (forward != null && CgMaterialProxy.of(link).getRenderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
                 // A graded draw's layer: its Forward pass, folded or with its glow, under the layer's blend
                 ready &= builtAs(skinned, gradeLayerPass.layered(forward));
                 // And the transparent pass writing that layer itself, where a device draws it (T12 L3)
                 if (layersOnDevice) ready &= builtAs(skinned, forward.as(CgPipelineForm.LAYER));
-                if (link.hasEmissivePass()) {
+                if (CgMaterialProxy.of(link).hasEmissivePass()) {
                     if (settings.mergeEmission()) ready &= builtAs(skinned, gradeLayerPass.layered(forward.as(CgPipelineForm.FOLD)));
                     if (settings.mergeEmission() && layersOnDevice) {
                         CgPipeline folded = forward.as(CgPipelineForm.FOLD);
                         ready &= builtAs(skinned, folded == null ? null : folded.as(CgPipelineForm.LAYER));
                     }
-                    ready &= builtAs(skinned, gradeLayerPass.layered(link.pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
+                    ready &= builtAs(skinned, gradeLayerPass.layered(CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT)));
                 }
             }
-            if (link.hasDistortionPass()) {
-                ready &= builtAs(skinned, link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT));
+            if (CgMaterialProxy.of(link).hasDistortionPass()) {
+                ready &= builtAs(skinned, CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT));
                 ready &= distortion.precache();
             }
         }
         if (!halfResolution || !settings.halfResolution()) return ready;
         if (halfPass.upsample == null) halfPass.upsample = CgMaterial.newInstance(UPSAMPLE_SHADER);
         if (volumePass.composite == null) volumePass.composite = CgMaterial.newInstance(CgVolumePass.COMPOSITE_SHADER);
-        ready &= built(halfPass.upsample.pipeline(CgInstanceKind.OBJECT));
+        ready &= built(CgMaterialProxy.of(halfPass.upsample).pipeline(CgInstanceKind.OBJECT));
         ready &= volumePass.resolveKernel().isReady();
-        return built(volumePass.composite.pipeline(CgInstanceKind.OBJECT)) & ready;
+        return built(CgMaterialProxy.of(volumePass.composite).pipeline(CgInstanceKind.OBJECT)) & ready;
     }
 
     /** {@link #built} of {@code pipeline}'s skinned form where {@code skinned}. */
@@ -883,7 +884,7 @@ public final class CgWorldRenderer {
             x = y = z = 0;
             transform.identity();
             Arrays.fill(custom, 0f);
-            queue = material.getRenderQueue();
+            queue = CgMaterialProxy.of(material).getRenderQueue();
             order = batchKey = 0;
             layer = CgSortLayer.DEFAULT;
             inGroup = false;
@@ -1530,7 +1531,7 @@ public final class CgWorldRenderer {
             // A transparent draw that is a solid drawn late (a program lighting itself) casts as opaque ones do; one that
             // blends never does, though it write depth (a beam's closed core), or it shadows its own lights.
             if (mesh == null || draws.sets[i] != null || draws.counts[i] != null || draws.halves[i] || draws.culledOnGpu[i]
-                    || draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !draws.materials[i].solid()) {
+                    || draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !CgMaterialProxy.of(draws.materials[i]).solid()) {
                 continue;
             }
             pointLights.caster(mesh, draws.ranges[i * 3], draws.ranges[i * 3 + 1], draws.ranges[i * 3 + 2], draws.positions[i * 3],
@@ -1622,9 +1623,9 @@ public final class CgWorldRenderer {
                 if (p == CgWorldDraws.SKIP) continue;
                 drawn++;
                 prepass |= p == CgWorldDraws.FORWARD_AND_PREPASS;
-                for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                    surfaceLit |= which == TRANSPARENT && link.surfaceLit();
-                    handed |= link.handedLights() || link.handedSun();
+                for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                    surfaceLit |= which == TRANSPARENT && CgMaterialProxy.of(link).surfaceLit();
+                    handed |= CgMaterialProxy.of(link).handedLights() || CgMaterialProxy.of(link).handedSun();
                 }
             }
             CgTrace.counter(CgChannels.WORLD, which == OPAQUE ? "world.opaqueDraws" : "world.transparentDraws", drawn);
@@ -1766,9 +1767,9 @@ public final class CgWorldRenderer {
     private void handLights(CgRecording recording, boolean transparent) {
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP) continue;
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                if (link.handedLights()) pointLights.hand(link, recording);
-                if (link.handedSun()) pointLights.handSun(link, transparent);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                if (CgMaterialProxy.of(link).handedLights()) pointLights.hand(link, recording);
+                if (CgMaterialProxy.of(link).handedSun()) pointLights.handSun(link, transparent);
             }
         }
     }
@@ -1822,9 +1823,9 @@ public final class CgWorldRenderer {
 
         @Override
         public void drawDistortion(CgChunkBuilder chunks, CgRecording recording, int i) {
-            for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-                if (!link.hasDistortionPass()) continue;
-                CgPipeline pipeline = link.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
+            for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+                if (!CgMaterialProxy.of(link).hasDistortionPass()) continue;
+                CgPipeline pipeline = CgMaterialProxy.of(link).pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
                 if (pipeline == null || commands.unready(pipeline, i)) continue;
                 if (draws.sets[i] != null) {
                     commands.drawSet(chunks, pipeline, commands.bindingOf(link, recording), i);
@@ -1839,8 +1840,8 @@ public final class CgWorldRenderer {
 
     /** Whether any link of a material chain has a Distortion pass. */
     private static boolean distortsScene(CgMaterial material) {
-        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            if (link.hasDistortionPass()) return true;
+        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            if (CgMaterialProxy.of(link).hasDistortionPass()) return true;
         }
         return false;
     }
@@ -1887,7 +1888,7 @@ public final class CgWorldRenderer {
 
     /** Whether a material's Forward pass covers what is behind it, premultiplied: a volume's blend. */
     private static boolean covers(CgMaterial material) {
-        CgPipeline forward = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline forward = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         CgBlendState blend = forward == null ? null : forward.state().getBlend();
         return blend != null && blend.enabled() && blend.srcRgb() == CgBlendState.PREMULTIPLIED_ALPHA.srcRgb()
                 && blend.dstRgb() == CgBlendState.PREMULTIPLIED_ALPHA.dstRgb();
@@ -1895,9 +1896,9 @@ public final class CgWorldRenderer {
 
     /** Whether every Emissive pass of draw {@code i}'s chain folds into its Forward draw under the scene. */
     boolean allFold(int i) {
-        for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
-            if (!link.hasEmissivePass()) continue;
-            CgPipeline forward = link.pipeline(CgInstanceKind.OBJECT);
+        for (CgMaterial link = draws.materials[i]; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            if (!CgMaterialProxy.of(link).hasEmissivePass()) continue;
+            CgPipeline forward = CgMaterialProxy.of(link).pipeline(CgInstanceKind.OBJECT);
             if (forward == null || forward.as(CgPipelineForm.FOLD) == null) return false;
         }
         return true;
@@ -1905,8 +1906,8 @@ public final class CgWorldRenderer {
 
     /** Whether any link of a material chain has an Emissive pass. */
     static boolean emitsLight(CgMaterial material) {
-        for (CgMaterial link = material; link != null; link = link.getNextPass()) {
-            if (link.hasEmissivePass()) return true;
+        for (CgMaterial link = material; link != null; link = CgMaterialProxy.of(link).getNextPass()) {
+            if (CgMaterialProxy.of(link).hasEmissivePass()) return true;
         }
         return false;
     }
@@ -1974,14 +1975,14 @@ public final class CgWorldRenderer {
         draws.keys[i] = transparent
                 ? transparentKey(i, queue, distance, view)
                 : CgSortKey.opaque(queue, draws.layers[i].rank(), draws.orders[i], material.getMaterialId(), System.identityHashCode(draws.meshes[i]), distance);
-        boolean prepass = !transparent && (material.hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
+        boolean prepass = !transparent && (CgMaterialProxy.of(material).hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
         return prepass ? CgWorldDraws.FORWARD_AND_PREPASS : CgWorldDraws.FORWARD;
     }
 
     /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order, batch key and distance. */
     private long transparentKey(int i, int queue, float distance, CgCamera view) {
         int layer = draws.layers[i].rank();
-        boolean solid = draws.materials[i].writesDepth();
+        boolean solid = CgMaterialProxy.of(draws.materials[i]).writesDepth();
         if (!draws.grouped[i]) return CgSortKey.transparent(queue, layer, distance, solid, draws.orders[i], draws.batchKeys[i], distance);
         float gx = (float) (draws.groupPositions[i * 3] - view.x()) - commands.eye.x;
         float gy = (float) (draws.groupPositions[i * 3 + 1] - view.y()) - commands.eye.y;
@@ -2131,7 +2132,7 @@ public final class CgWorldRenderer {
     /** Whether transparent draw {@code i} draws into the prepass: its material's {@code "Depth" = "Prepass"}. */
     boolean prepassed(int i) {
         return (draws.phase[i] == CgWorldDraws.FORWARD || draws.phase[i] == CgWorldDraws.AFTER || draws.phase[i] == CgWorldDraws.APART) && draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD
-                && draws.materials[i].hasDepthPrepass();
+                && CgMaterialProxy.of(draws.materials[i]).hasDepthPrepass();
     }
 
 }

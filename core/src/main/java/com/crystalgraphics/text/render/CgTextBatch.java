@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
@@ -306,10 +307,10 @@ public final class CgTextBatch {
         if (count <= 0) return;
         CgMaterial material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial(),
                 linearTarget);
-        CgPipeline pipeline = material.pipeline(CgInstanceKind.OBJECT);
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgBindingTable table = chunks.bindings();
-        int bindings = table.withTexture(material.captureBindings(table), 0,
+        int bindings = table.withTexture(CgMaterialProxy.of(material).captureBindings(table), 0,
                 CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
         pipeline = pipeline.withState(labelState(pipeline.state(), depthPass));
         chunks.draw(pipeline, bindings, CgMesh.quads(1)).objects(labels, 0, count)

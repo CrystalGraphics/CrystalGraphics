@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -1061,7 +1062,7 @@ public final class CgVfxFrame {
      * neither the sort nor ordered instances.
      */
     private static boolean blendsInOrder(CgMaterial material) {
-        CgBlendState blend = material.getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
+        CgBlendState blend = CgMaterialProxy.of(material).getPassRenderState(CgRenderPassVariant.FORWARD).getBlend();
         return blend != null && blend.enabled() && blend.dstRgb() != GLC.GL_ONE;
     }
 

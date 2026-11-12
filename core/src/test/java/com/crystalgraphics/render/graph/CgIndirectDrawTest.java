@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -56,8 +57,8 @@ public class CgIndirectDrawTest {
                     void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }
                 }
                 """);
-        pipeline = material.pipeline(CgInstanceKind.OBJECT);
-        quadPipeline = material.pipeline(CgInstanceKind.QUAD);
+        pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
+        quadPipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
     }
 
     private static CgRasterPass raster(CgRecording rec) {
