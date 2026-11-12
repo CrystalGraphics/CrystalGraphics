@@ -186,7 +186,7 @@ world.draw(mesh, current).submit();                 // the old picture until the
   were half of what an edit compiled.
 - `-Dcrystalgraphics.shader.parallelCompile=false` makes it answer true at once: the escape hatch.
 
-### Recording — `pipeline(kind)` and `captureBindings(table)`
+### Recording — `pipeline(kind)` and `bindings()`
 
 What the engine's recorders ask of a material, through its internal proxy (`material.CgMaterialProxy`, Unreal's
 `FMaterialRenderProxy`; a consumer draws through `world.draw` or `pass.draw` and never asks). **Neither touches the
@@ -194,7 +194,7 @@ device**, so a recorder may run on any thread:
 
 ```java
 CgPipeline p = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);   // Forward pass, keywords enabled now; a CPU key
-int b = CgMaterialProxy.of(material).captureBindings(table);                  // block bytes now; textures/buffers as handles
+CgMaterialBindings b = CgMaterialProxy.of(material).bindings();               // its version: the same object until something moves
 CgPipeline glow = CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.EMISSIVE, CgInstanceKind.OBJECT);   // ask hasEmissivePass() first
 ```
 
@@ -203,11 +203,12 @@ CgPipeline glow = CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.EMIS
 
 - The program behind `p` is compiled on the render thread when a batch first draws with it, or polled with
   `p.precache()`.
-- `captureBindings` puts a sampler's texture at its **index among the declared samplers**, the unit every
-  program is wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
-- Equal snapshots intern to one id; a property changed after the capture does not change what it holds.
-- A buffer the shader's `Buffers { }` declares is bound on an instance with `instance.buffer(name, buffer)` and
-  captured the same way; a capture with one unbound throws (SHADERS.md § *Reading a kernel's buffers*).
+- `bindings` puts a sampler's texture at its **index among the declared samplers**, the unit every program is
+  wired with at compile — whatever unit `sampler(name, unit, texture)` was given.
+- A version is immutable: a property changed after a draw names it makes the next version, and the draw keeps reading
+  its own. Writing a value it already holds makes none.
+- A buffer the shader's `Buffers { }` declares is bound on an instance with `instance.buffer(name, buffer)` and held
+  the same way; `bindings()` with one unbound throws (SHADERS.md § *Reading a kernel's buffers*).
 
 ### Hot reload
 

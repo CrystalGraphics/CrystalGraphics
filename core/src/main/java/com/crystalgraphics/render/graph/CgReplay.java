@@ -4,7 +4,6 @@ import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -12,6 +11,7 @@ import com.crystalgraphics.render.property.CgPalette;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * A stretch of recording kept to be added to a later recording: the chunks a {@link CgCanvas} took between two
@@ -86,11 +86,9 @@ public final class CgReplay {
      * Keeps the chunks {@code recorder} took since reading {@code from}, recorded into {@code recording} under clip
      * entry {@code baseClip} in spatial node {@code spatial} and effect node {@code effect}, the clip table then holding
      * {@code clipsBefore} entries. Answers whether it kept them; a refusal drops what was kept before.
-     *
-     * @param bindings where the snapshots are copied: a table that outlives the recording
      */
-    public boolean capture(CgCanvas recorder, long from, CgRecording recording, CgBindingTable bindings,
-                           int clipsBefore, int baseClip, int spatial, int effect) {
+    public boolean capture(CgCanvas recorder, long from, CgRecording recording, int clipsBefore, int baseClip, int spatial,
+                           int effect) {
         clear();
         clipCount = 0;
         shapeCount = 0;
@@ -109,7 +107,6 @@ public final class CgReplay {
         for (long at = from, to = recorder.chunksTaken(); at < to; at++) {
             CgDrawChunk chunk = recorder.taken(at);
             if (chunk == null || chunk.spatial() != spatial || chunk.clip() != 0 || chunk.effect() != 0) return false;
-            int[] ids = new int[chunk.draws()];
             for (int d = 0; d < chunk.draws(); d++) {
                 CgInstanceKind kind = chunk.kind(d);
                 if (kind == CgInstanceKind.OBJECT) return false;
@@ -128,13 +125,11 @@ public final class CgReplay {
                         if (shape >= CgShapeTable.FIRST_SHAPE && shapeAt(shape) < 0) keepShape(shapes, shape);
                     }
                 }
-                CgBindingTable table = chunk.bindings();
-                int id = chunk.binding(d);
-                for (int i = 0; i < table.textures(id); i++) if (!lasts(table.texture(id, i))) return false;
-                ids[d] = bindings.copy(table, id);
+                CgMaterialBindings bindings = chunk.binding(d);
+                for (int i = 0; i < bindings.textures(); i++) if (!lasts(bindings.texture(i))) return false;
             }
             if (chunkCount == chunks.length) chunks = Arrays.copyOf(chunks, chunkCount * 2);
-            chunks[chunkCount++] = chunk.with(spatial, bindings, ids, null);
+            chunks[chunkCount++] = chunk.with(spatial, null);
         }
         this.baseClip = baseClip;
         this.spatial = spatial;
@@ -170,7 +165,7 @@ public final class CgReplay {
     }
 
     /**
-     * Where this stretch draws otherwise than {@code other}, both kept against one snapshot table, or null where they
+     * Where this stretch draws otherwise than {@code other}, or null where they
      * draw the same: what a check compares a kept stretch against a fresh paint of it with. Records are compared but
      * for what replay renumbers: clip entries by their place in the stretch, shapes by their content, nodes not at all.
      */
@@ -198,7 +193,7 @@ public final class CgReplay {
                 if (a.mesh(d) != b.mesh(d)) return where + ": another mesh";
                 if (a.rangeSubmesh(d) != b.rangeSubmesh(d) || a.rangeFirst(d) != b.rangeFirst(d)
                         || a.rangeCount(d) != b.rangeCount(d)) return where + ": another range of its mesh";
-                if (a.binding(d) != b.binding(d)) return where + ": " + bindingDiffers(a.bindings(), a.binding(d), b.binding(d));
+                if (!a.binding(d).sameAs(b.binding(d))) return where + ": " + bindingDiffers(a.binding(d), b.binding(d));
                 if (a.x0(d) != b.x0(d) || a.y0(d) != b.y0(d) || a.x1(d) != b.x1(d) || a.y1(d) != b.y1(d)) {
                     return where + ": other bounds";
                 }
@@ -234,15 +229,15 @@ public final class CgReplay {
         return null;
     }
 
-    /** What differs between two snapshots of one table: a texture, a block or a buffer. */
-    private static String bindingDiffers(CgBindingTable table, int a, int b) {
-        if (table.textures(a) != table.textures(b)) return "another texture count";
-        for (int i = 0; i < table.textures(a); i++) {
-            if (table.texture(a, i) != table.texture(b, i)) return "texture " + i + ": " + table.texture(a, i) + " against " + table.texture(b, i);
+    /** What differs between two versions: a texture, a block or a buffer. */
+    private static String bindingDiffers(CgMaterialBindings a, CgMaterialBindings b) {
+        if (a.textures() != b.textures()) return "another texture count";
+        for (int i = 0; i < a.textures(); i++) {
+            if (a.texture(i) != b.texture(i)) return "texture " + i + ": " + a.texture(i) + " against " + b.texture(i);
         }
-        if (table.blocks(a) != table.blocks(b)) return "another block count";
-        for (int k = 0; k < table.blocks(a); k++) {
-            if (!Arrays.equals(table.blockFloats(a, k), table.blockFloats(b, k))) return "block " + k + " (binding " + table.blockBinding(a, k) + ")";
+        if (a.blocks() != b.blocks()) return "another block count";
+        for (int k = 0; k < a.blocks(); k++) {
+            if (a.block(k) != b.block(k)) return "block " + k + " (binding " + a.blockSlot(k) + ")";
         }
         return "another buffer";
     }
@@ -287,7 +282,7 @@ public final class CgReplay {
                 }
             }
             for (int k = 0; k < KINDS; k++) if (records[k] == null) records[k] = chunk.data(CgInstanceKind.of(k));
-            chunks[i] = chunk.with(spatial, chunk.bindings(), null, records);
+            chunks[i] = chunk.with(spatial, records);
         }
         this.baseClip = baseClip;
         this.spatial = spatial;

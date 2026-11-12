@@ -5,7 +5,6 @@ import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgTextureAbstract;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import org.junit.Before;
@@ -20,9 +19,10 @@ import java.util.concurrent.Future;
 
 import static org.junit.Assert.*;
 import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
- * render-graph G0: what a recorder asks of a material — a pipeline key and a binding snapshot — answered with no GL
+ * render-graph G0: what a recorder asks of a material — a pipeline key and its bindings — answered with no GL
  * context at all, since a recorder will run on a document's thread. Any GL call here would throw.
  */
 public class CgMaterialRecordingTest {
@@ -86,41 +86,38 @@ public class CgMaterialRecordingTest {
     @Test
     public void aBlockIsANewVersionOnlyWhenAValueMoves() {
         CgMaterialInstance material = CgMaterial.fromSource(SOURCE).instance();
-        CgBindingTable table = new CgBindingTable();
 
         material.set1f("_Alpha", 0.25f);
-        int quarter = CgMaterialProxy.of(material).captureBindings(table);
-        for (int frame = 0; frame < 3; frame++) assertEquals("unchanged: one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
+        CgMaterialBindings quarter = CgMaterialProxy.of(material).bindings();
+        for (int frame = 0; frame < 3; frame++) assertSame("unchanged: one version", quarter, CgMaterialProxy.of(material).bindings());
         material.set1f("_Alpha", 0.25f);
-        assertEquals("the same value written: still one version", quarter, CgMaterialProxy.of(material).captureBindings(table));
+        assertSame("the same value written: still one version", quarter, CgMaterialProxy.of(material).bindings());
 
         material.set1f("_Alpha", 0.75f);
-        int threeQuarters = CgMaterialProxy.of(material).captureBindings(table);
-        assertNotEquals(quarter, threeQuarters);
-        assertEquals(2, table.size());
+        CgMaterialBindings threeQuarters = CgMaterialProxy.of(material).bindings();
+        assertNotSame(quarter, threeQuarters);
 
         material.set1f("_Alpha", 0.25f);
-        assertNotEquals("a value moved back is a new version", threeQuarters, CgMaterialProxy.of(material).captureBindings(table));
-        assertTrue("the first snapshot still holds its own value", contains(table.blockFloats(quarter, 0), 0.25f));
-        assertTrue(contains(table.blockFloats(threeQuarters, 0), 0.75f));
+        assertNotSame("a value moved back is a new version", threeQuarters, CgMaterialProxy.of(material).bindings());
+        assertTrue("the first version still holds its own value", contains(quarter.block(0).floats(), 0.25f));
+        assertTrue(contains(threeQuarters.block(0).floats(), 0.75f));
     }
 
     @Test
     public void texturesAreHandlesAtTheirDeclaredUnits() {
         CgMaterialInstance material = CgMaterial.fromSource(SOURCE).instance();
-        CgBindingTable table = new CgBindingTable();
         CgTexture atlas = new Handle(7);
         CgTexture other = new Handle(8);
 
         material.sampler("_SharpTex", 5, atlas);
-        int id = CgMaterialProxy.of(material).captureBindings(table);
-        assertEquals(1, table.textures(id));
+        CgMaterialBindings bindings = CgMaterialProxy.of(material).bindings();
+        assertEquals(1, bindings.textures());
         assertEquals("the slot is the declaration index's, whatever the caller passed", CgBindingModel.packedTexture(1),
-                table.textureUnit(id, 0));
-        assertEquals(7, ((CgTextureAbstract) table.texture(id, 0)).getId());
+                bindings.textureSlot(0));
+        assertEquals(7, ((CgTextureAbstract) bindings.texture(0)).getId());
 
         material.sampler("_SharpTex", 1, other);
-        assertNotEquals(id, CgMaterialProxy.of(material).captureBindings(table));
+        assertNotSame(bindings, CgMaterialProxy.of(material).bindings());
     }
 
     /** A texture by id alone, no GL. */

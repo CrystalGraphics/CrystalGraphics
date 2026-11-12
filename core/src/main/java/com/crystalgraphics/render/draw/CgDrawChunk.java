@@ -36,11 +36,11 @@ public final class CgDrawChunk {
     int spatial;
     int clip;
     int effect;
-    CgBindingTable bindings;
 
     int count;
     int[] pipelines;
-    int[] bindingIds;
+    /** Each draw's bindings: the version of its material it names. */
+    CgMaterialBindings[] bindings;
     int[] kinds;
     int[] firsts;
     int[] instanceCounts;
@@ -91,7 +91,7 @@ public final class CgDrawChunk {
     CgDrawChunk() {
         pooled = true;
         pipelines = new int[0];
-        bindingIds = new int[0];
+        bindings = new CgMaterialBindings[0];
         kinds = new int[0];
         firsts = new int[0];
         instanceCounts = new int[0];
@@ -100,7 +100,7 @@ public final class CgDrawChunk {
         instances = new float[CgInstanceKind.values().length][];
     }
 
-    CgDrawChunk(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
+    CgDrawChunk(int spatial, int clip, int effect, int count, int[] pipelines, CgMaterialBindings[] bindings,
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
                 @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
@@ -111,10 +111,9 @@ public final class CgDrawChunk {
         this.spatial = spatial;
         this.clip = clip;
         this.effect = effect;
-        this.bindings = bindings;
         this.count = count;
         this.pipelines = pipelines;
-        this.bindingIds = bindingIds;
+        this.bindings = bindings;
         this.kinds = kinds;
         this.firsts = firsts;
         this.instanceCounts = instanceCounts;
@@ -150,11 +149,6 @@ public final class CgDrawChunk {
         return effect;
     }
 
-    /** The table its binding ids index. */
-    public CgBindingTable bindings() {
-        return bindings;
-    }
-
     /** How many draws it holds. */
     public int draws() {
         return count;
@@ -164,8 +158,9 @@ public final class CgDrawChunk {
         return pipelines[draw];
     }
 
-    public int binding(int draw) {
-        return bindingIds[draw];
+    /** What draw {@code draw} binds: its material's version as it was named. */
+    public CgMaterialBindings binding(int draw) {
+        return bindings[draw];
     }
 
     public CgInstanceKind kind(int draw) {
@@ -286,15 +281,14 @@ public final class CgDrawChunk {
     }
 
     /**
-     * This chunk positioned in {@code spatial}, naming its snapshots in {@code bindings} by {@code bindingIds}, over
-     * {@code instances}, each null for this chunk's own: how a replay adds kept drawing to a later recording once it
-     * has renumbered what the records name. Arrays given become the copy's own.
+     * This chunk positioned in {@code spatial}, over {@code instances}, each null for this chunk's own: how a replay
+     * adds kept drawing to a later recording once it has renumbered what the records name. Arrays given become the
+     * copy's own.
      */
-    public CgDrawChunk with(int spatial, CgBindingTable bindings, @Nullable int[] bindingIds,
-                            @Nullable float[][] instances) {
-        if (pooled) return copy().with(spatial, bindings, bindingIds, instances);
-        return new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines,
-                bindingIds != null ? bindingIds : this.bindingIds, kinds, firsts, instanceCounts, meshes, ranges, counts,
+    public CgDrawChunk with(int spatial, @Nullable float[][] instances) {
+        if (pooled) return copy().with(spatial, instances);
+        return new CgDrawChunk(spatial, clip, effect, count, pipelines, bindings, kinds, firsts, instanceCounts, meshes,
+                ranges, counts,
                 countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups,
                 instances != null ? instances : this.instances, each, recordCounts, primitives);
     }
@@ -303,8 +297,8 @@ public final class CgDrawChunk {
     private CgDrawChunk copy() {
         float[][] kept = new float[instances.length][];
         for (int k = 0; k < instances.length; k++) kept[k] = instances[k] == null ? NO_RECORDS : instances[k].clone();
-        return new CgDrawChunk(spatial, clip, effect, bindings, count, Arrays.copyOf(pipelines, count),
-                Arrays.copyOf(bindingIds, count), Arrays.copyOf(kinds, count), Arrays.copyOf(firsts, count),
+        return new CgDrawChunk(spatial, clip, effect, count, Arrays.copyOf(pipelines, count),
+                Arrays.copyOf(bindings, count), Arrays.copyOf(kinds, count), Arrays.copyOf(firsts, count),
                 Arrays.copyOf(instanceCounts, count), meshes == null ? null : Arrays.copyOf(meshes, count),
                 ranges == null ? null : Arrays.copyOf(ranges, count * 3), counts == null ? null : Arrays.copyOf(counts, count),
                 countOffsets == null ? null : Arrays.copyOf(countOffsets, count),
@@ -321,7 +315,7 @@ public final class CgDrawChunk {
      * Refills a shell from a builder's arrays: copied into arrays it keeps, grown only when a chunk holds more than any
      * before it. {@code records} is each kind's record count; a null source leaves its field null.
      */
-    void fill(int spatial, int clip, int effect, CgBindingTable bindings, int count, int[] pipelines, int[] bindingIds,
+    void fill(int spatial, int clip, int effect, int count, int[] pipelines, CgMaterialBindings[] bindings,
               int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
               @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
               @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
@@ -332,10 +326,11 @@ public final class CgDrawChunk {
         this.primitives = primitives;
         this.clip = clip;
         this.effect = effect;
-        this.bindings = bindings;
+        if (this.count > count) Arrays.fill(this.bindings, count, this.count, null);
         this.count = count;
         this.pipelines = ints(this.pipelines, pipelines, count);
-        this.bindingIds = ints(this.bindingIds, bindingIds, count);
+        if (this.bindings.length < count) this.bindings = new CgMaterialBindings[Math.max(count, this.bindings.length * 2)];
+        System.arraycopy(bindings, 0, this.bindings, 0, count);
         this.kinds = ints(this.kinds, kinds, count);
         this.firsts = ints(this.firsts, firsts, count);
         this.instanceCounts = ints(this.instanceCounts, instanceCounts, count);
@@ -401,9 +396,9 @@ public final class CgDrawChunk {
         }
     }
 
-    /** Drops what a shell names, so a reset recording keeps no mesh, buffer or table alive. */
+    /** Drops what a shell names, so a reset recording keeps no mesh, buffer or material version alive. */
     void clearReferences() {
-        bindings = null;
+        Arrays.fill(bindings, null);
         primitives = null;
         if (ownMeshes != null) Arrays.fill(ownMeshes, null);
         if (ownCounts != null) Arrays.fill(ownCounts, null);

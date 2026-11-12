@@ -128,7 +128,7 @@ CgGraphTexture hiZ = CgGraphTexture.requested("hi-z", new CgTextureDesc(w, h, Cg
 
 CgRasterPass down = rec.raster("bloom.down").color(bloom, 3, 0, CgLoad.load()).constants(constants)
         .order(CgOrder.LOOKBACK);   // into level 3
-int reads = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, bloom.level(2));
+CgMaterialBindings reads = CgMaterialProxy.of(material).bindings().with(0, bloom.level(2));
 ```
 
 - A pass into level k has the level's viewport, and no depth above level 0; its constants' resolution is the caller's.
@@ -285,9 +285,9 @@ pass.dispatch(look, n).bind("LIVE", counts, p.at(), 16);   // the next stage: wa
   (`skipCountBarrier`). One count shared by them never is: every append writes that word, which validation reports.
 - A stage's group must differ from the stage before it in the pass, or the second would not wait for the first.
 
-**A compute pass's constants are one snapshot**, bound before its first dispatch (and again after a lowered one), as a
-raster pass's; each dispatch's snapshot holds its values and samplers alone, and is not interned: two dispatches
-rarely share values, so hashing them found nothing (`CgBindingTable.endUnique`).
+**A compute pass's constants are one entry**, bound before its first dispatch (and again after a lowered one), as a
+raster pass's; each dispatch's entry holds its values and samplers alone, read as the frame is built, and is not
+interned: two dispatches rarely share values, so hashing them found nothing (`CgFrameBindings.endUnique`).
 
 **Reading the target** (`CgRasterPass.readsColor(target, unit)`, `readsDepth(target, unit)` of its own colour): a draw whose shader reads
 `cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
@@ -452,7 +452,7 @@ the current target (`render-graph` G2).
 the engine writes (`transform`, `customData`; `instance()` for the next, `records(...)` for many, `objects(...)` for a
 kernel's); every pass of the material's chain draws the same records. A pass is seen through a `CgCamera`
 (`camera.CgCamera`: view, projection, position, resolution, time; `pass.camera(camera)`), the depth convention and the
-target's encoding the renderer's. The chunk builder and `captureBindings` are the engine's own path, and a test's of
+target's encoding the renderer's. The chunk builder and `bindings()` are the engine's own path, and a test's of
 the builder itself.
 
 **What a recorded draw keeps of an immediate one** (G2's gate found each): a draw runs under the material as the

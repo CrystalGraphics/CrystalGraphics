@@ -24,7 +24,7 @@ import com.crystalgraphics.material.parse.CgPermutationDomain;
 import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.material.parse.CgShaderParser;
 import com.crystalgraphics.render.CgWarmBudget;
-import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.draw.CgBlockVersion;
 import com.crystalgraphics.api.buffer.CgBuffer;
 import com.crystalgraphics.render.draw.CgBufferHandle;
@@ -71,7 +71,7 @@ import com.crystalgraphics.api.texture.CgSampler;
  * <pre>{@code
  * CgMaterialProxy proxy = CgMaterialProxy.of(material);
  * CgPipeline p = proxy.pipeline(CgInstanceKind.OBJECT);
- * int bindings = proxy.captureBindings(table);
+ * CgMaterialBindings bindings = proxy.bindings();
  * }</pre>
  *
  * <p>Engine-internal: one per {@link CgMaterial}, made with it.</p>
@@ -750,7 +750,7 @@ public final class CgMaterialProxy {
      * <pre>{@code
      * CgMaterialProxy proxy = CgMaterialProxy.of(material.keyword("WITH_MASK", true));
      * CgPipeline p = proxy.pipeline(CgInstanceKind.QUAD);
-     * int b = proxy.captureBindings(table);
+     * CgMaterialBindings b = proxy.bindings();
      * }</pre>
      *
      * @return null when the shader does not parse: there is nothing to draw
@@ -872,29 +872,33 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * Snapshots what a draw of this material reads, as it is now, into {@code table}: the properties block's bytes,
-     * each sampler's texture at its declared unit, any buffer attached with {@link #attach}, and each buffer bound with
-     * {@link #buffer}. Compiles nothing.
+     * What a draw of this material binds, as it is now: its values' block, each sampler's texture at its declared unit,
+     * its engine blocks and buffers, and each buffer bound with {@link #buffer}. The same object until one of them
+     * moves; then a new one, and draws named the old one keep reading it. Compiles nothing.
      *
      * <pre>{@code
      * instance.colorARGB("_Color", 0xFFFF0000);
-     * int red = CgMaterialProxy.of(instance).captureBindings(table);
+     * CgMaterialBindings red = CgMaterialProxy.of(instance).bindings();
      * instance.colorARGB("_Color", 0xFF0000FF);
-     * int blue = CgMaterialProxy.of(instance).captureBindings(table);   // a different id; red still reads red
+     * CgMaterialBindings blue = CgMaterialProxy.of(instance).bindings();   // another; a draw named red still reads red
      * }</pre>
      *
      * <ul>
-     *   <li>Equal snapshots answer one id, so two draws of one material with the same values batch.</li>
      *   <li>An attached buffer is bound as it is when the draw executes, not copied.</li>
      *   <li>A sampler's unit is its index among the shader's declared samplers, whatever unit
      *       {@code sampler(name, unit, texture)} was given.</li>
      * </ul>
      *
-     * @return the snapshot's id in {@code table}
+     * @throws IllegalStateException if its shader reads a buffer nothing is bound to
      */
-    public int captureBindings(CgBindingTable table) {
+    public CgMaterialBindings bindings() {
         checkNotDeleted();
         syncPropsToParse();
+        boolean engine = engineBlocksMoved();
+        if (bindings != null && !engine && bindingsChanges == changes && bindingsParse == propsParse
+                && !capturePropsDirty) {
+            return bindings;
+        }
         List<CgBufferDecl> declared = propsParse == null ? List.of() : propsParse.buffers();
         for (int i = 0; i < declared.size(); i++) {
             String name = declared.get(i).name();
@@ -903,21 +907,51 @@ public final class CgMaterialProxy {
                         + "material.buffer(\"" + name + "\", buffer)");
             }
         }
-        table.begin();
+        if (building == null) building = CgMaterialBindings.builder();
+        CgMaterialBindings.Builder made = building.reset();
         if (propStore != null) {
-            if (propStore.hasUboProps()) {
-                CgBlockVersion version = blockVersion();
-                table.block(CgBindingModel.MATERIAL_BLOCK, version);
+            if (propStore.hasUboProps()) made.block(CgBindingModel.MATERIAL_BLOCK, blockVersion());
+            propStore.captureSamplers(made);
+        }
+        if (engineBlocks != null) {
+            for (int i = 0; i < engineBlocks.length; i++) {
+                if (engineBlocks[i] != null) made.block(engineBlockSlots[i], engineBlocks[i]);
+                else made.buffer(engineBlockBuffers[i]);
             }
-            propStore.captureSamplers(table);
         }
-        if (cgMaterialShader != null) captureEngineBlocks(table);
-        capturePerDrawEngineBuffers(table);
-        for (int i = 0; i < declared.size(); i++) {
-            table.storage(CgBindingModel.buffer(i), buffers.get(declared.get(i).name()));
+        if (propsParse != null) {
+            List<String> tokens = propsParse.engineBuffers();
+            for (int i = 0; i < tokens.size(); i++) {
+                CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(tokens.get(i));
+                if (provider.perDraw()) made.buffer(provider.buffer().get());
+            }
         }
-        return table.end();
+        for (int i = 0; i < declared.size(); i++) made.storage(CgBindingModel.buffer(i), buffers.get(declared.get(i).name()));
+        bindingsChanges = changes;
+        bindingsParse = propsParse;
+        // A value rewritten unchanged moves the change count, not the version: compared before anything is made.
+        if (bindings == null || !made.sameAs(bindings)) bindings = made.build();
+        made.reset();
+        return bindings;
     }
+
+    /** {@link #bindings}' last version, and the change count and parse it was made at. */
+    @Nullable
+    private CgMaterialBindings bindings;
+    private int bindingsChanges = -1;
+    /** What {@link #bindings} fills each time it looks, kept so a look that finds nothing moved allocates nothing. */
+    @Nullable
+    private CgMaterialBindings.Builder building;
+    @Nullable
+    private CgParsedShader bindingsParse;
+    /**
+     * Per engine uniform block its shader names, the version of what its writer (or this material's override) holds,
+     * null where it holds nothing and the block binds as the buffer itself; with each one's slot and buffer.
+     */
+    @Nullable
+    private CgBlockVersion[] engineBlocks;
+    private CgBindingModel.Slot[] engineBlockSlots;
+    private CgShaderBuffer[] engineBlockBuffers;
 
     /** What {@link #buffer} bound, by declared name. */
     @Nullable
@@ -937,7 +971,7 @@ public final class CgMaterialProxy {
      *
      * <ul>
      *   <li>Captured as a texture is: a draw recorded before the call reads what was bound then.</li>
-     *   <li>Recorded draws read it ({@link #captureBindings}).</li>
+     *   <li>Recorded draws read it ({@link #bindings}).</li>
      *   <li>Every declared buffer is bound before the first capture, which throws naming one that is not.</li>
      * </ul>
      *
@@ -1001,7 +1035,7 @@ public final class CgMaterialProxy {
 
     /**
      * Gives this material its own contents for {@code block}, a uniform block attached to the shader every instance
-     * of it shares: {@link #captureBindings} keeps {@code contents} instead of the block's own writer. For a renderer
+     * of it shares: {@link #bindings} keeps {@code contents} instead of the block's own writer. For a renderer
      * that keeps per-instance values in a shared block, so two instances recording at once cannot read each other's.
      *
      * <pre>{@code
@@ -1018,36 +1052,48 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * The uniform blocks of the engine tokens the shader names, kept by value as written now, since their owner
-     * rewrites them before the draw executes. A token's storage buffer the executor binds itself.
+     * Brings {@link #engineBlocks} up to what the engine blocks its shader names hold now, answering whether any moved: a
+     * version made only when a block's floats differ from the last one's, since their owners write them before a draw.
      */
-    private void captureEngineBlocks(CgBindingTable table) {
-        List<CgAttachedBuffer> buffers = cgMaterialShader.engineBuffers();
-        for (int i = 0; i < buffers.size(); i++) {
-            CgAttachedBuffer buffer = buffers.get(i);
+    private boolean engineBlocksMoved() {
+        if (cgMaterialShader == null) return false;
+        List<CgAttachedBuffer> attached = cgMaterialShader.engineBuffers();
+        int count = 0;
+        for (int i = 0; i < attached.size(); i++) if (attached.get(i).isUbo()) count++;
+        boolean moved = false;
+        if (engineBlocks == null || engineBlocks.length != count) {
+            engineBlocks = new CgBlockVersion[count];
+            engineBlockSlots = new CgBindingModel.Slot[count];
+            engineBlockBuffers = new CgShaderBuffer[count];
+            moved = true;
+        }
+        for (int i = 0, k = 0; i < attached.size(); i++) {
+            CgAttachedBuffer buffer = attached.get(i);
             if (!buffer.isUbo()) continue;
             CgShaderBuffer target = buffer.getBuffer();
             CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
             CgBufferWriter written = override != null ? override : target.writer();
-            if (written.rawCursor() > 0) {
-                table.block(target.slot(), written.rawData(), 0, written.rawCursor());
-            } else {
-                table.buffer(target);
+            CgBlockVersion had = engineBlocks[k];
+            if (engineBlockBuffers[k] != target) {
+                engineBlockBuffers[k] = target;
+                engineBlockSlots[k] = target.slot();
+                moved = true;
             }
+            int floats = written.rawCursor();
+            if (floats == 0) {
+                if (had != null) {
+                    had.supersede();
+                    engineBlocks[k] = null;
+                    moved = true;
+                }
+            } else if (had == null || !had.holds(written.rawData(), floats)) {
+                if (had != null) had.supersede();
+                engineBlocks[k] = CgBlockVersion.of(written.rawData(), floats);
+                moved = true;
+            }
+            k++;
         }
-    }
-
-    /**
-     * The engine buffers no executor binds ({@code CgEngineBufferRegistry.Provider.perDraw}), from the parse: a draw
-     * captured before its material's first compile, which attaches them, binds them too.
-     */
-    private void capturePerDrawEngineBuffers(CgBindingTable table) {
-        if (propsParse == null) return;
-        List<String> tokens = propsParse.engineBuffers();
-        for (int i = 0; i < tokens.size(); i++) {
-            CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(tokens.get(i));
-            if (provider.perDraw()) table.buffer(provider.buffer().get());
-        }
+        return moved;
     }
 
     // ── Accessors ─────────────────────────────────────────────────────────────

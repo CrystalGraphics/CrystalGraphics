@@ -20,6 +20,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * The HDR scene's way in and, around the opaque pass, its way out. At the top of
@@ -139,8 +140,8 @@ final class CgSceneTarget {
                 .readsColor(CgGraphTexture.current());
         if (sceneDepthTexture != null) raster.depth(sceneDepthTexture, CgLoad.load(), CgDepthAccess.WRITE);
         if (depth != null) raster.readsDepth(CgGraphTexture.current());
-        int bindings = CgMaterialProxy.of(pass.material(depth != null)).captureBindings(recording.bindings());
-        if (keeping) bindings = recording.bindings().withTexture(bindings, 0, opaque);
+        CgMaterialBindings bindings = CgMaterialProxy.of(pass.material(depth != null)).bindings();
+        if (keeping) bindings = bindings.with(0, opaque);
         fullscreen(recording, raster, pipeline, bindings);
 
         stage.resources().put(CgFrameKeys.SCENE, target);
@@ -165,7 +166,7 @@ final class CgSceneTarget {
                 .readsColor(CgGraphTexture.current());
         if (opaqueDepthOf() != null) raster.depth(opaqueDepthOf(), CgLoad.load(), CgDepthAccess.WRITE);
         if (depth != null) raster.readsDepth(CgGraphTexture.current());
-        fullscreen(recording, raster, decode, CgMaterialProxy.of(in.material(depth != null)).captureBindings(recording.bindings()));
+        fullscreen(recording, raster, decode, CgMaterialProxy.of(in.material(depth != null)).bindings());
         stage.retarget(target, opaqueDepthOf());
         return true;
     }
@@ -179,12 +180,12 @@ final class CgSceneTarget {
         CgRasterPass raster = recording.raster("world.opaqueOut").color(CgGraphTexture.current(), CgLoad.load())
                 .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants()).timed(GPU_OUT);
         if (depth) raster.readsDepth(opaqueDepthTexture);
-        int bindings = recording.bindings().withTexture(CgMaterialProxy.of(out.material(depth)).captureBindings(recording.bindings()), 0, opaque);
+        CgMaterialBindings bindings = CgMaterialProxy.of(out.material(depth)).bindings().with(0, opaque);
         fullscreen(recording, raster, encode, bindings);
         kept = true;
     }
 
-    private static void fullscreen(CgRecording recording, CgRasterPass raster, CgPipeline pipeline, int bindings) {
+    private static void fullscreen(CgRecording recording, CgRasterPass raster, CgPipeline pipeline, CgMaterialBindings bindings) {
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, bindings, FULLSCREEN);
         chunks.instance();

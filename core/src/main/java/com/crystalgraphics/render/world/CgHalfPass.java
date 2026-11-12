@@ -73,10 +73,10 @@ final class CgHalfPass {
             CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null || commands.unready(pipeline, i)) continue;
             if (draws.sets[i] != null) {
-                commands.drawSet(chunks, pipeline, commands.bindingOf(draws.materials[i], recording), i);
+                commands.drawSet(chunks, pipeline, commands.bindingOf(draws.materials[i]), i);
                 continue;
             }
-            chunks.draw(pipeline, commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            chunks.draw(pipeline, commands.bindingOf(draws.materials[i]), draws.meshes[i]).sortKey(draws.keys[i]);
             commands.group(chunks, i);
             commands.writeInstance(chunks, i);
         }
@@ -94,7 +94,7 @@ final class CgHalfPass {
         CgRasterPass add = recording.raster("halfPass.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
                 .readsDepth(stage.depth()).timed(GPU_HALF_ADD);
         CgChunkBuilder upsampled = recording.chunks().begin();
-        upsampled.draw(pipeline, CgMaterialProxy.of(upsample).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN);
+        upsampled.draw(pipeline, CgMaterialProxy.of(upsample).bindings(), CgWorldRenderer.FULLSCREEN);
         upsampled.instance();
         add.add(upsampled.end());
         add.end();

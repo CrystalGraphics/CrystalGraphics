@@ -209,7 +209,7 @@ final class CgWorldDistortion {
             CgMaterialInstance material = apply(applySlot[a]);
             CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) continue;
-            chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), QUAD).sortKey(applyKey[a]);
+            chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), QUAD).sortKey(applyKey[a]);
             chunks.bounds(applyRect[a * 4], applyRect[a * 4 + 1], applyRect[a * 4 + 2], applyRect[a * 4 + 3]);
             applyInstance(chunks, applyRect, a * 4);
         }
@@ -230,7 +230,7 @@ final class CgWorldDistortion {
                         .readsColor(stage.target()).readsDepth(stage.depth())
                         .timed(GPU_APPLY);
                 CgChunkBuilder chunks = recording.chunks().begin();
-                chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), QUAD);
+                chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), QUAD);
                 chunks.bounds(finalRect[0], finalRect[1], finalRect[2], finalRect[3]);
                 applyInstance(chunks, finalRect, 0);
                 pass.add(chunks.end());

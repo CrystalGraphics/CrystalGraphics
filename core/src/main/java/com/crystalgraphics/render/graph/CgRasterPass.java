@@ -7,7 +7,6 @@ import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgGpuBudget;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -20,6 +19,7 @@ import java.util.List;
 import java.util.Objects;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * Chunks drawn into textures a pass declares before any draw: its colours and depth with their loads, what it reads,
@@ -280,7 +280,6 @@ public final class CgRasterPass extends CgPass {
         if (chunks.size() == chunkScissor.length) chunkScissor = Arrays.copyOf(chunkScissor, chunkScissor.length * 2);
         chunkScissor[chunks.size()] = scissor;
         chunks.add(chunk);
-        CgBindingTable table = chunk.bindings();
         for (int d = 0; d < chunk.draws(); d++) {
             if (chunk.indirectCount(d) instanceof CgGraphBuffer count) named(count, CgAccess.COMPUTE_READ);
             if (chunk.objects(d) instanceof CgGraphBuffer objects) {
@@ -289,16 +288,16 @@ public final class CgRasterPass extends CgPass {
             for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
                 if (chunk.buffer(d, k) instanceof CgGraphBuffer read) named(read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
-            int id = chunk.binding(d);
-            for (int t = 0; t < table.textures(id); t++) {
-                CgGraphTexture graph = CgGraphTexture.sampled(table.texture(id, t));
+            CgMaterialBindings bindings = chunk.binding(d);
+            for (int t = 0; t < bindings.textures(); t++) {
+                CgGraphTexture graph = CgGraphTexture.sampled(bindings.texture(t));
                 if (graph != null) {
                     requireNotOwnArray(graph);
                     named(graph, CgAccess.SAMPLED_READ);
                 }
             }
-            for (int s = 0; s < table.storages(id); s++) {
-                if (table.storage(id, s) instanceof CgGraphBuffer buffer) {
+            for (int s = 0; s < bindings.storages(); s++) {
+                if (bindings.storage(s) instanceof CgGraphBuffer buffer) {
                     named(buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
                 }
             }

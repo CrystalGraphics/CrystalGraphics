@@ -623,7 +623,7 @@ A buffer is read as a `readonly` storage block bound at `CgBindingModel.buffer(i
   `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
 - **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph
   orders each draw after the pass writing the buffer. A history buffer reads its newest version.
-- **Recorded draws only**: `captureBindings` (the world renderer, `pass.draw`, a chunk) binds them; `bind()` binds
+- **Recorded draws only**: a material's `bindings()` (the world renderer, `pass.draw`, a chunk) binds them; `bind()` binds
   none. Every declared buffer is bound before the first capture, which throws naming one that is not.
 - **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
 - A vertex stage reading a buffer keeps its body in the generated depth pass.
@@ -1362,7 +1362,7 @@ CgGraphTexture voxels = CgGraphTexture.requested("voxels", CgTextureDesc.volume(
 pass.dispatch(fill, 128, 96, 128).image("VOXELS", voxels);
 step.dispatch(move, n).texture("_Wind", wind);
 recording.update(voxels, 0, 0, 0, 32, 128, 96, 16, slab);   // 16 new slices from z 32: 128 * 96 * 16 bytes
-int reads = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, voxels);   // a material's sampler3D
+CgMaterialBindings reads = CgMaterialProxy.of(material).bindings().with(0, voxels);   // a material's sampler3D
 ```
 
 - One level and one colour attachment; nothing draws into a volume, so a raster pass into it throws. A volume of your
@@ -1439,7 +1439,7 @@ CgGraphTexture heat = CgGraphTexture.transientTexture("heat", CgTextureDesc.of(2
 CgComputePass shade = rec.compute("heat");
 shade.dispatch(heatKernel, 256, 256, 1).image("HEAT", heat);
 shade.end();
-int bindings = rec.bindings().withTexture(CgMaterialProxy.of(material).captureBindings(rec.bindings()), 0, heat);
+CgMaterialBindings bindings = CgMaterialProxy.of(material).bindings().with(0, heat);
 ```
 
 - `INDICES` and `VERTICES` draw count × factor of the mesh's range, never more than it holds; `INSTANCES` draws the

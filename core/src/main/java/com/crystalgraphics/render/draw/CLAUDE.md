@@ -8,7 +8,8 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 | Type | Is | Thread |
 |---|---|---|
 | `CgPipeline` | a key: shader asset + pass + keyword set + render state + instance kind, interned to an `int` | `of`/`byId` any thread; `precache`/`program`/`bind`/`instanceBase` render thread |
-| `CgBindingTable` | a recording's binding snapshots: block bytes copied, textures, storage buffers and buffer textures as handles, interned by content | filled by one recorder; `upload`/`bind` on the render thread after handover |
+| `CgMaterialBindings` | what a draw of a material binds, at one version: its block version, textures and samplers, engine blocks and buffers, storage buffers as handles. The proxy makes one when any moves (Unreal's material uniform buffer); `with(unit, texture)` lays a draw's own texture over it, kept per texture | made on the recorder's thread; immutable |
+| `CgFrameBindings` | the executor's index of a frame's bindings: each version its draws name, entered once by identity, and its passes' own entries (constants, view textures, dispatch values) copied as they are packed; uploads blocks, gives arena slots and shares | the frame builder's, then the render thread's |
 | `CgInstanceKind` | what instances are: `QUAD`, `CURVE`, `OBJECT` (an id pair: record, material slot), and the record stride each writes | — |
 | `CgBlockVersion`, `CgMaterialArena` | a material block as it was when a value moved, in a page of its own or a slot of its shader's arena (one storage buffer of slots, Bevy's material slab) | made on any thread; slots given at frame build, written at `upload` |
 | `CgPassConstants` | the pass's view and environment blocks (`CgViewBlock`, `CgEnvironmentBlock`) as a value, one per pass | any |
@@ -18,25 +19,27 @@ recorder will run on a UI document's own thread (`render-graph` §3.1); GL happe
 ```java
 // recording, any thread:
 CgPipeline p = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
-int bindings = CgMaterialProxy.of(material).captureBindings(table);
-int pass = constants.capture(table);
+CgMaterialBindings b = CgMaterialProxy.of(material).bindings();   // the same object until a value, texture or buffer moves
+chunks.draw(p, b.with(0, atlasPage));                               // a draw's own texture over the material's first
 
-// execution, render thread:
-table.upload(ring);
-table.bind(pass);
-if (p.bind()) { table.bind(bindings); CgMeshStore.get().draw(mesh, instances, first); }
+// frame build, then execution on the render thread:
+int id = frame.bindings.add(chunk.binding(d));                      // once per version per frame, by identity
+frame.bindings.upload(ring);
+CgBindingSet set = deviceSets.set(rhi, frame.bindings, id, layout, CgBindingModel.MATERIAL, null);
 ```
 
 ## Rules
 
-- **A recorder never reaches GL.** `pipeline()` parses at most (`CgMaterialShader.ensureParsed()`); it never
-  compiles. `captureBindings()` reads no GL name.
-- **A texture in a snapshot is a handle**, resolved at `bind`: one reallocated before execution binds its new
-  storage. Its `CgSampler`, if any, is part of
-  the snapshot (`texture(unit, texture, sampler)`): equal samplers intern to one id, another makes another.
-- **A buffer in a snapshot is a `CgBufferHandle`**, resolved at `bind` the same way; a `CgGraphBuffer` is read by the
-  raster pass the chunk is added to, so the graph orders the draw after the pass writing it.
-- **An arena block binds as its arena.** A snapshot holding one has a `share` with every snapshot equal but for which
+- **A recorder never reaches the device.** `pipeline()` parses at most (`CgMaterialShader.ensureParsed()`); it never
+  compiles. `bindings()` reads no device name.
+- **A draw names a version, never copies one.** `CgMaterialBindings` is immutable: a value written after a draw names
+  it reaches only draws naming the next. A material unchanged since the last frame answers the same object, so a frame
+  enters it once and its set is the one made before.
+- **A texture in a version is a handle**, resolved when its set is made: one reallocated before execution binds its new
+  storage. Its `CgSampler`, if any, is part of the version (`with(unit, texture, sampler)`).
+- **A buffer in a version is a `CgBufferHandle`**, resolved the same way; a `CgGraphBuffer` is read by the raster pass
+  the chunk is added to, so the graph orders the draw after the pass writing it.
+- **An arena block binds as its arena.** An entry holding one has a `share` with every entry equal but for which
   version of that arena it holds: the executor joins and binds by shares, and each draw's id carries its slot
   (`slotOf`, the frame builder's), so instances of one shader differing only in values draw in one multi-draw. A batch
   whose ids carry no slot (its own records, another kind) binds its slot alone.

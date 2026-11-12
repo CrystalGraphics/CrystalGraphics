@@ -55,6 +55,7 @@ import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
@@ -1196,7 +1197,7 @@ public final class CgWorldLights {
                     // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
                     .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
             CgChunkBuilder chunks = recording.chunks().begin();
-            chunks.draw(pipeline, CgMaterialProxy.of(apply).captureBindings(recording.bindings()), FULLSCREEN);
+            chunks.draw(pipeline, CgMaterialProxy.of(apply).bindings(), FULLSCREEN);
             chunks.instance();
             add.add(chunks.end());
             add.end();
@@ -1386,7 +1387,7 @@ public final class CgWorldLights {
             toView.invertAffine(viewToEye);
             float distance = SUN_DISTANCE.get(), back = SUN_TRACE.get();
             float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
-            int binding = CgMaterialProxy.of(sunShadow).captureBindings(recording.bindings());
+            CgMaterialBindings binding = CgMaterialProxy.of(sunShadow).bindings();
             float[] rows = sunRowData;
             int count = SUN_CASCADES.get();
             for (int k = 0; k < CASCADES; k++) {

@@ -68,7 +68,7 @@ public class CgStageExecuteAllocationTest {
     /**
      * 11.8 KB a firing, by JFR's TLAB samples, most first: {@code CgChunkBuilder.end}'s copies (float[], int[], the
      * chunk); {@code CgRecording.block}'s float[] and a {@code CgRasterPass} with its list and int[] per raster;
-     * {@code FrameRingStreamBuffer.map}'s DirectByteBuffer from {@code CgBindingTable.upload}; a
+     * {@code FrameRingStreamBuffer.map}'s DirectByteBuffer from {@code CgFrameBindings.upload}; a
      * {@code CgMaterialShaderMap.ProgramKey} per program lookup; and
      * the recording device's own byte[] at retirement (a test device's, never a player's).
      */
@@ -86,7 +86,7 @@ public class CgStageExecuteAllocationTest {
             CgRasterPass pass = frame.pass(frame.defaults(constants), CgOrder.SORTED);
             for (int c = 0; c < 4; c++) {
                 CgChunkBuilder chunk = frame.recording().chunks().begin();
-                chunk.draw(quads, CgMaterialProxy.of(material).captureBindings(frame.recording().bindings())).sortKey(c);
+                chunk.draw(quads, CgMaterialProxy.of(material).bindings()).sortKey(c);
                 for (int i = 0; i < 16; i++) {
                     int at = chunk.instance();
                     chunk.data()[at] = i;

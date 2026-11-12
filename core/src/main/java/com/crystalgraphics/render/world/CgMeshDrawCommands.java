@@ -30,6 +30,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * Turns a world draw into the commands a pass records for it, as Unreal's {@code BuildMeshDrawCommands} and
@@ -61,7 +62,6 @@ final class CgMeshDrawCommands {
     final Matrix4f normal = new Matrix4f();
     final Vector3f eye = new Vector3f();
     final Vector3f forward = new Vector3f();
-    final IdentityHashMap<CgMaterialInterface, Integer> bindings = new IdentityHashMap<>();
     final IdentityHashMap<CgRenderState, CgRenderState> depthOnly = new IdentityHashMap<>();
     boolean skipUnready = CgWorldRenderer.SKIP_UNREADY.get();
     long unreadyDraws;
@@ -132,10 +132,10 @@ final class CgMeshDrawCommands {
     void passDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterialInterface link, CgRecording recording, int i) {
         if (unready(pipeline, i)) return;
         if (draws.sets[i] != null) {
-            drawSet(chunks, pipeline, bindingOf(link, recording), i);
+            drawSet(chunks, pipeline, bindingOf(link), i);
             return;
         }
-        chunks.draw(pipeline, bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
+        chunks.draw(pipeline, bindingOf(link), draws.meshes[i]).sortKey(draws.keys[i]);
         group(chunks, i);
         if (!Float.isNaN(draws.screens[i * 4])) chunks.bounds(draws.screens[i * 4], draws.screens[i * 4 + 1], draws.screens[i * 4 + 2], draws.screens[i * 4 + 3]);
         writeInstance(chunks, i);
@@ -145,16 +145,16 @@ final class CgMeshDrawCommands {
     void emissionDraw(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterialInterface link, CgRecording recording, int i) {
         if (unready(pipeline, i)) return;
         if (draws.sets[i] != null) {
-            drawSet(chunks, pipeline, bindingOf(link, recording), i);
+            drawSet(chunks, pipeline, bindingOf(link), i);
             return;
         }
-        chunks.draw(pipeline, bindingOf(link, recording), draws.meshes[i]).sortKey(draws.keys[i]);
+        chunks.draw(pipeline, bindingOf(link), draws.meshes[i]).sortKey(draws.keys[i]);
         group(chunks, i);
         writeInstance(chunks, i);
     }
 
     /** Set {@code i}'s levels, each an indirect draw of the records its cull kept at that level this stage. */
-    void drawSet(CgChunkBuilder chunks, CgPipeline pipeline, int binding, int i) {
+    void drawSet(CgChunkBuilder chunks, CgPipeline pipeline, CgMaterialBindings binding, int i) {
         int capacity = draws.setCounts[i].capacity(), levels = draws.lods[i] != null ? draws.lods[i].levelCount() : 1;
         for (int l = 0; l < levels; l++) {
             chunks.draw(pipeline, binding, draws.lods[i] != null ? draws.lods[i].level(l) : draws.meshes[i]).sortKey(draws.keys[i]);
@@ -294,10 +294,8 @@ final class CgMeshDrawCommands {
         return forward.withState(colourless);
     }
 
-    /** A material's snapshot in this recording, taken once per stage. */
-    int bindingOf(CgMaterialInterface material, CgRecording recording) {
-        Integer id = bindings.get(material);
-        if (id == null) bindings.put(material, id = CgMaterialProxy.of(material).captureBindings(recording.bindings()));
-        return id;
+    /** What a draw of {@code material} binds: its version now. */
+    CgMaterialBindings bindingOf(CgMaterialInterface material) {
+        return CgMaterialProxy.of(material).bindings();
     }
 }

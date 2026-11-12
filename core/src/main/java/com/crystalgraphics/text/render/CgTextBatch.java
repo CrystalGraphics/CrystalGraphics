@@ -17,7 +17,6 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -45,6 +44,7 @@ import java.util.List;
 import java.util.Map;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * A canvas's text: what {@link CgCanvas#text()} draws through. Resolves a draw's glyphs from the font registry's
@@ -276,7 +276,7 @@ public final class CgTextBatch {
      * {@code labels}: one draw of {@code text.shader}'s {@code WORLD_LABEL} variant, under the pass's projection.
      *
      * <pre>{@code
-     * chunks.bindings(recording.bindings()).begin(0, 0, 0);
+     * chunks.begin(0, 0, 0);
      * boolean linear = CgTextBatch.blendsLinearly(stage.target());
      * text.drawCaptured(chunks, batch, glyphs, glyphCount, labels, linear);   // labels: CgInstanceKind.OBJECT records
      * canvas.add(chunks.end());
@@ -310,8 +310,7 @@ public final class CgTextBatch {
                 linearTarget);
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
-        CgBindingTable table = chunks.bindings();
-        int bindings = table.withTexture(CgMaterialProxy.of(material).captureBindings(table), 0,
+        CgMaterialBindings bindings = CgMaterialProxy.of(material).bindings().with(0,
                 CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
         pipeline = pipeline.withState(labelState(pipeline.state(), depthPass));
         chunks.draw(pipeline, bindings, CgMesh.quads(1)).objects(labels, 0, count)

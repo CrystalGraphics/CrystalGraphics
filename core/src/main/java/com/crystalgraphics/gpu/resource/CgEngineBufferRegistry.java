@@ -255,7 +255,7 @@ public final class CgEngineBufferRegistry {
      * @param envPath   GLSL macros written against this buffer, included right after its declaration,
      *                  or null when the declaration is all there is
      * @param generated GLSL made at each compile, after the env file, or null
-     * @param perDraw   bound by each draw's binding snapshot, as a material's own attached buffer is, rather than left to
+     * @param perDraw   bound by each draw's bindings, as a material's own attached buffer is, rather than left to
      *                  an executor: a texture-buffer unit does not survive from the upload to the draw
      * @param properties a {@code Properties { }} body every declaring shader takes, names {@code _cg_}-prefixed, or null
      */

@@ -3,7 +3,6 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -41,10 +40,6 @@ public final class CgComputePass extends CgPass {
 
     final CgRecording recording;
     final float[] constants = new float[CgPassConstants.FLOATS];
-    /** Its constants converted to a host's standard depth ({@link CgPassConstants#blocks}). */
-    private final float[] constantsScratch = new float[CgPassConstants.FLOATS];
-    /** The recording's snapshot of its constants, made when it ends: bound once for every dispatch, as a raster pass's. */
-    int constantsBinding = -1;
     private final List<CgDispatch> dispatches = new ArrayList<>();
     private final List<CgDispatch> dispatchView = Collections.unmodifiableList(dispatches);
     /** Dispatches made so far, refilled after a reset when they run the same kernel; the first {@link #shellsUsed} are this use's. */
@@ -77,7 +72,6 @@ public final class CgComputePass extends CgPass {
         again = false;
         async = false;
         ended = false;
-        constantsBinding = -1;
         depthFrom = null;
         depthFromCopy = null;
     }
@@ -246,26 +240,10 @@ public final class CgComputePass extends CgPass {
         return depthFromCopy;
     }
 
-    /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
+    /** Ends the pass: every dispatch bound; its values and samplers are read as the frame is built. */
     public void end() {
         requireOpen();
-        CgBindingTable frame = CgPassConstants.blocks(recording.bindings().begin(), constants, 0,
-                CgDepthConvention.reversed(), constantsScratch);
-        if (depthFrom != null) frame.texture(CgBindingModel.SCENE_DEPTH, depthFromCopy.depth);
-        constantsBinding = frame.end();
-        for (int d = 0; d < dispatches.size(); d++) {
-            CgDispatch dispatch = dispatches.get(d);
-            dispatch.requireBound();
-            CgBindingTable table = recording.bindings().begin();
-            if (dispatch.values != null) {
-                table.block(CgBindingModel.MATERIAL_BLOCK, dispatch.values, 0, dispatch.values.length);
-            }
-            for (int unit = 0; unit < dispatch.samplers.length; unit++) {
-                if (dispatch.samplers[unit] != null) table.texture(unit, dispatch.samplers[unit]);
-            }
-            // Each dispatch's values are its own: interning would hash every float to find no equal.
-            dispatch.bindings = table.endUnique();
-        }
+        for (int d = 0; d < dispatches.size(); d++) dispatches.get(d).requireBound();
         ended = true;
     }
 

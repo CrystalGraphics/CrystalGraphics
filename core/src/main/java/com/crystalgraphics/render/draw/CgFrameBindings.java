@@ -25,49 +25,38 @@ import java.util.Objects;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
- * A recording's binding snapshots: what a draw reads besides its instances, interned by content so two draws that
- * read the same things share an id, and a batch can hold both. Uniform blocks are copied when recorded; textures
- * and buffers are held as handles and resolved when bound. At execution every block is uploaded in one ring write
- * and bound by range, a block equal to the last one uploaded at its binding sharing its place: the environment block
- * every pass of a frame carries is written once. A {@link CgBufferHandle} — a frame graph's buffer — binds as the storage
- * block at the slot given, and the graph orders the draw after whatever wrote it. Every entry is keyed by its slot
- * ({@link CgBindingModel}, packed).
+ * A frame's bindings, as its executor reads them by id: each {@link CgMaterialBindings} version its draws name, entered
+ * once by identity, and its passes' own parameters (a pass's constants and view textures, a dispatch's values), copied
+ * as they are packed. At execution every copied block is uploaded in one ring write and bound by range, a block equal to
+ * the last one uploaded at its binding sharing its place; a version's blocks are written once into persistent memory
+ * and bound from there by every frame after. Every entry is keyed by its slot ({@link CgBindingModel}, packed).
  *
  * <pre>{@code
- * int bindings = table.begin()
- *         .texture(0, atlasPage)
- *         .texture(1, noise, CgSampler.BILINEAR_WRAP)   // its own sampling replaced, for this draw
- *         .block(CgBindingModel.MATERIAL_BLOCK, props, 0, propFloats)
- *         .end();                  // equal content answers the same id
+ * int drawn = frame.bindings.add(chunk.binding(d));         // a draw's version: one id however many draws name it
+ * int constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0, reversed, scratch)
+ *         .texture(CgBindingModel.LIGHTMAP, lightmap)
+ *         .end();                                              // equal content answers the same id
  *
  * // at execution, on the render thread, once, then per batch:
- * table.upload(ring);              // the executor's frame ring
- * table.bind(bindings);
+ * frame.bindings.upload(ring);
+ * CgBindingSet set = deviceSets.set(rhi, frame.bindings, drawn, layout, CgBindingModel.MATERIAL, null);
  * }</pre>
  *
- * <p>Usually filled by {@code CgMaterial.captureBindings(table)} rather than by hand.</p>
- *
  * <ul>
- *   <li>A block's floats are read at {@link #block}: a material changed after recording does not change what the
- *       draw reads. A texture is not: one reallocated before execution binds its new storage, which is what a
- *       growing glyph atlas needs. Its <em>content</em> is ordered by the frame graph's versions.</li>
- *   <li>{@link #upload} after the last {@link #end()} and before the first {@link #bind}: a block's place in the
- *       ring is only known once every block is.</li>
- *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers,
- *       and {@value #MAX_STORAGE} storage handles per snapshot.</li>
- *   <li>One thread at a time: the recorder fills it, and the render thread uploads and binds it once the
- *       recording is handed over. {@link #upload} copies on the device; the table owns no device object.</li>
- *   <li>A block in a {@link CgMaterialArena} binds as the arena: its snapshot's draws carry its {@link #slotOf slot} in
- *       their ids, and snapshots equal but for which version of one arena they hold have one {@link #share}.</li>
+ *   <li>The frame builder's and the executor's alone: a draw names a version, never an id here.</li>
+ *   <li>{@link #upload} after the last entry and before the first set is made: a block's place in the ring is only known
+ *       once every block is.</li>
+ *   <li>A block in a {@link CgMaterialArena} binds as the arena: its entry's draws carry its {@link #slotOf slot} in their
+ *       ids, and entries equal but for which version of one arena they hold have one {@link #share}.</li>
  * </ul>
  */
-public final class CgBindingTable {
+public final class CgFrameBindings {
 
-    /** A snapshot's cap; a material binds at most {@link CgBindingModel#MATERIAL_TEXTURES}, checked at compile. */
-    public static final int MAX_TEXTURES = 12;
-    public static final int MAX_BLOCKS = 4;
-    public static final int MAX_BUFFERS = 4;
-    public static final int MAX_STORAGE = 4;
+    /** An entry's caps: a version's ({@link CgMaterialBindings}). */
+    static final int MAX_TEXTURES = CgMaterialBindings.MAX_TEXTURES;
+    static final int MAX_BLOCKS = CgMaterialBindings.MAX_BLOCKS;
+    static final int MAX_BUFFERS = CgMaterialBindings.MAX_BUFFERS;
+    static final int MAX_STORAGE = CgMaterialBindings.MAX_STORAGE;
 
     /** Per entry: texture, block, buffer and storage counts, a unit per texture, (binding, offset, floats) per block, a
      * slot per storage handle. */
@@ -116,19 +105,19 @@ public final class CgBindingTable {
     /** The ring frame it was uploaded in: a later frame's region is somewhere else. */
     private long uploadedFrame = -1;
 
-    /** Per snapshot: its arena slot once asked ({@link #slotOf}), -1 before; whether the ask holds a pin. */
+    /** Per entry: its arena slot once asked ({@link #slotOf}), -1 before; whether the ask holds a pin. */
     private int[] arenaSlots = new int[0];
     private boolean[] arenaPinned = new boolean[0];
-    /** Per snapshot: its {@link #share}, made at the first ask after a change. Open addressing over shares, stored +1. */
+    /** Per entry: its {@link #share}, made at the first ask after a change. Open addressing over shares, stored +1. */
     private int[] shares = new int[64];
     private boolean sharesMade;
     private int[] shareSlots = new int[128];
     /** During an {@link #upload}: the arenas its blocks are in. */
     private final List<CgMaterialArena> arenas = new ArrayList<>();
 
-    /** Starts a snapshot. */
-    public CgBindingTable begin() {
-        if (building >= 0) throw new IllegalStateException("begin() inside a snapshot: end() the last one first");
+    /** Starts an entry. */
+    public CgFrameBindings begin() {
+        if (building >= 0) throw new IllegalStateException("begin() inside an entry: end() the last one first");
         if (count == hashes.length) {
             entries = Arrays.copyOf(entries, entries.length * 2);
             refs = Arrays.copyOf(refs, refs.length * 2);
@@ -145,24 +134,24 @@ public final class CgBindingTable {
     }
 
     /** {@code texture} as the material's texture {@code index}, as it is when the draw executes, sampled as its own. */
-    public CgBindingTable texture(int index, CgTexture texture) {
+    public CgFrameBindings texture(int index, CgTexture texture) {
         return put(CgBindingModel.packedTexture(index), texture, null);
     }
 
     /** {@code texture} as the material's texture {@code index}, sampled by {@code sampler}; null for its own sampling. */
-    public CgBindingTable texture(int index, CgTexture texture, @Nullable CgSampler sampler) {
+    public CgFrameBindings texture(int index, CgTexture texture, @Nullable CgSampler sampler) {
         return put(CgBindingModel.packedTexture(index), texture, sampler);
     }
 
     /** {@code texture} at {@code slot}: a view texture ({@link CgBindingModel#LIGHTMAP}, scene depth and colour). */
-    public CgBindingTable texture(CgBindingModel.Slot slot, CgTexture texture) {
+    public CgFrameBindings texture(CgBindingModel.Slot slot, CgTexture texture) {
         return put(slot.packed(), texture, null);
     }
 
-    private CgBindingTable put(int packed, CgTexture texture, @Nullable CgSampler sampler) {
+    private CgFrameBindings put(int packed, CgTexture texture, @Nullable CgSampler sampler) {
         int e = building * ENTRY_INTS;
         int n = entries[e];
-        if (n == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures in one snapshot");
+        if (n == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures in one entry");
         entries[e + HEADER + n] = packed;
         refs[building * ENTRY_REFS + n] = texture;
         refs[building * ENTRY_REFS + SAMPLER_REFS + n] = sampler;
@@ -171,14 +160,14 @@ public final class CgBindingTable {
     }
 
     /** A uniform block at {@code slot}, copied from {@code data[offset, offset + floatCount)}. */
-    public CgBindingTable block(CgBindingModel.Slot slot, float[] data, int offset, int floatCount) {
+    public CgFrameBindings block(CgBindingModel.Slot slot, float[] data, int offset, int floatCount) {
         return block(slot.packed(), data, offset, floatCount);
     }
 
-    private CgBindingTable block(int binding, float[] data, int offset, int floatCount) {
+    private CgFrameBindings block(int binding, float[] data, int offset, int floatCount) {
         int e = building * ENTRY_INTS;
         int n = entries[e + 1];
-        if (n == MAX_BLOCKS) throw new IllegalStateException("more than " + MAX_BLOCKS + " blocks in one snapshot");
+        if (n == MAX_BLOCKS) throw new IllegalStateException("more than " + MAX_BLOCKS + " blocks in one entry");
         if (floatCursor + floatCount > floats.length) {
             floats = Arrays.copyOf(floats, Math.max(floats.length * 2, floatCursor + floatCount));
         }
@@ -193,18 +182,10 @@ public final class CgBindingTable {
         return this;
     }
 
-    /**
-     * A block at {@code slot} from {@code version}'s persistent memory: written once, the first time a snapshot holding
-     * it executes, and bound by every draw after. Snapshots interning by the version's identity.
-     */
-    public CgBindingTable block(CgBindingModel.Slot slot, CgBlockVersion version) {
-        return block(slot.packed(), version);
-    }
-
-    private CgBindingTable block(int binding, CgBlockVersion version) {
+    private CgFrameBindings block(int binding, CgBlockVersion version) {
         int e = building * ENTRY_INTS;
         int n = entries[e + 1];
-        if (n == MAX_BLOCKS) throw new IllegalStateException("more than " + MAX_BLOCKS + " blocks in one snapshot");
+        if (n == MAX_BLOCKS) throw new IllegalStateException("more than " + MAX_BLOCKS + " blocks in one entry");
         int b = e + BLOCKS_AT + n * BLOCK_INTS;
         entries[b] = binding;
         entries[b + 1] = -1;
@@ -215,31 +196,26 @@ public final class CgBindingTable {
     }
 
     /** An engine buffer the draw reads at its own slot, its range as it is when the draw executes. */
-    public CgBindingTable buffer(CgShaderBuffer buffer) {
+    private CgFrameBindings buffer(CgShaderBuffer buffer) {
         int e = building * ENTRY_INTS;
         int n = entries[e + 2];
-        if (n == MAX_BUFFERS) throw new IllegalStateException("more than " + MAX_BUFFERS + " buffers in one snapshot");
+        if (n == MAX_BUFFERS) throw new IllegalStateException("more than " + MAX_BUFFERS + " buffers in one entry");
         refs[building * ENTRY_REFS + MAX_TEXTURES + n] = buffer;
         entries[e + 2] = n + 1;
         return this;
     }
 
-    /** {@code buffer} as the storage block at {@code slot} for the draw, resolved when the draw executes. */
-    public CgBindingTable storage(CgBindingModel.Slot slot, CgBufferHandle buffer) {
-        return storage(slot.packed(), buffer);
-    }
-
-    private CgBindingTable storage(int point, CgBufferHandle buffer) {
+    private CgFrameBindings storage(int point, CgBufferHandle buffer) {
         int e = building * ENTRY_INTS;
         int n = entries[e + 3];
-        if (n == MAX_STORAGE) throw new IllegalStateException("more than " + MAX_STORAGE + " storage handles in one snapshot");
+        if (n == MAX_STORAGE) throw new IllegalStateException("more than " + MAX_STORAGE + " storage handles in one entry");
         entries[e + STORAGE_AT + n] = point;
         refs[building * ENTRY_REFS + STORAGE_REFS + n] = buffer;
         entries[e + 3] = n + 1;
         return this;
     }
 
-    /** Ends the snapshot and answers its id: an earlier snapshot's when the content is equal. */
+    /** Ends the entry and answers its id: an earlier entry's when the content is equal. */
     public int end() {
         int id = building;
         building = -1;
@@ -265,7 +241,7 @@ public final class CgBindingTable {
     }
 
     /**
-     * Ends the snapshot without interning it: an id of its own, though an equal snapshot may exist. For snapshots that
+     * Ends the entry without interning it: an id of its own, though an equal entry may exist. For entries that
      * almost never repeat, where hashing every float costs more than the duplicate would: a dispatch's values.
      *
      * <pre>{@code
@@ -283,105 +259,84 @@ public final class CgBindingTable {
         return id;
     }
 
-    /** {@link #copy}, ended by {@link #endUnique()}. */
-    public int copyUnique(CgBindingTable from, int id) {
-        fill(from, id);
-        return endUnique();
-    }
-
     /**
-     * Snapshot {@code id} of {@code from}, interned here: how a frame builder gathers the snapshots of every recording
-     * it packs into one table. Equal content answers the id an equal snapshot already has.
+     * Enters {@code bindings}, a version a draw names, answering its id: the same id for the same version until
+     * {@link #reset}, however many draws name it.
      */
-    public int copy(CgBindingTable from, int id) {
-        fill(from, id);
-        return end();
-    }
-
-    /** A snapshot begun here and filled with {@code from}'s {@code id}, left open. */
-    private void fill(CgBindingTable from, int id) {
+    public int add(CgMaterialBindings bindings) {
+        int mask = versionSlots.length - 1;
+        int s = System.identityHashCode(bindings) & mask;
+        for (; versionSlots[s] != null; s = (s + 1) & mask) {
+            if (versionSlots[s] == bindings) return versionIds[s];
+        }
         begin();
-        int e = id * ENTRY_INTS;
-        int r = id * ENTRY_REFS;
-        for (int t = 0; t < from.entries[e]; t++) {
-            put(from.entries[e + HEADER + t], (CgTexture) from.refs[r + t], (CgSampler) from.refs[r + SAMPLER_REFS + t]);
-        }
-        for (int b = 0; b < from.entries[e + 1]; b++) {
-            int block = e + BLOCKS_AT + b * BLOCK_INTS;
-            CgBlockVersion version = (CgBlockVersion) from.refs[r + BLOCK_REFS + b];
-            if (version != null) block(from.entries[block], version);
-            else block(from.entries[block], from.floats, from.entries[block + 1], from.entries[block + 2]);
-        }
-        for (int b = 0; b < from.entries[e + 2]; b++) buffer((CgShaderBuffer) from.refs[r + MAX_TEXTURES + b]);
-        for (int b = 0; b < from.entries[e + 3]; b++) {
-            storage(from.entries[e + STORAGE_AT + b], (CgBufferHandle) from.refs[r + STORAGE_REFS + b]);
+        for (int t = 0; t < bindings.textures(); t++) put(bindings.textureSlot(t), bindings.texture(t), bindings.sampler(t));
+        for (int k = 0; k < bindings.blocks(); k++) block(bindings.blockSlot(k), bindings.block(k));
+        for (int b = 0; b < bindings.buffers(); b++) buffer(bindings.buffer(b));
+        for (int k = 0; k < bindings.storages(); k++) storage(bindings.storageSlot(k), bindings.storage(k));
+        int id = endUnique();
+        versionSlots[s] = bindings;
+        versionIds[s] = id;
+        if (++versions * 2 > versionSlots.length) growVersions();
+        return id;
+    }
+
+    /** {@link #add}'s versions by identity, open addressing, kept under half full; and their ids. */
+    private CgMaterialBindings[] versionSlots = new CgMaterialBindings[128];
+    private int[] versionIds = new int[128];
+    private int versions;
+
+    private void growVersions() {
+        CgMaterialBindings[] was = versionSlots;
+        int[] wasIds = versionIds;
+        versionSlots = new CgMaterialBindings[was.length * 2];
+        versionIds = new int[was.length * 2];
+        int mask = versionSlots.length - 1;
+        for (int i = 0; i < was.length; i++) {
+            if (was[i] == null) continue;
+            int s = System.identityHashCode(was[i]) & mask;
+            while (versionSlots[s] != null) s = (s + 1) & mask;
+            versionSlots[s] = was[i];
+            versionIds[s] = wasIds[i];
         }
     }
 
-    /** Snapshot {@code id} with {@code texture} as the material's texture {@code index}, in place of what it had there. */
-    public int withTexture(int id, int index, CgTexture texture) {
-        return withTexture(id, index, texture, null);
-    }
-
-    /** {@link #withTexture(int, int, CgTexture)} sampled through {@code sampler}; null samples as its spec says. */
-    public int withTexture(int id, int index, CgTexture texture, @Nullable CgSampler sampler) {
-        int unit = CgBindingModel.packedTexture(index);
-        begin();
-        int e = id * ENTRY_INTS;
-        int r = id * ENTRY_REFS;
-        for (int t = 0; t < entries[e]; t++) {
-            if (entries[e + HEADER + t] != unit) {
-                put(entries[e + HEADER + t], (CgTexture) refs[r + t], (CgSampler) refs[r + SAMPLER_REFS + t]);
-            }
-        }
-        put(unit, texture, sampler);
-        for (int b = 0; b < entries[e + 1]; b++) {
-            int block = e + BLOCKS_AT + b * BLOCK_INTS;
-            CgBlockVersion version = (CgBlockVersion) refs[r + BLOCK_REFS + b];
-            if (version != null) block(entries[block], version);
-            else block(entries[block], floats, entries[block + 1], entries[block + 2]);
-        }
-        for (int b = 0; b < entries[e + 2]; b++) buffer((CgShaderBuffer) refs[r + MAX_TEXTURES + b]);
-        for (int b = 0; b < entries[e + 3]; b++) storage(entries[e + STORAGE_AT + b], (CgBufferHandle) refs[r + STORAGE_REFS + b]);
-        return end();
-    }
-
-    /** How many distinct snapshots it holds. */
+    /** How many distinct entries it holds. */
     public int size() {
         return count;
     }
 
-    /** How many textures snapshot {@code id} binds. */
+    /** How many textures entry {@code id} binds. */
     public int textures(int id) {
         return entries[id * ENTRY_INTS];
     }
 
-    /** The slot ({@link CgBindingModel#pack packed}) snapshot {@code id}'s {@code i}th texture binds to. */
+    /** The slot ({@link CgBindingModel#pack packed}) entry {@code id}'s {@code i}th texture binds to. */
     public int textureUnit(int id, int i) {
         return entries[id * ENTRY_INTS + HEADER + i];
     }
 
-    /** Snapshot {@code id}'s {@code i}th texture. */
+    /** Entry {@code id}'s {@code i}th texture. */
     public CgTexture texture(int id, int i) {
         return (CgTexture) refs[id * ENTRY_REFS + i];
     }
 
-    /** The sampler snapshot {@code id}'s {@code i}th texture is sampled by; null for its own. */
+    /** The sampler entry {@code id}'s {@code i}th texture is sampled by; null for its own. */
     public CgSampler sampler(int id, int i) {
         return (CgSampler) refs[id * ENTRY_REFS + SAMPLER_REFS + i];
     }
 
-    /** How many uniform blocks snapshot {@code id} binds. */
+    /** How many uniform blocks entry {@code id} binds. */
     public int blocks(int id) {
         return entries[id * ENTRY_INTS + 1];
     }
 
-    /** The slot ({@link CgBindingModel#pack packed}) of snapshot {@code id}'s {@code k}th block. */
+    /** The slot ({@link CgBindingModel#pack packed}) of entry {@code id}'s {@code k}th block. */
     public int blockBinding(int id, int k) {
         return entries[id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS];
     }
 
-    /** A copy of snapshot {@code id}'s {@code k}th block, as captured. */
+    /** A copy of entry {@code id}'s {@code k}th block, as captured. */
     public float[] blockFloats(int id, int k) {
         CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
         if (version != null) return version.floats();
@@ -389,42 +344,42 @@ public final class CgBindingTable {
         return Arrays.copyOfRange(floats, entries[block + 1], entries[block + 1] + entries[block + 2]);
     }
 
-    /** How many storage handles snapshot {@code id} binds. */
+    /** How many storage handles entry {@code id} binds. */
     public int storages(int id) {
         return entries[id * ENTRY_INTS + 3];
     }
 
-    /** Snapshot {@code id}'s {@code i}th storage handle. */
+    /** Entry {@code id}'s {@code i}th storage handle. */
     public CgBufferHandle storage(int id, int i) {
         return (CgBufferHandle) refs[id * ENTRY_REFS + STORAGE_REFS + i];
     }
 
-    /** The slot ({@link CgBindingModel#pack packed}) snapshot {@code id}'s {@code i}th storage handle binds at. */
+    /** The slot ({@link CgBindingModel#pack packed}) entry {@code id}'s {@code i}th storage handle binds at. */
     public int storagePoint(int id, int i) {
         return entries[id * ENTRY_INTS + STORAGE_AT + i];
     }
 
-    /** How many buffers snapshot {@code id} binds. */
+    /** How many buffers entry {@code id} binds. */
     public int buffers(int id) {
         return entries[id * ENTRY_INTS + 2];
     }
 
-    /** Snapshot {@code id}'s {@code i}th buffer. */
+    /** Entry {@code id}'s {@code i}th buffer. */
     public CgShaderBuffer buffer(int id, int i) {
         return (CgShaderBuffer) refs[id * ENTRY_REFS + MAX_TEXTURES + i];
     }
 
-    /** Snapshot {@code id}'s {@code k}th block's persistent version; null for one copied into the ring. */
+    /** Entry {@code id}'s {@code k}th block's persistent version; null for one copied into the ring. */
     CgBlockVersion blockVersion(int id, int k) {
         return (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
     }
 
-    /** How many floats snapshot {@code id}'s {@code k}th block holds. */
+    /** How many floats entry {@code id}'s {@code k}th block holds. */
     int blockFloatCount(int id, int k) {
         return entries[id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS + 2];
     }
 
-    /** Where snapshot {@code id}'s {@code k}th ring block landed in {@link #uploadedBuffer()}; after {@link #upload}. */
+    /** Where entry {@code id}'s {@code k}th ring block landed in {@link #uploadedBuffer()}; after {@link #upload}. */
     int ringOffset(int id, int k) {
         return ringOffsets[id * MAX_BLOCKS + k];
     }
@@ -442,9 +397,9 @@ public final class CgBindingTable {
 
     private int resets;
 
-    /** Forgets every snapshot; ids from before are invalid. */
+    /** Forgets every entry; ids from before are invalid. */
     public void reset() {
-        if (building >= 0) throw new IllegalStateException("reset() inside a snapshot");
+        if (building >= 0) throw new IllegalStateException("reset() inside an entry");
         resets++;
         for (int id = 0; id < Math.min(count, arenaSlots.length); id++) {
             if (arenaPinned[id]) {
@@ -455,6 +410,10 @@ public final class CgBindingTable {
             arenaSlots[id] = -1;
         }
         Arrays.fill(refs, 0, count * ENTRY_REFS, null);
+        if (versions > 0) {
+            Arrays.fill(versionSlots, null);
+            versions = 0;
+        }
         count = 0;
         floatCursor = 0;
         Arrays.fill(slots, 0);
@@ -588,8 +547,8 @@ public final class CgBindingTable {
     }
 
     /**
-     * The arena slot snapshot {@code id}'s material block takes, given now if it holds none and kept until this table's
-     * {@link #upload}: what the frame builder writes beside each id of the snapshot's draws. 0 for a snapshot holding no
+     * The arena slot entry {@code id}'s material block takes, given now if it holds none and kept until this table's
+     * {@link #upload}: what the frame builder writes beside each id of the entry's draws. 0 for an entry holding no
      * arena block. The building thread's.
      */
     public int slotOf(int id) {
@@ -607,7 +566,7 @@ public final class CgBindingTable {
     }
 
     /**
-     * Snapshot {@code id}'s share: the first snapshot equal to it but for which version of one arena they hold, which
+     * Entry {@code id}'s share: the first entry equal to it but for which version of one arena they hold, which
      * draws its with one set and in one multi-draw (Bevy's material slab key).
      */
     public int share(int id) {
@@ -615,7 +574,7 @@ public final class CgBindingTable {
         return shares[id];
     }
 
-    /** Snapshot {@code id}'s block in an arena; null for none. */
+    /** Entry {@code id}'s block in an arena; null for none. */
     @Nullable
     CgBlockVersion arenaVersion(int id) {
         int e = id * ENTRY_INTS;
@@ -626,7 +585,7 @@ public final class CgBindingTable {
         return null;
     }
 
-    /** Every snapshot's {@link #share}, interned by content with each arena block taken as its arena. */
+    /** Every entry's {@link #share}, interned by content with each arena block taken as its arena. */
     private void share() {
         sharesMade = true;
         if (shares.length < count) shares = new int[Math.max(count, shares.length * 2)];
@@ -705,7 +664,7 @@ public final class CgBindingTable {
         return sameContent(a, b, false);
     }
 
-    /** Whether snapshots {@code a} and {@code b} hold the same; with {@code share}, two blocks of one arena match. */
+    /** Whether entries {@code a} and {@code b} hold the same; with {@code share}, two blocks of one arena match. */
     private boolean sameContent(int a, int b, boolean share) {
         int ea = a * ENTRY_INTS, eb = b * ENTRY_INTS;
         int ra = a * ENTRY_REFS, rb = b * ENTRY_REFS;
@@ -748,8 +707,8 @@ public final class CgBindingTable {
 
     /**
      * Where {@link CgBlockVersion}s live once written: pages of uniform memory that outlive frames, a range a version, freed
-     * once the version is superseded and the last frame that bound it has retired. {@link CgBindingTable#upload} places and
-     * writes the versions its snapshots hold; render thread only.
+     * once the version is superseded and the last frame that bound it has retired. {@link CgFrameBindings#upload} places and
+     * writes the versions its entries hold; render thread only.
      */
     static final class BlockStore {
 

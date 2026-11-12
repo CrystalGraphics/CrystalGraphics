@@ -54,7 +54,7 @@ final class CgTranslucencyComposition {
         material.sampler("_Translucency", 0, translucency);
         CgRasterPass pass = recording.raster("translucencyComposition.into").color(into, CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);
         pass.add(chunks.end());
         pass.end();

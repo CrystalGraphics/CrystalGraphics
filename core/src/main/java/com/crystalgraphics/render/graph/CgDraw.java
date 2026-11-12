@@ -76,7 +76,7 @@ public final class CgDraw {
 
     CgDraw(CgRasterPass pass, CgRecording recording) {
         this.pass = pass;
-        this.builder = CgChunkBuilder.pooling(recording.bindings(), recording.primitives());
+        this.builder = CgChunkBuilder.pooling(recording.primitives());
     }
 
     /** Opens a draw of {@code mesh} under {@code material}'s pass that draws meshes. */
@@ -96,7 +96,7 @@ public final class CgDraw {
         sortKey = 0;
         group = null;
         bounded = false;
-        builder.draw(pipeline, proxy.captureBindings(builder.bindings()), mesh);
+        builder.draw(pipeline, proxy.bindings(), mesh);
         open = true;
         return this;
     }

@@ -105,10 +105,10 @@ final class CgVolumePass {
             CgPipeline marching = (folded != null ? folded : pipeline).as(CgPipelineForm.VOLUME);
             if (marching == null || commands.unready(marching, i)) continue;
             if (draws.sets[i] != null) {
-                commands.drawSet(chunks, marching, commands.bindingOf(draws.materials[i], recording), i);
+                commands.drawSet(chunks, marching, commands.bindingOf(draws.materials[i]), i);
                 continue;
             }
-            chunks.draw(marching, commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            chunks.draw(marching, commands.bindingOf(draws.materials[i]), draws.meshes[i]).sortKey(draws.keys[i]);
             commands.group(chunks, i);
             commands.writeInstance(chunks, i);
         }
@@ -156,7 +156,7 @@ final class CgVolumePass {
         if (pipeline == null) return;
         // First of the pass: every surface after it is dimmed by the smoke in front of it (CgWorldMedia), so one
         // behind the smoke must not have been covered by it too.
-        chunks.draw(pipeline, CgMaterialProxy.of(composite).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
+        chunks.draw(pipeline, CgMaterialProxy.of(composite).bindings(), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
         chunks.instance();
     }
 }

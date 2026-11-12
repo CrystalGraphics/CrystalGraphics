@@ -11,7 +11,6 @@ import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.trace.CgTrace;
@@ -22,6 +21,7 @@ import org.joml.Vector3f;
 import javax.annotation.Nullable;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * A canvas's quads: what {@link CgCanvas#quad} builds. One instance record per quad ({@link CgQuadRecord}), batched
@@ -136,7 +136,7 @@ public final class CgQuadBatch {
     }
 
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
-    private static final CgSampler[] NO_SAMPLERS = new CgSampler[CgBindingTable.MAX_TEXTURES];
+    private static final CgSampler[] NO_SAMPLERS = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
     /** Unit 0 of a run of baked records. */
     private final CgTexture[] recordTexture = new CgTexture[1];
 
@@ -158,8 +158,8 @@ public final class CgQuadBatch {
         private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
-        private final CgTexture[] textures = new CgTexture[CgBindingTable.MAX_TEXTURES];
-        private final CgSampler[] samplers = new CgSampler[CgBindingTable.MAX_TEXTURES];
+        private final CgTexture[] textures = new CgTexture[CgMaterialBindings.MAX_TEXTURES];
+        private final CgSampler[] samplers = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
         private int textureUnits;
         private float x, y, z;
         private float width, height;

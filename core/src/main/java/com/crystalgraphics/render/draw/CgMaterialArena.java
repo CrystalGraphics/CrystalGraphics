@@ -22,7 +22,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * <ul>
  *   <li>A slot is {@link #stride()} bytes, the block rounded to 256, every device's storage offset alignment: a batch
  *       that cannot carry slots in its ids binds its own slot as a range, which the shader tells by its length.</li>
- *   <li>Slots are given on any thread. The buffer is {@link CgBindingTable}'s block store's, on the render thread: grown
+ *   <li>Slots are given on any thread. The buffer is {@link CgFrameBindings}'s block store's, on the render thread: grown
  *       by copy at a table's upload, the one it outgrew deleted once its frames retire.</li>
  *   <li>At most {@value #MAX_SLOTS} live slots; every arena's are counted as {@code material.arena-slots}.</li>
  * </ul>

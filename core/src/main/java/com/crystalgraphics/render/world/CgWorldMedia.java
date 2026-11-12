@@ -320,7 +320,7 @@ public final class CgWorldMedia {
                 .readsDepth(stage.depth()).texture(CgBindingModel.MEDIA, media)
                 .timed(GPU_LIGHT);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(light).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(light).bindings(), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

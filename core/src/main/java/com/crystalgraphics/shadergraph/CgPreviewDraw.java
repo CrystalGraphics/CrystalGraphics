@@ -25,7 +25,7 @@ final class CgPreviewDraw {
         CgPipeline pipeline = proxy.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, proxy.captureBindings(recording.bindings()), mesh);
+        chunks.draw(pipeline, proxy.bindings(), mesh);
         int at = chunks.instance();
         float[] data = chunks.data();
         IDENTITY.get(data, at);

@@ -6,7 +6,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -188,7 +188,7 @@ final class CgFrameCompiler {
      */
     static void multiDraws(CgFrame frame, boolean multiDraw) {
         CgMeshStore store = CgMeshStore.get();
-        CgBindingTable table = frame.bindings;
+        CgFrameBindings table = frame.bindings;
         for (int s = 0; s < frame.stepCount; s++) {
             if (!(frame.steps[s] instanceof CgRasterPass)) continue;
             CgFrame.Raster packed = frame.rasters[s];
@@ -217,9 +217,9 @@ final class CgFrameCompiler {
 
     /**
      * Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it: its
-     * bindings {@code b}'s {@link CgBindingTable#share share}, so another material of one arena joins (Bevy's slab key).
+     * bindings {@code b}'s {@link CgFrameBindings#share share}, so another material of one arena joins (Bevy's slab key).
      */
-    static boolean joinable(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+    static boolean joinable(CgFrameBindings table, CgFrame.Raster packed, int b, int k) {
         return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * CgDrawChunk.BUFFERS] == null
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
                 && table.share(packed.binding[k]) == table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
@@ -230,7 +230,7 @@ final class CgFrameCompiler {
      * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
      * records and buffers, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s.
      */
-    private static boolean joinableIndirect(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+    private static boolean joinableIndirect(CgFrameBindings table, CgFrame.Raster packed, int b, int k) {
         return packed.counts[k] != null && packed.copyBefore[k] == 0
                 && packed.pipeline[k] == packed.pipeline[b] && table.share(packed.binding[k]) == table.share(packed.binding[b])
                 && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]

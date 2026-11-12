@@ -356,8 +356,8 @@ public final class CgPassConstants {
         out[e + 11] = netherLighting ? 1f : 0f;
     }
 
-    /** Adds a packed pass's two blocks to the snapshot {@code table} is building, at their bindings. */
-    public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at) {
+    /** Adds a packed pass's two blocks to the entry {@code table} is building, at their bindings. */
+    public static CgFrameBindings blocks(CgFrameBindings table, float[] packed, int at) {
         return table.block(CgBindingModel.VIEW_BLOCK, packed, at, VIEW_FLOATS)
                 .block(CgBindingModel.ENVIRONMENT_BLOCK, packed, at + VIEW_FLOATS, ENVIRONMENT_FLOATS);
     }
@@ -367,7 +367,7 @@ public final class CgPassConstants {
      * {@code reversed} is false (a target drawn in a host's standard depth) its projection, last frame's view-projection
      * and {@code cg_DepthParams.x} are converted, in {@code scratch} ({@link #FLOATS} floats or more). The executor's.
      */
-    public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at, boolean reversed, float[] scratch) {
+    public static CgFrameBindings blocks(CgFrameBindings table, float[] packed, int at, boolean reversed, float[] scratch) {
         if (reversed) return blocks(table, packed, at);
         System.arraycopy(packed, at, scratch, 0, FLOATS);
         standardDepth(scratch, 16);
@@ -379,11 +379,5 @@ public final class CgPassConstants {
     /** Clip depth {@code w - z}: the depth 1 - d a standard target stores where the engine's would store d. */
     private static void standardDepth(float[] matrix, int at) {
         for (int column = at; column < at + 16; column += 4) matrix[column + 2] = matrix[column + 3] - matrix[column + 2];
-    }
-
-    /** Snapshots both blocks into {@code table}, and answers its id. */
-    public int capture(CgBindingTable table) {
-        write(packed, 0);
-        return blocks(table.begin(), packed, 0).end();
     }
 }

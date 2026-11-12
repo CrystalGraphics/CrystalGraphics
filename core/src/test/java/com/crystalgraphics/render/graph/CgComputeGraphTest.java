@@ -22,6 +22,7 @@ import java.util.Map;
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * gpu-compute C3, GL-free: what the frame builder decides for compute passes and graph buffers — order from what
@@ -134,7 +135,7 @@ public class CgComputeGraphTest {
     private void draw(CgRecording rec, String target) {
         CgRasterPass pass = rec.raster("raster " + target).color(CgGraphTexture.requested(target, CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), CgMaterialProxy.of(material).captureBindings(rec.bindings()));
+        c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), CgMaterialProxy.of(material).bindings());
         c.instance();
         c.bounds(0, 0, 8, 8);
         pass.add(c.end());
@@ -161,7 +162,7 @@ public class CgComputeGraphTest {
         write.dispatch(produce, 64).bind("DST", cells);
         write.end();
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
-        int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), cells).end();
+        CgMaterialBindings bindings = CgMaterialBindings.builder().storage(CgBindingModel.buffer(0), cells).build();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
@@ -347,7 +348,7 @@ public class CgComputeGraphTest {
         add.end();
         rec.copy(copy, 0, counts, 0, DESC.bytes());
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
-        int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), counts).end();
+        CgMaterialBindings bindings = CgMaterialBindings.builder().storage(CgBindingModel.buffer(0), counts).build();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();

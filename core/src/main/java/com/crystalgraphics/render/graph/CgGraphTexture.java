@@ -211,7 +211,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * <pre>{@code
      * for (int k = 1; k < bloom.getLevels(); k++) {         // each level drawn from the one above
      *     CgRasterPass down = rec.raster("graphTexture.bloom").color(bloom, k, 0, CgLoad.load()).constants(constants).order(CgOrder.LOOKBACK);
-     *     int reads = rec.bindings().withTexture(downsample.captureBindings(rec.bindings()), 0, bloom.level(k - 1));
+     *     CgMaterialBindings reads = CgMaterialProxy.of(downsample).bindings().with(0, bloom.level(k - 1));
      *     CgChunkBuilder c = rec.chunks().begin();
      *     c.draw(downsample.pipeline(CgInstanceKind.OBJECT), reads, CgMesh.quads(1));   // a fullscreen #type none quad
      *     c.instance();
@@ -238,7 +238,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *
      * <pre>{@code
      * CgGraphTexture custom = stage.resources().get(CgFrameKeys.CUSTOM_DEPTH);
-     * int reads = rec.bindings().withTexture(probe.captureBindings(rec.bindings()), 0, custom.stencil());
+     * CgMaterialBindings reads = CgMaterialProxy.of(probe).bindings().with(0, custom.stencil());
      * // in the shader: usampler2D _Stencil; uint bits = texelFetch(_Stencil, ivec2(gl_FragCoord.xy), 0).r;
      * }</pre>
      *

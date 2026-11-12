@@ -69,7 +69,7 @@ public class CgRehearsalTest {
             CgRasterPass pass = rec.raster("rehearsalTest.target").color(target, CgLoad.load()).constants(constants);
             for (int c = 0; c < 6; c++) {
                 CgChunkBuilder chunk = rec.chunks().begin();
-                chunk.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings())).sortKey(c);
+                chunk.draw(quads, CgMaterialProxy.of(material).bindings()).sortKey(c);
                 for (int i = 0; i < 24; i++) {
                     int at = chunk.instance();
                     chunk.data()[at] = i;

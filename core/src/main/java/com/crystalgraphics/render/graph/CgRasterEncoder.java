@@ -24,7 +24,7 @@ import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDeviceSets;
 import com.crystalgraphics.render.draw.CgDeviceStates;
@@ -120,8 +120,8 @@ final class CgRasterEncoder {
     private final Object[] batchBuffers = new Object[CgDrawChunk.BUFFERS * 2];
     private final CgIndirectArgs commands = new CgIndirectArgs(this::dispatchCommands);
     private final CgBindings commandBindings = new CgBindings();
-    /** The snapshot table and constants the pass's indirect commands are written under, for {@link #dispatchCommands}. */
-    private CgBindingTable commandsTable;
+    /** The frame's bindings and constants the pass's indirect commands are written under, for {@link #dispatchCommands}. */
+    private CgFrameBindings commandsTable;
     private int commandsConstants;
     private final int[] range = new int[4];
     /** Per indirect batch starting a run of the pass about to draw, the run's last batch: itself when none joins it. */
@@ -227,7 +227,7 @@ final class CgRasterEncoder {
     }
 
     /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by the compiler's joinableIndirect terms. */
-    private static void countBreak(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+    private static void countBreak(CgFrameBindings table, CgFrame.Raster packed, int b, int k) {
         int why = packed.counts[k] == null ? 0 : packed.copyBefore[k] != 0 ? 1
                 : packed.pipeline[k] != packed.pipeline[b] ? 2 : table.share(packed.binding[k]) != table.share(packed.binding[b]) ? 3
                 : packed.scissor[k] != packed.scissor[b] ? 4
@@ -246,7 +246,7 @@ final class CgRasterEncoder {
     }
 
     /** Whether batch {@code k} would join {@code b}'s run but for its bindings, shares compared: what bindless would join. */
-    private static boolean breaksOnBinding(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+    private static boolean breaksOnBinding(CgFrameBindings table, CgFrame.Raster packed, int b, int k) {
         return packed.objects[b] == null && packed.counts[k] == null && packed.objects[k] == null
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
                 && table.share(packed.binding[k]) != table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
@@ -524,7 +524,7 @@ final class CgRasterEncoder {
                          int samples, int w, int h) {
         CgRenderPass rp = devicePass;
         CgMeshStore store = CgMeshStore.get();
-        CgBindingTable table = frame.bindings;
+        CgFrameBindings table = frame.bindings;
         CgDeviceSets deviceSets = execution.deviceSets;
         int boundPipeline = -1, boundScissor = CgRasterPass.INHERIT, slot = 0;
         CgPipeline pipeline = null;
@@ -743,7 +743,7 @@ final class CgRasterEncoder {
      * count's own barrier came with the pass's access list. Where draws join, the compiled runs ({@link #runs}) are
      * written in a multi-draw's form.
      */
-    private void writeCommands(CgBindingTable table, CgFrame.Raster packed) {
+    private void writeCommands(CgFrameBindings table, CgFrame.Raster packed) {
         int args = commands.reserve(packed.indirects, device.forgetBuffer);
         execution.transitions.buffer(args, CgAccess.COMPUTE_WRITE);
         commandsTable = table;

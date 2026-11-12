@@ -24,6 +24,7 @@ import java.util.List;
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * gpu-compute C4, GL-free: an indirect draw orders its pass after the kernel that writes its count, reads the count as
@@ -78,7 +79,7 @@ public class CgIndirectDrawTest {
         write.dispatch(count, 1).bind("COUNTS", live);
         write.end();
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(pipeline, rec.bindings().begin().end(), CgMesh.quads(64)).indirect(live, 0, CgIndirect.INDICES, 6);
+        c.draw(pipeline, CgMaterialBindings.NONE, CgMesh.quads(64)).indirect(live, 0, CgIndirect.INDICES, 6);
         c.instance();
         draw.indirect(live).add(c.end());
         draw.end();
@@ -94,7 +95,7 @@ public class CgIndirectDrawTest {
         CgGraphBuffer live = CgGraphBuffer.persistent("live", DESC);
         CgMesh quads = CgMesh.quads(64);
         CgRecording rec = new CgRecording();
-        int bindings = rec.bindings().begin().end();
+        CgMaterialBindings bindings = CgMaterialBindings.NONE;
         CgRasterPass draw = raster(rec);
         CgChunkBuilder c = rec.chunks().begin();
         for (int i = 0; i < 2; i++) {
@@ -124,7 +125,7 @@ public class CgIndirectDrawTest {
     public void theBuilderRefusesWhatAnIndirectDrawCannotMean() {
         CgGraphBuffer live = CgGraphBuffer.persistent("live", DESC);
         CgRecording rec = new CgRecording();
-        int bindings = rec.bindings().begin().end();
+        CgMaterialBindings bindings = CgMaterialBindings.NONE;
         CgChunkBuilder c = rec.chunks().begin();
         CgMesh strip = CgMesh.vertices(32, CgMeshTopology.TRIANGLE_STRIP);
 
@@ -150,7 +151,7 @@ public class CgIndirectDrawTest {
         CgGraphBuffer live = CgGraphBuffer.persistent("live", DESC);
         CgMesh quad = CgMesh.quads(1);
         CgRecording rec = new CgRecording();
-        int bindings = rec.bindings().begin().end();
+        CgMaterialBindings bindings = CgMaterialBindings.NONE;
         CgRasterPass draw = raster(rec);
         CgComputePass write = rec.compute("records");
         write.dispatch(count, 1).bind("COUNTS", records);
@@ -184,7 +185,7 @@ public class CgIndirectDrawTest {
     public void theBuilderRefusesObjectsBesideRecordsOfItsOwn() {
         CgGraphBuffer records = CgGraphBuffer.persistent("records", DESC);
         CgRecording rec = new CgRecording();
-        int bindings = rec.bindings().begin().end();
+        CgMaterialBindings bindings = CgMaterialBindings.NONE;
         CgChunkBuilder c = rec.chunks().begin();
 
         c.draw(pipeline, bindings, CgMesh.quads(1)).objects(records, 0, 4);

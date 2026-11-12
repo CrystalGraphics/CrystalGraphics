@@ -5,7 +5,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.CgViewFrustum;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -608,12 +607,6 @@ public final class CgCanvas {
         }
         if (recording == null) throw new IllegalStateException("shapes draw into a recording: a stage's canvas");
         return recording.shapes();
-    }
-
-    /** The recording's table: a chunk's snapshots live as long as the recording that holds it. */
-    public CgBindingTable bindings() {
-        if (recording == null) throw new IllegalStateException("drawing with nowhere to record");
-        return recording.bindings();
     }
 
     /** Takes {@code chunk}, sealed, into the open pass under the scissor and view set now. */

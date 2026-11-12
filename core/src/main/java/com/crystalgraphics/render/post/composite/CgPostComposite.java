@@ -354,7 +354,7 @@ public final class CgPostComposite {
         CgRasterPass pass = recording.raster("post.composite").color(target, CgLoad.load()).constants(constants).timed(GPU);
         if (form == CgCompositeForm.COPY && !fromScene) pass.readsColor(target);
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

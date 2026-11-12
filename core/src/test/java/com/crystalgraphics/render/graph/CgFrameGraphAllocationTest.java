@@ -66,7 +66,7 @@ public class CgFrameGraphAllocationTest {
         for (int c = 0; c < 8; c++) {
             boolean glows = (c & 1) == 1;
             CgChunkBuilder chunk = rec.chunks().begin();
-            chunk.draw(glows ? glowQuads : opaqueQuads, CgMaterialProxy.of((glows ? glow : opaque)).captureBindings(rec.bindings()))
+            chunk.draw(glows ? glowQuads : opaqueQuads, CgMaterialProxy.of((glows ? glow : opaque)).bindings())
                     .sortKey(c);
             for (int i = 0; i < 32; i++) {
                 int at = chunk.instance();

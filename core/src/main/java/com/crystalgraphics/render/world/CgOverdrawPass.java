@@ -74,10 +74,10 @@ final class CgOverdrawPass {
             }
             if (pipeline == null) continue;
             if (draws.sets[i] != null) {
-                commands.drawSet(chunks, pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i], recording), i);
+                commands.drawSet(chunks, pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i]), i);
                 continue;
             }
-            chunks.draw(pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            chunks.draw(pipeline.as(CgPipelineForm.OVERDRAW), commands.bindingOf(draws.materials[i]), draws.meshes[i]).sortKey(draws.keys[i]);
             commands.writeInstance(chunks, i);
         }
         pass.add(chunks.end());

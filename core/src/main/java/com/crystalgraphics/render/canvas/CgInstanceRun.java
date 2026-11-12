@@ -5,10 +5,8 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.render.CgRenderer;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -19,6 +17,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * A batcher's queued records as draws (Unreal's {@code FCanvasBatchedElementRenderItem}): consecutive items under one
@@ -28,8 +27,8 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  * <ul>
  *   <li>Recording, a chunk is one spatial node's, ended where the records' node changes, and each draw carries the
  *       bounds of its records in that node -- what lets a lookback pass move it past draws it does not touch.</li>
- *   <li>A snapshot lives in the table of the recording it lands in, or the run's own for an immediate draw (reset once
- *       a frame), and is taken again once that table was reset.</li>
+ *   <li>A draw names its material's version ({@code proxy.bindings()}) with the items' textures laid over: the same
+ *       object while neither moves, so an unchanged run allocates nothing.</li>
  * </ul>
  */
 final class CgInstanceRun implements CgCanvas.Drawing {
@@ -38,14 +37,8 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     private final CgCanvas canvas;
     /** The batcher's queued records, not yet a draw. */
     private final CgStagingBuffer pending;
-    /** Immediate draws' snapshots: executed before the frame ends, so dropped once a frame. */
-    private final CgBindingTable own = new CgBindingTable();
-    private final CgChunkBuilder chunk = new CgChunkBuilder(own);
+    private final CgChunkBuilder chunk = new CgChunkBuilder();
     private boolean chunkOpen;
-    private long ownFrame = -1;
-    /** The table {@link #binding} is an id in, and its reset count then. */
-    private CgBindingTable captured = own;
-    private int capturedResets = -1;
 
     @Nullable
     private CgMaterialInterface material;
@@ -53,14 +46,17 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     @Nullable
     private CgRenderState state;
     private CgPipeline pipeline;
-    private int binding = -1;
+    /** What its draws bind: the material's version, the items' textures over it; null before the first item. */
+    @Nullable
+    private CgMaterialBindings binding;
     /** The textures laid over the material's own at each unit: the items', winning the unit. */
-    private final CgTexture[] textures = new CgTexture[CgBindingTable.MAX_TEXTURES];
+    private final CgTexture[] textures = new CgTexture[CgMaterialBindings.MAX_TEXTURES];
     /** Each laid-over texture's sampler, null for its spec's. */
-    private final CgSampler[] samplers = new CgSampler[CgBindingTable.MAX_TEXTURES];
+    private final CgSampler[] samplers = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
 
-    /** The binding and pipeline of the open draw {@link #records} may still append to; -1 once anything comes between. */
-    private int appendBinding = -1;
+    /** The binding and pipeline of the open draw {@link #records} may still append to; null once anything comes between. */
+    @Nullable
+    private CgMaterialBindings appendBinding;
     @Nullable
     private CgPipeline appendPipeline;
 
@@ -82,16 +78,8 @@ final class CgInstanceRun implements CgCanvas.Drawing {
      */
     void item(CgMaterialInterface next, @Nullable CgRenderState override, CgTexture[] units, CgSampler[] sampled, int unitCount) {
         canvas.claim(this);
-        if (!canvas.recording()) {
-            // Once a frame, not per draw: a chunk a deferral holds still names this table's snapshots.
-            long frame = CgFrameRing.frame();
-            if (frame != ownFrame && !chunkOpen && pending.isEmpty()) {
-                own.reset();
-                ownFrame = frame;
-            }
-        }
         if (next == material && next.changes() == materialChanges && override == state
-                && sameTextures(units, sampled, unitCount) && !stale()) {
+                && sameTextures(units, sampled, unitCount) && binding != null) {
             return;
         }
         close();
@@ -119,18 +107,11 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     private void capture() {
         pipeline = CgMaterialProxy.of(material).pipeline(kind);
         if (pipeline != null && state != null) pipeline = pipeline.withState(state);
-        captured = canvas.recording() ? canvas.bindings() : own;
-        capturedResets = captured.resets();
-        int snapshot = CgMaterialProxy.of(material).captureBindings(captured);
+        CgMaterialBindings drawn = CgMaterialProxy.of(material).bindings();
         for (int unit = 0; unit < textures.length; unit++) {
-            if (textures[unit] != null) snapshot = captured.withTexture(snapshot, unit, textures[unit], samplers[unit]);
+            if (textures[unit] != null) drawn = drawn.with(unit, textures[unit], samplers[unit]);
         }
-        binding = snapshot;
-    }
-
-    /** Whether {@link #binding} is no id in the table its draws land in now. */
-    private boolean stale() {
-        return binding < 0 || captured != (canvas.recording() ? canvas.bindings() : own) || captured.resets() != capturedResets;
+        binding = drawn;
     }
 
     /**
@@ -143,7 +124,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
             close();
             if (chunkOpen) {
                 chunkOpen = false;
-                appendBinding = -1;
+                appendBinding = null;
                 canvas.add(chunk.end());
             }
         }
@@ -169,23 +150,23 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     /** Moves the queued records into the chunk as one draw. */
     private void close() {
         if (pending.isEmpty()) return;
-        if (stale() && material != null) capture();
+        if (binding == null && material != null) capture();
         if (pipeline != null) {
             openChunk();
             chunk.draw(pipeline, binding).instances(pending.rawData(), 0, pending.vertexCount());
             // An immediate chunk mixes nodes: its draws stay unbounded, covering everything.
             if (bounded && canvas.recording()) chunk.bounds(boundsX0, boundsY0, boundsX1, boundsY1);
         }
-        appendBinding = -1;
+        appendBinding = null;
         bounded = false;
         pending.reset();
     }
 
     private void openChunk() {
         if (!chunkOpen) {
-            chunk.bindings(captured).begin(canvas.recording() ? spatial : 0, 0, 0);
+            chunk.begin(canvas.recording() ? spatial : 0, 0, 0);
             chunkOpen = true;
-            appendBinding = -1;
+            appendBinding = null;
         }
     }
 
@@ -196,7 +177,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
      */
     void records(float[] src, int from, int count, float x0, float y0, float x1, float y1) {
         close();
-        if (stale() && material != null) capture();
+        if (binding == null && material != null) capture();
         if (pipeline == null) return;
         openChunk();
         if (appendBinding != binding || appendPipeline != pipeline) {
@@ -221,7 +202,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
             close();
             if (!chunkOpen) return;
             chunkOpen = false;
-            appendBinding = -1;
+            appendBinding = null;
             if (canvas.recording()) canvas.add(chunk.end());
             else CgRenderer.drawNow(chunk.endInPlace(), canvas.nowCamera(), CgOrder.SORTED);
         }
@@ -233,8 +214,8 @@ final class CgInstanceRun implements CgCanvas.Drawing {
         pending.reset();
         chunk.reset();
         chunkOpen = false;
-        appendBinding = -1;
+        appendBinding = null;
         bounded = false;
-        binding = -1;
+        binding = null;
     }
 }

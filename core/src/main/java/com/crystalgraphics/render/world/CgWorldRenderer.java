@@ -1663,7 +1663,6 @@ public final class CgWorldRenderer {
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
             if (which == OPAQUE) normalsWritten = normalsInto;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
-            commands.bindings.clear();
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
             Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
             if (subjectKey != null && subjectKey != 0) emissivePass.recordOwnedSubject(stage, recording, view, subjectKey);
@@ -1826,10 +1825,10 @@ public final class CgWorldRenderer {
             CgPipeline pipeline = proxy.pipeline(CgRenderPassVariant.DISTORTION, CgInstanceKind.OBJECT);
             if (pipeline == null || commands.unready(pipeline, i)) return;
             if (draws.sets[i] != null) {
-                commands.drawSet(chunks, pipeline, commands.bindingOf(draws.materials[i], recording), i);
+                commands.drawSet(chunks, pipeline, commands.bindingOf(draws.materials[i]), i);
                 return;
             }
-            chunks.draw(pipeline, commands.bindingOf(draws.materials[i], recording), draws.meshes[i]).sortKey(draws.keys[i]);
+            chunks.draw(pipeline, commands.bindingOf(draws.materials[i]), draws.meshes[i]).sortKey(draws.keys[i]);
             commands.group(chunks, i);
             commands.writeInstance(chunks, i);
         }

@@ -89,7 +89,7 @@ final class CgPostCrossfade implements CgPostEffect {
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster("postCrossfade.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(fade).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(fade).bindings(), FULLSCREEN);
         CgPostMaterial.weighted(chunks, share);
         pass.add(chunks.end());
         pass.end();
@@ -109,7 +109,7 @@ final class CgPostCrossfade implements CgPostEffect {
         CgRasterPass pass = recording.raster("postCrossfade.held").color(held, CgLoad.clear(0f, 0f, 0f, 1f)).constants(post.constants())
                 .readsColor(post.target());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(hold).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(hold).bindings(), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);
         pass.add(chunks.end());
         pass.end();

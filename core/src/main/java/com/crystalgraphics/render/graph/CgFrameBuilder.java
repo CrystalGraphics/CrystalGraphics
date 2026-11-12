@@ -8,7 +8,7 @@ import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
-import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.CgDepthConvention;
@@ -30,7 +30,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * Turns a {@link CgFrameGraph} into a {@link CgFrame}: orders the passes by what they read and write, culls those
  * nobody reads, plans when each transient texture and buffer lives, lists what each pass accesses for the barriers
  * the executor derives, batches every raster pass, and packs every instance of a kind into one array and every
- * binding snapshot into one table. No GL, so it runs wherever the frame is built — a
+ * binding into one index. No GL, so it runs wherever the frame is built — a
  * builder thread, or inline on the render thread.
  *
  * <pre>{@code
@@ -85,9 +85,6 @@ public final class CgFrameBuilder {
     private boolean[] feeds = new boolean[16], follows = new boolean[16];
     private IntHeap ready = new IntHeap(16);
     private int[] firstUse = new int[16], lastUse = new int[16];
-    private final IdentityHashMap<CgBindingTable, int[]> interned = new IdentityHashMap<>();
-    private final List<int[]> internMaps = new ArrayList<>();
-    private int internMapsUsed;
     private CgDrawChunk[] refChunk = new CgDrawChunk[256];
     private int[] refDraw = new int[256];
     /** The values each recording of the graph being built is drawn with. */
@@ -138,8 +135,6 @@ public final class CgFrameBuilder {
             phase.close();
             phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_PACK);
 
-            interned.clear();
-            internMapsUsed = 0;
             for (int s = 0; s < steps; s++) {
                 if (frame.steps[s] instanceof CgRasterPass raster) {
                     CgFrame.Raster packed = frame.raster(s);
@@ -424,21 +419,25 @@ public final class CgFrameBuilder {
     }
 
     private void pack(CgComputePass pass, CgFrame frame, CgFrame.Compute packed) {
-        CgBindingTable table = pass.recording.bindings();
-        int[] map = internMap(table);
         List<CgDispatch> dispatches = pass.dispatches();
         packed.size(dispatches.size());
-        int constants = pass.constantsBinding;
-        if (map[constants] < 0) map[constants] = frame.bindings.copy(table, constants);
-        packed.constants = map[constants];
+        CgFrameBindings constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,
+                CgDepthConvention.reversed(), constantsScratch);
         CgGraphTexture depthFrom = pass.depthFrom();
         if (depthFrom != null) {
+            constants.texture(CgBindingModel.SCENE_DEPTH, pass.depthFromCopy().depth);
             frame.readsCurrentDepth |= usesCurrent(depthFrom);
         }
+        packed.constants = constants.end();
         for (int d = 0; d < dispatches.size(); d++) {
-            int local = dispatches.get(d).bindings;
-            if (map[local] < 0) map[local] = frame.bindings.copyUnique(table, local);
-            packed.bindings[d] = map[local];
+            CgDispatch dispatch = dispatches.get(d);
+            CgFrameBindings values = frame.bindings.begin();
+            if (dispatch.values != null) values.block(CgBindingModel.MATERIAL_BLOCK, dispatch.values, 0, dispatch.values.length);
+            for (int unit = 0; unit < dispatch.samplers.length; unit++) {
+                if (dispatch.samplers[unit] != null) values.texture(unit, dispatch.samplers[unit]);
+            }
+            // Each dispatch's values are its own: interning would hash every float to find no equal.
+            packed.bindings[d] = values.endUnique();
         }
     }
 
@@ -454,11 +453,8 @@ public final class CgFrameBuilder {
             int scissor = pass.chunkScissor(c);
             // Draws reorder only among those whose relative position cannot change: the nearest movable node's.
             int domain = tree.domain(chunk.spatial());
-            CgBindingTable table = chunk.bindings();
-            int[] map = internMap(table);
             for (int d = 0; d < chunk.draws(); d++) {
-                int local = chunk.binding(d);
-                if (map[local] < 0) map[local] = frame.bindings.copy(table, local);
+                int binding = frame.bindings.add(chunk.binding(d));
                 if (refs == refChunk.length) {
                     refChunk = Arrays.copyOf(refChunk, refs * 2);
                     refDraw = Arrays.copyOf(refDraw, refs * 2);
@@ -466,7 +462,7 @@ public final class CgFrameBuilder {
                 refChunk[refs] = chunk;
                 refDraw[refs] = d;
                 tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
-                batcher.add(chunk.pipeline(d), map[local], chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
+                batcher.add(chunk.pipeline(d), binding, chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
                         chunk.rangeFirst(d), chunk.rangeCount(d),
                         chunk.indirectCount(d) != null || chunk.objects(d) != null || chunk.buffer(d, 0) != null,
                         groups ? chunk.gpuGroup(d) : -1,
@@ -567,7 +563,7 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
-        CgBindingTable constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,
+        CgFrameBindings constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,
                 CgDepthConvention.reversed(), constantsScratch);
         boolean lightmap = false, media = false, localLights = false;
         for (int i = 0; i < pass.textureCount(); i++) {
@@ -748,25 +744,6 @@ public final class CgFrameBuilder {
         CgDepthState depth = own != null && own.getDepth() != null ? own.getDepth()
                 : passState != null ? passState.getDepth() : null;
         return (color ? CgTargetCopy.COLOR : 0) | (depth == null || depth.write() ? CgTargetCopy.DEPTH : 0);
-    }
-
-    /** {@code table}'s ids mapped into the frame's, -1 until first used; the arrays are kept between builds. */
-    private int[] internMap(CgBindingTable table) {
-        int[] map = interned.get(table);
-        if (map != null && map.length >= table.size()) return map;
-        int[] fresh;
-        if (internMapsUsed < internMaps.size() && internMaps.get(internMapsUsed).length >= table.size()) {
-            fresh = internMaps.get(internMapsUsed);
-        } else {
-            fresh = new int[Math.max(64, Integer.highestOneBit(Math.max(1, table.size())) * 2)];
-            if (internMapsUsed < internMaps.size()) internMaps.set(internMapsUsed, fresh);
-            else internMaps.add(fresh);
-        }
-        internMapsUsed++;
-        Arrays.fill(fresh, -1);
-        if (map != null) System.arraycopy(map, 0, fresh, 0, map.length);
-        interned.put(table, fresh);
-        return fresh;
     }
 
     private void edge(int from, int to) {

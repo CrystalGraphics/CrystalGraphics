@@ -262,7 +262,7 @@ public final class CgPostMaterial implements CgPostEffect {
         }
         if (CgMaterialProxy.of(material).readsSceneDepth()) pass.readsDepth(post.depth());
         CgChunkBuilder chunks = recording.chunks().begin();
-        chunks.draw(drawn, CgMaterialProxy.of(material).captureBindings(recording.bindings()), FULLSCREEN);
+        chunks.draw(drawn, CgMaterialProxy.of(material).bindings(), FULLSCREEN);
         weighted(chunks, weight);
         pass.add(chunks.end());
         pass.end();

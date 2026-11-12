@@ -81,7 +81,7 @@ final class Tint implements CgPostEffect {
     public void record(CgPostContext post) {
         CgRasterPass pass = post.recording().raster("mymod.outline").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = post.recording().chunks().begin();
-        chunks.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT), CgMaterialProxy.of(material).captureBindings(post.recording().bindings()), CgMesh.quads(1));
+        chunks.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT), CgMaterialProxy.of(material).bindings(), CgMesh.quads(1));
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

@@ -8,7 +8,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-/** Materials of one arena share their snapshot's bindings and keep slots of their own; anything else tells them apart. */
+/** Materials of one arena share their bindings' set and keep slots of their own; anything else tells them apart. */
 public class CgMaterialArenaTest {
 
     private static final CgBindingModel.Slot POINT = CgBindingModel.MATERIAL_BLOCK;
@@ -25,10 +25,10 @@ public class CgMaterialArenaTest {
     @Test
     public void twoMaterialsOfOneArenaShareAndTakeTheirOwnSlots() {
         CgMaterialArena arena = new CgMaterialArena("tint", 4);
-        CgBindingTable table = new CgBindingTable();
-        int red = table.begin().block(POINT, block(arena, 1)).end();
-        int blue = table.begin().block(POINT, block(arena, 0)).end();
-        assertNotEquals("each its own snapshot", red, blue);
+        CgFrameBindings table = new CgFrameBindings();
+        int red = table.add(CgMaterialBindings.builder().block(POINT, block(arena, 1)).build());
+        int blue = table.add(CgMaterialBindings.builder().block(POINT, block(arena, 0)).build());
+        assertNotEquals("each its own entry", red, blue);
         assertEquals("one share", table.share(red), table.share(blue));
         assertNotEquals(table.slotOf(red), table.slotOf(blue));
         assertEquals("asked again, the same slot", table.slotOf(red), table.slotOf(red));
@@ -37,20 +37,20 @@ public class CgMaterialArenaTest {
     @Test
     public void aTextureOrAnotherArenaTellsThemApart() {
         CgMaterialArena arena = new CgMaterialArena("tint", 4), other = new CgMaterialArena("other", 4);
-        CgBindingTable table = new CgBindingTable();
-        int plain = table.begin().block(POINT, block(arena, 1)).end();
-        int textured = table.begin().block(POINT, block(arena, 0)).texture(0, IMAGE).end();
-        int elsewhere = table.begin().block(POINT, block(other, 0)).end();
-        int page = table.begin().block(POINT, CgBlockVersion.of(new float[] {0, 0, 0, 1}, 4)).end();
+        CgFrameBindings table = new CgFrameBindings();
+        int plain = table.add(CgMaterialBindings.builder().block(POINT, block(arena, 1)).build());
+        int textured = table.add(CgMaterialBindings.builder().block(POINT, block(arena, 0)).texture(0, IMAGE).build());
+        int elsewhere = table.add(CgMaterialBindings.builder().block(POINT, block(other, 0)).build());
+        int page = table.add(CgMaterialBindings.builder().block(POINT, CgBlockVersion.of(new float[] {0, 0, 0, 1}, 4)).build());
         assertNotEquals(table.share(plain), table.share(textured));
         assertNotEquals(table.share(plain), table.share(elsewhere));
         assertEquals("a block of its own shares with nothing", page, table.share(page));
     }
 
     @Test
-    public void aSnapshotWithNoArenaBlockNamesSlotZero() {
-        CgBindingTable table = new CgBindingTable();
-        int id = table.begin().texture(0, IMAGE).end();
+    public void bindingsWithNoArenaBlockNameSlotZero() {
+        CgFrameBindings table = new CgFrameBindings();
+        int id = table.add(CgMaterialBindings.builder().texture(0, IMAGE).build());
         assertEquals(0, table.slotOf(id));
         assertEquals(id, table.share(id));
     }

@@ -8,7 +8,6 @@ import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -69,13 +68,12 @@ public final class CgRecording {
     static final int WRITE = 1;
     private static final int EVENT_INTS = 4;
 
-    private final CgBindingTable bindings = new CgBindingTable();
     private final CgClipTable clips = new CgClipTable();
     private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
     private final CgPrimitiveTable primitives = new CgPrimitiveTable();
-    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings, primitives);
+    private final CgChunkBuilder chunks = CgChunkBuilder.pooling(primitives);
     private final List<CgPass> passes = new ArrayList<>();
 
     private final List<CgGraphResource> resources = new ArrayList<>();
@@ -162,11 +160,6 @@ public final class CgRecording {
     /** The boxes its quads are drawn as, by index. */
     public CgShapeTable shapes() {
         return shapes;
-    }
-
-    /** The table every chunk of this recording takes its binding ids from. */
-    public CgBindingTable bindings() {
-        return bindings;
     }
 
     /**
@@ -831,7 +824,6 @@ public final class CgRecording {
         chunks.reset();
         chunks.recycle();
         primitives.reset();
-        bindings.reset();
         clips.reset();
         shapes.reset();
         spatial.reset();

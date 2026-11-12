@@ -6,7 +6,6 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
-import com.crystalgraphics.render.draw.CgBindingTable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -15,6 +14,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * Partitioned view of a material's property list — separates UBO-eligible
@@ -117,7 +117,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
      * samplers. A sampler with no texture set takes the engine texture its default names, else white of its kind (a
      * {@code sampler3D} a white volume, a {@code usampler2D} the integer 0), as an Unreal texture parameter always has its default.
      */
-    public void captureSamplers(CgBindingTable table) {
+    public void captureSamplers(CgMaterialBindings.Builder bindings) {
         for (int i = 0; i < samplerProps.size(); i++) {
             CgTexture texture = samplerProps.get(i).boundTexture();
             if (texture == null) {
@@ -125,7 +125,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
                 texture = type == CgMaterialProperty.Type.SAMPLER3D ? CgFallbackTextures.WHITE_VOLUME
                         : type == CgMaterialProperty.Type.USAMPLER2D ? CgFallbackTextures.ZERO_UINT : CgFallbackTextures.WHITE_1x1;
             }
-            if (texture != null) table.texture(i, texture, samplerProps.get(i).getSampler());
+            if (texture != null) bindings.texture(i, texture, samplerProps.get(i).getSampler());
         }
     }
 

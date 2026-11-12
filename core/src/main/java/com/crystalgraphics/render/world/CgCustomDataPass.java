@@ -95,7 +95,7 @@ final class CgCustomDataPass {
             CgPipeline copy = CgMaterialProxy.of(depthIn).pipeline(CgInstanceKind.OBJECT);
             if (copy != null) {
                 pass.readsDepth(CgGraphTexture.current());
-                chunks.draw(copy, CgMaterialProxy.of(depthIn).captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
+                chunks.draw(copy, CgMaterialProxy.of(depthIn).bindings(), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
                 chunks.instance();
             }
         }

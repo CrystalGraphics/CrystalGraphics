@@ -3,7 +3,7 @@ package com.crystalgraphics.render.draw;
 import java.util.Arrays;
 
 /**
- * Groups a pass's draws into batches: draws one pipeline, binding snapshot, kind and mesh can draw in one call,
+ * Groups a pass's draws into batches: draws one pipeline, bindings, kind and mesh can draw in one call,
  * without changing what overlapping draws look like. CPU only and reusable; a frame builder runs it per pass.
  *
  * <pre>{@code

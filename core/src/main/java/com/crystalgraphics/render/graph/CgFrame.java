@@ -5,7 +5,7 @@ import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
-import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -23,7 +23,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A frame graph built and ready to execute: its passes in the order they run, every batch packed, every instance of
- * each kind in one array, every object record in one table, every binding snapshot in one table. Made by {@link CgFrameBuilder} on any thread and
+ * each kind in one array, every object record in one table, every binding in one index. Made by {@link CgFrameBuilder} on any thread and
  * executed by {@link CgExecutor} on the render thread; nothing in it needs the recordings any more.
  *
  * <pre>{@code
@@ -47,7 +47,7 @@ public final class CgFrame {
     Raster[] rasters = new Raster[8];
     Compute[] computes = new Compute[8];
     int stepCount;
-    final CgBindingTable bindings = new CgBindingTable();
+    final CgFrameBindings bindings = new CgFrameBindings();
     final float[][] instances = new float[KINDS][];
     final int[] instanceFloats = new int[KINDS];
     /** The object records its OBJECT ids name: each recording's table copied once, at its base slot. */

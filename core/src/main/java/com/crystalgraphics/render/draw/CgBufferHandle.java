@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.draw;
 
 /**
- * A buffer a binding snapshot names now and binds by its GL name when the draw executes: a frame graph's buffer,
+ * A buffer a draw's bindings name now and bind by its device name when the draw executes: a frame graph's buffer,
  * whose storage exists only while the graph resolves it.
  *
  * <pre>{@code

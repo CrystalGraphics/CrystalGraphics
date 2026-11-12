@@ -113,7 +113,7 @@ public final class CgPostDebug implements CgPostEffect {
         if (pipeline == null) return;
         CgRasterPass pass = post.recording().raster("postDebug.target").color(post.target(), CgLoad.load()).constants(post.constants());
         CgChunkBuilder chunks = post.recording().chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(material).captureBindings(post.recording().bindings()), FULLSCREEN);
+        chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), FULLSCREEN);
         chunks.instance();
         pass.add(chunks.end());
         pass.end();

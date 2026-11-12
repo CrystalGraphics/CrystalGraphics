@@ -16,7 +16,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
  * <pre>{@code
  * CgChunkBuilder c = recording.chunks();
  * c.begin(spatial, clip, effect);
- * c.draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(recording.bindings()));
+ * c.draw(proxy.pipeline(CgInstanceKind.QUAD), proxy.bindings());
  * for (Glyph g : run) {
  *     int at = c.instance();               // one zeroed record of the draw's kind
  *     float[] r = c.data();
@@ -43,7 +43,6 @@ public final class CgChunkBuilder {
     /** What a chunk with no OBJECT draw names: never written. */
     private static final CgPrimitiveTable NO_PRIMITIVES = new CgPrimitiveTable();
 
-    private CgBindingTable bindings;
     /** Where OBJECT records go: a recording's table, or {@link #own} where none is lent. */
     @Nullable
     private CgPrimitiveTable primitives;
@@ -58,7 +57,7 @@ public final class CgChunkBuilder {
 
     private int count;
     private int[] pipelines = new int[16];
-    private int[] bindingIds = new int[16];
+    private CgMaterialBindings[] bindings = new CgMaterialBindings[16];
     private int[] kinds = new int[16];
     private int[] firsts = new int[16];
     private int[] instanceCounts = new int[16];
@@ -112,8 +111,7 @@ public final class CgChunkBuilder {
     private CgDrawChunk[] shells;
     private int shellsUsed;
 
-    public CgChunkBuilder(CgBindingTable bindings) {
-        this.bindings = bindings;
+    public CgChunkBuilder() {
     }
 
     /**
@@ -121,13 +119,13 @@ public final class CgChunkBuilder {
      * allocates none. Its chunks live until {@link #recycle()}, which the recording's reset calls.
      *
      * <pre>{@code
-     * CgChunkBuilder chunks = CgChunkBuilder.pooling(bindings, primitives);   // what CgRecording holds
-     * pass.add(chunks.begin().draw(pipeline, id).end());
+     * CgChunkBuilder chunks = CgChunkBuilder.pooling(primitives);   // what CgRecording holds
+     * pass.add(chunks.begin().draw(pipeline, proxy.bindings()).end());
      * chunks.recycle();                                           // once nothing holds the chunks: the recording reset
      * }</pre>
      */
-    public static CgChunkBuilder pooling(CgBindingTable bindings, CgPrimitiveTable primitives) {
-        CgChunkBuilder b = new CgChunkBuilder(bindings);
+    public static CgChunkBuilder pooling(CgPrimitiveTable primitives) {
+        CgChunkBuilder b = new CgChunkBuilder();
         b.primitives = primitives;
         b.shells = new CgDrawChunk[16];
         return b;
@@ -138,18 +136,6 @@ public final class CgChunkBuilder {
         if (shells == null) return;
         for (int i = 0; i < shellsUsed; i++) shells[i].clearReferences();
         shellsUsed = 0;
-    }
-
-    /** The table binding ids given to {@link #draw} must come from. */
-    public CgBindingTable bindings() {
-        return bindings;
-    }
-
-    /** Takes later chunks' binding ids from {@code table}: a recording's, for a builder that records into several. */
-    public CgChunkBuilder bindings(CgBindingTable table) {
-        if (open) throw new IllegalStateException("a chunk is open over another table");
-        this.bindings = table;
-        return this;
     }
 
     /** Writes later chunks' OBJECT records into {@code table}: a recording's, for a builder that records into several. */
@@ -185,13 +171,16 @@ public final class CgChunkBuilder {
         return this;
     }
 
-    /** Opens a draw; the instances written until the next draw or {@link #end()} are its. */
-    public CgChunkBuilder draw(CgPipeline pipeline, int bindingId) {
-        return draw(pipeline, bindingId, null);
+    /**
+     * Opens a draw binding {@code bindings}, its material's version ({@code proxy.bindings()}); the instances written
+     * until the next draw or {@link #end()} are its.
+     */
+    public CgChunkBuilder draw(CgPipeline pipeline, CgMaterialBindings bindings) {
+        return draw(pipeline, bindings, null);
     }
 
-    /** As {@link #draw(CgPipeline, int)}, for an {@link CgInstanceKind#OBJECT} draw of {@code mesh}. */
-    public CgChunkBuilder draw(CgPipeline pipeline, int bindingId, @Nullable CgMesh mesh) {
+    /** As {@link #draw(CgPipeline, CgMaterialBindings)}, for an {@link CgInstanceKind#OBJECT} draw of {@code mesh}. */
+    public CgChunkBuilder draw(CgPipeline pipeline, CgMaterialBindings bindings, @Nullable CgMesh mesh) {
         if (!open) throw new IllegalStateException("draw() outside a chunk: begin() first");
         if ((pipeline.kind() == CgInstanceKind.OBJECT) != (mesh != null)) {
             throw new IllegalArgumentException(pipeline.kind() == CgInstanceKind.OBJECT
@@ -203,7 +192,7 @@ public final class CgChunkBuilder {
         if (count == pipelines.length) grow();
         int d = count;
         pipelines[d] = pipeline.id();
-        bindingIds[d] = bindingId;
+        this.bindings[d] = bindings;
         drawingKind = pipeline.kind().ordinal();
         kinds[d] = drawingKind;
         firsts[d] = records[drawingKind];
@@ -551,8 +540,8 @@ public final class CgChunkBuilder {
             kept[k] = instances[k] == null ? new float[0]
                     : Arrays.copyOf(instances[k], records[k] * CgInstanceKind.of(k).floats());
         }
-        CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count,
-                Arrays.copyOf(pipelines, count), Arrays.copyOf(bindingIds, count), Arrays.copyOf(kinds, count),
+        CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, count,
+                Arrays.copyOf(pipelines, count), Arrays.copyOf(bindings, count), Arrays.copyOf(kinds, count),
                 Arrays.copyOf(firsts, count), Arrays.copyOf(instanceCounts, count),
                 meshes == null ? null : Arrays.copyOf(meshes, count), ranges == null ? null : Arrays.copyOf(ranges, count * 3),
                 counts == null ? null : Arrays.copyOf(counts, count), counts == null ? null : Arrays.copyOf(countOffsets, count),
@@ -576,7 +565,7 @@ public final class CgChunkBuilder {
         CgDrawChunk chunk = shells[shellsUsed];
         if (chunk == null) shells[shellsUsed] = chunk = new CgDrawChunk();
         shellsUsed++;
-        chunk.fill(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds, firsts, instanceCounts, meshes,
+        chunk.fill(spatial, clip, effect, count, pipelines, bindings, kinds, firsts, instanceCounts, meshes,
                 ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds, sortKeys, groups, instances,
                 records, each, recordCounts, primitives());
         held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
@@ -603,7 +592,7 @@ public final class CgChunkBuilder {
     public CgDrawChunk endInPlace() {
         if (!open) throw new IllegalStateException("endInPlace() outside a chunk");
         closeDraw();
-        CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, bindings, count, pipelines, bindingIds, kinds,
+        CgDrawChunk chunk = new CgDrawChunk(spatial, clip, effect, count, pipelines, bindings, kinds,
                 firsts, instanceCounts, meshes, ranges, counts, countOffsets, countModes, objects, buffers, bufferAt, bounds,
                 sortKeys, groups, instances, each, recordCounts, primitives());
         held = Math.min(count + 1, pipelines.length);   // a dropped last draw may have left its slot set
@@ -644,6 +633,7 @@ public final class CgChunkBuilder {
         int n = held;
         held = 0;
         if (n == 0) return;
+        Arrays.fill(bindings, 0, n, null);
         if (meshes != null) Arrays.fill(meshes, 0, n, null);
         if (counts != null) Arrays.fill(counts, 0, n, null);
         if (objects != null) Arrays.fill(objects, 0, n, null);
@@ -693,7 +683,7 @@ public final class CgChunkBuilder {
     private void grow() {
         int n = pipelines.length * 2;
         pipelines = Arrays.copyOf(pipelines, n);
-        bindingIds = Arrays.copyOf(bindingIds, n);
+        bindings = Arrays.copyOf(bindings, n);
         kinds = Arrays.copyOf(kinds, n);
         firsts = Arrays.copyOf(firsts, n);
         instanceCounts = Arrays.copyOf(instanceCounts, n);

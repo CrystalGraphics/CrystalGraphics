@@ -30,7 +30,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 /**
  * A recorded draw's or dispatch's bindings as the device's sets: each slot of its pipeline's layout filled from the
  * pass's parameters (the caller's, by binding: its records, instances, tables and scene copies), then from its
- * {@link CgBindingTable} snapshot by slot, then from the engine buffer made for that slot; interned by content across
+ * {@link CgFrameBindings} snapshot by slot, then from the engine buffer made for that slot; interned by content across
  * frames, as Unreal keeps a material's uniform buffer until its contents change.
  *
  * <pre>{@code
@@ -90,16 +90,16 @@ public final class CgDeviceSets {
      *
      * @param extras the pass's parameters for this set, by binding, ahead of the snapshot; null for none
      */
-    public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
+    public CgBindingSet set(CgRHI rhi, CgFrameBindings table, int id, CgPipelineLayout layout, int set,
                             @Nullable CgBindings extras) {
         return set(rhi, table, id, layout, set, extras, true);
     }
 
     /**
-     * {@link #set(CgRHI, CgBindingTable, int, CgPipelineLayout, int, CgBindings)}, an arena block bound as the whole arena
+     * {@link #set(CgRHI, CgFrameBindings, int, CgPipelineLayout, int, CgBindings)}, an arena block bound as the whole arena
      * where {@code wholeArena}, for draws whose ids carry its slot, else as its slot's range alone.
      */
-    public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
+    public CgBindingSet set(CgRHI rhi, CgFrameBindings table, int id, CgPipelineLayout layout, int set,
                             @Nullable CgBindings extras, boolean wholeArena) {
         this.wholeArena = wholeArena;
         if (device != rhi) {
@@ -171,7 +171,7 @@ public final class CgDeviceSets {
      * Loads every texture {@code table}'s snapshots record and lands its buffers' pending uploads: outside any render
      * pass, as an upload is a copy. Before the first {@link #set} of a frame.
      */
-    public void prepare(CgBindingTable table) {
+    public void prepare(CgFrameBindings table) {
         for (int id = 0; id < table.size(); id++) {
             for (int t = 0; t < table.textures(id); t++) {
                 if (table.texture(id, t) instanceof CgTextureAbstract engine) engine.getId();
@@ -210,7 +210,7 @@ public final class CgDeviceSets {
         device = null;
     }
 
-    private void fill(CgRHI rhi, CgBindingTable table, int id, int set, CgBindingLayout layout, @Nullable CgBindings extras) {
+    private void fill(CgRHI rhi, CgFrameBindings table, int id, int set, CgBindingLayout layout, @Nullable CgBindings extras) {
         frame = CgFrameRing.frame();
         List<CgBindingLayout.Slot> slots = layout.slots();
         for (int i = 0; i < slots.size(); i++) {
@@ -231,7 +231,7 @@ public final class CgDeviceSets {
     }
 
     /** Whether the snapshot holds {@code slot}, added to {@link #contents} if so. */
-    private boolean fromTable(CgRHI rhi, CgBindingTable table, int id, int packed, CgBindingLayout.Slot slot) {
+    private boolean fromTable(CgRHI rhi, CgFrameBindings table, int id, int packed, CgBindingLayout.Slot slot) {
         switch (slot.type()) {
             case SAMPLED_TEXTURE -> {
                 for (int t = 0; t < table.textures(id); t++) {
@@ -285,7 +285,7 @@ public final class CgDeviceSets {
     }
 
     /** An engine buffer the snapshot names whose slot is {@code packed}, at its latest range. */
-    private boolean buffer(CgBindingTable table, int id, CgBindingLayout.Slot slot, int packed) {
+    private boolean buffer(CgFrameBindings table, int id, CgBindingLayout.Slot slot, int packed) {
         for (int b = 0; b < table.buffers(id); b++) {
             CgShaderBuffer buffer = table.buffer(id, b);
             if (buffer.slot().packed() == packed) return buffer.describe(contents, slot.binding());

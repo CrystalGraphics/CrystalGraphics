@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import static org.junit.Assert.*;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
  * render-graph G1: what the frame builder decides with no GL — order from reads and writes, culling, transient
@@ -57,7 +58,7 @@ public class CgFrameBuilderTest {
     /** A chunk of quads, each one record whose first float is {@code tag}, laid left to right. */
     private CgDrawChunk quads(CgRecording rec, float tag, int count, float x) {
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings()));
+        c.draw(quads, CgMaterialProxy.of(material).bindings());
         for (int i = 0; i < count; i++) {
             int at = c.instance();
             c.data()[at] = tag;
@@ -68,7 +69,7 @@ public class CgFrameBuilderTest {
 
     /** A chunk that samples {@code texture}: what compositing a layer records. */
     private CgDrawChunk sampling(CgRecording rec, CgTexture texture) {
-        int bindings = rec.bindings().begin().texture(0, texture).end();
+        CgMaterialBindings bindings = CgMaterialBindings.builder().texture(0, texture).build();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(quads, bindings);
         c.instance();
@@ -98,7 +99,7 @@ public class CgFrameBuilderTest {
     private CgDrawChunk keyed(CgRecording rec, CgMaterial of, CgPipeline pipeline, long key,
                               float x0, float y0, float x1, float y1) {
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(pipeline, CgMaterialProxy.of(of).captureBindings(rec.bindings())).sortKey(key);
+        c.draw(pipeline, CgMaterialProxy.of(of).bindings()).sortKey(key);
         c.instance();
         c.bounds(x0, y0, x1, y1);
         return c.end();
@@ -404,7 +405,7 @@ public class CgFrameBuilderTest {
         CgRecording rec = new CgRecording();
         CgRasterPass pass = raster(rec, CgGraphTexture.requested("surface", DESC));
         CgChunkBuilder c = rec.chunks().begin();
-        c.draw(quads, CgMaterialProxy.of(material).captureBindings(rec.bindings()));
+        c.draw(quads, CgMaterialProxy.of(material).bindings());
         for (int i = 0; i < 3; i++) {
             int at = c.instance();
             c.data()[at] = 7;
@@ -414,7 +415,7 @@ public class CgFrameBuilderTest {
         pass.end();
         CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
 
-        c.begin().draw(quads, 0);
+        c.begin().draw(quads, CgMaterialBindings.NONE);
         int at = c.instance();
         c.data()[at] = 9;
         c.end();

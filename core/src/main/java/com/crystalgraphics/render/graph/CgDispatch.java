@@ -80,8 +80,6 @@ public final class CgDispatch {
     final CgTexture[] samplers;
     @Nullable
     final float[] values;
-    /** The recording's snapshot of its blocks and samplers, made when the pass ends. */
-    int bindings = -1;
     /** The kernel's, per declared buffer and image: a bit per accessor it uses. Shared; never written. */
     private final int[] bufferUse, imageUse;
     /** Per declared buffer: what the kernel does to its elements, as {@link CgAccess} bits. */
@@ -151,7 +149,6 @@ public final class CgDispatch {
         Arrays.fill(counterAccess, 0);
         Arrays.fill(imageAccess, 0);
         if (values != null) kernel.compute().properties().defaultsInto(values);
-        bindings = -1;
         start(form, x, y, z, args, argsOffset);
     }
 

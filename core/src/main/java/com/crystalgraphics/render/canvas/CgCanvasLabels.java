@@ -98,7 +98,7 @@ public final class CgCanvasLabels {
     @Nullable
     private CgGraphBuffer matrixBuffer;
     private int matrixCapacity;
-    private final CgChunkBuilder chunks = new CgChunkBuilder(null);
+    private final CgChunkBuilder chunks = new CgChunkBuilder();
     private long evictions;
     private int captured;
 
@@ -256,7 +256,7 @@ public final class CgCanvasLabels {
 
     private void record(CgCanvas canvas, boolean depth) {
         if (matrixCount == 0) return;
-        chunks.bindings(canvas.bindings()).begin(0, 0, 0);
+        chunks.begin(0, 0, 0);
         boolean linear = CgTextBatch.blendsLinearly(canvas.target());
         for (int b = 0; b < batches.size(); b++) {
             Batch batch = batches.get(b);
