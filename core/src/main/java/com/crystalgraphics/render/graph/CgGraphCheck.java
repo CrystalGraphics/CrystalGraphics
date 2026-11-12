@@ -55,9 +55,7 @@ final class CgGraphCheck {
     /** Allows step {@code s}'s recorded accesses to be bound ({@code by} 1), or ends it (-1). Render thread. */
     static CgPass allow(CgFrame frame, int s, int by, CgPass before) {
         for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
-            CgGraphResource view = frame.accessView[i];
-            CgGraphResource r = view instanceof CgGraphBuffer b ? b.resource() : view instanceof CgGraphTexture t ? t.resource() : view;
-            r.allowed += by;
+            CgGraphResource.resourceOf(frame.accessView[i]).allowed += by;
         }
         CgPass was = executing;
         executing = by > 0 ? frame.steps[s] : before;

@@ -196,7 +196,10 @@ public class CgComputeGraphTest {
         assertNotSame(state, grown);
         assertEquals(CgGraphBuffer.Kind.HISTORY, grown.kind());
         assertEquals(bigger.bytes(), grown.size());
-        assertEquals(List.of("sim", "copy state.previous -> state", "copy state -> state", "release state"), names(build(rec)));
+        CgFrame frame = build(rec);
+        assertEquals(List.of("sim", "copy state.previous -> state", "copy state -> state"), names(frame));
+        assertEquals("released, not a pass", List.of(state), frame.released);
+        assertEquals("freed after the last copy reads it", 2, frame.releasedAfter[0]);
     }
 
     @Test
@@ -207,7 +210,9 @@ public class CgComputeGraphTest {
         rec.fill(counts, 0);
         CgGraphBuffer shrunk = rec.resize(counts, smaller);
         assertEquals(CgGraphBuffer.Kind.PERSISTENT, shrunk.kind());
-        assertEquals(List.of("fill counts", "copy counts -> counts", "release counts"), names(build(rec)));
+        CgFrame frame = build(rec);
+        assertEquals(List.of("fill counts", "copy counts -> counts"), names(frame));
+        assertEquals(1, frame.releasedAfter[0]);
         CgRecording other = new CgRecording();
         assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.transientBuffer("t", DESC), DESC));
         assertThrows(IllegalArgumentException.class, () -> other.resize(CgGraphBuffer.history("h", DESC).previous(), DESC));

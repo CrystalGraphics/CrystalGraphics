@@ -19,6 +19,12 @@ public abstract sealed class CgGraphResource permits CgGraphTexture, CgGraphBuff
         return name;
     }
 
+    /** What {@code view} is ordered and stored as: a history's previous version is its history. */
+    static CgGraphResource resourceOf(CgGraphResource view) {
+        return view instanceof CgGraphBuffer buffer ? buffer.resource()
+                : view instanceof CgGraphTexture texture ? texture.resource() : view;
+    }
+
     /** Whether its storage lives for one frame only, from the pool. */
     abstract boolean isTransient();
 

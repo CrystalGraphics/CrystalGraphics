@@ -319,7 +319,7 @@ public class CgFrameBuilderTest {
         CgFrame frame = builder.build(new CgFrameGraph().add(rec.seal()));
         assertEquals(3, frame.passes());
         assertSame(before, frame.steps[0]);
-        assertTrue(frame.steps[1] instanceof CgPass.Copy);
+        assertTrue(frame.steps[1] instanceof CgPass.TextureCopy);
         assertSame(after, frame.steps[2]);
     }
 

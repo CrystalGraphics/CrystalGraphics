@@ -19,6 +19,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import com.crystalgraphics.render.draw.CgPipeline;
 
 /**
  * A frame graph built and ready to execute: its passes in the order they run, every batch packed, every instance of
@@ -75,6 +76,12 @@ public final class CgFrame {
     boolean readsCurrentDepth, rastersCurrent, rastersOther;
     int[] acquireAt = new int[8];
     int[] releaseAfter = new int[8];
+    /** What its recordings released, and the step after which each is freed: -1 before the first. */
+    final List<CgGraphResource> released = new ArrayList<>();
+    int[] releasedAfter = new int[4];
+    /** Pipelines its recordings compile, run before its first step, and their requests. */
+    final List<CgPipeline> compiles = new ArrayList<>();
+    final List<CgRequest> compileRequests = new ArrayList<>();
     int batches;
     int draws;
     /** How often it has executed since it was built: past the first, its one-shot passes are done. */
@@ -99,8 +106,18 @@ public final class CgFrame {
         for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
     }
 
+    /** Frees {@code resource} after step {@code step}, -1 before the first. */
+    void release(CgGraphResource resource, int step) {
+        if (released.size() == releasedAfter.length) releasedAfter = Arrays.copyOf(releasedAfter, releasedAfter.length * 2);
+        releasedAfter[released.size()] = step;
+        released.add(resource);
+    }
+
     /** Empties it for the next build, keeping its storage. */
     void clear() {
+        released.clear();
+        compiles.clear();
+        compileRequests.clear();
         Arrays.fill(steps, 0, stepCount, null);
         stepCount = 0;
         Arrays.fill(accessView, 0, accessCount, null);

@@ -122,8 +122,8 @@ public final class CgFrameBuilder {
                 frame.steps[s] = pass;
                 pass.hold();
                 frame.outlives[s] = writesOutliving[order[s]];
-                frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.Fill
-                        || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
+                frame.kernels |= pass instanceof CgComputePass || pass instanceof CgPass.BufferFill
+                        || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy;
             }
             phase.close();
             phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_LIFETIMES);
@@ -131,6 +131,7 @@ public final class CgFrameBuilder {
             phase.close();
             phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_ACCESSES);
             accesses(frame, recordings, steps);
+            carried(frame, recordings, steps);
             phase.close();
             phase = CgTrace.zone(CgChannels.GL_DETAIL, BUILD_PACK);
 
@@ -159,6 +160,30 @@ public final class CgFrameBuilder {
             for (int k = 0; k < KINDS; k++) instances += frame.instanceFloats[k] / CgInstanceKind.of(k).floats();
             CgTrace.add(CgChannels.GL, INSTANCES, instances);
             return frame;
+        }
+    }
+
+    /**
+     * What the recordings carry beside their passes: each release freed after the last step touching it, or before the
+     * first where none does; each compile, run before the first step.
+     */
+    private static void carried(CgFrame frame, List<CgRecording> recordings, int steps) {
+        for (int r = 0; r < recordings.size(); r++) {
+            CgRecording rec = recordings.get(r);
+            for (int i = 0; i < rec.releaseCount(); i++) {
+                CgGraphResource released = rec.releaseAt(i);
+                int last = -1;
+                for (int s = 0; s < steps; s++) {
+                    for (int a = frame.accessFrom[s]; a < frame.accessFrom[s + 1]; a++) {
+                        if (CgGraphResource.resourceOf(frame.accessView[a]) == released) last = s;
+                    }
+                }
+                frame.release(released, last);
+            }
+            for (int i = 0; i < rec.compileCount(); i++) {
+                frame.compiles.add(rec.compileAt(i));
+                frame.compileRequests.add(rec.compileRequest(i));
+            }
         }
     }
 

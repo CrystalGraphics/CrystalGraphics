@@ -3,24 +3,25 @@ package com.crystalgraphics.render.graph;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
-import com.crystalgraphics.render.draw.CgPipeline;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 
 /**
- * One unit of graph work, made through a {@link CgRecording}: a raster pass ({@link CgRasterPass}), a compute pass
- * ({@link CgComputePass}), or a copy, an upload, a fill, a readback, a callback, a compile or a release. Ordered by what it reads
- * and writes, not by when it was made.
+ * One unit of graph work, made through a {@link CgRecording}, of six kinds as Unreal's render graph has them: a raster
+ * pass ({@link CgRasterPass}), a compute pass ({@link CgComputePass}), a {@link Copy}, an {@link Upload}, a
+ * {@link Readback}, or an {@link External} (a callback, an included frame). Ordered by what it reads and writes, not by
+ * when it was made. A release and a compile are not passes: the recording carries them, and the frame frees and
+ * compiles them ({@link CgRecording#release}, {@link CgRecording#compile}).
  *
  * <ul>
  *   <li>A pass with an effect beyond the frame — writing a resource that is not transient, or carrying a
  *       {@link CgRequest} — always runs; any other runs only if something that runs reads what it writes.</li>
  * </ul>
  */
-public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Callback,
-        CgPass.Include, CgPass.Compile, CgPass.Release, CgPass.Fill, CgPass.Update, CgPass.BufferCopy, CgPass.BufferRelease, CgPass.Readback {
+public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.Copy, CgPass.Upload, CgPass.Readback,
+        CgPass.External {
 
     /** Not final for a raster pass, which its recording reuses after a reset. */
     String name;
@@ -85,14 +86,35 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         return getClass().getSimpleName() + "(" + name + ")";
     }
 
+    /** A copy: a texture region's or a buffer range's. */
+    abstract static sealed class Copy extends CgPass permits TextureCopy, BufferCopy {
+        Copy(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
+            super(name, target, request);
+        }
+    }
+
+    /** Bytes the CPU gives: into a texture, into a buffer, or a buffer range set to one value. */
+    abstract static sealed class Upload extends CgPass permits TextureUpload, BufferUpdate, BufferFill {
+        Upload(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
+            super(name, target, request);
+        }
+    }
+
+    /** Work outside the graph's own: a callback's code, or a frame built elsewhere. */
+    public abstract static sealed class External extends CgPass permits Callback, Include {
+        External(String name, @Nullable CgGraphTexture target, @Nullable CgRequest request) {
+            super(name, target, request);
+        }
+    }
+
     /** A region of one texture into a region of another, in each one's pixels, origin bottom-left as GL's. */
-    static final class Copy extends CgPass {
+    static final class TextureCopy extends Copy {
         final CgGraphTexture from;
         final int x, y, w, h, tx, ty, tw, th;
         final boolean linear;
 
-        Copy(CgGraphTexture from, int x, int y, int w, int h, CgGraphTexture to, int tx, int ty, int tw, int th,
-             boolean linear) {
+        TextureCopy(CgGraphTexture from, int x, int y, int w, int h, CgGraphTexture to, int tx, int ty, int tw, int th,
+                    boolean linear) {
             super("copy " + from.name() + " -> " + to.name(), to, null);
             this.from = from;
             this.x = x;
@@ -108,11 +130,11 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     }
 
     /** Bytes into a box of a texture's colour 0, in its type's layout ({@link CgRecording#update}). */
-    static final class Upload extends CgPass {
+    static final class TextureUpload extends Upload {
         final int level, x, y, z, w, h, d;
         final byte[] bytes;
 
-        Upload(CgGraphTexture target, int level, int x, int y, int z, int w, int h, int d, byte[] bytes, CgRequest request) {
+        TextureUpload(CgGraphTexture target, int level, int x, int y, int z, int w, int h, int d, byte[] bytes, CgRequest request) {
             super("update " + target.name(), target, request);
             this.level = level;
             this.x = x;
@@ -126,7 +148,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     }
 
     /** Code run with a target bound and GL state scoped: what is not recorded yet. */
-    static final class Callback extends CgPass {
+    static final class Callback extends External {
         final Runnable body;
         /** A depth of another texture it draws with beside its target, or null. */
         @Nullable
@@ -148,7 +170,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
      * recording.include(ui).timed(GPU_UI).then(FRAME_END);   // a held runnable: none is made a frame
      * }</pre>
      */
-    public static final class Include extends CgPass {
+    public static final class Include extends External {
         @Nullable
         CgFrame frame;
         boolean again, keepRequested;
@@ -197,23 +219,13 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
     }
 
-    /** A pipeline's program, compiled without waiting where the driver allows. */
-    static final class Compile extends CgPass {
-        final CgPipeline pipeline;
-
-        Compile(CgPipeline pipeline, CgRequest request) {
-            super("compile " + pipeline, null, request);
-            this.pipeline = pipeline;
-        }
-    }
-
     /** A buffer range set to one 32-bit value. Reused by its recording after a reset. */
-    static final class Fill extends CgPass {
+    static final class BufferFill extends Upload {
         CgGraphBuffer buffer;
         long offset, size;
         int value;
 
-        Fill(CgGraphBuffer buffer, long offset, long size, int value) {
+        BufferFill(CgGraphBuffer buffer, long offset, long size, int value) {
             super("fill " + buffer.name(), null, null);
             reuse(buffer, offset, size, value);
         }
@@ -233,7 +245,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     }
 
     /** Bytes into a buffer, copied when recorded; or a caller's floats, read when executed. */
-    static final class Update extends CgPass {
+    static final class BufferUpdate extends Upload {
         CgGraphBuffer buffer;
         long offset;
         @Nullable
@@ -249,7 +261,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         @Nullable
         private byte[] owned;
 
-        Update(CgGraphBuffer buffer, long offset, byte[] bytes) {
+        BufferUpdate(CgGraphBuffer buffer, long offset, byte[] bytes) {
             super("update " + buffer.name(), null, null);
             this.buffer = buffer;
             this.offset = offset;
@@ -258,7 +270,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
 
         /** Words read when executed, {@code floats} or {@code ints}: one is null. Reused by its recording after a reset. */
-        Update(CgGraphBuffer buffer, long offset, @Nullable float[] floats, @Nullable int[] ints, int from, int count) {
+        BufferUpdate(CgGraphBuffer buffer, long offset, @Nullable float[] floats, @Nullable int[] ints, int from, int count) {
             super("update " + buffer.name(), null, null);
             reuse(buffer, offset, floats, ints, from, count);
         }
@@ -295,7 +307,7 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
     }
 
     /** A range of one buffer into another. */
-    static final class BufferCopy extends CgPass {
+    static final class BufferCopy extends Copy {
         final CgGraphBuffer from, to;
         final long fromOffset, toOffset, size;
 
@@ -388,30 +400,4 @@ public abstract sealed class CgPass permits CgRasterPass, CgComputePass, CgPass.
         }
     }
 
-    /** A persistent or history buffer's storage freed, after its last use. */
-    static final class BufferRelease extends CgPass {
-        final CgGraphBuffer buffer;
-
-        BufferRelease(CgGraphBuffer buffer) {
-            super("release " + buffer.name(), null, null);
-            this.buffer = buffer;
-        }
-
-        @Override
-        boolean sideEffect() {
-            return true;
-        }
-    }
-
-    /** A requested texture's storage freed, after its last reader. */
-    static final class Release extends CgPass {
-        Release(CgGraphTexture texture) {
-            super("release " + texture.name(), texture, null);
-        }
-
-        @Override
-        boolean sideEffect() {
-            return true;
-        }
-    }
 }

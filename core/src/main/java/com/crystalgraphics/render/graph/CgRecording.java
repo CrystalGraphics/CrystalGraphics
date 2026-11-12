@@ -100,8 +100,8 @@ public final class CgRecording {
     private int rastersUsed;
     /** As {@link #rasters}, for compute passes, fills and updates. */
     private final List<CgComputePass> computes = new ArrayList<>();
-    private int computesUsed;
-    private final List<CgPass.Fill> fills = new ArrayList<>();
+    private int computesUsed;    /** What it releases ({@link #release}) and compiles ({@link #compile}): carried for the frame, not passes. */    private final List<CgGraphResource> releases = new ArrayList<>();    private final List<CgPipeline> compiles = new ArrayList<>();    private final List<CgRequest> compileRequests = new ArrayList<>();
+    private final List<CgPass.BufferFill> fills = new ArrayList<>();
     private int fillsUsed;
     /**
      * {@link #fetch}'s passes: [0, {@link #fetchesUsed}) this recording's, the rest free or held by a delivery in flight,
@@ -109,7 +109,7 @@ public final class CgRecording {
      */
     private final List<CgPass.Readback> fetches = new ArrayList<>();
     private int fetchesUsed;
-    private final List<CgPass.Update> updates = new ArrayList<>();
+    private final List<CgPass.BufferUpdate> updates = new ArrayList<>();
     private int updatesUsed;
     /** {@link #upload}'s slots, reused frame to frame: each its records and the buffer they last filled. */
     private final List<Upload> uploads = new ArrayList<>();
@@ -308,7 +308,7 @@ public final class CgRecording {
         if (from.isVolume() || to.isVolume() || from.isArray() || to.isArray()) {
             throw new IllegalArgumentException("a copy is between 2D textures, not volumes or arrays");
         }
-        CgPass.Copy copy = new CgPass.Copy(from, x, y, w, h, to, tx, ty, tw, th, linear);
+        CgPass.TextureCopy copy = new CgPass.TextureCopy(from, x, y, w, h, to, tx, ty, tw, th, linear);
         add(copy);
         read(copy, from, CgAccess.COPY_READ);
         write(copy, to, CgAccess.COPY_WRITE);
@@ -389,9 +389,9 @@ public final class CgRecording {
         requireOpen();
         requireWritable(buffer, CgBufferUsage.COPY);
         if (((offset | size) & 3) != 0) throw new IllegalArgumentException("a fill covers whole 32-bit words");
-        CgPass.Fill fill;
+        CgPass.BufferFill fill;
         if (fillsUsed < fills.size()) (fill = fills.get(fillsUsed)).reuse(buffer, offset, size, value);
-        else fills.add(fill = new CgPass.Fill(buffer, offset, size, value));
+        else fills.add(fill = new CgPass.BufferFill(buffer, offset, size, value));
         fillsUsed++;
         add(fill);
         write(fill, buffer, CgAccess.COPY_WRITE);
@@ -445,10 +445,10 @@ public final class CgRecording {
         requireOpen();
         requireWritable(buffer, CgBufferUsage.COPY);
         // A reused update's own array: no allocation a frame once warm.
-        CgPass.Update update;
+        CgPass.BufferUpdate update;
         if (updatesUsed < updates.size()) (update = updates.get(updatesUsed)).reuse(buffer, offset, data);
         else {
-            updates.add(update = new CgPass.Update(buffer, offset, null, null, 0, 0));
+            updates.add(update = new CgPass.BufferUpdate(buffer, offset, null, null, 0, 0));
             update.reuse(buffer, offset, data);
         }
         updatesUsed++;
@@ -496,9 +496,9 @@ public final class CgRecording {
         if (from < 0 || count < 0 || from + count > length) {
             throw new IndexOutOfBoundsException("words " + from + " to " + (from + count) + " of " + length);
         }
-        CgPass.Update update;
+        CgPass.BufferUpdate update;
         if (updatesUsed < updates.size()) (update = updates.get(updatesUsed)).reuse(buffer, offset, floats, ints, from, count);
-        else updates.add(update = new CgPass.Update(buffer, offset, floats, ints, from, count));
+        else updates.add(update = new CgPass.BufferUpdate(buffer, offset, floats, ints, from, count));
         updatesUsed++;
         add(update);
         write(update, buffer, CgAccess.COPY_WRITE);
@@ -637,7 +637,7 @@ public final class CgRecording {
         byte[] bytes = new byte[data.remaining()];
         data.duplicate().get(bytes);
         CgRequest request = new CgRequest("update " + texture.name());
-        CgPass.Upload pass = new CgPass.Upload(texture, level, x, y, z, w, h, d, bytes, request);
+        CgPass.TextureUpload pass = new CgPass.TextureUpload(texture, level, x, y, z, w, h, d, bytes, request);
         add(pass);
         write(pass, texture, CgAccess.COPY_WRITE);
         return request;
@@ -700,20 +700,22 @@ public final class CgRecording {
     public CgRequest compile(CgPipeline pipeline) {
         requireOpen();
         CgRequest request = new CgRequest("compile " + pipeline);
-        add(new CgPass.Compile(pipeline, request));
+        compiles.add(pipeline);
+        compileRequests.add(request);
         return request;
     }
 
-    /** Frees a {@linkplain CgGraphTexture#requested requested} texture's storage once everything before it read it. */
+    /**
+     * Frees a {@linkplain CgGraphTexture#requested requested} texture's storage after the last step of this frame that
+     * uses it, or before the first where none does. Not a pass: the frame frees it.
+     */
     public void release(CgGraphTexture requested) {
         requireOpen();
         if (requested.kind() != CgGraphTexture.Kind.REQUESTED
                 && (requested.kind() != CgGraphTexture.Kind.HISTORY || requested.isPreviousVersion())) {
             throw new IllegalArgumentException("only a requested texture or a history is released: " + requested);
         }
-        CgPass.Release pass = new CgPass.Release(requested);
-        add(pass);
-        write(pass, requested, 0);
+        releases.add(requested);
     }
 
     /**
@@ -752,7 +754,7 @@ public final class CgRecording {
         return next;
     }
 
-    /** Frees a persistent or history buffer's storage once everything before it used it. */
+    /** Frees a persistent or history buffer's storage after the last step of this frame that uses it, as a texture's. */
     public void release(CgGraphBuffer buffer) {
         requireOpen();
         CgRehearsal.grew("releases", buffer);
@@ -760,9 +762,7 @@ public final class CgRecording {
                 || buffer.isPreviousVersion()) {
             throw new IllegalArgumentException("only a persistent or history buffer is released: " + buffer);
         }
-        CgPass.BufferRelease pass = new CgPass.BufferRelease(buffer);
-        add(pass);
-        write(pass, buffer, 0);
+        releases.add(buffer);
     }
 
     /**
@@ -770,7 +770,7 @@ public final class CgRecording {
      * chunks into the pass that was open.
      */
     public int operations() {
-        return passes.size();
+        return passes.size() + releases.size() + compiles.size();
     }
 
     /** The pass or request made {@code index}-th, counting as {@link #operations} does. */
@@ -844,6 +844,26 @@ public final class CgRecording {
 
     int passCount() {
         return passes.size();
+    }
+
+    int releaseCount() {
+        return releases.size();
+    }
+
+    CgGraphResource releaseAt(int i) {
+        return releases.get(i);
+    }
+
+    int compileCount() {
+        return compiles.size();
+    }
+
+    CgPipeline compileAt(int i) {
+        return compiles.get(i);
+    }
+
+    CgRequest compileRequest(int i) {
+        return compileRequests.get(i);
     }
 
     int eventCount() {

@@ -626,6 +626,10 @@ public final class CgExecutor {
         }
         int resolved = 0;
         try {
+            if (!again) {
+                compiles(frame);
+                freeReleased(frame, -1);
+            }
             for (int s = 0; s < frame.stepCount; s++) {
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.acquireAt[t] == s) {
@@ -662,6 +666,7 @@ public final class CgExecutor {
                         resolved--;
                     }
                 }
+                if (!again) freeReleased(frame, s);
             }
         } finally {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
@@ -692,8 +697,8 @@ public final class CgExecutor {
             staleBy.clear();
         }
         CgPass pass = frame.steps[s];
-        boolean kernelOrBuffer = pass instanceof CgComputePass || pass instanceof CgPass.Fill
-                || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy;
+        boolean kernelOrBuffer = pass instanceof CgComputePass || pass instanceof CgPass.BufferFill
+                || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy;
         for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
             CgGraphResource resource = frame.accessView[i];
             int bits = frame.accessBits[i];
@@ -819,9 +824,8 @@ public final class CgExecutor {
      */
     private static boolean doneOnce(CgFrame frame, int s, boolean keepRequested) {
         CgPass pass = frame.steps[s];
-        if (pass instanceof CgPass.Upload || pass instanceof CgPass.Compile || pass instanceof CgPass.Release
-                || pass instanceof CgPass.BufferRelease || pass instanceof CgPass.Readback) return true;
-        if (pass instanceof CgPass.Fill || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy) {
+        if (pass instanceof CgPass.TextureUpload || pass instanceof CgPass.Readback) return true;
+        if (pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy) {
             return frame.outlives[s];
         }
         if (pass instanceof CgComputePass compute) return frame.outlives[s] && !compute.runsAgain();
@@ -916,7 +920,7 @@ public final class CgExecutor {
                     }
                 }
                 if (CgBufferInspector.watching()) inspect(compute);
-            } else if (pass instanceof CgPass.Fill || pass instanceof CgPass.Update || pass instanceof CgPass.BufferCopy) {
+            } else if (pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, BUFFER_STEP)) {
                     bufferStep(pass);
                 }
@@ -924,16 +928,11 @@ public final class CgExecutor {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_READBACK)) {
                     readback(readback);
                 }
-            } else if (pass instanceof CgPass.BufferRelease release) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_RELEASE)) {
-                    freeKept(release.buffer);
-                }
-                KEPT.remove(release.buffer);
-            } else if (pass instanceof CgPass.Copy copy) {
+            } else if (pass instanceof CgPass.TextureCopy copy) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COPY)) {
                     copyOnDevice(copy);
                 }
-            } else if (pass instanceof CgPass.Upload upload) {
+            } else if (pass instanceof CgPass.TextureUpload upload) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_UPLOAD)) {
                     upload(upload);
                 }
@@ -950,18 +949,6 @@ public final class CgExecutor {
                     callback.body.run();
                 }
                 callback.request.complete();
-            } else if (pass instanceof CgPass.Compile compile) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COMPILE)) {
-                    if (compile.pipeline.precache()) {
-                        if (compile.pipeline.program() != null) compile.request.complete();
-                        else compile.request.fail(String.valueOf(compile.pipeline.shader().lastCompileError()));
-                    }
-                }
-            } else if (pass instanceof CgPass.Release) {
-                sharedDepthSource = null;
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_RELEASE)) {
-                    freeTexture(pass.target);
-                }
             }
         } catch (RuntimeException failure) {
             if (pass.request == null) throw failure;
@@ -970,14 +957,47 @@ public final class CgExecutor {
         }
     }
 
+    /** The frame's compiles, before its steps: each done once its program is ready, failed with the driver's reason. */
+    private static void compiles(CgFrame frame) {
+        for (int i = 0; i < frame.compiles.size(); i++) {
+            CgPipeline pipeline = frame.compiles.get(i);
+            CgRequest request = frame.compileRequests.get(i);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COMPILE)) {
+                if (pipeline.precache()) {
+                    if (pipeline.program() != null) request.complete();
+                    else request.fail(String.valueOf(pipeline.shader().lastCompileError()));
+                }
+            } catch (RuntimeException failure) {
+                LOGGER.warn("compile {} failed", pipeline, failure);
+                request.fail(failure.getMessage() == null ? failure.toString() : failure.getMessage());
+            }
+        }
+    }
+
+    /** Frees what the frame released whose last use is step {@code s} (-1: before the first). */
+    private void freeReleased(CgFrame frame, int s) {
+        for (int i = 0; i < frame.released.size(); i++) {
+            if (frame.releasedAfter[i] != s) continue;
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_RELEASE)) {
+                if (frame.released.get(i) instanceof CgGraphBuffer buffer) {
+                    freeKept(buffer);
+                    KEPT.remove(buffer);
+                } else {
+                    sharedDepthSource = null;
+                    freeTexture((CgGraphTexture) frame.released.get(i));
+                }
+            }
+        }
+    }
+
     private void bufferStep(CgPass pass) {
         // Storage made and the update staged first: nothing of it is made inside the section
         int dst = 0;
         CgGpuBuffer src = null;
         long at = 0;
-        if (pass instanceof CgPass.Fill fill) {
+        if (pass instanceof CgPass.BufferFill fill) {
             dst = bufferStorage(fill.buffer, true);
-        } else if (pass instanceof CgPass.Update update) {
+        } else if (pass instanceof CgPass.BufferUpdate update) {
             dst = bufferStorage(update.buffer, true);
             at = stage(update);
             src = staging.gpuBuffer();
@@ -996,7 +1016,7 @@ public final class CgExecutor {
     }
 
     /** {@code copy}'s blit on the device's command list, between two storages. */
-    private void copyOnDevice(CgPass.Copy copy) {
+    private void copyOnDevice(CgPass.TextureCopy copy) {
         CgGraphStorage from = storage(copy.from), target = storage(copy.target);
         CgGpuTexture source = from.color(0);
         if (source == null) throw new IllegalStateException("copy " + copy.from.name() + " has no colour to read");
@@ -1018,7 +1038,7 @@ public final class CgExecutor {
     private static ByteBuffer texels;
 
     /** {@code upload}'s bytes written into its texture's colour 0, its step's barriers having made it a copy's. */
-    private static void upload(CgPass.Upload upload) {
+    private static void upload(CgPass.TextureUpload upload) {
         CgGraphStorage target = storage(upload.target);
         CgGpuTexture image = target.color(0);
         if (image == null) throw new IllegalStateException(upload.target + " has no colour texture to update");
@@ -1043,12 +1063,12 @@ public final class CgExecutor {
      */
     private static void bufferStepOnDevice(CgPass pass, CgGpuBuffer dst, long dstBase, @Nullable CgGpuBuffer src, long srcBase) {
         CgCommandList list = CgRHI.get().encoder();
-        if (pass instanceof CgPass.Fill fill) {
+        if (pass instanceof CgPass.BufferFill fill) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, FILL)) {
                 list.fillBuffer(dst, dstBase + fill.offset, fill.size, fill.value);
             }
             written(fill.buffer);
-        } else if (pass instanceof CgPass.Update update) {
+        } else if (pass instanceof CgPass.BufferUpdate update) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, UPDATE_COPY)) {
                 list.copyBuffer(src, srcBase, dst, dstBase + update.offset, update.size);
             }
@@ -1460,7 +1480,7 @@ public final class CgExecutor {
     private CgStreamBuffer staging;
 
     /** {@code update}'s bytes written into the staging ring; answers where. */
-    private int stage(CgPass.Update update) {
+    private int stage(CgPass.BufferUpdate update) {
         int bytes = update.size;
         // 1 MB a region: a move's pools update about that in a frame, and each doubling is new storage (T10).
         if (staging == null) staging = CgStreamBuffer.create(CgStreamBuffer.Use.STAGING, Math.max(bytes, 1 << 20));
@@ -1943,7 +1963,7 @@ public final class CgExecutor {
     private boolean splittable(CgFrame frame, int s) {
         CgPass pass = frame.steps[s];
         if (pass instanceof CgComputePass compute) return !runsAsync(compute);
-        return pass instanceof CgRasterPass || pass instanceof CgPass.Fill || pass instanceof CgPass.Update
+        return pass instanceof CgRasterPass || pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate
                 || pass instanceof CgPass.BufferCopy;
     }
 

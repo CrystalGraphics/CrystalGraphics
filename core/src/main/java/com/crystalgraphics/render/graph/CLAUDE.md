@@ -30,6 +30,12 @@ declare it before the draw that reads it, and a pass held open while another rec
 parent) declares it after that pass. A draw names its own reads as it is added (`renderer.md` § 4.2): the graph
 textures its bindings sample, the graph buffers it binds as storage, its objects and indirect count.
 
+**Six pass kinds** (`CgPass`, as Unreal's render graph): raster, compute, copy (a texture region, a buffer range),
+upload (bytes into a texture or a buffer, a buffer filled), readback, and external (a callback, an included frame).
+A release and a compile are not passes: the recording carries them, and the frame frees a released resource after the
+last step touching it (before the first where none does) and compiles before its first step, both on its first
+execution only.
+
 **The undeclared-access check** (`CgGraphCheck`, RDG's `bAllowRHIAccess`): while a step executes, the resources it
 recorded may be bound and no other; a binding resolving a graph texture (`rhiView()`) or buffer (`boundId()`) outside
 them is refused. `-Dcrystalgraphics.graph.check=throw|log|off`: `throw` in a dev client, the harness and tests, off in a
