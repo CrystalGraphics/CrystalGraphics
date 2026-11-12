@@ -1,9 +1,10 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.camera.CgCamera;
 /**
  * This frame's facts about the host's world and its player: the sun and sky, the weather, the dimension, the fog, where
  * the camera is, the player's sight, their settings and the game's clock. Filled by the host when it captures the
- * camera, beside {@link CgHostView} on the same {@link CgHostFrame}; allocates nothing. What an effect reads to light
+ * camera, beside {@link CgCamera} on the same {@link CgHostFrame}; allocates nothing. What an effect reads to light
  * itself like the world, dim at night, switch to its underwater look, hold still while the game is paused, and spawn
  * fewer particles for a player who asked for fewer.
  *

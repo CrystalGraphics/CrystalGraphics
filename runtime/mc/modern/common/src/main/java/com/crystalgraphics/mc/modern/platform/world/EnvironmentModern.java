@@ -2,7 +2,7 @@ package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
 import net.minecraft.client.player.LocalPlayer;
@@ -56,7 +56,7 @@ public final class EnvironmentModern {
     private EnvironmentModern() {
     }
 
-    public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
+    public static void capture(Minecraft mc, float partialTick, CgCamera view, CgHostEnvironment out) {
         out.clear().screen(CgMinecraftClient.screen(mc) != null);
         //? if >=1.15 {
         ClientLevel level = mc.level;

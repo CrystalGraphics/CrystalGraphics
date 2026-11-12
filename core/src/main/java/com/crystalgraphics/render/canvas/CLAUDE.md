@@ -12,7 +12,7 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 
 | File | Role |
 |------|------|
-| `CgCanvas.java` | The canvas: draw builders, `text()`, set-target/scissor/constants/view, its camera (`cameraProjection/View/Width/Height`) and `visible(...)` cull, replay's tape. Its javadoc has the examples |
+| `CgCanvas.java` | The canvas: draw builders, `text()`, set-target/scissor/constants/view, its camera (`camera()`, set with `camera(CgCamera)`) and `visible(...)` cull, replay's tape. Its javadoc has the examples |
 | `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (`#pragma cg_use quad`) |
 | `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (`#pragma cg_use curve`) |
 | `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgRenderer.drawNow` |

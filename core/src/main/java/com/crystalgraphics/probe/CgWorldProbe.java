@@ -37,7 +37,7 @@ import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgHostTextures;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.settings.CgGraphicsSettings;
@@ -294,7 +294,7 @@ public final class CgWorldProbe {
     private static void staticChecks(CgHostFrame host) {
         CgWorldQuery world = CgWorldQueries.client();
         CgEntityQuery entities = CgEntityQueries.client();
-        CgHostView view = host.view();
+        CgCamera view = host.camera();
         CgHostEnvironment env = host.environment();
 
         // An identity projection is a view nobody filled: the host's capture never ran (on 1.21.6-1.21.11 it is a node
@@ -587,7 +587,7 @@ public final class CgWorldProbe {
         check("audio.follows-master", audio.main() == master, "main gain " + audio.main() + ", master slider " + master);
     }
 
-    private static void environmentChecks(CgHostEnvironment env, CgHostView view) {
+    private static void environmentChecks(CgHostEnvironment env, CgCamera view) {
         float angle = env.celestialAngle();
         check("env.sun", angle >= 0f && angle <= 1f, "celestial angle " + angle);
         if (env.hasSky() && !env.hasCeiling() && env.dayTime() >= 0) {
@@ -650,7 +650,7 @@ public final class CgWorldProbe {
             skip("camera", "this version applies no camera offset");
         } else {
             baseFov = host.environment().fov();
-            baseView.set(host.view().view());
+            baseView.set(host.camera().view());
             baseEyeY = eyeY(host);
             offset(has(CgHostCamera.ROTATION) ? YAW : 0f, 0f, has(CgHostCamera.FOV) ? FOV_SCALE : 1f,
                     has(CgHostCamera.TRANSLATION) ? RISE : 0f);
@@ -675,7 +675,7 @@ public final class CgWorldProbe {
             skip("camera.fov", "not applied on this version");
         }
         if (has(CgHostCamera.ROTATION)) {
-            AxisAngle4f turn = turnSinceBase(host.view().view());
+            AxisAngle4f turn = turnSinceBase(host.camera().view());
             Vector3f worldUp = baseView.transform(new Vector3f(0f, 1f, 0f));
             float about = Math.max(Math.abs(turn.y), Math.abs(turn.x * worldUp.x + turn.y * worldUp.y + turn.z * worldUp.z));
             float degrees = (float) Math.toDegrees(turn.angle);
@@ -696,7 +696,7 @@ public final class CgWorldProbe {
 
     /** Where the frame is seen from, in world blocks: the view's position plus its own eye offset (1.13 and older). */
     private static double eyeY(CgHostFrame host) {
-        CgHostView view = host.view();
+        CgCamera view = host.camera();
         eyeInverse.set(view.view()).invert().transformPosition(eyeAt.zero());
         return view.y() + eyeAt.y;
     }
@@ -705,7 +705,7 @@ public final class CgWorldProbe {
     private static void turnInShake() {
         if (!sameFrameArmed) return;
         sameFrameArmed = false;
-        baseView.set(CgRenderStage.WORLD_OPAQUE.host().view().view());
+        baseView.set(CgRenderStage.WORLD_OPAQUE.host().camera().view());
         offset(YAW, 0f, 1f);
         sameFrameAt = CgFrameRing.frame();
     }
@@ -714,7 +714,7 @@ public final class CgWorldProbe {
     private static void checkSameFrame(CgHostFrame host, long now) {
         if (!shakeTook("camera.same-frame")) {
             boolean same = CgFrameRing.frame() == sameFrameAt;
-            float degrees = (float) Math.toDegrees(turnSinceBase(host.view().view()).angle);
+            float degrees = (float) Math.toDegrees(turnSinceBase(host.camera().view()).angle);
             check("camera.same-frame", same && Math.abs(degrees - YAW) < 1.5f, String.format(
                     "turned %.2f degrees in the frame the offset was set, %s", degrees, same ? "the same ring frame" : "a later ring frame"));
         }
@@ -758,7 +758,7 @@ public final class CgWorldProbe {
         int player = entities.localPlayer();
         if (holdFrames == HOLD_EARLY) {
             // Inside the first ticks, while the host's camera eases its eye height toward the held entity's.
-            CgHostView view = host.view();
+            CgCamera view = host.camera();
             double dx = view.x() - holdAt[0], dy = view.y() - holdAt[1], dz = view.z() - holdAt[2];
             boolean flat = Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3;
             check("camera-hold.position-at-take", flat && (Math.abs(dy) < 1e-3 || dy < -0.5 && dy > -2.0),
@@ -768,7 +768,7 @@ public final class CgWorldProbe {
             stimulus.turnLook(20f);
             holdPressed = stimulus.pressJump();
         } else if (holdFrames == HOLD_MEASURE) {
-            CgHostView view = host.view();
+            CgCamera view = host.camera();
             double dx = view.x() - holdAt[0], dy = view.y() - holdAt[1], dz = view.z() - holdAt[2];
             // 1.13 puts the view at the camera entity's feet and its eye in the matrix: a whole eye height below the pose.
             boolean flat = Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3;
@@ -835,7 +835,7 @@ public final class CgWorldProbe {
 
     private static void checkRoll(CgHostFrame host) {
         if (shakeTook("camera.roll")) return;
-        AxisAngle4f turn = turnSinceBase(host.view().view());
+        AxisAngle4f turn = turnSinceBase(host.camera().view());
         float degrees = (float) Math.toDegrees(turn.angle);
         check("camera.roll", Math.abs(degrees - ROLL) < 1.5f && Math.abs(turn.z) > 0.98f, String.format(
                 "rolled %.2f degrees about an axis %.3f along the view, %s", degrees, Math.abs(turn.z),

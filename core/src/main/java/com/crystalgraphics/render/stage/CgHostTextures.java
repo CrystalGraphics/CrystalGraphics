@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
@@ -12,7 +13,7 @@ import java.util.Objects;
 /**
  * The host's own textures an effect may sample this frame: Minecraft's lightmap, which turns block and sky light into the
  * colour blocks are lit with, and its block atlas, which {@code CgWorldQuery.spriteRect} cuts a block's particle sprite
- * from. Beside {@link CgHostView} and {@link CgHostEnvironment} on the same {@link CgHostFrame}.
+ * from. Beside {@link CgCamera} and {@link CgHostEnvironment} on the same {@link CgHostFrame}.
  *
  * <pre>{@code
  * CgHostTextures host = frame.host().textures();

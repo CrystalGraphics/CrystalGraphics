@@ -5,7 +5,7 @@ import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -34,7 +34,7 @@ import java.util.function.Predicate;
  *   <li>The client world runs its groups once a frame in two parts: {@link CgTickGroup#BEGIN} through
  *       {@link CgTickGroup#SHAKE} from the host's camera setup ({@link #begin}, {@code WORLD_BEGIN}), so a shake moves
  *       this frame's camera; {@link CgTickGroup#LATE_ATTACH} and {@link CgTickGroup#SUBMIT} at the first world stage's
- *       firing ({@link #frame(CgHostView, long)}), before any renderer records.</li>
+ *       firing ({@link #frame(CgCamera, long)}), before any renderer records.</li>
  *   <li>A firing with no {@code begin} this frame (a host whose hook is not wired, a mod drawing frames of its own)
  *       runs the first part there, late, counted as {@code frame.begin-late}.</li>
  *   <li>A world runs on the render thread: its functions touch the GPU only in {@link CgTickGroup#SUBMIT}.</li>
@@ -56,7 +56,7 @@ public final class CgWorld implements AutoCloseable {
     private final List<CgWorldSubsystem> subsystems = new ArrayList<>();
     private final boolean server;
     private BooleanSupplier paused = () -> false;
-    private CgHostView view;
+    private CgCamera view;
     private boolean closed;
     /** The frame {@link #begin} last ran for; -1 for none. */
     private long begun = -1;
@@ -169,7 +169,7 @@ public final class CgWorld implements AutoCloseable {
     }
 
     /** The host's camera for the frame being run; null before the first. */
-    public CgHostView view() {
+    public CgCamera view() {
         return view;
     }
 
@@ -197,7 +197,7 @@ public final class CgWorld implements AutoCloseable {
     }
 
     /** Runs every frame group once, in order, under {@code view}: the host's camera for this frame. A preview's, a test's. */
-    public void frame(CgHostView view) {
+    public void frame(CgCamera view) {
         this.view = view;
         frames++;
         schedule.run(CgTickGroup.BEGIN, CgTickGroup.SUBMIT, frameTime());
@@ -242,7 +242,7 @@ public final class CgWorld implements AutoCloseable {
      * {@code WORLD_BEGIN}: the groups {@link CgTickGroup#BEGIN} through {@link CgTickGroup#SHAKE}, once for
      * {@code frame}, under {@code view} as it stands: last frame's camera, since the host has not taken this one yet.
      */
-    public void begin(CgHostView view, long frame) {
+    public void begin(CgCamera view, long frame) {
         if (frame == begun) return;
         begun = frame;
         frames++;
@@ -254,7 +254,7 @@ public final class CgWorld implements AutoCloseable {
      * The first world stage's firing of {@code frame}: {@link CgTickGroup#LATE_ATTACH} and {@link CgTickGroup#SUBMIT}
      * under this frame's {@code view}, after the first part if no camera hook ran it.
      */
-    public void frame(CgHostView view, long frame) {
+    public void frame(CgCamera view, long frame) {
         if (frame != begun) {
             if (!CgWorldBegin.isAtStage()) {
                 beganLate++;

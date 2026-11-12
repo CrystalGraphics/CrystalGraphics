@@ -136,15 +136,19 @@ public final class CgPassConstants {
 
     /**
      * The view block as {@code camera} sees: its view, projection, time and position, its resolution or else
-     * {@code width} x {@code height}, the host's depth convention. What a pass's or a canvas's {@code camera(...)}
-     * writes.
+     * {@code width} x {@code height}, the host's depth convention, its origin as {@code cg_WorldOrigin}, and what its view
+     * state adds (a stage's environment and history). What a pass's or a canvas's {@code camera(...)} writes.
      */
     public CgPassConstants seenThrough(CgCamera camera, float width, float height) {
         view.set(camera.view());
         projection.set(camera.projection());
         time(camera.time()).resolution(camera.width() > 0f ? camera.width() : width,
                 camera.height() > 0f ? camera.height() : height).hostDepth();
-        return camera.positioned() ? camera(camera.x(), camera.y(), camera.z()) : cameraFromView();
+        camera((float) (camera.x() - camera.originX()), (float) (camera.y() - camera.originY()),
+                (float) (camera.z() - camera.originZ()));
+        origin(camera.originX(), camera.originY(), camera.originZ());
+        if (camera.viewState() != null) camera.viewState().write(this);
+        return this;
     }
 
     /** Puts the camera where {@link #view} sees from, for an affine view: a pass with no other camera to give. */

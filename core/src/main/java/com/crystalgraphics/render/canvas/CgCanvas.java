@@ -119,9 +119,8 @@ public final class CgCanvas {
     @Nullable
     private CgTextBatch text;
 
-    /** The camera later items draw under, as last recorded into or set. @see #cameraProjection */
-    private final Matrix4f cameraProjection = new Matrix4f(), cameraView = new Matrix4f();
-    private float cameraWidth = 1f, cameraHeight = 1f;
+    /** The camera later items draw under, as last recorded into or set. @see #camera() */
+    private final CgCamera seen = new CgCamera().resolution(1f, 1f);
     private final CgViewFrustum frustum = new CgViewFrustum();
     private final Matrix4f localToClip = new Matrix4f();
 
@@ -231,30 +230,13 @@ public final class CgCanvas {
     // ── Camera ──────────────────────────────────────────────────────────
 
     /**
-     * The projection later items draw under: the pass's while recording, an armed stage's before it opens, else
-     * its {@link #camera}'s. Read-only.
+     * The camera later items draw under: the pass's while recording, an armed stage's before it opens, else the one
+     * {@link #camera(CgCamera)} gave. Its resolution is the target's, never 0. Read it; set it through
+     * {@link #camera(CgCamera)}.
      */
-    public Matrix4fc cameraProjection() {
+    public CgCamera camera() {
         refreshCamera();
-        return cameraProjection;
-    }
-
-    /** The view later items draw under. @see #cameraProjection */
-    public Matrix4fc cameraView() {
-        refreshCamera();
-        return cameraView;
-    }
-
-    /** The target's width in pixels later items draw at. @see #cameraProjection */
-    public float cameraWidth() {
-        refreshCamera();
-        return cameraWidth;
-    }
-
-    /** The target's height in pixels later items draw at. @see #cameraProjection */
-    public float cameraHeight() {
-        refreshCamera();
-        return cameraHeight;
+        return seen;
     }
 
     /**
@@ -268,7 +250,7 @@ public final class CgCanvas {
      */
     public boolean visible(@Nullable Matrix4fc pose, float x0, float y0, float x1, float y1) {
         refreshCamera();
-        localToClip.set(cameraProjection).mul(cameraView);
+        localToClip.set(seen.projection()).mul(seen.view());
         if (pose != null) localToClip.mul(pose);
         return frustum.set(localToClip).testRect(x0, y0, x1, y1);
     }
@@ -279,10 +261,8 @@ public final class CgCanvas {
             takeCamera(source.constants());
             return;
         }
-        cameraProjection.set(nowCamera.projection());
-        cameraView.set(nowCamera.view());
-        cameraWidth = Math.max(1f, nowCamera.width());
-        cameraHeight = Math.max(1f, nowCamera.height());
+        seen.view(nowCamera.view()).projection(nowCamera.projection())
+                .resolution(Math.max(1f, nowCamera.width()), Math.max(1f, nowCamera.height()));
     }
 
     /**
@@ -317,10 +297,8 @@ public final class CgCanvas {
     private CgCamera nowCamera = new CgCamera();
 
     private void takeCamera(CgPassConstants constants) {
-        cameraProjection.set(constants.projection);
-        cameraView.set(constants.view);
-        cameraWidth = Math.max(1f, constants.width());
-        cameraHeight = Math.max(1f, constants.height());
+        seen.view(constants.view).projection(constants.projection)
+                .resolution(Math.max(1f, constants.width()), Math.max(1f, constants.height()));
     }
 
     // ── World space ─────────────────────────────────────────────────────

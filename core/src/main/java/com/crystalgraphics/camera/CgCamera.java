@@ -1,40 +1,74 @@
 package com.crystalgraphics.camera;
 
+import com.crystalgraphics.render.draw.CgPassConstants;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Vector2f;
+import org.joml.Vector3f;
 import org.joml.Vector3fc;
+import org.joml.Vector4f;
+
+import javax.annotation.Nullable;
+import java.nio.FloatBuffer;
 
 /**
- * What a raster pass is seen through: view, projection, the camera's position, resolution and time. Given to a pass
- * with {@code CgRasterPass.camera}; the depth convention, the target's encoding and the environment (sun, fog) are the
- * renderer's, from the target the pass draws into.
+ * Where something is seen from: view, projection, the camera's absolute position, resolution and time. The host's
+ * camera at a stage, a stage frame's camera, a preview's or a scene's own: one type. Given to a raster pass with
+ * {@code CgRasterPass.camera}, to a canvas with {@code CgCanvas.camera}; the depth convention and the target's
+ * encoding are the renderer's.
  *
  * <pre>{@code
- * CgCamera camera = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(seconds);
- * rec.raster("preview").color(picture, CgLoad.CLEAR).camera(camera);
+ * // inside a stage: the one it hands out, never a new one
+ * CgCamera camera = frame.camera();                       // the world's at a world stage, the screen's at a GUI stage
+ * rec.raster("mymod.glow").color(frame.target(), CgLoad.load()).camera(camera);
+ * camera.project(x, y, z, width, height, at);             // where an absolute point lands
  *
- * CgCamera screen = CgCamera.screen(w, h);   // pixels, y down, as a UI draws
+ * // outside any stage: a preview, a thumbnail -- kept in a field, moved each frame
+ * CgCamera preview = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(seconds);
+ * CgCamera screen = CgCamera.screen(w, h);                 // pixels, y down, as a UI draws
  * }</pre>
  *
  * <ul>
- *   <li>A value as given: a pass copies it at {@code camera(...)}, so moving it afterwards moves no recorded pass.
- *       Keep one and change it per frame; nothing allocates.</li>
- *   <li>Its position is where the view sees from unless {@link #position} sets it.</li>
- *   <li>Its resolution is its pass's target's unless {@link #resolution} sets it: a current target's is the one open
- *       when the pass is recorded.</li>
- *   <li>Projections take GL's clip convention (depth -1 to 1, far at 1); the renderer maps it to the target's.</li>
+ *   <li>Its view maps a point relative to its {@linkplain #originX origin} into view space. A camera made here has its
+ *       origin at 0, an absolute view; a host's camera ({@link #set(double, double, double, Matrix4fc, Matrix4fc)}) has
+ *       it at the camera, as Minecraft draws its world, so a far coordinate keeps its precision: the subtraction
+ *       happens in doubles, before anything is a float.</li>
+ *   <li>Its position is where the view sees from unless {@link #position} or {@code set} placed it.</li>
+ *   <li>A pass copies it at {@code camera(...)}: moving it afterwards moves no recorded pass. Keep one and change it
+ *       per frame; nothing allocates.</li>
+ *   <li>Its resolution is its pass's target's unless {@link #resolution} names one.</li>
+ *   <li>Projections take GL's clip convention (depth -1 to 1); the renderer maps it to the target's.</li>
  * </ul>
  */
 public final class CgCamera {
 
+    /**
+     * What an engine view adds to its camera's pass constants: a stage's environment (sun, fog), the last frame's view
+     * of it, the scene's encoding. A stage frame's camera has one; a camera of your own has none.
+     */
+    @FunctionalInterface
+    public interface ViewState {
+        void write(CgPassConstants constants);
+    }
+
     private final Matrix4f view = new Matrix4f(), projection = new Matrix4f();
-    private float x, y, z;
+    private final Vector4f scratch = new Vector4f();
+    private final Vector3f eye = new Vector3f();
+    /** The point its view is relative to, and its position where placed. */
+    private double originX, originY, originZ, x, y, z;
     private boolean positioned;
     private float width, height;
     private double time;
+    @Nullable
+    private ViewState state;
 
     /** At the origin, identity view and projection: clip space as given. */
     public CgCamera() {
+    }
+
+    /** A camera whose pass constants {@code state} completes: an engine view's. */
+    public CgCamera(ViewState state) {
+        this.state = state;
     }
 
     /** A perspective camera: {@code fovY} degrees, {@code aspect} width over height, {@code near} and {@code far} distances. */
@@ -54,24 +88,37 @@ public final class CgCamera {
         return new CgCamera().screenLens(width, height);
     }
 
+    // ── Setting it ───────────────────────────────────────────────────────
+
     /** Its projection made a perspective one. @see #perspective */
     public CgCamera perspectiveLens(float fovY, float aspect, float near, float far) {
         projection.setPerspective((float) Math.toRadians(fovY), aspect, near, far);
         return this;
     }
 
-    /** Looks from {@code eye} at {@code target}, +y up. */
+    /** Its projection made {@link #screen}'s, for a target of {@code width} x {@code height}, its view the identity. */
+    public CgCamera screenLens(float width, float height) {
+        view.identity();
+        projection.setOrtho(0f, width, height, 0f, -1f, 1f);
+        originX = originY = originZ = 0;
+        positioned = false;
+        return resolution(width, height);
+    }
+
+    /** Looks from {@code eye} at {@code target}, +y up: an absolute view. */
     public CgCamera lookAt(Vector3fc eye, Vector3fc target) {
         return lookAt(eye.x(), eye.y(), eye.z(), target.x(), target.y(), target.z());
     }
 
-    /** Looks from {@code (ex, ey, ez)} at {@code (tx, ty, tz)}, +y up. */
+    /** Looks from {@code (ex, ey, ez)} at {@code (tx, ty, tz)}, +y up: an absolute view. */
     public CgCamera lookAt(float ex, float ey, float ez, float tx, float ty, float tz) {
         view.setLookAt(ex, ey, ez, tx, ty, tz, 0f, 1f, 0f);
+        originX = originY = originZ = 0;
+        positioned = false;
         return this;
     }
 
-    /** Its view, the world-to-view transform. */
+    /** Its view: an absolute one unless {@link #set} made it relative to the camera. */
     public CgCamera view(Matrix4fc view) {
         this.view.set(view);
         return this;
@@ -83,18 +130,8 @@ public final class CgCamera {
         return this;
     }
 
-    /** Its view, to change in place. */
-    public Matrix4f view() {
-        return view;
-    }
-
-    /** Its projection, to change in place. */
-    public Matrix4f projection() {
-        return projection;
-    }
-
-    /** The camera's world position, where it is not the view's eye: a camera-relative view's absolute place. */
-    public CgCamera position(float x, float y, float z) {
+    /** The camera's absolute position, where it is not where the view sees from. */
+    public CgCamera position(double x, double y, double z) {
         this.x = x;
         this.y = y;
         this.z = z;
@@ -115,11 +152,88 @@ public final class CgCamera {
         return this;
     }
 
-    /** Its projection made {@link #screen}'s, for a target of {@code width} x {@code height}, its view the identity. */
-    public CgCamera screenLens(float width, float height) {
-        view.identity();
-        projection.setOrtho(0f, width, height, 0f, -1f, 1f);
-        return resolution(width, height);
+    /**
+     * A host's camera, copied in: at the absolute {@code (x, y, z)}, its view mapping a point relative to there. What a
+     * host fills its stages' cameras with, once per level render; copies, allocates nothing.
+     *
+     * <pre>{@code
+     * CgRenderStage.WORLD_OPAQUE.host().camera().set(camera.x, camera.y, camera.z, viewRotation, projection);
+     * }</pre>
+     */
+    public CgCamera set(double x, double y, double z, Matrix4fc view, Matrix4fc projection) {
+        this.view.set(view);
+        this.projection.set(projection);
+        return relativeTo(x, y, z);
+    }
+
+    /** As {@link #set(double, double, double, Matrix4fc, Matrix4fc)}, from column-major buffers, read where they stand. */
+    public CgCamera set(double x, double y, double z, FloatBuffer view, FloatBuffer projection) {
+        this.view.set(view);
+        this.projection.set(projection);
+        return relativeTo(x, y, z);
+    }
+
+    /** Another camera's view, projection, origin, position, resolution and time, copied in; its view state kept. */
+    public CgCamera set(CgCamera other) {
+        view.set(other.view);
+        projection.set(other.projection);
+        originX = other.originX;
+        originY = other.originY;
+        originZ = other.originZ;
+        x = other.x;
+        y = other.y;
+        z = other.z;
+        positioned = other.positioned;
+        width = other.width;
+        height = other.height;
+        time = other.time;
+        return this;
+    }
+
+    private CgCamera relativeTo(double x, double y, double z) {
+        originX = this.x = x;
+        originY = this.y = y;
+        originZ = this.z = z;
+        positioned = true;
+        return this;
+    }
+
+    // ── Reading it ───────────────────────────────────────────────────────
+
+    /** Its view, to read or change in place: maps a point relative to its origin into view space. */
+    public Matrix4f view() {
+        return view;
+    }
+
+    /** Its projection, to read or change in place. */
+    public Matrix4f projection() {
+        return projection;
+    }
+
+    /** The camera's absolute position: placed, or where its view sees from. */
+    public double x() {
+        return positioned ? x : originX + eye().x;
+    }
+
+    public double y() {
+        return positioned ? y : originY + eye().y;
+    }
+
+    public double z() {
+        return positioned ? z : originZ + eye().z;
+    }
+
+    /** The absolute point its view is relative to: 0 for an absolute view, the camera for a host's. */
+    public double originX() {
+        return originX;
+    }
+
+    public double originY() {
+        return originY;
+    }
+
+    public double originZ() {
+        return originZ;
     }
 
     /** The resolution it names; 0 where it takes its target's. */
@@ -137,20 +251,41 @@ public final class CgCamera {
         return time;
     }
 
-    /** Whether {@link #position} placed it; else it is where its view sees from. */
-    public boolean positioned() {
-        return positioned;
+    /** Whether it is an orthographic one, a screen's or a GUI's. */
+    public boolean isOrthographic() {
+        return projection.m23() == 0f;
     }
 
-    public float x() {
-        return x;
+    /** What its engine view adds to its pass constants; null for a camera of your own. */
+    @Nullable
+    public ViewState viewState() {
+        return state;
     }
 
-    public float y() {
-        return y;
+    /**
+     * Where the absolute point ({@code x}, {@code y}, {@code z}) is seen on a {@code width} by {@code height}
+     * rectangle, origin top left, y down, into {@code out}; false, and {@code out} untouched, behind the camera.
+     * Unreal's {@code FSceneView::ProjectWorldToScreen}. A point off the sides still answers, outside the rectangle.
+     *
+     * <pre>{@code
+     * // a damage number over its target, at a GUI stage, in its canvas's pixels
+     * if (CgRenderStage.WORLD_OPAQUE.host().camera().project(x, y, z, frame.host().width(), frame.host().height(), at)) {
+     *     frame.canvas().quad(DIGIT).at(at.x - 16, at.y - 16).size(32, 32).submit();
+     * }
+     * }</pre>
+     *
+     * Render thread: it reuses one scratch vector.
+     */
+    public boolean project(double x, double y, double z, float width, float height, Vector2f out) {
+        Vector4f p = scratch.set((float) (x - originX), (float) (y - originY), (float) (z - originZ), 1f).mul(view)
+                .mul(projection);
+        if (p.w <= 0f) return false;
+        out.set((p.x / p.w * 0.5f + 0.5f) * width, (0.5f - p.y / p.w * 0.5f) * height);
+        return true;
     }
 
-    public float z() {
-        return z;
+    /** Where its view sees from, relative to its origin. */
+    private Vector3f eye() {
+        return view.originAffine(eye);
     }
 }

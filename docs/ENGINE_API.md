@@ -42,16 +42,20 @@ drawing.close();                                                      // stops i
 // A stage of your own: fill its frame, then fire it from your hook on the render thread
 public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
 AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
-        .view().set(camX, camY, camZ, viewRotation, projection);
+        .camera().set(camX, camY, camZ, viewRotation, projection);
 AFTER_SKY.fire();
 
 // Anywhere on the render thread: the world's camera as of its latest frame
-CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
+CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
 ```
 
 - Each stage owns its `CgHostFrame`, refilled by the host before every `fire` (nothing is allocated). Its
-  `CgHostView` is the host's own camera: the absolute position in doubles, and the view and projection the host
-  draws with. Minecraft draws its world camera-relative, so the view maps a point minus that position.
+  `camera()` is the host's own camera, a `CgCamera`: the absolute position in doubles, and the view and projection the
+  host draws with. Minecraft draws its world camera-relative, so the view maps a point minus that position.
+- **Draw in a stage through the camera it hands out**, never one of your own: `frame.camera()` is the host's with the
+  frame's time and size, and a pass given it (`pass.camera(frame.camera())`) takes the world's sun and fog and the last
+  frame's view too; `frame.guiCamera()` is a GUI stage's in GUI-scaled pixels. A `CgCamera` of your own is for a picture
+  of your own (a preview, a thumbnail), outside the stages.
 - Every host captures Minecraft's camera where that version computes it; the per-era sources are
   `HostView1710`, `HostViewLegacy` and `HostViewModern`.
 - Beside the camera each frame carries the world's facts: `CgHostEnvironment` (`frame.environment()`) — the sun,

@@ -16,7 +16,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.IdentityHashMap;
@@ -74,7 +74,7 @@ final class CgCustomDataPass {
      * none, so only what shows lands. Published as {@link CgFrameKeys#CUSTOM_DATA}; only in a firing asked for it.
      * A host lending no depth (the window's) gets a target with a depth of its own, the host's copied in first.
      */
-    void recordCustomData(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    void recordCustomData(CgStageFrame stage, CgRecording recording, CgCamera view) {
         int w = Math.max(1, (int) world.targetWidth), h = Math.max(1, (int) world.targetHeight);
         CgFormat depth = stage.host().target().lendsAttachments() ? null : stage.host().depthFormat();
         boolean ownDepth = depth != null;

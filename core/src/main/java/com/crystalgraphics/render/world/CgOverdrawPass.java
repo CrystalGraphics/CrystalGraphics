@@ -13,7 +13,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -54,7 +54,7 @@ final class CgOverdrawPass {
      * Every transparent draw this stage drew, half-size ones too, again through its overdraw variant into a target of
      * the stage's size: 1 a fragment, hidden by the stage's depth as its own depth test would hide it.
      */
-    void recordOverdraw(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    void recordOverdraw(CgStageFrame stage, CgRecording recording, CgCamera view) {
         int w = Math.max(1, (int) world.targetWidth), h = Math.max(1, (int) world.targetHeight);
         if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
             overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));

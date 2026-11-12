@@ -13,7 +13,7 @@ import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
 import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.platform.world.CgHostCamera;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
@@ -119,7 +119,7 @@ final class CgCueProbe {
         boolean playing = cue != null && cue.burst().shake() != null
                 && cue.burst().shake().definition() instanceof CgCameraShakeDefinition d && CgShakePlay.playing(d) != null;
         if (playing) felt = true;
-        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
         INVERSE.set(view.view()).invert();
         INVERSE.transformPosition(EYE.zero());
         double ex = view.x() + EYE.x, ey = view.y() + EYE.y, ez = view.z() + EYE.z;

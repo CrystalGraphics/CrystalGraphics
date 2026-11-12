@@ -36,7 +36,7 @@ import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.cue.CgCueParameters;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.platform.world.CgEntityQuery;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
@@ -133,7 +133,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             return true;
         }
         if (CgWorldQueries.client().levelEpoch() == 0) return false;
-        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
         out[0] = view.x();
         out[1] = view.y();
         out[2] = view.z();

@@ -13,7 +13,7 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -329,7 +329,7 @@ public final class CgPostStack {
         settings.reset();
         CgPostVolume[] current = volumes;
         if (current.length == 0) return;
-        CgHostView view = stage.host().view();
+        CgCamera view = stage.host().camera();
         double cx = view.x(), cy = view.y(), cz = view.z();
         CgPassConstants camera = stage.constants();
         camera.projection.mul(camera.view, viewProjection);

@@ -14,7 +14,7 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.world.CgAttachment;
@@ -202,7 +202,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
 
     private void draw(CgStageFrame frame) {
         if (live.isEmpty()) return;
-        CgHostView eye = CgRenderStage.WORLD_OPAQUE.host().view();
+        CgCamera eye = CgRenderStage.WORLD_OPAQUE.host().camera();
         this.frame = frame;
         try {
             if (gather(onHud, eye.x(), eye.y(), eye.z()) == 0) return;

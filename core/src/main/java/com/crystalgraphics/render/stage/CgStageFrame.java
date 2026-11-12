@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.compute.ops.CgGpuOps;
@@ -32,15 +33,10 @@ import javax.annotation.Nullable;
  * target, built and executed once they all have.
  *
  * <pre>{@code
- * // Under the host's camera
- * CgRasterPass pass = frame.pass(frame.constants(), CgOrder.SORTED);
- * // ... chunks ...
+ * // Under the stage's camera: the host's, with the world's sun and fog
+ * CgRasterPass pass = frame.recording().raster("mymod.glow").color(frame.target(), CgLoad.load()).camera(frame.camera());
+ * pass.draw(mesh, material).transform(model);
  * pass.end();
- *
- * // Under a camera of your own
- * CgPassConstants camera = frame.defaults(myConstants);   // time, size, depth convention
- * camera.view.set(viewMatrix);
- * camera.projection.set(projectionMatrix);
  * }</pre>
  *
  * <ul>
@@ -66,6 +62,7 @@ public final class CgStageFrame {
     private final CgRenderStage stage;
     private CgHostFrame host;
     private final CgPassConstants hostConstants = new CgPassConstants();
+    private final CgCamera camera = new CgCamera(this::viewState), guiCamera = new CgCamera(this::viewState);
     private CgGraphTexture pyramid;
     private boolean pyramidBuilt;
     /** The pyramid's description at the host's last size: made again only when it changes. */
@@ -193,17 +190,44 @@ public final class CgStageFrame {
     }
 
     /**
-     * The host's camera as pass constants, camera-relative as the host draws its world: its view and projection, the
-     * eye at its view's origin, {@code cg_WorldOrigin} at its absolute position, the last frame's view of this firing,
-     * and {@link #defaults}. One instance, refilled per call; {@link CgRecording#raster} copies it.
+     * This firing's camera: the host's, with the frame's time and the host target's size -- the world's at a world stage,
+     * camera-relative as the host draws its world; the window's pixels at a GUI stage. A pass or a canvas given it also
+     * takes the world's sun and fog, the last frame's view of this firing and the scene's encoding. One object, refilled
+     * per call: use it, never a camera of your own, for what draws in the stage's view.
+     *
+     * <pre>{@code
+     * rec.raster("mymod.glow").color(frame.target(), CgLoad.load())
+     *         .depth(frame.depth(), CgLoad.load(), CgDepthAccess.WRITE).camera(frame.camera());
+     * if (frame.camera().project(x, y, z, frame.host().width(), frame.host().height(), at)) { ... }
+     * }</pre>
+     */
+    public CgCamera camera() {
+        return camera.set(host.camera()).time(CgFrameClock.seconds()).resolution(host.width(), host.height());
+    }
+
+    /**
+     * {@link #camera()} in the host GUI's pixels, scaled by {@link CgHostFrame#guiScale()}: what
+     * {@link #guiScaledCanvas()} draws through. A GUI stage's only: at a world stage it throws.
+     */
+    public CgCamera guiCamera() {
+        if (!host.camera().isOrthographic()) throw new IllegalStateException(stage.id() + " is not a GUI stage: it has no GUI pixels");
+        float s = host.guiScale();
+        guiCamera.set(camera()).projection().scale(s, s, 1f);
+        return guiCamera;
+    }
+
+    /** What this firing adds to a pass of its camera: the scene's encoding, the last frame's view, the atmosphere. */
+    private void viewState(CgPassConstants constants) {
+        constants.linearScene(target != null).history(previous, (int) firingFrame, historyValid);
+        CgWorldAtmosphere.apply(host.environment(), constants);
+    }
+
+    /**
+     * {@link #camera()} as pass constants: what the engine's own passes record with. One instance, refilled per call;
+     * {@link CgRecording#raster} copies it.
      */
     public CgPassConstants constants() {
-        CgHostView view = host.view();
-        defaults(hostConstants);
-        hostConstants.view.set(view.view());
-        hostConstants.projection.set(view.projection());
-        hostConstants.history(previous, (int) firingFrame, historyValid);
-        return hostConstants.cameraFromView().origin(view.x(), view.y(), view.z());
+        return hostConstants.seenThrough(camera(), host.width(), host.height());
     }
 
     /** Whether last frame's view of this firing is one a temporal effect may blend over: {@code CG_HISTORY_VALID}. */
@@ -301,9 +325,7 @@ public final class CgStageFrame {
      * </ul>
      */
     public CgCanvas guiScaledCanvas() {
-        if (host.view().projection().m23() != 0f) {
-            throw new IllegalStateException(stage.id() + " is not a GUI stage: it has no GUI pixels");
-        }
+        guiCamera();   // throws at a world stage
         return canvasIn(true);
     }
 
@@ -321,11 +343,11 @@ public final class CgStageFrame {
      * A GUI stage's only: at a world stage it throws.
      */
     public boolean projectWorld(double x, double y, double z, Vector2f out) {
-        if (host.view().projection().m23() != 0f) {
-            throw new IllegalStateException(stage.id() + " is not a GUI stage: project with its view instead");
+        if (!host.camera().isOrthographic()) {
+            throw new IllegalStateException(stage.id() + " is not a GUI stage: project with its camera instead");
         }
         float s = guiPixels ? host.guiScale() : 1f;
-        return CgRenderStage.WORLD_OPAQUE.host().view().project(x, y, z, host.width() / s, host.height() / s, out);
+        return CgRenderStage.WORLD_OPAQUE.host().camera().project(x, y, z, host.width() / s, host.height() / s, out);
     }
 
     private CgCanvas canvasIn(boolean gui) {
@@ -336,19 +358,14 @@ public final class CgStageFrame {
         return canvas;
     }
 
-    /** The canvas's camera: {@link #constants()}, scaled to the host GUI's pixels for a {@link #guiScaledCanvas()}. */
+    /** The canvas's camera as constants: {@link #camera()}, or {@link #guiCamera()} for a {@link #guiScaledCanvas()}. */
     private CgPassConstants canvasCamera() {
-        CgPassConstants camera = constants();
-        if (guiPixels) {
-            float s = host.guiScale();
-            camera.projection.scale(s, s, 1f);
-        }
-        return camera;
+        return hostConstants.seenThrough(guiPixels ? guiCamera() : camera(), host.width(), host.height());
     }
 
     private void openCanvas(CgCanvas canvas) {
         canvas.recordInto(recording, target(), depth(), CgLoad.load(), canvasCamera());
-        CgHostView view = host.view();
+        CgCamera view = host.camera();
         canvas.origin(view.x(), view.y(), view.z());
     }
 
@@ -422,7 +439,7 @@ public final class CgStageFrame {
         long frame = CgFrameRing.frame();
         ordinal = frame == firingFrame ? ordinal + 1 : 0;
         firingFrame = frame;
-        remember(host.view());
+        remember(host.camera());
     }
 
     /** As {@link #begin} for a rehearsal's firing: the stage's history, kept for the real frames, is left alone. */
@@ -433,12 +450,12 @@ public final class CgStageFrame {
         rehearsing = true;
         target = null;
         depth = null;
-        viewProjection.set(host.view().projection()).mul(host.view().view());
+        viewProjection.set(host.camera().projection()).mul(host.camera().view());
         historyValid = false;
     }
 
     /** Compares this firing's view with last frame's of the same ordinal, then keeps it for the next. */
-    private void remember(CgHostView view) {
+    private void remember(CgCamera view) {
         viewProjection.set(view.projection()).mul(view.view());
         historyValid = false;
         if (ordinal >= ORDINALS) return;
@@ -466,7 +483,7 @@ public final class CgStageFrame {
     }
 
     /** Whether last frame's lens at {@code at} is {@code view}'s within a zoom's step: its focal lengths and depth mapping. */
-    private boolean sameLens(int at, CgHostView view) {
+    private boolean sameLens(int at, CgCamera view) {
         float p00 = view.projection().m00(), p11 = view.projection().m11(), p22 = view.projection().m22();
         return Math.abs(p00 - lastLens[at * 3]) < PROJECTION_JUMP * Math.abs(p00)
                 && Math.abs(p11 - lastLens[at * 3 + 1]) < PROJECTION_JUMP * Math.abs(p11)

@@ -2,7 +2,7 @@ package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.block.material.Material;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -35,7 +35,7 @@ public final class EnvironmentLegacy {
     private EnvironmentLegacy() {
     }
 
-    public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
+    public static void capture(Minecraft mc, float partialTick, CgCamera view, CgHostEnvironment out) {
         out.clear().screen(mc.currentScreen != null);
         WorldClient world = ClientLegacy.world();
         Entity viewer = mc.getRenderViewEntity();

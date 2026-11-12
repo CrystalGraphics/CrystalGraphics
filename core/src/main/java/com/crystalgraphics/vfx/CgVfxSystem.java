@@ -706,7 +706,7 @@ public final class CgVfxSystem {
         CgVfxBudget budget = CgVfxBudget.get();
         budget.tick(quality);
         usage = budget.worstAdjustedUsage();
-        culling.view(CgRenderStage.WORLD_OPAQUE.host().view());
+        culling.view(CgRenderStage.WORLD_OPAQUE.host().camera());
         culling.run(effects, passed, CgEntityQueries.client().localPlayer(), usage);
         int asleep = 0;
         for (int i = 0; i < effects.size(); i++) {

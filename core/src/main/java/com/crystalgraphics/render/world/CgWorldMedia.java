@@ -20,7 +20,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.variable.CgVar;
@@ -245,7 +245,7 @@ public final class CgWorldMedia {
      * at {@code CgBindingPoints.MEDIA_TEXTURE_UNIT}, or null when nothing added any.
      */
     @Nullable
-    CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgHostView view, Matrix4fc toWorld,
+    CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgCamera view, Matrix4fc toWorld,
                           float targetWidth, float targetHeight, CgWorldLights lights) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
             lit = false;

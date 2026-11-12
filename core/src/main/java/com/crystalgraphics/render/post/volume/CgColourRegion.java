@@ -22,7 +22,7 @@ import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.look.CgFilmLut;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgGradeLayers;
 import com.crystalgraphics.render.world.CgWorldLight;
@@ -282,7 +282,7 @@ public final class CgColourRegion implements CgPostEffect {
 
     @Override
     public void record(CgPostContext post) {
-        CgHostView view = post.stage().host().view();
+        CgCamera view = post.stage().host().camera();
         // Camera-relative in doubles: the shader's points are the camera's
         float cx = (float) (x - view.x()), cy = (float) (y - view.y()), cz = (float) (z - view.z());
         // Its unit shape half a block across at scale 1 (WorldToMetersScale / 2), turned into its axes

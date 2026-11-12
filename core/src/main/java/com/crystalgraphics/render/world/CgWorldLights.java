@@ -26,7 +26,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.stage.CgWorldAtmosphere;
 import com.crystalgraphics.settings.CgGraphicsSettings;
@@ -920,7 +920,7 @@ public final class CgWorldLights {
      * The firing's list under {@code view}: the CPU's lights placed from its eye, then each appender's. False when it
      * holds none, and nothing is recorded.
      */
-    boolean record(CgStageFrame frame, CgHostView view, Matrix4fc toWorld, float targetWidth, float targetHeight) {
+    boolean record(CgStageFrame frame, CgCamera view, Matrix4fc toWorld, float targetWidth, float targetHeight) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
             CgQuality tier = CgGraphicsSettings.QUALITY.get();
             if (tier != appliedTier) quality(tier);

@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform;
 
 import com.crystalgraphics.mc.v1710.mixins.early.impl.client.ActiveRenderInfoAccessor;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.EntityLivingBase;
 
@@ -16,7 +16,7 @@ public final class HostView1710 {
     private HostView1710() {
     }
 
-    public static void capture(Minecraft mc, float partialTicks, CgHostView out) {
+    public static void capture(Minecraft mc, float partialTicks, CgCamera out) {
         EntityLivingBase entity = mc.renderViewEntity;
         out.set(entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks,
                 entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks,

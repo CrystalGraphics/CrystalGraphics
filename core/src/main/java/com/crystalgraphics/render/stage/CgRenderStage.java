@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.camera.CgCamera;
 import java.util.Set;
 import java.util.EnumSet;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -48,11 +49,11 @@ import java.util.Map;
 // A stage of your own: defined once, filled and fired from your hook on the render thread
  * public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
  * AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
- *         .view().set(camX, camY, camZ, viewRotation, projection);
+ *         .camera().set(camX, camY, camZ, viewRotation, projection);
  * AFTER_SKY.fire();
  *
  * // Anywhere on the render thread: the world's camera as of its latest frame
- * CgHostView world = CgRenderStage.WORLD_OPAQUE.host().view();
+ * CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
  * }</pre>
  *
  * <p>A stage may fire more than once in a host frame: 1.7.10's anaglyph draws the world once per eye, and a portal
@@ -304,7 +305,7 @@ public final class CgRenderStage {
      *
      * <pre>{@code
      * CgExternalTarget into = viewport.external();
-     * stage.host().set(0f, into.width(), into.height(), into).view().set(x, y, z, view, projection);
+     * stage.host().set(0f, into.width(), into.height(), into).camera().set(x, y, z, view, projection);
      * stage.fireInto(into);
      * }</pre>
      */
@@ -337,7 +338,7 @@ public final class CgRenderStage {
     }
 
     private void overlay(int width, int height, float scale) {
-        host.guiScale(scale).view().set(0d, 0d, 0d, OVERLAY_VIEW.identity(),
+        host.guiScale(scale).camera().set(0d, 0d, 0d, OVERLAY_VIEW.identity(),
                 OVERLAY_PROJECTION.setOrtho(0f, width, height, 0f, -1f, 1f));
         fire();
     }
@@ -358,7 +359,7 @@ public final class CgRenderStage {
             // next real firing replaces.
             int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
             if (w <= 0 || h <= 0) return;
-            host.set(0f, w, h, host.framebuffer()).view().set(0d, 0d, 0d, REHEARSAL_VIEW,
+            host.set(0f, w, h, host.framebuffer()).camera().set(0d, 0d, 0d, REHEARSAL_VIEW,
                     REHEARSAL_PROJECTION.setPerspective((float) Math.toRadians(70.0), (float) w / h, 0.05f, 512f));
         }
         CgExternalTarget hostTarget = host.target();

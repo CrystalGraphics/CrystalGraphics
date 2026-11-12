@@ -515,7 +515,7 @@ public final class CgLoadingScreen {
         try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
             CgGraphicsLifecycle.inWorldDepth(() -> {
                 for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget).view().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget).camera().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                     stage.fire();
                 }
                 return true;

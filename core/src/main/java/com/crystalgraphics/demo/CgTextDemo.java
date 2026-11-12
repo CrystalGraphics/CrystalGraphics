@@ -10,7 +10,7 @@ import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -249,7 +249,7 @@ public final class CgTextDemo {
      * facing where the camera stood when the point moved (the demo moves it only for a new scene, a new level or a
      * jump), and fixed there: the words never turn after the camera.
      */
-    public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+    public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
         this.seconds = seconds;
         if (x != laidX || y != laidY || z != laidZ) {
             laidX = x;
@@ -285,7 +285,7 @@ public final class CgTextDemo {
 
     private void draw(CgStageFrame frame) {
         if (!active) return;
-        CgHostView view = frame.host().view();
+        CgCamera view = frame.host().camera();
         CgCanvas canvas = frame.canvas();
         // Back row first: blended text covers what is behind it.
         for (int row = 3; row >= 0; row--) {
@@ -294,7 +294,7 @@ public final class CgTextDemo {
         word(canvas, view, CRITICAL_STATION);
     }
 
-    private void word(CgCanvas canvas, CgHostView view, int i) {
+    private void word(CgCanvas canvas, CgCamera view, int i) {
         double px = at[i * 3], py = at[i * 3 + 1], pz = at[i * 3 + 2];
         float scale = BLOCKS_PER_PX * (i == 0 ? 1f + 0.12f * punch(seconds) : 1f);
         pose.translation((float) (px - view.x()), (float) (py - view.y()), (float) (pz - view.z()))

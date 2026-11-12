@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
@@ -14,13 +15,13 @@ import javax.annotation.Nullable;
  * <pre>{@code
  * // the host
  * CgRenderStage.WORLD_OPAQUE.host().set(partialTick, width, height, mainFramebufferId)   // the host's GL name
- *         .view().set(camera.x, camera.y, camera.z, viewRotation, projection);
+ *         .camera().set(camera.x, camera.y, camera.z, viewRotation, projection);
  * CgRenderStage.WORLD_OPAQUE.fire();
  *
  * CgRenderStage.WORLD_OPAQUE.host().environment().clear().weather(rain, thunder, flash);   // and its other groups
  *
  * // a renderer, or anything on the render thread afterwards
- * CgHostView camera = CgRenderStage.WORLD_OPAQUE.host().view();
+ * CgCamera camera = CgRenderStage.WORLD_OPAQUE.host().camera();
  * CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
  * }</pre>
  *
@@ -32,7 +33,7 @@ import javax.annotation.Nullable;
  */
 public final class CgHostFrame {
 
-    private final CgHostView view = new CgHostView();
+    private final CgCamera camera = new CgCamera();
     private final CgHostEnvironment environment = new CgHostEnvironment();
     private final CgHostTextures textures = new CgHostTextures();
     private float partialTick;
@@ -111,9 +112,12 @@ public final class CgHostFrame {
         return this;
     }
 
-    /** Where the frame is seen from: the host's camera, for a world stage. Filled by the host through its setters. */
-    public CgHostView view() {
-        return view;
+    /**
+     * Where the frame is seen from: the host's camera, its view relative to the camera's position. The world's at a world
+     * stage, the GUI's pixels at a GUI stage. Filled by the host through its {@code set}.
+     */
+    public CgCamera camera() {
+        return camera;
     }
 
     /** The world's sky, weather and fog, the camera, the player's settings and the clock this frame; absent where unknown. */

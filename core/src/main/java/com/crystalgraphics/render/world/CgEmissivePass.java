@@ -18,7 +18,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -78,7 +78,7 @@ final class CgEmissivePass {
      * The glows {@link #emits} marks into {@code into}, cleared, hidden by the stage's depth; each transparent surface
      * covers those behind it too ({@code CgPipeline.emissionOccluder}).
      */
-    void recordGlows(CgStageFrame stage, CgRecording recording, CgHostView view, CgGraphTexture into) {
+    void recordGlows(CgStageFrame stage, CgRecording recording, CgCamera view, CgGraphTexture into) {
         world.cullSets(stage, recording, view, CgWorldRenderer.CULL_EMITTING);
         stage.constants().write(world.constantsBlock, 0);
         emissionConstants.read(world.constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
@@ -110,7 +110,7 @@ final class CgEmissivePass {
     /**
      * Marks {@link #emits}: the visible draws with a glow in {@code part}; answers how many, and counts every visible glow.
      */
-    int markGlows(CgHostView view, int part) {
+    int markGlows(CgCamera view, int part) {
         if (emits.length < draws.meshes.length) emits = new boolean[draws.meshes.length];
         int emitting = 0, recorded = 0;
         for (int i = 0; i < draws.count; i++) {
@@ -135,7 +135,7 @@ final class CgEmissivePass {
      * half-size draws) added into the scene, hidden by its depth, so the transparent pass covers them as it covers what
      * they glow on. A transparent draw's glow follows its own draw in that pass ({@link CgBasePass#recordPass}).
      */
-    void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    void recordSceneGlows(CgStageFrame stage, CgRecording recording, CgCamera view) {
         if (markGlows(view, EMIT_BEFORE) == 0) return;
         world.cullSets(stage, recording, view, CgWorldRenderer.CULL_EMITTING);
         CgRasterPass glow = recording.raster("emissivePass.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants().sceneGlow(world.sceneEmission)).state(EMISSIVE_STATE)
@@ -158,7 +158,7 @@ final class CgEmissivePass {
      * ({@link CgFrameKeys#SUBJECT_READ}): with a key, what {@link #recordOwnedSubject} drew; else every visible glow,
      * into a quarter-size target. The only time glows are drawn apart from the scene.
      */
-    void recordSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
+    void recordSubject(CgStageFrame stage, CgRecording recording, CgCamera view, int key) {
         if (key != 0) {
             if (ownedSubjectFrame == world.frame) stage.resources().put(CgFrameKeys.SUBJECT, ownedSubject);
             return;
@@ -178,7 +178,7 @@ final class CgEmissivePass {
      * world alone and no other effect's smoke covers them. The transparent stage publishes it as
      * {@link CgFrameKeys#SUBJECT}; a frame where no such draw shows publishes none.
      */
-    void recordOwnedSubject(CgStageFrame stage, CgRecording recording, CgHostView view, int key) {
+    void recordOwnedSubject(CgStageFrame stage, CgRecording recording, CgCamera view, int key) {
         if (emits.length < draws.meshes.length) emits = new boolean[draws.meshes.length];
         int marked = 0;
         for (int i = 0; i < draws.count; i++) {

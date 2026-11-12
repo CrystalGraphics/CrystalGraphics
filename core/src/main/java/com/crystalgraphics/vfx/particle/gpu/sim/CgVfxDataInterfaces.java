@@ -4,7 +4,7 @@ import com.crystalgraphics.render.world.CgWorldEntityBoxes;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.vfx.field.CgFieldWorld;
 import com.crystalgraphics.vfx.fluid.CgVfxFluid;
@@ -142,7 +142,7 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void beforeFrame(CgStageFrame frame) { CgVfxParticlePool.depth(frame.host().view(), frame.depthPyramid()); }
+        @Override public void beforeFrame(CgStageFrame frame) { CgVfxParticlePool.depth(frame.host().camera(), frame.depthPyramid()); }
         @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVfxParticlePool.bindDepth(d); }
     });
 
@@ -176,7 +176,7 @@ public final class CgVfxDataInterfaces {
                     """;
         }
         @Override public void beforeFrame(CgStageFrame frame) {
-            CgHostView view = frame.host().view();
+            CgCamera view = frame.host().camera();
             CgVfxParticlePool.entities(view.x(), view.y(), view.z(), frame.host().partialTick());
         }
         @Override public void upload(CgRecording recording) { CgWorldEntityBoxes.upload(recording); }
@@ -210,7 +210,7 @@ public final class CgVfxDataInterfaces {
             words.vec4((float) (ox - CgFieldWorld.anchor(0)), (float) (oy - CgFieldWorld.anchor(1)), (float) (oz - CgFieldWorld.anchor(2)), 0f);
         }
         @Override public void beforeFrame(CgStageFrame frame) {
-            CgHostView view = frame.host().view();
+            CgCamera view = frame.host().camera();
             CgFieldWorld.around(view.x(), view.y(), view.z());
         }
         @Override public void upload(CgRecording recording) { CgFieldWorld.upload(recording); }

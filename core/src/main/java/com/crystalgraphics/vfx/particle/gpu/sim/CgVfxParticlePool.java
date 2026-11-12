@@ -21,7 +21,7 @@ import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
@@ -235,7 +235,7 @@ public final class CgVfxParticlePool {
     private static final ArrayDeque<Report> REPORTS = new ArrayDeque<>();
     private static int nextId;
     /** What the next recording's steps see of the scene's depth: none without a pyramid. */
-    private static final CgHostView DEPTH_VIEW = new CgHostView();
+    private static final CgCamera DEPTH_VIEW = new CgCamera();
     private static final Matrix4f DEPTH_CLIP = new Matrix4f(), DEPTH_INVERSE = new Matrix4f();
     private static @Nullable CgGraphTexture depthPyramid;
 
@@ -682,7 +682,7 @@ public final class CgVfxParticlePool {
      * CgVfxParticlePool.record(rec, pools);     // reads it, then forgets it
      * }</pre>
      */
-    public static void depth(CgHostView view, @Nullable CgGraphTexture pyramid) {
+    public static void depth(CgCamera view, @Nullable CgGraphTexture pyramid) {
         DEPTH_VIEW.set(view);
         depthPyramid = pyramid;
     }
@@ -3068,7 +3068,7 @@ public final class CgVfxParticlePool {
      * turns back by the instance's rotation (Niagara's camera query, read on the CPU once a step).
      */
     private static float cameraAxis(CgVfxUserBinding.Camera camera, int axis, CgVfxInstanceView view) {
-        Matrix4fc m = CgRenderStage.WORLD_OPAQUE.host().view().view();
+        Matrix4fc m = CgRenderStage.WORLD_OPAQUE.host().camera().view();
         float vx, vy, vz;
         switch (camera) {
             case RIGHT -> { vx = m.m00(); vy = m.m10(); vz = m.m20(); }

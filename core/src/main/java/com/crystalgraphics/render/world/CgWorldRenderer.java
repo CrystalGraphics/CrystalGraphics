@@ -58,7 +58,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgHostFrame;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -272,8 +272,8 @@ public final class CgWorldRenderer {
         // Before anything else records (camera shake apart), so what the schedule submits reaches the renderers below ORDER
         // that read it in the same firing: VFX pools and Range lay out slots from it.
         CgWorldBegin.listen(this::worldBegin);
-        CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
-        CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().view()));
+        CgRenderStage.WORLD_OPAQUE.register(FRAME_ORDER, stage -> beginFrame(stage.host().camera()));
+        CgRenderStage.WORLD_TRANSPARENT.register(FRAME_ORDER, stage -> beginFrame(stage.host().camera()));
         CgRenderStage.WORLD_TRANSPARENT.register(CgSceneTarget.ORDER, sceneTarget::record);
         CgRenderStage.WORLD_OPAQUE.register(ORDER, this::recordOpaque);
         CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::recordTransparent);
@@ -355,11 +355,11 @@ public final class CgWorldRenderer {
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
         host.partialTick(partialTick);
-        CgWorld.client().begin(host.view(), CgFrameRing.frame());
+        CgWorld.client().begin(host.camera(), CgFrameRing.frame());
     }
 
     /** Drops the previous ring frame's draws and runs the client world's schedule, once a ring frame. */
-    private void beginFrame(CgHostView view) {
+    private void beginFrame(CgCamera view) {
         long now = CgFrameRing.frame();
         if (now != frame) {
             clear();
@@ -640,7 +640,7 @@ public final class CgWorldRenderer {
     private static boolean withinOverlayDistance(CgAnimInstance instance) {
         float most = instance.overlayMaxDistance();
         if (most <= 0f) return true;
-        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
         double dx = instance.x() - view.x(), dy = instance.y() - view.y(), dz = instance.z() - view.z();
         return dx * dx + dy * dy + dz * dz <= (double) most * most;
     }
@@ -706,7 +706,7 @@ public final class CgWorldRenderer {
      * Places the frame's labels and draws their text into {@code stage}'s depth, before the stage's transparent draws and
      * glows, so a glow behind a label is hidden from bloom as from the picture.
      */
-    private void recordLabelDepth(CgStageFrame stage, CgHostView view) {
+    private void recordLabelDepth(CgStageFrame stage, CgCamera view) {
         labelDepthDrawn = false;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
             labels.prepare(stage.recording(), view, stage.host().width(), stage.host().height());
@@ -716,7 +716,7 @@ public final class CgWorldRenderer {
     }
 
     /** The frame's labels' colour, after every transparent draw of the firing. */
-    private void recordLabels(CgStageFrame stage, CgHostView view) {
+    private void recordLabels(CgStageFrame stage, CgCamera view) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text")) {
             if (!labelDepthDrawn) {
                 labels.prepare(stage.recording(), view, stage.host().width(), stage.host().height());
@@ -1577,7 +1577,7 @@ public final class CgWorldRenderer {
 
     private void recordFiring(CgStageFrame stage, int which) {
         commands.firing++;
-        CgHostView view = stage.host().view();
+        CgCamera view = stage.host().camera();
         beginFrame(view);
         if (draws.count == 0) {
             if (which == TRANSPARENT) {
@@ -1775,7 +1775,7 @@ public final class CgWorldRenderer {
     /** The draws as {@link CgWorldDistortion} sees them, under the view of the firing that planned it. */
     private final class Hazes implements CgWorldDistortion.Draws {
 
-        CgHostView view;
+        CgCamera view;
 
         @Override
         public int count() {
@@ -1911,7 +1911,7 @@ public final class CgWorldRenderer {
     }
 
     /** The frustum, the eye and its forward, in the view's camera-relative space. */
-    private void prepare(CgHostView view) {
+    private void prepare(CgCamera view) {
         commands.recordView = view;
         viewProjection.set(view.projection()).mul(view.view());
         frustum.set(viewProjection);
@@ -1921,7 +1921,7 @@ public final class CgWorldRenderer {
     }
 
     /** Whether draw {@code i} takes part in this stage, and its sort key. */
-    byte classify(int i, int which, CgHostView view) {
+    byte classify(int i, int which, CgCamera view) {
         int queue = draws.queues[i];
         boolean transparent = queue >= CgRenderQueue.TRANSPARENT_THRESHOLD;
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD || transparent != (which == TRANSPARENT)) return CgWorldDraws.SKIP;
@@ -1978,7 +1978,7 @@ public final class CgWorldRenderer {
     }
 
     /** Draw {@code i}'s transparent key: its layer, its group's distance, then its own order, batch key and distance. */
-    private long transparentKey(int i, int queue, float distance, CgHostView view) {
+    private long transparentKey(int i, int queue, float distance, CgCamera view) {
         int layer = draws.layers[i].rank();
         boolean solid = draws.materials[i].writesDepth();
         if (!draws.grouped[i]) return CgSortKey.transparent(queue, layer, distance, solid, draws.orders[i], draws.batchKeys[i], distance);
@@ -1993,7 +1993,7 @@ public final class CgWorldRenderer {
      * The fraction of the screen's height the sphere around {@code min}..{@code max}, centred on {@code (cx, cy, cz)},
      * covers: its diameter projected at its centre's depth. Above 1 with the eye inside it.
      */
-    private float screenHeight(float cx, float cy, float cz, CgHostView view) {
+    private float screenHeight(float cx, float cy, float cz, CgCamera view) {
         float r = 0.5f * (float) Math.sqrt((max.x - min.x) * (max.x - min.x) + (max.y - min.y) * (max.y - min.y)
                 + (max.z - min.z) * (max.z - min.z));
         float w = viewProjection.m03() * cx + viewProjection.m13() * cy + viewProjection.m23() * cz + viewProjection.m33();
@@ -2067,7 +2067,7 @@ public final class CgWorldRenderer {
      * Culls on the GPU every set this stage draws that it has not culled yet, all at once: those {@code which} names.
      * The first asks for the stage's depth pyramid.
      */
-    void cullSets(CgStageFrame stage, CgRecording recording, CgHostView view, int which) {
+    void cullSets(CgStageFrame stage, CgRecording recording, CgCamera view, int which) {
         int k = -1;
         CgCullSets batch = null;
         for (int i = 0; i < draws.count; i++) {
@@ -2115,7 +2115,7 @@ public final class CgWorldRenderer {
     }
 
     /** The cull set to draw {@code i}'s set: its mesh, placed by its model, its pad, light, scale and customs. */
-    private CgCull placeCull(int i, CgHostView view) {
+    private CgCull placeCull(int i, CgCamera view) {
         if (draws.lods[i] != null) cull.mesh(draws.lods[i]);
         else cull.mesh(draws.meshes[i]);
         commands.modelOf(i, view);

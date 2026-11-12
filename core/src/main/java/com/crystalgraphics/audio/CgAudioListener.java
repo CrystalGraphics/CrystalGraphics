@@ -4,7 +4,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import com.crystalgraphics.camera.CgCameraPose;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 
 /**
  * Where the sounds are heard from: a position, a facing and a velocity, in the host's units and axes. Unreal's
@@ -49,7 +49,7 @@ public final class CgAudioListener {
     }
 
     /** Moves it to where the host drew {@code view} from: forward is the view's -z, up its +y. */
-    public CgAudioListener set(CgHostView view, double dt) {
+    public CgAudioListener set(CgCamera view, double dt) {
         view.view().positiveZ(axis);
         double nfx = -axis.x, nfy = -axis.y, nfz = -axis.z;
         view.view().positiveY(axis);

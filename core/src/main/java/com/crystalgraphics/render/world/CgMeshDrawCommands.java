@@ -17,7 +17,7 @@ import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.util.ArrayList;
@@ -53,7 +53,7 @@ final class CgMeshDrawCommands {
     long[] recordOrder = new long[64];
     final Matrix4f recordModel = new Matrix4f();
     /** The view {@link CgWorldRenderer#prepare} last took: what records are placed and ordered under. */
-    CgHostView recordView;
+    CgCamera recordView;
     // Per recording, reused: nothing here allocates per frame once warm.
     final Matrix4f model = new Matrix4f();
     final Matrix4f normal = new Matrix4f();
@@ -80,7 +80,7 @@ final class CgMeshDrawCommands {
     }
 
     /** Draw {@code i}'s model matrix, camera-relative: its position minus the view's, in doubles, then its transform. */
-    void modelOf(int i, CgHostView view) {
+    void modelOf(int i, CgCamera view) {
         model.set(draws.transforms, i * 16);
         model.m30(model.m30() + (float) (draws.positions[i * 3] - view.x()))
                 .m31(model.m31() + (float) (draws.positions[i * 3 + 1] - view.y()))

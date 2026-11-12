@@ -18,7 +18,7 @@ import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -611,7 +611,7 @@ public final class CgVfxRange {
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_PYRAMID)) {
             pyramid = any ? frame.depthPyramid() : null;
         }
-        record(frame.recording(), frame.host().view(), pyramid);
+        record(frame.recording(), frame.host().camera(), pyramid);
     }
 
     /**
@@ -630,15 +630,15 @@ public final class CgVfxRange {
      * Records every range for {@code view} into {@code recording}. Ranges record themselves on every firing of
      * {@link CgRenderStage#WORLD_OPAQUE}; call it only where that stage does not fire, as a check scene. Render thread.
      */
-    public static void record(CgRecording recording, CgHostView view) {
+    public static void record(CgRecording recording, CgCamera view) {
         record(recording, view, null);
     }
 
     /**
-     * {@link #record(CgRecording, CgHostView)}, testing each particle's reach against {@code pyramid} too
+     * {@link #record(CgRecording, CgCamera)}, testing each particle's reach against {@code pyramid} too
      * ({@code CgStageFrame.depthPyramid}, under the same view): what hides behind the scene's depth is culled.
      */
-    public static void record(CgRecording recording, CgHostView view, @Nullable CgGraphTexture pyramid) {
+    public static void record(CgRecording recording, CgCamera view, @Nullable CgGraphTexture pyramid) {
         for (int i = 0; i < RETIRED.size(); i++) recording.release(RETIRED.get(i));
         RETIRED.clear();
         if (ALL.isEmpty()) return;
@@ -801,7 +801,7 @@ public final class CgVfxRange {
      * Each slot's origin from the camera and its reach, its list base in its pool, whether it sorts, for this view, and
      * its origin in whole blocks and within one, with its ground and its rotation.
      */
-    private static void uploadSlots(CgRecording recording, CgHostView view, int allSlots) {
+    private static void uploadSlots(CgRecording recording, CgCamera view, int allSlots) {
         fitSlots(recording, allSlots);
         staging.clear();
         for (int i = 0, g = 0; i < ALL.size(); i++) {

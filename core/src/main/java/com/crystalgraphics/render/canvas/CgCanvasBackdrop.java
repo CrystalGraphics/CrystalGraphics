@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgExecutor;
@@ -86,10 +87,11 @@ public final class CgCanvasBackdrop {
         CgRecording rec = canvas.breakPass();
         CgGraphTexture source = canvas.target();
         if (rec == null || source == null) throw new IllegalStateException("a backdrop is captured from a recording canvas");
-        int w = Math.max(1, Math.round(canvas.cameraWidth())), h = Math.max(1, Math.round(canvas.cameraHeight()));
+        CgCamera camera = canvas.camera();
+        int w = Math.max(1, Math.round(camera.width())), h = Math.max(1, Math.round(camera.height()));
 
         quad.place(placed);
-        clip.set(canvas.cameraProjection()).mul(canvas.cameraView());
+        clip.set(camera.projection()).mul(camera.view());
         float px0 = Float.MAX_VALUE, py0 = Float.MAX_VALUE, px1 = -Float.MAX_VALUE, py1 = -Float.MAX_VALUE;
         boolean behind = false;
         for (int c = 0; c < 4; c++) {

@@ -12,7 +12,7 @@ import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -180,7 +180,7 @@ public final class CgWorldVoxelWindow {
         usedAt = nanos();
         if (registration == null) {
             registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER,
-                    stage -> record(stage.recording(), stage.host().view()));
+                    stage -> record(stage.recording(), stage.host().camera()));
             CgEngineLifecycle.addListener(new CgLifecycleListener() {
                 // A dying context frees its volumes: every section is filled again into the next one's, and flooded.
                 @Override
@@ -288,7 +288,7 @@ public final class CgWorldVoxelWindow {
      * Places the window around {@code view}'s camera and fills sections into {@code recording} for up to
      * {@link #BUDGET_NANOS}. Registered by {@link #use}; a check scene calls it where the stage does not fire.
      */
-    public void record(CgRecording recording, CgHostView view) {
+    public void record(CgRecording recording, CgCamera view) {
         frame++;
         now = nanos();
         if (now - usedAt > IDLE_NANOS) return;
@@ -389,7 +389,7 @@ public final class CgWorldVoxelWindow {
     }
 
     /** Centres the window on the camera's section, and gives each slot the section it now stands for. */
-    private void place(CgHostView view) {
+    private void place(CgCamera view) {
         int s = CgWorldVoxels.SECTION;
         baseX = (Math.floorDiv((int) Math.floor(view.x()), s) - SECTIONS_X / 2) * s;
         baseY = (Math.floorDiv((int) Math.floor(view.y()), s) - SECTIONS_Y / 2) * s;
@@ -431,7 +431,7 @@ public final class CgWorldVoxelWindow {
         return heldX[slot] == x && heldY[slot] == y && heldZ[slot] == z ? slot : -1;
     }
 
-    private void fill(CgRecording recording, CgWorldQuery world, CgHostView view) {
+    private void fill(CgRecording recording, CgWorldQuery world, CgCamera view) {
         long start = System.nanoTime();
         int filled = 0;
         try (CgTrace.Zone zone = CgTrace.zone(CgChannels.WORLD, FILL_ZONE)) {
@@ -532,7 +532,7 @@ public final class CgWorldVoxelWindow {
      * The slot to fill next: the nearest to the camera not known yet (an unloaded one once it has waited), else the
      * nearest with a broken block, else the oldest past {@link #REFRESH_NANOS}; -1 for none.
      */
-    private int next(CgHostView view) {
+    private int next(CgCamera view) {
         int best = -1, bestRank = Integer.MAX_VALUE;
         double s = CgWorldVoxels.SECTION;
         for (int slot = 0; slot < SLOTS; slot++) {

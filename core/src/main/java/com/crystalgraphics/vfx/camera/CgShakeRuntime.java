@@ -5,7 +5,7 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.platform.world.CgHostCamera;
@@ -156,7 +156,7 @@ final class CgShakeRuntime {
     }
 
     /** The view's position plus wherever its matrix puts the eye: nothing more in a camera-relative host. */
-    private static void eye(CgHostView view) {
+    private static void eye(CgCamera view) {
         view.view().originAffine(ORIGIN);
         cx = view.x() + ORIGIN.x;
         cy = view.y() + ORIGIN.y;
@@ -175,7 +175,7 @@ final class CgShakeRuntime {
         double now = time;
         if (MODEL.still() && waiting == 0 && kicks == 0 && punches == 0 && plays == 0 && !moving) return;
         CgHostEnvironment world = host.environment();
-        eye(host.view());
+        eye(host.camera());
         arrive(now);
         float shake = MODEL.step(dt, cx, cy, cz);
         float screen = enabled ? (Float.isNaN(world.screenEffects()) ? 1f : world.screenEffects()) * CgGraphicsSettings.SHAKE.get() : 0f;
@@ -183,7 +183,7 @@ final class CgShakeRuntime {
         float fov = kicks(now);
         float s = shake * screen;
         float px = 0f, py = 0f, pz = 0f, pYaw = 0f, pPitch = 0f, pRoll = 0f;
-        Matrix4fc view = host.view().view();
+        Matrix4fc view = host.camera().view();
         view.positiveZ(FORWARD).negate();
         view.positiveX(RIGHT);
         view.positiveY(UP);
@@ -196,7 +196,7 @@ final class CgShakeRuntime {
             pYaw += SUM[3];
             pPitch += SUM[4];
             pRoll += SUM[5];
-            fovScale = fovScale(host.view().projection(), SUM[6]);
+            fovScale = fovScale(host.camera().projection(), SUM[6]);
         }
         if (punches > 0) {
             for (int k = punches - 1; k >= 0; k--) {

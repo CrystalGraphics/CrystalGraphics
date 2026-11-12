@@ -2994,8 +2994,8 @@ com/crystalgraphics/audio/CgAudioListener
   method public doppler (DDDDDDF)F
   method public pan (DDD[F)V
   method public set (DDDDDDDDDD)Lcom/crystalgraphics/audio/CgAudioListener;
+  method public set (Lcom/crystalgraphics/camera/CgCamera;D)Lcom/crystalgraphics/audio/CgAudioListener;
   method public set (Lcom/crystalgraphics/camera/CgCameraPose;D)Lcom/crystalgraphics/audio/CgAudioListener;
-  method public set (Lcom/crystalgraphics/render/stage/CgHostView;D)Lcom/crystalgraphics/audio/CgAudioListener;
   method public vx ()D
   method public vy ()D
   method public vz ()D
@@ -3350,27 +3350,40 @@ com/crystalgraphics/camera/CgCamera
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public <init> (Lcom/crystalgraphics/camera/CgCamera$ViewState;)V
   method public height ()F
+  method public isOrthographic ()Z
   method public lookAt (FFFFFF)Lcom/crystalgraphics/camera/CgCamera;
   method public lookAt (Lorg/joml/Vector3fc;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public originX ()D
+  method public originY ()D
+  method public originZ ()D
   method public perspectiveLens (FFFF)Lcom/crystalgraphics/camera/CgCamera;
-  method public position (FFF)Lcom/crystalgraphics/camera/CgCamera;
-  method public positioned ()Z
+  method public position (DDD)Lcom/crystalgraphics/camera/CgCamera;
+  method public project (DDDFFLorg/joml/Vector2f;)Z
   method public projection ()Lorg/joml/Matrix4f;
   method public projection (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/camera/CgCamera;
   method public resolution (FF)Lcom/crystalgraphics/camera/CgCamera;
   method public screenLens (FF)Lcom/crystalgraphics/camera/CgCamera;
+  method public set (DDDLjava/nio/FloatBuffer;Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/camera/CgCamera;
+  method public set (DDDLorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public set (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/camera/CgCamera;
   method public time ()D
   method public time (D)Lcom/crystalgraphics/camera/CgCamera;
   method public view ()Lorg/joml/Matrix4f;
   method public view (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public viewState ()Lcom/crystalgraphics/camera/CgCamera$ViewState;
   method public width ()F
-  method public x ()F
-  method public y ()F
-  method public z ()F
+  method public x ()D
+  method public y ()D
+  method public z ()D
   method public,static orthographic (FFFFFF)Lcom/crystalgraphics/camera/CgCamera;
   method public,static perspective (FFFF)Lcom/crystalgraphics/camera/CgCamera;
   method public,static screen (FF)Lcom/crystalgraphics/camera/CgCamera;
+com/crystalgraphics/camera/CgCamera$ViewState
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract write (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
 com/crystalgraphics/camera/CgCameraBlend
   access public,final
   extends java/lang/Object
@@ -5178,7 +5191,7 @@ com/crystalgraphics/demo/CgGlassDemo
   method public delete ()V
   method public precache ()V
   method public ready ()Z
-  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/render/stage/CgHostView;DDDD)V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/camera/CgCamera;DDDD)V
 com/crystalgraphics/demo/CgLightsDemo
   access public,final
   extends java/lang/Object
@@ -5219,7 +5232,7 @@ com/crystalgraphics/demo/CgTextDemo
   method public delete ()V
   method public precache ()V
   method public ready ()Z
-  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/render/stage/CgHostView;DDDD)V
+  method public submit (Lcom/crystalgraphics/render/world/CgWorldRenderer;Lcom/crystalgraphics/camera/CgCamera;DDDD)V
 com/crystalgraphics/demo/CgVfxBlastFlash
   access public,final
   extends java/lang/Object
@@ -5516,10 +5529,10 @@ com/crystalgraphics/frame/CgWorld
   method public <init> (Z)V
   method public add (Lcom/crystalgraphics/frame/CgWorldSubsystem;)Lcom/crystalgraphics/frame/CgWorldSubsystem;
   method public beganLate ()J
-  method public begin (Lcom/crystalgraphics/render/stage/CgHostView;J)V
+  method public begin (Lcom/crystalgraphics/camera/CgCamera;J)V
   method public close ()V
-  method public frame (Lcom/crystalgraphics/render/stage/CgHostView;)V
-  method public frame (Lcom/crystalgraphics/render/stage/CgHostView;J)V
+  method public frame (Lcom/crystalgraphics/camera/CgCamera;)V
+  method public frame (Lcom/crystalgraphics/camera/CgCamera;J)V
   method public frames ()J
   method public paused ()Z
   method public paused (Ljava/util/function/BooleanSupplier;)Lcom/crystalgraphics/frame/CgWorld;
@@ -5531,7 +5544,7 @@ com/crystalgraphics/frame/CgWorld
   method public ticks ()J
   method public timeDilation ()F
   method public timeDilation (F)Lcom/crystalgraphics/frame/CgWorld;
-  method public view ()Lcom/crystalgraphics/render/stage/CgHostView;
+  method public view ()Lcom/crystalgraphics/camera/CgCamera;
   method public,static client ()Lcom/crystalgraphics/frame/CgWorld;
   method public,static serverWorld ()Lcom/crystalgraphics/frame/CgWorld;
 com/crystalgraphics/frame/CgWorldSubsystem
@@ -8434,11 +8447,8 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public arm (Lcom/crystalgraphics/render/canvas/CgCanvas$Source;)V
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public breakPass ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public camera (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/render/canvas/CgCanvas;
-  method public cameraHeight ()F
-  method public cameraProjection ()Lorg/joml/Matrix4fc;
-  method public cameraView ()Lorg/joml/Matrix4fc;
-  method public cameraWidth ()F
   method public cell (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
   method public chunksTaken ()J
   method public constants (Lcom/crystalgraphics/render/draw/CgPassConstants;)V
@@ -8583,7 +8593,7 @@ com/crystalgraphics/render/canvas/CgCanvasLabels
   method public clear ()V
   method public draw (Lcom/crystalgraphics/render/canvas/CgCanvas;)V
   method public drawDepth (Lcom/crystalgraphics/render/canvas/CgCanvas;)V
-  method public prepare (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;II)V
+  method public prepare (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;II)V
   method public release ()V
   method public text ()Lcom/crystalgraphics/render/canvas/CgCanvasLabels$Label;
 com/crystalgraphics/render/canvas/CgCanvasLabels$Label
@@ -10563,6 +10573,7 @@ com/crystalgraphics/render/stage/CgHostFrame
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public depthFormat ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public environment ()Lcom/crystalgraphics/render/stage/CgHostEnvironment;
   method public guiScale ()F
@@ -10574,7 +10585,6 @@ com/crystalgraphics/render/stage/CgHostFrame
   method public set (FIILcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public target ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public textures ()Lcom/crystalgraphics/render/stage/CgHostTextures;
-  method public view ()Lcom/crystalgraphics/render/stage/CgHostView;
   method public width ()I
 com/crystalgraphics/render/stage/CgHostTextures
   access public,final
@@ -10593,19 +10603,6 @@ com/crystalgraphics/render/stage/CgHostTextures
   method public lightmapWidth ()I
   method public set (Lcom/crystalgraphics/render/stage/CgHostTextures;)Lcom/crystalgraphics/render/stage/CgHostTextures;
   method public version ()I
-com/crystalgraphics/render/stage/CgHostView
-  access public,final
-  extends java/lang/Object
-  method public <init> ()V
-  method public project (DDDFFLorg/joml/Vector2f;)Z
-  method public projection ()Lorg/joml/Matrix4fc;
-  method public set (DDDLjava/nio/FloatBuffer;Ljava/nio/FloatBuffer;)Lcom/crystalgraphics/render/stage/CgHostView;
-  method public set (DDDLorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/stage/CgHostView;
-  method public set (Lcom/crystalgraphics/render/stage/CgHostView;)Lcom/crystalgraphics/render/stage/CgHostView;
-  method public view ()Lorg/joml/Matrix4fc;
-  method public x ()D
-  method public y ()D
-  method public z ()D
 com/crystalgraphics/render/stage/CgRenderStage
   access public,final
   extends java/lang/Object
@@ -10640,11 +10637,13 @@ com/crystalgraphics/render/stage/CgStageFrame
   access public,final
   extends java/lang/Object
   method public callback (Ljava/lang/String;Ljava/lang/Runnable;)Lcom/crystalgraphics/render/graph/CgRequest;
+  method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public canvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaults (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public depth ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public depthPyramid ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public guiCamera ()Lcom/crystalgraphics/camera/CgCamera;
   method public guiScaledCanvas ()Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public historyValid ()Z
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
@@ -10946,7 +10945,7 @@ com/crystalgraphics/render/world/CgWorldVoxelWindow
   method public emitters (Lcom/crystalgraphics/render/world/CgWorldVoxelWindow$Emitters;)V
   method public live ()Z
   method public precache ()V
-  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;)V
   method public sections ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public use ()Lcom/crystalgraphics/render/world/CgWorldVoxelWindow;
   method public useDistance ()Lcom/crystalgraphics/render/world/CgWorldVoxelWindow;
@@ -18241,8 +18240,8 @@ com/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange
   method public,static loadAhead ()V
   method public,static of (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/gpu/draw/CgVfxRange;
   method public,static precache ()V
-  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;)V
-  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;)V
+  method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public,static rehearsing (Z)V
   method public,static visibleCount ()I
   method public,static visibleCount (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)I
@@ -18356,7 +18355,7 @@ com/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool
   method public stepped ()Z
   method public storage ()I
   method public trailTable (I[II[II)V
-  method public,static depth (Lcom/crystalgraphics/render/stage/CgHostView;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public,static depth (Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public,static entities (DDDF)V
   method public,static hide (Ljava/lang/Object;)V
   method public,static listen (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxEventListener;)V
@@ -19030,7 +19029,7 @@ com/crystalgraphics/vfx/particle/ribbon/CgVfxRibbonGeneration
   method public run ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public skip (Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public slotRecord (I)I
-  method public upload (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/stage/CgHostView;I)V
+  method public upload (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;I)V
   method public vertices (ILcom/crystalgraphics/vfx/particle/renderer/CgVfxRibbonRendererProperties;)I
   method public wanted ()Z
   method public,static existing (Lcom/crystalgraphics/vfx/particle/gpu/sim/CgVfxParticlePool;)Lcom/crystalgraphics/vfx/particle/ribbon/CgVfxRibbonGeneration;

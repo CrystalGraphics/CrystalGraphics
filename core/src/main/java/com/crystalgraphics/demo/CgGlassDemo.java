@@ -6,7 +6,7 @@ import com.crystalgraphics.render.canvas.CgCanvasBackdrop;
 import com.crystalgraphics.render.canvas.CgCanvasGlass;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -76,7 +76,7 @@ public final class CgGlassDemo {
      * The row this frame, centred on {@code (x, y, z)}, the ground under it. Laid out across the camera's line to the
      * point when the point moves (the demo moves it only for a new scene, a new level or a jump), and fixed there.
      */
-    public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+    public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
         if (x != laidX || z != laidZ) {
             laidX = x;
             laidZ = z;

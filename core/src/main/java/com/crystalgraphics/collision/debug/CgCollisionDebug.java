@@ -10,7 +10,7 @@ import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.world.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
@@ -144,7 +144,7 @@ public final class CgCollisionDebug {
         colour = argb;
     }
 
-    private static void frame(CgHostView view) {
+    private static void frame(CgCamera view) {
         // for what is written before the next frame: the outline lags the camera by a frame
         SHAPES.eye(view.x(), view.y(), view.z());
         transparent = CgCollisionShow.transparent();

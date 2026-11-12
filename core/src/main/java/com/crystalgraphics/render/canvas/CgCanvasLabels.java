@@ -9,7 +9,7 @@ import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.render.CgTextBatch;
 import com.crystalgraphics.text.render.CgTextCapture;
@@ -131,7 +131,7 @@ public final class CgCanvasLabels {
      * Captures what changed, places every label under {@code view} and uploads both into {@code recording}: once a
      * firing, before {@link #drawDepth} and {@link #draw}. {@code width} and {@code height} are the target's pixels.
      */
-    public void prepare(CgRecording recording, CgHostView view, int width, int height) {
+    public void prepare(CgRecording recording, CgCamera view, int width, int height) {
         capturer.camera(view.projection(), NO_VIEW, width, height);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
             evictions = CgGlyphAtlas.evictions();
@@ -147,7 +147,7 @@ public final class CgCanvasLabels {
     }
 
     /** Label to view space: its offset from the eye, turned or facing the eye, its size and anchor. */
-    private Matrix4f placement(Label label, CgHostView view, CgTextLayout layout, int px) {
+    private Matrix4f placement(Label label, CgCamera view, CgTextLayout layout, int px) {
         float scale = label.height / px;
         float dx = (float) (label.x - view.x()), dy = (float) (label.y - view.y()), dz = (float) (label.z - view.z());
         if (label.rotation != null) {

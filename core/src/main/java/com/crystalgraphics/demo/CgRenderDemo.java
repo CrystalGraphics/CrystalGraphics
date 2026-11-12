@@ -26,7 +26,7 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgHostFrame;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.render.canvas.CgCanvas;
@@ -157,7 +157,7 @@ public final class CgRenderDemo {
         /** Whether what {@link #precache} started compiling is built: it draws nothing until then. */
         boolean ready();
 
-        void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds);
+        void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds);
 
         /** Ends what it plays at once, keeping what it built; its next submit starts over. */
         void clear();
@@ -334,7 +334,7 @@ public final class CgRenderDemo {
         CgVfxBlasts blasts = new CgVfxBlasts(BLASTS, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 blasts.submit(world, x, y, z, seconds);
             }
 
@@ -364,7 +364,7 @@ public final class CgRenderDemo {
         CgVfxShowcase showcase = new CgVfxShowcase(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 showcase.submit(world, x, y, z, seconds);
                 if (SKY) showcase.submitSky(world, view.x(), view.y(), view.z());
             }
@@ -401,7 +401,7 @@ public final class CgRenderDemo {
         CgVfxFluidDemo fluid = new CgVfxFluidDemo(labelFont, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 fluid.submit(world, x, y, z, seconds);
             }
 
@@ -435,7 +435,7 @@ public final class CgRenderDemo {
             private boolean precached;
 
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 if (precached) modules.submit(world, x, y, z, seconds);
             }
 
@@ -470,7 +470,7 @@ public final class CgRenderDemo {
         CgVfxBlastFlash blast = new CgVfxBlastFlash(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 blast.submit(world, x, y, z, aheadX, aheadZ, seconds);
             }
 
@@ -505,7 +505,7 @@ public final class CgRenderDemo {
         CgCollisionDemo demo = new CgCollisionDemo();
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 float partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
                 demo.submit(CgCollisionWorld.client(partialTick), x, y, z, seconds);
             }
@@ -535,7 +535,7 @@ public final class CgRenderDemo {
         CgLightsDemo lights = new CgLightsDemo(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 lights.submit(world, x, y, z, seconds);
             }
 
@@ -570,7 +570,7 @@ public final class CgRenderDemo {
         CgShadowsDemo shadows = new CgShadowsDemo();
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 shadows.submit(world, x, y, z, seconds);
             }
 
@@ -604,7 +604,7 @@ public final class CgRenderDemo {
         CgGlassDemo glass = new CgGlassDemo(labelFont);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 glass.submit(world, view, x, y, z, seconds);
             }
 
@@ -635,7 +635,7 @@ public final class CgRenderDemo {
         CgTextDemo text = new CgTextDemo(labelFont);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgHostView view, double x, double y, double z, double seconds) {
+            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
                 text.submit(world, view, x, y, z, seconds);
             }
 
@@ -663,7 +663,7 @@ public final class CgRenderDemo {
 
     // ── frame ─────────────────────────────────────────────────────────────────
 
-    private void frame(CgHostView view) {
+    private void frame(CgCamera view) {
         if (CYCLE > 0 && grounded) cycle();
         // Here, before the pools record: a key is read mid-frame, after they have.
         if (wanted != current) {
@@ -853,7 +853,7 @@ public final class CgRenderDemo {
         }
     }
 
-    private boolean jumped(CgHostView view) {
+    private boolean jumped(CgCamera view) {
         double dx = view.x() - lastX, dy = view.y() - lastY, dz = view.z() - lastZ;
         return dx * dx + dy * dy + dz * dz > TELEPORT * TELEPORT;
     }
@@ -862,7 +862,7 @@ public final class CgRenderDemo {
      * Puts the scene ahead of the eye, whatever the host folds into its view matrix: along the view and up the screen
      * while it floats, and level with the eye where it will stand on the ground.
      */
-    private void anchor(CgHostView view) {
+    private void anchor(CgCamera view) {
         int ahead = kinds[current].ahead();
         Matrix4f toWorld = new Matrix4f(view.view()).invert();
         Vector3f eye = toWorld.transformPosition(new Vector3f());

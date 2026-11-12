@@ -12,7 +12,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import java.util.Arrays;
@@ -68,7 +68,7 @@ final class CgCustomDepthPass {
      * {@link CgFrameKeys#CUSTOM_DEPTH}. Transparent draws only where their material writes depth (UseDefaultMaterial,
      * :560-591).
      */
-    void recordCustomDepth(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    void recordCustomDepth(CgStageFrame stage, CgRecording recording, CgCamera view) {
         if (inCustomDepth.length < draws.meshes.length) inCustomDepth = new boolean[draws.meshes.length];
         int marked = 0;
         for (int i = 0; i < draws.count; i++) {

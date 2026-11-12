@@ -2,7 +2,7 @@ package com.crystalgraphics.mc.v1710.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.multiplayer.WorldClient;
@@ -28,7 +28,7 @@ public final class Environment1710 {
     private Environment1710() {
     }
 
-    public static void capture(Minecraft mc, float partialTick, CgHostView view, CgHostEnvironment out) {
+    public static void capture(Minecraft mc, float partialTick, CgCamera view, CgHostEnvironment out) {
         out.clear().screen(mc.currentScreen != null);
         WorldClient world = mc.theWorld;
         EntityLivingBase viewer = mc.renderViewEntity;

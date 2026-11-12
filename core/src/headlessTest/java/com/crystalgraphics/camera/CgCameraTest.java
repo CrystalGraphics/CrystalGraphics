@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.stage;
+package com.crystalgraphics.camera;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -9,12 +9,12 @@ import org.joml.Vector2f;
 import org.junit.Test;
 
 /** A world point put on the screen, as a HUD places what follows a target. */
-public class CgHostViewTest {
+public class CgCameraTest {
 
     /** A point ahead of the camera lands on the rectangle, y down; one behind answers false. */
     @Test
     public void aViewProjectsAheadAndRefusesBehind() {
-        CgHostView view = new CgHostView().set(10d, 64d, 0d, new Matrix4f(),
+        CgCamera view = new CgCamera().set(10d, 64d, 0d, new Matrix4f(),
                 new Matrix4f().perspective((float) Math.toRadians(90), 1f, 0.05f, 100f));
         Vector2f at = new Vector2f();
         assertTrue(view.project(10d, 64d, -5d, 200f, 100f, at));

@@ -13,7 +13,7 @@ import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
@@ -224,7 +224,7 @@ public final class CgVfxRibbonGeneration {
      * Uploads this frame's slot settings and takes its scratch, for {@code view}: before the pass {@link #dispatch}
      * records into. {@code slotFirst} is the pool's first slot among Range's visible counts. Nothing when no slot asked.
      */
-    public void upload(CgRecording recording, CgHostView view, int slotFirst) {
+    public void upload(CgRecording recording, CgCamera view, int slotFirst) {
         if (!any) return;
         if (retiredRun != null) {
             recording.release(retiredRun);

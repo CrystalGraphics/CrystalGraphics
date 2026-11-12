@@ -13,7 +13,7 @@ import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 
@@ -44,7 +44,7 @@ final class CgBasePass {
      * where it merges ({@link CgPipeline#sceneFold}), else as a draw after it at its key.
      */
     void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
-                    boolean depthOnlyPass, boolean after, CgHostView view, boolean sceneGlows) {
+                    boolean depthOnlyPass, boolean after, CgCamera view, boolean sceneGlows) {
         CgRasterPass pass = recording.raster("world.base").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants).state(state)
                 .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
                 .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)

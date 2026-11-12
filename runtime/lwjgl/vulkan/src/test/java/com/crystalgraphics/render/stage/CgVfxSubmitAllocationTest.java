@@ -133,7 +133,7 @@ public class CgVfxSubmitAllocationTest {
             vfx.submit(world);
             try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the null device's surface
                 for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
+                    stage.host().set(0f, 64, 64, 0).camera().set(0, 0, 0, view, projection);
                     stage.recordAndExecute();   // fire() less the host section and the lifecycle, which want a platform
                 }
             }
@@ -194,7 +194,7 @@ public class CgVfxSubmitAllocationTest {
             vfx.submit(world);
             try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {
                 for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, 64, 64, 0).view().set(0, 0, 0, view, projection);
+                    stage.host().set(0f, 64, 64, 0).camera().set(0, 0, 0, view, projection);
                     stage.recordAndExecute();
                 }
             }

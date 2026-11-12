@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform;
 
 import com.crystalgraphics.mc.legacy.mixin.ActiveRenderInfoAccessor;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.entity.Entity;
 
@@ -16,7 +16,7 @@ public final class HostViewLegacy {
     private HostViewLegacy() {
     }
 
-    public static void capture(Minecraft mc, float partialTicks, CgHostView out) {
+    public static void capture(Minecraft mc, float partialTicks, CgCamera out) {
         Entity entity = mc.getRenderViewEntity();
         out.set(entity.lastTickPosX + (entity.posX - entity.lastTickPosX) * partialTicks,
                 entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks,

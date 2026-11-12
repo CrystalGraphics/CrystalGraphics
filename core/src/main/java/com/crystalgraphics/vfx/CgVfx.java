@@ -40,7 +40,7 @@ import com.crystalgraphics.render.post.volume.CgPostVolumePreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -291,7 +291,7 @@ public final class CgVfx {
      * no scalability culls it; {@code forward} (if given) its view direction. Answers {@code at}.
      */
     public static Vector3d rehearsalPoint(Vector3d at, @Nullable Vector3f forward) {
-        CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
         Vector3f f = forward != null ? forward : new Vector3f();
         view.view().positiveZ(f).negate();
         return at.set(view.x() + f.x * REHEARSAL_AHEAD, view.y() + f.y * REHEARSAL_AHEAD, view.z() + f.z * REHEARSAL_AHEAD);

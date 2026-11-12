@@ -489,7 +489,7 @@ Something that follows a point in the world projects it with the world's camera:
 
 ```java
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+    CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
     // project (x, y, z) - view's position through view and projection into the window's pixels, then:
     frame.canvas().quad(DIGIT).texture(0, DIGITS).at(sx - w / 2, sy - h / 2).size(w, h).submit();
 });

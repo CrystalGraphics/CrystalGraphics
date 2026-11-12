@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.render.CgViewFrustum;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import com.crystalgraphics.vfx.scalability.CgVfxScalability;
 import org.joml.Matrix4f;
@@ -72,7 +72,7 @@ final class CgVfxCulling {
     private final List<Cap> capList = new ArrayList<>();
 
     /** The camera to cull against: the world's latest. No view (projection all zero) culls nothing. */
-    void view(CgHostView view) {
+    void view(CgCamera view) {
         viewProjection.set(view.projection()).mul(view.view());
         viewed = view.projection().m00() != 0f;
         if (viewed) frustum.set(viewProjection);

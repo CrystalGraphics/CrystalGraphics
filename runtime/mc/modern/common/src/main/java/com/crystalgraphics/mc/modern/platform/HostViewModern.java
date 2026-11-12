@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -32,7 +32,7 @@ import java.nio.FloatBuffer;
 
 /**
  * Minecraft's camera at the world stages: the position, view and projection it draws its own level with, read where
- * each version keeps them, into the stage's {@link CgHostView}. Render thread, during the level render; allocates
+ * each version keeps them, into the stage's {@link CgCamera}. Render thread, during the level render; allocates
  * nothing.
  *
  * <ul>
@@ -69,7 +69,7 @@ final class HostViewModern {
         LEVEL_PROJECTION.set(projection);
     }
 
-    static void capture(Minecraft mc, float partialTick, CgHostView out) {
+    static void capture(Minecraft mc, float partialTick, CgCamera out) {
         double x, y, z;
         Matrix4fc view, projection;
         //? if >=26.2 {

@@ -101,9 +101,9 @@ public class CgRenderHook {
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
         CgHostFrame frame = stage.host()
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
-        HostView1710.capture(mc, partialTicks, frame.view());
+        HostView1710.capture(mc, partialTicks, frame.camera());
         if (stage == CgRenderStage.WORLD_OPAQUE) {
-            Environment1710.capture(mc, partialTicks, frame.view(), frame.environment());
+            Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());
             Textures1710.capture(mc, frame.textures());
             WorldEvents1710.poll();
         } else {

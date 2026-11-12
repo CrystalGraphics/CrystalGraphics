@@ -16,7 +16,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
@@ -82,7 +82,7 @@ final class CgVolumePass {
      * what the transparent pass lays over the target: the history, or this frame's alone past the last ordinal kept.
      */
     @Nullable
-    CgTexture recordVolumes(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    CgTexture recordVolumes(CgStageFrame stage, CgRecording recording, CgCamera view) {
         int w = Math.max(1, (int) (world.targetWidth * 0.5f)), h = Math.max(1, (int) (world.targetHeight * 0.5f));
         if (volumeTarget == null || volumeTarget.getWidth() != w || volumeTarget.getHeight() != h) {
             volumeTarget = CgGraphTexture.transientTexture("cg_world_volume", CgTextureDesc.of(w, h, VOLUME_FORMAT));

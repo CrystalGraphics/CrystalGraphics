@@ -19,7 +19,7 @@ import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
@@ -279,7 +279,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         /** The followed place on screen, 0 to 1 from the bottom left as the material's UV; nothing where it is behind. */
         void screen() {
             if (screen == null || !screen.place(point, null)) return;
-            CgHostView view = CgRenderStage.WORLD_OPAQUE.host().view();
+            CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
             clip.set((float) (point[0] - view.x()), (float) (point[1] - view.y()), (float) (point[2] - view.z()), 1f);
             view.view().transform(clip);
             view.projection().transform(clip);

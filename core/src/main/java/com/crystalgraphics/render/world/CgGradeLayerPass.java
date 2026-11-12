@@ -21,7 +21,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -98,7 +98,7 @@ final class CgGradeLayerPass {
      * cleared with the covers of its opaque draws in it, which are behind every transparent fragment over them. On the
      * device alone; the rest wait for {@link #recordGradeLayers}.
      */
-    void prepareLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+    void prepareLayers(CgStageFrame stage, CgRecording recording, CgCamera view, CgPassConstants constants) {
         outputSlot = -1;
         anySeen = false;
         Arrays.fill(gradeSeen, false);
@@ -213,7 +213,7 @@ final class CgGradeLayerPass {
      * and in alpha how much of what is behind them they cover. The output slot's layer holds the transparent passes'
      * already: what they did not carry is added over it. Published as {@link CgGradeLayers#KEY}.
      */
-    void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+    void recordGradeLayers(CgStageFrame stage, CgRecording recording, CgCamera view, CgPassConstants constants) {
         if (!anySeen) return;
         anySeen = false;
         CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
@@ -254,7 +254,7 @@ final class CgGradeLayerPass {
      * Into {@code target}, cleared: graded slot {@code k}'s draws, its separate ones alone with {@code apart} or the rest
      * without; with {@code k} below 0 every separate draw.
      */
-    void layerPass(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants,
+    void layerPass(CgStageFrame stage, CgRecording recording, CgCamera view, CgPassConstants constants,
                    CgGraphTexture target, int k, boolean apart, @Nullable CgGraphTexture scene, boolean over) {
         CgRasterPass pass = layerPassBegin(stage, recording, constants, target, k, over, scene);
         CgChunkBuilder chunks = recording.chunks().begin();
@@ -282,7 +282,7 @@ final class CgGradeLayerPass {
     }
 
     /** Draw {@code i} in its layer forms: the programs the transparent pass draws it with, or a solid's cover. */
-    void layerDraws(CgChunkBuilder chunks, CgRecording recording, CgHostView view, int i) {
+    void layerDraws(CgChunkBuilder chunks, CgRecording recording, CgCamera view, int i) {
         boolean glows = draws.emissions[i] > 0f && draws.queues[i] < CgRenderQueue.OVERLAY_THRESHOLD;
         boolean solid = draws.queues[i] < CgRenderQueue.TRANSPARENT_THRESHOLD;
         for (CgMaterial link = draws.materials[i]; link != null; link = link.getNextPass()) {
@@ -346,7 +346,7 @@ final class CgGradeLayerPass {
     }
 
     /** The separate draws into their target, published as {@link CgSeparateTranslucency#KEY} for the post stack. */
-    void recordSeparate(CgStageFrame stage, CgRecording recording, CgHostView view, CgPassConstants constants) {
+    void recordSeparate(CgStageFrame stage, CgRecording recording, CgCamera view, CgPassConstants constants) {
         int w = Math.max(1, Math.round(world.targetWidth)), h = Math.max(1, Math.round(world.targetHeight));
         if (separateTarget == null || separateWidth != w || separateHeight != h) {
             separateTarget = CgGraphTexture.transientTexture("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT));

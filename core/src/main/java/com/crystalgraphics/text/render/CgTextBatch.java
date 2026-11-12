@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
@@ -204,10 +205,11 @@ public final class CgTextBatch {
         Matrix4fc projection, view;
         float w, h;
         if (canvas != null) {
-            projection = canvas.cameraProjection();
-            view = canvas.cameraView();
-            w = canvas.cameraWidth();
-            h = canvas.cameraHeight();
+            CgCamera camera = canvas.camera();
+            projection = camera.projection();
+            view = camera.view();
+            w = camera.width();
+            h = camera.height();
         } else {
             projection = ownProjection;
             view = ownView;

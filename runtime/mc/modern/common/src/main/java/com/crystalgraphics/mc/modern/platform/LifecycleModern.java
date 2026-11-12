@@ -89,8 +89,8 @@ public final class LifecycleModern {
             try {
                 CgHostFrame frame = CgRenderStage.WORLD_OPAQUE.host()
                         .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
-                HostViewModern.capture(mc, partialTick, frame.view());
-                EnvironmentModern.capture(mc, partialTick, frame.view(), frame.environment());
+                HostViewModern.capture(mc, partialTick, frame.camera());
+                EnvironmentModern.capture(mc, partialTick, frame.camera(), frame.environment());
                 TexturesModern.capture(mc, frame.textures());
                 WorldEventsModern.poll(mc);
                 CgRenderStage.WORLD_OPAQUE.fire();
@@ -127,7 +127,7 @@ public final class LifecycleModern {
                 CgHostFrame opaque = CgRenderStage.WORLD_OPAQUE.host();
                 CgRenderStage.WORLD_TRANSPARENT.host()
                         .set(opaque.partialTick(), Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo)
-                        .view().set(opaque.view());
+                        .camera().set(opaque.camera());
                 CgRenderStage.WORLD_TRANSPARENT.host().environment().set(opaque.environment());
                 CgRenderStage.WORLD_TRANSPARENT.host().textures().set(opaque.textures());
                 CgRenderStage.WORLD_TRANSPARENT.fire();

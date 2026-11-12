@@ -11,7 +11,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -53,7 +53,7 @@ final class CgHalfPass {
      * the scene's depth where each was drawn is to its own, so light does not bleed across a silhouette. Before the
      * transparent pass, so what draws after (a haze bending it, smoke over it) sees it in the target.
      */
-    void recordHalf(CgStageFrame stage, CgRecording recording, CgHostView view) {
+    void recordHalf(CgStageFrame stage, CgRecording recording, CgCamera view) {
         int w = Math.max(1, (int) (world.targetWidth * 0.5f)), h = Math.max(1, (int) (world.targetHeight * 0.5f));
         if (halfTarget == null || halfTarget.getWidth() != w || halfTarget.getHeight() != h) {
             halfTarget = CgGraphTexture.transientTexture("cg_world_half", new CgTextureDesc(w, h, HALF_FORMAT));

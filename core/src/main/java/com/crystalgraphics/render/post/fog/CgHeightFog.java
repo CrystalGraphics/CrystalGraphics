@@ -119,7 +119,7 @@ public final class CgHeightFog implements CgPostEffect {
     @Override
     public void record(CgPostContext post) {
         // FogRendering.cpp: the observer held below the fog's height plus 65536 cm, and the density at it collapsed
-        double eye = post.stage().host().view().y();
+        double eye = post.stage().host().camera().y();
         double observer = Math.min(eye, height + MAX_OBSERVER_ABOVE);
         double power = Math.max(-125.0, Math.min(126.0, -falloff * (observer - height)));
         fog0[0] = (float) (density * Math.pow(2.0, power));

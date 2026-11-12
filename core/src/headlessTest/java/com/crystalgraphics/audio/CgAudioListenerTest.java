@@ -7,7 +7,7 @@ import org.junit.Test;
 
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.platform.audio.CgAudioStream;
-import com.crystalgraphics.render.stage.CgHostView;
+import com.crystalgraphics.camera.CgCamera;
 
 /** The listener: on the camera's frame, panned by Unreal's stereo law, and the attenuation's curves. */
 public class CgAudioListenerTest {
@@ -16,7 +16,7 @@ public class CgAudioListenerTest {
     @Test
     public void theListenerFollowsACameraCutOnItsFrame() {
         CgWorld world = new CgWorld();
-        CgHostView view = new CgHostView().set(0, 64, 0, new Matrix4f(), new Matrix4f());
+        CgCamera view = new CgCamera().set(0, 64, 0, new Matrix4f(), new Matrix4f());
         CgAudioEngine audio = world.add(new CgAudioEngine(format -> new CgAudioStream() {
             @Override public int free() { return 0; }
             @Override public boolean write(float[] interleaved) { return true; }
