@@ -106,7 +106,9 @@ if (audio != null) audio.activeSounds().priority(id, 2f).group(id, SPARKS);
 - `play2D` is unplaced and unattenuated, in `UI` unless told, which plays on through a pause.
 - `playAt` is placed and attenuated as its sound says, in `SFX` unless told.
 - Every play answers the sound's id, or 0 where nothing played: every voice slot taken, no such sound, no output.
-- `CgSounds` runs on the frame thread, except `preload`, which a worker runs.
+- `CgSounds` is callable from any thread. A play, stop or mix runs at once on the frame thread; from any other it is
+  sent to the client thread (`CgHostThread.CLIENT`) and a play answers 0, since its id is not known yet. `load` is the frame thread's,
+  `preload` a worker's.
 
 ---
 
@@ -595,8 +597,8 @@ mixer.start(click, 1f, true, mixer.rendered() + 1000);               // 1000 fra
 
 ## 15. Easy to get wrong
 
-- **Playing from a worker.** Everything here runs on the frame thread except `preload` and `load`. A play from
-  another thread corrupts the active sounds.
+- **Playing from a worker.** It plays once the client thread takes it, and answers 0: keep the id only from a play on the frame thread,
+  where `stop` needs one. `CgAudioEngine` itself is the frame thread's alone.
 - **Loading on the frame.** The first play of an unloaded name reads and decodes it right there. Preload at load
   (§4).
 - **A name without a namespace.** `"button_click"` plays nothing; write `"mymod:ui.click"` or a file path.

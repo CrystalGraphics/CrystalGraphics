@@ -51,7 +51,6 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `service/CgGameClasses` | Static owner + `Host` slot | The game's own classes as they run: `minecraftVersion()`, a class's `bytes` after every transformer and mixin, and `runtimeName` (Notch to SRG on LaunchWrapper, else itself). Both sides; `GameClassesModern`, `GameClassesLegacy`, `GameClasses1710`. What CrystalGUI's language mod reads the game through |
 | `service/CgServers` | Static owner + `Host` slot | The server this process runs: `running`, `dedicated`, its `directory`, `version`, `halt`. Both sides; `ServersModern`, `ServersLegacy`, `Servers1710` |
 | `service/CgGameThreads` | Static owner + `Host` slot | The game's client and server threads as a `Binding` (`execute`, `isCurrent`, `isAvailable`), what core's `job.CgHostThread` runs work on. Client slot from the client install, server from either; `GameThreadsModern`, `GameThreadsLegacy`, `GameThreads1710` |
-| `service/CgHostWindow` | Static owner + `Host` slot | The surface's `width()` and `height()` in device pixels. Client only; `HostWindowModern`, `HostWindowLegacy`, `HostWindow1710` |
 | `service/CgGameSession` | Static owner + `Host` slot | The client's game session for an unattended run (`gauntlet`, `docs/GAUNTLET.md`): `ready`, `inWorld`, `enterWorld(save)` (the save, else the first, else, where the era can, a new flat one: `saveToEnter` decides which for every host), `quit` through the game's own shutdown. Client only; `GameSessionModern`, `GameSessionLegacy`, `GameSession1710` |
 | `service/CgScreens` | Static owner + `Host` slot | A screen of the engine's in front of the game, for a UI drawn at `CgRenderStage.SCREEN`: `open(owner)`, `close(owner)` (at the next tick), `isOpen`, `anyOpen` (any screen, the host's own too), `giveBack(key)` for a key a `SCREEN` input listener left, and the host's own screens for an unattended run: `closeFront()`, `openChat()`. The host treats it as its own screen (cursor free, player still, Escape the owner's) and it draws nothing. Client only; `ScreensModern`, `ScreensLegacy`, `Screens1710` |
 | `service/CgStorageLayout` | Final class | A product's `<base>/<product>/` tree stated once: `configIn` (`config`, durable) and `cacheIn` (`cache`, disposable). `CgStorageLayout.of("crystalgraphics")` is CrystalGraphics' own, which `CgCacheDirectory` roots under; a consumer makes its own and adds its folders. The config stores, cache files and downloads that use it are core's `storage` package |
@@ -64,7 +63,7 @@ seams are here too — see [UI-facing services](#ui-facing-services).
 | `input/CgInputListener`, `CgInputStage` | Interface, class | How a host's input reaches code that is not the host's: a mod registers a listener on a stage (`CgInputStage.SCREEN`); each era's host builds the event in the engine's vocabulary and fires it, and a listener that consumes it keeps the screen from seeing it. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) |
 | `input/CgKeyBindings` | Static owner + `Host` slot | Keys a player can rebind: `declare(id, key, category, action)`, early (a `client` listener's `onPreInit`); each era's host registers a game binding and runs the action per press (`KeyBindingsModern`, `KeyBindingsLegacy`, `KeyBindings1710`). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *Key bindings* |
 | `input/CgInput` | Static owner + `Host` slot | The host's input as it stands, every answer an event cannot carry in one place: `isKeyDown`, `isMouseDown`, `modifiers`, `mouseButtons`, `pointerGrabbed` (the game holds the cursor), and a toolkit's codes in the engine's (`key`, `mouseButton`) for a host building an event; `grabPointer`, `movePointer(x, y)` for an unattended run. The toolkit's host where it answers all of it (`InputLwjgl2` on 1.7.10 and legacy Forge, `InputGlfw` in the harness), else an era's over it (`InputModern`: Minecraft's pointer grab over `InputGlfw`, `InputSdl` from 26.3). Client only. [`docs/INPUT.md`](../../../../../../../docs/INPUT.md) § *What is held now* |
-| `input/CgClipboard` | Static owner + `Host` slot | The system clipboard's text: `get()` (never null), `set(text)`. `ClipboardGlfw`, `ClipboardLwjgl2` (AWT), `ClipboardSdl`. Client only |
+| `input/CgClipboard` | Static owner + `Host` slot | The system clipboard's text: `get()` (never null), `set(text)`, on the client thread; from another, through core's `CgHostThread.CLIENT` (`run` to write, `call(...).then(...)` to read). `ClipboardGlfw`, `ClipboardLwjgl2` (AWT), `ClipboardSdl`. Client only |
 | `input/CgKeyCodes`, `CgGlfwKeyCodes`, `CgMouseCodes`, `CgModifiers` | Constants | Code tables with no LWJGL import |
 
 **Who implements the bundle**: `PlatformService1710`, `PlatformServiceLegacy`, `PlatformServiceModern`,
@@ -267,7 +266,8 @@ anything there. All on the GL thread:
 
 **`tickFrame()` is the only sanctioned per-frame tick** for engine singletons (`CgFontRegistry.tickFrame()`);
 feature code never calls it. The hosts fire the world's render stages from their own hooks
-(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is `CgHostWindow`'s.
+(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is what they pass `tickFrame`'s context, read back
+with `CgGraphicsLifecycle.getCurrentWidth()`/`getCurrentHeight()`.
 
 ---
 
@@ -287,7 +287,7 @@ child project would be one a loader could forget, leaving a working device besid
 
 | Reached via | Provides |
 |---|---|
-| `CgInput` | what is held now, and a toolkit's codes in the engine's: CrystalGUI reads it through `PlatformPort` |
+| `CgInput` | what is held now, and a toolkit's codes in the engine's: CrystalGUI's `Input` reads it for a document on the client thread |
 | `CgClipboard` | the clipboard's text |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |

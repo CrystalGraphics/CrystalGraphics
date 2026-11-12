@@ -20,7 +20,9 @@ import com.crystalgraphics.platform.CgService;
  * <ul>
  *   <li>{@link #get} is never null: an empty clipboard, or one holding no text, is {@code ""}.</li>
  *   <li>Without a toolkit (a dedicated server, a test) it holds nothing and a write is dropped.</li>
- *   <li>Client thread: a toolkit reaches its clipboard where it polls.</li>
+ *   <li>Client thread: a toolkit reaches its clipboard where it polls. From another thread, hop with core's
+ *       {@code CgHostThread}: {@code CgHostThread.CLIENT.run(() -> CgClipboard.set(text))}, and
+ *       {@code CgHostThread.CLIENT.call(CgClipboard::get).then(paste)} for a read, answered on the asking thread.</li>
  * </ul>
  */
 public final class CgClipboard {

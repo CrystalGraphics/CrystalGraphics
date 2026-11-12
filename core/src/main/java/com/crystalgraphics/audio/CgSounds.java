@@ -1,5 +1,6 @@
 package com.crystalgraphics.audio;
 
+import com.crystalgraphics.job.CgHostThread;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.world.CgAttachment;
 import org.apache.logging.log4j.LogManager;
@@ -43,7 +44,9 @@ import java.util.Set;
  *       played (every voice taken, no such sound, no output).</li>
  *   <li>Where the host has no audio output (a dedicated server, the harness, a test) nothing plays, {@link #load}
  *       answers null, and no engine is made.</li>
- *   <li>Frame thread, but {@link #preload}, which a worker runs.</li>
+ *   <li>Callable from any thread. A play, stop or mix runs at once on the frame thread; from any other it is queued
+ *       for the client thread ({@link CgHostThread#CLIENT}) and a play answers 0, its id not known yet. {@link #load} is the
+ *       frame thread's; {@link #preload} is a worker's.</li>
  * </ul>
  */
 public final class CgSounds {
@@ -139,6 +142,7 @@ public final class CgSounds {
      */
     public static long playAttached(String sound, CgAttachment at, CgSoundClass soundClass, float volume, float pitch,
             boolean stopWhenGone) {
+        if (later(() -> playAttached(sound, at, soundClass, volume, pitch, stopWhenGone))) return 0L;
         CgAudioEngine audio = engine();
         double[] p = POINT;
         if (audio == null || !at.place(p, null)) return 0L;
@@ -156,6 +160,7 @@ public final class CgSounds {
      * }</pre>
      */
     public static long loopAttached(@Nullable CgSound sound, CgAttachment at, CgSoundClass soundClass, float volume) {
+        if (later(() -> loopAttached(sound, at, soundClass, volume))) return 0L;
         CgAudioEngine audio = engine();
         double[] p = POINT;
         if (audio == null || sound == null || !at.place(p, null)) return 0L;
@@ -201,6 +206,7 @@ public final class CgSounds {
      * }</pre>
      */
     public static long play(@Nullable CgSound sound, CgSoundClass soundClass, float volume) {
+        if (later(() -> play(sound, soundClass, volume))) return 0L;
         CgAudioEngine audio = engine();
         return audio == null || sound == null ? 0L : audio.play(sound, soundClass, volume);
     }
@@ -214,12 +220,14 @@ public final class CgSounds {
      * }</pre>
      */
     public static long loop(@Nullable CgSound sound, CgSoundClass soundClass, float volume) {
+        if (later(() -> loop(sound, soundClass, volume))) return 0L;
         CgAudioEngine audio = engine();
         return audio == null || sound == null ? 0L : audio.play(sound, soundClass, volume, 1f, true, Double.NaN);
     }
 
     /** Stops the sound of id {@code id}; nothing for 0 or one that ended. */
     public static void stop(long id) {
+        if (later(() -> stop(id))) return;
         CgAudioEngine audio = engine();
         if (audio != null && id != 0L) audio.activeSounds().stop(id);
     }
@@ -261,18 +269,21 @@ public final class CgSounds {
      * }</pre>
      */
     public static void push(CgSoundMix mix) {
+        if (later(() -> push(mix))) return;
         CgAudioEngine audio = engine();
         if (audio != null) audio.push(mix);
     }
 
     /** Pops {@code mix}: its adjustments fade out. */
     public static void pop(CgSoundMix mix) {
+        if (later(() -> pop(mix))) return;
         CgAudioEngine audio = engine();
         if (audio != null) audio.pop(mix);
     }
 
     private static long play(String sound, CgSoundClass soundClass, double x, double y, double z, float volume, float pitch) {
         if (sound == null || sound.isEmpty()) return 0L;
+        if (later(() -> play(sound, soundClass, x, y, z, volume, pitch))) return 0L;
         CgAudioEngine audio = engine();
         CgSoundRef ref = audio == null ? null : ref(sound);
         if (ref == null) return 0L;
@@ -282,5 +293,12 @@ public final class CgSounds {
             if (MISSING.add(sound)) LOGGER.warn("Sound {} plays nothing: {}", sound, unknown.getMessage());
             return 0L;
         }
+    }
+
+    /** Off the client thread: sends {@code call} there and answers true; on it, false. */
+    private static boolean later(Runnable call) {
+        if (CgHostThread.CLIENT.isCurrent()) return false;
+        CgHostThread.CLIENT.run(call);
+        return true;
     }
 }

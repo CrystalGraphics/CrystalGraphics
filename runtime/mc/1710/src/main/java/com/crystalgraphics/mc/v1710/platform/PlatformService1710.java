@@ -35,7 +35,6 @@ import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
-import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
@@ -132,7 +131,6 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulus1710());
             CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService1710());
             CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
-            CgPlatform.provide(CgHostWindow.HOST, new HostWindow1710());
             CgPlatform.provide(CgScreens.HOST, Screens1710.INSTANCE);
             CgPlatform.provide(CgGameSession.HOST, GameSession1710.INSTANCE);
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);

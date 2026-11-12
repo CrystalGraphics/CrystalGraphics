@@ -35,7 +35,6 @@ import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
-import com.crystalgraphics.platform.service.CgHostWindow;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
@@ -115,7 +114,6 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgWorldStimulus.SERVICE, new WorldStimulusLegacy());
         CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService());
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsLegacy());
-        CgPlatform.provide(CgHostWindow.HOST, new HostWindowLegacy());
         CgPlatform.provide(CgScreens.HOST, ScreensLegacy.INSTANCE);
         CgPlatform.provide(CgGameSession.HOST, GameSessionLegacy.INSTANCE);
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsLegacy.INSTANCE);
