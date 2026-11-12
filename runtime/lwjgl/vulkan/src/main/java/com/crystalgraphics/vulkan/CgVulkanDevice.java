@@ -989,7 +989,7 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         Set<CgGpuTexture.Usage> depthUsage = EnumSet.copyOf(usage);
         depthUsage.add(CgGpuTexture.Usage.SAMPLED);
         surfaceDepth = (VulkanTexture) createTexture(new CgGpuTexture.Desc("surfaceDepth", CgGpuTexture.Kind.D2,
-                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, depthUsage));
+                CgFormat.DEPTH32_FLOAT_STENCIL8, width, height, 1, 1, 1, depthUsage));
     }
 
     /** Barriers recorded since the device began, for {@code CgDeviceStats}. */

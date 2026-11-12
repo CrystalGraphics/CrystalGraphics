@@ -56,7 +56,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.BooleanSupplier;
+
 
 import javax.annotation.Nullable;
 import java.util.logging.Level;
@@ -218,7 +218,7 @@ public final class CgGraphicsLifecycle {
         CgStartSteps.resume();
         CgDeviceSection.begin();
         try {
-            inOwnDepthConvention(() -> startStage(at, width, height));
+            startStage(at, width, height);
         } finally {
             CgDeviceSection.end();
         }
@@ -302,93 +302,6 @@ public final class CgGraphicsLifecycle {
         CgStartSteps.step("listeners' onContextInit");
     }
 
-    /**
-     * Whether the host's frame draws with reversed depth now (Minecraft 26.2's world), as a stage's constants take it.
-     * @see CgPassConstants#hostDepth()
-     */
-    public static boolean hostDepthReversed() {
-        return depthReversed;
-    }
-
-    /** Whether the host's reversed depth runs {@code 0..1} in clip space; false where it is not reversed. */
-    public static boolean hostDepthZeroToOne() {
-        return depthZeroToOne;
-    }
-
-    private static boolean depthReversed, depthZeroToOne;
-    /** The host world's depth convention, as declared: what {@link #inWorldDepth} puts in force. */
-    private static boolean worldReversed, worldZeroToOne;
-
-    /**
-     * How the host draws its world, declared once by the host before its first world frame (Minecraft 26.2+: reversed,
-     * 0..1), so work done outside a world pass for one (a precache) builds what its draws take. Render thread.
-     */
-    public static void worldDepth(boolean reversed, boolean zeroToOne) {
-        worldReversed = reversed;
-        worldZeroToOne = reversed && zeroToOne;
-    }
-
-    /** Whether the host's world draws with reversed depth, as {@link #worldDepth} declared. */
-    public static boolean worldDepthReversed() {
-        return worldReversed;
-    }
-
-    /** Whether the host world's reversed depth runs {@code 0..1} in clip space, as {@link #worldDepth} declared. */
-    public static boolean worldDepthZeroToOne() {
-        return worldZeroToOne;
-    }
-
-    /**
-     * Runs {@code body} under the host world's depth convention ({@link #worldDepth}), then puts back the one in force:
-     * a precache polled outside a world pass prepares the program the world's draws use, not the screen's.
-     *
-     * <pre>{@code
-     * boolean built = CgGraphicsLifecycle.inWorldDepth(() -> pipeline.precache());
-     * }</pre>
-     */
-    public static boolean inWorldDepth(BooleanSupplier body) {
-        boolean reversed = depthReversed, zeroToOne = depthZeroToOne;
-        hostDepth(worldReversed, worldZeroToOne);
-        try {
-            return body.getAsBoolean();
-        } finally {
-            hostDepth(reversed, zeroToOne);
-        }
-    }
-
-    /**
-     * The host draws into a reversed depth buffer from here (Minecraft 26.2's world: nearer greater, cleared to 0), or
-     * no longer: every pass after it into the host's depth mirrors its depth tests and clears, and a projection built
-     * for the pass is built reversed. Render thread, around the host's world passes.
-     *
-     * <pre>{@code
-     * CgGraphicsLifecycle.hostDepth(true, zeroToOne);   // zeroToOne: the host's clip-space depth runs 0..1
-     * try {
-     *     CgRenderStage.WORLD_OPAQUE.fire();
-     * } finally {
-     *     CgGraphicsLifecycle.hostDepth(false, false);
-     * }
-     * }</pre>
-     */
-    public static void hostDepth(boolean reversed, boolean zeroToOne) {
-        depthReversed = reversed;
-        depthZeroToOne = reversed && zeroToOne;
-    }
-
-    /**
-     * Runs {@code body} with depth unmirrored, for work on our own targets: init and resize usually arrive
-     * inside a world pass, which on 26.2 mirrors every depth function and clear for Minecraft's reversed-Z
-     * world. @see #hostDepth
-     */
-    private static void inOwnDepthConvention(Runnable body) {
-        boolean reversed = depthReversed, zeroToOne = depthZeroToOne;
-        hostDepth(false, false);
-        try {
-            body.run();
-        } finally {
-            hostDepth(reversed, zeroToOne);
-        }
-    }
 
     /**
      * The start's work that touches no GL, on a worker, begun once: the text library's natives (about 130 ms charged to
@@ -465,7 +378,7 @@ public final class CgGraphicsLifecycle {
 
         CgDeviceSection.begin();
         try {
-            inOwnDepthConvention(() -> resizeTargets(width, height));
+            resizeTargets(width, height);
         } finally {
             CgDeviceSection.end();
         }

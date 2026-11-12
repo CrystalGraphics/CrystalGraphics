@@ -996,7 +996,7 @@ public final class CgRenderDemo {
             }
             int w = Math.max(1, frame.host().width()), h = Math.max(1, frame.host().height());
             hudCamera.view.identity();
-            hudCamera.projection.setOrtho(0f, w, h, 0f, -1f, 1f);
+            CgCamera.orthographicMatrix(hudCamera.projection, 0f, w, h, 0f, -1f, 1f);
             hudCamera.resolution(w, h);
             hud.recordInto(frame.recording(), frame.target(), CgLoad.load(), hudCamera);
             try {

@@ -18,7 +18,7 @@ import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.material.parse.CgPermutationDomain;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -310,7 +310,7 @@ public final class CgPipelineList {
         }
         // Asked from anywhere (a loading screen, a scene): built as the world's draws take them, as frame() builds
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, READY_ZONE)) {
-            return CgGraphicsLifecycle.inWorldDepth(() -> polled(request));
+            return polled(request);
         }
     }
 

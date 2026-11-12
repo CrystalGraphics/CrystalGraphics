@@ -1,6 +1,5 @@
 package com.crystalgraphics.render;
 
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -102,13 +101,13 @@ public final class CgRenderer {
 
     /**
      * Clears {@code target} now, outside any graph: its colour to {@code (r, g, b, a)} where {@code color}, its depth to
-     * {@code depth} (GL's convention, far at 1, mirrored for a host whose depth runs far to near) where {@code clearDepth},
+     * {@code depth} (the engine's, near 1 and far 0, mirrored for a target drawn in a host's standard depth) where {@code clearDepth},
      * its stencil to {@code stencil} where {@code clearStencil}. Render thread, outside a recording. In a graph, a pass's
      * {@code CgLoad.clear} is the clear.
      *
      * <pre>{@code
-     * CgRenderer.clear(view, true, 0.5f, 0.7f, 1f, 1f, true, 1.0, true, 0);   // sky, far, no stencil
-     * CgRenderer.clear(view, false, 0, 0, 0, 0, true, 1.0, false, 0);          // depth alone, for the overlays
+     * CgRenderer.clear(view, true, 0.5f, 0.7f, 1f, 1f, true, 0.0, true, 0);   // sky, far, no stencil
+     * CgRenderer.clear(view, false, 0, 0, 0, 0, true, 0.0, false, 0);          // depth alone, for the overlays
      * }</pre>
      */
     public static void clear(CgExternalTarget target, boolean color, float r, float g, float b, float a,
@@ -116,7 +115,7 @@ public final class CgRenderer {
         CgTextureView colorView = color ? target.color() : null;
         CgTextureView depthView = clearDepth || clearStencil ? target.depth() : null;
         if (colorView == null && depthView == null) return;
-        float far = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - depth : depth);
+        float far = CgDepthConvention.stored(depth, CgDepthConvention.reversed(target));
         List<CgPassDesc.Color> colors = colorView == null ? List.of() : List.of(new CgPassDesc.Color(colorView,
                 CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.StoreOp.STORE));
         CgPassDesc.Depth depthDesc = depthView == null ? null : new CgPassDesc.Depth(depthView,

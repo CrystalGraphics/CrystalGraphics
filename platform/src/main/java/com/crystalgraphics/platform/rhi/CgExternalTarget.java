@@ -20,9 +20,12 @@ import java.util.Arrays;
  *
  * <pre>{@code
  * CgExternalTarget preview = CgExternalTarget.of("preview", color, depth);  // two device textures of yours
+ * CgExternalTarget warm = CgExternalTarget.of("warm", color, depth).drawnAsHost();   // drawn as the host's world is
  * }</pre>
  *
  * <ul>
+ *   <li>A {@link #host} target is drawn in the host's depth convention ({@code CgGraphicsLifecycle.hostDepth}), every
+ *       other in the engine's, reversed; {@link #drawnAsHost} makes one of yours draw as the host's do.</li>
  *   <li>{@link #host} is the one place a framebuffer name becomes a target: the same object for the same name and size
  *       until {@link #forgetHosts}, which a resize calls since a host may remake its targets.</li>
  *   <li>Borrowed: nothing here owns or deletes the images.</li>
@@ -35,6 +38,7 @@ public final class CgExternalTarget {
     private final CgTextureView color, depth;
     private final int width, height;
     private final boolean lends;
+    private boolean asHost;
     /** The same target without its depth ({@link #colorOnly}), made at first ask. */
     private CgExternalTarget colorOnly;
 
@@ -77,7 +81,7 @@ public final class CgExternalTarget {
         CgTextureView color = imports.attachment(fbo, false, width, height);
         CgTextureView depth = imports.attachment(fbo, true, width, height);
         boolean lends = fbo != 0 && single(color) && single(depth);
-        CgExternalTarget made = new CgExternalTarget("framebuffer " + fbo, color, depth, width, height, lends);
+        CgExternalTarget made = new CgExternalTarget("framebuffer " + fbo, color, depth, width, height, lends).drawnAsHost();
         if (hostCount == hosts.length) {
             hosts = Arrays.copyOf(hosts, hostCount * 2);
             hostKeys = Arrays.copyOf(hostKeys, hostCount * 6);
@@ -120,8 +124,26 @@ public final class CgExternalTarget {
     /** This target without its depth: a GUI over the host's finished frame, tested against nothing of the world's. */
     public CgExternalTarget colorOnly() {
         if (depth == null) return this;
-        if (colorOnly == null) colorOnly = new CgExternalTarget(label + " colour", color, null, width, height, lends);
+        if (colorOnly == null) {
+            colorOnly = new CgExternalTarget(label + " colour", color, null, width, height, lends);
+            colorOnly.asHost = asHost;
+        }
         return colorOnly;
+    }
+
+    /**
+     * Draws it in the host's depth convention rather than the engine's: a target of yours standing in for the host's,
+     * whose pipelines and depth must be the world's.
+     */
+    public CgExternalTarget drawnAsHost() {
+        asHost = true;
+        if (colorOnly != null) colorOnly.asHost = true;
+        return this;
+    }
+
+    /** Whether it is drawn in the host's depth convention: {@link #host}'s, and any {@link #drawnAsHost}. */
+    public boolean drawsAsHost() {
+        return asHost;
     }
 
     public String label() {

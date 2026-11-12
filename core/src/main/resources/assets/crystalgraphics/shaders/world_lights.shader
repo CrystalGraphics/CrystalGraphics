@@ -93,7 +93,7 @@ Pass {
 
     vec3 surface(ivec2 px) {
         px = clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1);
-        float window = texelFetch(cg_DepthBuffer, px, 0).r, ndc = cg_DepthParams.y > 0.5 ? window : window * 2.0 - 1.0;
+        float window = texelFetch(cg_DepthBuffer, px, 0).r, ndc = cg_EngineDepth(window);
         float depth = _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
                 : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
         vec2 uv = (vec2(px) + 0.5) / CG_RESOLUTION;

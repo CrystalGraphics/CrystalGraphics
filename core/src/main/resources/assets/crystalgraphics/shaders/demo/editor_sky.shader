@@ -119,7 +119,7 @@ Pass {
         o.dir = world.xyz;
         gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
         // Just inside the far plane, in whichever depth convention the host draws.
-        gl_Position.z = gl_Position.w * (cg_DepthParams.x > 0.5 ? (cg_DepthParams.y > 0.5 ? 1.0e-5 : -1.0 + 1.0e-5) : 1.0 - 1.0e-5);
+        gl_Position.z = gl_Position.w * (cg_DepthParams.x > 0.5 ? 1.0e-5 : 1.0 - 1.0e-5);
     }
 
     void fragment(in v2f i, out vec4 fragColor) {

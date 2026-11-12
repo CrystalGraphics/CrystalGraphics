@@ -16,11 +16,10 @@
 #define FX_PIXEL_RAY normalize(transpose(mat3(cg_ViewMatrix)) * vec3((gl_FragCoord.x / CG_RESOLUTION.x * 2.0 - 1.0 + cg_ProjMatrix[2][0]) / cg_ProjMatrix[0][0], (gl_FragCoord.y / CG_RESOLUTION.y * 2.0 - 1.0 + cg_ProjMatrix[2][1]) / cg_ProjMatrix[1][1], -1.0))
 #endif
 // The window depth of point p in the pass's convention, reversed or not: what gl_FragDepth takes.
-#define FX_WINDOW_DEPTH(p) fx_window_depth(cg_ProjMatrix * (cg_ViewMatrix * vec4((p), 1.0)), cg_DepthParams.y > 0.5)
+#define FX_WINDOW_DEPTH(p) fx_window_depth(cg_ProjMatrix * (cg_ViewMatrix * vec4((p), 1.0)))
 
-float fx_window_depth(vec4 clip, bool zeroToOne) {
-    float z = clip.z / clip.w;
-    return clamp(zeroToOne ? z : z * 0.5 + 0.5, 0.0, 1.0);
+float fx_window_depth(vec4 clip) {
+    return clamp(clip.z / clip.w, 0.0, 1.0);
 }
 
 // Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only, like FX_CAMERA.

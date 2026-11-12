@@ -206,7 +206,7 @@ public final class CgNullRHI implements CgRHI {
         surfaceColor = (Texture) createTexture(new CgGpuTexture.Desc("surface", CgGpuTexture.Kind.D2,
                 CgFormat.RGBA8_UNORM, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
         surfaceDepth = (Texture) createTexture(new CgGpuTexture.Desc("surfaceDepth", CgGpuTexture.Kind.D2,
-                CgFormat.DEPTH24_PLUS_STENCIL8, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
+                CgFormat.DEPTH32_FLOAT_STENCIL8, width, height, 1, 1, 1, CgGpuTexture.Usage.ALL));
     }
 
     // ── CgRHI ───────────────────────────────────────────────────────────────

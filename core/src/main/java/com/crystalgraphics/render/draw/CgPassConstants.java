@@ -3,7 +3,7 @@ package com.crystalgraphics.render.draw;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -16,7 +16,7 @@ import org.joml.Vector3f;
  *
  * <pre>{@code
  * CgPassConstants c = new CgPassConstants();
- * c.projection.setOrtho(0, w, h, 0, -1, 1);
+ * CgCamera.orthographicMatrix(c.projection, 0, w, h, 0, -1, 1);   // the engine's convention, as every projection
  * c.resolution(w, h).time(frameSeconds);
  * int blocks = c.capture(table);         // both blocks, bound once at the start of the pass
  * }</pre>
@@ -81,10 +81,10 @@ public final class CgPassConstants {
     private float cameraX;
     private float cameraY;
     private float cameraZ;
-    private boolean depthReversed;
-    private boolean depthZeroToOne;
     /** Where {@link #encodedTarget} sits in a packed pass: {@code cg_FrameParams.w}. */
     public static final int ENCODED_TARGET = 71;
+    /** Where the depth convention sits in a packed pass: {@code cg_DepthParams.x}, 1 where reversed. */
+    private static final int DEPTH_REVERSED = 44;
 
     private boolean linearScene, encodedTarget;
     private float sceneGlow = 1f;
@@ -136,14 +136,14 @@ public final class CgPassConstants {
 
     /**
      * The view block as {@code camera} sees: its view, projection, time and position, its resolution or else
-     * {@code width} x {@code height}, the host's depth convention, its origin as {@code cg_WorldOrigin}, and what its view
-     * state adds (a stage's environment and history). What a pass's or a canvas's {@code camera(...)} writes.
+     * {@code width} x {@code height}, its origin as {@code cg_WorldOrigin}, and what its view state adds (a stage's
+     * environment and history). What a pass's or a canvas's {@code camera(...)} writes.
      */
     public CgPassConstants seenThrough(CgCamera camera, float width, float height) {
         view.set(camera.view());
         projection.set(camera.projection());
         time(camera.time()).resolution(camera.width() > 0f ? camera.width() : width,
-                camera.height() > 0f ? camera.height() : height).hostDepth();
+                camera.height() > 0f ? camera.height() : height);
         camera((float) (camera.x() - camera.originX()), (float) (camera.y() - camera.originY()),
                 (float) (camera.z() - camera.originZ()));
         origin(camera.originX(), camera.originY(), camera.originZ());
@@ -157,23 +157,6 @@ public final class CgPassConstants {
         return camera(eye.x, eye.y, eye.z);
     }
 
-    /** The depth convention of the target this pass draws into: what {@code cg_LinearEyeDepth} reads. */
-    public CgPassConstants depth(boolean reversed, boolean zeroToOne) {
-        this.depthReversed = reversed;
-        this.depthZeroToOne = zeroToOne;
-        return this;
-    }
-
-    /**
-     * {@link #depth} as the host's frame draws now: for a pass into the host's own target, drawn as the host's world is.
-     *
-     * <pre>{@code
-     * host.resolution(w, h).time(CgFrameClock.seconds()).hostDepth().cameraFromView();
-     * }</pre>
-     */
-    public CgPassConstants hostDepth() {
-        return depth(CgGraphicsLifecycle.hostDepthReversed(), CgGraphicsLifecycle.hostDepthZeroToOne());
-    }
 
     /**
      * Whether the target is the linear HDR scene ({@code CG_LINEAR_SCENE}): a Forward pass's colour is then decoded
@@ -293,8 +276,7 @@ public final class CgPassConstants {
         cameraX = block[at + 40];
         cameraY = block[at + 41];
         cameraZ = block[at + 42];
-        depthReversed = block[at + 44] != 0f;
-        depthZeroToOne = block[at + 45] != 0f;
+
         linearScene = block[at + 46] != 0f;
         sceneGlow = block[at + 47];
         originX = block[at + 48];
@@ -346,8 +328,8 @@ public final class CgPassConstants {
         out[at + 41] = cameraY;
         out[at + 42] = cameraZ;
         out[at + 43] = 1f;
-        out[at + 44] = depthReversed ? 1f : 0f;
-        out[at + 45] = depthZeroToOne ? 1f : 0f;
+        out[at + DEPTH_REVERSED] = 1f;   // the engine's; blocks(..., reversed, ...) converts for a host's standard depth
+        out[at + 45] = 1f;   // clip depth 0..1, on every device
         out[at + 46] = linearScene ? 1f : 0f;
         out[at + 47] = sceneGlow;
         out[at + 48] = originX;
@@ -378,6 +360,25 @@ public final class CgPassConstants {
     public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at) {
         return table.block(CgBindingPoints.VIEW_UBO, packed, at, VIEW_FLOATS)
                 .block(CgBindingPoints.ENVIRONMENT_UBO, packed, at + VIEW_FLOATS, ENVIRONMENT_FLOATS);
+    }
+
+    /**
+     * {@link #blocks} as the pass's execution draws: a packed pass is in the engine's depth convention, and where
+     * {@code reversed} is false (a target drawn in a host's standard depth) its projection, last frame's view-projection
+     * and {@code cg_DepthParams.x} are converted, in {@code scratch} ({@link #FLOATS} floats or more). The executor's.
+     */
+    public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at, boolean reversed, float[] scratch) {
+        if (reversed) return blocks(table, packed, at);
+        System.arraycopy(packed, at, scratch, 0, FLOATS);
+        standardDepth(scratch, 16);
+        standardDepth(scratch, 52);
+        scratch[DEPTH_REVERSED] = 0f;
+        return blocks(table, scratch, 0);
+    }
+
+    /** Clip depth {@code w - z}: the depth 1 - d a standard target stores where the engine's would store d. */
+    private static void standardDepth(float[] matrix, int at) {
+        for (int column = at; column < at + 16; column += 4) matrix[column + 2] = matrix[column + 3] - matrix[column + 2];
     }
 
     /** Snapshots both blocks into {@code table}, and answers its id. */

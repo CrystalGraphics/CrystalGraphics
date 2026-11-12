@@ -83,7 +83,7 @@ Pass {
     void fragment(in v2f i, out vec4 fragColor) {
         float invert = _Options.x;
         float depth = texture(cg_DepthBuffer, i.uv).r;
-        float ndc = cg_DepthParams.y > 0.5 ? depth : depth * 2.0 - 1.0;
+        float ndc = depth;
         vec4 view = inverse(cg_ProjMatrix) * vec4(i.uv * 2.0 - 1.0, ndc, 1.0);
         // A pixel at an infinite far plane is nowhere in a region.
         float alpha = 0.0;

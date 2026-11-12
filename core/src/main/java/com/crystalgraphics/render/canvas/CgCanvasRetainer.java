@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -98,7 +99,7 @@ public final class CgCanvasRetainer {
         size(recording, (int) Math.ceil(width * scale), (int) Math.ceil(height * scale));
         this.scale = scale;
         constants.view.identity();
-        constants.projection.identity().ortho(0f, texelsWide / scale, texelsHigh / scale, 0f, -1f, 1f);
+        CgCamera.orthographicMatrix(constants.projection, 0f, texelsWide / scale, texelsHigh / scale, 0f, -1f, 1f);
         constants.resolution(texelsWide, texelsHigh).cameraFromView();
         canvas.recordInto(recording, texture, CgLoad.CLEAR, constants);
         painting = true;

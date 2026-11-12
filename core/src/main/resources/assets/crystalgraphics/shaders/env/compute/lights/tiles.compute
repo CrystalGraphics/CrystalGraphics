@@ -39,7 +39,7 @@ vec3 to_world(vec3 v) {
 // sample.compute's: a window depth's eye depth under the bob-free perspective; 0 for none (the sky).
 float eye_depth_of(float window) {
     if (cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0) return 0.0;
-    float ndc = cg_DepthParams.y > 0.5 ? window : window * 2.0 - 1.0;
+    float ndc = cg_EngineDepth(window);
     return _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
             : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
 }

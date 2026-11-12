@@ -1,5 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -497,7 +498,7 @@ public final class CgMainPreviewRenderer {
         // NEAR AND FAR IN THIS ORDER. Swapping them flips the projection's determinant, which flips
         // triangle winding, which makes back-face culling keep the opposite set -- so it cancels its own
         // effect on the depth test and changes nothing on screen. See CgPreviewRenderer.applyCamera.
-        camera.projection.setOrtho(-rx, rx, -ry, ry, -128f, 128f);
+        CgCamera.orthographicMatrix(camera.projection, -rx, rx, -ry, ry, -128f, 128f);
         camera.resolution(size, size).time(CgFrameClock.seconds()).cameraFromView();
     }
 

@@ -6,6 +6,7 @@ import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
+import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.render.draw.CgPassConstants;
 
 import javax.annotation.Nullable;
@@ -40,6 +41,8 @@ public final class CgComputePass extends CgPass {
 
     final CgRecording recording;
     final float[] constants = new float[CgPassConstants.FLOATS];
+    /** Its constants converted to a host's standard depth ({@link CgPassConstants#blocks}). */
+    private final float[] constantsScratch = new float[CgPassConstants.FLOATS];
     /** The recording's snapshot of its constants, made when it ends: bound once for every dispatch, as a raster pass's. */
     int constantsBinding = -1;
     private final List<CgDispatch> dispatches = new ArrayList<>();
@@ -246,7 +249,8 @@ public final class CgComputePass extends CgPass {
     /** Ends the pass: every dispatch's bindings complete, its values and samplers captured. */
     public void end() {
         requireOpen();
-        CgBindingTable frame = CgPassConstants.blocks(recording.bindings().begin(), constants, 0);
+        CgBindingTable frame = CgPassConstants.blocks(recording.bindings().begin(), constants, 0,
+                CgDepthConvention.reversed(), constantsScratch);
         if (depthFrom != null) frame.texture(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthFromCopy.depth);
         constantsBinding = frame.end();
         for (int d = 0; d < dispatches.size(); d++) {

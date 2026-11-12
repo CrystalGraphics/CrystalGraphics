@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
@@ -203,11 +204,11 @@ public final class LifecycleModern {
     /**
      * Draws into Minecraft's world depth as that world does: 26.2 renders reversed-Z, nearer greater and
      * cleared to 0, on OpenGL as on Vulkan. Earlier versions are standard, and this does nothing there.
-     * @see CgGraphicsLifecycle#hostDepth
+     * @see CgDepthConvention#host
      */
     private static void worldDepth(boolean inWorld) {
         //? if >=26.2 {
-        /*CgGraphicsLifecycle.hostDepth(inWorld, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        /*CgDepthConvention.host(inWorld);
         *///?}
     }
 
@@ -245,11 +246,10 @@ public final class LifecycleModern {
     /** Our loading screen over the frame, in a host section of its own on the main target. */
     private static void drawLoadingScreen() {
         Minecraft mc = Minecraft.getInstance();
-        // The world frame it fires draws as the world will: 26.2's reversed 0..1 depth into D32_FLOAT, so a Vulkan
+        // The world frame it fires draws as the world will: 26.2's reversed depth into D32_FLOAT, so a Vulkan
         // pipeline it builds is the world's
         //? if >=26.2 {
-        /*CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true,
-                RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        /*CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true);
         *///?}
         CgDeviceSection.begin();
         try {

@@ -258,6 +258,13 @@ public final class CgExecutor {
         return CgGraphDevice.get().current != null;
     }
 
+    /** The current target {@link #into} opened; null where none is. */
+    @Nullable
+    public static CgExternalTarget currentTarget() {
+        Into current = CgGraphDevice.get().current;
+        return current == null ? null : current.target;
+    }
+
     /** A current target {@link #into} named; closing it puts back the one before. */
     public static final class Into implements AutoCloseable {
         private final CgGraphDevice device;

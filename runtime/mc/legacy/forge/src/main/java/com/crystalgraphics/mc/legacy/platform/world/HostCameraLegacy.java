@@ -252,5 +252,6 @@ public final class HostCameraLegacy implements CgCameraManager.Host {
                 entity.lastTickPosY + (entity.posY - entity.lastTickPosY) * partialTicks,
                 entity.lastTickPosZ + (entity.posZ - entity.lastTickPosZ) * partialTicks,
                 ActiveRenderInfoAccessor.crystalgraphics$modelview(), ActiveRenderInfoAccessor.crystalgraphics$projection());
+        CgCamera.engineFrom(out.projection(), false, false);
     }
 }

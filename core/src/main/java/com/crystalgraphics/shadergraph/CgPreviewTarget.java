@@ -66,7 +66,7 @@ public final class CgPreviewTarget {
         // Nothing samples these, and the depth carries the colour's sample count. WHAT WAS ASKED, not the hardware's
         // most: up to 32x on a desktop card, resolved per preview.
         this.multisampledDepth = CgGraphTexture.requested(name + "_ms_depth",
-                CgTextureDesc.of(size, size, CgFormat.DEPTH24_PLUS_STENCIL8).withSamples(wanted));
+                CgTextureDesc.of(size, size, CgFormat.DEPTH32_FLOAT_STENCIL8).withSamples(wanted));
         this.multisampled = CgGraphTexture.requested(name + "_ms", CgTextureDesc.of(size, size, RESOLVED).withSamples(wanted));
     }
 

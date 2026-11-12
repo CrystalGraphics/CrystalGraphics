@@ -24,7 +24,8 @@ import net.minecraft.client.Minecraft;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 //? if >=26.1 {
-/*import net.minecraft.client.renderer.state.level.CameraRenderState;
+/*import com.mojang.blaze3d.systems.RenderSystem;
+import net.minecraft.client.renderer.state.level.CameraRenderState;
 *///?} elif >=1.19.3 {
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Camera;
@@ -528,6 +529,14 @@ public final class HostCameraModern implements CgCameraManager.Host {
         projection = glMatrix(GL11.GL_PROJECTION_MATRIX, PROJECTION);
         *///?}
         out.set(x, y, z, view, projection);
+        // To the engine's depth: 26.2 draws reversed, every version before standard; 26.x in the device's clip range
+        //? if >=26.2 {
+        /*CgCamera.engineFrom(out.projection(), true, RenderSystem.getDevice().getDeviceInfo().isZZeroToOne());
+        *///?} elif >=26.1 {
+        /*CgCamera.engineFrom(out.projection(), false, RenderSystem.getDevice().isZZeroToOne());
+        *///?} else {
+        CgCamera.engineFrom(out.projection(), false, false);
+        //?}
     }
 
     /**

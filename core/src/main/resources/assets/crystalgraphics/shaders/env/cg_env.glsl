@@ -41,7 +41,7 @@ CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
-    vec4 cg_DepthParams; // x: 1 when depth is reversed (nearer is greater); y: 1 when clip depth runs 0..1;
+    vec4 cg_DepthParams; // x: 1 when the target's depth is reversed, the engine's (nearer is greater); y: 1, clip depth 0..1;
                          // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE); w: its glow gain
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
@@ -149,8 +149,8 @@ CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
 // The colour the world lights a thing with at block and sky light (0 to 15 each), as Minecraft lights its blocks.
 #define CG_LIGHTMAP(light) texture(cg_Lightmap, (clamp((light), 0.0, 15.0) + 0.5) / 16.0).rgb
 
-// Raw depth is the host's convention -- Minecraft 26.2 is reversed-Z with a 0..1 clip range, earlier
-// versions are not -- so compare depths as eye distances, never as raw values:
+// Raw depth is the target's convention -- the engine's reversed Z, or a host's standard depth (Minecraft before
+// 26.2) -- so compare depths as eye distances, never as raw values:
 //
 //     float scene = CG_SCENE_EYE_DEPTH(screenUv);
 //     float self  = cg_LinearEyeDepth(gl_FragCoord.z);
@@ -161,11 +161,16 @@ CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
 // scales [2][2] and tilts the w row. The perspective's own terms are recovered from both rows, since read off [2][2]
 // alone a half-degree bob moved a point at render distance by half its distance or more.
 float cg_LinearEyeDepth(float windowDepth) {
-    float ndc = cg_DepthParams.y > 0.5 ? windowDepth : windowDepth * 2.0 - 1.0;
+    float ndc = windowDepth;
     if (cg_ProjMatrix[2][3] == 0.0) return (cg_ProjMatrix[3][2] - ndc) / cg_ProjMatrix[2][2];
     float p22 = -cg_ProjMatrix[2][2] / cg_ProjMatrix[2][3];
     float p32 = cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3];
     return p32 / (ndc + p22);
+}
+// The pass's raw depth as the engine's, near 1 and far 0: for a matrix of the engine's that is not the pass's own
+// (a camera's handed to a kernel as a property), which cg_LinearEyeDepth's cg_ProjMatrix already is.
+float cg_EngineDepth(float windowDepth) {
+    return cg_DepthParams.x > 0.5 ? windowDepth : 1.0 - windowDepth;
 }
 // Level 0, as Unreal's CalcSceneDepth: after a discard a derivative is undefined (SPIR-V's OpKill), and the host's
 // depth samples through its own mipmapped filter
@@ -411,7 +416,7 @@ float cg_WindowDepth(float eye) {
         float p22 = -cg_ProjMatrix[2][2] / cg_ProjMatrix[2][3];
         ndc = (cg_ProjMatrix[3][2] + p22 * cg_ProjMatrix[3][3]) / eye - p22;
     }
-    return cg_DepthParams.y > 0.5 ? ndc : ndc * 0.5 + 0.5;
+    return ndc;
 }
 
 // Unreal's Pixel Depth Offset (ApplyPixelDepthOffsetToMaterialParameters): this fragment's depth pushed blocks farther

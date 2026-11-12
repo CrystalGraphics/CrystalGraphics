@@ -1727,6 +1727,8 @@ com/crystalgraphics/platform/rhi/CgExternalTarget
   method public color ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
   method public colorOnly ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public depth ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public drawnAsHost ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public drawsAsHost ()Z
   method public height ()I
   method public label ()Ljava/lang/String;
   method public lendsAttachments ()Z

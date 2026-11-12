@@ -8,8 +8,8 @@ import com.crystalgraphics.compute.program.CgKernelProgram;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.material.CgShader;
+import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -98,6 +98,8 @@ final class CgRasterEncoder {
     private int identityIds;
     /** Whether the frame executing has records in its table, which a pass of OBJECT draws binds. */
     private boolean tabled;
+    /** Whether the pass drawing now runs its depth reversed: its compares and clear are converted to it. */
+    private boolean reversed;
     private final CgDrawStateCache drawCache = new CgDrawStateCache();
     /** What was logged once: a pipeline skipped, a second attachment dropped. */
     private final Set<String> loggedOnce = new HashSet<>();
@@ -315,6 +317,7 @@ final class CgRasterEncoder {
         CgTrace.add(CgChannels.GL, DEVICE_PASSES, 1);
         long prepared = CgTrace.stamp(CgChannels.GL);
         check(pass, packed);
+        reversed = CgDepthConvention.reversed();
         CgGraphTexture target = CgExecutor.targetOf(pass);
         CgGraphStorage storage = device.storage(target);
         int level = pass.level;
@@ -368,8 +371,8 @@ final class CgRasterEncoder {
                 : pass.depthNamed() ? storage.depth() : null;
         boolean clearDepth = depthTexture != null && load.clearsDepth();
         boolean clearStencil = depthTexture != null && load.clearsStencil();
-        // A load's depth is far at 1: mirrored for a host whose depth runs far to near
-        float clearDepthValue = (float) (CgGraphicsLifecycle.hostDepthReversed() ? 1.0 - load.depth() : load.depth());
+        // A load's depth is the engine's, far at 0: mirrored for a target drawn in a host's standard depth
+        float clearDepthValue = CgDepthConvention.stored(load.depth(), reversed);
         if (depthTexture != null) {
             int depthLayer = depthStorage == storage ? storage.depthLayer() + pass.layer : depthStorage.depthLayer();
             // Under damage loaded and cleared over the damage alone, as colour is
@@ -538,8 +541,7 @@ final class CgRasterEncoder {
             }
             CgMesh mesh = mesh(packed, b);
             CgGraphicsPipeline device = linked == null ? null
-                    : pipeline.device(passState, CgMeshStore.topology(mesh), !CgGraphicsLifecycle.hostDepthZeroToOne(),
-                            CgGraphicsLifecycle.hostDepthReversed(), deviceFormats, depthFormat, samples);
+                    : pipeline.device(passState, CgMeshStore.topology(mesh), reversed, deviceFormats, depthFormat, samples);
             if (device == null) {
                 if (loggedOnce.add("skipped " + pipeline)) {
                     LOGGER.warn("device raster: {} skipped in {}: {}", pipeline, pass.name(),

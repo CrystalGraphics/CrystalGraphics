@@ -92,7 +92,7 @@ vec3 sky_moon(int k, float t, vec3 planetDir, float planetSize, vec3 ringU, vec3
 // Whether a raw depth {@code depth} is the far plane's: open sky, which no host draw has covered.
 #define VFX_OPEN_SKY(depth) (CG_DEPTH_REVERSED ? (depth) <= 1.0e-6 : (depth) >= 1.0 - 1.0e-6)
 
-#define VFX_SKY_FAR_Z(w) ((w) * (cg_DepthParams.x > 0.5 ? (cg_DepthParams.y > 0.5 ? 1.0e-5 : -1.0 + 1.0e-5) : 1.0 - 1.0e-5))
+#define VFX_SKY_FAR_Z(w) ((w) * (cg_DepthParams.x > 0.5 ? 1.0e-5 : 1.0 - 1.0e-5))
 
 // The sky toward {@code d}, a unit vector, at {@code t} seconds, a pixel {@code pixel} radians across; tone mapped.
 // starLayers (up to 3) and moons (up to 2) come from material properties: loops a property bounds are not unrolled,

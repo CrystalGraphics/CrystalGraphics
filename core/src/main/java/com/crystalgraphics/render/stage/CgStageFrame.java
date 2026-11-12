@@ -2,7 +2,7 @@ package com.crystalgraphics.render.stage;
 
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.CgFrameClock;
@@ -178,13 +178,12 @@ public final class CgStageFrame {
     }
 
     /**
-     * Fills {@code constants} with the frame's time, the host target's size and depth convention, and the world's sun
-     * and fog ({@link CgWorldAtmosphere}); the camera is the caller's.
+     * Fills {@code constants} with the frame's time, the host target's size, and the world's sun and fog
+     * ({@link CgWorldAtmosphere}); the camera is the caller's.
      */
     public CgPassConstants defaults(CgPassConstants constants) {
         constants.time(CgFrameClock.seconds())
                 .resolution(host.width(), host.height())
-                .depth(CgGraphicsLifecycle.hostDepthReversed(), CgGraphicsLifecycle.hostDepthZeroToOne())
                 .linearScene(target != null);
         return CgWorldAtmosphere.apply(host.environment(), constants);
     }

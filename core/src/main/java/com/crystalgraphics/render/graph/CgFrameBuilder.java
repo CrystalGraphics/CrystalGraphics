@@ -12,6 +12,7 @@ import com.crystalgraphics.render.draw.CgBatcher;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.trace.CgTrace;
@@ -91,6 +92,8 @@ public final class CgFrameBuilder {
     private int[] refDraw = new int[256];
     /** The values each recording of the graph being built is drawn with. */
     private final IdentityHashMap<CgRecording, CgPropertyValues> valuesOf = new IdentityHashMap<>();
+    /** A pass's constants converted to a host's standard depth ({@link CgPassConstants#blocks}). */
+    private final float[] constantsScratch = new float[CgPassConstants.FLOATS];
     private final float[] domainBounds = new float[4];
     private final float[] batchBounds = new float[4];
     /** Scratch rects for placing copies, in GL pixels: x0, y0, x1, y1. */
@@ -564,7 +567,8 @@ public final class CgFrameBuilder {
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
-        CgBindingTable constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0);
+        CgBindingTable constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,
+                CgDepthConvention.reversed(), constantsScratch);
         boolean lightmap = false, media = false, localLights = false;
         for (int i = 0; i < pass.textureCount(); i++) {
             constants.texture(pass.textureUnit(i), pass.texture(i));

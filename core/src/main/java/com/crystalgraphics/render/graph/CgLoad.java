@@ -10,28 +10,28 @@ import com.crystalgraphics.platform.rhi.command.CgPassDesc;
  * CgLoad.load()                          // draw over what the target holds
  * CgLoad.CLEAR                           // a colour: transparent black first
  * CgLoad.clear(0.5f, 0.7f, 1f, 1f)       // another colour
- * CgLoad.CLEAR_DEPTH                     // a depth: far first
+ * CgLoad.CLEAR_DEPTH                     // a depth: far, 0, first
  * CgLoad.CLEAR_DEPTH.andStencil(0)       // a depth and its stencil
  *
  * rec.raster("preview").color(picture, CgLoad.CLEAR).depth(depth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE);
  * }</pre>
  *
  * <ul>
- *   <li>Depth values are far at 1, near at 0; the executor mirrors them for a host whose depth runs far to near. A
- *       depth cleared to 0 is near: every draw then fails its test.</li>
+ *   <li>Depth values are the engine's, Unreal's reversed Z: near at 1, far at 0. The executor mirrors them for a target
+ *       drawn in a host's standard depth. A depth cleared to 1 is near: every draw then fails its test.</li>
  *   <li>Loads are values: the constants and {@link #load()} allocate nothing.</li>
  *   <li>A colour's load clears colour alone and a depth's depth and stencil alone: each throws for the other's.</li>
  * </ul>
  */
 public final class CgLoad {
 
-    private static final CgLoad LOAD = new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.LOAD, 1,
+    private static final CgLoad LOAD = new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.LOAD, 0,
             CgPassDesc.LoadOp.LOAD, 0);
     /** Colour cleared to transparent black, {@code (0, 0, 0, 0)}: most clears. */
-    public static final CgLoad CLEAR = new CgLoad(CgPassDesc.LoadOp.CLEAR, 0, 0, 0, 0, CgPassDesc.LoadOp.LOAD, 1,
+    public static final CgLoad CLEAR = new CgLoad(CgPassDesc.LoadOp.CLEAR, 0, 0, 0, 0, CgPassDesc.LoadOp.LOAD, 0,
             CgPassDesc.LoadOp.LOAD, 0);
-    /** Depth cleared to far, 1; stencil kept. */
-    public static final CgLoad CLEAR_DEPTH = new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.CLEAR, 1,
+    /** Depth cleared to far, 0 (Unreal's {@code FClearValueBinding::DepthFar}); stencil kept. */
+    public static final CgLoad CLEAR_DEPTH = new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.CLEAR, 0,
             CgPassDesc.LoadOp.LOAD, 0);
 
     private final CgPassDesc.LoadOp color, depthOp, stencilOp;
@@ -60,12 +60,12 @@ public final class CgLoad {
     /** Clear colour to {@code (r, g, b, a)}, premultiplied; depth and stencil kept. */
     public static CgLoad clear(float r, float g, float b, float a) {
         if (r == 0f && g == 0f && b == 0f && a == 0f) return CLEAR;
-        return new CgLoad(CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.LoadOp.LOAD, 1, CgPassDesc.LoadOp.LOAD, 0);
+        return new CgLoad(CgPassDesc.LoadOp.CLEAR, r, g, b, a, CgPassDesc.LoadOp.LOAD, 0, CgPassDesc.LoadOp.LOAD, 0);
     }
 
-    /** Clear depth to {@code value}, far at 1; stencil kept. A depth's load ({@link CgRasterPass#depth}). */
+    /** Clear depth to {@code value}, near at 1 and far at 0; stencil kept. A depth's load ({@link CgRasterPass#depth}). */
     public static CgLoad clearDepth(double value) {
-        if (value == 1.0) return CLEAR_DEPTH;
+        if (value == 0.0) return CLEAR_DEPTH;
         return new CgLoad(CgPassDesc.LoadOp.LOAD, 0, 0, 0, 0, CgPassDesc.LoadOp.CLEAR, value, CgPassDesc.LoadOp.LOAD, 0);
     }
 
@@ -135,7 +135,7 @@ public final class CgLoad {
         return a;
     }
 
-    /** The depth it clears to, where {@link #clearsDepth()}: far at 1. */
+    /** The depth it clears to, where {@link #clearsDepth()}: the engine's, far at 0. */
     public double depth() {
         return depth;
     }

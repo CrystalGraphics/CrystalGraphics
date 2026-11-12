@@ -297,7 +297,7 @@ exists.
 `CgLoadingScreen.holdUntilHidden`, puts up an empty screen meanwhile (with no screen and no level Minecraft reads keys
 for a player it has not made), draws ours over the GUI at its frame end before the frame tick, and runs the held
 opening after the tick once it has hidden and faded out (`runHeld`). The title screen and Quick Play then follow as they would have.
-From 26.2 the modern host also tells it how the world draws (`hostWorld(DEPTH32F, reversed, zeroToOne)`), so the
+From 26.2 the modern host also tells it how the world draws (`hostWorld(DEPTH32F, reversed)`), so the
 world frame it fires while no world draws builds the world's own Vulkan pipelines.
 
 | Era | Where the first screen opens | Hook |

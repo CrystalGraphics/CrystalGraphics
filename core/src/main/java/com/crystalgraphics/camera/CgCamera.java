@@ -26,6 +26,10 @@ import java.nio.FloatBuffer;
  * // outside any stage: a preview, a thumbnail -- kept in a field, moved each frame
  * CgCamera preview = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(seconds);
  * CgCamera screen = CgCamera.screen(w, h);                 // pixels, y down, as a UI draws
+ *
+ * // a projection of your own, as the engine takes them
+ * CgCamera.perspectiveMatrix(projection, 70f, w / (float) h, 0.05f, Float.POSITIVE_INFINITY);
+ * camera.set(x, y, z, view, projection);
  * }</pre>
  *
  * <ul>
@@ -37,7 +41,10 @@ import java.nio.FloatBuffer;
  *   <li>A pass copies it at {@code camera(...)}: moving it afterwards moves no recorded pass. Keep one and change it
  *       per frame; nothing allocates.</li>
  *   <li>Its resolution is its pass's target's unless {@link #resolution} names one.</li>
- *   <li>Projections take GL's clip convention (depth -1 to 1); the renderer maps it to the target's.</li>
+ *   <li>Projections are the engine's, Unreal's reversed Z: near at depth 1, far at 0, clip depth 0 to 1. Build them
+ *       with {@link #perspectiveMatrix} and {@link #orthographicMatrix}; JOML's {@code perspective} and
+ *       {@code setOrtho} build GL's, which draws everything behind everything. A projection a host hands over goes
+ *       through {@link #engineFrom}. The renderer converts to a target drawn in a host's standard depth.</li>
  * </ul>
  */
 public final class CgCamera {
@@ -79,8 +86,54 @@ public final class CgCamera {
     /** An orthographic camera over the view-space box given. */
     public static CgCamera orthographic(float left, float right, float bottom, float top, float near, float far) {
         CgCamera camera = new CgCamera();
-        camera.projection.setOrtho(left, right, bottom, top, near, far);
+        orthographicMatrix(camera.projection, left, right, bottom, top, near, far);
         return camera;
+    }
+
+    /**
+     * {@code dest} made the engine's perspective projection (Unreal's {@code FReversedZPerspectiveMatrix}): {@code fovY}
+     * degrees, {@code aspect} width over height, {@code near} at depth 1, {@code far} at 0. A far of
+     * {@link Float#POSITIVE_INFINITY} has no far plane.
+     *
+     * <pre>{@code
+     * CgCamera.perspectiveMatrix(projection, 70f, 16f / 9f, 0.05f, 300f);
+     * CgCamera.perspectiveMatrix(projection, 70f, 16f / 9f, 0.05f, Float.POSITIVE_INFINITY);
+     * }</pre>
+     */
+    public static Matrix4f perspectiveMatrix(Matrix4f dest, float fovY, float aspect, float near, float far) {
+        return dest.setPerspective((float) Math.toRadians(fovY), aspect, far, near, true);
+    }
+
+    /**
+     * {@code dest} made the engine's orthographic projection over the view-space box given: {@code near} at depth 1,
+     * {@code far} at 0.
+     *
+     * <pre>{@code
+     * CgCamera.orthographicMatrix(projection, 0, w, h, 0, -1, 1);   // pixels, y down
+     * }</pre>
+     */
+    public static Matrix4f orthographicMatrix(Matrix4f dest, float left, float right, float bottom, float top,
+                                              float near, float far) {
+        return dest.setOrtho(left, right, bottom, top, far, near, true);
+    }
+
+    /**
+     * {@code projection}, a host's, made the engine's in place: as it is captured, from the host's convention, reversed
+     * or not, its clip depth 0 to 1 or GL's -1 to 1. Clip depth is linear in z and w, so any projection converts, a
+     * bobbing or tilted one too.
+     *
+     * <pre>{@code
+     * CgCamera.engineFrom(camera.projection(), false, false);   // GL's: Minecraft before 26.1
+     * CgCamera.engineFrom(camera.projection(), true, true);     // already the engine's: Minecraft 26.2, untouched
+     * }</pre>
+     */
+    public static Matrix4f engineFrom(Matrix4f projection, boolean reversed, boolean zeroToOne) {
+        if (reversed && zeroToOne) return projection;
+        float sign = reversed ? 1f : -1f, half = zeroToOne ? 1f : 0.5f;
+        return projection.m02((sign * projection.m02() + projection.m03()) * half)
+                .m12((sign * projection.m12() + projection.m13()) * half)
+                .m22((sign * projection.m22() + projection.m23()) * half)
+                .m32((sign * projection.m32() + projection.m33()) * half);
     }
 
     /** A camera in pixels of a {@code width} x {@code height} target, origin top-left, y down: what a UI draws through. */
@@ -92,14 +145,14 @@ public final class CgCamera {
 
     /** Its projection made a perspective one. @see #perspective */
     public CgCamera perspectiveLens(float fovY, float aspect, float near, float far) {
-        projection.setPerspective((float) Math.toRadians(fovY), aspect, near, far);
+        perspectiveMatrix(projection, fovY, aspect, near, far);
         return this;
     }
 
     /** Its projection made {@link #screen}'s, for a target of {@code width} x {@code height}, its view the identity. */
     public CgCamera screenLens(float width, float height) {
         view.identity();
-        projection.setOrtho(0f, width, height, 0f, -1f, 1f);
+        orthographicMatrix(projection, 0f, width, height, 0f, -1f, 1f);
         originX = originY = originZ = 0;
         positioned = false;
         return resolution(width, height);

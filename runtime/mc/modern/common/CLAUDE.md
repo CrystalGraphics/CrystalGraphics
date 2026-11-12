@@ -48,12 +48,11 @@ before the level renders, so anything painted from a GUI hook lands under the wo
   `mc.gameRenderer.mainRenderTarget()` on 26.2.
 - **Reversed-Z on 26.2, on OpenGL too.** Minecraft 26.2 sets clip control to `ZERO_TO_ONE` once at
   device init, swaps near and far in its projection, clears depth to 0 and tests `GREATER_THAN_OR_EQUAL`.
-  The world passes run with `CgGraphicsLifecycle.hostDepth(true, ...)`, under which every pipeline into the host's
-  depth mirrors its compare and every clear its value (`LifecycleModern.worldDepth`), so no material changes. Our own
-  drawing -- the CrystalGUI desktop and shader-graph previews -- is unaffected: the device sets its own clip range in
-  each section and puts Minecraft's back (`HostStateModern`). `cg_DepthBuffer` holds
-  reversed values there, so a shader comparing against it is wrong on 26.2; polygon offset pulls the other
-  way. Every piece is a no-op below 26.2.
+  That is the engine's own convention (Unreal's), so the world passes run with `CgDepthConvention.host(true)`
+  (`LifecycleModern.worldDepth`) and nothing converts; below 26.2 the host's depth is standard and every execution into
+  it converts the engine's projections, compares and clears at its edge. The host's projection is converted to the
+  engine's as it is captured (`HostCameraModern.capture`, `CgCamera.engineFrom`). The device sets its own clip range
+  in each section and puts Minecraft's back (`HostStateModern`). Compare depths as eye distances, never raw.
 - **Vulkan.** 26.2 can run Blaze3D on Vulkan, and then the engine draws through a
   `CgVulkanDevice` hosted on Minecraft's own device (`vulkan.Blaze3dVulkanHost`, which answers tier 1's `HostedVulkanHost` for Minecraft; device-seam D5). Which
   API is running is `GraphicsApi.vulkan()`, read off Minecraft's device at the first host section;

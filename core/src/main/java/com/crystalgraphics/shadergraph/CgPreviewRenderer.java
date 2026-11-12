@@ -1,5 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
@@ -552,7 +553,7 @@ public final class CgPreviewRenderer {
     private void applyCamera(CgPassConstants camera, CgPreviewGeometry geometry) {
         camera.view.identity();
         if (geometry == CgPreviewGeometry.SPHERE) {
-            camera.projection.setOrtho(-1.15f, 1.15f, -1.15f, 1.15f, -4f, 4f);
+            CgCamera.orthographicMatrix(camera.projection, -1.15f, 1.15f, -1.15f, 1.15f, -4f, 4f);
         } else {
             camera.projection.identity();
         }

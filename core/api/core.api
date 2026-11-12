@@ -3377,8 +3377,11 @@ com/crystalgraphics/camera/CgCamera
   method public x ()D
   method public y ()D
   method public z ()D
+  method public,static engineFrom (Lorg/joml/Matrix4f;ZZ)Lorg/joml/Matrix4f;
   method public,static orthographic (FFFFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public,static orthographicMatrix (Lorg/joml/Matrix4f;FFFFFF)Lorg/joml/Matrix4f;
   method public,static perspective (FFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public,static perspectiveMatrix (Lorg/joml/Matrix4f;FFFF)Lorg/joml/Matrix4f;
   method public,static screen (FF)Lcom/crystalgraphics/camera/CgCamera;
 com/crystalgraphics/camera/CgCamera$ViewState
   access public,abstract,interface
@@ -6513,19 +6516,12 @@ com/crystalgraphics/lifecycle/CgGraphicsLifecycle
   extends java/lang/Object
   method public,static getCurrentHeight ()I
   method public,static getCurrentWidth ()I
-  method public,static hostDepth (ZZ)V
-  method public,static hostDepthReversed ()Z
-  method public,static hostDepthZeroToOne ()Z
-  method public,static inWorldDepth (Ljava/util/function/BooleanSupplier;)Z
   method public,static isContextDestroyed ()Z
   method public,static isInitialized ()Z
   method public,static isStoodDown ()Z
   method public,static onResize (II)V
   method public,static standDown (Ljava/lang/String;)V
   method public,static tickFrame ()V
-  method public,static worldDepth (ZZ)V
-  method public,static worldDepthReversed ()Z
-  method public,static worldDepthZeroToOne ()Z
 com/crystalgraphics/lifecycle/CgLifecycleListener
   access public,abstract,interface
   extends java/lang/Object
@@ -6566,7 +6562,7 @@ com/crystalgraphics/loading/CgLoadingScreen
   method public,static hideNow (Ljava/lang/String;)V
   method public,static holdUntilHidden (Ljava/lang/Runnable;)Z
   method public,static hostDraws ()Z
-  method public,static hostWorld (Lcom/crystalgraphics/platform/rhi/format/CgFormat;ZZ)V
+  method public,static hostWorld (Lcom/crystalgraphics/platform/rhi/format/CgFormat;Z)V
   method public,static install (II)V
   method public,static loading ()Z
   method public,static onVisibility (Ljava/util/function/Consumer;)V
@@ -8388,6 +8384,17 @@ com/crystalgraphics/render/CgCpuMeter
   method public <init> ()V
   method public add (J)V
   method public take ()J
+com/crystalgraphics/render/CgDepthConvention
+  access public,final
+  extends java/lang/Object
+  method public,static host (Z)V
+  method public,static hostReversed ()Z
+  method public,static inWorld (Ljava/util/function/BooleanSupplier;)Z
+  method public,static reversed ()Z
+  method public,static reversed (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)Z
+  method public,static stored (DZ)F
+  method public,static world (Z)V
+  method public,static worldReversed ()Z
 com/crystalgraphics/render/CgFrameClock
   access public,final
   extends java/lang/Object
@@ -9091,13 +9098,11 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public capture (Lcom/crystalgraphics/render/draw/CgBindingTable;)I
   method public daylight (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public defaultSun ()Lcom/crystalgraphics/render/draw/CgPassConstants;
-  method public depth (ZZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public encodedTarget (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public entityLights (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public fog (FFFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public height ()F
   method public history (Lorg/joml/Matrix4fc;IZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
-  method public hostDepth ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public linearScene (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
@@ -9111,13 +9116,14 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public width ()F
   method public write ([FI)V
   method public,static blocks (Lcom/crystalgraphics/render/draw/CgBindingTable;[FI)Lcom/crystalgraphics/render/draw/CgBindingTable;
+  method public,static blocks (Lcom/crystalgraphics/render/draw/CgBindingTable;[FIZ[F)Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public,static height ([F)F
   method public,static width ([F)F
 com/crystalgraphics/render/draw/CgPipeline
   access public,final
   extends java/lang/Object
   method public as (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Lcom/crystalgraphics/render/draw/CgPipeline;
-  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
   method public has (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Z
   method public id ()I
   method public isBuilt ()Z
@@ -9291,6 +9297,7 @@ com/crystalgraphics/render/graph/CgExecutor
   access public,final
   extends java/lang/Object
   method public,static ahead (I)V
+  method public,static currentTarget ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public,static destroyAll ()V
   method public,static drawsOnDevice ()Z
   method public,static execute (Lcom/crystalgraphics/render/graph/CgFrame;)V

@@ -81,7 +81,7 @@ pass of a frame shares (`CgPassConstants`):
 | `cg_ProjMatrix` | `mat4` | Projection matrix |
 | `cg_Time` | `vec4` | `(t/20, t, t×2, t×3)` — seconds |
 | `cg_Resolution` | `vec2` | Viewport size in pixels |
-| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed (Minecraft 26.2's world), `y` 1 when its clip depth runs 0..1, `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`), `w` the scene's glow gain (`CG_SCENE_GLOW`). Read through `cg_LinearEyeDepth`, not directly |
+| `cg_DepthParams` | `vec4` | `x` 1 when the pass's depth is reversed, the engine's convention (Unreal's: near 1, far 0), 0 in a host's standard depth (Minecraft before 26.2); `y` 1, clip depth 0..1 on every device; `z` 1 when it draws into the linear HDR scene (`CG_LINEAR_SCENE`), `w` the scene's glow gain (`CG_SCENE_GLOW`). Read through `cg_LinearEyeDepth`, or `cg_EngineDepth` for a raw depth against a matrix of the engine's handed in as a property; not directly |
 | `cg_WorldOrigin` | `vec4` | Where world space's origin is in absolute coordinates: the camera, in a camera-relative world pass. Read through `CG_ABSOLUTE_WORLD_POS(p)` |
 | `cg_SunDirection` | `vec4` | `xyz` the direction toward the sun (the moon while it is down), `w` daylight 0..1. Read through `CG_SUN_DIRECTION`, `CG_DAYLIGHT` |
 | `cg_FogColor` | `vec4` | The world's fog colour, `a` 1 when there is fog |

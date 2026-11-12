@@ -32,10 +32,9 @@ Pass {
         float nol = abs(dot(n, CG_OBJECT_CUSTOM2.xyz));
         float slope = nol > 0.0 ? clamp(sqrt(clamp(1.0 - nol * nol, 0.0, 1.0)) / nol, 0.0, 1.0) : 1.0;
         o.depth = dot(CG_OBJECT_CUSTOM2, w) + CG_OBJECT_CUSTOM3.w * (1.0 + 3.0 * slope);
-        // The target's depth convention, as the frame block carries it: reversed, and 0 to 1 or -1 to 1.
+        // The target's depth convention, as the frame block carries it.
         float z = clamp(o.depth * CG_OBJECT_CUSTOM3.z, 0.0, 1.0);
         if (cg_DepthParams.x > 0.5) z = 1.0 - z;
-        if (cg_DepthParams.y < 0.5) z = z * 2.0 - 1.0;
         gl_Position = vec4(o.cascade * 0.5 + CG_OBJECT_CUSTOM3.xy, z, 1.0);
     }
 

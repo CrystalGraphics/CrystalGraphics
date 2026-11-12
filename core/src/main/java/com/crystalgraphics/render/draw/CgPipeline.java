@@ -7,7 +7,7 @@ import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.parse.CgParsedPass;
 import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.material.parse.CgPermutationDomain;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipeline;
@@ -106,7 +106,6 @@ public final class CgPipeline {
     private CgGraphicsPipeline deviceLast;
     private CgRenderState deviceLastPass;
     private CgGraphicsPipelineDesc.Topology deviceLastTopology;
-    private boolean deviceLastGlDepth;
     private List<CgFormat> deviceLastColors;
     private CgFormat deviceLastDepth;
     private int deviceLastSamples;
@@ -416,10 +415,9 @@ public final class CgPipeline {
         CgShader linked = program();
         if (linked == null || !linked.isCompiled()) return true;   // its draw reports the failure
         CgRHI rhi = CgRHI.get();
-        boolean glDepth = !CgGraphicsLifecycle.hostDepthZeroToOne();
         return rhi.prepareProgram(CgDeviceStates.layout(rhi, linked.explicit()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth));
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, false),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false));
     }
 
     /**
@@ -505,7 +503,7 @@ public final class CgPipeline {
      * does not compile. Render thread.
      *
      * <pre>{@code
-     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), true, false,
+     * CgGraphicsPipeline p = pipeline.device(passState, CgMeshStore.topology(mesh), true,
      *         List.of(CgFormat.RGBA16_FLOAT),
      *         CgFormat.DEPTH32_FLOAT, 1);
      * if (p != null) pass.setPipeline(p);
@@ -515,22 +513,20 @@ public final class CgPipeline {
      *   <li>The stencil reference is the pass's to set, not the pipeline's.</li>
      * </ul>
      *
-     * @param glDepth whether the engine's projections give GL's clip depth ({@code [-w, w]}), which the vertex stage then
-     *                maps to the device's; false for projections already in zero-to-one depth
-     * @param reversed whether the host's depth runs far to near (Minecraft 26.2's): the depth compare is mirrored, as
-     *                 the GL path's depth function is
+     * @param reversed whether the target's depth runs far to near ({@code CgDepthConvention}): false mirrors the
+     *                 compare, authored as nearer-passes, for a host's standard depth
      * @param depth null for a pass with no depth target
      * @throws com.crystalgraphics.platform.rhi.shader.CgShaderModule.CompileException where its sources leave a resource
      *         unbound
      */
     @Nullable
-    public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology, boolean glDepth,
+    public CgGraphicsPipeline device(CgRenderState passState, CgGraphicsPipelineDesc.Topology topology,
                                      boolean reversed, List<CgFormat> colors, @Nullable CgFormat depth, int samples) {
         CgShader linked = program();
         if (linked == null) return null;
         CgRHI rhi = CgRHI.get();
         if (deviceLast != null && deviceLastOf == rhi && deviceLastProgram == linked && deviceLastPass == passState
-                && deviceLastTopology == topology && deviceLastGlDepth == glDepth && deviceLastDepth == depth && deviceLastSamples == samples
+                && deviceLastTopology == topology && deviceLastDepth == depth && deviceLastSamples == samples
                 && deviceLastReversed == reversed && sameFormats(deviceLastColors, colors)) {
             return deviceLast;
         }
@@ -545,17 +541,16 @@ public final class CgPipeline {
             targets.add(new CgGraphicsPipelineDesc.ColorTarget(colors.get(i), own, mask));
         }
         CgGraphicsPipelineDesc desc = new CgGraphicsPipelineDesc(label, CgDeviceStates.layout(rhi, linked.explicit()),
-                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, glDepth),
-                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, glDepth),
+                linked.deviceModule(rhi, CgShaderModule.Stage.VERTEX, false),
+                linked.deviceModule(rhi, CgShaderModule.Stage.FRAGMENT, false),
                 List.of(), topology,
                 CgDeviceStates.raster(s.getCull()), CgDeviceStates.depthStencil(s.getDepth(), s.getStencil(), reversed), targets,
                 depth, samples);
-        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), !glDepth);
+        deviceLast = deviceCache(rhi).get(desc, linked.deviceKey(), true);
         deviceLastOf = rhi;
         deviceLastProgram = linked;
         deviceLastPass = passState;
         deviceLastTopology = topology;
-        deviceLastGlDepth = glDepth;
         deviceLastColors = List.copyOf(colors);
         deviceLastDepth = depth;
         deviceLastSamples = samples;

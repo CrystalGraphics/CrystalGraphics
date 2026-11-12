@@ -33,7 +33,7 @@ float eye_depth(ivec2 px) {
     px = clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1);
     float window = texelFetch(cg_DepthBuffer, px, 0).r;
     if (cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0) return 0.0;
-    float ndc = cg_DepthParams.y > 0.5 ? window : window * 2.0 - 1.0;
+    float ndc = cg_EngineDepth(window);
     return _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
             : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
 }

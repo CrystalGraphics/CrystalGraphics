@@ -339,7 +339,7 @@ public final class CgRenderStage {
 
     private void overlay(int width, int height, float scale) {
         host.guiScale(scale).camera().set(0d, 0d, 0d, OVERLAY_VIEW.identity(),
-                OVERLAY_PROJECTION.setOrtho(0f, width, height, 0f, -1f, 1f));
+                CgCamera.orthographicMatrix(OVERLAY_PROJECTION, 0f, width, height, 0f, -1f, 1f));
         fire();
     }
 
@@ -360,7 +360,7 @@ public final class CgRenderStage {
             int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
             if (w <= 0 || h <= 0) return;
             host.set(0f, w, h, host.framebuffer()).camera().set(0d, 0d, 0d, REHEARSAL_VIEW,
-                    REHEARSAL_PROJECTION.setPerspective((float) Math.toRadians(70.0), (float) w / h, 0.05f, 512f));
+                    CgCamera.perspectiveMatrix(REHEARSAL_PROJECTION, 70f, (float) w / h, 0.05f, 512f));
         }
         CgExternalTarget hostTarget = host.target();
         CgRHI rhi = CgRHI.get();
@@ -379,7 +379,7 @@ public final class CgRenderStage {
                     rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal colour", CgGpuTexture.Kind.D2,
                             CgFormat.RGBA8_UNORM, host.width(), host.height(), 1, 1, 1, usage)),
                     rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal depth", CgGpuTexture.Kind.D2,
-                            depth != null ? depth : CgFormat.DEPTH24_PLUS_STENCIL8, host.width(), host.height(),
+                            depth != null ? depth : CgFormat.DEPTH32_FLOAT_STENCIL8, host.width(), host.height(),
                             1, 1, 1, usage)));
             rehearsedHost = hostTarget;
             rehearsedOn = rhi;

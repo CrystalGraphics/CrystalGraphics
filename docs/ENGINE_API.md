@@ -509,7 +509,7 @@ CgExternalTarget view = CgTextures.target("mymod.view", colour, depth);   // mak
 try (CgExecutor.Into ignored = CgExecutor.into(view)) {   // the current target of what executes
     stage.fire();
 }
-CgRenderer.clear(view, true, 0f, 0f, 0f, 1f, true, 1.0, false, 0);      // outside a graph; in one, a pass's CgLoad
+CgRenderer.clear(view, true, 0f, 0f, 0f, 1f, true, 0.0, false, 0);      // outside a graph; in one, a pass's CgLoad
 colour.release();
 depth.release();
 ```

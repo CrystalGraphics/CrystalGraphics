@@ -5,7 +5,8 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
+import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.render.CgDepthConvention;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -155,9 +156,8 @@ public final class CgLoadingScreen {
     /** The world frame's target while no host draws a world: small, since nobody sees it. */
     private static final int WARM_SIZE = 256;
     private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
-    private static final float WARM_FOV = (float) Math.toRadians(70), WARM_NEAR = 0.05f, WARM_FAR = 512f;
     private static final Matrix4f WARM_VIEW = new Matrix4f(),
-            WARM_PROJECTION = new Matrix4f().perspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR);
+            WARM_PROJECTION = CgCamera.perspectiveMatrix(new Matrix4f(), 70f, 1f, 0.05f, 512f);
     private static CgTexture2D warmColour, warmDepth;
     private static CgExternalTarget warmTarget;
     /** The host world's depth format, as {@link #hostWorld} described it; its convention is the lifecycle's. */
@@ -510,10 +510,10 @@ public final class CgLoadingScreen {
         if (warmTarget == null) {
             warmColour = CgTextures.of("cg_loading_world", CgTextureDesc.of(WARM_SIZE, WARM_SIZE, CgFormat.RGBA8_UNORM));
             warmDepth = CgTextures.of("cg_loading_world.depth", CgTextureDesc.of(WARM_SIZE, WARM_SIZE, worldDepth));
-            warmTarget = CgTextures.target("cg_loading_world", warmColour, warmDepth);
+            warmTarget = CgTextures.target("cg_loading_world", warmColour, warmDepth).drawnAsHost();
         }
         try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
-            CgGraphicsLifecycle.inWorldDepth(() -> {
+            CgDepthConvention.inWorld(() -> {
                 for (CgRenderStage stage : WORLD) {
                     stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget).camera().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
                     stage.fire();
@@ -531,18 +531,13 @@ public final class CgLoadingScreen {
      * first {@link #draw}; GL's standard depth into {@code DEPTH24_STENCIL8} otherwise. Render thread.
      *
      * <pre>{@code
-     * CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true, true);   // Minecraft 26.2: reversed, 0..1, D32_FLOAT
+     * CgLoadingScreen.hostWorld(CgFormat.DEPTH32_FLOAT, true);   // Minecraft 26.2: reversed, D32_FLOAT
      * }</pre>
      */
-    public static void hostWorld(CgFormat depth, boolean reversed, boolean zeroToOne) {
-        if (depth == worldDepth && reversed == CgGraphicsLifecycle.worldDepthReversed()
-                && (reversed && zeroToOne) == CgGraphicsLifecycle.worldDepthZeroToOne()) return;
+    public static void hostWorld(CgFormat depth, boolean reversed) {
+        if (depth == worldDepth && reversed == CgDepthConvention.worldReversed()) return;
         worldDepth = depth;
-        // Its warm frame and every precache polled outside a world pass build what the world's draws take
-        CgGraphicsLifecycle.worldDepth(reversed, zeroToOne);
-        // A projection built for the pass is built reversed under a reversed convention (CgGraphicsLifecycle.hostDepth)
-        if (reversed) WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_FAR, WARM_NEAR, zeroToOne);
-        else WARM_PROJECTION.setPerspective(WARM_FOV, 1f, WARM_NEAR, WARM_FAR, zeroToOne);
+        CgDepthConvention.world(reversed);
         if (warmTarget != null) {
             warmColour.release();
             warmDepth.release();
