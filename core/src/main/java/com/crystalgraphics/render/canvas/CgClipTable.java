@@ -2,7 +2,7 @@ package com.crystalgraphics.render.canvas;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
+import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;

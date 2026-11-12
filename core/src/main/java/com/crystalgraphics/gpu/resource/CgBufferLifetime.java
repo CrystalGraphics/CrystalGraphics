@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.buffer;
+package com.crystalgraphics.gpu.resource;
 
 /**
  * How long a shader buffer's contents must stay readable -- which decides where they live. Pass it when
@@ -7,7 +7,7 @@ package com.crystalgraphics.api.buffer;
  * <pre>{@code
  * // Instance data, written before the draws that read it, every frame:
  * CgShaderBuffer particles = CgShaderBufferRegistry.get()
- *         .getOrCreate("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
+ *         .getOrCreateInternal("CgParticleBuffer", FORMAT, CgBindingPoints.PARTICLES, CgBufferLifetime.FRAME);
  * particles.beginWrite(n);
  * // ... n records ...
  * particles.endWrite();          // lands in this frame's region, and re-binds there
@@ -15,7 +15,7 @@ package com.crystalgraphics.api.buffer;
  *
  * // A block uploaded before every draw that reads it -- in frames where nothing changed too:
  * CgUniformBuffer light = CgShaderBufferRegistry.get()
- *         .getOrCreateUbo(LIGHT_FORMAT, "LightBlock", 0, CgBufferLifetime.FRAME);
+ *         .getOrCreateUboInternal(LIGHT_FORMAT, "LightBlock", lightBinding, CgBufferLifetime.FRAME);
  * light.writer().reset().beginRecord().vec4("color", r, g, b, 1f);
  * light.endRecord();
  * light.upload();                // an unchanged block already uploaded this frame costs a compare
@@ -23,7 +23,7 @@ package com.crystalgraphics.api.buffer;
  *
  * // Written once, then read by draws that never upload it:
  * CgUniformBuffer config = CgShaderBufferRegistry.get()
- *         .getOrCreateUbo(CONFIG_FORMAT, "ConfigBlock", 1);   // RETAINED
+ *         .getOrCreateUboInternal(CONFIG_FORMAT, "ConfigBlock", configBinding, CgBufferLifetime.RETAINED);
  * }</pre>
  *
  * <p>Easy to get wrong:</p>

@@ -2,7 +2,7 @@ package com.crystalgraphics.vfx.particle.gpu;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
+import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 
 import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;

@@ -4,34 +4,19 @@ import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Global registry of user-created SSBO and UBO shader buffers.
+ * The engine's shared shader buffers, one per name, layout and reserved binding point, deleted together at shutdown
+ * ({@link #deleteAll()}). A consumer's buffer is {@code CgBuffer} ({@code CgBuffers.create}).
  *
- * <p>Provides lifecycle management (via {@link #deleteAll()}) for user-owned buffers.
- * All buffers obtained through this registry use binding points derived from a 0-based
- * {@code userIndex}: the actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}.</p>
- *
- * <p><strong>Engine-internal buffers bypass this registry</strong>: the object records and the frame block
- * occupy engine-reserved binding points, resolved at runtime, and the executor binds them per pass.</p>
- *
- * <h3>Usage</h3>
  * <pre>{@code
- * // userIndex 0 = first user slot (binding point CgBindingPoints.USER_START)
- * CgShaderBuffer myBuf = CgShaderBufferRegistry.get()
- *     .getOrCreate("myData", MyFormats.PARTICLE_FORMAT, 0);
- *
- * CgUniformBuffer myUbo = CgShaderBufferRegistry.get()
- *     .getOrCreateUbo(MyFormats.LIGHT_FORMAT, "LightBlock", 1);
- *
- * // Rewritten every frame, before the draws that read it: the frame ring.
- * CgShaderBuffer instances = CgShaderBufferRegistry.get()
- *     .getOrCreate("myInstances", MyFormats.INSTANCE_FORMAT, 2, CgBufferLifetime.FRAME);
+ * // rewritten every frame, before the draws that read it: the frame ring
+ * CgShaderBuffer shapes = CgShaderBufferRegistry.get()
+ *     .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingPoints.SHAPE_TABLE, CgBufferLifetime.FRAME);
  * }</pre>
  *
  * <p>A name, format and binding asked for again returns the same buffer, and must ask for the same
@@ -61,44 +46,9 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware SSBO for the given name, format, and
-     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_SSBO}.
-     *
-     * @param name      debug/sampler name for the buffer
-     * @param format    typed format descriptor for the buffer records
-     * @param userIndex 0-based user slot index (0 = first user slot)
-     * @return the cached or newly-created shader buffer
-     */
-    public CgShaderBuffer getOrCreate(String name, CgBufferLayout format, int userIndex) {
-        return getOrCreate(name, format, userIndex, CgBufferLifetime.RETAINED);
-    }
-
-    /**
-     * As {@link #getOrCreate(String, CgBufferLayout, int)}, with the contents' {@link CgBufferLifetime}.
-     *
-     * <pre>{@code
-     * CgShaderBuffer particles = CgShaderBufferRegistry.get()
-     *         .getOrCreate("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
-     * particles.beginWrite(n);
-     * // ... n records ...
-     * particles.endWrite();          // this frame's region, re-bound there
-     * mesh.drawInstanced(n);
-     * }</pre>
-     */
-    public CgShaderBuffer getOrCreate(String name, CgBufferLayout format, int userIndex, CgBufferLifetime lifetime) {
-        int binding = CgBindingPoints.USER_START_SSBO + userIndex;
-        ShaderBufferKey key = new ShaderBufferKey(name, format, binding);
-        CgShaderBuffer existing = shaderBufferCache.get(key);
-        if (existing != null) return sameLifetime(existing, lifetime);
-        CgShaderBuffer buf = CgShaderBuffer.create(name, format, userIndex, lifetime);
-        shaderBufferCache.put(key, buf);
-        return buf;
-    }
-
-    /**
      * Returns (or lazily creates) a format-aware SSBO at an <strong>engine-reserved</strong>
      * binding — a {@link CgBindingPoints.Binding} (such as {@code CgBindingPoints.QUAD_RENDERER})
-     * rather than a {@code USER_START_*}-relative user index. Unlike
+     * rather than an index. Unlike
      * {@link #getOrCreate(String, CgBufferLayout, int)}, no offset is added — the binding
      * resolves itself to an absolute SSBO binding point (see
      * {@link CgBindingPoints.Binding#resolve()}), used verbatim, matching
@@ -161,38 +111,7 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware UBO for the given format, block name, and
-     * 0-based user index. The actual binding point is {@code userIndex + CgBindingPoints.USER_START_UBO}.
-     *
-     * <p>The {@code name} is part of the cache key — two UBOs with different names
-     * but the same format and user index are distinct resources.</p>
-     *
-     * @param format    typed format descriptor
-     * @param name      GLSL uniform block name (e.g. {@code "LightBlock"})
-     * @param userIndex 0-based user slot index (0 = first user slot)
-     * @return the cached or newly-created UBO
-     */
-    public CgUniformBuffer getOrCreateUbo(CgBufferLayout format, String name, int userIndex) {
-        return getOrCreateUbo(format, name, userIndex, CgBufferLifetime.RETAINED);
-    }
-
-    /**
-     * As {@link #getOrCreateUbo(CgBufferLayout, String, int)}, with the contents' {@link CgBufferLifetime}.
-     *
-     * <pre>{@code
-     * CgUniformBuffer light = CgShaderBufferRegistry.get()
-     *         .getOrCreateUbo(LIGHT_FORMAT, "LightBlock", 0, CgBufferLifetime.FRAME);
-     * light.writer().reset().beginRecord().vec4("color", r, g, b, 1f);
-     * light.endRecord();
-     * light.upload();     // before every draw that reads it; a compare when nothing moved this frame
-     * }</pre>
-     */
-    public CgUniformBuffer getOrCreateUbo(CgBufferLayout format, String name, int userIndex, CgBufferLifetime lifetime) {
-        return ubo(format, name, CgBindingPoints.USER_START_UBO + userIndex, lifetime);
-    }
-
-    /**
-     * As {@link #getOrCreateUbo(CgBufferLayout, String, int, CgBufferLifetime)} at an <strong>engine-reserved</strong>
+     * A uniform block at an <strong>engine-reserved</strong>
      * slot -- a {@code CgBindingPoints} UBO constant used verbatim, as the text renderer's block is.
      */
     public CgUniformBuffer getOrCreateUboInternal(CgBufferLayout format, String name, int bindingPoint,

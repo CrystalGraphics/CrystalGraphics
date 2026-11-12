@@ -2,7 +2,7 @@ package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
+import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;

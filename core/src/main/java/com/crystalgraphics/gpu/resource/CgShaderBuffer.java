@@ -4,8 +4,6 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
-import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.gpu.CgDeferral;
@@ -49,9 +47,11 @@ import java.util.function.Consumer;
  * are copied into a lease by the thread that wrote them. A {@link CgBufferLifetime#FRAME} buffer is the render
  * thread's: it is uploaded in the frame that reads it.</p>
  *
+ * <p>The engine's own buffers, at reserved binding points; a consumer's is {@code CgBuffer}.</p>
+ *
  * <pre>{@code
  * // a lookup table built on a worker
- * CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED
+ * CgShaderBuffer table = CgShaderBuffer.createInternal("Heights", HEIGHT_FORMAT, CgBindingPoints.PALETTE);   // RETAINED
  * table.beginWrite(cells);
  * for (int i = 0; i < cells; i++) {
  *     table.writer().beginRecord().vec4("height", h[i], 0f, 0f, 0f);
@@ -61,10 +61,9 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>Factory</h3>
- * <p>{@link #create(String, CgBufferLayout, int)} makes an SSBO, through core GL 4.3 or the ARB extension
- * ({@link CgCapabilities#shaderBufferPath()}); the TBO path is unhooked ({@code docs/TBO_PATH.md}). The {@code userIndex}
- * is 0-based; {@link CgBindingPoints} is added internally. Use
- * {@link #createInternal(String, CgBufferLayout, int)} for engine-reserved binding points.</p>
+ * <p>{@link #createInternal(String, CgBufferLayout, int)} makes an SSBO at an engine-reserved binding point, through
+ * core GL 4.3 or the ARB extension ({@link CgCapabilities#shaderBufferPath()}); the TBO path is unhooked
+ * ({@code docs/TBO_PATH.md}).</p>
  *
  * <h3>Shader binding</h3>
  * <p>The material compiler declares its block, named {@link #getName()}, at {@link #bindingLocation}'s binding: a
@@ -192,40 +191,7 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Factory ───────────────────────────────────────────────────────────────
 
     /**
-     * Creates the best available SSBO shader buffer driven by the given format descriptor.
-     * The buffer starts at capacity 1 and auto-grows on {@link #beginWrite(int)}.
-     *
-     * <p>The {@code userIndex} is 0-based: binding {@link CgBindingPoints#USER_START_SSBO} plus it, so user code is
-     * free of magic offset arithmetic.</p>
-     *
-     * @param name      debug/sampler name (must be non-null)
-     * @param format    typed buffer format descriptor
-     * @param userIndex 0-based user slot index (0 = first user slot after engine range)
-     * @return a {@link CgShaderStorageBuffer}
-     * @throws UnsupportedOperationException where the context reads no storage blocks
-     */
-    public static CgShaderBuffer create(String name, CgBufferLayout format, int userIndex) {
-        return create(name, format, userIndex, CgBufferLifetime.RETAINED);
-    }
-
-    /**
-     * As {@link #create(String, CgBufferLayout, int)}, with the contents' {@link CgBufferLifetime}.
-     *
-     * <pre>{@code
-     * CgShaderBuffer particles = CgShaderBuffer.create("Particles", PARTICLE_FORMAT, 0, CgBufferLifetime.FRAME);
-     * particles.beginWrite(n);
-     * // ... n records ...
-     * particles.endWrite();          // this frame's region, re-bound there
-     * mesh.drawInstanced(n);
-     * }</pre>
-     */
-    public static CgShaderBuffer create(String name, CgBufferLayout format, int userIndex, CgBufferLifetime lifetime) {
-        return createInternal(name, format, CgBindingPoints.USER_START_SSBO + userIndex, lifetime);
-    }
-
-    /**
-     * Creates an SSBO for engine-internal use. Accepts raw binding points (may be engine-reserved 0–4). No USER_START
-     * offset is added.
+     * Creates an SSBO for engine-internal use. Accepts raw binding points (may be engine-reserved 0–4).
      *
      * <p><strong>Engine-internal. Do not use from user code.</strong></p>
      *

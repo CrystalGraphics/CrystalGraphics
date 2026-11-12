@@ -1,7 +1,6 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
-import com.crystalgraphics.api.buffer.CgObjectBuffer;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;

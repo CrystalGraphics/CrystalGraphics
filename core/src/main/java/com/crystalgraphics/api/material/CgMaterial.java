@@ -5,7 +5,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
+import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -39,7 +39,6 @@ import org.apache.logging.log4j.Logger;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -50,6 +49,7 @@ import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
+import com.crystalgraphics.material.CgAttachedBuffer;
 
 /**
  * User-facing material handle backed by a shared {@link CgMaterialShader} asset.

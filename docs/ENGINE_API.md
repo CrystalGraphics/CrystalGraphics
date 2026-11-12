@@ -671,23 +671,24 @@ injected into a shader at runtime: what a program reads is in its source, so it 
 // sparks.shader, at material scope:
 //   struct Spark { vec4 positionLife; vec4 velocitySeed; };
 //   Buffers { SPARKS ("Sparks", Spark, readonly) }
-sparkMaterial.buffer("SPARKS", sparks);    // a graph buffer a kernel writes, or a CgBufferHandle of your own
+static final CgBufferLayout SPARK = CgBufferLayout.std430("Spark").vec4("positionLife").vec4("velocitySeed").build();
 
-// Rewritten every frame before the draws that read it: the frame ring
-CgShaderBuffer particles = CgShaderBuffer.create("Particles", particleFmt, 1, CgBufferLifetime.FRAME);
-particles.beginWrite(n);
-// ... n records ...
-particles.endWrite();                   // this frame's region, re-bound there
+// Rewritten every frame: uploaded into this frame's memory
+CgGraphBuffer sparks = rec.upload("mymod.sparks", SPARK, n, records -> {
+    for (Spark s : live) records.next().vec4("positionLife", s.x, s.y, s.z, s.life).vec4("velocitySeed", s.vx, s.vy, s.vz, s.seed);
+});
+sparkMaterial.buffer("SPARKS", sparks);
+
+// Kept across frames: written when it changes, from any thread
+CgBuffer heights = CgBuffers.create("mymod.heights", HEIGHT, cells);
+heights.write(0, cells, records -> { for (float h : field) records.next().float_("height", h); });
+pass.dispatch(kernel, cells).bind("HEIGHTS", heights);
 ```
 
-**Lifetime, not type, decides where a shader buffer lives** (`CgBufferLifetime`, passed to every factory; the ones
-without it mean `RETAINED`). `FRAME`: uploaded in every frame that reads it — the frame ring, bound by range. Any shader buffer's upload of at most 4 KB equal to the last one is skipped — for a `FRAME`
-buffer, once this frame already has it. `RETAINED`: readable
-until the next upload however many frames later — its own storage at offset 0, each upload staged in the ring and
-copied in on the GPU. A `FRAME` buffer read in a frame
-that did not upload it reads another frame's bytes, with no error. Every buffer the engine owns is `FRAME`: the
-quad and curve instances, the object buffer, the material blocks (uploaded at every bind), the frame block
-(copied in at a frame's first material bind) and the text block. `gpu/resource/CLAUDE.md` has the tiers. A `RETAINED` buffer is made, written and deleted from any thread (§ *Async*).
+**Two kinds, by lifetime.** A buffer rewritten every frame is uploaded into the frame (`rec.upload`): it allocates
+nothing once warm. A `CgBuffer` is kept until released; a write of some records keeps the rest and lands before the
+next frame. Either is bound by name, and a `CgBuffer`'s layout is checked against the shader's struct, field by field
+(`api/buffer/CLAUDE.md`).
 
 The engine's own blocks (`CgViewBlock`, `CgEnvironmentBlock`, `CgObjectDataBuffer`) are declared in `cg_env.glsl` and wired automatically: never declare them again.
 
@@ -732,14 +733,12 @@ frame executes (`CgDeferral.applyAll`).
 CgTexture2D noise = CgTextures.of("mymod.noise", CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM));
 noise.uploadRegion(0, 0, 0, 256, 256, pixels, GL_RGBA, GL_UNSIGNED_BYTE);   // pixels copied into a lease here
 
-CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // RETAINED
-table.beginWrite(cells);
-// ... records ...
-table.endWrite();
+CgBuffer table = CgBuffers.create("mymod.heights", HEIGHT, cells);
+table.write(0, cells, records -> { /* ... records ... */ });
 ```
 
-- **An id is 0 until the work lands.** `getId()`, `bind()` and `getGlBufferId()` land what is queued first, so call them
-  on the render thread outside a recording; a shader buffer's `bind()` before its storage exists throws.
+- **An id is 0 until the work lands.** A texture's `getId()` and a buffer's `bufferId()` land what is queued first, so
+  ask on the render thread outside a recording.
 - **One owner at a time**: an object's work is asked for from one thread at once.
 - **A task that throws is logged and dropped**; the rest of the object's queue still runs.
 - `CgTexture2DArray` takes no lease: its CPU mirror needs a source it can read.

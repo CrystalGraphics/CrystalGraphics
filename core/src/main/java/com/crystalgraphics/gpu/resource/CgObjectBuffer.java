@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.buffer;
+package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 

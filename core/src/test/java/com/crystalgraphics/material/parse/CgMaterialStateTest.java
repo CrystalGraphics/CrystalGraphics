@@ -1,7 +1,7 @@
 package com.crystalgraphics.material.parse;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderQueue;

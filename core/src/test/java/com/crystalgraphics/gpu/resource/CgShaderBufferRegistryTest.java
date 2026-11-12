@@ -8,16 +8,6 @@ import static org.junit.Assert.*;
 public class CgShaderBufferRegistryTest {
 
     @Test
-    public void userStartSsboIsZero() {
-        assertEquals("USER_START_SSBO should be 0 (SSBO user slots from bottom)", 0, CgBindingPoints.USER_START_SSBO);
-    }
-
-    @Test
-    public void userStartUboIsZero() {
-        assertEquals("USER_START_UBO should be 0 (UBO user slots from bottom)", 0, CgBindingPoints.USER_START_UBO);
-    }
-
-    @Test
     public void isInitializedReturnsFalseBeforeInit() {
         // CgBindingPoints runtime fields start at -1 (uninitialised).
         // This test runs outside a GL context so init() has never been called in this JVM.

@@ -2,7 +2,7 @@ package com.crystalgraphics.material.parse;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import org.junit.AfterClass;

@@ -2,7 +2,7 @@ package com.crystalgraphics.material.parse;
 
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.api.vertex.CgAttribType;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.api.vertex.CgVertexSemantic;

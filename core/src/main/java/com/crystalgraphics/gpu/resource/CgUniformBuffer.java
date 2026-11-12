@@ -3,7 +3,6 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 
@@ -24,7 +23,7 @@ import com.crystalgraphics.gpu.staging.CgBufferWriter;
  *
  * <pre>{@code
  * CgUniformBuffer light = CgShaderBufferRegistry.get()
- *         .getOrCreateUbo(LIGHT_FORMAT, "LightBlock", 0, CgBufferLifetime.FRAME);
+ *         .getOrCreateUboInternal(LIGHT_FORMAT, "LightBlock", lightBinding, CgBufferLifetime.FRAME);
  * // before each draw that reads it:
  * light.writer().reset().beginRecord().vec4("color", r, g, b, 1f);
  * light.endRecord();
@@ -87,26 +86,6 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      */
     public CgUniformBuffer(String name, CgBufferLayout format, int bindingLocation, CgBufferLifetime lifetime) {
         super(name, format, CgStreamBuffer.Use.UNIFORM, bindingLocation, lifetime);
-    }
-
-    /**
-     * Creates a user-defined format-aware UBO.
-     *
-     * <p>The {@code userIndex} is 0-based. {@link CgBindingPoints#USER_START_UBO} is added
-     * internally to derive the actual GL binding point.</p>
-     *
-     * @param format    typed format descriptor (mandatory)
-     * @param name      the GLSL uniform block name
-     * @param userIndex 0-based user slot index (0 = first user slot after engine range)
-     * @return a new {@code CgUniformBuffer}
-     */
-    public static CgUniformBuffer create(CgBufferLayout format, String name, int userIndex) {
-        return create(format, name, userIndex, CgBufferLifetime.RETAINED);
-    }
-
-    /** As {@link #create(CgBufferLayout, String, int)}, with the contents' {@link CgBufferLifetime}. */
-    public static CgUniformBuffer create(CgBufferLayout format, String name, int userIndex, CgBufferLifetime lifetime) {
-        return new CgUniformBuffer(name, format, CgBindingPoints.USER_START_UBO + userIndex, lifetime);
     }
 
     /**

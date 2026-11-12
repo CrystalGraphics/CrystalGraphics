@@ -1,4 +1,4 @@
-package com.crystalgraphics.api.material;
+package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;

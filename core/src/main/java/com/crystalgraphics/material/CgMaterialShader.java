@@ -7,7 +7,6 @@ import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;

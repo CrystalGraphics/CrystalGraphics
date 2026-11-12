@@ -37,7 +37,7 @@ import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.render.draw.CgDrawChunk;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
+import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgStencilState;
 import com.crystalgraphics.api.texture.CgTexture;

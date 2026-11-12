@@ -1,6 +1,6 @@
 package com.crystalgraphics.material.parse;
 
-import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.shader.CgShaderStages;
 import com.crystalgraphics.platform.gl.CgCapabilities;

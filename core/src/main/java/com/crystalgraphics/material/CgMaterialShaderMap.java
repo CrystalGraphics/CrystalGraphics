@@ -1,7 +1,6 @@
 package com.crystalgraphics.material;
 
 import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;

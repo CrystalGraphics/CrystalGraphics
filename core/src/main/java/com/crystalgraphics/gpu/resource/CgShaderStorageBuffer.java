@@ -3,7 +3,6 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.buffer.CgBufferLifetime;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 
 /**

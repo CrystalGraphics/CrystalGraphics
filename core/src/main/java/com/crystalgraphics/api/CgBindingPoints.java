@@ -17,8 +17,7 @@ import org.apache.logging.log4j.Logger;
  * <h3>Top-vs-bottom allocation strategy</h3>
  * <p>Engine-reserved slots are allocated from the <em>top</em> of the available range
  * ({@code maxXxxBindings - 1}). This minimises collision with Minecraft and other mods,
- * which start from slot 0. User-defined buffers are allocated from the <em>bottom</em>
- * ({@code USER_START_*}) and grow upward.</p>
+ * which start from slot 0. A consumer's buffer takes no slot: it is bound by name.</p>
  *
  * <h3>Lifecycle</h3>
  * <p>{@link #init(CgCapabilities)} must be called (by {@code CgEngineLifecycle.ensureGraphicsContext})
@@ -242,23 +241,6 @@ public final class CgBindingPoints {
     public static int LOCAL_LIGHTS_TEXTURE_UNIT = -1;
 
     public static final String LOCAL_LIGHTS_TEXTURE_UNIFORM = "cg_LocalLights";
-
-    // ── User buffers — allocated from bottom of available range ──────────────
-
-    /**
-     * First SSBO binding slot available to user-defined buffers.
-     * User SSBOs start at slot 0 and grow upward.
-     */
-    public static final int USER_START_SSBO = 0;
-
-    /**
-     * First UBO binding slot available to user-defined buffers.
-     * User UBOs start at slot 0 and grow upward.
-     * The top four slots ({@code maxUniformBufferBindings - 1} through {@code - 4}) are
-     * engine-reserved for {@link #VIEW_UBO}, {@link #MATERIAL_PROPERTIES_UBO}, {@link #TEXT_DATA_UBO} and
-     * {@link #ENVIRONMENT_UBO}.
-     */
-    public static final int USER_START_UBO = 0;
 
     private static final Logger LOGGER = LogManager.getLogger("CgBindingPoints");
 

@@ -1,7 +1,7 @@
 package com.crystalgraphics.material.parse;
 
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.material.CgAttachedBuffer;
+import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.platform.gl.CgCapabilities;

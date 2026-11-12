@@ -374,12 +374,12 @@ without casts.
 
 | Type | Role |
 |------|------|
-| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind()` (noted for a device pass's sets), `delete()` template, `getGlBufferId()`. Two factory variants: `create(String name, CgBufferLayout format, int userIndex)` (user-facing — adds per-type USER_START internally) and `createInternal(String name, CgBufferLayout format, int bindingPoint)` (engine-internal, raw binding). **`CgBufferLayout` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
+| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind()` (noted for a device pass's sets), `delete()` template, `getGlBufferId()`. Its factory is `createInternal(name, layout, bindingPoint[, lifetime])`, at an engine-reserved binding; a consumer's buffer is `api/buffer`'s `CgBuffer`. **`CgBufferLayout` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
 | `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. |
-| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`, the default for `getOrCreateUbo(format, name, index)`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. Uses unified `endRecord()` from parent. |
+| `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. Uses unified `endRecord()` from parent. |
 | `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgBindingPoints.GLOBALS`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
 | `CgBonePalettes` | Every skinned draw's bones for a ring frame: `write(skinning, count)` answers a draw's base (three vec4 rows a bone, a 3×4 transform), and the world renderer `record`s the frame's palettes once, into a persistent graph buffer each skinned draw binds at `CgBindingPoints.BONE_PALETTES` (`Draw.bones(base)` puts the base in `CG_OBJECT_SPARE.x`). Its registered `CgShaderBuffer`, one identity bone, is only the skinned program's declaration and what the binding holds between skinned draws |
-| `CgShaderBufferRegistry` | Singleton registry for user-created SSBO/UBO buffers. Two caches: `ShaderBufferKey(name, format, bindingPoint)` (every SSBO) and `UboKey(name, format, bindingPoint)`. `getOrCreate(String name, CgBufferLayout format, int userIndex)` and `getOrCreateUbo(CgBufferLayout format, String name, int userIndex)` take 0-based `userIndex`; per-type USER_START is added internally. `deleteAll()` called by `CgEngineLifecycle.shutdown()`. Engine-internal pipeline buffers bypass this registry. |
+| `CgShaderBufferRegistry` | The engine's shared SSBO/UBO buffers, by name, layout and reserved binding: `getOrCreateInternal(name, layout, binding[, lifetime])`, `getOrCreateUboInternal`. `deleteAll()` at shutdown. |
 
 ### Binding Point Namespaces
 
@@ -391,8 +391,6 @@ Engine buffers take from the **high end** of each range; user buffers from the *
 | SSBO (per-object, engine) | ssbo `maxSsboBindings - 1` (e.g. 7) | `CgBindingPoints.OBJECT_DATA` (a `Binding(ssbo, tbo)` record — call `.resolve()` for the active path) |
 | SSBO (`CgQuadBatch`, engine) | one slot below `OBJECT_DATA`'s | `CgBindingPoints.QUAD_RENDERER` (same `Binding` shape) |
 | UBO (per-frame, engine)   | `maxUniformBufferBindings - 1` (e.g. 35) | `CgBindingPoints.FRAME_DATA_UBO` |
-| User SSBOs | `CgBindingPoints.USER_START_SSBO` (0) upward | pass 0-based `userIndex` to factories |
-| User UBOs  | `CgBindingPoints.USER_START_UBO` (0) upward | pass 0-based `userIndex` to factories |
 
 Reserved engine SSBO pairs are `CgBindingPoints.Binding(ssbo, tbo)` records, not two loose
 `int`s — the pair is the TBO path's seam, kept with `tbo = -1` while it is unhooked; `resolve()` answers the
@@ -472,10 +470,13 @@ parser's first lookup, which is exactly when a token is needed.
 
 ### Lifecycle
 
-**SSBO (user buffer per-object data) — format-aware mode**
+A consumer's buffer is `api/buffer`'s (`CgBuffers.create`, `rec.upload`). These are the engine's own, at reserved
+binding points (`createInternal`, `getOrCreateInternal`).
+
+**SSBO (an engine buffer's per-object data)**
 ```java
-// userIndex 0 → SSBO binding CgBindingPoints.USER_START_SSBO (0)
-CgShaderBuffer myBuf = CgShaderBuffer.create("myData", MY_FORMAT, 0, CgBufferLifetime.FRAME);   // rewritten every frame
+CgShaderBuffer myBuf = CgShaderBufferRegistry.get()
+        .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingPoints.SHAPE_TABLE, CgBufferLifetime.FRAME);
 
 myBuf.beginWrite(N);
 for (int i = 0; i < N; i++) {
@@ -511,13 +512,6 @@ A `RETAINED` buffer is made, written and deleted from any thread, as a texture i
 (`CgUploads.lease(bytes, true)`) by the thread that wrote them, landed with `glBufferSubData` before the next frame
 executes. A `FRAME` buffer is the render thread's, made and uploaded there.
 
-```java
-CgShaderBuffer table = CgShaderBuffer.create("Heights", HEIGHT_FORMAT, 0);   // on a worker: RETAINED
-table.beginWrite(cells);
-// ... records ...
-table.endWrite();                 // a lease now, the buffer's before the next frame
-```
-
 - `bind()` and `getGlBufferId()` land what is queued first, so they must run on the render thread outside a recording;
   `bind()` on a buffer whose storage is not made yet throws.
 - Inside a deferred task or a hot path, read `dataBuffer.getGlBuffer()`, never `getGlBufferId()`, which flushes.
@@ -527,7 +521,6 @@ table.endWrite();                 // a lease now, the buffer's before the next f
 ### Key Design Rules
 
 - **`name` is first constructor param** for all subclasses. Never null.
-- **`validateBindingPoint()` was removed** — `create()` adds per-type USER_START internally.
 - **`CgUniformBuffer.blockName` field was removed** — use `getName()` from parent.
 - **The TBO path is unhooked** (rhi X2): `CgTextureBuffer`, `USER_START_TBO` and the texel binding are gone; `docs/TBO_PATH.md` reconnects them.
 - **Engine blocks bypass the registry** — the frame block and object buffer use high-end binding slots resolved at runtime; the executor owns the object buffer and binds the frame block from each pass's constants.

@@ -44,8 +44,6 @@ pass.dispatch(kernel, cells).bind("HEIGHTS", heights);
 | `CgBufferLayout` | Immutable buffer layout descriptor. Tracks an ordered array of `CgBufferField`, total `stride`, and `MemoryLayout`. Builder auto-computes field byte offsets with correct inter-field alignment padding. Value-equal by (fields, stride, memoryLayout) — `glslName` excluded. `getFloatCount()` = stride/4. `getField(String)` throws `IllegalArgumentException` on miss. |
 | `CgBuffer`, `CgBuffers` | A buffer of yours kept across frames: `CgBuffers.create(name, layout, count)`, `write(first, count, records -> ...)`, `release()`, `graphBuffer()` (an import the graph orders). A `CgBufferHandle`. |
 | `CgBufferRecords` | What a write's lambda fills: `next()` per record. Made by `CgBuffer` and `CgRecording.upload`. |
-| `CgObjectBuffer` | Marker/capability interface for all GPU-resident shader-accessible buffer objects (SSBO, UBO). `bind()`, `unbind()`, `delete()`, `isDeleted()`, `getGlBufferId()`. |
-| `CgBufferLifetime` | How long a shader buffer's contents must stay readable, passed to every SSBO/UBO factory (`CgShaderBufferRegistry.getOrCreate`/`getOrCreateUbo`, `CgShaderBuffer.create`, `CgUniformBuffer.create`); the factories without it mean `RETAINED`. `FRAME`: uploaded in every frame that reads it — the frame ring, no orphan or driver rename; a `CgUniformBuffer` makes the per-frame upload a compare when nothing moved. `RETAINED`: readable until the next upload — its own storage at offset 0, each upload staged in the ring and copied in. |
 
 ## std140/std430 Alignment Table
 
