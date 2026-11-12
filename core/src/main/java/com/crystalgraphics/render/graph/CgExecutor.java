@@ -143,7 +143,7 @@ public final class CgExecutor {
     /** {@code i} at {@code i}: what a draw of its own records reads them through, grown as one reaches further. */
     private static float[] identity = new float[0];
     /** What every QUAD and CURVE instance expands. */
-    private static final CgMesh UNIT_QUAD = CgMesh.quads(1);
+    static final CgMesh UNIT_QUAD = CgMesh.quads(1);
 
     private static final List<CgExecutor> BY_DEPTH = new ArrayList<>();
     private static final CgTexturePool POOL = new CgTexturePool();
@@ -626,6 +626,7 @@ public final class CgExecutor {
         }
         CgFrameCompiler.renderPasses(frame, takes, takes && !again, gpuCounts);
         CgFrameCompiler.transitions(frame, asyncCompute, ASYNC_ALL, splits);
+        CgFrameCompiler.multiDraws(frame, multiDraw);
         int resolved = 0;
         try {
             if (!again) {
@@ -1944,46 +1945,9 @@ public final class CgExecutor {
         return packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : UNIT_QUAD;
     }
 
-    /**
-     * Joins the run of batches from {@code b} that one multi-draw call draws ({@link CgMeshStore#join}), answering its
-     * last: those after it that are {@link #joinable} with it, while the store takes their meshes. {@code b} itself,
-     * nothing left joined, when none follows.
-     */
-    private static int joinRun(CgBindingTable table, CgFrame.Raster packed, int b) {
-        CgMeshStore store = CgMeshStore.get();
-        if (!join(store, packed, b)) return b;
-        int end = b;
-        while (end + 1 < packed.count && joinable(table, packed, b, end + 1) && join(store, packed, end + 1)) end++;
-        if (end == b) store.dropJoined();
-        return end;
-    }
-
     private static boolean join(CgMeshStore store, CgFrame.Raster packed, int k) {
         return store.join(mesh(packed, k), packed.instances[k], packed.submesh[k], packed.rangeFirst[k],
                 packed.rangeCount[k], packed.first[k]);
-    }
-
-    /**
-     * Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it: its
-     * bindings {@code b}'s {@link CgBindingTable#share share}, so another material of one arena joins (Bevy's slab key).
-     */
-    private static boolean joinable(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * CgDrawChunk.BUFFERS] == null
-                && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
-                && table.share(packed.binding[k]) == table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
-                && packed.group[k] == packed.group[b];
-    }
-
-    /**
-     * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
-     * records, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s.
-     */
-    private static boolean joinableIndirect(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
-        return packed.counts[k] != null && packed.copyBefore[k] == 0
-                && packed.pipeline[k] == packed.pipeline[b] && table.share(packed.binding[k]) == table.share(packed.binding[b])
-                && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
-                && sameBuffers(packed, b, k) && packed.group[k] == packed.group[b]
-                && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
     }
 
     private static final CgIndirect[] INDIRECT_MODES = CgIndirect.values();
@@ -1994,12 +1958,12 @@ public final class CgExecutor {
             CgTrace.name("graph.multi-draw.breaks.records"), CgTrace.name("graph.multi-draw.breaks.group"),
             CgTrace.name("graph.multi-draw.breaks.mesh")};
 
-    /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by {@link #joinableIndirect}'s terms. */
+    /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by the compiler's joinableIndirect terms. */
     private static void countBreak(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
         int why = packed.counts[k] == null ? 0 : packed.copyBefore[k] != 0 ? 1
                 : packed.pipeline[k] != packed.pipeline[b] ? 2 : table.share(packed.binding[k]) != table.share(packed.binding[b]) ? 3
                 : packed.scissor[k] != packed.scissor[b] ? 4
-                : packed.objects[k] != packed.objects[b] || !sameBuffers(packed, b, k) ? 5
+                : packed.objects[k] != packed.objects[b] || !CgFrameCompiler.sameBuffers(packed, b, k) ? 5
                 : packed.group[k] != packed.group[b] ? 6 : 7;
         CgTrace.add(CgChannels.GL, BREAKS[why], 1);
     }
@@ -2019,17 +1983,6 @@ public final class CgExecutor {
                 && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
                 && table.share(packed.binding[k]) != table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
                 && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
-    }
-
-    /** Whether batches {@code b} and {@code k} read the same buffers at the same bindings. */
-    private static boolean sameBuffers(CgFrame.Raster packed, int b, int k) {
-        int n = CgDrawChunk.BUFFERS;
-        for (int s = 0; s < n; s++) {
-            if (packed.buffers[k * n + s] != packed.buffers[b * n + s] || packed.bufferAt[k * n + s] != packed.bufferAt[b * n + s]) {
-                return false;
-            }
-        }
-        return true;
     }
 
     /** Whether the batch whose buffer slots start at {@code first} reads a buffer of its own at {@code at}. */
@@ -2315,8 +2268,8 @@ public final class CgExecutor {
                 for (int k = b; k <= end; k++) commandCount += commandsOf(packed, k);
                 slot += commandCount;
             } else {
-                end = packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null && multiDraw
-                        && b + 1 < packed.count && joinable(table, packed, b, b + 1) ? joinRun(table, packed, b) : b;
+                end = packed.joinEnd[b];
+                if (end > b) for (int k = b; k <= end; k++) join(store, packed, k);   // the compiled run, into the store
                 if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)
                         && breaksOnBinding(table, packed, b, end + 1)) {
                     CgTrace.add(CgChannels.GL, BINDING_BREAKS, 1);
@@ -2567,11 +2520,8 @@ public final class CgExecutor {
         int slot = 0;
         for (int b = 0; b < packed.count; b++) {
             if (packed.counts[b] == null) continue;
-            int end = b;
-            if (multiDraw) {
-                while (end + 1 < packed.count && joinableIndirect(table, packed, b, end + 1)) end++;
-                if (end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(table, packed, b, end + 1);
-            }
+            int end = packed.joinEnd[b];
+            if (multiDraw && end + 1 < packed.count && CgTrace.isEnabled(CgChannels.GL)) countBreak(table, packed, b, end + 1);
             runs[b] = end;
             for (int k = b; k <= end; k++) slot += writeCommand(packed, k, slot);
             b = end;

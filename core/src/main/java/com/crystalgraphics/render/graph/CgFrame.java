@@ -432,6 +432,12 @@ public final class CgFrame {
 
     /** A raster pass, packed: the snapshot of its constants, and per batch what to bind and which instances to draw. */
     static final class Raster {
+        /**
+         * Per batch that begins a multi-draw run, its last batch; itself for one drawn alone. Compiled per execution, once
+         * the meshes are placed ({@link CgFrameCompiler#multiDraws}).
+         */
+        int[] joinEnd = new int[8];
+
         int constants;
         int count;
         int[] pipeline = new int[16];

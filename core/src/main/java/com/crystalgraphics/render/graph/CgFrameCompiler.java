@@ -5,6 +5,11 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.render.draw.CgBindingTable;
+import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.mesh.CgMeshStore;
 
 /**
  * What an execution of a frame decides before its first step, so the step loop decides nothing (Unreal RDG's
@@ -172,6 +177,76 @@ final class CgFrameCompiler {
             }
         }
         frame.splitFrom[n] = frame.splitCount;
+    }
+
+    /**
+     * Each raster step's multi-draw runs ({@link CgFrame.Raster#joinEnd}): direct batches the mesh store joins into one
+     * call under one pipeline, bindings and scissor, and indirect batches whose commands one multi-draw reads. After the
+     * frame's meshes are placed, which is what decides whether two join.
+     *
+     * @param multiDraw whether the device draws several commands a call
+     */
+    static void multiDraws(CgFrame frame, boolean multiDraw) {
+        CgMeshStore store = CgMeshStore.get();
+        CgBindingTable table = frame.bindings;
+        for (int s = 0; s < frame.stepCount; s++) {
+            if (!(frame.steps[s] instanceof CgRasterPass)) continue;
+            CgFrame.Raster packed = frame.rasters[s];
+            if (packed.joinEnd.length < packed.count) packed.joinEnd = new int[Math.max(packed.count, packed.joinEnd.length * 2)];
+            for (int b = 0; b < packed.count; b++) {
+                int end = b;
+                if (packed.counts[b] != null) {
+                    if (multiDraw) while (end + 1 < packed.count && joinableIndirect(table, packed, b, end + 1)) end++;
+                } else if (multiDraw && packed.objects[b] == null && packed.buffers[b * CgDrawChunk.BUFFERS] == null
+                        && b + 1 < packed.count && joinable(table, packed, b, b + 1)
+                        && store.joins(mesh(packed, b), mesh(packed, b))) {
+                    while (end + 1 < packed.count && joinable(table, packed, b, end + 1)
+                            && store.joins(mesh(packed, end + 1), mesh(packed, b))) {
+                        end++;
+                    }
+                }
+                packed.joinEnd[b] = end;
+                b = end;
+            }
+        }
+    }
+
+    private static CgMesh mesh(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == CgInstanceKind.OBJECT.ordinal() ? packed.mesh[b] : CgExecutor.UNIT_QUAD;
+    }
+
+    /**
+     * Batch {@code k} drawn directly under {@code b}'s pipeline, bindings and scissor, with no target copy before it: its
+     * bindings {@code b}'s {@link CgBindingTable#share share}, so another material of one arena joins (Bevy's slab key).
+     */
+    static boolean joinable(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+        return packed.counts[k] == null && packed.objects[k] == null && packed.buffers[k * CgDrawChunk.BUFFERS] == null
+                && packed.copyBefore[k] == 0 && packed.pipeline[k] == packed.pipeline[b]
+                && table.share(packed.binding[k]) == table.share(packed.binding[b]) && packed.scissor[k] == packed.scissor[b]
+                && packed.group[k] == packed.group[b];
+    }
+
+    /**
+     * Indirect batch {@code k} drawn in one multi-draw after {@code b}: as {@link #joinable}, reading the same object
+     * records and buffers, from a mesh the store {@link CgMeshStore#joins joins} with {@code b}'s.
+     */
+    private static boolean joinableIndirect(CgBindingTable table, CgFrame.Raster packed, int b, int k) {
+        return packed.counts[k] != null && packed.copyBefore[k] == 0
+                && packed.pipeline[k] == packed.pipeline[b] && table.share(packed.binding[k]) == table.share(packed.binding[b])
+                && packed.scissor[k] == packed.scissor[b] && packed.objects[k] == packed.objects[b]
+                && sameBuffers(packed, b, k) && packed.group[k] == packed.group[b]
+                && CgMeshStore.get().joins(mesh(packed, b), mesh(packed, k));
+    }
+
+    /** Whether batches {@code b} and {@code k} read the same buffers at the same bindings. */
+    static boolean sameBuffers(CgFrame.Raster packed, int b, int k) {
+        int n = CgDrawChunk.BUFFERS;
+        for (int s = 0; s < n; s++) {
+            if (packed.buffers[k * n + s] != packed.buffers[b * n + s] || packed.bufferAt[k * n + s] != packed.bufferAt[b * n + s]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Whether step {@code s} may begin or end a split: a raster, compute or buffer step on the frame's queue. */
