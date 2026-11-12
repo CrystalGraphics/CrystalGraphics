@@ -69,8 +69,10 @@ import java.util.logging.Logger;
  * supports this via {@link CgRasterFontKey}-keyed  atlas maps that allow the
  * same logical font to have multiple atlas buckets at different raster sizes.</p>
  *
- * <p>The registry also wires font disposal to atlas cleanup.  It is not thread
- * safe and must only be used on the render thread.</p>
+ * <p>The registry also wires font disposal to atlas cleanup.  <b>Threads:</b> every method that reads or
+ * writes an atlas holds the registry's monitor, so several documents recording on their own threads
+ * resolve and queue glyphs through it at once, one at a time; the atlas textures are written, and the
+ * registry torn down, on the render thread.</p>
  *
  * <h3>Singleton, like every other GPU-resource registry</h3>
  * <p>The default-config registry is a shared singleton, accessed via {@link #get()} —

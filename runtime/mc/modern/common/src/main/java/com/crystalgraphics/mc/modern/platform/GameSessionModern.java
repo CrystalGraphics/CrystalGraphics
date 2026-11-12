@@ -46,7 +46,8 @@ public final class GameSessionModern implements CgGameSession.Host {
         Minecraft mc = Minecraft.getInstance();
         if (!ready()) return false;
         // Pointed at a server (-PcgJoin): already on its way, and there is no save to load.
-        if (mc.getCurrentServer() != null) return true;
+        // Quick Play has not set the current server yet when a run first asks, so the dev run's property says it too.
+        if (mc.getCurrentServer() != null || System.getProperty("crystalgraphics.join") != null) return true;
         Path saves = mc.gameDirectory.toPath().resolve("saves");
         String name = CgGameSession.saveToEnter(saves, save);
         if (name == null) throw new IllegalStateException("no save under " + saves + ", and this version cannot make one");

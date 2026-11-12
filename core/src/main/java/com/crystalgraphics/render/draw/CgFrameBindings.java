@@ -768,9 +768,9 @@ public final class CgFrameBindings {
 
         private long retiredScan = -1;
 
-        /** The bytes {@code v} takes, aligned: what a write stages for it. */
+        /** The bytes {@code v} takes, aligned: what a write stages for it. A block of no values still takes one unit, as a range cannot be empty. */
         static int bytes(CgBlockVersion v) {
-            return (v.floats.length * 4 + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT;
+            return Math.max(ALIGNMENT, (v.floats.length * 4 + ALIGNMENT - 1) / ALIGNMENT * ALIGNMENT);
         }
 
         /** Gives {@code v} its range if it has none, answering whether it must be written now. */
