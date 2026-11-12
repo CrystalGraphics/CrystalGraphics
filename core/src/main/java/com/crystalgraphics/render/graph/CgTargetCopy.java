@@ -146,18 +146,16 @@ final class CgTargetCopy {
 
     /** {@code texture}'s level and layer as a blit names it: one of the few a frame copies between, kept. */
     private static CgTextureView attached(CgGpuTexture texture, int level, int layer) {
-        for (CgTextureView v : ATTACHED) {
+        CgGraphDevice device = CgGraphDevice.get();
+        CgTextureView[] views = device.attachedViews;
+        for (CgTextureView v : views) {
             if (v != null && v.texture() == texture && v.baseMip() == level && v.baseLayer() == layer) return v;
         }
         CgTextureView made = CgTextureView.attachment(texture, level, layer);
-        ATTACHED[nextAttached] = made;
-        nextAttached = (nextAttached + 1) % ATTACHED.length;
+        views[device.nextAttached] = made;
+        device.nextAttached = (device.nextAttached + 1) % views.length;
         return made;
     }
-
-    /** The views {@link #attached} made last, the oldest replaced first. */
-    private static final CgTextureView[] ATTACHED = new CgTextureView[8];
-    private static int nextAttached;
 
     private static final int COLOR_ZONE = CgTrace.name("graph.copy.color"), DEPTH_ZONE = CgTrace.name("graph.copy.depth");
 

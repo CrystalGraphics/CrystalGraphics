@@ -31,9 +31,6 @@ final class CgGraphCheck {
             "A pass binding a graph texture or buffer it did not record is refused: throw, log, or off; a dev run throws");
     private static final Set<String> LOGGED = ConcurrentHashMap.newKeySet();
 
-    private static volatile int state = -1;
-    /** The step executing, named in a refusal; render thread. */
-    private static CgPass executing;
 
     private CgGraphCheck() {}
 
@@ -57,12 +54,14 @@ final class CgGraphCheck {
         for (int i = frame.accessFrom[s]; i < frame.accessFrom[s + 1]; i++) {
             CgGraphResource.resourceOf(frame.accessView[i]).allowed += by;
         }
-        CgPass was = executing;
-        executing = by > 0 ? frame.steps[s] : before;
+        CgGraphDevice device = CgGraphDevice.get();
+        CgPass was = device.checkedStep;
+        device.checkedStep = by > 0 ? frame.steps[s] : before;
         return was;
     }
 
     private static void refuse(CgGraphResource resource) {
+        CgPass executing = CgGraphDevice.get().checkedStep;
         String what = (executing == null ? "a binding outside any step" : executing.toString()) + " binds " + resource
                 + ", which it neither declares nor names in a draw: reads(...) it";
         if (mode() == 2) throw new IllegalStateException(what);
@@ -70,11 +69,16 @@ final class CgGraphCheck {
     }
 
     private static int mode() {
-        int s = state;
-        if (s < 0) {
+        return Mode.VALUE;
+    }
+
+    /** The mode, read at its first use: a restart flag, and the loader is known by then. */
+    private static final class Mode {
+        static final int VALUE = read();
+
+        private static int read() {
             String m = MODE.get().isEmpty() ? (CgModLoader.development() ? "throw" : "off") : MODE.get();
-            state = s = m.equals("throw") ? 2 : m.equals("log") ? 1 : 0;
+            return m.equals("throw") ? 2 : m.equals("log") ? 1 : 0;
         }
-        return s;
     }
 }

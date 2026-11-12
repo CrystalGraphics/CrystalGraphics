@@ -51,12 +51,18 @@ public final class CgBufferInspector {
     public static final int FORGET_AFTER = 600;
 
     private static final Object LOCK = new Object();
-    private static volatile boolean watching;
     private static final List<Entry> ENTRIES = new ArrayList<>();
     private static final List<Request> PENDING = new ArrayList<>();
     /** An append buffer's declaration, per buffer, made into its count's: {@code uint} words. */
     private static final Map<CgBufferDecl, CgBufferDecl> COUNTS = new IdentityHashMap<>();
-    private static long executions, pruned = -1;
+    /** Whether it watches, and the compute passes it has noted and the frame it last dropped sites at. */
+    private static final Watch WATCH = new Watch();
+
+    /** The inspector's counters: one inspector a process, reached from any thread under {@link #LOCK}. */
+    private static final class Watch {
+        volatile boolean on;
+        long executions, pruned = -1;
+    }
 
     private CgBufferInspector() {
     }
@@ -132,12 +138,12 @@ public final class CgBufferInspector {
     /** Starts or stops noting what compute passes bind. Stopping drops every site and fails every read waiting. */
     public static void watch(boolean on) {
         if (on) {
-            watching = true;
+            WATCH.on = true;
             return;
         }
         List<Request> failed;
         synchronized (LOCK) {
-            watching = false;
+            WATCH.on = false;
             ENTRIES.clear();
             failed = new ArrayList<>(PENDING);
             PENDING.clear();
@@ -146,7 +152,7 @@ public final class CgBufferInspector {
     }
 
     public static boolean watching() {
-        return watching;
+        return WATCH.on;
     }
 
     /** Every site seen since watching began, in the order first seen. Any thread. */
@@ -167,7 +173,7 @@ public final class CgBufferInspector {
     public static void read(Site site, int first, int count, Sink sink) {
         if (first < 0 || count < 0) throw new IllegalArgumentException("elements " + first + " +" + count);
         synchronized (LOCK) {
-            if (!watching) throw new IllegalStateException("not watching: CgBufferInspector.watch(true) first");
+            if (!WATCH.on) throw new IllegalStateException("not watching: CgBufferInspector.watch(true) first");
             Entry entry = find(site.buffer, site.pass);
             if (entry == null) throw new IllegalStateException(site.buffer + " after " + site.pass + " is no longer seen");
             PENDING.add(new Request(entry, first, count, sink));
@@ -241,10 +247,10 @@ public final class CgBufferInspector {
         long frame = CgFrameRing.frame();
         List<Request> dropped = null;
         synchronized (LOCK) {
-            if (!watching) return;
-            long execution = ++executions;
-            if (frame != pruned) {
-                pruned = frame;
+            if (!WATCH.on) return;
+            long execution = ++WATCH.executions;
+            if (frame != WATCH.pruned) {
+                WATCH.pruned = frame;
                 dropped = prune(frame);
             }
             List<CgDispatch> dispatches = pass.dispatches();
@@ -274,7 +280,7 @@ public final class CgBufferInspector {
         synchronized (LOCK) {
             for (int i = 0; i < PENDING.size(); i++) {
                 Request r = PENDING.get(i);
-                if (r.entry.execution != executions) continue;
+                if (r.entry.execution != WATCH.executions) continue;
                 PENDING.remove(i);
                 r.site = r.entry.site();
                 r.at = Math.min(r.first, r.site.elements());

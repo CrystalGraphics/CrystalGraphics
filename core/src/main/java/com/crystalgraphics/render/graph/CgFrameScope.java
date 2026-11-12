@@ -46,7 +46,6 @@ public final class CgFrameScope {
 
     private static final Map<Key<?>, Object> BOARD = new IdentityHashMap<>();
     private static final Map<Key<?>, CgGraphTexture> TEXTURES = new IdentityHashMap<>();
-    private static long frame = -1;
 
     private CgFrameScope() {}
 
@@ -78,8 +77,9 @@ public final class CgFrameScope {
 
     private static void roll() {
         long now = CgFrameRing.frame();
-        if (now == frame) return;
-        frame = now;
+        CgGraphDevice device = CgGraphDevice.get();
+        if (now == device.scopeFrame) return;
+        device.scopeFrame = now;
         BOARD.clear();
     }
 }

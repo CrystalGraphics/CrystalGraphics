@@ -94,7 +94,7 @@ final class CgFrameCompiler {
      */
     private static boolean samplesDepth(CgGraphTexture texture) {
         if (texture.kind() == CgGraphTexture.Kind.EXTERNAL) {
-            CgGraphStorage storage = CgExecutor.storage(texture);
+            CgGraphStorage storage = CgGraphDevice.get().storage(texture);
             CgGpuTexture image = storage == null ? null : storage.depth();
             return image != null && image.desc().usage().contains(CgGpuTexture.Usage.SAMPLED);
         }

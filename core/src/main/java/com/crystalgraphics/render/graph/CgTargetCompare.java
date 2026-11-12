@@ -21,8 +21,6 @@ public final class CgTargetCompare {
     public record Difference(int pixels, int worst, int x0, int y0, int x1, int y1) {
     }
 
-    private static ByteBuffer first, second;
-
     private CgTargetCompare() {
     }
 
@@ -39,10 +37,12 @@ public final class CgTargetCompare {
         height = Math.min(height, Math.min(fa.height(), fb.height()) - y);
         if (width <= 0 || height <= 0) return null;
         int bytes = width * height * 4;
-        if (first == null || first.capacity() < bytes) {
-            first = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
-            second = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+        CgGraphDevice device = CgGraphDevice.get();
+        if (device.compareFirst == null || device.compareFirst.capacity() < bytes) {
+            device.compareFirst = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
+            device.compareSecond = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder());
         }
+        ByteBuffer first = device.compareFirst, second = device.compareSecond;
         read(fa, x, y, width, height, first);
         read(fb, x, y, width, height, second);
         int x0 = Integer.MAX_VALUE, y0 = Integer.MAX_VALUE, x1 = -1, y1 = -1, count = 0, worst = 0;

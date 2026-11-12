@@ -39,6 +39,13 @@ what an external target lends is known once the execution opens it. What stays i
 transition issued from the state `CgResourceStates` holds, an async fence waited on where a step's storage is pending
 on one, the shared depth copy, a history's version, transient storage taken at the step the build scheduled.
 
+**The execution** replays the compile through encoders, as RDG runs a pass lambda on a command list: `CgTransitions`
+issues a step's prologue and splits, `CgRasterEncoder` the render pass and its batches (with the frame's instance
+buffers and indirect commands), `CgComputeEncoder` dispatches and async compute, `CgCopyEncoder` copies, uploads,
+buffer steps and readbacks. One `CgExecutor` per nesting depth is an execution context; what outlives an execution --
+pools, placed heaps, tracked states, async fences, opened externals, the open current targets -- is `CgGraphDevice`'s,
+reset at teardown. No class here keeps a static mutable field: new state goes on the execution or the device.
+
 **Six pass kinds** (`CgPass`, as Unreal's render graph): raster, compute, copy (a texture region, a buffer range),
 upload (bytes into a texture or a buffer, a buffer filled), readback, and external (a callback, an included frame).
 A release and a compile are not passes: the recording carries them, and the frame frees a released resource after the

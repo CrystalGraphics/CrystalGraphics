@@ -70,8 +70,6 @@ public final class CgRehearsal {
             "Lists what a rehearsal's passes resized or released (CgRehearsal.grown()): what to size ahead.").get();
     /** What passes resized or released, under {@link #LIST_GROWTH}: what to size ahead. */
     private static final Set<String> GROWN = new LinkedHashSet<>();
-    /** A pass is running. */
-    private static boolean active;
     private static final int GPU_NAME = CgGpuTrace.name("rehearse");
 
     private static final CompilationMXBean JIT = ManagementFactory.getCompilationMXBean();
@@ -168,7 +166,7 @@ public final class CgRehearsal {
     private void pass() {
         // A host section of its own, as a stage's firing is: it runs between the host's frames.
         CgDeviceSection.begin();
-        active = true;
+        CgGraphDevice.get().rehearsing = true;
         try {
             CgGpuTrace.begin(GPU_NAME);
             try {
@@ -178,7 +176,7 @@ public final class CgRehearsal {
                 CgGpuTrace.end();
             }
         } finally {
-            active = false;
+            CgGraphDevice.get().rehearsing = false;
             graph.clear();
             recording.reset();
             CgDeviceSection.end();
@@ -200,7 +198,7 @@ public final class CgRehearsal {
 
     /** Whether a rehearsal's pass is running: what records now draws into the rehearsal's targets. Render thread. */
     public static boolean active() {
-        return active;
+        return CgGraphDevice.get().rehearsing;
     }
 
     /** What passes resized or released under {@code crystalgraphics.rehearsal.listGrowth}, in the order first seen. */
@@ -210,7 +208,7 @@ public final class CgRehearsal {
 
     /** A pass's resize or release of {@code buffer}, listed under {@link #LIST_GROWTH}. */
     static void grew(String what, CgGraphBuffer buffer) {
-        if (active && LIST_GROWTH) GROWN.add(what + " " + buffer.name());
+        if (LIST_GROWTH && CgGraphDevice.get().rehearsing) GROWN.add(what + " " + buffer.name());
     }
 
     private boolean settled() {
