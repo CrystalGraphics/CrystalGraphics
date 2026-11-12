@@ -18,7 +18,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.vfx.camera.CgShakePlay;
-import com.crystalgraphics.world.CgCamera;
+import com.crystalgraphics.world.CgCameraControl;
 import com.crystalgraphics.world.CgEntityQueries;
 
 import org.joml.Matrix4f;
@@ -124,7 +124,7 @@ final class CgCueProbe {
         INVERSE.transformPosition(EYE.zero());
         double ex = view.x() + EYE.x, ey = view.y() + EYE.y, ez = view.z() + EYE.z;
         INVERSE.transformDirection(FACING.set(0f, 0f, -1f)).normalize();
-        boolean held = CgCamera.held();
+        boolean held = CgCameraControl.held();
         // A hold's first and last frames jump the camera: only a frame whose neighbour was free too is read.
         if (hasLast && !held && !lastHeld) {
             double moved = Math.sqrt((ex - lastX) * (ex - lastX) + (ey - lastY) * (ey - lastY) + (ez - lastZ) * (ez - lastZ));
@@ -173,11 +173,11 @@ final class CgCueProbe {
         boolean turned = shakeTurn > Math.max(MIN_TURN, 2 * baseTurn);
         CgWorldProbe.check("cue.view-turned", turned, String.format("the view turned up to %.4f° a frame under the shake,"
                 + " %.4f° without", shakeTurn, baseTurn));
-        if ((CgCamera.capabilities() & CgHostCamera.TRANSLATION) == 0) {
+        if ((CgCameraControl.capabilities() & CgHostCamera.TRANSLATION) == 0) {
             CgWorldProbe.skip("cue.view-moved", "this host does not apply an offset's translation");
         } else {
             boolean moved = shakeMove > Math.max(MIN_MOVE, 2 * baseMove);
-            boolean ran = (CgCamera.applied() & CgHostCamera.TRANSLATION) != 0;
+            boolean ran = (CgCameraControl.applied() & CgHostCamera.TRANSLATION) != 0;
             CgWorldProbe.check("cue.view-moved", moved, String.format("the eye moved up to %.5f blocks a frame under the"
                     + " shake, %.5f without; the host's translation hook %s", shakeMove, baseMove,
                     ran ? "ran" : "never ran"));

@@ -444,9 +444,16 @@ firing is the user (`CgStageFrame.include`); the caller recycles the frame after
 CgPass.Include step = firing.include(ui).timed(GPU_UI).then(UI_EXECUTED);   // a held runnable
 ```
 
-`CgImmediate` (one package up) is the same three stages in one `try` block, for a caller with no graph — and
-`CgImmediate.flush(chunk, order)` is what `CgQuadBatch`/`CgCurveBatch.flush()` call, under the frame block
-the caller prepared (`render-graph` G2).
+`CgRenderer.executeNow(recording)` (one package up) is the same three stages at once, for a caller with no view or
+stage to record into; `CgRenderer.drawNow(chunk, camera, order)` is what an immediate canvas's `flush()` calls, into
+the current target (`render-graph` G2).
+
+**Drawing a mesh** (`renderer.md` § 4.4): `pass.draw(mesh, material)` answers a `CgDraw`, one instance an object record
+the engine writes (`transform`, `customData`; `instance()` for the next, `records(...)` for many, `objects(...)` for a
+kernel's); every pass of the material's chain draws the same records. A pass is seen through a `CgCamera`
+(`camera.CgCamera`: view, projection, position, resolution, time; `pass.camera(camera)`), the depth convention and the
+target's encoding the renderer's. The chunk builder and `captureBindings` are the engine's own path, and a test's of
+the builder itself.
 
 **What a recorded draw keeps of an immediate one** (G2's gate found each): a draw runs under the material as the
 last `useMaterial` before it left it, since a bind used to upload values set after the records were queued; state a
@@ -457,7 +464,7 @@ unit as GL's last bind did.
 **The canvas** (G4; lookback G5.3; `render/canvas`): `CgCanvas` records 2D items into raster passes:
 `recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are its
 set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes the
-recording once with `CgImmediate.execute(recording)`. A recorded draw executes after the canvas has moved on, so a
+recording once with `CgRenderer.executeNow(recording)`. A recorded draw executes after the canvas has moved on, so a
 snapshot keeps by value what an immediate draw read live: a texture as the handle it was given, an attached uniform
 block as its bytes; the canvas's binding table resets once a frame. A canvas's passes are `LOOKBACK`: a recorded chunk is one spatial node's
 (the run ends it where the records' node changes) and each draw carries its records' bounds there, so a draw moves
@@ -529,7 +536,7 @@ CgExecutor.freeStorage(picture);   // the context is going away
 
 ## Gate scene
 
-`--mode=graph-executor-test` draws one picture through `CgQuadBatch`, `CgImmediate`, and a frame recorded and built
+`--mode=graph-executor-test` draws one picture through an immediate canvas, a recording executed now, and a frame recorded and built
 on a worker thread; the three PNGs in its output directory must be byte-identical, on `--rhi=gl` and `--rhi=vulkan`.
 `--mode=compute-graph` is the compute half: kernels, a history, an indirect dispatch and a raster pass in one frame
 built on a worker, matched against the CPU's picture, executed again too; with synchronization validation clean.

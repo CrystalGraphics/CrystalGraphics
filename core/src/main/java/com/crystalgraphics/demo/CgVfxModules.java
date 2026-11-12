@@ -16,7 +16,9 @@ import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgRenderer;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -2614,14 +2616,16 @@ public final class CgVfxModules {
     /** Every sheet's texels in one compute pass, once their kernels are built; until then a sheet draws empty. */
     private void bakeSheets() {
         if (unbaked.isEmpty() || !sheetsReady()) return;
-        try (CgImmediate.Compute run = CgImmediate.compute("demo.modules.sheets")) {
-            for (Sheet sheet : unbaked) {
-                CgTexture2D storage = sheet.storage();
-                run.dispatch(sheet.kernel(), storage.getWidth(), storage.getHeight(), 1)
-                        .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", CgTextures.target("vfx-modules sheet", storage, null)))
-                        .set("_Columns", sheet.columns()).set("_Cell", sheet.cell());
-            }
+        CgRecording bake = new CgRecording();
+        CgComputePass run = bake.compute("demo.modules.sheets");
+        for (Sheet sheet : unbaked) {
+            CgTexture2D storage = sheet.storage();
+            run.dispatch(sheet.kernel(), storage.getWidth(), storage.getHeight(), 1)
+                    .image("SHEET", CgGraphTexture.imported("vfx-modules sheet", CgTextures.target("vfx-modules sheet", storage, null)))
+                    .set("_Columns", sheet.columns()).set("_Cell", sheet.cell());
         }
+        run.end();
+        CgRenderer.executeNow(bake);
         unbaked.clear();
     }
 

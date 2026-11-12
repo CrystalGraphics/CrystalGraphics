@@ -336,7 +336,7 @@ void fragment(in v2f i, out vec4 fragColor) {
 
 ### 8.3 Drawing it
 
-A material is drawn by recording it: into the world through `CgWorldRenderer`, anywhere else through `CgImmediate`.
+A material is drawn by recording it: into the world through `CgWorldRenderer`, anywhere else through a raster pass's `draw(mesh, material)`.
 The object block is the executor's, filled from each instance.
 
 ```java

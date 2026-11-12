@@ -77,10 +77,9 @@ import com.crystalgraphics.material.CgAttachedBuffer;
  * <pre>{@code
  * CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();        // into the world, recorded
  *
- * try (CgImmediate draw = CgImmediate.begin(camera)) {                     // now, into the bound target
- *     draw.chunks().draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(draw.bindings()), mesh);
- *     model.get(draw.chunks().data(), draw.chunks().instance());
- * }
+ * CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 0)).camera(camera);   // a pass of yours
+ * pass.draw(mesh, material).transform(model);
+ * pass.end();
  * }</pre>
  *
  * <h3>Keyword system</h3>

@@ -397,7 +397,7 @@ public class CgFrameBuilderTest {
         assertEquals(3, secondPass.instances[0]);
     }
 
-    /** What {@code CgImmediate} relies on: the frame owns the records, so the builder may overwrite them after. */
+    /** What {@code CgRenderer.drawNow} relies on: the frame owns the records, so the builder may overwrite them after. */
     @Test
     public void aChunkEndedInPlaceBuildsAsACopy() {
         CgRecording rec = new CgRecording();

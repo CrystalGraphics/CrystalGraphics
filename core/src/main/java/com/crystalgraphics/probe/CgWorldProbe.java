@@ -47,7 +47,7 @@ import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
-import com.crystalgraphics.world.CgCamera;
+import com.crystalgraphics.world.CgCameraControl;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
@@ -110,7 +110,7 @@ public final class CgWorldProbe {
     /** The same-frame check: armed for the next SHAKE, then the ring frame it turned the camera in. */
     private static volatile boolean sameFrameArmed;
     private static long sameFrameAt = -1, lateAtStart;
-    /** {@link CgCamera#writes()} after the probe's own last offset. */
+    /** {@link CgCameraControl#writes()} after the probe's own last offset. */
     private static int ownWrite;
     private static float baseFov;
     private static final Matrix3f baseView = new Matrix3f();
@@ -642,7 +642,7 @@ public final class CgWorldProbe {
     // ── The camera offset ────────────────────────────────────────────────────────
 
     private static void startCamera(CgHostFrame host, long now) {
-        cameraBits = CgCamera.capabilities();
+        cameraBits = CgCameraControl.capabilities();
         if (CgCameraShake.active()) {
             skip("camera", "a shake owns the camera");
             cameraBits = 0;
@@ -666,7 +666,7 @@ public final class CgWorldProbe {
     // whatever the player's pitch. A host may turn about the view's vertical or the world's; both pass.
     private static void checkTurn(CgHostFrame host) {
         if (cameraBits == 0 || shakeTook("camera.fov", "camera.yaw")) return;
-        int applied = CgCamera.applied();
+        int applied = CgCameraControl.applied();
         if (has(CgHostCamera.FOV)) {
             float ratio = host.environment().fov() / baseFov;
             check("camera.fov", Math.abs(ratio - FOV_SCALE) < 0.03f, String.format("fov %.2f to %.2f, ratio %.3f, %s",
@@ -726,7 +726,7 @@ public final class CgWorldProbe {
 
     /** Holds a pose 6 blocks up and 4 ahead of the player, turned 30 degrees from its look. */
     private static void startHold(CgHostFrame host, long now) {
-        int bits = CgCamera.capabilities();
+        int bits = CgCameraControl.capabilities();
         info("camera-hold.capabilities", Integer.toBinaryString(bits));
         CgEntityQuery entities = CgEntityQueries.client();
         int player = entities.localPlayer();
@@ -806,9 +806,9 @@ public final class CgWorldProbe {
         } else if (holdFrames == HOLD_FRAMES) {
             holdCameras.remove(HOLD);
         } else if (holdFrames == HOLD_FRAMES + HOLD_RELEASE) {
-            check("camera-hold.released", entities.cameraEntity() == player && !CgCamera.held()
+            check("camera-hold.released", entities.cameraEntity() == player && !CgCameraControl.held()
                     && host.environment().perspective() == holdPerspective, String.format("camera entity %d, player %d, held %b, "
-                    + "perspective %d, %d before", entities.cameraEntity(), player, CgCamera.held(),
+                    + "perspective %d, %d before", entities.cameraEntity(), player, CgCameraControl.held(),
                     host.environment().perspective(), holdPerspective));
             startEvents(now);
         }
@@ -819,7 +819,7 @@ public final class CgWorldProbe {
      * measures the shake: skipped, not failed.
      */
     private static boolean shakeTook(String... names) {
-        if (!CgCameraShake.active() && CgCamera.writes() == ownWrite) return false;
+        if (!CgCameraShake.active() && CgCameraControl.writes() == ownWrite) return false;
         for (String name : names) skip(name, "a shake took the camera during the check");
         return true;
     }
@@ -829,8 +829,8 @@ public final class CgWorldProbe {
     }
 
     private static void offset(float yaw, float roll, float fovScale, float rise) {
-        CgCamera.offset(0f, rise, 0f, yaw, 0f, roll, fovScale);
-        ownWrite = CgCamera.writes();
+        CgCameraControl.offset(0f, rise, 0f, yaw, 0f, roll, fovScale);
+        ownWrite = CgCameraControl.writes();
     }
 
     private static void checkRoll(CgHostFrame host) {
@@ -839,7 +839,7 @@ public final class CgWorldProbe {
         float degrees = (float) Math.toDegrees(turn.angle);
         check("camera.roll", Math.abs(degrees - ROLL) < 1.5f && Math.abs(turn.z) > 0.98f, String.format(
                 "rolled %.2f degrees about an axis %.3f along the view, %s", degrees, Math.abs(turn.z),
-                ran(CgCamera.applied(), CgHostCamera.ROLL)));
+                ran(CgCameraControl.applied(), CgHostCamera.ROLL)));
     }
 
     /** The rotation from the base view to this one, in view space: an axis there and an angle. */

@@ -624,7 +624,7 @@ A buffer is read as a `readonly` storage block bound at `CgBindingPoints.MATERIA
   `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
 - **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph
   orders each draw after the pass writing the buffer. A history buffer reads its newest version.
-- **Recorded draws only**: `captureBindings` (the world renderer, `CgImmediate`, a chunk) binds them; `bind()` binds
+- **Recorded draws only**: `captureBindings` (the world renderer, `pass.draw`, a chunk) binds them; `bind()` binds
   none. Every declared buffer is bound before the first capture, which throws naming one that is not.
 - **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
 - A vertex stage reading a buffer keeps its body in the generated depth pass.
@@ -1393,9 +1393,11 @@ storage holds whatever the driver gives**: fill it, or write every element, befo
 #### Outside a frame
 
 ```java
-try (CgImmediate.Compute run = CgImmediate.compute("bake")) {   // a graph of one compute pass, executed on close
-    run.dispatch(bake, count).bind("CELLS", CgGraphBuffer.imported("cells", glBuffer, bytes));
-}
+CgRecording rec = new CgRecording();                             // a graph of one compute pass, executed now
+CgComputePass run = rec.compute("bake");
+run.dispatch(bake, count).bind("CELLS", CgGraphBuffer.imported("cells", glBuffer, bytes));
+run.end();
+CgRenderer.executeNow(rec);
 ```
 
 `CgKernelProgram` is the direct form, dispatched on a device compute pass of the caller's (`dispatchOn`): it orders

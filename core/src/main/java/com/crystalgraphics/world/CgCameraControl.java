@@ -12,10 +12,10 @@ import com.crystalgraphics.platform.world.CgHostCamera;
  * effect shakes through {@code CgCameraShake} and a move takes the camera through {@code CgCameraSystem}, never here.
  *
  * <pre>{@code
- * CgCamera.offset(dx, dy, dz, yaw, pitch, roll, fovScale);   // once a frame; zeros and 1 to stop
- * CgCamera.hold(x, y, z, turn, fov, true, 0);                 // every frame while a rig has the camera
- * CgCamera.release();                                          // once, as it gives it back
- * if ((CgCamera.capabilities() & CgHostCamera.ROLL) == 0) foldRollIntoYaw();
+ * CgCameraControl.offset(dx, dy, dz, yaw, pitch, roll, fovScale);   // once a frame; zeros and 1 to stop
+ * CgCameraControl.hold(x, y, z, turn, fov, true, 0);                 // every frame while a rig has the camera
+ * CgCameraControl.release();                                          // once, as it gives it back
+ * if ((CgCameraControl.capabilities() & CgHostCamera.ROLL) == 0) foldRollIntoYaw();
  * }</pre>
  *
  * <ul>
@@ -24,14 +24,14 @@ import com.crystalgraphics.platform.world.CgHostCamera;
  *   <li>Render thread only. Where nothing has a camera (a server, the harness) every call is ignored.</li>
  * </ul>
  */
-public final class CgCamera {
+public final class CgCameraControl {
 
     private static int writes;
     private static boolean held;
     private static final float[] ANGLES = new float[3];
     private static final Vector3f FORWARD = new Vector3f(), UP = new Vector3f(), LEVEL = new Vector3f(), RIGHT = new Vector3f();
 
-    private CgCamera() {
+    private CgCameraControl() {
     }
 
     /** This frame's offset, holding until the next call: blocks along the world's axes, degrees, an FOV multiplier. */

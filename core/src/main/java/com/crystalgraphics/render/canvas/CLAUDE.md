@@ -6,7 +6,7 @@
 
 `CgCanvas` is what every quad, curve, triangle, cell and glyph draws into: Unreal's `FCanvas` over its render graph.
 An item names its material, state and textures; consecutive matching items are one draw; order is kept across
-kinds. A canvas records into raster passes, or, recording nothing, draws at `flush()` through `CgImmediate`. The
+kinds. A canvas records into raster passes, or, recording nothing, draws at `flush()` through `CgRenderer.drawNow`, seen through its `camera(...)`. The
 same canvas serves the world and the screen: a stage's frame hands one out (`CgStageFrame.canvas()`), under that
 firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CANVAS.md).**
 
@@ -15,7 +15,7 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | `CgCanvas.java` | The canvas: draw builders, `text()`, set-target/scissor/constants/view, its camera (`cameraProjection/View/Width/Height`) and `visible(...)` cull, replay's tape. Its javadoc has the examples |
 | `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (`#pragma cg_use quad`) |
 | `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (`#pragma cg_use curve`) |
-| `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgImmediate` |
+| `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state, textures or a stale binding snapshot; seals into the recording or `CgRenderer.drawNow` |
 | `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box, and screen coverage rasters; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
 | `CgCanvasGradient.java`, `CgCanvasGrid.java`, `CgCanvasGlass.java` | A gradient (CSS's line or a radial, eight stops a draw), a grid and a pane of glass (its `Look` presets): each owns its material and packs its properties for the next quad. A thumbnail is no canvas draw: `CgGpuOps.shrink` |
 | `CgCanvasBackdrop.java` | What is behind a pane of glass: a copy of the pixels a quad covers and its blur, captured between the canvas's passes (`CgCanvas.breakPass`), on the screen or in the world. It owns the two textures |
@@ -39,7 +39,8 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
   canvas as a parameter. The exception is `CgCanvasRetainer`'s, which draws into its own texture alone.
 - **Text is an item** (`text/render/CLAUDE.md`): `text()` lands a draw's quads through the canvas's `CgTextBatch`,
   made on first use. It reads the canvas's camera at each draw — the recording's constants, else the armed source's,
-  else `CgImmediate.constants()` — so an immediate canvas's camera changes only between a `flush()` and the next draw.
+  else its own `CgCamera` (`canvas.camera(...)`) — so an immediate canvas's camera changes only between a `flush()`
+  and the next draw.
 - **`visible(pose, box)` is the canvas's frustum cull**, against its camera; text culls each draw with it.
 - **World space is camera-relative**: a stage's canvas has the camera as `origin`; `Quad.world(x, y, z)` places at
   an absolute position in doubles.

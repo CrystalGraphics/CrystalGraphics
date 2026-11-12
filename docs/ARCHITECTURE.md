@@ -96,11 +96,11 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | Path | What it covers |
 |---|---|
 | `api/material/CLAUDE.md` | `CgMaterial` load/bind/keywords/attach-buffers/ownership; `CgRenderPassVariant`; `CgRenderQueue` constants |
-| `render/CLAUDE.md` | `CgImmediate`, `CgFrameClock`, `CgViewFrustum` — the render package's root |
+| `render/CLAUDE.md` | `CgRenderer`, `CgFrameClock`, `CgViewFrustum` — the render package's root |
 | `render/world/CLAUDE.md` | `CgWorldRenderer`, `CgDepthSnapshot`, `CgSortKey` — the world drawn under the host's camera |
 | `render/post/CLAUDE.md` | `CgPostStack`, `CgPostEffect`, `CgPostPoint`, the composite and the built-in bloom — what runs after the world |
 | `render/draw/CLAUDE.md` | `CgPipeline` (a CPU key), `CgBindingTable` (snapshots with handles), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
-| `render/graph/CLAUDE.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor`, `CgImmediate` — the frame graph |
+| `render/graph/CLAUDE.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor` and its encoders, `CgDraw` — the frame graph |
 | `material/CLAUDE.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
 | `material/parse/CLAUDE.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
 | `compute/CLAUDE.md` | `CgCompute`, `CgKernel`, `.compute` parsing and emission, `CgKernelProgram` — kernels |

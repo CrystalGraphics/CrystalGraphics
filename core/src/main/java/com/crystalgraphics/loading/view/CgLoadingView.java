@@ -9,7 +9,7 @@ import javax.annotation.Nullable;
  *
  * <pre>{@code
  * CgLoadingScreen.view((width, height, progress, appear, leave, reason) -> {
- *     CgImmediate.constants().projection.setOrtho(0, width, height, 0, -1, 1);
+ *     screen.screenLens(width, height);              // the CgCamera the view's canvas draws through
  *     float alpha = appear * (1f - leave);           // the plainest fade; ease and stagger as the look wants
  *     myRenderer.drawSplash(width, height, progress, alpha);
  * });

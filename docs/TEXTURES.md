@@ -389,7 +389,7 @@ material.applyProperties(b -> b.sampler("_View", 0, colour));   // then anything
 - **Render thread, outside a recording.** Writes queued on the textures land first.
 - **Make it again after you remake a texture** (a resize). A target holds the textures' storage as it was.
 - Either may be `null`: `CgTextures.target("mymod.mask", colour, null)` has no depth.
-- Clearing and copying outside a frame graph are `CgImmediate.clear(view, ...)` and `CgImmediate.copyColor(from, to)`.
+- Clearing and copying outside a frame graph are `CgRenderer.clear(view, ...)` and `CgRenderer.copyColor(from, to)`.
 - A frame graph imports one with `CgGraphTexture.imported(name, target)`. Textures that live one frame are the
   graph's own (`CgGraphTexture.transientTexture(name, desc)`), not yours. Only those can be multisampled.
 

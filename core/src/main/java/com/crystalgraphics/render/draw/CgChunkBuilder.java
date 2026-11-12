@@ -588,10 +588,10 @@ public final class CgChunkBuilder {
 
     /**
      * Ends the chunk without copying it: the chunk reads this builder's own arrays, so it holds only until the
-     * builder's next {@link #begin}. For a chunk built into a frame before then, as {@code CgImmediate} does.
+     * builder's next {@link #begin}. For a chunk built into a frame before then, as {@code CgRenderer.drawNow} does.
      *
      * <pre>{@code
-     * CgImmediate.flush(chunks.endInPlace(), CgOrder.SORTED);   // built and executed before it returns
+     * CgRenderer.drawNow(chunks.endInPlace(), camera, CgOrder.SORTED);   // built and executed before it returns
      * }</pre>
      *
      * <ul>
@@ -611,6 +611,11 @@ public final class CgChunkBuilder {
         Arrays.fill(records, 0);
         lent = true;
         return chunk;
+    }
+
+    /** Whether a chunk is begun and not yet ended. */
+    public boolean isOpen() {
+        return open;
     }
 
     /** Discards an open chunk, if any: for an owner reusing the builder after a failure. */

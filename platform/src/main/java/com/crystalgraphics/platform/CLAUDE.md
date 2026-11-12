@@ -115,7 +115,7 @@ The rules, for both shapes.
 1. **One SPI per concern**, in `platform.<area>` (`platform.world`, ...), named for what it answers, with a `NONE`
    that answers nothing and one slot. A concern never has two slots.
 2. **One static owner per SPI, and only it reads the slot**: the SPI's own outer class in the new shape; in the older
-   one a facade in core (`CgCamera`), an SPI with a single reader in core read by that class alone.
+   one a facade in core (`CgCameraControl`), an SPI with a single reader in core read by that class alone.
    `WorldServiceReadersTest` holds it.
 3. **Per-level answers are bound views** (`of(level)`, `client()`), held while the level lives; hot paths hold the view.
 4. **Host objects cross as `Object` and ids**; a caller wanting the host's object asks a `<V> V` getter and casts at its
@@ -291,7 +291,7 @@ child project would be one a loader could forget, leaving a working device besid
 | `CgClipboard` | the clipboard's text |
 | `CgPlatform.get(CgCursorService.SERVICE)` | presenting a cursor picture; CrystalGUI decides which |
 | `CgWorldQueries.client()`, `CgEntityQueries.client()` (core) | the client level's blocks and entities, over `CgLevels`; `NONE` with no level, on a server and in the harness |
-| `CgCamera` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
+| `CgCameraControl` (core) | a write a host opts into: a camera offset; `NONE` ignores it |
 
 **A sound by name is not a platform service** but the engine's own: `audio.CgSounds.play2D(name)` (unplaced, the
 `UI` class) or `playAt`, a host event read from the packs' `sounds.json` through `CgHostResources`. Minecraft's sound engine is never

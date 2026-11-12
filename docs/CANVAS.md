@@ -31,7 +31,7 @@ onto its target, and what you submit lands in that firing.
 | You are | Use | Space |
 |---|---|---|
 | Inside a stage renderer (`CgRenderStage.register`) | `frame.canvas()` | the stage's: the window's pixels on `HUD`/`SCREEN`, camera-relative world on `WORLD_OPAQUE`/`WORLD_TRANSPARENT` |
-| Outside any stage: a preview, a harness scene, the loading screen | `new CgCanvas()`, then `flush()` | `CgImmediate.constants()`, into whatever target is bound |
+| Outside any stage: a preview, a harness scene, the loading screen | `new CgCanvas()`, then `flush()` | its `camera(...)`, into the current target |
 | Recording a frame of your own (a UI, an offscreen picture) | `new CgCanvas()` with `recordInto(...)` | the constants you give it (§ 8) |
 
 **Inside a stage, always `frame.canvas()`.** It opens lazily on the stage's target at your first item, so a
@@ -588,14 +588,12 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
 
 ## 8. A canvas of your own
 
-Outside any stage, a canvas that is not recording draws at `flush()`, into the target bound now, under
-`CgImmediate.constants()`:
+Outside any stage, a canvas that is not recording draws at `flush()`, into the current target, through its camera:
 
 ```java
-CgPassConstants screen = CgImmediate.constants();
-screen.view.identity();
-screen.projection.identity().ortho(0, w, h, 0, -1, 1);
-screen.resolution(w, h).cameraFromView();
+CgCamera screen = new CgCamera();                // kept: the canvas reads it at each draw and flush
+canvas.camera(screen);
+screen.screenLens(w, h);                          // each frame: pixels, top-left origin
 
 canvas.quad(IMAGE).texture(0, logo).at(x, y).size(lw, lh).submit();
 canvas.quad(BAR).at(bx, by).size(bw * progress, bh).submit();
@@ -617,7 +615,7 @@ canvas.popScissor();
 canvas.recordInto(frame, layer, CgLoad.clear(0, 0, 0, 0), layerOrtho); // another target; the pass ends
 canvas.recordInto(frame, target, CgLoad.load(), screen);                // back, after the layer
 canvas.stop();                                                           // everything lands
-CgImmediate.execute(frame);
+CgRenderer.executeNow(frame);
 ```
 
 - Every state call (target, constants, scissor, view) lands what was drawn before it under the old state.
@@ -635,7 +633,7 @@ CgImmediate.execute(frame);
 | A shader without `#pragma cg_use quad` / `curve` | Refused at parse | Add the pragma |
 | A `new CgCanvas()` inside a stage renderer | Draws immediately, outside the stage's order and target | `frame.canvas()` |
 | A new canvas every frame | Works, but allocates | Keep one in a field |
-| Changing `CgImmediate.constants()` between an immediate canvas's draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |
+| Moving an immediate canvas's camera between its draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |
 | Writing a material's block in place between items | Earlier items draw with the new values | Change it through `applyProperties`/`overrideBlock`, or per item with `custom0..2` |
 | A `world(...)` item on a GUI stage | The GUI canvas has no camera origin: placed as if at 0 | Project to pixels (§ 6) |
 | Forgetting to precache the material | Its first frame waits for the compile | [`PRECACHE.md`](PRECACHE.md) |
@@ -656,5 +654,5 @@ CgImmediate.execute(frame);
 | `CgQuadRenderer.Record` offsets | `CgQuadRecord` |
 | `CgTextRenderer.create()`, `text.draw()` | `canvas.text()` |
 | `text.retainedDraw()`, `queuedDraw(q)` | `canvas.retainedText()`, `CgTextDraw.queued(q)` |
-| `text.context(CgTextRenderContext.orthographic/world(...))` | the canvas's camera: the stage's, the recording's constants, or `CgImmediate.constants()` |
+| `text.context(CgTextRenderContext.orthographic/world(...))` | the canvas's camera: the stage's, the recording's constants, or its `camera(...)` |
 | `beginBatch()` / `endBatch()`, `getDegradedDrawCount()` | nothing; `submit()` returns whether the draw was whole |

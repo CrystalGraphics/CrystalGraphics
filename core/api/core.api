@@ -3346,6 +3346,31 @@ com/crystalgraphics/audio/CgSubtitles$Cue
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/camera/CgCamera
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public height ()F
+  method public lookAt (FFFFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public lookAt (Lorg/joml/Vector3fc;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public perspectiveLens (FFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public position (FFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public positioned ()Z
+  method public projection ()Lorg/joml/Matrix4f;
+  method public projection (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public resolution (FF)Lcom/crystalgraphics/camera/CgCamera;
+  method public screenLens (FF)Lcom/crystalgraphics/camera/CgCamera;
+  method public time ()D
+  method public time (D)Lcom/crystalgraphics/camera/CgCamera;
+  method public view ()Lorg/joml/Matrix4f;
+  method public view (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/camera/CgCamera;
+  method public width ()F
+  method public x ()F
+  method public y ()F
+  method public z ()F
+  method public,static orthographic (FFFFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public,static perspective (FFFF)Lcom/crystalgraphics/camera/CgCamera;
+  method public,static screen (FF)Lcom/crystalgraphics/camera/CgCamera;
 com/crystalgraphics/camera/CgCameraBlend
   access public,final
   extends java/lang/Object
@@ -8369,32 +8394,14 @@ com/crystalgraphics/render/CgGpuBudget
   method public zone ()I
   method public,static define (Ljava/lang/String;F)Lcom/crystalgraphics/render/CgGpuBudget;
   method public,static tick ()V
-com/crystalgraphics/render/CgImmediate
+com/crystalgraphics/render/CgRenderer
   access public,final
   extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
-  method public chunks ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-  method public close ()V
-  method public,static begin (Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/CgImmediate;
-  method public,static begin (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/CgImmediate;
   method public,static clear (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;ZFFFFZDZI)V
-  method public,static compute (Ljava/lang/String;)Lcom/crystalgraphics/render/CgImmediate$Compute;
-  method public,static constants ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public,static copy (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;Z)V
   method public,static copyColor (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
-  method public,static execute (Lcom/crystalgraphics/render/graph/CgRecording;)V
-  method public,static flush (Lcom/crystalgraphics/render/draw/CgDrawChunk;Lcom/crystalgraphics/render/draw/CgOrder;)V
-com/crystalgraphics/render/CgImmediate$Compute
-  access public,final
-  extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public close ()V
-  method public dispatch (Lcom/crystalgraphics/compute/CgKernel;I)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public dispatch (Lcom/crystalgraphics/compute/CgKernel;III)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public dispatchGroups (Lcom/crystalgraphics/compute/CgKernel;III)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public dispatchIndirect (Lcom/crystalgraphics/compute/CgKernel;Lcom/crystalgraphics/render/graph/CgGraphBuffer;J)Lcom/crystalgraphics/render/graph/CgDispatch;
-  method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public,static drawNow (Lcom/crystalgraphics/render/draw/CgDrawChunk;Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/draw/CgOrder;)V
+  method public,static executeNow (Lcom/crystalgraphics/render/graph/CgRecording;)V
 com/crystalgraphics/render/CgViewFrustum
   access public,final
   extends java/lang/Object
@@ -8427,6 +8434,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public arm (Lcom/crystalgraphics/render/canvas/CgCanvas$Source;)V
   method public bindings ()Lcom/crystalgraphics/render/draw/CgBindingTable;
   method public breakPass ()Lcom/crystalgraphics/render/graph/CgRecording;
+  method public camera (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public cameraHeight ()F
   method public cameraProjection ()Lorg/joml/Matrix4fc;
   method public cameraView ()Lorg/joml/Matrix4fc;
@@ -8446,6 +8454,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public quad (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public quads (Lcom/crystalgraphics/api/material/CgMaterial;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)Lcom/crystalgraphics/render/canvas/CgCanvas;
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
+  method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/camera/CgCamera;)V
   method public recordInto (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public recording ()Z
   method public retainedCell ()Lcom/crystalgraphics/render/canvas/CgCurveBatch$Cell;
@@ -8924,6 +8933,7 @@ com/crystalgraphics/render/draw/CgChunkBuilder
   method public indirectEach (Lcom/crystalgraphics/render/draw/CgBufferHandle;Lcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public instance ()I
   method public instances ([FII)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
+  method public isOpen ()Z
   method public objects (Lcom/crystalgraphics/render/draw/CgBufferHandle;II)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public primitive (I)Lcom/crystalgraphics/render/draw/CgChunkBuilder;
   method public primitives ()Lcom/crystalgraphics/render/draw/CgPrimitiveTable;
@@ -9083,6 +9093,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public read ([FI)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public resolution (FF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public sceneGlow (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public seenThrough (Lcom/crystalgraphics/camera/CgCamera;FF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public sun (FFFF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public sunShare (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public time (D)Lcom/crystalgraphics/render/draw/CgPassConstants;
@@ -9249,6 +9260,22 @@ com/crystalgraphics/render/graph/CgDispatch
   method public skipCountBarrier (Ljava/lang/String;I)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/graph/CgDispatch;
   method public values (Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/graph/CgDispatch;
+com/crystalgraphics/render/graph/CgDraw
+  access public,final
+  extends java/lang/Object
+  method public bounds (FFFF)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public buffer (Lcom/crystalgraphics/api/CgBindingPoints$Binding;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public countAt (J)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public customData (IFFFF)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public gpuGroup (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public indirect (Lcom/crystalgraphics/render/draw/CgBufferHandle;JLcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public indirectEach (Lcom/crystalgraphics/render/draw/CgBufferHandle;Lcom/crystalgraphics/render/draw/CgIndirect;I)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public instance ()Lcom/crystalgraphics/render/graph/CgDraw;
+  method public objects (Lcom/crystalgraphics/render/draw/CgBufferHandle;II)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public range (III)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public records ([FII)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public sortKey (J)Lcom/crystalgraphics/render/graph/CgDraw;
+  method public transform (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/graph/CgDraw;
 com/crystalgraphics/render/graph/CgExecutor
   access public,final
   extends java/lang/Object
@@ -9461,6 +9488,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   access public,final
   extends com/crystalgraphics/render/graph/CgPass
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public camera (Lcom/crystalgraphics/camera/CgCamera;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public chunks ()Ljava/util/List;
   method public color (Lcom/crystalgraphics/render/graph/CgGraphTexture;IILcom/crystalgraphics/render/graph/CgLoad;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public color (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;)Lcom/crystalgraphics/render/graph/CgRasterPass;
@@ -9469,6 +9497,7 @@ com/crystalgraphics/render/graph/CgRasterPass
   method public damage ()[I
   method public damage (IIII)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public depth (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/render/graph/CgDepthAccess;)Lcom/crystalgraphics/render/graph/CgRasterPass;
+  method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/render/graph/CgDraw;
   method public end ()V
   method public indirect (Lcom/crystalgraphics/render/graph/CgGraphBuffer;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public layer ()I
@@ -20340,7 +20369,7 @@ com/crystalgraphics/world/CgAttachment
   method public point (Ljava/lang/String;[DLorg/joml/Quaternionf;)Z
   method public scale (Ljava/lang/String;Lorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public,abstract place ([DLorg/joml/Quaternionf;)Z
-com/crystalgraphics/world/CgCamera
+com/crystalgraphics/world/CgCameraControl
   access public,final
   extends java/lang/Object
   method public,static angles (Lorg/joml/Quaternionfc;[F)[F

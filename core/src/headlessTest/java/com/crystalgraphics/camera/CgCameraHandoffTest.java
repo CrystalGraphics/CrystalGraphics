@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgHostCamera;
 import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.world.CgCamera;
+import com.crystalgraphics.world.CgCameraControl;
 
 /** The composed pose reaching the host: held while a rig has the camera, released once, and a rig's {@code on_missing}. */
 public class CgCameraHandoffTest {
@@ -71,7 +71,7 @@ public class CgCameraHandoffTest {
 
     @After
     public void none() {
-        CgCamera.release();
+        CgCameraControl.release();
         CgPlatform.provide(CgHostCamera.SERVICE, CgHostCamera.NONE);
     }
 
@@ -114,13 +114,13 @@ public class CgCameraHandoffTest {
         assertEquals(2, host.holds);
         assertEquals(10, host.x, 1e-6);
         assertEquals(40, host.fov, 1e-4);
-        assertTrue(CgCamera.held());
+        assertTrue(CgCameraControl.held());
 
         cameras.remove(move);
         cameras.update(0.1f);
         cameras.update(0.1f);
         assertEquals("released once, however many frames follow", 1, host.releases);
-        assertFalse(CgCamera.held());
+        assertFalse(CgCameraControl.held());
     }
 
     /** A play's switches reach the host while it holds; overlapping plays ask together, released when none does. */
@@ -149,7 +149,7 @@ public class CgCameraHandoffTest {
         cameras.update(0.1f);
         cameras.update(0.1f);
         assertEquals(0, host.holds);
-        assertFalse(CgCamera.held());
+        assertFalse(CgCameraControl.held());
     }
 
     @Test
@@ -202,19 +202,19 @@ public class CgCameraHandoffTest {
     @Test
     public void aTurnBecomesMinecraftsAngles() {
         float[] a = new float[3];
-        CgCamera.angles(new Quaternionf(), a);
+        CgCameraControl.angles(new Quaternionf(), a);
         assertEquals("forward +x", -90, a[0], 1e-4);
         assertEquals(0, a[1], 1e-4);
         assertEquals(0, a[2], 1e-4);
 
-        CgCamera.angles(new Quaternionf().rotateY((float) Math.toRadians(-90)), a);
+        CgCameraControl.angles(new Quaternionf().rotateY((float) Math.toRadians(-90)), a);
         assertEquals("forward +z", 0, a[0], 1e-4);
 
-        CgCamera.angles(new Quaternionf().rotateZ((float) Math.toRadians(-30)), a);
+        CgCameraControl.angles(new Quaternionf().rotateZ((float) Math.toRadians(-30)), a);
         assertEquals("nose down", 30, a[1], 1e-3);
         assertEquals(0, a[2], 1e-3);
 
-        CgCamera.angles(new Quaternionf().rotateX((float) Math.toRadians(20)), a);
+        CgCameraControl.angles(new Quaternionf().rotateX((float) Math.toRadians(20)), a);
         assertEquals(-90, a[0], 1e-3);
         assertEquals("a roll about forward alone", 20, Math.abs(a[2]), 1e-3);
     }

@@ -1,6 +1,9 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
@@ -135,6 +138,13 @@ public final class CgRasterPass extends CgPass {
     private CgGraphTexture attachment;
     private boolean attachmentOptional;
 
+    /** What {@link #draw} draws through, made at its first draw and kept across the pass's reuse; null until then. */
+    @Nullable
+    private CgDraw drawer;
+    /** What {@link #camera} writes the constants through, made at its first camera. */
+    @Nullable
+    private CgPassConstants cameraConstants;
+
     /** Textures bound with the pass's constants: units and textures, in parallel. */
     private int[] textureUnits = NO_UNITS;
     private CgTexture[] textures = NO_TEXTURES;
@@ -193,6 +203,7 @@ public final class CgRasterPass extends CgPass {
     /** Drops what the pass names once its recording is reset, keeping its arrays for the next reuse. */
     @Override
     void clearReferences() {
+        if (drawer != null) drawer.reset();
         chunks.clear();
         target = null;
         depth = null;
@@ -207,8 +218,66 @@ public final class CgRasterPass extends CgPass {
     private static final int[] NO_UNITS = new int[0];
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
 
+    /**
+     * Draws {@code mesh} under {@code material}: one instance, more with {@link CgDraw#instance()}, each an object
+     * record set through what it answers. In painter's order with the chunks added.
+     *
+     * <pre>{@code
+     * CgRasterPass pass = rec.raster("preview")
+     *         .color(picture, CgLoad.clear(0, 0, 0, 0))
+     *         .depth(depth, CgLoad.clearDepth(1f), CgDepthAccess.WRITE)
+     *         .camera(CgCamera.perspective(60f, 1f, 0.05f, 100f).lookAt(eye, target));
+     * pass.draw(mesh, material).transform(model).customData(0, r, g, b, 1f);
+     * pass.end();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its target and depth are declared first: the draw is the pass's from here.</li>
+     *   <li>What it answers is valid until the pass's next {@code draw}, {@code add} or {@code end}.</li>
+     * </ul>
+     */
+    public CgDraw draw(CgMesh mesh, CgMaterial material) {
+        declaring();
+        requireTarget();
+        if (drawer == null) drawer = new CgDraw(this, recording);
+        return drawer.begin(mesh, material);
+    }
+
+    /**
+     * What its draws are seen through: view, projection, position, resolution and time. The depth convention and the
+     * target's encoding are the target's. Copied now: changing {@code camera} afterwards changes no recorded pass.
+     */
+    public CgRasterPass camera(CgCamera camera) {
+        declaring();
+        CgGraphTexture sized = target != null ? target : depth;
+        if (sized == null) throw new IllegalStateException(this + " names its camera before its colour or depth");
+        float width = 0f, height = 0f;
+        if (camera.width() > 0f && camera.height() > 0f) {
+            width = camera.width();
+            height = camera.height();
+        } else if (sized.isCurrent()) {
+            CgExecutor.Into open = CgGraphDevice.get().current;
+            if (open != null && open.target != null) {
+                width = open.target.width();
+                height = open.target.height();
+            }
+        } else {
+            width = Math.max(1, sized.desc().width() >> level);
+            height = Math.max(1, sized.desc().height() >> level);
+        }
+        if (cameraConstants == null) cameraConstants = new CgPassConstants();
+        cameraConstants.seenThrough(camera, width, height);
+        return constants(cameraConstants);
+    }
+
     /** Appends a chunk, in painter's order. */
     public CgRasterPass add(CgDrawChunk chunk) {
+        if (drawer != null) drawer.land();
+        return addDrawn(chunk);
+    }
+
+    /** {@link #add}, for what {@link #draw} drew. */
+    CgRasterPass addDrawn(CgDrawChunk chunk) {
         declaring();
         requireTarget();
         if (chunks.size() == chunkScissor.length) chunkScissor = Arrays.copyOf(chunkScissor, chunkScissor.length * 2);
@@ -806,6 +875,7 @@ public final class CgRasterPass extends CgPass {
     /** Ends the pass: what it drew is now what a later read of its target sees. */
     public void end() {
         if (ended) throw new IllegalStateException(this + " has already ended");
+        if (drawer != null) drawer.land();
         recording.requireOpen();
         requireTarget();
         ended = true;

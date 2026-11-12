@@ -105,9 +105,10 @@ host owns. The platform guide has each.
 
 ```java
 // In core/ — never a raw GL call, never an LWJGL import: record a pass, and the device draws it
-try (CgImmediate draw = CgImmediate.begin(constants)) {
-    draw.chunks().draw(material.pipeline(CgInstanceKind.QUAD), material.captureBindings(draw.bindings()));
-}
+CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 0)).camera(camera);
+pass.draw(mesh, material).transform(model);
+pass.end();
+CgRenderer.executeNow(rec);
 InputStream in = CgHostResources.open("mymod", "textures/icon.png");   // a slot, through its owner
 
 // A host, once, from an entry point that runs on both sides: the bundle and every platform slot

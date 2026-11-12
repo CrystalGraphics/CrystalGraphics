@@ -21,7 +21,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps.Order;
 import com.crystalgraphics.compute.ops.CgGpuOps.Scan;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.compute.CgCheckBuffers;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -150,7 +150,7 @@ public final class CgGpuOpsCheck {
             pass.dispatch(check.kernel("Rng"), DRAWN).bind("DRAWN", CgGraphBuffer.imported("drawn", drawn, DRAWN * 16L))
                     .set("_Seed", SEED);
             pass.end();
-            CgImmediate.execute(rec);
+            CgRenderer.executeNow(rec);
 
             for (Case c : cases) c.expect(failures, reads);
             for (ImageCase c : images) c.expect(failures, reads);

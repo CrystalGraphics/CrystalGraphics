@@ -39,7 +39,7 @@ This is the top of the CrystalShader material stack.
 
 A material does not own the frame block or the object buffer: a recorded pass carries its constants, and
 the executor binds both. Into Minecraft's world, submit to `CgWorldRenderer` (see
-[`render/world/CLAUDE.md`](../../render/world/CLAUDE.md)); anywhere else, record through `CgImmediate`.
+[`render/world/CLAUDE.md`](../../render/world/CLAUDE.md)); anywhere else, draw it in a raster pass of your own (`pass.draw(mesh, material)`, `CgRenderer.executeNow`).
 
 ```java
 CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).submit();

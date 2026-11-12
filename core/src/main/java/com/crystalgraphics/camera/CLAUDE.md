@@ -14,6 +14,7 @@ cameras.push(new CgCameraContext("mymod:move").director(CgCameraDirector.single(
 | Package | Owns |
 |---|---|
 | `camera` | `CgCameraSystem` (`FCameraSystemEvaluator`: the context stack, the director, both stacks), `CgCameraContext`, `CgCameraDirector` (single, priority), `CgCameraRig` (a rig running: its parameters in host units, its nodes), `CgCameraNode` (a node's evaluator: the SPI), `CgCameraBlendStack` (the transient stack), `CgCameraBlend` (blend kinds and a running blend), `CgCameraModifier` (the persistent stack), `CgCameraPose` |
+| `camera` (rendering) | `CgCamera`: what a raster pass is seen through (view, projection, position, resolution, time), given with `pass.camera(camera)` or `canvas.camera(camera)` (`renderer.md` § 4.4). A value the pass copies; not the viewer's camera, which the host owns (`world.CgCameraControl`) |
 | `camera.node` | `CgCameraNodes`: the node kinds by name, each following its Unreal node evaluator |
 | `asset.camera` | `CgCameraRigDefinition`: the rig file compiled, its node kinds checked against `CgCameraKinds.NODES` |
 | `sequence.camera` | `CgSequenceCameras` (installs them), `CgCineCamera` and `CgRigCamera` (the `camera` spawnable, cine or rig), `CgCameraCutEvaluator` (`camera_cut`) and `CgCameraAnimationEvaluator` (`camera_animation`) |

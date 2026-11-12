@@ -408,19 +408,19 @@ shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission sca
 in the firing's table and its material's slot in its shader's arena (`CgMaterialArena`), which the frame builder writes;
 a draw of its own records reads identity ids, `(i, 0)`.
 
-**An immediate object draw** — a preview, a harness scene — goes through `CgImmediate` with its own pass
-constants:
+**A draw outside the world** — a preview, a thumbnail, a harness scene — is a raster pass of a recording of your own,
+seen through a `CgCamera`, executed now:
 
 ```java
-CgPassConstants camera = new CgPassConstants();
-camera.view.set(view);
-camera.projection.set(projection);
-camera.resolution(w, h).time(CgFrameClock.seconds()).cameraFromView();
-try (CgImmediate draw = CgImmediate.begin(camera)) {
-    draw.chunks().draw(material.pipeline(CgInstanceKind.OBJECT), material.captureBindings(draw.bindings()), mesh);
-    int at = draw.chunks().instance();
-    model.get(draw.chunks().data(), at);                       // then the normal matrix at +16, custom at +32
-}
+CgCamera camera = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(CgFrameClock.seconds());
+CgRecording rec = new CgRecording();
+CgRasterPass pass = rec.raster("preview")
+        .color(picture, CgLoad.clear(0, 0, 0, 0))
+        .depth(depth, CgLoad.clearDepth(1f), CgDepthAccess.WRITE)
+        .camera(camera);
+pass.draw(mesh, material).transform(model).customData(0, r, g, b, 1f);   // the engine writes the record
+pass.end();
+CgRenderer.executeNow(rec);
 ```
 
 ## The world and its schedule
@@ -504,7 +504,7 @@ CgExternalTarget view = CgTextures.target("mymod.view", colour, depth);   // mak
 try (CgExecutor.Into ignored = CgExecutor.into(view)) {   // the current target of what executes
     stage.fire();
 }
-CgImmediate.clear(view, true, 0f, 0f, 0f, 1f, true, 1.0, false, 0);     // outside a graph; in one, a pass's CgLoad
+CgRenderer.clear(view, true, 0f, 0f, 0f, 1f, true, 1.0, false, 0);      // outside a graph; in one, a pass's CgLoad
 colour.release();
 depth.release();
 ```

@@ -9,7 +9,9 @@ import com.crystalgraphics.gpu.resource.CgTexture3D;
 import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgRenderer;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
@@ -146,16 +148,18 @@ public final class CgNoiseVolumes {
         }
         CgGraphTexture[] volumes = new CgGraphTexture[NAMES.length];
         for (int i = 0; i < NAMES.length; i++) volumes[i] = CgGraphTexture.imported(NAMES[i], CgTextures.target(NAMES[i], MADE[i], null));
-        try (CgImmediate.Compute run = CgImmediate.compute("crystalgraphics.noiseBake")) {
-            rgba(run, volumes);
-            wavelet(run, volumes[WAVELET_AT]);
-        }
+        CgRecording bake = new CgRecording();
+        CgComputePass run = bake.compute("crystalgraphics.noiseBake");
+        rgba(run, volumes);
+        wavelet(run, volumes[WAVELET_AT]);
+        run.end();
+        CgRenderer.executeNow(bake);
         System.arraycopy(MADE, 0, VOLUMES, 0, NAMES.length);
         return true;
     }
 
     /** Each RGBA volume's level 0 by its kernel, then each level the box average of the eight texels above it. */
-    private static void rgba(CgImmediate.Compute run, CgGraphTexture[] volumes) {
+    private static void rgba(CgComputePass run, CgGraphTexture[] volumes) {
         for (int i = 0; i < RGBA; i++) {
             var level0 = run.dispatch(kernel(LEVEL0[i]), SIZE, SIZE, SIZE).image("OUT", volumes[i], 0, -1)
                     .set("_Period", PERIOD);
@@ -175,7 +179,7 @@ public final class CgNoiseVolumes {
      * of the spectrum; that subtracted; then a copy offset by an odd number of cells added, which evens the variance
      * between even and odd cells.
      */
-    private static void wavelet(CgImmediate.Compute run, CgGraphTexture tile) {
+    private static void wavelet(CgComputePass run, CgGraphTexture tile) {
         int n = WAVELET_TILE, cells = n * n * n;
         CgBufferDesc desc = CgBufferDesc.elements(cells, 4, CgBufferUsage.STORAGE);
         CgGraphBuffer seed = CgGraphBuffer.transientBuffer("wavelet.seed", desc);

@@ -3,7 +3,7 @@ package com.crystalgraphics.render.canvas;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.CgViewFrustum;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -57,11 +57,11 @@ import com.crystalgraphics.render.graph.CgDepthAccess;
  * canvas.view(0, 0f, 0f);
  * canvas.recordInto(frame, frameTarget, CgLoad.load(), screen);              // back, in a pass after the layer
  * canvas.stop();                                                             // everything drawn lands
- * CgImmediate.execute(frame);
+ * CgRenderer.executeNow(frame);
  *
- * CgCanvas now = new CgCanvas();                  // recording nothing: a preview, a harness scene
+ * CgCanvas now = new CgCanvas().camera(CgCamera.screen(w, h));   // recording nothing: a preview, a harness scene
  * now.quad(box).at(x, y).size(w, h).submit();
- * now.flush();                                    // drawn into the bound target under CgImmediate.constants()
+ * now.flush();                                    // drawn into the current target through its camera
  * }</pre>
  *
  * <p>Scissors nest as a chain, each cut by the ones before it; one in a spatial node's space moves with the node:</p>
@@ -215,8 +215,8 @@ public final class CgCanvas {
     }
 
     /**
-     * Lands everything drawn now: into the passes while it records, else drawn into the bound target through
-     * {@code CgImmediate} under {@code CgImmediate.constants()}. Recording, only to bracket a stretch exactly
+     * Lands everything drawn now: into the passes while it records, else drawn into the current target through
+     * {@code CgRenderer.drawNow} under its {@link #camera}. Recording, only to bracket a stretch exactly
      * ({@link #chunksTaken}); state calls and {@link #stop} land what is drawn anyway.
      */
     public void flush() {
@@ -232,7 +232,7 @@ public final class CgCanvas {
 
     /**
      * The projection later items draw under: the pass's while recording, an armed stage's before it opens, else
-     * {@code CgImmediate.constants()}'s. Read-only.
+     * its {@link #camera}'s. Read-only.
      */
     public Matrix4fc cameraProjection() {
         refreshCamera();
@@ -275,8 +275,46 @@ public final class CgCanvas {
 
     private void refreshCamera() {
         if (recording != null) return;
-        takeCamera(source != null ? source.constants() : CgImmediate.constants());
+        if (source != null) {
+            takeCamera(source.constants());
+            return;
+        }
+        cameraProjection.set(nowCamera.projection());
+        cameraView.set(nowCamera.view());
+        cameraWidth = Math.max(1f, nowCamera.width());
+        cameraHeight = Math.max(1f, nowCamera.height());
     }
+
+    /**
+     * What later draws are seen through. Recording, the pass constants from it, copied now: a change ends the open
+     * pass, as {@link #constants} does. Recording nothing ({@link #flush} drawing now), it is kept, not copied, so a
+     * caller moves it in place frame to frame.
+     *
+     * <pre>{@code
+     * CgCamera screen = new CgCamera();
+     * canvas.camera(screen);
+     * screen.screenLens(width, height);   // each frame, before drawing now
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A camera that names no resolution takes the current target's drawing now, and none recording: name it.</li>
+     * </ul>
+     */
+    public CgCanvas camera(CgCamera camera) {
+        nowCamera = camera;
+        if (recording != null) constants(cameraConstants.seenThrough(camera, 0f, 0f));
+        return this;
+    }
+
+    /** What {@link #camera} writes while recording. */
+    private final CgPassConstants cameraConstants = new CgPassConstants();
+
+    /** What it draws through while recording nothing. */
+    CgCamera nowCamera() {
+        return nowCamera;
+    }
+
+    private CgCamera nowCamera = new CgCamera();
 
     private void takeCamera(CgPassConstants constants) {
         cameraProjection.set(constants.projection);
@@ -376,6 +414,12 @@ public final class CgCanvas {
      * Records later chunks into raster passes on {@code target} in {@code recording}, under {@code constants}, and
      * ends the pass that was open.
      */
+    public void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load, CgCamera camera) {
+        nowCamera = camera;
+        recordInto(recording, target, load, cameraConstants.seenThrough(camera, 0f, 0f));
+    }
+
+    /** As {@link #recordInto(CgRecording, CgGraphTexture, CgLoad, CgCamera)}, under constants a stage or view made. */
     public void recordInto(CgRecording recording, CgGraphTexture target, CgLoad load, CgPassConstants constants) {
         recordInto(recording, target, target.kind() == CgGraphTexture.Kind.EXTERNAL ? target : null, load, constants);
     }

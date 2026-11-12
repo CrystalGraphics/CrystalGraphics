@@ -9,7 +9,7 @@ thread. The root holds what every recorder shares; each sub-package is one layer
 
 | Type or package | Role |
 |------|------|
-| `CgImmediate` | "Draw this now" through the same recording and executor: chunks into the bound framebuffer, built and executed at once. `CgImmediate.constants()` is what a renderer's immediate `flush` draws under |
+| `CgRenderer` | Drawing outside the world: `executeNow(recording)` builds and executes a recording at once (a preview, a bake, a test); `drawNow(chunk, camera, order)` is an immediate canvas's flush into the current target; `clear` and `copy` work on an external target outside any graph |
 | `CgFrameClock` | The frame's time in double seconds and its index, advanced once per host frame; every pass's `cg_Time`, narrowed to a float only there (`CgPassConstants.time`). CPU code never keeps clock time in a float |
 | `CgWarmBudget` | The CPU milliseconds a frame warm-ups may take (`crystalgraphics.warmBudget`, 4): `CgPipeline.precache`, `CgMaterial.precache` and `CgVfxSystem`'s queue start work only while it allows, so a warm-up spreads over frames. Unlimited until the graphics start (`CgGraphicsLifecycle.init`) starts it |
 | `CgCpuMeter` | A consumer's CPU nanoseconds: added by its own code from any thread, and by the executor for each compute pass charged with `charged(meter)`, timed as it runs; taken once a frame by whoever budgets it (`vfx.scalability.CgVfxBudget`) |

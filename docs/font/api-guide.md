@@ -207,7 +207,7 @@ CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->
 
 - The canvas's camera decides: a projection with perspective is world text. Nothing to switch or update as
   the camera moves or the window resizes.
-- A canvas of your own draws world text under `CgImmediate.constants()` with a perspective projection, its
+- A canvas of your own draws world text through its `camera(...)`, a perspective `CgCamera`, its
   view there or in each pose.
 - Many labels that persist and move: `CgWorldRenderer.get().text(...)`, which keeps their glyphs on the GPU
   ([`../ENGINE_API.md`](../ENGINE_API.md)).

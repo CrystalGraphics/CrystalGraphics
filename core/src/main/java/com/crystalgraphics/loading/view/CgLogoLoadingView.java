@@ -20,7 +20,7 @@ import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.resource.CgTextureSettings;
@@ -58,7 +58,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
     private final String lockupPath;
     private final long started = System.nanoTime();
     /** Drawn at once, at the end of each draw: the loading screen draws outside any stage. */
-    private final CgCanvas canvas = new CgCanvas();
+    private final CgCamera screen = new CgCamera();
+    private final CgCanvas canvas = new CgCanvas().camera(screen);
     @Nullable private CgTexture2D lockup;
     private float seconds, aspect;
 
@@ -77,8 +78,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
         if (width <= 0 || height <= 0) return;
         seconds = (System.nanoTime() - started) / 1e9f;
         aspect = width / (float) height;
-        CgImmediate.constants().view.identity();
-        CgImmediate.constants().projection.setOrtho(0f, width, height, 0f, -1f, 1f);
+        screen.screenLens(width, height);
 
         // Staged, each part on its own eased window. In: the backdrop over the host's screen, then the lockup settling from 3% larger, then the bar rising into place. Out, the reverse:
         // the bar first, the lockup lifting away 6% larger as a game's splash leaves for its menu, the backdrop last

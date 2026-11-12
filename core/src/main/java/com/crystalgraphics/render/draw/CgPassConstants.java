@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
@@ -131,6 +132,19 @@ public final class CgPassConstants {
         this.cameraY = y;
         this.cameraZ = z;
         return this;
+    }
+
+    /**
+     * The view block as {@code camera} sees: its view, projection, time and position, its resolution or else
+     * {@code width} x {@code height}, the host's depth convention. What a pass's or a canvas's {@code camera(...)}
+     * writes.
+     */
+    public CgPassConstants seenThrough(CgCamera camera, float width, float height) {
+        view.set(camera.view());
+        projection.set(camera.projection());
+        time(camera.time()).resolution(camera.width() > 0f ? camera.width() : width,
+                camera.height() > 0f ? camera.height() : height).hostDepth();
+        return camera.positioned() ? camera(camera.x(), camera.y(), camera.z()) : cameraFromView();
     }
 
     /** Puts the camera where {@link #view} sees from, for an affine view: a pass with no other camera to give. */

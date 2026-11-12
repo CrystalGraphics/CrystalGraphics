@@ -7,7 +7,7 @@ import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.gpu.resource.CgTextureType;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -201,7 +201,7 @@ public final class CgComputeSelfTest {
                 pass.dispatch(kernels.kernel("After"), COUNTED).bind("DOUBLED", gDoubled).bind("AFTER", gAfter);
                 pass.dispatch(kernels.kernel("Bits"), N).bind("BITS", gBits);
                 pass.end();
-                CgImmediate.execute(rec);
+                CgRenderer.executeNow(rec);
 
                 expectWords("FLOATS", reads.words(floats, N * 2), floats(N * 2, w -> {
                     int i = w / 2;

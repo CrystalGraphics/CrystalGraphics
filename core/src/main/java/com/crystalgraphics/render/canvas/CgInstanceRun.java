@@ -6,7 +6,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
-import com.crystalgraphics.render.CgImmediate;
+import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -211,7 +211,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
         return chunkOpen || !pending.isEmpty();
     }
 
-    /** Lands what is drawn: into the canvas's passes while it records, else drawn now through {@link CgImmediate}. */
+    /** Lands what is drawn: into the canvas's passes while it records, else drawn now through {@link CgRenderer#drawNow}. */
     @Override
     public void seal() {
         if (!pending()) return;
@@ -221,7 +221,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
             chunkOpen = false;
             appendBinding = -1;
             if (canvas.recording()) canvas.add(chunk.end());
-            else CgImmediate.flush(chunk.endInPlace(), CgOrder.SORTED);
+            else CgRenderer.drawNow(chunk.endInPlace(), canvas.nowCamera(), CgOrder.SORTED);
         }
     }
 

@@ -139,7 +139,7 @@ depth)`), or a host's framebuffer named once (`CgExternalTarget.host(fbo, w, h)`
 one as its current target through `CgExecutor.into(target)`; a graph imports one with `CgGraphTexture.imported`.
 
 - A target is the textures' storage as it is now: make it again after a texture is remade (a resize).
-- Outside a graph, `CgImmediate.clear(target, ...)` and `CgImmediate.copy(from, to, depth)` are a render pass and a
+- Outside a graph, `CgRenderer.clear(target, ...)` and `CgRenderer.copy(from, to, depth)` are a render pass and a
   blit of their own; in one, a pass's `CgLoad` and `rec.copy`.
 - A texture is read back by itself: `CgReadback.texture`, `rec.readback`, or `CgReadback.now` waiting for the GPU.
 
