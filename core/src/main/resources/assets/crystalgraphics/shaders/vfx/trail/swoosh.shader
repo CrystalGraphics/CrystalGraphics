@@ -2,15 +2,9 @@
 // arc. Brightest along the tip's edge, where it is newest, in a hot line; streaks of light running along the swing,
 // thinning toward the base and eaten away toward the tail; faded where it is seen edge-on, so it never shows as a
 // line. Added, and it blooms. An anim trail's material: its edge's first point the base, its second the tip.
-#type none
-#pragma cg_use particle
-#pragma cg_use rows
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color    ("Its sheet; its alpha a strength", color) = (0.35, 0.7, 1.8, 1)
@@ -25,54 +19,22 @@ Properties {
     _Noise  ("Noise", sampler3D) = "cg_noise"
 }
 
-// trail: life 0..1, base to tip 0..1, how squarely it faces the eye, its samples' opacity
-struct v2f { vec4 trail; };
+struct v2f { vec2 uv0; vec3 normal; vec3 world; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
-
-    void vertex(out v2f o) {
-        CgMaterialVertex v = cg_material_vertex();
-        CgMaterialParticle p = cg_material_particle();
-        // The world position is from the eye, so the eye is the origin.
-        float facing = abs(dot(normalize(v.tangentToWorld[2]), normalize(-v.worldPosition + vec3(1.0e-6))));
-        o.trail = vec4(p.relativeTime, v.texCoords[0].y, facing, p.color.a);
-        gl_Position = cg_material_project(v);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        float u = i.trail.x, outward = i.trail.y;
-        float sheet = smoothstep(_Base, 1.0, outward);
-        float edge = exp(-(1.0 - outward) * _Edge) * exp(-u * 4.0);
-        vec3 q = vec3(u * _Tiling.x - FX_AGE * _Flow, outward * _Tiling.y, FX_SEED * 11.0);
-        float streak = pow(fx_ridged(vec3(q.x, q.y, q.z), 3), 3.0);
-        float n = 0.5 + 0.5 * fx_fbm(q * vec3(0.5, 1.0, 1.0), 3);
-        float e = sheet * (0.5 + 0.5 * n) + streak * 0.6 * sheet + edge - u * u * _Erode;
-        float alpha = smoothstep(0.0, 0.25, e);
-        float behind = exp(-u * _Decay);
-        // Edge-on, a sheet would draw as a bright line: it fades to nothing there.
-        float facing = smoothstep(0.05, 0.4, i.trail.z);
-        float strength = alpha * behind * facing * i.trail.w * _Color.a * FX_PRESENCE;
-        float hot = clamp(edge * 1.5 + streak * 0.7 * (1.0 - u), 0.0, 1.0);
-        vec3 light = mix(_Color.rgb * (0.6 + 0.6 * n), _Hot.rgb, hot);
-        fragColor = vec4(light * strength, 0.0);
-        CG_GLOW((_Hot.rgb * hot + _Color.rgb * sheet * 0.3) * strength * _GlowGain);
-    }
-}
-
-// Its glow (CG_GLOW) into the world's bloom.
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    float u = cg_Particle.relativeTime, outward = i.uv0.y;
+    float sheet = smoothstep(_Base, 1.0, outward);
+    float edge = exp(-(1.0 - outward) * _Edge) * exp(-u * 4.0);
+    vec3 q = vec3(u * _Tiling.x - cg_Vfx.age * _Flow, outward * _Tiling.y, cg_Vfx.seed * 11.0);
+    float streak = pow(fx_ridged(q, 3), 3.0);
+    float n = 0.5 + 0.5 * fx_fbm(q * vec3(0.5, 1.0, 1.0), 3);
+    float e = sheet * (0.5 + 0.5 * n) + streak * 0.6 * sheet + edge - u * u * _Erode;
+    float alpha = smoothstep(0.0, 0.25, e);
+    float behind = exp(-u * _Decay);
+    // Edge-on, a sheet would draw as a bright line: it fades to nothing there. The eye is the origin.
+    float facing = smoothstep(0.05, 0.4, abs(dot(normalize(i.normal), normalize(-i.world + vec3(1.0e-6)))));
+    float strength = alpha * behind * facing * cg_Particle.color.a * _Color.a;
+    float hot = clamp(edge * 1.5 + streak * 0.7 * (1.0 - u), 0.0, 1.0);
+    s.baseColor = mix(_Color.rgb * (0.6 + 0.6 * n), _Hot.rgb, hot) * strength;
+    s.emissive = (_Hot.rgb * hot + _Color.rgb * sheet * 0.3) * strength * _GlowGain;
 }

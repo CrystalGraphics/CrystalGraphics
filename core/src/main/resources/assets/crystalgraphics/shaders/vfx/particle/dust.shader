@@ -8,16 +8,11 @@
 // below _Sit of its height, and fades into it by its height over it; else it fades into what is behind it
 // (_SoftDistance), as it does against anything else. _Color is the dust, its alpha a strength; _Hot the blast's light,
 // black for none.
-#type none
-#pragma cg_use particle
-#pragma cg_use rows
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" }
-Queue = "Transparent"
+Material { BlendMode AlphaComposite  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color ("The dust; its alpha a strength", color) = (0.6, 0.57, 0.53, 0.6)
@@ -44,87 +39,76 @@ Properties {
     _NearTo  ("Blocks from the eye where it is gone", float) = 1.2
 }
 
-// where on it, its seed, how far through its life; its height over the floor (huge for none), its half height;
-// its velocity's heading, its speed
+// where on it, its seed, how far through its life; its record's opacity and light; its height over the floor (huge for
+// none), its half height; its velocity's heading, its speed; its colour
 struct v2f { vec3 world; vec4 puff; float opacity; vec2 light; vec2 ground; vec3 motion; vec3 tint; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
+    vec2 corner = FX_QUAD_CORNER;
+    vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
+    vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
+    vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
+    int k = max(n, 0);
+    float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(k) * CG_OBJECT_CUSTOM0.z;
+    vec2 extent = size * CG_PARTICLE_SCALE(k).xy * vec2(1.0, _Aspect);
+    vec3 centre = origin + CG_PARTICLE_POSITION(k);
+    // Standing on its floor: a puff held low by the ground is lifted so its foot, not its middle, meets it.
+    vec2 floorAt = CG_PARTICLE_FLOOR(k);
+    bool floored = floorAt.y > 0.5;
+    float raise = floored ? max(extent.y * _Sit - floorAt.x, 0.0) : 0.0;
+    centre.y += raise;
+    vec3 world = fx_particle_corner(centre, corner, extent, CG_PARTICLE_SPIN(k), right, up);
+    v.world = world;
+    o.world = world;
+    o.puff = vec4(corner, CG_PARTICLE_SEED(k), CG_PARTICLE_PROGRESS(k));
+    o.opacity = CG_PARTICLE_OPACITY(k);
+    o.light = CG_PARTICLE_LIGHT(k);
+    o.tint = CG_PARTICLE_COLOR(k).rgb;
+    o.ground = vec2(floored ? floorAt.x + raise + (world.y - centre.y) : 1.0e4, extent.y);
+    vec3 velocity = CG_PARTICLE_VELOCITY(k);
+    float speed = length(velocity.xz);
+    o.motion = vec3(speed > 1.0e-3 ? velocity.xz / speed : vec2(0.0), speed);
+}
 
-    void vertex(out v2f o) {
-        int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);
-        vec2 corner = FX_QUAD_CORNER;
-        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
-        vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
-        int k = max(n, 0);
-        float size = n < 0 ? 0.0 : CG_PARTICLE_SIZE(k) * CG_OBJECT_CUSTOM0.z;
-        vec2 extent = size * CG_PARTICLE_SCALE(k).xy * vec2(1.0, _Aspect);
-        vec3 centre = origin + CG_PARTICLE_POSITION(k);
-        // Standing on its floor: a puff held low by the ground is lifted so its foot, not its middle, meets it.
-        vec2 floorAt = CG_PARTICLE_FLOOR(k);
-        bool floored = floorAt.y > 0.5;
-        float raise = floored ? max(extent.y * _Sit - floorAt.x, 0.0) : 0.0;
-        centre.y += raise;
-        vec3 world = fx_particle_corner(centre, corner, extent, CG_PARTICLE_SPIN(k), right, up);
-        o.world = world;
-        o.puff = vec4(corner, CG_PARTICLE_SEED(k), CG_PARTICLE_PROGRESS(k));
-        o.opacity = CG_PARTICLE_OPACITY(k);
-        o.light = CG_PARTICLE_LIGHT(k);
-        o.tint = CG_PARTICLE_COLOR(k).rgb;
-        o.ground = vec2(floored ? floorAt.x + raise + (world.y - centre.y) : 1.0e4, extent.y);
-        vec3 velocity = CG_PARTICLE_VELOCITY(k);
-        float speed = length(velocity.xz);
-        o.motion = vec3(speed > 1.0e-3 ? velocity.xz / speed : vec2(0.0), speed);
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
-    }
+void surface(in v2f i, inout CgSurface s) {
+    s.light = i.light;
+    vec2 q = i.puff.xy;
+    float seed = i.puff.z, life = i.puff.w, r2 = dot(q, q);
+    // No edge: thinning from its middle, and gone before the quad's.
+    float falloff = exp(-_Falloff * r2) * (1.0 - smoothstep(0.6, 1.0, sqrt(r2)));
+    float n = fx_fbm(vec3(q * _Detail, 0.0) + vec3(seed * 37.0, seed * 23.0 - life * _Rise, seed * 11.0 + life * _Boil), 2);
+    float density = falloff * clamp(1.0 + n * _Lumps, 0.0, 1.6);
+    // Holes opening where it is thin as it ages.
+    density = max(density - life * _Wisps * (0.6 - n), 0.0);
+    bool floored = i.ground.x < 1.0e3;
+    float above = i.ground.x, tall = i.ground.y;
+    density *= floored ? mix(1.0, exp(-max(above, 0.0) / max(tall * 1.6, 1.0e-3)), _Thin) : 1.0 - 0.5 * _Thin;
+    float settle = floored ? smoothstep(0.0, _Fade, above) : 1.0;
+    float near = smoothstep(_NearTo, _NearFrom, distance(CG_CAMERA_POSITION, i.world));
+    float alpha = min(density, 1.0) * i.opacity * _Color.a * cg_DepthFade(_SoftDistance) * settle * near;
+    if (alpha < 0.003) discard;
 
-    void fragment(in v2f i, out vec4 fragColor) {
-        cg_Light = i.light;
-        vec2 q = i.puff.xy;
-        float seed = i.puff.z, life = i.puff.w, r2 = dot(q, q);
-        // No edge: thinning from its middle, and gone before the quad's.
-        float falloff = exp(-_Falloff * r2) * (1.0 - smoothstep(0.6, 1.0, sqrt(r2)));
-        float n = fx_fbm(vec3(q * _Detail, 0.0) + vec3(seed * 37.0, seed * 23.0 - life * _Rise, seed * 11.0 + life * _Boil), 2);
-        float density = falloff * clamp(1.0 + n * _Lumps, 0.0, 1.6);
-        // Holes opening where it is thin as it ages.
-        density = max(density - life * _Wisps * (0.6 - n), 0.0);
-        bool floored = i.ground.x < 1.0e3;
-        float above = i.ground.x, tall = i.ground.y;
-        density *= floored ? mix(1.0, exp(-max(above, 0.0) / max(tall * 1.6, 1.0e-3)), _Thin) : 1.0 - 0.5 * _Thin;
-        float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
-                cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
-        float settle = floored ? smoothstep(0.0, _Fade, above) : 1.0;
-        float near = smoothstep(_NearTo, _NearFrom, distance(FX_CAMERA, i.world));
-        float alpha = min(density, 1.0) * i.opacity * _Color.a * FX_PRESENCE * soft * settle * near;
-        if (alpha < 0.003) discard;
-
-        vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
-        vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
-        vec3 back = vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2]);
-        float z = sqrt(max(1.0 - r2, 0.0));
-        vec3 normal = normalize(right * q.x + up * q.y + back * z);
-        vec3 toEye = normalize(FX_CAMERA - i.world);
-        vec3 key = normalize(vec3(0.0, 0.8, 0.0) + toEye * 0.45 - right * 0.35);
-        float wrap = clamp((dot(normal, key) + 0.5) / 1.5, 0.0, 1.0);
-        // Light through its own thickness: the thick middle darkens on the side away from the light.
-        float through = exp(-_Absorb * min(density, 1.0) * z * (1.0 - wrap));
-        float sky = mix(_Under, 1.0, normal.y * 0.5 + 0.5);
-        // The ground shades its foot, the shade climbing a little way up it.
-        float shade = floored ? mix(0.65, 1.0, smoothstep(0.0, tall * 1.2, above)) : 1.0;
-        float value = 0.97 + 0.06 * fract(seed * 7.13) + 0.04 * n;
-        vec3 col = _Color.rgb * (_Sky * sky + _Key * wrap * through) * shade * value;
-        // The blast's light, from behind it along its motion, on the side facing the blast, while young.
-        vec3 toBlast = vec3(-i.motion.x, 0.0, -i.motion.y);
-        float faces = dot(normal, toBlast) * 0.5 + 0.5;
-        float young = 1.0 - smoothstep(0.0, _GlowFor, life);
-        col += _Hot.rgb * faces * faces * young * _Glow;
-        fragColor = vec4(col * i.tint * alpha, alpha);
-    }
+    vec3 right = vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]);
+    vec3 up = vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]);
+    vec3 back = vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2]);
+    float z = sqrt(max(1.0 - r2, 0.0));
+    vec3 normal = normalize(right * q.x + up * q.y + back * z);
+    vec3 toEye = normalize(CG_CAMERA_POSITION - i.world);
+    vec3 key = normalize(vec3(0.0, 0.8, 0.0) + toEye * 0.45 - right * 0.35);
+    float wrap = clamp((dot(normal, key) + 0.5) / 1.5, 0.0, 1.0);
+    // Light through its own thickness: the thick middle darkens on the side away from the light.
+    float through = exp(-_Absorb * min(density, 1.0) * z * (1.0 - wrap));
+    float sky = mix(_Under, 1.0, normal.y * 0.5 + 0.5);
+    // The ground shades its foot, the shade climbing a little way up it.
+    float shade = floored ? mix(0.65, 1.0, smoothstep(0.0, tall * 1.2, above)) : 1.0;
+    float value = 0.97 + 0.06 * fract(seed * 7.13) + 0.04 * n;
+    vec3 col = _Color.rgb * (_Sky * sky + _Key * wrap * through) * shade * value;
+    // The blast's light, from behind it along its motion, on the side facing the blast, while young.
+    vec3 toBlast = vec3(-i.motion.x, 0.0, -i.motion.y);
+    float faces = dot(normal, toBlast) * 0.5 + 0.5;
+    float young = 1.0 - smoothstep(0.0, _GlowFor, life);
+    col += _Hot.rgb * faces * faces * young * _Glow;
+    s.baseColor = col * i.tint * alpha;   // premultiplied
+    s.opacity = alpha;
 }

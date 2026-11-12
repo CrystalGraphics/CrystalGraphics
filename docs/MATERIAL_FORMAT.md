@@ -194,7 +194,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 
 | Property | Values (default first) | What it does |
 |---|---|---|
-| `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied |
+| `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` ignore `opacity` and leave what is behind's alpha as it was |
 | `ShadingModel` | `WorldLit`, `Unlit` | Lit by the world's light, or shown as written |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |
@@ -306,7 +306,16 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `size`, `positionAndSize`, `spriteRotation` | its width and height; its centre and radius; its turn |
 | `subUVCoords0`, `subUVCoords1`, `subUVLerp` | its two flipbook frames and the blend between them |
 | `dynamicParameters[4]` | Niagara's dynamic material parameters: `cg_dynamic_parameter(cg_Particle, i, default)` |
-| `record` | its record: `CG_PARTICLE_LIGHT(cg_Particle.record)`, `CG_PARTICLE_OPACITY(...)` and the rest of `particle.glsl` |
+| `light` | the world's light where it is: a lit particle is lit by it without you writing `s.light` |
+| `opacity`, `heat` | its record's opacity and heat, as its module wrote them |
+| `record` | its record: `CG_PARTICLE_SEED(cg_Particle.record)`, `CG_PARTICLE_AGE(...)` and the rest of `particle.glsl` |
+
+`Sprites` also hands `vertex()` **`cg_SpriteAxes`**: the placed vertex's right, up and normal in the world. A strip's
+side is its right, so a trail that widens pushes `v.world` along `cg_SpriteAxes[0]`.
+
+**`cg_Vfx`** is the effect drawing it, readable in both functions under any VFX factory: `cg_Vfx.age` (seconds),
+`cg_Vfx.seed` (fixed for the effect), `cg_Vfx.row`, and `cg_Vfx.presence`. You never apply `presence`, the
+fade of an ending: `Sprites` and `MeshParticles` apply it to all the material adds.
 
 ```glsl
 // A puff that fades as it ages

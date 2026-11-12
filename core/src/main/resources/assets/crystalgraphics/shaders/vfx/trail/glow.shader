@@ -3,15 +3,10 @@
 // _Wobble shakes its line across, more toward the tail: energy too wild to hold one. Added, so crossing streaks pile
 // into light, and it blooms. A ribbon's material: a Cascade trail behind a moving thing, or a ribbon through particles;
 // its renderer tiles UV1 once a block (fx_strip.glsl), and its emitter's size over life tapers it.
-#type none
-#pragma cg_use particle
-#pragma cg_use rows
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color      ("Its energy; its alpha a strength", color) = (0.25, 0.65, 1.8, 1)
@@ -28,50 +23,24 @@ Properties {
     _Noise  ("Noise", sampler3D) = "cg_noise"
 }
 
-// trail: life 0..1, across -1..1, blocks along; tint: its particles' colour and opacity
-struct v2f { vec3 trail; vec4 tint; };
+// life 0..1, across -1..1, blocks along
+struct v2f { vec3 trail; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
-
-    void vertex(out v2f o) {
-        CgMaterialVertex v = cg_material_vertex();
-        CgMaterialParticle p = cg_material_particle();
-        o.trail = fx_strip(v.texCoords[0], v.texCoords[1], p.relativeTime);
-        vec3 world = v.worldPosition;
-        if (_Wobble > 0.0) {
-            float shake = fx_noise(vec3(o.trail.z * 1.7, FX_AGE * _WobbleRate, FX_SEED * 13.0))
-                    + 0.5 * fx_noise(vec3(o.trail.z * 4.3, FX_AGE * _WobbleRate * 2.1, FX_SEED * 7.0));
-            world += v.tangentToWorld[0] * (p.positionAndSize.w * shake * _Wobble * (0.25 + o.trail.x));
-        }
-        o.tint = p.color;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(world, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        FxGlow g = FxGlow(_Color.rgb, _Core.rgb, _CoreWidth, _Softness, _Fade, _Tiling.xy, _Flow, _Erode);
-        vec3 glow;
-        vec3 light = fx_strip_glow(g, _Noise, i.trail, FX_AGE, FX_SEED, glow);
-        if (dot(light, light) == 0.0) discard;
-        float strength = i.tint.a * _Color.a * FX_PRESENCE;
-        fragColor = vec4(light * i.tint.rgb * strength, 0.0);
-        CG_GLOW(glow * i.tint.rgb * strength * _GlowGain);
+void vertex(inout CgVertex v, out v2f o) {
+    o.trail = fx_strip(v.uv0, v.uv1, cg_Particle.relativeTime);
+    if (_Wobble > 0.0) {
+        float shake = fx_noise(vec3(o.trail.z * 1.7, cg_Vfx.age * _WobbleRate, cg_Vfx.seed * 13.0))
+                + 0.5 * fx_noise(vec3(o.trail.z * 4.3, cg_Vfx.age * _WobbleRate * 2.1, cg_Vfx.seed * 7.0));
+        v.world += cg_SpriteAxes[0] * (cg_Particle.positionAndSize.w * shake * _Wobble * (0.25 + o.trail.x));
     }
 }
 
-// Its glow (CG_GLOW) into the world's bloom.
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    FxGlow g = FxGlow(_Color.rgb, _Core.rgb, _CoreWidth, _Softness, _Fade, _Tiling.xy, _Flow, _Erode);
+    vec3 glow;
+    vec3 light = fx_strip_glow(g, _Noise, i.trail, cg_Vfx.age, cg_Vfx.seed, glow);
+    if (dot(light, light) == 0.0) discard;
+    vec3 tint = cg_Particle.color.rgb * cg_Particle.color.a * _Color.a;
+    s.baseColor = light * tint;
+    s.emissive = glow * tint * _GlowGain;
 }

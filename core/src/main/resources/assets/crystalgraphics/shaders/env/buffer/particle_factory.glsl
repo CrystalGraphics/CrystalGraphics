@@ -36,6 +36,9 @@ struct CgMaterialParticle {
     int record;              // its record: CG_PARTICLE_*(p.record) reads what Unreal's parameters do not name
     vec4 dynamicParameters[4];   // Niagara's DynamicMaterialParameter to _3, where dynamics has their bits
     int dynamics;
+    vec2 light;              // the (block, sky) light where it is: what a lit particle is lit by
+    float opacity;           // its record's opacity, 0..1, beside color.a
+    float heat;              // its record's heat, 0..1: how hot it burns
 };
 #define CG_MATERIAL_PARTICLE 1
 
@@ -108,8 +111,11 @@ float _cg_offset_scale(vec3 centre, vec3 eye, float offset, float keepSize) {
 }
 
 #ifdef CG_VERTEX_STAGE
-// Particle n's dynamic parameters into p, those the renderer's drawn bits name.
+// Particle n's dynamic parameters into p, those the renderer's drawn bits name; and its record's light, opacity and heat.
 void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
+    p.light = CG_PARTICLE_LIGHT(n);
+    p.opacity = CG_PARTICLE_OPACITY(n);
+    p.heat = CG_PARTICLE_HEAT(n);
     p.dynamics = drawn & 15;
     p.dynamicParameters[0] = p.dynamicParameters[1] = p.dynamicParameters[2] = p.dynamicParameters[3] = vec4(0.0);
     if (p.dynamics != 0) {

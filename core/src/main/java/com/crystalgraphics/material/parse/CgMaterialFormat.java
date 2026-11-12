@@ -412,7 +412,9 @@ final class CgMaterialFormat {
             out.append("        CG_SHADING_MODEL_OUT(s.shadingModelId.x, s.shadingModelId.y);\n");
         }
         if (named.contains("volumeDepth")) out.append("        CG_VOLUME_DEPTH(s.volumeDepth);\n");
-        out.append("        fragColor = vec4(s.baseColor, s.opacity);\n    }\n}\n");
+        // Added light leaves the target's alpha as it was, as Unreal's BLEND_Additive does (alpha Zero, One)
+        boolean adds = blendMode.equals("Additive") || blendMode.equals("Subtract");
+        out.append("        fragColor = vec4(s.baseColor, ").append(adds ? "0.0" : "s.opacity").append(");\n    }\n}\n");
 
         // The glow: what the Forward pass draws, with its glow; adding, unless a straight-alpha blend weighs it
         if (named.contains("emissive")) {

@@ -386,6 +386,15 @@ float cg_FogAmount(float distance) {
 }
 #define CG_FOG_AMOUNT(worldPos) cg_FogAmount(length((worldPos) - cg_CameraPos.xyz))
 
+// Unreal's Camera Position: the eye in the space shaders work in (camera-relative world, not always the origin: a host
+// may fold a translation into the view). Either stage.
+#define CG_CAMERA_POSITION (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
+
+// The eye depth of point p, camera-relative world: what a material's s.depth takes for a point it traced to.
+float cg_EyeDepth(vec3 p) {
+    return -(cg_ViewMatrix * vec4(p, 1.0)).z;
+}
+
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // The light a lit fragment takes: its draw's (CG_OBJECT_LIGHT) unless its fragment function sets another, as a
 // particle setting its own does.
@@ -429,15 +438,6 @@ void cg_PixelDepthOffset(float blocks) {
     gl_FragDepth = CG_DEPTH_REVERSED ? min(pushed, gl_FragCoord.z) : max(pushed, gl_FragCoord.z);
 }
 #define CG_PIXEL_DEPTH_OFFSET(blocks) cg_PixelDepthOffset(blocks)
-
-// Unreal's Camera Position: the eye in the space shaders work in (camera-relative world, not always the origin: a host
-// may fold a translation into the view). Either stage.
-#define CG_CAMERA_POSITION (-(transpose(mat3(cg_ViewMatrix)) * cg_ViewMatrix[3].xyz))
-
-// The eye depth of point p, camera-relative world: what a material's s.depth takes for a point it traced to.
-float cg_EyeDepth(vec3 p) {
-    return -(cg_ViewMatrix * vec4(p, 1.0)).z;
-}
 
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // Unreal's Camera Vector, reversed: the unit view ray from the eye through this pixel's centre, from its window position

@@ -1,10 +1,12 @@
 // MeshParticles: a mesh renderer's particles, a mesh an instance a particle, placed, turned and sized by it: Unreal's
 // mesh particle vertex factory, through particle_factory.glsl. Its vertex colour and UVs are the mesh's, its colour the
-// particle's (cg_Particle.color). A sprite or a strip renderer draws the same material as Sprites does.
-Factory { VertexType spatial  Parameters cg_Particle }
+// particle's (cg_Particle.color). A sprite or a strip renderer draws the same material as Sprites does. cg_Vfx is the
+// draw's header; an ending's fade is applied for the material, and a lit particle is lit by its own light.
+Factory { VertexType spatial  Parameters cg_Particle  Fade cg_Vfx.presence }
 EngineBuffers { particle }
 
 Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     CgMaterialParticle cg_Particle;
 }
 
@@ -22,6 +24,9 @@ Parameters {
     flat int record;
     vec4 dynamicParameters[4];
     flat int dynamics;
+    vec2 light;
+    float opacity;
+    float heat;
 }
 
 void fill(inout CgVertex v) {
@@ -35,4 +40,8 @@ void fill(inout CgVertex v) {
     v.uv2 = placed.texCoords[2];
     v.uv3 = placed.texCoords[3];
     v.world = placed.worldPosition;
+}
+
+void defaults(inout CgSurface s) {
+    s.light = cg_Particle.light;
 }

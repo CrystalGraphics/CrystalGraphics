@@ -2,11 +2,17 @@
 // renderer: Unreal's sprite vertex factory, through particle_factory.glsl. A beam or a ribbon draws the same material
 // as strips. v.position is the corner's offset from its particle's centre; uv0 and uv1 frame a's and b's, uv2 and uv3
 // both unflipped. cg_Particle is the particle (CgMaterialParticle); cg_Particle.record reads the rest (CG_PARTICLE_*).
-Factory { VertexType none  Parameters cg_Particle }
+// cg_SpriteAxes is the placed vertex's right, up and normal in the world, for a vertex() moving it (a strip's side is
+// its right).
+// cg_Vfx is the draw's header; an ending's fade (cg_Vfx.presence) is applied for the material, and a lit particle is
+// lit by its own light.
+Factory { VertexType none  Parameters cg_Particle  Fade cg_Vfx.presence }
 EngineBuffers { particle }
 
 Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     CgMaterialParticle cg_Particle;
+    mat3 cg_SpriteAxes;
 }
 
 // What a fragment may read, each passed only where surface() names it
@@ -24,11 +30,15 @@ Parameters {
     flat int record;
     vec4 dynamicParameters[4];
     flat int dynamics;
+    vec2 light;
+    float opacity;
+    float heat;
 }
 
 void fill(inout CgVertex v) {
     CgMaterialVertex placed = cg_material_vertex();
     cg_Particle = cg_material_particle();
+    cg_SpriteAxes = placed.tangentToWorld;
     v.position = placed.worldPosition - cg_Particle.positionAndSize.xyz;
     v.normal = placed.tangentToWorld[2];
     v.color = placed.vertexColor;
@@ -37,4 +47,8 @@ void fill(inout CgVertex v) {
     v.uv2 = placed.texCoords[2];
     v.uv3 = placed.texCoords[3];
     v.world = placed.worldPosition;
+}
+
+void defaults(inout CgSurface s) {
+    s.light = cg_Particle.light;
 }

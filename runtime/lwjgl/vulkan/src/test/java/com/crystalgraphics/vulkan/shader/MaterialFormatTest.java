@@ -22,10 +22,19 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.FileSystem;
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -46,7 +55,7 @@ public class MaterialFormatTest {
             {"glow", "glow.old"}, {"haze", "haze.old"}, {"waves", "waves.old"}, {"sparks", "sparks.old"},
             {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"},
             // F3: the VFX factories
-            {"sprite", "crystalgraphics:shaders/vfx/particle/sprite"}, {"bits", "bits.old"},
+            {"bits", "bits.old"},
             {"body_core", "crystalgraphics:shaders/vfx/beam/body_core"}, {"volume", "volume.old"},
             // F4: post and ui. A ui pair names the canvas state each is drawn under (CgCanvasMaterials): the format's
             // template is premultiplied out, so the curve, straight alpha today, is drawn PREMULTIPLIED once converted
@@ -105,32 +114,76 @@ public class MaterialFormatTest {
         List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "faded","guide/glass", "guide/moss", "guide/haze",
                 "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer"));
         for (String[] pair : PAIRS) shapes.add(pair[0]);
-        for (String shape : shapes) {
-            String path = path(shape);
-            CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreate(path);
-            shader.recompile();   // another test may have parsed it, compiling nothing
-            if (shader.hasCompileFailed()) {
-                failures.add(shader.lastCompileError());
-                continue;
-            }
-            CgParsedShader parsed = shader.getLastParsed();
-            CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            for (CgParsedPass pass : parsed.passes()) {
-                for (Set<String> keywords : pass == forward ? subsets(parsed.featureNames()) : List.of(Set.<String>of())) {
-                    programs++;
-                    if (shader.getOrCompile(pass.name(), keywords) == null) {
-                        failures.add(path + " pass " + pass.name() + " " + keywords + ": did not build (see log)");
-                    }
-                }
-            }
-            CgMaterial material = CgMaterial.load(path);
-            if (parsed.renderQueue() < 3000 && !CgMaterialProxy.of(material).hasDepthPass()
-                    && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName())) {
-                failures.add(path + ": the generated depth pass did not build (see log)");
+        for (String shape : shapes) programs += build(path(shape), failures);
+        assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
+        assertTrue("built " + programs, programs > PAIRS.length);
+    }
+
+    /** P2.5 F5's done-when: every engine shader written in the format builds, every pass and keyword variant. */
+    @Test
+    public void everyEngineShaderInTheFormatBuilds() throws Exception {
+        URL root = MaterialFormatTest.class.getClassLoader().getResource("assets/crystalgraphics/shaders");
+        assertNotNull("the engine's shaders on the classpath", root);
+        URI uri = root.toURI();
+        List<String> failures = new ArrayList<>();
+        int shaders = 0;
+        // In a jar when core is built, a directory when it is a source set on the classpath.
+        try (FileSystem jar = "jar".equals(uri.getScheme()) ? FileSystems.newFileSystem(uri, Map.of()) : null;
+             Stream<Path> files = Files.walk(jar != null ? jar.provider().getPath(uri) : Paths.get(uri))) {
+            Path dir = jar != null ? jar.provider().getPath(uri) : Paths.get(uri);
+            for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".shader"))::iterator) {
+                if (!inFormat(Files.readString(f))) continue;
+                shaders++;
+                build("crystalgraphics:shaders/" + dir.relativize(f).toString().replace('\\', '/'), failures);
             }
         }
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
-        assertTrue("built " + programs, programs > PAIRS.length);
+        assertTrue("no engine shader in the format", shaders > 0);
+    }
+
+    /** Builds every pass and keyword variant of {@code path}, and its generated depth pass; how many programs. */
+    private static int build(String path, List<String> failures) {
+        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreate(path);
+        shader.recompile();   // another test may have parsed it, compiling nothing
+        if (shader.hasCompileFailed()) {
+            failures.add(shader.lastCompileError());
+            return 0;
+        }
+        int programs = 0;
+        CgParsedShader parsed = shader.getLastParsed();
+        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        for (CgParsedPass pass : parsed.passes()) {
+            for (Set<String> keywords : pass == forward ? variants(parsed.featureNames()) : List.of(Set.<String>of())) {
+                programs++;
+                if (shader.getOrCompile(pass.name(), keywords) == null) {
+                    failures.add(path + " pass " + pass.name() + " " + keywords + ": did not build (see log)");
+                }
+            }
+        }
+        CgMaterial material = CgMaterial.load(path);
+        if (parsed.renderQueue() < 3000 && !CgMaterialProxy.of(material).hasDepthPass()
+                && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName())) {
+            failures.add(path + ": the generated depth pass did not build (see log)");
+        }
+        return programs;
+    }
+
+    /** Whether a file is in the material format: its first line past comments a {@code #domain}. */
+    private static boolean inFormat(String source) {
+        for (String line : source.split("\n")) {
+            String t = line.strip();
+            if (t.isEmpty() || t.startsWith("//")) continue;
+            return t.startsWith("#domain");
+        }
+        return false;
+    }
+
+    /** Every combination of up to six keywords; past that each alone, and none. */
+    private static List<Set<String>> variants(List<String> names) {
+        if (names.size() <= 6) return subsets(names);
+        List<Set<String>> out = new ArrayList<>(List.of(Set.of()));
+        for (String n : names) out.add(Set.of(n));
+        return out;
     }
 
     @Test
@@ -172,7 +225,8 @@ public class MaterialFormatTest {
 
     @Test
     public void onlyTheParticleFieldsNamedReachTheFragment() {
-        assertEquals(List.of("uv0", "_cg_in_Particle_color", "_cg_in_Particle_relativeTime"),
+        // light: the factory's defaults() reads it.
+        assertEquals(List.of("uv0", "_cg_in_Particle_color", "_cg_in_Particle_relativeTime", "_cg_in_Particle_light"),
                 fieldNames(parse(path("puff")).passes().get(0)));
     }
 

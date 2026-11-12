@@ -1,16 +1,11 @@
 // A glowing textured sprite: sprite.shader's flipbook frame and facing, added and unlit, as bright as the particle is
 // hot: fire, magic, energy. A CgVfxQuads quad placed from its particle record (CgVfxFrame.particles, QUADS). _Color
-// tints the cool sheet, its alpha a strength; _Hot the hot.
-#type none
-#pragma cg_use particle
-#pragma cg_use rows
+// tints the cool sheet, its alpha a strength; _Hot the hot. Its light blooms, as it adds.
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color ("Tints the sheet where it is cool; its alpha a strength", color) = (1, 0.6, 0.2, 1)
@@ -19,35 +14,18 @@ Properties {
     _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.25
 }
 
-struct v2f { vec4 uv; float blend; vec2 glow; vec3 tint; };
+// Its two flipbook frames
+struct v2f { vec4 uv; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
-
-    void vertex(out v2f o) {
-        CgMaterialVertex v = cg_material_vertex();
-        CgMaterialParticle p = cg_material_particle();
-        o.uv = vec4(v.texCoords[0], v.texCoords[1]);
-        o.blend = p.subUVLerp;
-        o.glow = vec2(CG_PARTICLE_HEAT(p.record), CG_PARTICLE_OPACITY(p.record));
-        o.tint = p.color.rgb;
-        gl_Position = cg_material_project(v);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
-        vec3 tint = mix(_Color.rgb, _Hot.rgb, i.glow.x) * i.tint;
-        float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
-                cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
-        float strength = texel.a * i.glow.y * _Color.a * FX_PRESENCE * (0.35 + 0.65 * i.glow.x) * soft;
-        fragColor = vec4(texel.rgb * tint * strength, 1.0);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv = vec4(v.uv0, v.uv1);
 }
 
-Pass { Tags { "LightMode" = "Emissive" } }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), cg_Particle.subUVLerp);
+    float heat = cg_Particle.heat;
+    vec3 tint = mix(_Color.rgb, _Hot.rgb, heat) * cg_Particle.color.rgb;
+    float strength = texel.a * cg_Particle.opacity * _Color.a * (0.35 + 0.65 * heat) * cg_DepthFade(_SoftDistance);
+    s.baseColor = texel.rgb * tint * strength;
+    s.emissive = s.baseColor;
+}

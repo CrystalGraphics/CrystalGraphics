@@ -4,16 +4,11 @@
 //
 //     CgVfxRenderers.sprite("puffs").material(PUFF).bind("_Color", TINT)      // PUFF: this shader, _Sheet a texture
 //             .subImage(Map.of("size", List.of(8, 8))).alignment("custom").build()
-#type none
-#pragma cg_use particle
-#pragma cg_use rows
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" }
-Queue = "Transparent"
+Material { BlendMode AlphaComposite  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color ("Tints the sheet; its alpha a strength", color) = (1, 1, 1, 1)
@@ -21,34 +16,16 @@ Properties {
     _SoftDistance ("Fades into what is behind it over this many blocks; 0 for none", float) = 0.5
 }
 
-struct v2f { vec4 uv; float blend; float opacity; vec2 light; vec3 tint; };
+// Its two flipbook frames
+struct v2f { vec4 uv; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv = vec4(v.uv0, v.uv1);
+}
 
-    void vertex(out v2f o) {
-        CgMaterialVertex v = cg_material_vertex();
-        CgMaterialParticle p = cg_material_particle();
-        o.uv = vec4(v.texCoords[0], v.texCoords[1]);
-        o.blend = p.subUVLerp;
-        o.opacity = CG_PARTICLE_OPACITY(p.record);
-        o.light = CG_PARTICLE_LIGHT(p.record);
-        o.tint = p.color.rgb;
-        gl_Position = cg_material_project(v);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        cg_Light = i.light;
-        vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), i.blend);
-        float soft = fx_particle_soft(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION),
-                cg_LinearEyeDepth(gl_FragCoord.z), _SoftDistance);
-        float alpha = texel.a * i.opacity * _Color.a * FX_PRESENCE * soft;
-        fragColor = vec4(texel.rgb * _Color.rgb * i.tint * alpha, alpha);
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 texel = mix(texture(_Sheet, i.uv.xy), texture(_Sheet, i.uv.zw), cg_Particle.subUVLerp);
+    float alpha = texel.a * cg_Particle.opacity * _Color.a * cg_DepthFade(_SoftDistance);
+    s.baseColor = texel.rgb * _Color.rgb * cg_Particle.color.rgb * alpha;   // premultiplied
+    s.opacity = alpha;
 }
