@@ -1,12 +1,12 @@
 package com.crystalgraphics.material;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 
 import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Per-draw property values: a frame's rows of vec4s, which a material declaring {@code #pragma cg_use rows} reads its
@@ -35,6 +35,8 @@ public final class CgPropertyRows {
 
     /** The {@code attach()} macro the env file reads rows through. */
     public static final String MACRO_NAME = "ROWS_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("rows");
 
     public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgPropertyRow", STD430).vec4("value").build();
 
@@ -42,7 +44,7 @@ public final class CgPropertyRows {
     public static final int VEC4_FLOATS = 4;
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal("CgPropertyRows", FORMAT, CgBindingPoints.PROPERTY_ROWS, CgBufferLifetime.FRAME);
+            .getOrCreateInternal("CgPropertyRows", FORMAT, SLOT, CgBufferLifetime.FRAME);
 
     private CgPropertyRows() {
     }

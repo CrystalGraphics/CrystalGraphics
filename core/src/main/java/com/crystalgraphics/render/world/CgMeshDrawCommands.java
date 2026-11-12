@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -28,6 +27,7 @@ import java.util.List;
 import java.util.Set;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Turns a world draw into the commands a pass records for it, as Unreal's {@code BuildMeshDrawCommands} and
@@ -170,7 +170,7 @@ final class CgMeshDrawCommands {
         for (int s = i * CgDrawChunk.BUFFERS, end = s + CgDrawChunk.BUFFERS; s < end; s++) {
             if (draws.buffers[s] != null) chunks.buffer(draws.bufferAt[s], draws.buffers[s]);
         }
-        if (draws.boneBases[i] >= 0) chunks.buffer(CgBindingPoints.BONE_PALETTES, palettes);
+        if (draws.boneBases[i] >= 0) chunks.buffer(CgBindingModel.BONES, palettes);
     }
 
     void group(CgChunkBuilder chunks, int i) {

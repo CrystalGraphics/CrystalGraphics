@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.api.texture.CgTexture;
 import org.junit.Test;
@@ -10,7 +11,7 @@ import static org.junit.Assert.assertNotEquals;
 /** Materials of one arena share their snapshot's bindings and keep slots of their own; anything else tells them apart. */
 public class CgMaterialArenaTest {
 
-    private static final int POINT = 7;
+    private static final CgBindingModel.Slot POINT = CgBindingModel.MATERIAL_BLOCK;
     private static final CgTexture IMAGE = new CgTexture() {
         @Override public CgTextureView rhiView() { return null; }
         @Override public int getWidth() { return 4; }

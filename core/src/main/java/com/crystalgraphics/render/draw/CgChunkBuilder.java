@@ -1,12 +1,13 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Objects;
+import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
 
 /**
  * Writes {@link CgDrawChunk}s: open a chunk under a property state, open draws in it, write each draw's instance
@@ -87,7 +88,7 @@ public final class CgChunkBuilder {
     @Nullable
     private CgBufferHandle[] buffers;
     @Nullable
-    private CgBindingPoints.Binding[] bufferAt;
+    private CgBindingModel.Slot[] bufferAt;
     private float[] bounds = new float[64];
     private long[] sortKeys = new long[16];
     /** Per draw: its GPU group's label, -1 for its material's. Null until one is named. */
@@ -411,7 +412,7 @@ public final class CgChunkBuilder {
      * draw of many counts, one batch and, where draws join, one multi-draw call: particle slots of one material.
      *
      * <pre>{@code
-     * chunks.draw(pipeline, bindings, quads).buffer(CgBindingPoints.PARTICLES, drawn).indirectEach(visible, CgIndirect.INDICES, 6);
+     * chunks.draw(pipeline, bindings, quads).buffer(CgParticleBuffer.SLOT, drawn).indirectEach(visible, CgIndirect.INDICES, 6);
      * for (int slot : slots) {
      *     int at = chunks.instance();          // the slot's record
      *     // ...write it...
@@ -484,7 +485,7 @@ public final class CgChunkBuilder {
      * draws after it.
      *
      * <pre>{@code
-     * chunks.draw(pipeline, bindings, quads).buffer(CgBindingPoints.PARTICLES, range.drawn())
+     * chunks.draw(pipeline, bindings, quads).buffer(CgParticleBuffer.SLOT, range.drawn())
      *       .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6);
      * }</pre>
      *
@@ -495,12 +496,12 @@ public final class CgChunkBuilder {
      *   <li>The draw batches alone.</li>
      * </ul>
      */
-    public CgChunkBuilder buffer(CgBindingPoints.Binding at, CgBufferHandle buffer) {
+    public CgChunkBuilder buffer(CgBindingModel.Slot at, CgBufferHandle buffer) {
         if (drawing < 0) throw new IllegalStateException("buffer() with no draw open: draw() first");
-        if (at.equals(CgBindingPoints.OBJECT_DATA)) throw new IllegalArgumentException("object records take objects()");
+        if (at.equals(CgBindingModel.OBJECTS)) throw new IllegalArgumentException("object records take objects()");
         if (buffers == null) {
             buffers = new CgBufferHandle[pipelines.length * CgDrawChunk.BUFFERS];
-            bufferAt = new CgBindingPoints.Binding[pipelines.length * CgDrawChunk.BUFFERS];
+            bufferAt = new CgBindingModel.Slot[pipelines.length * CgDrawChunk.BUFFERS];
         }
         int slot = drawing * CgDrawChunk.BUFFERS, end = slot + CgDrawChunk.BUFFERS;
         while (slot < end && bufferAt[slot] != null) {

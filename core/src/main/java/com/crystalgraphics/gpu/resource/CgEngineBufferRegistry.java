@@ -9,7 +9,6 @@ import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
 import com.crystalgraphics.text.render.CgTextMaterials;
 
-import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -230,37 +229,14 @@ public final class CgEngineBufferRegistry {
         return -1;
     }
 
-    /** {@link #indexOfPoint}'s answers by storage point, for the registry as it was at {@link #pointsAt} tokens. */
-    private static volatile int[] tokenOfPoint = new int[0];
-    private static volatile int pointsAt = -1;
-
-    /**
-     * The place of the token whose buffer binds at storage point {@code point}, or -1: what {@code CgBindingModel}
-     * places a buffer recorded by its point at. Resolves each provider's buffer the first time it is asked after a
-     * registration; render thread.
-     */
-    public static int indexOfPoint(int point) {
-        int[] table = tokenOfPoint;
-        if (pointsAt != PROVIDERS.size()) table = rebuildPoints();
-        return point >= 0 && point < table.length ? table[point] : -1;
-    }
-
-    private static synchronized int[] rebuildPoints() {
-        if (pointsAt != PROVIDERS.size()) {
-            int max = -1;
-            int[] points = new int[PROVIDERS.size()];
-            int i = 0;
-            for (Provider p : PROVIDERS.values()) {
-                CgShaderBuffer b = p.buffer().get();
-                points[i] = b == null ? -1 : b.getBindingLocation();
-                max = Math.max(max, points[i++]);
-            }
-            tokenOfPoint = new int[max + 1];
-            Arrays.fill(tokenOfPoint, -1);
-            for (int t = points.length - 1; t >= 0; t--) if (points[t] >= 0) tokenOfPoint[points[t]] = t;
-            pointsAt = PROVIDERS.size();
+    /** The place of {@code token} in registration order, or -1: its pass slot, {@code CgBindingModel.token}. */
+    public static synchronized int indexOf(String token) {
+        int i = 0;
+        for (String t : PROVIDERS.keySet()) {
+            if (t.equals(token)) return i;
+            i++;
         }
-        return tokenOfPoint;
+        return -1;
     }
 
     /** Every registered token, for error messages. */

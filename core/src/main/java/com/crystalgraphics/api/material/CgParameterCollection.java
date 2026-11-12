@@ -1,6 +1,5 @@
 package com.crystalgraphics.api.material;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.material.CgParameterCollectionBuffer;
 import com.crystalgraphics.mc.CgAssetReloader;
@@ -11,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.regex.Pattern;
+import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 
 /**
  * Named values every material can read, set once and seen by all of them: Unreal's material parameter collection. A
@@ -174,7 +174,7 @@ public final class CgParameterCollection {
         }
         // Bound whenever a shader can read it: one compiled against it, or one compiling this frame against a value
         // already placed. Untouched where nothing defines one.
-        if ((read || count > 0) && CgBindingPoints.isInitialized()) CgParameterCollectionBuffer.upload(data, count);
+        if ((read || count > 0) && CgGraphicsLifecycle.isInitialized()) CgParameterCollectionBuffer.upload(data, count);
     }
 
     /** The vec4s every placed collection takes. */

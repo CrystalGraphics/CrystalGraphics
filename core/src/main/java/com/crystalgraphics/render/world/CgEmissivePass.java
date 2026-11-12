@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -84,7 +83,7 @@ final class CgEmissivePass {
         emissionConstants.read(world.constantsBlock, 0).resolution(into.getWidth(), into.getHeight());
 
         CgRasterPass glow = recording.raster("emissivePass.into").color(into, CgWorldRenderer.CLEAR).constants(emissionConstants).state(EMISSIVE_STATE)
-                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
+                .readsDepth(stage.depth()).timed(GPU_EMISSION);
         world.mediated(glow);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
@@ -139,7 +138,7 @@ final class CgEmissivePass {
         if (markGlows(view, EMIT_BEFORE) == 0) return;
         world.cullSets(stage, recording, view, CgWorldRenderer.CULL_EMITTING);
         CgRasterPass glow = recording.raster("emissivePass.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants().sceneGlow(world.sceneEmission)).state(EMISSIVE_STATE)
-                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
+                .readsDepth(stage.depth()).timed(GPU_EMISSION);
         world.mediated(glow);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
@@ -198,7 +197,7 @@ final class CgEmissivePass {
         }
         stage.constants().write(world.constantsBlock, 0);
         emissionConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass glow = recording.raster("emissivePass.ownedSubject").color(ownedSubject, CgWorldRenderer.CLEAR).constants(emissionConstants).state(EMISSIVE_STATE).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).timed(GPU_EMISSION);
+        CgRasterPass glow = recording.raster("emissivePass.ownedSubject").color(ownedSubject, CgWorldRenderer.CLEAR).constants(emissionConstants).state(EMISSIVE_STATE).readsDepth(stage.depth()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;

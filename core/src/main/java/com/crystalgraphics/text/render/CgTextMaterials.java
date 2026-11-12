@@ -1,6 +1,5 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgBlendMode;
@@ -19,6 +18,7 @@ import com.crystalgraphics.render.world.CgPipelineList;
 
 import java.util.HashMap;
 import java.util.Map;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The instances of {@code text.shader} text draws with: one per tier, screen or world, label form, depth cut,
@@ -47,7 +47,7 @@ public final class CgTextMaterials {
 
     /** {@code TextData}'s declaration; each instance overrides it with its own bytes. */
     private static final CgUniformBuffer TEXT_DATA_UBO = CgShaderBufferRegistry.get().getOrCreateUboInternal(
-            TEXT_DATA_FORMAT, "TextData", CgBindingPoints.TEXT_DATA_UBO, CgBufferLifetime.FRAME);
+            TEXT_DATA_FORMAT, "TextData", CgBindingModel.TEXT_DATA, CgBufferLifetime.FRAME);
 
     /** The alpha a label's depth pass writes from: half covered, so an antialiased edge stays see-through. */
     static final float DEPTH_PASS_CUT = 0.5f;

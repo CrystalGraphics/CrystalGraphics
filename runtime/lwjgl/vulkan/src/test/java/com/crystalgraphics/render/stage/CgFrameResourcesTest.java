@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.stage;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -27,7 +26,6 @@ public class CgFrameResourcesTest {
         compiler = new ShadercGlslCompiler();
         new CgNullRHI(64, 64).install(compiler);
         CgCapabilities.clearCache();
-        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
 

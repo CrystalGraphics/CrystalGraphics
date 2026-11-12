@@ -1,7 +1,5 @@
 package com.crystalgraphics.render.mesh;
 
-import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.render.draw.CgDrawStateCache;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
@@ -29,13 +27,14 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Map;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Where meshes' GPU copies live: a {@link CgMeshPool} per vertex format, one vertex buffer and one index buffer that
  * every mesh of the format shares, and a placement per mesh that draws -- its base vertex and first index there. The
  * executor places every mesh a frame draws and uploads what changed in the frame's prologue, before its first pass;
  * each draw passes its bases in the call, and its vertex stage pulls its vertices from the format's words
- * ({@code CgVertexWords}, at {@code CgBindingPoints.VERTICES}) by {@code gl_VertexID}, with no vertex input. So any two
+ * ({@code CgVertexWords}, at {@code CgBindingModel.VERTICES}) by {@code gl_VertexID}, with no vertex input. So any two
  * meshes of a format share every binding, and a pipeline draws them alike one call each or joined. Every draw is by
  * indices: a submesh without them is drawn by a shared run of 0, 1, 2 ..., since GL gives an array draw's base vertex as
  * 0 and Vulkan as its first vertex.
@@ -45,8 +44,8 @@ import java.util.Map;
  * store.place(mesh);                        // for every mesh the frame draws
  * store.upload();                           // once, before the first raster pass
  *
- * // In the pass, its pipeline set: the words its sets bind, recorded before they are made, then the draw
- * CgBoundResources.storage(CgBindingPoints.VERTICES.ssbo(), store.vertexWords(mesh), 0, 0);
+ * // In the pass: the words its pass set binds at CgBindingModel.VERTICES, then the draw
+ * passParameters.buffer(CgBindingModel.VERTICES.binding(), STORAGE_BUFFER, store.vertexWords(mesh), 0, size);
  * store.drawOn(pass, cache, mesh, instances, first, -1, 0, -1);   // CG_INSTANCE_ID counts from first
  *
  * // An indirect draw: its command is written on the GPU from what range() answers, before the pass
@@ -649,7 +648,7 @@ public final class CgMeshStore {
     /**
      * The buffer {@code mesh}'s vertex stage pulls from: its format's words, or the ring page a FRAME mesh was written
      * into. Null for a mesh of a format with no attributes, or with nothing to draw. Whatever draws it binds this at
-     * {@code CgBindingPoints.VERTICES} before its sets are made.
+     * {@code CgBindingModel.VERTICES} before its sets are made.
      */
     @Nullable
     public CgGpuBuffer vertexWords(CgMesh mesh) {

@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -30,6 +29,7 @@ import java.util.IdentityHashMap;
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The layer passes: each graded draw drawn again into its look's layer, which its post look grades and composites
@@ -274,9 +274,9 @@ final class CgGradeLayerPass {
         CgRasterPass pass = recording.raster("world.gradeLayer").color(target, over ? CgLoad.load() : CgWorldRenderer.CLEAR_LAYER)
                 .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants)
                 .timed(k < 0 ? CgWorldRenderer.GPU_SEPARATE : CgWorldRenderer.GPU_GRADE)
-                .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
-        if (scene != null) pass.readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+                .readsDepth(CgGraphTexture.current())
+                .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture());
+        if (scene != null) pass.readsColor(scene);
         world.mediated(pass);
         return pass;
     }

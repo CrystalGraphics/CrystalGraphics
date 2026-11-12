@@ -1,23 +1,23 @@
 package com.crystalgraphics.vfx.particle.gpu;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 
 import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The particle record a shader reads through {@code #pragma cg_use particle} (the {@code CG_PARTICLE_*} macros in
  * {@code env/buffer/particle.glsl}): a GPU pool's drawn part, written by the step's last stage into the pool's own
- * buffer at each record's index, bound at {@link CgBindingPoints#PARTICLES}. A draw's particle {@code n} is the record
+ * buffer at each record's index, read at {@link #SLOT}. A draw's particle {@code n} is the record
  * {@code CgParticleOrderBuffer} names at {@code n}: Range's culled, sorted order, as Niagara's GPU renderers read the
  * simulation's buffer through its sorted indices.
  *
  * <pre>{@code
- * world.draw(quads, material).buffer(CgBindingPoints.PARTICLES, pool.drawn())
- *      .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())...   // particles [base, base + count) of the order
+ * world.draw(quads, material).buffer(SLOT, pool.drawn())
+ *      .buffer(CgParticleOrderBuffer.SLOT, range.order())...   // particles [base, base + count) of the order
  * }</pre>
  *
  * This class is the declaration: nothing writes its own buffer.
@@ -26,6 +26,8 @@ public final class CgParticleBuffer {
 
     /** The {@code attach()} macro shaders read records through. */
     public static final String MACRO_NAME = "PARTICLE_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("particle");
 
     /**
      * place: position and size; motion: velocity and progress through life; state: seed, spin, heat, opacity; light: block
@@ -47,9 +49,9 @@ public final class CgParticleBuffer {
 
     private static final String NAME = "CgParticleBuffer";
 
-    /** Allocates against {@link CgBindingPoints#PARTICLES}: only valid after {@code CgEngineLifecycle.ensureGraphicsContext}. */
+    /** Allocated at {@link #SLOT}: only valid after {@code CgEngineLifecycle.ensureGraphicsContext}. */
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal(NAME, FORMAT, CgBindingPoints.PARTICLES, CgBufferLifetime.FRAME);
+            .getOrCreateInternal(NAME, FORMAT, SLOT, CgBufferLifetime.FRAME);
 
     private CgParticleBuffer() {
     }

@@ -1,6 +1,5 @@
 package com.crystalgraphics.platform.gl;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.lwjgl3.Lwjgl3GLDriver;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
@@ -72,7 +71,6 @@ public class NativeGlslLayoutTest {
         try (ShadercGlslCompiler linker = new ShadercGlslCompiler()) {
             new CgNullRHI(64, 64).install(new Recording(linker, recorded::add));
             CgCapabilities.clearCache();
-            CgBindingPoints.init(CgCapabilities.detect());
             CgFallbackTextures.init();
             Class.forName("com.crystalgraphics.text.render.CgTextMaterials");
             List<String> walkFailures = new ArrayList<>();

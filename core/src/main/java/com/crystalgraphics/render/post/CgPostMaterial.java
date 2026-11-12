@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -28,6 +27,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A post effect that is only a material: its {@code .shader} drawn over the whole screen at a point, at a weight it
@@ -234,19 +234,19 @@ public final class CgPostMaterial implements CgPostEffect {
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline,
                       CgGraphTexture colourOf) {
         CgRasterPass pass = recording.raster("post.material").color(into, load).constants(post.constants())
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, post.stage().host().textures().lightmapTexture());
+                .texture(CgBindingModel.LIGHTMAP, post.stage().host().textures().lightmapTexture());
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         CgPipeline drawn = depthless(pipeline);
         if (material.readsSceneColor() && into == colourOf) {
-            pass.readsColor(into, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            pass.readsColor(into);
             // Its one full-screen triangle writes every pixel: read the scene where it stands, not a copy of it
             CgBlendState blend = drawn.state().getBlend();
             if ((blend == null || !blend.enabled()) && !material.discards()) pass.replaces();
         } else if (material.readsSceneColor()) {
-            pass.readsColor(colourOf, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+            pass.readsColor(colourOf);
         }
-        if (material.readsSceneDepth()) pass.readsDepth(post.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (material.readsSceneDepth()) pass.readsDepth(post.depth());
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(drawn, material.captureBindings(recording.bindings()), FULLSCREEN);
         weighted(chunks, weight);

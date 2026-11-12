@@ -3,7 +3,6 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.graph.CgExecutor;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgLoadHandle;
@@ -105,7 +104,6 @@ public class CgVfxSubmitAllocationTest {
         compiler = new ShadercGlslCompiler();
         new CgNullRHI(64, 64).withoutLog().withCompute(DESKTOP).install(compiler);
         CgCapabilities.clearCache();
-        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
 

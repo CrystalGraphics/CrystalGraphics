@@ -3,7 +3,6 @@ package com.crystalgraphics.material;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.texture.CgSampler;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.material.parse.CgParsedShader;
 import com.crystalgraphics.gpu.resource.CgEngineTextures;
@@ -424,25 +423,6 @@ public final class CgMaterialProperty {
                 break;
             default:
                 break;
-        }
-    }
-
-    // ── Sampler bind ──────────────────────────────────────────────────────────
-
-    /**
-     * Binds this property's current texture to its assigned texture unit.
-     * No-op when either the unit or the texture has not been set.
-     *
-     * <p>Called per-draw from {@link CgMaterialProperties#bindSamplerTextures}
-     *
-     * @throws IllegalStateException if called on a non-sampler property
-     */
-    public void bindSamplerTexture() {
-        if (!type.isSampler()) throw new IllegalStateException("bindSamplerTexture() called on non-sampler property: " + name);
-
-        if (samplerUnit >= 0 && samplerTexture != null) {
-            CgBoundResources.bind(samplerUnit, samplerTexture);
-            CgBoundResources.sampler(samplerUnit, sampler);
         }
     }
 

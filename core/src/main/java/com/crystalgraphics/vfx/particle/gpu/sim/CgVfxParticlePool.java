@@ -72,6 +72,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.IntFunction;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
 
 /**
  * Every particle of every playing emitter instance whose definition has one {@link CgVfxShape}: one simulation on the
@@ -2290,7 +2291,7 @@ public final class CgVfxParticlePool {
     /**
      * Every beam's run as the newest step wrote it, vec4s each: a tag and its record's beam state
      * ({@code fx_beam.glsl}'s {@code FX_BEAM_*}), then {@code shape().beamPoints()} noise points, then as many it heads
-     * for; null where its particles are no beams. A beam draw binds it at {@code CgBindingPoints.PARTICLE_BEAMS}.
+     * for; null where its particles are no beams. A beam draw binds it at {@code CgParticleBeamBuffer.SLOT}.
      */
     @Nullable
     public CgGraphBuffer beamRuns() {

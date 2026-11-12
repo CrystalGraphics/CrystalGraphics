@@ -2,7 +2,6 @@ package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -34,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Smoke and gas in the air as a froxel grid over the view, Frostbite's and Unreal's volumetric fog: what each injector
@@ -242,7 +242,7 @@ public final class CgWorldMedia {
 
     /**
      * Each injector's extinction under {@code view}, summed into what gets through to each froxel: the texture to bind
-     * at {@code CgBindingPoints.MEDIA_TEXTURE_UNIT}, or null when nothing added any.
+     * at {@code CgBindingModel.MEDIA}, or null when nothing added any.
      */
     @Nullable
     CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgCamera view, Matrix4fc toWorld,
@@ -315,7 +315,7 @@ public final class CgWorldMedia {
         CgPipeline pipeline = light.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRasterPass pass = recording.raster("worldMedia.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
-                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, media)
+                .readsDepth(stage.depth()).texture(CgBindingModel.MEDIA, media)
                 .timed(GPU_LIGHT);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, light.captureBindings(recording.bindings()), FULLSCREEN);

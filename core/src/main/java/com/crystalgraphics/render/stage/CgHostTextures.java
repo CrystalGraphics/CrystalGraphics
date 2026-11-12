@@ -9,6 +9,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 
 import javax.annotation.Nullable;
 import java.util.Objects;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The host's own textures an effect may sample this frame: Minecraft's lightmap, which turns block and sky light into the
@@ -17,7 +18,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgHostTextures host = frame.host().textures();
- * pass.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, host.lightmapTexture());   // what cg_Lightmap reads
+ * pass.texture(CgBindingModel.LIGHTMAP, host.lightmapTexture());   // what cg_Lightmap reads
  *
  * // a host, every frame: imported only when the handle changes
  * CgRenderStage.WORLD_OPAQUE.host().textures().lightmap(lightTexture, 16, 16).blockAtlas(atlas, w, h);

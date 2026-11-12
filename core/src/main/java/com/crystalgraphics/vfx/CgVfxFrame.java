@@ -1,7 +1,6 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -58,6 +57,9 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
 
 /**
  * What a {@link CgVfxEffect} draws through in one frame, handed to it by {@link CgVfxSystem#submit}: each call draws
@@ -169,12 +171,12 @@ public final class CgVfxFrame {
             }
             CgMesh mesh = proxy.mesh;
             CgWorldRenderer.Draw draw = world.draw(mesh, proxy.key.material())
-                    .buffer(CgBindingPoints.PARTICLES, proxy.key.pool().drawn())
-                    .buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                    .buffer(CgParticleBuffer.SLOT, proxy.key.pool().drawn())
+                    .buffer(CgParticleOrderBuffer.SLOT, range.order())
                     .indirectEach(range.visible(), proxy.mode, proxy.key.factor())
                     .gpuCulled()
                     .at(groupX, groupY, groupZ);
-            if (beams) draw.buffer(CgBindingPoints.PARTICLE_BEAMS, proxy.key.pool().beamRuns());
+            if (beams) draw.buffer(CgParticleBeamBuffer.SLOT, proxy.key.pool().beamRuns());
             CgVfxSystem.place(draw, proxy.placed, groupX, groupY, groupZ);
             draw.group(groupX, groupY, groupZ).batchKey(materials.key(proxy.key.material()));
             for (int r = 0; r < proxy.records; r++) {
@@ -622,8 +624,8 @@ public final class CgVfxFrame {
                             .at(ox, oy, oz)
                             .custom(3, row, effect.age, effect.seed, effect.presence())
                             // the records a mesh factory's CG_PARTICLE_* reads, at each record's custom2.w
-                            .buffer(CgBindingPoints.PARTICLES, pool.drawn())
-                            .buffer(CgBindingPoints.PARTICLE_ORDER, range.order());
+                            .buffer(CgParticleBuffer.SLOT, pool.drawn())
+                            .buffer(CgParticleOrderBuffer.SLOT, range.order());
                     if (rd.submesh >= 0) draw.submesh(rd.submesh);
                     placeParticles(draw, rd.placed, effect).submit();
                 }
@@ -648,7 +650,7 @@ public final class CgVfxFrame {
                     if (blendsInOrder(rd.material)) range.sorted(slot, rd.order());
                     reach = Math.max(reach, Math.max(size, 1f) * 4f);
                     CgWorldRenderer.Draw draw = world.draw(slotMesh(def.drawLayout(), capacity), rd.material)
-                            .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+                            .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
                             .indirect(range.visible(), word, arcs ? CgIndirect.VERTICES : CgIndirect.INDICES,
                                     arcs ? CgVfxRibbons.VERTICES : 6)
                             .gpuCulled()
@@ -1009,8 +1011,8 @@ public final class CgVfxFrame {
         }
         CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(capacity, 1) * rd.per, CgMeshTopology.TRIANGLES),
                         rd.material)
-                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
-                .buffer(CgBindingPoints.PARTICLE_BEAMS, runs)
+                .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
+                .buffer(CgParticleBeamBuffer.SLOT, runs)
                 .indirect(range.visible(), word, CgIndirect.VERTICES, rd.per)
                 .gpuCulled()
                 .at(ox, oy, oz)
@@ -1041,8 +1043,8 @@ public final class CgVfxFrame {
                 | (b.anim() != null ? 256 : 0);
         CgWorldRenderer.Draw draw = world.draw(CgMesh.vertices(sizeClass(ribbons.vertices(slot, b), 1), CgMeshTopology.TRIANGLES),
                         rd.material)
-                .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
-                .buffer(CgBindingPoints.PARTICLE_BEAMS, ribbons.run())
+                .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
+                .buffer(CgParticleBeamBuffer.SLOT, ribbons.run())
                 .indirect(ribbons.args(), ribbons.argsWord(slot), CgIndirect.VERTICES, 1)
                 .gpuCulled()
                 .at(ox, oy, oz)

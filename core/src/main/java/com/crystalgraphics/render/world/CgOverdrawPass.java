@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -20,6 +19,7 @@ import com.crystalgraphics.util.trace.CgChannels;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The overdraw view's pass: every transparent draw counted again into a target of its own, one per fragment, and the
@@ -59,8 +59,8 @@ final class CgOverdrawPass {
         if (overdrawTarget == null || overdrawTarget.getWidth() != w || overdrawTarget.getHeight() != h) {
             overdrawTarget = CgGraphTexture.transientTexture("cg_world_overdraw", new CgTextureDesc(w, h, OVERDRAW_FORMAT));
         }
-        CgRasterPass pass = recording.raster("overdrawPass.overdrawTarget").color(overdrawTarget, CgWorldRenderer.CLEAR).constants(stage.constants()).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+        CgRasterPass pass = recording.raster("overdrawPass.overdrawTarget").color(overdrawTarget, CgWorldRenderer.CLEAR).constants(stage.constants()).readsDepth(stage.depth())
+                .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture());
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] == CgWorldDraws.SKIP) continue;

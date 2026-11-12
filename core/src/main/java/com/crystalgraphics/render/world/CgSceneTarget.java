@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -137,9 +136,9 @@ final class CgSceneTarget {
 
         CgRecording recording = stage.recording();
         CgRasterPass raster = recording.raster("world.sceneIn").color(target, CgLoad.load()).constants(stage.constants()).timed(GPU)
-                .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+                .readsColor(CgGraphTexture.current());
         if (sceneDepthTexture != null) raster.depth(sceneDepthTexture, CgLoad.load(), CgDepthAccess.WRITE);
-        if (depth != null) raster.readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (depth != null) raster.readsDepth(CgGraphTexture.current());
         int bindings = pass.material(depth != null).captureBindings(recording.bindings());
         if (keeping) bindings = recording.bindings().withTexture(bindings, 0, opaque);
         fullscreen(recording, raster, pipeline, bindings);
@@ -163,9 +162,9 @@ final class CgSceneTarget {
         CgRecording recording = stage.recording();
         CgGraphTexture target = opaque(recording, w, h, beside, depth);
         CgRasterPass raster = recording.raster("world.opaqueIn").color(target, CgLoad.load()).constants(stage.constants()).timed(GPU_OPAQUE)
-                .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+                .readsColor(CgGraphTexture.current());
         if (opaqueDepthOf() != null) raster.depth(opaqueDepthOf(), CgLoad.load(), CgDepthAccess.WRITE);
-        if (depth != null) raster.readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (depth != null) raster.readsDepth(CgGraphTexture.current());
         fullscreen(recording, raster, decode, in.material(depth != null).captureBindings(recording.bindings()));
         stage.retarget(target, opaqueDepthOf());
         return true;
@@ -179,7 +178,7 @@ final class CgSceneTarget {
         CgRecording recording = stage.recording();
         CgRasterPass raster = recording.raster("world.opaqueOut").color(CgGraphTexture.current(), CgLoad.load())
                 .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants()).timed(GPU_OUT);
-        if (depth) raster.readsDepth(opaqueDepthTexture, CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        if (depth) raster.readsDepth(opaqueDepthTexture);
         int bindings = recording.bindings().withTexture(out.material(depth).captureBindings(recording.bindings()), 0, opaque);
         fullscreen(recording, raster, encode, bindings);
         kept = true;

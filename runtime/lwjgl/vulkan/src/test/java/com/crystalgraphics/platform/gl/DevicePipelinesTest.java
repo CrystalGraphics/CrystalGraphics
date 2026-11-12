@@ -1,7 +1,6 @@
 package com.crystalgraphics.platform.gl;
 
 import com.crystalgraphics.platform.rhi.CgHostImports;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
@@ -49,7 +48,6 @@ public class DevicePipelinesTest {
             try {
                 gl.install(compiler);
                 CgCapabilities.clearCache();
-                CgBindingPoints.init(CgCapabilities.detect());
                 CgFallbackTextures.init();
                 int[] built = new int[2];
                 CgRHI[] devices = {gl, vulkan};

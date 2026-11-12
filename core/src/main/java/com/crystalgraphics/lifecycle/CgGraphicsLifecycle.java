@@ -36,7 +36,6 @@ import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.vfx.CgVfx;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgStreamBuffer;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -229,7 +228,6 @@ public final class CgGraphicsLifecycle {
         switch (at) {
             case 1 -> {
                 resizeTargets(width, height);
-                CgBindingPoints.init(CgCapabilities.detect());
                 CgFallbackTextures.init();
                 // A frame's execution and the immediate draws nested in its callbacks (a HUD's text)
                 CgExecutor.ahead(2);

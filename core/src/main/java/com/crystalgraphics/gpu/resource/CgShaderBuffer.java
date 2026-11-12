@@ -1,7 +1,8 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.CgBindingPoints;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
@@ -47,11 +48,11 @@ import java.util.function.Consumer;
  * are copied into a lease by the thread that wrote them. A {@link CgBufferLifetime#FRAME} buffer is the render
  * thread's: it is uploaded in the frame that reads it.</p>
  *
- * <p>The engine's own buffers, at reserved binding points; a consumer's is {@code CgBuffer}.</p>
+ * <p>The engine's own buffers, each at the slot its shaders read it from; a consumer's is {@code CgBuffer}.</p>
  *
  * <pre>{@code
  * // a lookup table built on a worker
- * CgShaderBuffer table = CgShaderBuffer.createInternal("Heights", HEIGHT_FORMAT, CgBindingPoints.PALETTE);   // RETAINED
+ * CgShaderBuffer table = CgShaderBuffer.createInternal("Heights", HEIGHT_FORMAT, CgBindingModel.token("heights"));
  * table.beginWrite(cells);
  * for (int i = 0; i < cells; i++) {
  *     table.writer().beginRecord().vec4("height", h[i], 0f, 0f, 0f);
@@ -61,7 +62,7 @@ import java.util.function.Consumer;
  * }</pre>
  *
  * <h3>Factory</h3>
- * <p>{@link #createInternal(String, CgBufferLayout, int)} makes an SSBO at an engine-reserved binding point, through
+ * <p>{@link #createInternal(String, CgBufferLayout, CgBindingModel.Slot)} makes an SSBO read at a slot, through
  * core GL 4.3 or the ARB extension ({@link CgCapabilities#shaderBufferPath()}); the TBO path is unhooked
  * ({@code docs/TBO_PATH.md}).</p>
  *
@@ -85,9 +86,8 @@ import java.util.function.Consumer;
  */
 public abstract class CgShaderBuffer implements CgObjectBuffer {
 
-    /** Binding point used for glBindBufferBase. Immutable after construction. */
-    @Getter
-    protected final int bindingLocation;
+    /** The slot its shaders read it from: where a pass binds it unless a draw names its own there. */
+    protected final CgBindingModel.Slot slot;
 
     /**
      * Debug/sampler/block name for this buffer.
@@ -161,20 +161,21 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
      * @param name            debug/sampler/block name (must be non-null)
      * @param format          typed format descriptor (mandatory)
      * @param use             what the storage is read as
-     * @param bindingLocation binding point; immutable after construction
+     * @param slot            the slot its shaders read it from
      */
-    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, int bindingLocation) {
-        this(name, format, use, bindingLocation, CgBufferLifetime.RETAINED);
+    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, CgBindingModel.Slot slot) {
+        this(name, format, use, slot, CgBufferLifetime.RETAINED);
     }
 
     /** @param lifetime {@link CgBufferLifetime#FRAME} takes the frame ring ({@link CgStreamBuffer#createFrameLocal}) */
-    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, int bindingLocation,
+    protected CgShaderBuffer(String name, CgBufferLayout format, CgStreamBuffer.Use use, CgBindingModel.Slot slot,
                              CgBufferLifetime lifetime) {
         Objects.requireNonNull(name,   "name is required");
+        Objects.requireNonNull(slot,   "slot is required");
         Objects.requireNonNull(format, "CgBufferLayout is required");
         Objects.requireNonNull(lifetime, "CgBufferLifetime is required");
         this.name             = name;
-        this.bindingLocation  = bindingLocation;
+        this.slot             = slot;
         this.format           = format;
         this.lifetime         = lifetime;
         int floatPerRecord    = format.getFloatCount();
@@ -191,24 +192,24 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Factory ───────────────────────────────────────────────────────────────
 
     /**
-     * Creates an SSBO for engine-internal use. Accepts raw binding points (may be engine-reserved 0–4).
+     * Creates an SSBO for engine-internal use, read at {@code slot}.
      *
      * <p><strong>Engine-internal. Do not use from user code.</strong></p>
      *
-     * @param name            debug/sampler name (must be non-null)
-     * @param format          typed buffer format
-     * @param bindingPoint    binding slot (may be engine-reserved)
+     * @param name   debug/sampler name (must be non-null)
+     * @param format typed buffer format
+     * @param slot   the slot its shaders read it from
      * @return a {@link CgShaderStorageBuffer}
      * @throws UnsupportedOperationException where the context reads no storage blocks
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, int bindingPoint) {
-        return createInternal(name, format, bindingPoint, CgBufferLifetime.RETAINED);
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingModel.Slot slot) {
+        return createInternal(name, format, slot, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #createInternal(String, CgBufferLayout, int)}, with the contents' {@link CgBufferLifetime}.
+     * As {@link #createInternal(String, CgBufferLayout, CgBindingModel.Slot)}, with the contents' {@link CgBufferLifetime}.
      */
-    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, int bindingPoint,
+    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingModel.Slot slot,
                                                 CgBufferLifetime lifetime) {
         CgCapabilities.ShaderBufferPath path = CgCapabilities.detect().shaderBufferPath();
         if (path != CgCapabilities.ShaderBufferPath.SSBO_GL43 && path != CgCapabilities.ShaderBufferPath.SSBO_ARB) {
@@ -216,28 +217,12 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
             throw new UnsupportedOperationException("shader buffers need storage blocks (GL 4.3 or ARB_shader_storage_buffer_object); "
                     + "this context's path is " + path);
         }
-        return new CgShaderStorageBuffer(name, format, path, bindingPoint, lifetime);
+        return new CgShaderStorageBuffer(name, format, path, slot, lifetime);
     }
 
-    /**
-     * Creates an SSBO for engine-internal use at {@code binding}'s storage point ({@link CgBindingPoints.Binding#resolve()}).
-     *
-     * <p><strong>Engine-internal. Do not use from user code.</strong></p>
-     *
-     * @param name    debug/sampler name (must be non-null)
-     * @param format  typed buffer format
-     * @param binding the reserved {@link CgBindingPoints.Binding} to bind at
-     * @return a {@link CgShaderStorageBuffer}
-     * @throws UnsupportedOperationException where the context reads no storage blocks
-     */
-    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding) {
-        return createInternal(name, format, binding.resolve());
-    }
-
-    /** As {@link #createInternal(String, CgBufferLayout, CgBindingPoints.Binding)}, with a {@link CgBufferLifetime}. */
-    public static CgShaderBuffer createInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding,
-                                                CgBufferLifetime lifetime) {
-        return createInternal(name, format, binding.resolve(), lifetime);
+    /** The slot its shaders read it from. */
+    public CgBindingModel.Slot slot() {
+        return slot;
     }
 
     // ── Write API ─────────────────────────────────────────────────────────────
@@ -336,25 +321,30 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
     // ── Bind / unbind ─────────────────────────────────────────────────────────
 
     /**
-     * Notes this buffer at its binding point ({@code CgBoundResources}), what a device pass's sets read: its latest
-     * upload's range on the frame ring, else the whole storage. Lands what other threads uploaded first.
+     * Lands what other threads uploaded: before a pass names it, outside a device section.
      *
-     * @throws IllegalStateException if this buffer has been deleted, or is not made yet
+     * @throws IllegalStateException if this buffer has been deleted
      */
-    public void bind() {
+    public void flush() {
         if (deleted) throw new IllegalStateException("CgShaderBuffer has been deleted");
         gpu.flush();
-        if (dataBuffer == null) throw new IllegalStateException(name + " is not made yet: bind it on the render thread, outside a recording");
-        noteInternal();
     }
 
-    /** {@link #bind()} inside a pass, with nothing to land: a no-op before the storage is made. */
-    public void noteBound() {
-        if (dataBuffer != null) noteInternal();
+    /**
+     * Puts the range a set reads into {@code out} at {@code binding}: its latest upload's on the frame ring, else its
+     * whole storage. False before its storage is made, adding nothing.
+     *
+     * <pre>{@code
+     * buffer.flush();                          // outside the device section
+     * buffer.describe(contents, slot.binding());
+     * }</pre>
+     */
+    public boolean describe(CgBindings out, int binding) {
+        return dataBuffer != null && describeInternal(out, binding);
     }
 
-    /** Notes the range {@link #bind()} names. */
-    protected abstract void noteInternal();
+    /** {@link #describe} once the storage is made. */
+    protected abstract boolean describeInternal(CgBindings out, int binding);
 
     @Override public boolean isDeleted() { return deleted; }
 
@@ -426,7 +416,6 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         boolean small = floatCount <= COMPARE_LIMIT_FLOATS;
         if (small && sameAsUploaded(data, floatCount) && (!ring || uploadedFrame == frame)) {
             CgTrace.add(CgChannels.GL, UPLOAD_SKIPPED, 1);
-            if (ring) noteInternal();
             return;
         }
         CgTrace.add(CgChannels.GL, UPLOAD_SENT, 1);
@@ -439,7 +428,6 @@ public abstract class CgShaderBuffer implements CgObjectBuffer {
         } else {
             uploadedCount = -1;   // a later small upload compares against nothing stale
         }
-        if (ring) noteInternal();
     }
 
     /** Off the render thread: the floats copied into a lease here, landed before the next frame executes. */

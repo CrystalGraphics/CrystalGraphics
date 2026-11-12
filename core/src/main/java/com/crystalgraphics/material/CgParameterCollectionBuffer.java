@@ -1,12 +1,12 @@
 package com.crystalgraphics.material;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 
 import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Every parameter collection's values, a vec4 each, read by a material declaring {@code #pragma cg_use globals}:
@@ -20,11 +20,13 @@ public final class CgParameterCollectionBuffer {
 
     /** The {@code attach()} macro the env file reads values through. */
     public static final String MACRO_NAME = "GLOBAL_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("globals");
 
     public static final CgBufferLayout FORMAT = CgBufferLayout.builder("CgGlobal", STD430).vec4("value").build();
 
     private static final CgShaderBuffer BUFFER = CgShaderBufferRegistry.get()
-            .getOrCreateInternal("CgGlobals", FORMAT, CgBindingPoints.GLOBALS, CgBufferLifetime.FRAME);
+            .getOrCreateInternal("CgGlobals", FORMAT, SLOT, CgBufferLifetime.FRAME);
 
     private CgParameterCollectionBuffer() {
     }

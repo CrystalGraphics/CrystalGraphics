@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
@@ -49,7 +48,6 @@ public class CgRehearsalTest {
         device = new CgNullRHI(64, 64);
         device.install(compiler);
         CgCapabilities.clearCache();
-        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
 

@@ -101,8 +101,8 @@ shape its first whole upload or its description gives it, written by `writeTextu
 is remade (a grow, a resize): read `getId()` at each use.
 
 A texture's own sampling is a `CgSampler` value (`sampler()`), the one a binding reads where it names none
-(`render/draw/CgDeviceSamplers`, cached by identity: keep the same object). `bind(unit)` notes it for the pass being recorded, and
-`CgTexture2D.bindLevel(unit, level)` notes a view of one level; neither issues a GL call.
+(`render/draw/CgDeviceSamplers`, cached by identity: keep the same object). A texture reaches a draw through its
+material or its pass (`pass.texture(CgBindingModel.LIGHTMAP, t)`), never by a bind of its own.
 
 ## Design Rules
 
@@ -306,7 +306,7 @@ without casts.
 │  CgShaderBuffer (abstract base)                              │
 │  Owns: String name, CgStreamBuffer dataBuffer,               │
 │        CgBufferWriter writer, write-session API,             │
-│        bind(), delete template                               │
+│        slot, describe(), flush(), delete template            │
 ├──────────────────────────────────────────────────────────────┤
 │  CgStreamBuffer (transport)                                  │
 │  Default createForShaderBuffer: staged, copied in at offset  │
@@ -327,39 +327,33 @@ without casts.
 
 | Type | Role |
 |------|------|
-| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `bind()` (noted for a device pass's sets), `delete()` template, `getGlBufferId()`. Its factory is `createInternal(name, layout, bindingPoint[, lifetime])`, at an engine-reserved binding; a consumer's buffer is `api/buffer`'s `CgBuffer`. **`CgBufferLayout` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
+| `CgShaderBuffer` | Abstract base + factories. Owns `String name`, `CgStreamBuffer dataBuffer`, `CgBufferWriter writer`, write-session API, `slot()`, `describe(out, binding)` (its range, as a set reads it), `flush()`, `delete()` template, `getGlBufferId()`. Its factory is `createInternal(name, layout, slot[, lifetime])`; a consumer's buffer is `api/buffer`'s `CgBuffer`. **`CgBufferLayout` and `name` are mandatory**. Every upload passes `uploadData`, which skips one of at most 4 KB (`COMPARE_LIMIT_FLOATS`) equal to the last — except a `FRAME` buffer's first upload of a frame — and re-binds a `FRAME` buffer either way; counters `shaderBuffer.upload` / `shaderBuffer.uploadSkipped`. |
 | `CgShaderStorageBuffer` | SSBO backend. GL 4.3 core or `ARB_shader_storage_buffer_object`. |
 | `CgUniformBuffer` | UBO for a uniform block, with a `CgBufferLifetime`: `FRAME` for every engine block — material properties (`CgMaterial` uploads at every bind), the text block (`getOrCreateUboInternal`) — or `RETAINED`. `upload()` passes `CgShaderBuffer.uploadData`'s skip. Constructors `(name, format, bindingLocation[, lifetime])`. `getName()` is the GLSL block name. Uses unified `endRecord()` from parent. |
-| `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgBindingPoints.GLOBALS`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
-| `CgBonePalettes` | Every skinned draw's bones for a ring frame: `write(skinning, count)` answers a draw's base (three vec4 rows a bone, a 3×4 transform), and the world renderer `record`s the frame's palettes once, into a persistent graph buffer each skinned draw binds at `CgBindingPoints.BONE_PALETTES` (`Draw.bones(base)` puts the base in `CG_OBJECT_SPARE.x`). Its registered `CgShaderBuffer`, one identity bone, is only the skinned program's declaration and what the binding holds between skinned draws |
+| `CgParameterCollectionBuffer` | The `globals` engine buffer: every `CgParameterCollection`'s values, a vec4 each (`GLOBAL_DATA`), FRAME lifetime, at `CgParameterCollectionBuffer.SLOT`. Uploaded once a frame by `CgParameterCollection.upload()`, which the world renderer calls |
+| `CgBonePalettes` | Every skinned draw's bones for a ring frame: `write(skinning, count)` answers a draw's base (three vec4 rows a bone, a 3×4 transform), and the world renderer `record`s the frame's palettes once, into a persistent graph buffer each skinned draw names at `CgBindingModel.BONES` (`Draw.bones(base)` puts the base in `CG_OBJECT_SPARE.x`). Its registered `CgShaderBuffer`, one identity bone, is only the skinned program's declaration and what the binding holds between skinned draws |
 | `CgShaderBufferRegistry` | The engine's shared SSBO/UBO buffers, by name, layout and reserved binding: `getOrCreateInternal(name, layout, binding[, lifetime])`, `getOrCreateUboInternal`. `deleteAll()` at shutdown. |
 
-### Binding Point Namespaces
+### Slots, not binding points
 
-SSBO binding points and UBO binding points are **separate namespaces**.
-Engine buffers take from the **high end** of each range; user buffers from the **low end**.
+Every engine buffer is read at a **slot**, `CgBindingModel.Slot(set, binding)` — the shader's own
+`CG_BIND(set, binding)`, the same on every device. There are no GL binding points or texture units: a buffer is made
+at its slot and a pass states it there, Unreal's pass parameters.
 
-| Resource | Slot | Constant |
-|----------|------|----------|
-| SSBO (per-object, engine) | ssbo `maxSsboBindings - 1` (e.g. 7) | `CgBindingPoints.OBJECT_DATA` (a `Binding(ssbo, tbo)` record — call `.resolve()` for the active path) |
-| SSBO (`CgQuadBatch`, engine) | one slot below `OBJECT_DATA`'s | `CgBindingPoints.QUAD_RENDERER` (same `Binding` shape) |
-| UBO (per-frame, engine)   | `maxUniformBufferBindings - 1` (e.g. 35) | `CgBindingPoints.FRAME_DATA_UBO` |
+| Buffer | Slot |
+|---|---|
+| The frame's object records | `CgBindingModel.OBJECTS` (pass set) |
+| A pass's object ids | `CgBindingModel.OBJECT_IDS` |
+| Bone palettes, vertex words | `CgBindingModel.BONES`, `CgBindingModel.VERTICES` |
+| A cg_use token's buffer (`quad`, `clip`, `particle`, ...) | its owner's `SLOT` (`CgQuadBatch.SLOT`, `CgParticleBuffer.SLOT`): `CgBindingModel.token(name)`, its place in `CgEngineBufferRegistry`'s order |
+| The text block | `CgBindingModel.TEXT_DATA` |
+| A material's block and `Buffers { }` | `CgBindingModel.MATERIAL_BLOCK`, `CgBindingModel.buffer(i)` |
 
-Reserved engine SSBO pairs are `CgBindingPoints.Binding(ssbo, tbo)` records, not two loose
-`int`s — the pair is the TBO path's seam, kept with `tbo = -1` while it is unhooked; `resolve()` answers the
-SSBO slot, so a consumer needing one reserved pair
-(`CgShaderBufferRegistry.getOrCreateInternal(name, format, binding)`) passes a single object.
-
-`CgBindingPoints.init(CgCapabilities)` must be called (by `CgEngineLifecycle.ensureGraphicsContext`) before
-any engine buffer is constructed.
-
-### Two-Phase Buffer Usage: Wire vs Bind
-
-Each engine buffer uses two separate GL operations:
-
-- **Bind** (`bind()`) — per-context. Establishes the actual GL binding: `glBindBufferBase` for a `RETAINED` buffer, which stays bound; `glBindBufferRange` at the latest upload for a `CgBufferLifetime.FRAME` one, which every upload re-binds (`CgShaderBuffer.uploadData`); `glActiveTexture+glBindTexture` for a TBO. The executor binds the engine pair per pass: the frame block from the pass's constants, the object buffer it owns.
-
-User buffers may still use `bind(shader)` which does both in one call (requires shader to be active).
+- **Nothing binds a buffer.** A set reads a buffer's range when it is made (`describe`): the pass's parameters first
+  (the executor's instances, records and tables; a draw's own buffer at a token's slot), then a snapshot's, then the
+  buffer the registry made for that slot (`CgShaderBufferRegistry.ownerAt`).
+- **`flush()` lands what other threads uploaded**, outside a device section: the executor flushes what a pass states.
+- A `FRAME` buffer's range is its latest upload's offset on the ring; a `RETAINED` one is read whole.
 
 ### Object Record ABI (must match `cg_env.glsl`)
 
@@ -394,9 +388,8 @@ and the declaration costs a storage binding — so it is opt-in.
 
 **Why providers hold a `Supplier`, not a buffer:** the built-in `quad` entry is seeded with the
 method reference `CgQuadBatch::sharedBuffer`, which does *not* trigger that class's static
-initialization at registration time. That matters — its buffer allocates against `CgBindingPoints`
-and is only valid once `CgBindingPoints.init` has run. The supplier is invoked at attach time,
-when a GL context exists.
+initialization at registration time. That matters — its buffer is made at class-init, and only once
+a context exists. The supplier is invoked at attach time, when one does.
 
 **Adding one:** `CgEngineBufferRegistry.register(token, supplier, macroName)`, before any shader
 referencing the token is parsed. Registering a duplicate token throws.
@@ -423,13 +416,13 @@ parser's first lookup, which is exactly when a token is needed.
 
 ### Lifecycle
 
-A consumer's buffer is `api/buffer`'s (`CgBuffers.create`, `rec.upload`). These are the engine's own, at reserved
-binding points (`createInternal`, `getOrCreateInternal`).
+A consumer's buffer is `api/buffer`'s (`CgBuffers.create`, `rec.upload`). These are the engine's own, each at its
+slot (`createInternal`, `getOrCreateInternal`).
 
 **SSBO (an engine buffer's per-object data)**
 ```java
 CgShaderBuffer myBuf = CgShaderBufferRegistry.get()
-        .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingPoints.SHAPE_TABLE, CgBufferLifetime.FRAME);
+        .getOrCreateInternal("CgShapeTable", FORMAT, CgShapeTable.SLOT, CgBufferLifetime.FRAME);
 
 myBuf.beginWrite(N);
 for (int i = 0; i < N; i++) {
@@ -438,8 +431,7 @@ for (int i = 0; i < N; i++) {
 }
 myBuf.endWrite();
 
-myBuf.bind();         // noted: what a device pass's sets read at its binding
-// draw N instances
+// a pass states it, or the next set made at its slot reads this upload's range
 ```
 
 **UBO — format-aware mode** (the frame block, `CgBufferLifetime.FRAME`)
@@ -453,7 +445,6 @@ w.reset()
  .vec2("cg_Resolution", width, height);
 frameUbo.endRecord();  // finalize the record (sets lastWrittenCount = 1)
 frameUbo.upload();     // skipped if the bytes match and this frame already has them
-frameUbo.bind();       // noted by range at this upload's offset
 ```
 
 Nothing is wired after a compile: the material compiler declares each block at its binding (`CG_BIND`).
@@ -465,8 +456,7 @@ A `RETAINED` buffer is made, written and deleted from any thread, as a texture i
 (`CgUploads.lease(bytes, true)`) by the thread that wrote them, landed with `glBufferSubData` before the next frame
 executes. A `FRAME` buffer is the render thread's, made and uploaded there.
 
-- `bind()` and `getGlBufferId()` land what is queued first, so they must run on the render thread outside a recording;
-  `bind()` on a buffer whose storage is not made yet throws.
+- `flush()` and `getGlBufferId()` land what is queued first, so they must run on the render thread outside a recording.
 - Inside a deferred task or a hot path, read `dataBuffer.getGlBuffer()`, never `getGlBufferId()`, which flushes.
 - A lease never comes from an unpack buffer: unpack memory is slow to read (`CgUploadLease.bufferSubData` throws on
   one).
@@ -476,6 +466,5 @@ executes. A `FRAME` buffer is the render thread's, made and uploaded there.
 - **`name` is first constructor param** for all subclasses. Never null.
 - **`CgUniformBuffer.blockName` field was removed** — use `getName()` from parent.
 - **The TBO path is unhooked** (rhi X2): `CgTextureBuffer`, `USER_START_TBO` and the texel binding are gone; `docs/TBO_PATH.md` reconnects them.
-- **Engine blocks bypass the registry** — the frame block and object buffer use high-end binding slots resolved at runtime; the executor owns the object buffer and binds the frame block from each pass's constants.
-- **The frame ring only through `CgBufferLifetime.FRAME`** — it binds by range at each upload's offset. A `RETAINED` buffer stays at offset 0, which `glBindBufferBase` reads.
-- **`CgBindingPoints.init()` must run before any engine buffer construction** — `CgEngineLifecycle.ensureGraphicsContext` calls it first.
+- **Engine blocks bypass the registry** — the view block comes from each pass's constants, and the executor owns the object records and states them as the pass's.
+- **The frame ring only through `CgBufferLifetime.FRAME`** — a set reads it by range at the latest upload's offset. A `RETAINED` buffer is read whole.

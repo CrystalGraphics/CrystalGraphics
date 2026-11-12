@@ -203,8 +203,8 @@ Authoring: `docs/SHADERS.md` § *The Emissive pass*. What this package does with
 - **A named glow**: a fragment body naming `CG_GLOW` gets `_cg_glowRgb` and the macro before `fragment()`
   (`appendFragmentUserFunction`), and every glow its `main` makes (merge, fold, its own Emissive draw) takes
   `_cg_glowRgb` with the colour's alpha in place of the colour.
-- **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than fit below
-  `CgBindingPoints.MEDIA_TEXTURE_UNIT`, the lowest the engine reserves.
+- **`CgMaterialShader.requireUnits`** refuses at load a shader with more samplers than
+  `CgBindingModel.MATERIAL_TEXTURES`, its set's room for them.
 
 ## Depth from a transparent material
 

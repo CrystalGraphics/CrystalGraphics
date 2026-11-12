@@ -47,6 +47,8 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
 
 /**
  * Range (vfx-gpu §13.4): every particle pool's draws for one view. Each live particle is culled against the view;
@@ -58,7 +60,7 @@ import java.util.Map;
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
  * world.draw(quads, spark)                                                  // per slot and layer
- *      .buffer(CgBindingPoints.PARTICLES, pool.drawn()).buffer(CgBindingPoints.PARTICLE_ORDER, range.order())
+ *      .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
  *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
  *      .custom(0, range.base(slot), capacity, radius, parameter)
  *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();

@@ -8,7 +8,6 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgHostImports;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
@@ -355,7 +354,6 @@ public class KitProgramsLinkTest {
         new CgNullRHI(64, 64).install(new ExplicitBindingCheck(compiler, explicit));
         CgCapabilities.clearCache();
         // CgEngineLifecycle.ensureGraphicsContext's own steps, less the platform it would ask for a device.
-        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
         // text.shader's engine token (`cg_use text`) is the text renderer's block: its class must have loaded.
         Class.forName("com.crystalgraphics.text.render.CgTextMaterials");

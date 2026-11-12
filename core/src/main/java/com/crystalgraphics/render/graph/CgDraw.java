@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.draw.CgBufferHandle;
@@ -14,6 +13,7 @@ import org.joml.Matrix4fc;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A mesh drawn under a material in a raster pass, made by {@link CgRasterPass#draw}: one or more instances, each an
@@ -66,7 +66,7 @@ public final class CgDraw {
     private int countFactor, objectsFirst, objectsCount;
     private boolean each;
     private long[] countsAt = new long[8];
-    private final CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[4];
+    private final CgBindingModel.Slot[] bufferAt = new CgBindingModel.Slot[4];
     private final CgBufferHandle[] buffers = new CgBufferHandle[4];
     private int bufferCount;
     private long sortKey;
@@ -227,7 +227,7 @@ public final class CgDraw {
     }
 
     /** Reads {@code buffer} where the engine buffer at {@code binding} would be. */
-    public CgDraw buffer(CgBindingPoints.Binding binding, CgBufferHandle buffer) {
+    public CgDraw buffer(CgBindingModel.Slot binding, CgBufferHandle buffer) {
         requireOpen();
         if (bufferCount == buffers.length) throw new IllegalStateException("a draw takes " + buffers.length + " buffers");
         builder.buffer(binding, buffer);

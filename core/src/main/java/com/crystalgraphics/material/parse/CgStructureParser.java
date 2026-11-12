@@ -1,6 +1,5 @@
 package com.crystalgraphics.material.parse;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -18,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Structural parsing and validation helpers for CrystalShader {@code .shader} source.
@@ -87,10 +87,10 @@ final class CgStructureParser {
             out.add(new CgBufferDecl(b.name(), b.display(), b.element(), b.access(), b.stride(), b.lowerable(), b.scalar(),
                     out.size(), b.fields()));
         }
-        if (out.size() > CgBindingPoints.MATERIAL_BUFFER_COUNT) {
+        if (out.size() > CgBindingModel.MATERIAL_BUFFER_COUNT) {
             throw new CgShaderParseException("[" + resourcePath + "] 'Buffers' declares " + authored.buffers().size()
                     + " buffers, and the world's lights it reads take 3 more: a material reads at most "
-                    + CgBindingPoints.MATERIAL_BUFFER_COUNT);
+                    + CgBindingModel.MATERIAL_BUFFER_COUNT);
         }
         return new MaterialBuffers(List.copyOf(out), authored.structs() + "struct CgLight { " + LIGHT_STRUCT + " };\n");
     }
@@ -121,9 +121,9 @@ final class CgStructureParser {
             declarations.put(struct.group(1), region.substring(struct.start(), semi < 0 ? braceClose + 1 : semi + 1));
         }
         List<CgBufferDecl> buffers = CgComputeParser.materialBuffers(region.substring(open + 1, close), bodies, resourcePath);
-        if (buffers.size() > CgBindingPoints.MATERIAL_BUFFER_COUNT) {
+        if (buffers.size() > CgBindingModel.MATERIAL_BUFFER_COUNT) {
             throw new CgShaderParseException("[" + resourcePath + "] 'Buffers' declares " + buffers.size()
-                    + " buffers: a material reads at most " + CgBindingPoints.MATERIAL_BUFFER_COUNT);
+                    + " buffers: a material reads at most " + CgBindingModel.MATERIAL_BUFFER_COUNT);
         }
         StringBuilder structs = new StringBuilder();
         for (String name : bodies.keySet()) {

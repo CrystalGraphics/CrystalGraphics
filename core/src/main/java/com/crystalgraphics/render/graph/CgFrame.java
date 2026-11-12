@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
@@ -20,6 +19,7 @@ import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A frame graph built and ready to execute: its passes in the order they run, every batch packed, every instance of
@@ -479,7 +479,7 @@ public final class CgFrame {
          * buffers, and where; else null.
          */
         CgBufferHandle[] buffers = new CgBufferHandle[16 * CgDrawChunk.BUFFERS];
-        CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[16 * CgDrawChunk.BUFFERS];
+        CgBindingModel.Slot[] bufferAt = new CgBindingModel.Slot[16 * CgDrawChunk.BUFFERS];
         /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
         int[] copyBefore = new int[16];
         /**
@@ -523,7 +523,7 @@ public final class CgFrame {
                 eachFrom = new int[n];
                 objects = new CgBufferHandle[n];
                 buffers = new CgBufferHandle[n * CgDrawChunk.BUFFERS];
-                bufferAt = new CgBindingPoints.Binding[n * CgDrawChunk.BUFFERS];
+                bufferAt = new CgBindingModel.Slot[n * CgDrawChunk.BUFFERS];
                 copyBefore = new int[n];
                 copyRect = new int[n * 4];
             } else {

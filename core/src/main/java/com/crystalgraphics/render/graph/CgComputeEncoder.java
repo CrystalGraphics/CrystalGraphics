@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.program.CgComputeCheck;
@@ -18,7 +17,6 @@ import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineLayout;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.render.draw.CgDeviceSets;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -45,6 +43,8 @@ final class CgComputeEncoder {
     private static final int ASYNC_PASSES = CgTrace.name("graph.async-passes");
 
     private final CgExecutor execution;
+    /** The pass's view textures stated as it executes: the depth it reads beside its own. */
+    private final CgViewTextures view = new CgViewTextures();
     private final CgGraphDevice device;
     /** A dispatch's kernel slots its snapshot does not hold: buffers, counts, images, checked mode's report. */
     private final CgBindings kernelBindings = new CgBindings();
@@ -75,20 +75,18 @@ final class CgComputeEncoder {
         CgFrame.Compute packed = frame.computes[s];
         CgRHI rhi = CgRHI.get();
         CgTrace.add(CgChannels.GL, DEVICE_COMPUTES, 1);
-        frame.bindings.bind(packed.constants);
-        CgBoundResources.forgetTextures(CgBindingModel.PASS);
-        CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
-        // Before the compute pass, after the constants, as a raster pass's copy: the bind is what the view set reads
+        // Before the compute pass, as a raster pass's copy: what the view set reads
+        view.clear();
         if (pass.depthFrom() != null) {
-            execution.depthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), CgBindingPoints.DEPTH_TEXTURE_UNIT,
-                    frame.depthFromInPlace[s]);
+            view.put(CgBindingModel.SCENE_DEPTH, execution.depthFrom(pass, pass.depthFrom(), pass.depthFromCopy(),
+                    frame.depthFromInPlace[s]));
         }
         execution.deviceSets.prepare(frame.bindings);
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         for (int i = 0; i < dispatches.size(); i++) {
             CgDispatch d = dispatches.get(i);
             List<String> tokens = d.source.engineBuffers();
-            for (int t = 0; t < tokens.size(); t++) CgEngineBufferRegistry.get(tokens.get(t)).buffer().get().bind();
+            for (int t = 0; t < tokens.size(); t++) CgEngineBufferRegistry.get(tokens.get(t)).buffer().get().flush();
             d.kernel.program().devicePipeline(rhi);
             for (int b = 0; b < d.buffers.length; b++) {
                 if (d.buffers[b] != null) device.bufferStorage(d.buffers[b], false);
@@ -192,7 +190,7 @@ final class CgComputeEncoder {
             if (layout.sets().get(set).slots().isEmpty()) continue;
             long before = sets.defaulted();
             CgBindingSet s = sets.set(rhi, frame.bindings, set == CgBindingModel.VIEW ? constants : bindings, layout,
-                    set, set == CgBindingModel.MATERIAL ? k : null);
+                    set, set == CgBindingModel.MATERIAL ? k : set == CgBindingModel.VIEW ? view.bindings(rhi) : null);
             if (sets.defaulted() != before) {
                 String what = d.source.path() + " " + d.decl.name() + " " + sets.lastDefaulted();
                 if (setsLogged.add(what)) LOGGER.warn("device compute: {} defaulted", what);

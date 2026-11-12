@@ -4,6 +4,7 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * One shader's material blocks side by side: a storage buffer of fixed slots, a slot a {@link CgBlockVersion}, so draws
@@ -14,7 +15,7 @@ import java.util.Arrays;
  * <pre>{@code
  * CgMaterialArena arena = new CgMaterialArena("dual_path_test", format.getFloatCount());
  * CgBlockVersion v = CgBlockVersion.in(arena, packed, floats);        // a material's values, when one moved
- * int id = table.begin().block(CgBindingPoints.MATERIAL_ARENA.ssbo(), v).end();
+ * int id = table.begin().block(CgBindingModel.MATERIAL_BLOCK.packed(), v).end();
  * int slot = frameTable.slotOf(id);                                   // what its draws' ids carry, at frame build
  * }</pre>
  *

@@ -113,7 +113,7 @@ public class CgFrameBuilderTest {
         CgPipeline reads = haze.pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
         CgGraphTexture t = CgGraphTexture.requested("t", DESC);
-        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t, 5);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t);
         // Margin: 0.05 of 64 plus a texel, 4.2 pixels.
         pass.add(keyed(rec, material, quads, 1, 0, 0, 10, 10));
         pass.add(keyed(rec, haze, reads, 2, 20, 20, 30, 30));    // a copy...
@@ -153,7 +153,7 @@ public class CgFrameBuilderTest {
 
         CgRecording rec = new CgRecording();
         CgGraphTexture t = CgGraphTexture.requested("t", DESC);
-        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t, 5);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsColor(t);
         pass.add(keyed(rec, haze, reads, 5));      // after the second plain draw: a copy of its own
         pass.add(keyed(rec, material, quads, 1));
         pass.add(keyed(rec, haze, reads, 2));      // first reader: a copy
@@ -211,7 +211,7 @@ public class CgFrameBuilderTest {
         CgPipeline writes = apply.pipeline(CgInstanceKind.QUAD), reads = seal.pipeline(CgInstanceKind.QUAD);
         CgRecording rec = new CgRecording();
         CgGraphTexture t = CgGraphTexture.requested("t", DESC);
-        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsDepth(t, 6);
+        CgRasterPass pass = rec.raster("raster t").color(t, CgLoad.load()).constants(constants).readsDepth(t);
         pass.add(keyed(rec, apply, writes, 1));
         pass.add(keyed(rec, seal, reads, 2));
         pass.end();

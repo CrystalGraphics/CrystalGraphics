@@ -6,8 +6,7 @@ package com.crystalgraphics.render.canvas;
  *
  * <h3>Why this is not just private methods on {@link CgCurveBatch}</h3>
  * <p>It is pure maths with no GPU state, and it must stay <em>reachable without one</em>.
- * {@link CgCurveBatch} holds a {@code static final CgShaderBuffer} that allocates against
- * {@code CgBindingPoints} at class-init, so merely calling a static method on that class — even a
+ * {@link CgCurveBatch} holds a {@code static final CgShaderBuffer} it allocates at class-init, so merely calling a static method on that class — even a
  * pure-maths one — initializes it and throws unless {@code CgEngineLifecycle.ensureGraphicsContext} has already run.
  * That is exactly why {@code CgEngineBufferRegistry} seeds the {@code curve} token with a method
  * reference rather than a field read; the same hazard applies to anything else that wants this

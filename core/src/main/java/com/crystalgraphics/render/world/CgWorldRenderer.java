@@ -8,7 +8,6 @@ import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -77,6 +76,8 @@ import org.joml.Vector3f;
 import java.util.Arrays;
 import java.util.Objects;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
 
 /**
  * Draws meshes into a host's world at its two world stages, under the host's own camera: submitted at absolute
@@ -234,7 +235,7 @@ public final class CgWorldRenderer {
     private final CgWorldLights pointLights = new CgWorldLights();
     /** Whether this transparent firing's light list holds any light. */
     private boolean lit;
-    /** This transparent firing's froxel transmittance, bound at {@code MEDIA_TEXTURE_UNIT}; null with nothing in the air. */
+    /** This transparent firing's froxel transmittance, at {@link CgBindingModel#MEDIA}; null with nothing in the air. */
     @Nullable
     private CgGraphTexture mediaOut;
     /** The world's labels ({@link #text}), and the canvas their two passes record through. */
@@ -861,7 +862,7 @@ public final class CgWorldRenderer {
         private float setScale;
         private CgGpuCount setCount;
         private final CgBufferHandle[] buffer = new CgBufferHandle[CgDrawChunk.BUFFERS];
-        private final CgBindingPoints.Binding[] bufferPoint = new CgBindingPoints.Binding[CgDrawChunk.BUFFERS];
+        private final CgBindingModel.Slot[] bufferPoint = new CgBindingModel.Slot[CgDrawChunk.BUFFERS];
         private final CgAABB meshBox = new CgAABB();
         /** Block and sky light; NaN block for the world's at its position. */
         private float blockLight, skyLight;
@@ -1124,7 +1125,7 @@ public final class CgWorldRenderer {
          * for the frame's particle records.
          *
          * <pre>{@code
-         * world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
+         * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, range.drawn())
          *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
          *      .custom(0, range.base(slot), capacity, radius, parameter).at(x, y, z).gpuCulled().submit();
          * }</pre>
@@ -1135,7 +1136,7 @@ public final class CgWorldRenderer {
          *       records and its order, a strip's draw its run besides. Object records take {@link #instances} instead.</li>
          * </ul>
          */
-        public Draw buffer(CgBindingPoints.Binding at, CgBufferHandle records) {
+        public Draw buffer(CgBindingModel.Slot at, CgBufferHandle records) {
             Objects.requireNonNull(at, "at");
             Objects.requireNonNull(records, "records");
             int s = 0;
@@ -1177,7 +1178,7 @@ public final class CgWorldRenderer {
          * slots of one material. Its records draw far to near.
          *
          * <pre>{@code
-         * CgWorldRenderer.Draw draw = world.draw(quads, spark).buffer(CgBindingPoints.PARTICLES, range.drawn())
+         * CgWorldRenderer.Draw draw = world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, range.drawn())
          *         .indirectEach(range.visible(), CgIndirect.INDICES, 6).gpuCulled().at(gx, gy, gz).group(gx, gy, gz);
          * for (int slot : slots) {
          *     draw.each(ox, oy, oz, range.visibleWord(slot) * 4L).custom(0, range.base(slot), capacity, radius, 0f);
@@ -2055,9 +2056,9 @@ public final class CgWorldRenderer {
 
     /** {@code pass} reading this firing's media, where anything is in the air. */
     void mediated(CgRasterPass pass) {
-        if (mediaOut != null) pass.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, mediaOut);
+        if (mediaOut != null) pass.texture(CgBindingModel.MEDIA, mediaOut);
         CgGraphTexture lit = pointLights.localLights();
-        if (lit != null) pass.texture(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT, lit);
+        if (lit != null) pass.texture(CgBindingModel.LOCAL_LIGHTS, lit);
     }
 
     /** What {@link #cullSets} culls: the sets the stage's passes draw, those its bloom draws, those its graded layers draw. */

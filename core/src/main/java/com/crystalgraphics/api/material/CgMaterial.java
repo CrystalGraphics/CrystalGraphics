@@ -3,7 +3,6 @@ package com.crystalgraphics.api.material;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.material.CgShader;
@@ -50,6 +49,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import com.crystalgraphics.material.CgAttachedBuffer;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * User-facing material handle backed by a shared {@link CgMaterialShader} asset.
@@ -977,14 +977,14 @@ public final class CgMaterial {
         if (propStore != null) {
             if (propStore.hasUboProps()) {
                 CgBlockVersion version = blockVersion();
-                table.block(version.arena() != null ? arenaPoint() : CgBindingPoints.MATERIAL_PROPERTIES_UBO, version);
+                table.block(CgBindingModel.MATERIAL_BLOCK, version);
             }
             propStore.captureSamplers(table);
         }
         if (cgMaterialShader != null) captureEngineBlocks(table);
         capturePerDrawEngineBuffers(table);
         for (int i = 0; i < declared.size(); i++) {
-            table.storage(CgBindingPoints.MATERIAL_BUFFERS_SSBO + i, buffers.get(declared.get(i).name()));
+            table.storage(CgBindingModel.buffer(i), buffers.get(declared.get(i).name()));
         }
         return table.end();
     }
@@ -1041,11 +1041,6 @@ public final class CgMaterial {
                 : CgBlockVersion.of(packer.rawData(), packer.rawCursor());
         CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
         return current;
-    }
-
-    /** The arena's storage point; -1 before the binding points are known, as the block's is. */
-    private static int arenaPoint() {
-        return CgBindingPoints.MATERIAL_ARENA == null ? -1 : CgBindingPoints.MATERIAL_ARENA.ssbo();
     }
 
     /** Its shader's arena where its values live there ({@link CgParsedShader#valuesInArena}); null otherwise. */
@@ -1105,7 +1100,7 @@ public final class CgMaterial {
             CgBufferWriter override = blockOverrides == null ? null : blockOverrides.get(target);
             CgBufferWriter written = override != null ? override : target.writer();
             if (written.rawCursor() > 0) {
-                table.block(target.getBindingLocation(), written.rawData(), 0, written.rawCursor());
+                table.block(target.slot(), written.rawData(), 0, written.rawCursor());
             } else {
                 table.buffer(target);
             }
@@ -1475,7 +1470,7 @@ public final class CgMaterial {
         if (propStore.hasUboProps()) {
             CgBufferLayout newFormat = propStore.buildUboFormat();
             if (matPropsUbo == null) {
-                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingPoints.MATERIAL_PROPERTIES_UBO,
+                matPropsUbo = new CgUniformBuffer(MATERIAL_PROPERTIES_BLOCK, newFormat, CgBindingModel.MATERIAL_BLOCK,
                         CgBufferLifetime.FRAME);
             } else {
                 matPropsUbo.resetFormat(newFormat);

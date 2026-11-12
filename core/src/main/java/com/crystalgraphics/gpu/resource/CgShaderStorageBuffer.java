@@ -1,9 +1,12 @@
 package com.crystalgraphics.gpu.resource;
 
 
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * SSBO-backed {@link CgShaderBuffer} implementation.
@@ -32,24 +35,26 @@ public final class CgShaderStorageBuffer extends CgShaderBuffer {
      * @param name            debug label for this buffer
      * @param format          typed format descriptor (mandatory)
      * @param path            SSBO hardware path (GL43 core or ARB)
-     * @param bindingLocation immutable GL binding point
+     * @param slot            the slot its shaders read it from
      * @param lifetime        {@link CgBufferLifetime#FRAME} for the frame ring, bound by range
      */
     CgShaderStorageBuffer(String name, CgBufferLayout format,
-                          CgCapabilities.ShaderBufferPath path, int bindingLocation, CgBufferLifetime lifetime) {
-        super(name, format, CgStreamBuffer.Use.STORAGE, bindingLocation, lifetime);
+                          CgCapabilities.ShaderBufferPath path, CgBindingModel.Slot slot, CgBufferLifetime lifetime) {
+        super(name, format, CgStreamBuffer.Use.STORAGE, slot, lifetime);
         this.path = path;
     }
 
     /** On the frame ring, by range at the latest upload, in the storage growth may have replaced. */
     @Override
-    protected void noteInternal() {
+    protected boolean describeInternal(CgBindings out, int binding) {
+        CgGpuBuffer buffer = dataBuffer.gpuBuffer();
+        if (buffer == null) return false;
         int bytes = dataBuffer.getCommittedBytes();
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(),
-                    dataBuffer.bindingBytes());
+            out.buffer(binding, CgBindingLayout.Type.STORAGE_BUFFER, buffer, dataBuffer.getWriteOffset(), dataBuffer.bindingBytes());
         } else {
-            CgBoundResources.storage(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
+            out.buffer(binding, CgBindingLayout.Type.STORAGE_BUFFER, buffer, 0, buffer.size());
         }
+        return true;
     }
 }

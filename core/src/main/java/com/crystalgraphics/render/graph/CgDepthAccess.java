@@ -7,7 +7,7 @@ package com.crystalgraphics.render.graph;
  * <pre>{@code
  * rec.raster("world.opaque").color(scene, CgLoad.load()).depth(depth, CgLoad.load(), CgDepthAccess.WRITE);
  * rec.raster("world.fog").color(scene, CgLoad.load()).depth(depth, CgLoad.load(), CgDepthAccess.READ)
- *         .readsDepth(depth, CgBindingPoints.DEPTH_TEXTURE_UNIT);   // tested and sampled at once: read-only depth
+ *         .readsDepth(depth);   // tested and sampled at once: read-only depth
  * }</pre>
  */
 public enum CgDepthAccess {

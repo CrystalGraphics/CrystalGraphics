@@ -1,6 +1,5 @@
 package com.crystalgraphics.material;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -31,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The programs compiled from one parse of a {@link CgMaterialShader}: each pass under each keyword set, compiled the
@@ -123,7 +123,7 @@ final class CgMaterialShaderMap {
     static CgMaterialShaderMap of(String label, CgParsedShader parsed) {
         CgMaterialProperties properties = new CgMaterialProperties(parsed.properties());
         CgUniformBuffer block = properties.hasUboProps() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
-                properties.buildUboFormat(), CgBindingPoints.MATERIAL_PROPERTIES_UBO) : null;
+                properties.buildUboFormat(), CgBindingModel.MATERIAL_BLOCK) : null;
         return new CgMaterialShaderMap(label, parsed, block, engineBuffers(parsed));
     }
 

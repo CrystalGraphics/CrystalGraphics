@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -16,6 +15,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The base pass and its depth prepass ({@code EMeshPass::BasePass}, {@code DepthPass}): each draw of the firing's phase
@@ -46,9 +46,9 @@ final class CgBasePass {
     void recordPass(CgStageFrame stage, CgRecording recording, CgPassConstants constants, CgRenderState state,
                     boolean depthOnlyPass, boolean after, CgCamera view, boolean sceneGlows) {
         CgRasterPass pass = recording.raster("world.base").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(constants).state(state)
-                .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture());
+                .readsDepth(stage.depth())
+                .readsColor(stage.target())
+                .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture());
         if (!depthOnlyPass) world.mediated(pass);
         boolean normals = world.normalsInto != null && state == CgWorldRenderer.OPAQUE_STATE && !depthOnlyPass;
         if (normals) pass.colorIfTaken(world.normalsInto, CgLoad.load());

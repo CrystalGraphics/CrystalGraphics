@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -93,7 +92,7 @@ final class CgCustomDataPass {
             if (depthIn == null) depthIn = CgMaterial.newInstance(CgWorldRenderer.DEPTH_IN_SHADER);
             CgPipeline copy = depthIn.pipeline(CgInstanceKind.OBJECT);
             if (copy != null) {
-                pass.readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+                pass.readsDepth(CgGraphTexture.current());
                 chunks.draw(copy, depthIn.captureBindings(recording.bindings()), CgWorldRenderer.FULLSCREEN).sortKey(Long.MIN_VALUE);
                 chunks.instance();
             }

@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -25,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Turns a {@link CgFrameGraph} into a {@link CgFrame}: orders the passes by what they read and write, culls those
@@ -571,29 +571,29 @@ public final class CgFrameBuilder {
                 CgDepthConvention.reversed(), constantsScratch);
         boolean lightmap = false, media = false, localLights = false;
         for (int i = 0; i < pass.textureCount(); i++) {
-            constants.texture(pass.textureUnit(i), pass.texture(i));
-            lightmap |= pass.textureUnit(i) == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT;
-            media |= pass.textureUnit(i) == CgBindingPoints.MEDIA_TEXTURE_UNIT;
-            localLights |= pass.textureUnit(i) == CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT;
+            constants.texture(pass.textureSlot(i), pass.texture(i));
+            lightmap |= pass.textureSlot(i) == CgBindingModel.LIGHTMAP;
+            media |= pass.textureSlot(i) == CgBindingModel.MEDIA;
+            localLights |= pass.textureSlot(i) == CgBindingModel.LOCAL_LIGHTS;
         }
         // A pass with no world lights nothing, and nothing in the air dims it: cg_Lightmap and cg_Media read white.
-        if (!lightmap && CgBindingPoints.LIGHTMAP_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_1x1 != null) {
-            constants.texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, CgFallbackTextures.WHITE_1x1);
+        if (!lightmap && CgFallbackTextures.WHITE_1x1 != null) {
+            constants.texture(CgBindingModel.LIGHTMAP, CgFallbackTextures.WHITE_1x1);
         }
-        if (!media && CgBindingPoints.MEDIA_TEXTURE_UNIT >= 0 && CgFallbackTextures.WHITE_VOLUME != null) {
-            constants.texture(CgBindingPoints.MEDIA_TEXTURE_UNIT, CgFallbackTextures.WHITE_VOLUME);
+        if (!media && CgFallbackTextures.WHITE_VOLUME != null) {
+            constants.texture(CgBindingModel.MEDIA, CgFallbackTextures.WHITE_VOLUME);
         }
-        if (!localLights && CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT >= 0 && CgFallbackTextures.BLACK_VOLUME != null) {
-            constants.texture(CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT, CgFallbackTextures.BLACK_VOLUME);
+        if (!localLights && CgFallbackTextures.BLACK_VOLUME != null) {
+            constants.texture(CgBindingModel.LOCAL_LIGHTS, CgFallbackTextures.BLACK_VOLUME);
         }
-        if (pass.sceneColorUnit() >= 0) constants.texture(pass.sceneColorUnit(), pass.targetCopy().color);
-        if (pass.sceneDepthUnit() >= 0) constants.texture(pass.sceneDepthUnit(), pass.targetCopy().depth);
+        if (pass.readsOwnColor()) constants.texture(CgBindingModel.SCENE_COLOR, pass.targetCopy().color);
+        if (pass.readsOwnDepth()) constants.texture(CgBindingModel.SCENE_DEPTH, pass.targetCopy().depth);
         if (pass.depthFrom() != null) {
-            constants.texture(pass.depthFromUnit(), pass.depthFromCopy().depth);
+            constants.texture(CgBindingModel.SCENE_DEPTH, pass.depthFromCopy().depth);
             frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
         }
         if (pass.colorFrom() != null) {
-            constants.texture(pass.colorFromUnit(), pass.colorFromCopy().color);
+            constants.texture(CgBindingModel.SCENE_COLOR, pass.colorFromCopy().color);
             frame.readsCurrentDepth |= pass.colorFrom().isCurrent();
         }
         // Drawn with the current target's depth: the execution needs that target opened, noted before any pass binds.
@@ -620,8 +620,7 @@ public final class CgFrameBuilder {
      * {@link CgTargetCopy#CLEAN}: the target's depth as the pass found it, which the executor may share between passes.
      */
     private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
-        int sampled = (pass.sceneColorUnit() >= 0 ? CgTargetCopy.COLOR : 0)
-                | (pass.sceneDepthUnit() >= 0 ? CgTargetCopy.DEPTH : 0);
+        int sampled = (pass.readsOwnColor() ? CgTargetCopy.COLOR : 0) | (pass.readsOwnDepth() ? CgTargetCopy.DEPTH : 0);
         if (sampled == 0) return;
         float width = CgPassConstants.width(pass.constants), height = CgPassConstants.height(pass.constants);
         // A pass into part of a layer is not in its target's pixels: its copies are whole.

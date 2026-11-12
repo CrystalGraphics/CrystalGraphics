@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -12,6 +11,7 @@ import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The frame's world draws, flat: what {@link CgWorldRenderer.Draw#submit} wrote, one index a draw, read by every pass
@@ -47,7 +47,7 @@ final class CgWorldDraws {
     int[] countFactors = new int[64];
     /** Per draw, two slots: the buffers it reads in place of engine buffers, and where; else null. */
     CgBufferHandle[] buffers = new CgBufferHandle[64 * CgDrawChunk.BUFFERS];
-    CgBindingPoints.Binding[] bufferAt = new CgBindingPoints.Binding[64 * CgDrawChunk.BUFFERS];
+    CgBindingModel.Slot[] bufferAt = new CgBindingModel.Slot[64 * CgDrawChunk.BUFFERS];
     /** Per draw: the object records a set of instances draws, else null, and how many of them. */
     CgGraphBuffer[] sets = new CgGraphBuffer[64];
     int[] setFirsts = new int[64];

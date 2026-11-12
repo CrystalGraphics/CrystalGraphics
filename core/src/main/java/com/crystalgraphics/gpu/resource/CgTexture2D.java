@@ -2,7 +2,6 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
 import com.crystalgraphics.platform.gl.driver.GLC;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.CgUploadLease;
 import com.crystalgraphics.gpu.CgUploads;
@@ -483,21 +482,6 @@ public final class CgTexture2D extends CgTextureAbstract {
             int lw = Math.max(1, lease.width() >> l), lh = Math.max(1, lease.height() >> l);
             CgDeviceTextures.write(image, CgTextureRegion.of2D(l, 0, 0, lw, lh), lease, at[l], lengths[l]);
         }
-    }
-
-    /**
-     * Binds it at {@code unit} sampling level {@code level} alone, as a view of that level: what lets a pass draw into one
-     * level while reading another. A shader reads the level as the texture's base, at LOD 0.
-     *
-     * <pre>{@code
-     * chain.bindLevel(0, 2);            // a pass drawing into level 3 reads level 2
-     * }</pre>
-     */
-    public void bindLevel(int unit, int level) {
-        checkUsable();
-        if (level < 0 || level >= getLevels()) throw new IllegalArgumentException("level " + level + " of " + getLevels());
-        gpu.flush();
-        CgBoundResources.texture(unit, this, level);
     }
 
     @Override public int getTarget() { return GL_TEXTURE_2D; }

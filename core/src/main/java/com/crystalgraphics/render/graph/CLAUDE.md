@@ -62,7 +62,7 @@ rec.raster("world.glow")
         .color(glow, CgLoad.CLEAR)
         .depth(sceneDepth, CgLoad.load(), CgDepthAccess.WRITE)
         .reads(noise)
-        .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
+        .readsDepth(CgGraphTexture.current())
         .constants(constants);
 ```
 
@@ -214,7 +214,7 @@ into `stage.target()` with `stage.depth()`, which the HDR scene sets with `retar
 ```java
 CgGraphTexture scene = CgGraphTexture.transientTexture("scene", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
 recording.raster("world.scene").color(scene, CgLoad.load()).depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE)
-        .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)   // the host's colour, copied whole
+        .readsColor(CgGraphTexture.current())   // the host's colour, copied whole
         .constants(constants);
 
 CgGraphTexture depth = CgGraphTexture.transientTexture("map_depth", CgTextureDesc.of(s, s, CgFormat.DEPTH32_FLOAT));
@@ -306,8 +306,8 @@ is.
 
 ```java
 CgRasterPass pass = recording.raster("world.haze").color(target, CgLoad.load()).constants(constants).state(state)
-        .readsColor(target, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)    // haze, glass, water: the target as drawn so far
-        .readsDepth(target, CgBindingPoints.DEPTH_TEXTURE_UNIT);         // soft particles, depth fades
+        .readsColor(target)    // haze, glass, water: the target as drawn so far
+        .readsDepth(target);         // soft particles, depth fades
 ```
 
 - Each pass copies into one framebuffer from the transient pool, held from its first copy to its end; a later copy
@@ -336,7 +336,7 @@ state that says `DepthWrite OFF` keeps the copy alive; one that says nothing end
 
 ```java
 recording.raster("world.glow").color(glow, CgLoad.CLEAR).constants(constants)
-        .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+        .readsDepth(CgGraphTexture.current());
 ```
 
 - **`CgGraphTexture.current()` is the framebuffer and viewport bound when the execution began**, not whatever is
@@ -369,7 +369,7 @@ chunks.instance();                                                              
 
 **Object records from a buffer** (gpu-compute C9b): `CgChunkBuilder.objects(records, first, n)` draws a mesh once per
 record of a GPU buffer in `CgInstanceKind.OBJECT`'s layout, instead of records written into the chunk. The executor
-binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingPoints.OBJECT_DATA`, a storage block) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
+binds the buffer where `CG_OBJECT_DATA` reads (`CgBindingModel.OBJECTS`, a storage block) with `first` as the instance base, so instance i reads record `first + i`, and binds the frame's own
 records back for the next batch that reads them. With `.indirect(count, offset, INSTANCES, factor)` the GPU's count says how many, held to n by
 the command's kernel (`_Most`) or, read back, by the executor.
 

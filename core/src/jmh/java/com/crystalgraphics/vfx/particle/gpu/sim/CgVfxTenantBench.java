@@ -24,7 +24,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * T9: the VFX update's tenant loop over 64 effects of two GPU emitters each, with no GPU: every effect's tick, its
  * emitters' books, their admission into GPU slots, and each pool's queued steps taken as the world's recording takes
- * them. Range's layout and the frame's tenant walk need the binding points, so a GL context: not here.
+ * them. Range's layout and the frame's tenant walk need the engine's buffers, so a GL context: not here.
  */
 @State(Scope.Thread)
 @BenchmarkMode(Mode.AverageTime)

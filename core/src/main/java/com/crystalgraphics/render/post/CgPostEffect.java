@@ -10,7 +10,7 @@ package com.crystalgraphics.render.post;
  *     public boolean active(CgPostContext post) { return enabled; }
  *     public void record(CgPostContext post) {
  *         CgRasterPass pass = post.recording().raster("mymod.outline").color(post.target(), CgLoad.load()).constants(post.constants())
- *                 .readsDepth(post.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
+ *                 .readsDepth(post.depth());
  *         // ... a full-screen triangle reading cg_DepthBuffer ...
  *         pass.end();
  *     }

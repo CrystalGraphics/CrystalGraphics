@@ -1,6 +1,5 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.render.graph.CgBufferDesc;
 import com.crystalgraphics.render.graph.CgBufferUsage;
@@ -14,6 +13,7 @@ import static com.crystalgraphics.api.buffer.CgBufferLayout.MemoryLayout.STD430;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Every skinned draw's bone matrices for a frame: one buffer of vec4s, three a bone, the rows of the 3×4 transform
@@ -64,7 +64,7 @@ public final class CgBonePalettes {
      */
     public static synchronized CgShaderBuffer buffer() {
         if (standIn == null) {
-            standIn = CgShaderBufferRegistry.get().getOrCreateInternal(BLOCK_NAME, FORMAT, CgBindingPoints.BONE_PALETTES);
+            standIn = CgShaderBufferRegistry.get().getOrCreateInternal(BLOCK_NAME, FORMAT, CgBindingModel.BONES);
             standIn.beginWrite(3);
             standIn.writer().beginRecord().vec4("row", 1f, 0f, 0f, 0f);
             standIn.endRecord();

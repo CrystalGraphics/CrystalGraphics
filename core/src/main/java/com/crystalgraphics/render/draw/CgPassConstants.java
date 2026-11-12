@@ -1,12 +1,12 @@
 package com.crystalgraphics.render.draw;
 
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * What every draw of one pass reads, as two blocks (Unreal's view uniform buffer, and the world's state beside it):
@@ -358,8 +358,8 @@ public final class CgPassConstants {
 
     /** Adds a packed pass's two blocks to the snapshot {@code table} is building, at their bindings. */
     public static CgBindingTable blocks(CgBindingTable table, float[] packed, int at) {
-        return table.block(CgBindingPoints.VIEW_UBO, packed, at, VIEW_FLOATS)
-                .block(CgBindingPoints.ENVIRONMENT_UBO, packed, at + VIEW_FLOATS, ENVIRONMENT_FLOATS);
+        return table.block(CgBindingModel.VIEW_BLOCK, packed, at, VIEW_FLOATS)
+                .block(CgBindingModel.ENVIRONMENT_BLOCK, packed, at + VIEW_FLOATS, ENVIRONMENT_FLOATS);
     }
 
     /**

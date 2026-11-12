@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.camera.CgCamera;
@@ -19,6 +18,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Chunks drawn into textures a pass declares before any draw: its colours and depth with their loads, what it reads,
@@ -39,7 +39,7 @@ import java.util.Objects;
  *         .color(normals, CgLoad.load())                                 // colour 1
  *         .depth(sceneDepth, CgLoad.load(), CgDepthAccess.WRITE)
  *         .reads(noise)                                                   // a graph texture its draws sample
- *         .readsDepth(sceneDepth, CgBindingPoints.DEPTH_TEXTURE_UNIT)     // cg_DepthBuffer
+ *         .readsDepth(sceneDepth)     // cg_DepthBuffer
  *         .constants(constants);
  * }</pre>
  *
@@ -114,7 +114,7 @@ public final class CgRasterPass extends CgPass {
     private float viewX, viewY;
 
     /** The units its draws sample the target's colour and depth at, or -1. */
-    private int sceneColorUnit = -1, sceneDepthUnit = -1;
+    private boolean readsOwnColor, readsOwnDepth;
     /** Whether its first draw writes every pixel of its target ({@link #replaces}). */
     private boolean replaces;
     /** Its copy of its target, made when it first declares a read of it. */
@@ -123,13 +123,11 @@ public final class CgRasterPass extends CgPass {
     /** Another target whose depth its draws sample ({@link #readsDepth}), the unit, and the copy. */
     @Nullable
     private CgGraphTexture depthFrom;
-    private int depthFromUnit = -1;
     @Nullable
     private CgTargetCopy depthFromCopy;
     /** Another target whose colour its draws sample ({@link #readsColor}), the unit, and the copy. */
     @Nullable
     private CgGraphTexture colorFrom;
-    private int colorFromUnit = -1;
     @Nullable
     private CgTargetCopy colorFromCopy;
 
@@ -146,7 +144,7 @@ public final class CgRasterPass extends CgPass {
     private CgPassConstants cameraConstants;
 
     /** Textures bound with the pass's constants: units and textures, in parallel. */
-    private int[] textureUnits = NO_UNITS;
+    private CgBindingModel.Slot[] textureSlots = NO_SLOTS;
     private CgTexture[] textures = NO_TEXTURES;
     /** How many of them this pass binds: the arrays are kept, grown by doubling, across the pass's reuse. */
     private int textureCount;
@@ -180,15 +178,13 @@ public final class CgRasterPass extends CgPass {
         viewOwner = 0;
         viewX = 0f;
         viewY = 0f;
-        sceneColorUnit = -1;
-        sceneDepthUnit = -1;
+        readsOwnColor = false;
+        readsOwnDepth = false;
         replaces = false;
         targetCopy = null;
         depthFrom = null;
-        depthFromUnit = -1;
         depthFromCopy = null;
         colorFrom = null;
-        colorFromUnit = -1;
         colorFromCopy = null;
         attachment = null;
         attachmentOptional = false;
@@ -215,7 +211,7 @@ public final class CgRasterPass extends CgPass {
         dropTextures();
     }
 
-    private static final int[] NO_UNITS = new int[0];
+    private static final CgBindingModel.Slot[] NO_SLOTS = new CgBindingModel.Slot[0];
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
 
     /**
@@ -455,37 +451,37 @@ public final class CgRasterPass extends CgPass {
     }
 
     /**
-     * Lets draws whose shader reads {@code cg_SceneColor} sample {@code texture}'s colour at {@code unit}. Of its own
+     * Lets draws whose shader reads {@code cg_SceneColor} sample {@code texture}'s colour. Of its own
      * colour, as it stands after every draw sorted before them; of another texture, as it stands after every write to
      * it recorded before this call, copied once, whole, when the pass begins, in that texture's format. Declare its
      * colour first.
      *
      * <pre>{@code
      * rec.raster("world.distortion").color(scene, CgLoad.load())
-     *         .readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+     *         .readsColor(scene);
      * rec.raster("world.scene").color(scene, CgLoad.load())
-     *         .readsColor(CgGraphTexture.current(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);   // the host's picture
+     *         .readsColor(CgGraphTexture.current());   // the host's picture
      * }</pre>
      *
      * <ul>
      *   <li>A pass into a mip level or layer above 0 reads no copy of its own colour, and throws.</li>
      * </ul>
      */
-    public CgRasterPass readsColor(CgGraphTexture texture, int unit) {
+    public CgRasterPass readsColor(CgGraphTexture texture) {
         declaring();
         requireTarget();
-        return texture == target ? ownColor(unit) : colorFrom(unit, texture);
+        return texture == target ? ownColor() : colorFrom(texture);
     }
 
     /**
-     * Lets draws whose shader reads {@code cg_DepthBuffer} sample {@code texture}'s depth at {@code unit}. Of its own
+     * Lets draws whose shader reads {@code cg_DepthBuffer} sample {@code texture}'s depth. Of its own
      * colour's depth, as it stands after every draw sorted before them; of another texture, as it stands after every
      * write to it recorded before this call, copied once, whole, when the pass begins, at that texture's size, so readers
      * sample by normalized uv ({@code gl_FragCoord.xy / CG_RESOLUTION}). Declare its colour first.
      *
      * <pre>{@code
      * rec.raster("world.glow").color(glow, CgLoad.CLEAR)
-     *         .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);   // occluded by the scene
+     *         .readsDepth(CgGraphTexture.current());   // occluded by the scene
      * }</pre>
      *
      * <ul>
@@ -493,10 +489,10 @@ public final class CgRasterPass extends CgPass {
      *   <li>Give the pass the host's depth convention ({@code CgStageFrame.defaults}), or eye depths disagree.</li>
      * </ul>
      */
-    public CgRasterPass readsDepth(CgGraphTexture texture, int unit) {
+    public CgRasterPass readsDepth(CgGraphTexture texture) {
         declaring();
         requireTarget();
-        return texture == target || texture == depth ? ownDepth(unit) : depthFrom(unit, texture);
+        return texture == target || texture == depth ? ownDepth() : depthFrom(texture);
     }
 
     /** The block its draws read as the frame's: time, camera, resolution. The recording's identity block unless set. */
@@ -704,15 +700,24 @@ public final class CgRasterPass extends CgPass {
         return scissorCount++ * 4;
     }
 
-    /** Binds {@code texture} at {@code unit} for every draw of this pass. A graph texture is read as of this call. */
-    public CgRasterPass texture(int unit, CgTexture texture) {
+    /**
+     * {@code texture} at view slot {@code slot} for every draw of this pass. A graph texture is read as of this call.
+     *
+     * <pre>{@code
+     * pass.texture(CgBindingModel.LIGHTMAP, host.textures().lightmapTexture());   // what cg_Lightmap reads
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a slot outside the view set: a draw's own textures are its material's
+     */
+    public CgRasterPass texture(CgBindingModel.Slot slot, CgTexture texture) {
         declaring();
+        if (slot.set() != CgBindingModel.VIEW) throw new IllegalArgumentException(slot + " is not a view slot");
         int n = textureCount++;
-        if (n == textureUnits.length) {
-            textureUnits = Arrays.copyOf(textureUnits, Math.max(4, n * 2));
-            textures = Arrays.copyOf(textures, textureUnits.length);
+        if (n == textureSlots.length) {
+            textureSlots = Arrays.copyOf(textureSlots, Math.max(4, n * 2));
+            textures = Arrays.copyOf(textures, textureSlots.length);
         }
-        textureUnits[n] = unit;
+        textureSlots[n] = slot;
         textures[n] = texture;
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
         if (graph != null) {
@@ -729,9 +734,9 @@ public final class CgRasterPass extends CgPass {
         }
     }
 
-    private CgRasterPass ownColor(int unit) {
+    private CgRasterPass ownColor() {
         requireLevelZero();
-        sceneColorUnit = unit;
+        readsOwnColor = true;
         if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
@@ -744,7 +749,7 @@ public final class CgRasterPass extends CgPass {
      *
      * <pre>{@code
      * rec.raster("post.grade").color(scene, CgLoad.load())
-     *         .readsColor(scene, CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT).replaces();
+     *         .readsColor(scene).replaces();
      * }</pre>
      *
      * <ul>
@@ -763,9 +768,9 @@ public final class CgRasterPass extends CgPass {
         return replaces;
     }
 
-    private CgRasterPass ownDepth(int unit) {
+    private CgRasterPass ownDepth() {
         requireLevelZero();
-        sceneDepthUnit = unit;
+        readsOwnDepth = true;
         if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
@@ -784,20 +789,18 @@ public final class CgRasterPass extends CgPass {
         if (layer != 0) throw new IllegalStateException(this + " draws layer " + layer + ", and reads no copy of its target");
     }
 
-    private CgRasterPass depthFrom(int unit, CgGraphTexture from) {
+    private CgRasterPass depthFrom(CgGraphTexture from) {
         if (from.desc() != null && !from.desc().format().hasDepth()) {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none: name its depth texture");
         }
         depthFrom = from;
-        depthFromUnit = unit;
         if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }
 
-    private CgRasterPass colorFrom(int unit, CgGraphTexture from) {
+    private CgRasterPass colorFrom(CgGraphTexture from) {
         colorFrom = from;
-        colorFromUnit = unit;
         if (colorFromCopy == null) colorFromCopy = keptColorFrom != null ? keptColorFrom : (keptColorFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
@@ -806,10 +809,6 @@ public final class CgRasterPass extends CgPass {
     @Nullable
     CgGraphTexture colorFrom() {
         return colorFrom;
-    }
-
-    int colorFromUnit() {
-        return colorFromUnit;
     }
 
     @Nullable
@@ -822,21 +821,19 @@ public final class CgRasterPass extends CgPass {
         return depthFrom;
     }
 
-    int depthFromUnit() {
-        return depthFromUnit;
-    }
-
     @Nullable
     CgTargetCopy depthFromCopy() {
         return depthFromCopy;
     }
 
-    int sceneColorUnit() {
-        return sceneColorUnit;
+    /** Whether its draws sample a copy of its own target's colour ({@link #readsColor}). */
+    boolean readsOwnColor() {
+        return readsOwnColor;
     }
 
-    int sceneDepthUnit() {
-        return sceneDepthUnit;
+    /** Whether its draws sample a copy of its own target's depth ({@link #readsDepth}). */
+    boolean readsOwnDepth() {
+        return readsOwnDepth;
     }
 
     @Nullable
@@ -848,8 +845,8 @@ public final class CgRasterPass extends CgPass {
         return textureCount;
     }
 
-    int textureUnit(int i) {
-        return textureUnits[i];
+    CgBindingModel.Slot textureSlot(int i) {
+        return textureSlots[i];
     }
 
     CgTexture texture(int i) {

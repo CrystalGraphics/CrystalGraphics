@@ -1,5 +1,6 @@
 package com.crystalgraphics.material;
 
+import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -115,7 +116,8 @@ public class CgMaterialRecordingTest {
         material.applyProperties(p -> p.sampler("_SharpTex", 5, atlas));
         int id = material.captureBindings(table);
         assertEquals(1, table.textures(id));
-        assertEquals("the unit is the declaration index, whatever the caller passed", 1, table.textureUnit(id, 0));
+        assertEquals("the slot is the declaration index's, whatever the caller passed", CgBindingModel.packedTexture(1),
+                table.textureUnit(id, 0));
         assertEquals(7, ((CgTextureAbstract) table.texture(id, 0)).getId());
 
         material.applyProperties(p -> p.sampler("_SharpTex", 1, other));

@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.canvas;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -9,6 +8,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The boxes a recording's quads are drawn as, by index: a rounded, bordered, flat, textured or nine-slice rectangle, so
@@ -39,6 +39,8 @@ public final class CgShapeTable {
 
     /** The macro a shader reads an entry through. */
     public static final String MACRO_NAME = "SHAPE_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("shape");
 
     /** The texture times the quad's colour, straight alpha. */
     public static final int PLAIN = 0;
@@ -121,7 +123,7 @@ public final class CgShapeTable {
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()
-                    .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingPoints.SHAPE_TABLE, CgBufferLifetime.FRAME);
+                    .getOrCreateInternal("CgShapeTable", FORMAT, SLOT, CgBufferLifetime.FRAME);
         }
         return buffer;
     }
@@ -162,8 +164,8 @@ public final class CgShapeTable {
         version++;
     }
 
-    /** Uploads this table unless the buffer already holds it as it is, this frame, and binds it. Render thread. */
-    public void bindForDraw() {
+    /** Uploads this table unless the buffer already holds it as it is, this frame, answering the buffer a pass states. Render thread. */
+    public CgShaderBuffer prepare() {
         CgShaderBuffer target = buffer();
         long frame = CgFrameRing.frame();
         if (uploaded != this || uploadedVersion != version || uploadedFrame != frame) {
@@ -181,7 +183,8 @@ public final class CgShapeTable {
             uploadedVersion = version;
             uploadedFrame = frame;
         }
-        target.bind();
+        target.flush();
+        return target;
     }
 
     /** The entry {@code values} describes, added unless an equal one is there. */

@@ -24,18 +24,20 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.gpu.resource.CgShaderBuffer;
+import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 
 /**
- * A recorded draw's or dispatch's bindings as the device's sets: each set of its pipeline's layout filled from what the
- * caller supplies by binding, then from its {@link CgBindingTable} snapshot through {@link CgBindingModel}'s slots, then
- * from what the executor has bound there ({@link CgBoundResources}: the pass's records and tables), and interned by
- * content across frames, as Unreal keeps a material's uniform buffer until its contents change.
+ * A recorded draw's or dispatch's bindings as the device's sets: each slot of its pipeline's layout filled from the
+ * pass's parameters (the caller's, by binding: its records, instances, tables and scene copies), then from its
+ * {@link CgBindingTable} snapshot by slot, then from the engine buffer made for that slot; interned by content across
+ * frames, as Unreal keeps a material's uniform buffer until its contents change.
  *
  * <pre>{@code
  * table.upload(ring);                                                 // the ring blocks' places first
  * sets.prepare(table);                                               // textures loaded, outside a device section
- * CgBindingSet material = sets.set(rhi, table, id, layout, CgBindingModel.MATERIAL, null);
- * pass.setBindingSet(CgBindingModel.MATERIAL, material, sets.offsets(), sets.offsetCount());   // read before the next set()
+ * CgBindingSet pass = sets.set(rhi, table, id, layout, CgBindingModel.PASS, passParameters);
+ * rp.setBindingSet(CgBindingModel.PASS, pass, sets.offsets(), sets.offsetCount());   // read before the next set()
  * }</pre>
  *
  * <ul>
@@ -86,7 +88,7 @@ public final class CgDeviceSets {
     /**
      * Set {@code set} of {@code layout} for snapshot {@code id}: made, or the one made for equal contents before.
      *
-     * @param extras what fills a slot ahead of the snapshot, by binding (a kernel's buffers and images); null for none
+     * @param extras the pass's parameters for this set, by binding, ahead of the snapshot; null for none
      */
     public CgBindingSet set(CgRHI rhi, CgBindingTable table, int id, CgPipelineLayout layout, int set,
                             @Nullable CgBindings extras) {
@@ -166,14 +168,15 @@ public final class CgDeviceSets {
     }
 
     /**
-     * Loads every texture {@code table}'s snapshots record and lands its pending uploads: outside any render pass, as
-     * an upload is a copy. Before the first {@link #set} of a frame.
+     * Loads every texture {@code table}'s snapshots record and lands its buffers' pending uploads: outside any render
+     * pass, as an upload is a copy. Before the first {@link #set} of a frame.
      */
     public void prepare(CgBindingTable table) {
         for (int id = 0; id < table.size(); id++) {
             for (int t = 0; t < table.textures(id); t++) {
                 if (table.texture(id, t) instanceof CgTextureAbstract engine) engine.getId();
             }
+            for (int b = 0; b < table.buffers(id); b++) table.buffer(id, b).flush();
         }
     }
 
@@ -217,7 +220,9 @@ public final class CgDeviceSets {
                 copy(extras, at);
                 continue;
             }
-            if (fromTable(rhi, table, id, CgBindingModel.pack(set, slot.binding()), slot)) continue;
+            int packed = CgBindingModel.pack(set, slot.binding());
+            if (fromTable(rhi, table, id, packed, slot)) continue;
+            if (slot.type() != CgBindingLayout.Type.SAMPLED_TEXTURE && owned(packed, slot)) continue;
             fallback(rhi, slot);
             defaulted++;
             lastDefaulted = "set " + set + " binding " + slot.binding() + " " + slot.type();
@@ -229,9 +234,8 @@ public final class CgDeviceSets {
     private boolean fromTable(CgRHI rhi, CgBindingTable table, int id, int packed, CgBindingLayout.Slot slot) {
         switch (slot.type()) {
             case SAMPLED_TEXTURE -> {
-                if (boundTexture(rhi, slot, packed)) return true;
                 for (int t = 0; t < table.textures(id); t++) {
-                    if (CgBindingModel.ofTexture(table.textureUnit(id, t)) != packed) continue;
+                    if (table.textureUnit(id, t) != packed) continue;
                     CgTexture texture = table.texture(id, t);
                     CgTextureView view = texture.rhiView();
                     if (view == null) return false;
@@ -244,7 +248,7 @@ public final class CgDeviceSets {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
                     if (version != null && version.arena != null) continue;   // a storage block
-                    if (CgBindingModel.ofBlock(table.blockBinding(id, k)) != packed) continue;
+                    if (table.blockBinding(id, k) != packed) continue;
                     CgGpuBuffer buffer = version != null ? version.buffer : table.uploadedBuffer();
                     long at = version != null ? version.offset : table.ringOffset(id, k);
                     if (buffer == null) return false;
@@ -254,13 +258,13 @@ public final class CgDeviceSets {
                     contents.buffer(slot.binding(), slot.type(), buffer, at, bytes);
                     return true;
                 }
-                return bound(slot, packed);
+                return buffer(table, id, slot, packed);
             }
             case STORAGE_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
                     if (version == null || version.arena == null) continue;
-                    if (CgBindingModel.ofStorage(table.blockBinding(id, k)) != packed) continue;
+                    if (table.blockBinding(id, k) != packed) continue;
                     CgMaterialArena arena = version.arena;
                     if (arena.buffer == null) return false;
                     long at = wholeArena ? 0 : (long) version.slot * arena.stride();
@@ -269,10 +273,10 @@ public final class CgDeviceSets {
                     return true;
                 }
                 for (int s = 0; s < table.storages(id); s++) {
-                    if (CgBindingModel.ofStorage(table.storagePoint(id, s)) != packed) continue;
+                    if (table.storagePoint(id, s) != packed) continue;
                     return whole(slot, table.storage(id, s).boundId());
                 }
-                return bound(slot, packed);
+                return buffer(table, id, slot, packed);
             }
             default -> {
                 return false;
@@ -280,26 +284,19 @@ public final class CgDeviceSets {
         }
     }
 
-    /** The texture bound for {@code packed} ({@link CgBoundResources}): over the snapshot's, as a GL program samples. */
-    private boolean boundTexture(CgRHI rhi, CgBindingLayout.Slot slot, int packed) {
-        CgTexture texture = CgBoundResources.texture(packed);
-        if (texture == null || texture instanceof CgTextureAbstract engine && engine.isDeleted()) return false;
-        CgTextureView view = texture.rhiView();
-        if (view == null) return false;
-        int level = CgBoundResources.level(packed);
-        if (level >= 0) view = new CgTextureView(view.texture(), level, 1, view.baseLayer(), view.layers());
-        contents.texture(slot.binding(), view, CgDeviceSamplers.of(rhi, CgBoundResources.sampler(packed), texture));
-        return true;
+    /** An engine buffer the snapshot names whose slot is {@code packed}, at its latest range. */
+    private boolean buffer(CgBindingTable table, int id, CgBindingLayout.Slot slot, int packed) {
+        for (int b = 0; b < table.buffers(id); b++) {
+            CgShaderBuffer buffer = table.buffer(id, b);
+            if (buffer.slot().packed() == packed) return buffer.describe(contents, slot.binding());
+        }
+        return false;
     }
 
-    /** What the executor has bound for {@code packed} ({@link CgBoundResources}): a snapshot's buffers, the pass's. */
-    private boolean bound(CgBindingLayout.Slot slot, int packed) {
-        CgGpuBuffer buffer = CgBoundResources.buffer(packed);
-        if (buffer == null) return false;
-        long offset = CgBoundResources.offset(packed);
-        long size = CgBoundResources.size(packed);
-        contents.buffer(slot.binding(), slot.type(), buffer, offset, size != 0 ? size : buffer.size() - offset);
-        return true;
+    /** The engine buffer made for {@code packed} ({@link CgShaderBufferRegistry#ownerAt}), at its latest range. */
+    private boolean owned(int packed, CgBindingLayout.Slot slot) {
+        CgShaderBuffer owner = CgShaderBufferRegistry.get().ownerAt(packed);
+        return owner != null && !owner.isDeleted() && owner.describe(contents, slot.binding());
     }
 
     /** {@code name}'s whole storage at {@code slot}. */

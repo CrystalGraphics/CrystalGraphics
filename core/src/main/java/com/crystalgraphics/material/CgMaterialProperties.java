@@ -5,7 +5,6 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.render.draw.CgBindingTable;
 import org.apache.logging.log4j.LogManager;
@@ -129,26 +128,6 @@ public final class CgMaterialProperties implements CgMaterialValues {
                         : type == CgMaterialProperty.Type.USAMPLER2D ? CgFallbackTextures.ZERO_UINT : CgFallbackTextures.WHITE_1x1;
             }
             if (texture != null) table.texture(i, texture, samplerProps.get(i).getSampler());
-        }
-    }
-
-    /**
-     * Binds each sampler property's texture to its assigned texture unit, and one never set to the engine texture its
-     * default names, at its index: the unit its program was wired with. Called per-draw.
-     */
-    public void bindSamplerTextures() {
-        for (int i = 0; i < samplerProps.size(); i++) {
-            CgMaterialProperty p = samplerProps.get(i);
-            if (p.getSamplerTexture() != null) {
-                p.bindSamplerTexture();
-            } else {
-                CgTexture named = p.boundTexture();
-                int unit = p.getSamplerUnit() >= 0 ? p.getSamplerUnit() : i;
-                if (named != null) {
-                    CgBoundResources.bind(unit, named);
-                    CgBoundResources.sampler(unit, p.getSampler());
-                }
-            }
         }
     }
 

@@ -1,5 +1,7 @@
 package com.crystalgraphics.gpu.resource;
 
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBuffer;
+
 /**
  * How long a shader buffer's contents must stay readable -- which decides where they live. Pass it when
  * creating any SSBO or UBO; the factories without it mean {@link #RETAINED}.
@@ -7,7 +9,7 @@ package com.crystalgraphics.gpu.resource;
  * <pre>{@code
  * // Instance data, written before the draws that read it, every frame:
  * CgShaderBuffer particles = CgShaderBufferRegistry.get()
- *         .getOrCreateInternal("CgParticleBuffer", FORMAT, CgBindingPoints.PARTICLES, CgBufferLifetime.FRAME);
+ *         .getOrCreateInternal("CgParticleBuffer", FORMAT, CgParticleBuffer.SLOT, CgBufferLifetime.FRAME);
  * particles.beginWrite(n);
  * // ... n records ...
  * particles.endWrite();          // lands in this frame's region, and re-binds there

@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.property;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -9,6 +8,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A recording's property trees as a frame executes them: every spatial node's affine into a raster pass's target,
@@ -34,6 +34,8 @@ public final class CgPalette {
 
     /** The macro a shader reads an entry through. */
     public static final String MACRO_NAME = "PALETTE_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("palette");
 
     private static final CgBufferLayout FORMAT = CgBufferLayout.builder("PaletteEntry", CgBufferLayout.MemoryLayout.STD430)
             .vec4("toTarget0").vec4("toTarget1")
@@ -75,7 +77,7 @@ public final class CgPalette {
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()
-                    .getOrCreateInternal("CgPalette", FORMAT, CgBindingPoints.PALETTE, CgBufferLifetime.FRAME);
+                    .getOrCreateInternal("CgPalette", FORMAT, SLOT, CgBufferLifetime.FRAME);
         }
         return buffer;
     }
@@ -128,8 +130,8 @@ public final class CgPalette {
         }
     }
 
-    /** Uploads the entries for the pass {@link #pass} prepared, unless the buffer already holds them, and binds it. */
-    public void bindForDraw() {
+    /** Uploads the entries for the pass {@link #pass} prepared, unless the buffer already holds them, answering the buffer a pass states. */
+    public CgShaderBuffer prepare() {
         CgShaderBuffer target = buffer();
         long frame = CgFrameRing.frame();
         if (uploaded != this || uploadedStamp != stamp || uploadedFrame != frame || !samePass()) {
@@ -140,7 +142,8 @@ public final class CgPalette {
             System.arraycopy(pre, 0, uploadedPass, 0, 6);
             uploadedPass[6] = targetHeight;
         }
-        target.bind();
+        target.flush();
+        return target;
     }
 
     /**

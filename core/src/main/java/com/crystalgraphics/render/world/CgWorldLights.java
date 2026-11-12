@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.world;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -53,6 +52,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgDepthAccess;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The lights in the world this frame, Unreal's local lights: points, spots and tubes, each a position, a radius, a
@@ -1261,9 +1261,9 @@ public final class CgWorldLights {
             CgPipeline pipeline = apply.pipeline(CgInstanceKind.OBJECT);
             if (pipeline == null) return;
             CgRasterPass add = recording.raster("worldLights.target").color(stage.target(), CgLoad.load()).depth(stage.depth(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants())
-                    .readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT).readsColor(stage.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT)
+                    .readsDepth(stage.depth()).readsColor(stage.target())
                     // What the scene was lit by, divided out to find its albedo: unbound, it reads white and divides by 1.
-                    .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
+                    .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture()).timed(GPU_APPLY);
             CgChunkBuilder chunks = recording.chunks().begin();
             chunks.draw(pipeline, apply.captureBindings(recording.bindings()), FULLSCREEN);
             chunks.instance();
@@ -1580,7 +1580,7 @@ public final class CgWorldLights {
         material.applyProperties(handSunValues);
     }
 
-    /** The world's lights on transparent surfaces this firing, for {@code LOCAL_LIGHTS_TEXTURE_UNIT}; null for none. */
+    /** The world's lights on transparent surfaces this firing, for {@link CgBindingModel#LOCAL_LIGHTS}; null for none. */
     @Nullable
     CgGraphTexture localLights() {
         return localLights;

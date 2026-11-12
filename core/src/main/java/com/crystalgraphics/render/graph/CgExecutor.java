@@ -11,7 +11,6 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.render.draw.CgDeviceSets;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.mesh.CgMeshStore;
@@ -25,6 +24,7 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import com.crystalgraphics.api.texture.CgTexture;
 
 /**
  * Runs a {@link CgFrame} on the render thread: uploads its snapshots and each kind's instances once, compiles what it
@@ -194,7 +194,7 @@ public final class CgExecutor {
     /**
      * Makes the executions of the first {@code depths} nesting depths now. Each maps a ring and an indirect-args table,
      * and a map waits for a threaded driver's queue, deepest while loading: an immediate draw's first nested execution
-     * held the loading screen 117 ms (1.20.1). At the engine's start, after {@code CgBindingPoints.init}. Render thread.
+     * held the loading screen 117 ms (1.20.1). At the engine's start. Render thread.
      */
     public static void ahead(int depths) {
         CgGraphDevice device = CgGraphDevice.get();
@@ -371,7 +371,6 @@ public final class CgExecutor {
     private void run(CgFrame frame) {
         boolean again = frame.executions++ > 0;
         device.kernelsSeen |= frame.kernels;
-        CgBoundResources.recording = true;
         CgCapabilities caps = CgCapabilities.detect();
         ComputeTier tier = caps.computeTier();
         boolean computes = tier == ComputeTier.V || tier == ComputeTier.G43;
@@ -702,16 +701,18 @@ public final class CgExecutor {
 
     // ── Depth read from another texture ──────────────────────────────────────
 
-    /** Binds the depth of the texture a pass reads besides its own: sampled in place where compiled so, else copied whole. */
-    void depthFrom(CgPass pass, CgGraphTexture depth, CgTargetCopy copy, int unit, boolean inPlace) {
+    /**
+     * The depth of the texture a pass reads besides its own, as the texture it samples: in place where compiled so, else
+     * copied whole.
+     */
+    CgTexture depthFrom(CgPass pass, CgGraphTexture depth, CgTargetCopy copy, boolean inPlace) {
         if (inPlace) {
             // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
-            CgBoundResources.texture(unit, device.storage(depth).sampledDepth(), -1);
             CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
-            return;
+            return device.storage(depth).sampledDepth();
         }
         copy.borrowDepth(sharedDepth(device.storage(depth), pass));
-        CgBoundResources.texture(unit, copy.depth, -1);
+        return copy.depth;
     }
 
     /** The storage whose depth {@code pass} draws into; null where it draws with none. */

@@ -1,7 +1,6 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import java.util.Set;
 import java.util.EnumSet;
@@ -163,12 +162,6 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
     }
 
     // ── CgTexture — binding ─────────────────────────────────────────
-
-    public void bind(int unit) {
-        checkUsable();
-        gpu.flush();
-        CgBoundResources.texture(unit, this, -1);
-    }
 
     // ── CgTexture — accessors ───────────────────────────────────────
 

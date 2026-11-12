@@ -46,14 +46,14 @@ See [`parse/CLAUDE.md`](parse/CLAUDE.md) for the full class map. Key external-fa
 1. `#version 450 core`, the one target (`CgMaterialShaderCompiler.VERSION`) on GL and, through shaderc, Vulkan; the
    vertex stage enables `GL_ARB_shader_draw_parameters`: `cg_env.glsl` reads a draw's bases
 2. `#define CG_VERTEX_STAGE 1`
-4. `#define CG_OBJECT_BUFFER_BINDING <CgBindingPoints.OBJECT_DATA>` + `#define CG_FRAME_BLOCK_BINDING <CgBindingPoints.FRAME_DATA>`
+4. Every engine block and buffer at its slot through `CG_BIND(set, binding)` (`CgBindingModel`)
 5. `#include "crystalgraphics:shaders/env/cg_env.glsl"`
 5a. **Vertex pulling** — `CgGlslEmitter.emitVertexDeclarations(vertexFormat)` declares the store's words (`CgVertexWords` at `CgBindingModel.VERTICES`) and a global per attribute of the resolved `CgVertexFormat` (from `shader.shaderType()` via `CgVertexFormat.forShaderType()`); `emitVertexFetch` writes `cg_FetchVertex()`, which `main` calls first. The skinned variant fetches after `bones.glsl`, either width by `CG_BONES_WIDE`. Not present in fragment source.
-6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; declared at `CgBindingPoints.MATERIAL_PROPERTIES_UBO`'s binding)
+6. `CgMaterialBlock` UBO block (emitted via `CgGlslEmitter.emitUbo()` when non-sampler properties exist; declared at `CgBindingModel.MATERIAL_BLOCK`'s binding)
 7. Sampler property uniform declarations (`uniform sampler2D/sampler2DArray/sampler3D/samplerCube <name>;` — one per sampler property)
 8. User-attached SSBO buffers (emitted by `CgGlslEmitter`)
 8. User-attached UBO blocks (emitted by `CgGlslEmitter`) — path-independent
-8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgBufferReaders.reader`) — a storage block wired to `CgBindingPoints.MATERIAL_BUFFERS_SSBO + i`. The fragment stage the same
+8a. `Buffers { }`: the structs its buffers name, then each buffer's reader (`CgBufferReaders.reader`) — a storage block wired to `CgBindingModel.buffer(i)`. The fragment stage the same
 9. `struct v2f { <v2fStructBody> };`
 10. `flat out int cg_InstanceId;`
 11. v2f interface block (`out _CgV2fBlock { <fields> } _cg_v2f;`)

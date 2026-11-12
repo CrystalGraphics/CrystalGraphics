@@ -4,6 +4,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * One version of a uniform block that outlives frames: a material's parameters as they were when a property last
@@ -16,7 +17,7 @@ import java.util.Arrays;
  * v.supersede();                                              // replaced: freed once its frames retire
  *
  * CgBlockVersion w = CgBlockVersion.in(arena, packed, floats); // a slot of its shader's arena instead
- * int id = table.begin().block(CgBindingPoints.MATERIAL_ARENA.ssbo(), w).end();
+ * int id = table.begin().block(CgBindingModel.MATERIAL_BLOCK.packed(), w).end();
  * }</pre>
  *
  * <ul>

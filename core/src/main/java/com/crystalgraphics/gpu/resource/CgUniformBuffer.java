@@ -1,10 +1,12 @@
 package com.crystalgraphics.gpu.resource;
 
 
-import com.crystalgraphics.render.draw.CgBoundResources;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
+import com.crystalgraphics.platform.rhi.binding.CgBindings;
+import com.crystalgraphics.platform.rhi.binding.CgBindingLayout;
+import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * UBO-backed {@link CgShaderBuffer} for a uniform block.
@@ -72,8 +74,8 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * @param format          typed format descriptor (mandatory)
      * @param bindingLocation the GL binding slot to use
      */
-    public CgUniformBuffer(String name, CgBufferLayout format, int bindingLocation) {
-        super(name, format, CgStreamBuffer.Use.UNIFORM, bindingLocation);
+    public CgUniformBuffer(String name, CgBufferLayout format, CgBindingModel.Slot slot) {
+        super(name, format, CgStreamBuffer.Use.UNIFORM, slot);
     }
 
     /**
@@ -81,11 +83,11 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * {@link #create(CgBufferLayout, String, int, CgBufferLifetime)}.
      *
      * <pre>{@code
-     * CgUniformBuffer props = new CgUniformBuffer("CgMaterialProperties", format, binding, CgBufferLifetime.FRAME);
+     * CgUniformBuffer props = new CgUniformBuffer("CgMaterialProperties", format, CgBindingModel.MATERIAL_BLOCK, CgBufferLifetime.FRAME);
      * }</pre>
      */
-    public CgUniformBuffer(String name, CgBufferLayout format, int bindingLocation, CgBufferLifetime lifetime) {
-        super(name, format, CgStreamBuffer.Use.UNIFORM, bindingLocation, lifetime);
+    public CgUniformBuffer(String name, CgBufferLayout format, CgBindingModel.Slot slot, CgBufferLifetime lifetime) {
+        super(name, format, CgStreamBuffer.Use.UNIFORM, slot, lifetime);
     }
 
     /**
@@ -123,12 +125,15 @@ public final class CgUniformBuffer extends CgShaderBuffer {
      * so the rounding stays inside it.
      */
     @Override
-    protected void noteInternal() {
+    protected boolean describeInternal(CgBindings out, int binding) {
+        CgGpuBuffer buffer = dataBuffer.gpuBuffer();
+        if (buffer == null) return false;
         int bytes = (dataBuffer.getCommittedBytes() + 15) & ~15;
         if (dataBuffer.offsetMovesPerUpload() && bytes > 0) {
-            CgBoundResources.block(bindingLocation, dataBuffer.gpuBuffer(), dataBuffer.getWriteOffset(), bytes);
+            out.buffer(binding, CgBindingLayout.Type.UNIFORM_BUFFER, buffer, dataBuffer.getWriteOffset(), bytes);
         } else {
-            CgBoundResources.block(bindingLocation, dataBuffer.gpuBuffer(), 0, 0);
+            out.buffer(binding, CgBindingLayout.Type.UNIFORM_BUFFER, buffer, 0, buffer.size());
         }
+        return true;
     }
 }

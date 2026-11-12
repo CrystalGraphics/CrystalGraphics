@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.canvas;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -18,6 +17,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A canvas's vector items: strokes ({@link Curve}), filled triangles ({@link Triangle}) and tessellation cells
@@ -55,6 +55,8 @@ public final class CgCurveBatch {
 
     /** The macro the {@code curve} token binds the record under; {@code cg_env.glsl}'s macros name it. */
     public static final String MACRO_NAME = "CURVE_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("curve");
 
     /**
      * The default feather: {@value #AA_FILTER_PX} device pixels of antialiasing whatever the pose, as
@@ -134,7 +136,7 @@ public final class CgCurveBatch {
     /** The instance buffer the {@code curve} pragma token names, made at its first ask. @see CgQuadBatch */
     private static final class Buffer {
         static final CgShaderBuffer INSTANCES = CgShaderBufferRegistry.get()
-                .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, CgBindingPoints.CURVE_RENDERER, CgBufferLifetime.FRAME);
+                .getOrCreateInternal(GPU_BUFFER_NAME, INSTANCE_FORMAT, SLOT, CgBufferLifetime.FRAME);
     }
 
     private final CgStagingBuffer accumStaging;

@@ -269,7 +269,7 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
 - **Read non-directionally**, as Unreal's `Volumetric NonDirectional` translucency: the ambient band times
   pi x 0.282095, a quarter of what a surface squarely facing the light takes. `cg_Lit` multiplies the colour by
   `1 + volume` beside the lightmap, as the deferred pass multiplies the scene, the inner cascade blending into the
-  outer over its edge (`TransitionScale` 6). Bound at `CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT` (`cg_LocalLights`) on
+  outer over its edge (`TransitionScale` 6). Bound at `CgBindingModel.LOCAL_LIGHTS` (`cg_LocalLights`) on
   the world renderer's transparent passes; black elsewhere, so an opaque pass is lit by the deferred pass alone.
 - **Read by a normal**, as Unreal's `Volumetric Directional` (`"Lighting" = "Surface"`, `SHADERS.md`): a firing that
   draws such a material fills the volume twice as deep, both cascades' band 1 behind them (Unreal's

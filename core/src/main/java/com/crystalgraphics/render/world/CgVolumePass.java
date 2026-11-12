@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.world;
 
 import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -21,6 +20,7 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Volumes: half-size premultiplied draws marched into a target of their own, blended with their last frame per firing
@@ -90,8 +90,8 @@ final class CgVolumePass {
         }
         stage.constants().write(world.constantsBlock, 0);
         world.halfConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass pass = recording.raster("world.volumes").color(volumeTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).color(volumeDepth, CgWorldRenderer.CLEAR).readsDepth(stage.depth(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
-                .texture(CgBindingPoints.LIGHTMAP_TEXTURE_UNIT, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
+        CgRasterPass pass = recording.raster("world.volumes").color(volumeTarget, CgWorldRenderer.CLEAR).constants(world.halfConstants).state(CgWorldRenderer.TRANSPARENT_STATE).color(volumeDepth, CgWorldRenderer.CLEAR).readsDepth(stage.depth())
+                .texture(CgBindingModel.LIGHTMAP, stage.host().textures().lightmapTexture()).timed(GPU_VOLUME);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (draws.phase[i] != CgWorldDraws.VOLUME) continue;

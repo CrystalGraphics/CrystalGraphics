@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.post;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
@@ -106,7 +105,7 @@ final class CgPostCrossfade implements CgPostEffect {
         CgPipeline pipeline = hold.pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return false;
         CgRasterPass pass = recording.raster("postCrossfade.held").color(held, CgLoad.clear(0f, 0f, 0f, 1f)).constants(post.constants())
-                .readsColor(post.target(), CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT);
+                .readsColor(post.target());
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, hold.captureBindings(recording.bindings()), FULLSCREEN);
         CgPostMaterial.weighted(chunks, 1f);

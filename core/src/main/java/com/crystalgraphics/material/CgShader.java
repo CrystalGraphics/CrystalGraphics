@@ -108,8 +108,8 @@ public final class CgShader {
         if (sets.size() <= CgBindingModel.VIEW) return 0;
         int reads = 0;
         for (CgBindingLayout.Slot slot : sets.get(CgBindingModel.VIEW)) {
-            if (slot.binding() == CgBindingModel.DEPTH) reads |= READS_DEPTH;
-            if (slot.binding() == CgBindingModel.SCENE_COLOR) reads |= READS_COLOR;
+            if (slot.binding() == CgBindingModel.SCENE_DEPTH.binding()) reads |= READS_DEPTH;
+            if (slot.binding() == CgBindingModel.SCENE_COLOR.binding()) reads |= READS_COLOR;
         }
         return reads;
     }

@@ -18,6 +18,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
+import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
 
 /**
  * A pool's ribbons: each frame, Niagara's GPU ribbon init ({@code NiagaraRendererRibbons.cpp},
@@ -30,7 +31,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRibbonRendererProperties;
  * // each frame, as an emitter's ribbon renderer draws its slot (CgVfxFrame does this):
  * CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.of(pool).ribbon(slot, renderer);
  * world.draw(CgMesh.vertices(ribbons.vertices(slot, renderer), CgMeshTopology.TRIANGLES), material)
- *      .buffer(CgBindingPoints.PARTICLE_BEAMS, ribbons.run())
+ *      .buffer(CgParticleBeamBuffer.SLOT, ribbons.run())
  *      .indirect(ribbons.args(), ribbons.argsWord(slot), CgIndirect.VERTICES, 1)
  *      .custom(0, orderBase, ribbons.slotRecord(slot), size, ribbons.mode(renderer))...
  *
@@ -146,7 +147,7 @@ public final class CgVfxRibbonGeneration {
         return this;
     }
 
-    /** The packed run every ribbon draw of the pool reads, at {@code CgBindingPoints.PARTICLE_BEAMS}. */
+    /** The packed run every ribbon draw of the pool reads, at {@code CgParticleBeamBuffer.SLOT}. */
     public CgGraphBuffer run() {
         return run;
     }

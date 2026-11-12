@@ -45,10 +45,6 @@ the executor binds both. Into Minecraft's world, submit to `CgWorldRenderer` (se
 CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).submit();
 ```
 
-> **Reserved texture unit**: `CgBindingPoints.DEPTH_TEXTURE_UNIT` is reserved by the engine for
-> `cg_DepthBuffer`. Do not bind user `Properties` samplers to that unit — the engine will
-> silently overwrite the binding on every draw.
-
 ### Passes
 
 `getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, compiling nothing.
@@ -234,10 +230,9 @@ CgMesh mesh = CgMeshShapes.cube(format);
 
 ## The sampler budget
 
- A material's samplers take units 0 up, by declaration order, and the engine reserves the
-units from `CgBindingPoints.LIGHTMAP_TEXTURE_UNIT` up (lightmap, depth, scene colour). A shader declaring
-more samplers than fit below that fails to load with a `CgShaderParseException` naming the count and what the GPU
-leaves.
+A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order; the
+view's (lightmap, depth, scene colour) are another set's and never collide. A shader declaring more than
+`CgBindingModel.MATERIAL_TEXTURES` fails to load with a `CgShaderParseException` naming the count.
 
 ## Ownership Rules
 

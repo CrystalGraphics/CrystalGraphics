@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -14,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * Kernels run in order, made with {@link CgRecording#compute}: each dispatch's bindings decide what the pass reads and
@@ -251,14 +251,14 @@ public final class CgComputePass extends CgPass {
         requireOpen();
         CgBindingTable frame = CgPassConstants.blocks(recording.bindings().begin(), constants, 0,
                 CgDepthConvention.reversed(), constantsScratch);
-        if (depthFrom != null) frame.texture(CgBindingPoints.DEPTH_TEXTURE_UNIT, depthFromCopy.depth);
+        if (depthFrom != null) frame.texture(CgBindingModel.SCENE_DEPTH, depthFromCopy.depth);
         constantsBinding = frame.end();
         for (int d = 0; d < dispatches.size(); d++) {
             CgDispatch dispatch = dispatches.get(d);
             dispatch.requireBound();
             CgBindingTable table = recording.bindings().begin();
             if (dispatch.values != null) {
-                table.block(CgBindingPoints.MATERIAL_PROPERTIES_UBO, dispatch.values, 0, dispatch.values.length);
+                table.block(CgBindingModel.MATERIAL_BLOCK, dispatch.values, 0, dispatch.values.length);
             }
             for (int unit = 0; unit < dispatch.samplers.length; unit++) {
                 if (dispatch.samplers[unit] != null) table.texture(unit, dispatch.samplers[unit]);

@@ -1,42 +1,41 @@
 package com.crystalgraphics.gpu.resource;
 
-import com.github.bsideup.jabel.Desugar;
-import com.crystalgraphics.api.CgBindingPoints;
-import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
+import com.crystalgraphics.render.shader.CgBindingModel;
+import com.github.bsideup.jabel.Desugar;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Arrays;
 
 /**
- * The engine's shared shader buffers, one per name, layout and reserved binding point, deleted together at shutdown
+ * The engine's shared shader buffers, one per name, layout and slot, deleted together at shutdown
  * ({@link #deleteAll()}). A consumer's buffer is {@code CgBuffer} ({@code CgBuffers.create}).
  *
  * <pre>{@code
  * // rewritten every frame, before the draws that read it: the frame ring
  * CgShaderBuffer shapes = CgShaderBufferRegistry.get()
- *     .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingPoints.SHAPE_TABLE, CgBufferLifetime.FRAME);
+ *     .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingModel.token("shape"), CgBufferLifetime.FRAME);
  * }</pre>
  *
- * <p>A name, format and binding asked for again returns the same buffer, and must ask for the same
- * {@link CgBufferLifetime}: two lifetimes at one binding is a conflict, and throws.</p>
- *
- * <p>All registered buffers are deleted by {@link #deleteAll()}, which is called from
- * {@code CgEngineLifecycle.shutdown()}.</p>
+ * <ul>
+ *   <li>A name, format and slot asked for again returns the same buffer, and must ask for the same
+ *       {@link CgBufferLifetime}: two lifetimes at one slot is a conflict, and throws.</li>
+ *   <li>{@link #ownerOf} answers the buffer made at a slot: what a pass binds there when no draw names its own.</li>
+ *   <li>All registered buffers are deleted by {@link #deleteAll()}, from {@code CgEngineLifecycle.shutdown()}.</li>
+ * </ul>
  */
 public final class CgShaderBufferRegistry {
 
     private static final CgShaderBufferRegistry INSTANCE = new CgShaderBufferRegistry();
 
-    /** SSBO cache — keyed by (name, format, bindingPoint). */
     private final Map<ShaderBufferKey, CgShaderBuffer> shaderBufferCache = new HashMap<>();
-
-    /** UBO cache — keyed by (name, format, bindingPoint). Separate cache, same key type. */
     private final Map<ShaderBufferKey, CgUniformBuffer> uboCache = new HashMap<>();
 
-    /** Each engine-reserved binding's buffer, made by {@link #getOrCreateInternal}. */
-    private final Map<CgBindingPoints.Binding, CgShaderBuffer> owners = new HashMap<>();
+    /** Each slot's engine buffer, made by {@link #getOrCreateInternal}; the same by {@link #ownerAt}'s index. */
+    private final Map<CgBindingModel.Slot, CgShaderBuffer> owners = new HashMap<>();
+    private CgShaderBuffer[] ownersAt = new CgShaderBuffer[4 * 128];
 
     private CgShaderBufferRegistry() {}
 
@@ -46,89 +45,79 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Returns (or lazily creates) a format-aware SSBO at an <strong>engine-reserved</strong>
-     * binding — a {@link CgBindingPoints.Binding} (such as {@code CgBindingPoints.QUAD_RENDERER})
-     * rather than an index. Unlike
-     * {@link #getOrCreate(String, CgBufferLayout, int)}, no offset is added — the binding
-     * resolves itself to an absolute SSBO binding point (see
-     * {@link CgBindingPoints.Binding#resolve()}), used verbatim, matching
-     * {@link CgShaderBuffer#createInternal(String, CgBufferLayout, int)}'s own contract.
+     * Returns (or lazily creates) a storage buffer its shaders read at {@code slot}, its contents kept until the next
+     * upload ({@link CgBufferLifetime#RETAINED}).
      *
-     * <p>Still participates in this registry's cache (dedup by name+format+binding) and in
-     * {@link #deleteAll()} teardown, same as {@link #getOrCreate(String, CgBufferLayout, int)} —
-     * the only difference is binding-point resolution.</p>
-     *
-     * <p><strong>Engine-internal.</strong> Reserve a new {@link CgBindingPoints.Binding} constant
-     * (resolved in {@link CgBindingPoints#init(CgCapabilities)})
-     * for each distinct engine subsystem that needs one — do not share a single reserved
-     * {@code Binding} across unrelated consumers, and do not call this with a raw user-chosen
-     * integer.</p>
-     *
-     * @param name    debug/sampler name for the buffer
-     * @param format  typed format descriptor for the buffer records
-     * @param binding the reserved {@link CgBindingPoints.Binding} to bind at
-     * @return the cached or newly-created shader buffer
+     * <p><strong>Engine-internal.</strong> One slot per engine subsystem: never share one across unrelated owners.</p>
      */
-    public CgShaderBuffer getOrCreateInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding) {
-        return getOrCreateInternal(name, format, binding, CgBufferLifetime.RETAINED);
+    public CgShaderBuffer getOrCreateInternal(String name, CgBufferLayout format, CgBindingModel.Slot slot) {
+        return getOrCreateInternal(name, format, slot, CgBufferLifetime.RETAINED);
     }
 
     /**
-     * As {@link #getOrCreateInternal(String, CgBufferLayout, CgBindingPoints.Binding)}, with the contents'
+     * As {@link #getOrCreateInternal(String, CgBufferLayout, CgBindingModel.Slot)}, with the contents'
      * {@link CgBufferLifetime}. What the quad and curve renderers' instance data use.
      *
      * <pre>{@code
      * CgShaderBuffer instances = CgShaderBufferRegistry.get()
-     *         .getOrCreateInternal("QuadInstances", FORMAT, CgBindingPoints.QUAD_RENDERER, CgBufferLifetime.FRAME);
-     * instances.uploadRaw(data, floats);   // re-binds at the new offset
-     * mesh.drawInstanced(count);
+     *         .getOrCreateInternal("QuadInstances", FORMAT, CgBindingModel.token("quad"), CgBufferLifetime.FRAME);
+     * instances.uploadRaw(data, floats);   // the next pass binds the new range
      * }</pre>
      */
-    public CgShaderBuffer getOrCreateInternal(String name, CgBufferLayout format, CgBindingPoints.Binding binding,
+    public CgShaderBuffer getOrCreateInternal(String name, CgBufferLayout format, CgBindingModel.Slot slot,
                                               CgBufferLifetime lifetime) {
-        int resolvedBinding = binding.resolve();
-        ShaderBufferKey key = new ShaderBufferKey(name, format, resolvedBinding);
+        ShaderBufferKey key = new ShaderBufferKey(name, format, slot);
         CgShaderBuffer existing = shaderBufferCache.get(key);
         if (existing != null) return sameLifetime(existing, lifetime);
-        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, resolvedBinding, lifetime);
+        CgShaderBuffer buf = CgShaderBuffer.createInternal(name, format, slot, lifetime);
         shaderBufferCache.put(key, buf);
-        owners.put(binding, buf);
+        own(slot, buf);
         return buf;
     }
 
     /**
-     * The engine buffer made at {@code binding} by {@link #getOrCreateInternal}, or null if none has been: what a draw
-     * reading a buffer of its own there puts back after it.
+     * The engine buffer made at {@code slot} by {@link #getOrCreateInternal}, or null if none has been: what a pass
+     * binds there for the draws that name none of their own.
      *
      * <pre>{@code
-     * CgShaderBuffer frames = CgShaderBufferRegistry.get().ownerOf(CgBindingPoints.PARTICLES);
-     * if (frames != null) frames.bind();
+     * CgShaderBuffer frames = CgShaderBufferRegistry.get().ownerOf(CgParticleBuffer.SLOT);
      * }</pre>
      */
     @Nullable
-    public CgShaderBuffer ownerOf(CgBindingPoints.Binding binding) {
-        return owners.get(binding);
+    public CgShaderBuffer ownerOf(CgBindingModel.Slot slot) {
+        return owners.get(slot);
     }
 
     /**
-     * A uniform block at an <strong>engine-reserved</strong>
-     * slot -- a {@code CgBindingPoints} UBO constant used verbatim, as the text renderer's block is.
+     * {@link #ownerOf} by a packed slot ({@link CgBindingModel#pack}), allocating nothing: what a set reads at a slot
+     * no pass parameter and no snapshot fills.
      */
-    public CgUniformBuffer getOrCreateUboInternal(CgBufferLayout format, String name, int bindingPoint,
-                                                  CgBufferLifetime lifetime) {
-        return ubo(format, name, bindingPoint, lifetime);
+    @Nullable
+    public CgShaderBuffer ownerAt(int packed) {
+        int i = CgBindingModel.setOf(packed) * 128 + CgBindingModel.bindingOf(packed);
+        return i < ownersAt.length ? ownersAt[i] : null;
     }
 
-    private CgUniformBuffer ubo(CgBufferLayout format, String name, int bindingPoint, CgBufferLifetime lifetime) {
-        ShaderBufferKey key = new ShaderBufferKey(name, format, bindingPoint);
+    private void own(CgBindingModel.Slot slot, CgShaderBuffer buffer) {
+        owners.put(slot, buffer);
+        int i = slot.set() * 128 + slot.binding();
+        if (i >= ownersAt.length) ownersAt = Arrays.copyOf(ownersAt, i * 2);
+        ownersAt[i] = buffer;
+    }
+
+    /** A uniform block its shaders read at {@code slot}, as the text renderer's block is. */
+    public CgUniformBuffer getOrCreateUboInternal(CgBufferLayout format, String name, CgBindingModel.Slot slot,
+                                                  CgBufferLifetime lifetime) {
+        ShaderBufferKey key = new ShaderBufferKey(name, format, slot);
         CgUniformBuffer existing = uboCache.get(key);
         if (existing != null) return sameLifetime(existing, lifetime);
-        CgUniformBuffer ubo = new CgUniformBuffer(name, format, bindingPoint, lifetime);
+        CgUniformBuffer ubo = new CgUniformBuffer(name, format, slot, lifetime);
         uboCache.put(key, ubo);
+        own(slot, ubo);
         return ubo;
     }
 
-    // One binding, one lifetime: a second caller asking for the other would read the first's storage wrongly.
+    // One slot, one lifetime: a second caller asking for the other would read the first's storage wrongly.
     private static <B extends CgShaderBuffer> B sameLifetime(B existing, CgBufferLifetime asked) {
         if (existing.getLifetime() != asked) {
             throw new IllegalStateException("Shader buffer '" + existing.getName() + "' already exists as "
@@ -138,53 +127,19 @@ public final class CgShaderBufferRegistry {
     }
 
     /**
-     * Deletes all registered buffers and clears both caches.
-     * Called by {@code CgEngineLifecycle.shutdown()}.
-     * Must be called on the GL thread.
+     * Deletes all registered buffers and clears both caches. Called by {@code CgEngineLifecycle.shutdown()}, on the
+     * render thread.
      */
     public void deleteAll() {
-        for (CgShaderBuffer buf : shaderBufferCache.values()) {
-            buf.delete();
-        }
+        for (CgShaderBuffer buf : shaderBufferCache.values()) buf.delete();
         shaderBufferCache.clear();
         owners.clear();
-
-        for (CgUniformBuffer ubo : uboCache.values()) {
-            ubo.delete();
-        }
+        Arrays.fill(ownersAt, null);
+        for (CgUniformBuffer ubo : uboCache.values()) ubo.delete();
         uboCache.clear();
     }
 
-    // ── Composite key types ───────────────────────────────────────────────────
-
-    /**
-     * Value-equal cache key for the SSBO cache. Covers every SSBO
-     * since they share the same identity contract.
-     *
-     * @param name         Buffer debug/sampler name. Part of the identity contract.
-     * @param format       Buffer format. Value equality.
-     * @param bindingPoint GL binding point.
-     */
+    /** A buffer's identity in the caches: its name, layout (by value) and slot. */
     @Desugar
-    record ShaderBufferKey(String name, CgBufferLayout format, int bindingPoint) {
-
-        @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof ShaderBufferKey)) return false;
-            ShaderBufferKey other = (ShaderBufferKey) o;
-            return bindingPoint == other.bindingPoint
-                    && format.equals(other.format)
-                    && name.equals(other.name);
-        }
-
-        @Override
-        public int hashCode() {
-            int h = name.hashCode();
-            h = 31 * h + format.hashCode();
-            h = 31 * h + bindingPoint;
-            return h;
-        }
-    }
-
+    record ShaderBufferKey(String name, CgBufferLayout format, CgBindingModel.Slot slot) {}
 }

@@ -1132,7 +1132,7 @@ called here. **Call these and nothing else** — do not free individual registri
 // At each frame's end, and before drawing outside a world pass — a menu, a title screen, any GUI (GL thread):
 // the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after shutdown()
 CgEngineLifecycle.ensureGraphicsContext(viewportWidth, viewportHeight);
-// Initialises: CgBindingPoints, CgFallbackTextures, and installs CgWorldRenderer
+// Initialises: CgFallbackTextures, and installs CgWorldRenderer
 
 // On window resize (GL thread):
 CgGraphicsLifecycle.onResize(newWidth, newHeight);

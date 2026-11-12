@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.canvas;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -10,6 +9,7 @@ import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import org.joml.Matrix4f;
 
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The frame's rounded clips, as a table a fragment shader reads: a quad, curve or glyph names an entry and is drawn
@@ -67,6 +67,8 @@ public final class CgClipTable {
 
     /** The macro a shader's GLSL reads an entry through; {@code #pragma cg_use clip} declares it. */
     public static final String MACRO_NAME = "CLIP_DATA";
+    /** Where its shaders read it, and where a draw names one of its own. */
+    public static final CgBindingModel.Slot SLOT = CgBindingModel.token("clip");
 
     /** How many entries one draw can be clipped by. {@code clip.glsl}'s {@code CG_CLIP_MAX_DEPTH} must agree. */
     public static final int MAX_DEPTH = 4;
@@ -85,7 +87,7 @@ public final class CgClipTable {
     /** A UI shape's reconstruction width for an edge off the pixel grid (the canvas box's); 1 on it. */
     private static final float ROTATED_RAMP = 1.5f;
 
-    /** Lazy, like the quad renderer's: the binding points exist only once a context has initialised. */
+    /** Lazy, like the quad renderer's: its storage is made only once a context has initialised. */
     private static CgShaderBuffer buffer;
     /** The table the buffer holds now, as of which version and frame: what lets a pass skip the upload. */
     private static CgClipTable uploaded;
@@ -104,7 +106,7 @@ public final class CgClipTable {
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()
-                    .getOrCreateInternal("CgClipTable", FORMAT, CgBindingPoints.CLIP_TABLE, CgBufferLifetime.FRAME);
+                    .getOrCreateInternal("CgClipTable", FORMAT, SLOT, CgBufferLifetime.FRAME);
         }
         return buffer;
     }
@@ -301,11 +303,11 @@ public final class CgClipTable {
     }
 
     /**
-     * Uploads this table unless the buffer already holds it as it is, this frame, and binds it: what an executor does
-     * before a pass's draws. Render thread. A device binds every block a program declares whether or not a draw reads
+     * Uploads this table unless the buffer already holds it as it is, this frame, answering the buffer a pass states: what an executor
+     * does before a pass's draws. Render thread. A device binds every block a program declares whether or not a draw reads
      * it, and a frame-ring binding from another frame is not this frame's storage, so each frame uploads afresh.
      */
-    public void bindForDraw() {
+    public CgShaderBuffer prepare() {
         CgShaderBuffer target = buffer();
         long frame = CgFrameRing.frame();
         if (uploaded != this || uploadedVersion != version || uploadedFrame != frame) {
@@ -314,7 +316,8 @@ public final class CgClipTable {
             uploadedVersion = version;
             uploadedFrame = frame;
         }
-        target.bind();
+        target.flush();
+        return target;
     }
 
     private void put(int o, float x0, float y0, float x1, float y1, float[] rx, float[] ry) {

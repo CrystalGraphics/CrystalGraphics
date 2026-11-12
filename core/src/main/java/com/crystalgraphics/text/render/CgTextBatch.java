@@ -1,7 +1,6 @@
 package com.crystalgraphics.text.render;
 
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontKey;
@@ -43,6 +42,7 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import com.crystalgraphics.render.canvas.CgQuadBatch;
 
 /**
  * A canvas's text: what {@link CgCanvas#text()} draws through. Resolves a draw's glyphs from the font registry's
@@ -313,7 +313,7 @@ public final class CgTextBatch {
                 CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
         pipeline = pipeline.withState(labelState(pipeline.state(), depthPass));
         chunks.draw(pipeline, bindings, CgMesh.quads(1)).objects(labels, 0, count)
-                .buffer(CgBindingPoints.QUAD_RENDERER, records);
+                .buffer(CgQuadBatch.SLOT, records);
     }
 
     /**

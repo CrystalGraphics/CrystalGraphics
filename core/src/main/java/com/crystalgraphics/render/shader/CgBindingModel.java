@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.shader;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.material.CgAttachedBuffer;
 import com.crystalgraphics.animation.CgBonePalettes;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
@@ -8,28 +7,28 @@ import com.github.bsideup.jabel.Desugar;
 
 /**
  * Where every resource a shader reads is bound: the set it belongs to by how often it changes, and its binding in that
- * set (Filament's sets by frequency, {@code rhi.md} §2.3). The compiler writes each declaration through
- * {@code cg_env.glsl}'s {@code CG_BIND(set, binding)} from here, so a source names its bindings explicitly and SPIR-V
- * needs none assigned.
+ * set (Unreal's uniform buffers by frequency, Vulkan's descriptor sets). The compiler writes each declaration through
+ * {@code cg_env.glsl}'s {@code CG_BIND(set, binding)} from here, and a pass, a draw or a material names what fills a
+ * slot by the same {@link Slot}: there are no binding points or texture units beside it.
  *
  * <pre>{@code
  * sb.append(CgBindingModel.MATERIAL_BLOCK.glsl()).append("layout(std140) uniform CgMaterialBlock { ... };\n");
  * // CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
  *
- * CgBindingModel.Slot s = CgBindingModel.attached(buffer, 0);   // an engine token's pass slot, or the material's
+ * pass.texture(CgBindingModel.LIGHTMAP, host.lightmapTexture());          // a view texture, by its slot
+ * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn());    // a cg_use token's buffer, for one draw
  * }</pre>
  *
  * <table>
  *   <tr><th>Set</th><th>Holds</th><th>Made</th></tr>
- *   <tr><td>{@link #VIEW}</td><td>the frame block, scene depth and colour, the lightmap, the media, local lights</td><td>once a firing</td></tr>
- *   <tr><td>{@link #PASS}</td><td>the object records, the text block, bone palettes, the pass's object ids, the mesh's vertex words, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
+ *   <tr><td>{@link #VIEW}</td><td>the view and environment blocks, scene depth and colour, the lightmap, the media, local lights</td><td>once a pass</td></tr>
+ *   <tr><td>{@link #PASS}</td><td>the object records and ids, the text block, bone palettes, the mesh's vertex words, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
  *   <tr><td>{@link #MATERIAL}</td><td>its block, its {@code Buffers { }}, buffers attached to it, its textures where bound</td><td>persistent</td></tr>
- *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>once a frame</td></tr>
+ *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>the device's</td></tr>
  * </table>
  *
- * <p>On GL {@code CG_BIND} is empty until GL implements {@code CgRHI} (S4): its programs are still wired by name after
- * link. A slot's numbers never depend on the device: a cg_use token's is its place in
- * {@link CgEngineBufferRegistry}'s order.</p>
+ * <p>A slot's numbers never depend on the device: a cg_use token's is its place in {@link CgEngineBufferRegistry}'s
+ * order.</p>
  */
 public final class CgBindingModel {
 
@@ -42,17 +41,32 @@ public final class CgBindingModel {
         public String glsl() {
             return "CG_BIND(" + set + ", " + binding + ") ";
         }
+
+        /** Set and binding in one int, as a binding table keys it ({@link #pack}). */
+        public int packed() {
+            return pack(set, binding);
+        }
     }
 
-    /** Set 0's bindings, as {@code cg_env.glsl} writes them. */
-    public static final int VIEW_BLOCK = 0, DEPTH = 1, SCENE_COLOR = 2, LIGHTMAP = 3, MEDIA = 4, LOCAL_LIGHTS = 5,
-            ENVIRONMENT_BLOCK = 6;
+    /** {@code CgViewBlock}: the pass's camera and frame, from its constants. */
+    public static final Slot VIEW_BLOCK = new Slot(VIEW, 0);
+    /** {@code cg_DepthBuffer}: the scene's depth a pass reads ({@code readsDepth}). */
+    public static final Slot SCENE_DEPTH = new Slot(VIEW, 1);
+    /** {@code cg_SceneColor}: the scene's colour a pass reads ({@code readsColor}). */
+    public static final Slot SCENE_COLOR = new Slot(VIEW, 2);
+    /** {@code cg_Lightmap}: the host's lightmap; white where a pass names none. */
+    public static final Slot LIGHTMAP = new Slot(VIEW, 3);
+    /** {@code cg_Media}: the froxel transmittance; white where a pass names none. */
+    public static final Slot MEDIA = new Slot(VIEW, 4);
+    /** {@code cg_LocalLights}: the world's lights on transparent surfaces; black where a pass names none. */
+    public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
+    /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
+    public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
 
-    /** A packed slot that names nothing: {@link #ofTexture}, {@link #ofBlock} and {@link #ofStorage} for a number the
-     * model does not place. */
+    /** A packed slot that names nothing. */
     public static final int NONE = -1;
 
-    /** {@code CgObjectDataBuffer}, the firing's object records or a draw's own: written in {@code cg_env.glsl}. */
+    /** {@code CgObjectDataBuffer}, the frame's object records or a draw's own: written in {@code cg_env.glsl}. */
     public static final Slot OBJECTS = new Slot(PASS, 0);
     /** {@code CgTextBatch}'s {@code TextData} block. */
     public static final Slot TEXT_DATA = new Slot(PASS, 1);
@@ -69,10 +83,14 @@ public final class CgBindingModel {
     public static final Slot MATERIAL_BLOCK = new Slot(MATERIAL, 0);
     /** The first of a material's {@code Buffers { }}: buffer {@code i} at this plus {@code i}. */
     public static final int FIRST_BUFFER = 1;
+    /** How many {@code Buffers { }} a material declares at most. */
+    public static final int MATERIAL_BUFFER_COUNT = 4;
     /** The first buffer attached to a material at runtime; {@code CgMaterial.attach} allows {@link #ATTACHED_COUNT}. */
     public static final int FIRST_ATTACHED = 5, ATTACHED_COUNT = 8;
     /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
     public static final int FIRST_TEXTURE = 16;
+    /** How many textures a material binds at most, below the kernel buffers. */
+    public static final int MATERIAL_TEXTURES = 16;
 
     /**
      * A kernel's own resources are in {@link #MATERIAL}'s set, as a material's: its {@code Properties} block at
@@ -96,47 +114,6 @@ public final class CgBindingModel {
         return packed & 0xFFFF;
     }
 
-    /**
-     * The slot a texture recorded at engine unit {@code unit} reads: set 0's for the pass's units, the material's texture
-     * {@code unit} below them. {@link #NONE} for a negative unit.
-     */
-    public static int ofTexture(int unit) {
-        if (unit < 0) return NONE;
-        if (unit == CgBindingPoints.DEPTH_TEXTURE_UNIT) return pack(VIEW, DEPTH);
-        if (unit == CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT) return pack(VIEW, SCENE_COLOR);
-        if (unit == CgBindingPoints.LIGHTMAP_TEXTURE_UNIT) return pack(VIEW, LIGHTMAP);
-        if (unit == CgBindingPoints.MEDIA_TEXTURE_UNIT) return pack(VIEW, MEDIA);
-        if (unit == CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT) return pack(VIEW, LOCAL_LIGHTS);
-        return pack(MATERIAL, FIRST_TEXTURE + unit);
-    }
-
-    /** The slot a uniform block recorded at engine point {@code point} reads; {@link #NONE} for one it does not place. */
-    public static int ofBlock(int point) {
-        if (point < 0) return NONE;
-        if (point == CgBindingPoints.VIEW_UBO) return pack(VIEW, VIEW_BLOCK);
-        if (point == CgBindingPoints.ENVIRONMENT_UBO) return pack(VIEW, ENVIRONMENT_BLOCK);
-        if (point == CgBindingPoints.MATERIAL_PROPERTIES_UBO) return pack(MATERIAL, MATERIAL_BLOCK.binding());
-        if (point == CgBindingPoints.TEXT_DATA_UBO) return pack(PASS, TEXT_DATA.binding());
-        return NONE;
-    }
-
-    /**
-     * The slot a storage buffer recorded at engine point {@code point} reads: the object records and ids, bone palettes,
-     * vertex words and cg_use tokens, the material's {@code Buffers { }}. {@link #NONE} for one it does not place.
-     */
-    public static int ofStorage(int point) {
-        if (point < 0 || !CgBindingPoints.isInitialized()) return NONE;
-        if (point == CgBindingPoints.OBJECT_DATA.ssbo()) return pack(PASS, OBJECTS.binding());
-        if (point == CgBindingPoints.OBJECT_IDS.ssbo()) return pack(PASS, OBJECT_IDS.binding());
-        if (point == CgBindingPoints.BONE_PALETTES.ssbo()) return pack(PASS, BONES.binding());
-        if (point == CgBindingPoints.VERTICES.ssbo()) return pack(PASS, VERTICES.binding());
-        if (point == CgBindingPoints.MATERIAL_ARENA.ssbo()) return pack(MATERIAL, MATERIAL_BLOCK.binding());
-        int material = point - CgBindingPoints.MATERIAL_BUFFERS_SSBO;
-        if (material >= 0 && material < CgBindingPoints.MATERIAL_BUFFER_COUNT) return pack(MATERIAL, FIRST_BUFFER + material);
-        int token = CgEngineBufferRegistry.indexOfPoint(point);
-        return token >= 0 ? pack(PASS, FIRST_TOKEN + token) : NONE;
-    }
-
     /** The material's {@code Buffers { }} entry {@code i}. */
     public static Slot buffer(int i) {
         return new Slot(MATERIAL, FIRST_BUFFER + i);
@@ -147,8 +124,24 @@ public final class CgBindingModel {
         return new Slot(MATERIAL, FIRST_TEXTURE + i);
     }
 
+    /** {@link #texture}'s packed, allocating nothing: what a binding table keys a material texture by. */
+    public static int packedTexture(int i) {
+        return pack(MATERIAL, FIRST_TEXTURE + i);
+    }
+
+    /**
+     * The pass slot of cg_use token {@code token}: where its buffer binds, and where a draw names one of its own.
+     *
+     * @throws IllegalArgumentException for a token no one registered
+     */
+    public static Slot token(String token) {
+        int i = CgEngineBufferRegistry.indexOf(token);
+        if (i < 0) throw new IllegalArgumentException("no cg_use token '" + token + "' is registered");
+        return new Slot(PASS, FIRST_TOKEN + i);
+    }
+
     /** The pass slot of the cg_use token whose macro is {@code macro}; null for a macro no token has. */
-    public static Slot token(String macro) {
+    public static Slot tokenOfMacro(String macro) {
         int token = CgEngineBufferRegistry.indexOfMacro(macro);
         return token >= 0 ? new Slot(PASS, FIRST_TOKEN + token) : null;
     }
@@ -162,7 +155,7 @@ public final class CgBindingModel {
             if (TEXT_DATA_BLOCK.equals(ab.getBuffer().getName())) return TEXT_DATA;
         } else {
             if (CgBonePalettes.MACRO_NAME.equals(ab.getMacroName())) return BONES;
-            Slot token = token(ab.getMacroName());
+            Slot token = tokenOfMacro(ab.getMacroName());
             if (token != null) return token;
         }
         if (user >= ATTACHED_COUNT)

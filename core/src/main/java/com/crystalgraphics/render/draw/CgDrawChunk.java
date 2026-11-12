@@ -1,10 +1,10 @@
 package com.crystalgraphics.render.draw;
 
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.mesh.CgMesh;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A run of recorded draws under one property state — spatial node, clip node, effect node — with the instance records
@@ -59,7 +59,7 @@ public final class CgDrawChunk {
     @Nullable
     CgBufferHandle[] buffers;
     @Nullable
-    CgBindingPoints.Binding[] bufferAt;
+    CgBindingModel.Slot[] bufferAt;
     float[] bounds;
     long[] sortKeys;
     @Nullable
@@ -82,7 +82,7 @@ public final class CgDrawChunk {
     private int[] ownRanges, ownCountModes, ownGroups;
     private CgBufferHandle[] ownCounts, ownObjects, ownBuffers;
     private long[] ownCountOffsets, ownRecordCounts;
-    private CgBindingPoints.Binding[] ownBufferAt;
+    private CgBindingModel.Slot[] ownBufferAt;
     private boolean[] ownEach;
 
     private static final float[] NO_RECORDS = new float[0];
@@ -104,7 +104,7 @@ public final class CgDrawChunk {
                 int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
                 @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
                 @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
-                @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys,
+                @Nullable CgBindingModel.Slot[] bufferAt, float[] bounds, long[] sortKeys,
                 @Nullable int[] groups, float[][] instances, @Nullable boolean[] each, @Nullable long[] recordCounts,
                 CgPrimitiveTable primitives) {
         this.pooled = false;
@@ -255,7 +255,7 @@ public final class CgDrawChunk {
 
     /** Where {@link #buffer} is read: the engine buffer's binding it stands in for; null for none. */
     @Nullable
-    public CgBindingPoints.Binding bufferAt(int draw, int slot) {
+    public CgBindingModel.Slot bufferAt(int draw, int slot) {
         return bufferAt == null ? null : bufferAt[draw * BUFFERS + slot];
     }
 
@@ -325,7 +325,7 @@ public final class CgDrawChunk {
               int[] kinds, int[] firsts, int[] instanceCounts, @Nullable CgMesh[] meshes, @Nullable int[] ranges,
               @Nullable CgBufferHandle[] counts, @Nullable long[] countOffsets, @Nullable int[] countModes,
               @Nullable CgBufferHandle[] objects, @Nullable CgBufferHandle[] buffers,
-              @Nullable CgBindingPoints.Binding[] bufferAt, float[] bounds, long[] sortKeys, @Nullable int[] groups,
+              @Nullable CgBindingModel.Slot[] bufferAt, float[] bounds, long[] sortKeys, @Nullable int[] groups,
               float[][] instances, int[] records, @Nullable boolean[] each, @Nullable long[] recordCounts,
               CgPrimitiveTable primitives) {
         this.spatial = spatial;
@@ -370,7 +370,7 @@ public final class CgDrawChunk {
         } else {
             int n = count * BUFFERS;
             this.buffers = ownBuffers = handles(ownBuffers, buffers, n);
-            if (ownBufferAt == null || ownBufferAt.length < n) ownBufferAt = new CgBindingPoints.Binding[Math.max(n, 32)];
+            if (ownBufferAt == null || ownBufferAt.length < n) ownBufferAt = new CgBindingModel.Slot[Math.max(n, 32)];
             System.arraycopy(bufferAt, 0, ownBufferAt, 0, n);
             this.bufferAt = ownBufferAt;
         }

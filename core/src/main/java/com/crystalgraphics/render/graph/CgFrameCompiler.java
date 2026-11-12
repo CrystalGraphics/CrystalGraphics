@@ -77,7 +77,7 @@ final class CgFrameCompiler {
      */
     private static boolean readOnlyDepth(CgFrame frame, int s, CgRasterPass pass, boolean takes,
                                          @Nullable CgGraphTexture runAttachment) {
-        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null
+        if (!takes || !pass.readsOwnDepth() || frame.rasters[s].writesDepth || pass.depthFrom() != null
                 || pass.load.clearsDepth() || pass.load.clearsStencil()) {
             return false;
         }

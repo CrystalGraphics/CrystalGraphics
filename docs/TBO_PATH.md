@@ -14,8 +14,8 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 - **The detect**: `CgCapabilities.textureBufferMaterialPath` (GL 3.3, no SSBO) and `ShaderBufferPath.TBO`. The choice
   in `CgCapabilities.shaderBufferPath` skips it (a comment marks where it went: after `SSBO_ARB`), and forcing it
   with `-Dcrystalgraphics.shaderBuffer.tier=TBO` is refused.
-- **The binding pair**: `CgBindingPoints.Binding(ssbo, tbo)`. `init` still counts a texture unit down per engine buffer
-  when `PATH == TBO` and `resolve()` still answers `tbo` there; today `tbo` is always -1.
+- **The binding pair** is gone with `CgBindingPoints` (renderer R6): every engine buffer is read at a set slot
+  (`CgBindingModel`). A TBO path would bind its buffer texture at a slot of its own in the same set.
 - **The shader hook** is gone (rhi SH6): materials compile to one target, GLSL 4.50 over storage blocks, and
   `env/cg_env.glsl` declares the object records as a storage block alone. Its TBO branches are at `7f9984fa`.
 

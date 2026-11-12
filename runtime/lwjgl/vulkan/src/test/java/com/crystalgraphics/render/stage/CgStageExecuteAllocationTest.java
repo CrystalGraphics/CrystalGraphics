@@ -2,7 +2,6 @@ package com.crystalgraphics.render.stage;
 
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.graph.CgExecutor;
-import com.crystalgraphics.api.CgBindingPoints;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgReadback;
@@ -56,7 +55,6 @@ public class CgStageExecuteAllocationTest {
         compiler = new ShadercGlslCompiler();
         new CgNullRHI(64, 64).withoutLog().install(compiler);
         CgCapabilities.clearCache();
-        CgBindingPoints.init(CgCapabilities.detect());
         CgFallbackTextures.init();
     }
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
@@ -159,7 +160,7 @@ public class CgComputeGraphTest {
         write.dispatch(produce, 64).bind("DST", cells);
         write.end();
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
-        int bindings = rec.bindings().begin().storage(3, cells).end();
+        int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), cells).end();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
@@ -345,7 +346,7 @@ public class CgComputeGraphTest {
         add.end();
         rec.copy(copy, 0, counts, 0, DESC.bytes());
         CgRasterPass draw = rec.raster("raster target").color(CgGraphTexture.requested("target", CgTextureDesc.of(8, 8, CgFormat.RGBA8_UNORM)), CgLoad.load()).constants(new CgPassConstants()).order(CgOrder.LOOKBACK);
-        int bindings = rec.bindings().begin().storage(3, counts).end();
+        int bindings = rec.bindings().begin().storage(CgBindingModel.buffer(0), counts).end();
         CgChunkBuilder c = rec.chunks().begin();
         c.draw(material.pipeline(CgInstanceKind.QUAD), bindings);
         c.instance();
