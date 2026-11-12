@@ -624,6 +624,7 @@ public final class CgExecutor {
         } finally {
             if (gpu) CgGpuTrace.end();
         }
+        CgFrameCompiler.renderPasses(frame, takes, takes && !again, gpuCounts);
         int resolved = 0;
         try {
             if (!again) {
@@ -1642,7 +1643,7 @@ public final class CgExecutor {
                         if (j > s) continue;   // the run's attachments, moved with its first step
                         CgGraphTexture texture = (CgGraphTexture) frame.accessView[i];
                         boolean target = texture == raster.target;
-                        if (texture == depthTexture(raster) && readOnlyDepth(frame, j, raster)) {
+                        if (texture == depthTexture(raster) && frame.readOnlyDepth[j]) {
                             move(texture, CgAccess.COLOR_WRITE | CgAccess.DEPTH_READ, -1, -1);   // its depth sampled in place
                             continue;
                         }
@@ -1657,49 +1658,12 @@ public final class CgExecutor {
         }
     }
 
-    /**
-     * From raster step {@code s}, the run of raster steps that share its render pass, as Unreal RDG merges them
-     * ({@code MergeRenderPasses}): each after it into the same target, level, layer and second attachment, loading
-     * what is there, with no copy, rename, damage or indirect command of its own, reading nothing the run writes. The
-     * run's first step states every transition of the run, so none falls between them and the device's render pass
-     * stays open.
-     */
+    /** Enters the render pass run compiled for step {@code s} ({@link CgFrameCompiler#renderPasses}). */
     private void merge(CgFrame frame, int s) {
-        runStart = runEnd = s;
-        runAttachment = null;
-        if (!(frame.steps[s] instanceof CgRasterPass first) || first.target == null || unmergeable(frame, s, first)) return;
-        CgGraphTexture attachment = first.attachment();
-        int k = s + 1;
-        while (k < frame.stepCount && frame.steps[k] instanceof CgRasterPass next && joins(frame, first, attachment, k, next)) {
-            if (attachment == null) attachment = next.attachment();
-            k++;
-        }
-        runEnd = k - 1;
-        if (runEnd > s) {
-            CgTrace.add(CgChannels.GL, MERGED, runEnd - s);
-            runAttachment = attachment;
-        }
-    }
-
-    /**
-     * Whether raster step {@code s} samples its target's depth in place, read-only, rather than copying it: on a device,
-     * where no draw of the pass writes depth and its target is ours with a depth texture, a single level and layer.
-     * Unreal's translucency binds {@code DepthRead} so; a pass writing the depth it reads keeps its copy.
-     */
-    private boolean readOnlyDepth(CgFrame frame, int s, CgRasterPass pass) {
-        if (!takes || pass.sceneDepthUnit() < 0 || frame.rasters[s].writesDepth || pass.depthFrom() != null
-                || pass.load.clearsDepth() || pass.load.clearsStencil()) {
-            return false;
-        }
-        CgGraphTexture target = targetOf(pass), depth = depthTexture(pass);
-        if (depth != target || depth.kind() == CgGraphTexture.Kind.EXTERNAL) {
-            // Another's, or a target someone else made: sampled in place where it is a texture, not a renderbuffer or the window's
-            CgGpuTexture image = storage(depth).depth();
-            return image != null && image.desc().usage().contains(CgGpuTexture.Usage.SAMPLED);
-        }
-        if (attachmentOf(pass) != null || target.getLevels() != 1 || target.getLayers() != 1) return false;
-        CgGraphStorage storage = target.kind() == CgGraphTexture.Kind.TRANSIENT ? target.storage() : storage(target);
-        return storage != null && storage.sampledDepth() != null;
+        runStart = s;
+        runEnd = frame.runEnd[s];
+        runAttachment = runEnd > s ? frame.runAttachment[s] : null;
+        if (runEnd > s) CgTrace.add(CgChannels.GL, MERGED, runEnd - s);
     }
 
     /** What {@code pass} draws into: its target, or the current target for none. */
@@ -1707,7 +1671,7 @@ public final class CgExecutor {
         return pass.target != null ? pass.target : CgGraphTexture.current();
     }
 
-    /** The texture whose depth {@code pass} tests and writes: its declared one, its target's, or its target's pairing. */
+    /** The texture whose depth {@code pass} tests and writes: its declared one, or its target, whose own depth it may be. */
     private static CgGraphTexture depthTexture(CgRasterPass pass) {
         return pass.depthTexture();
     }
@@ -1717,40 +1681,6 @@ public final class CgExecutor {
     private CgGraphTexture attachmentOf(CgRasterPass pass) {
         CgGraphTexture own = pass.attachment();
         return own != null ? own : runAttachment;
-    }
-
-    private boolean unmergeable(CgFrame frame, int s, CgRasterPass pass) {
-        return pass.damage() != null && !frame.wholePasses || pass.target.kind() == CgGraphTexture.Kind.HISTORY;
-    }
-
-    /**
-     * Whether raster step {@code k} joins the run {@code first} begins, whose second attachment so far is
-     * {@code attachment}. A pass with none joins one with, and one with joins one without: the run binds it throughout,
-     * each pass's writes to it masked off where its pipelines write none.
-     */
-    private boolean joins(CgFrame frame, CgRasterPass first, @Nullable CgGraphTexture attachment, int k, CgRasterPass next) {
-        if (next.target != first.target || next.level != first.level || next.layer != first.layer
-                || next.attachment() != null && attachment != null && next.attachment() != attachment || next.load.clears()
-                || next.replacesTarget()
-                || next.depthFrom() != null || next.colorFrom() != null || unmergeable(frame, k, next)) {
-            return false;
-        }
-        if (readOnlyDepth(frame, k, next) != readOnlyDepth(frame, runStart, first)) return false;   // one depth mode a pass
-        CgFrame.Raster packed = frame.rasters[k];
-        if (packed.indirects > 0 && gpuCounts) return false;   // its commands are written by a dispatch first
-        for (int b = 0; b < packed.count; b++) if (packed.copyBefore[b] != 0) return false;
-        for (int i = frame.accessFrom[k]; i < frame.accessFrom[k + 1]; i++) {
-            CgGraphResource view = frame.accessView[i];
-            int bits = frame.accessBits[i];
-            if (view == first.depthBeside()) {
-                // Drawn with another's depth, a pass names it read and written: ordered on it, sampling none of it.
-                if ((bits & ~(CgAccess.COLOR_WRITE | CgAccess.SAMPLED_READ)) != 0) return false;
-            } else if ((view == first.target || view == attachment || view == next.attachment())
-                    && (bits & ~CgAccess.COLOR_WRITE) != 0) {
-                return false;
-            }
-        }
-        return true;
     }
 
     // ── Transitions, on the device's command list ─────────────────────────────
@@ -2237,7 +2167,7 @@ public final class CgExecutor {
             CgBoundResources.forgetTextures(CgBindingModel.PASS);
             CgBoundResources.forgetTextures(CgBindingModel.MATERIAL);
             // Before the render pass, as a copy runs outside one: the copies' binds are what the pass set reads
-            depthInPlace = readOnlyDepth(frame, currentStep, pass);
+            depthInPlace = frame.readOnlyDepth[currentStep];
             if (pass.depthFrom() != null) copyDepthFrom(pass, pass.depthFrom(), pass.depthFromCopy(), pass.depthFromUnit());
             if (pass.colorFrom() != null) copyColorFrom(pass);
             if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
@@ -2875,7 +2805,7 @@ public final class CgExecutor {
      * A texture's storage now: the current target's as the execution opened it, an imported one's as made with it, a
      * requested one's made on first use, a history's both versions, cleared.
      */
-    private static CgGraphStorage storage(CgGraphTexture texture) {
+    static CgGraphStorage storage(CgGraphTexture texture) {
         CgGraphStorage[] versions = texture.versions();
         if (versions != null && versions[0] == null) {
             CgTrace.add(CgChannels.GL, "graph.history.made", 1);

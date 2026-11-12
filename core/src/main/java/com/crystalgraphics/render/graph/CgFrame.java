@@ -76,6 +76,13 @@ public final class CgFrame {
     boolean readsCurrentDepth, rastersCurrent, rastersOther;
     int[] acquireAt = new int[8];
     int[] releaseAfter = new int[8];
+    /**
+     * Decided per execution before its first step ({@link CgFrameCompiler}): per step, the end of the render pass run
+     * it begins (itself for none), the run's second colour, and whether it samples its depth read-only.
+     */
+    int[] runEnd = new int[8];
+    CgGraphTexture[] runAttachment = new CgGraphTexture[8];
+    boolean[] readOnlyDepth = new boolean[8];
     /** What its recordings released, and the step after which each is freed: -1 before the first. */
     final List<CgGraphResource> released = new ArrayList<>();
     int[] releasedAfter = new int[4];
@@ -104,6 +111,16 @@ public final class CgFrame {
 
     CgFrame() {
         for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
+    }
+
+    /** Room for {@code n} steps' compiled decisions. */
+    void compiledSteps(int n) {
+        if (runEnd.length < n) {
+            int size = Math.max(n, runEnd.length * 2);
+            runEnd = new int[size];
+            runAttachment = new CgGraphTexture[size];
+            readOnlyDepth = new boolean[size];
+        }
     }
 
     /** Frees {@code resource} after step {@code step}, -1 before the first. */
