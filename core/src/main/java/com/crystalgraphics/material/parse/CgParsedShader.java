@@ -3,6 +3,7 @@ package com.crystalgraphics.material.parse;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.github.bsideup.jabel.Desugar;
 import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -120,6 +121,15 @@ import java.util.Objects;
  *     The keywords in {@link #featureNames} it was given undeclared: every particle program takes each vertex factory's
  *     (the strips, and the sprites' where it declares no usage keyword), as Unreal compiles a material once per factory
  *     it is used with. What it serves is judged by the rest.
+ * @param domain
+ *     What a file in the material format is ({@code #domain surface}); null for the old format. A material in the format
+ *     has no parameter special by its name: no {@code _EmissionColor}, {@code _EmissionStrength} or {@code _Clip}.
+ * @param maskClip
+ *     The material format's {@code MaskClip}: what {@code opacityMask} is cut at, a number or a float parameter's
+ *     name; null for 0.5, or in the old format the {@code _Clip} parameter where it declares one.
+ * @param separateTranslucency
+ *     {@code TranslucencyPass Separate}: drawn after every other translucent draw, as a material state's
+ *     {@code separateTranslucency()} draws.
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
@@ -132,7 +142,8 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                               DepthMode depthMode, @Nullable Tube tube,
                               List<CgParsedPass> passes, List<CgBufferDecl> buffers, String bufferStructs,
                               List<PostTarget> postTargets, @Nullable String emissionInput,
-                              List<String> implicitFeatures) {
+                              List<String> implicitFeatures, @Nullable CgMaterialDomain domain,
+                              @Nullable String maskClip, boolean separateTranslucency) {
 
     /**
      * A post material's pass drawing into a texture of its own: {@code scale} of the post target on each side, bound to
@@ -265,7 +276,15 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                 sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
                 unfogged, linearColor, linearLight, unmediated, emissiveOpacity,
                 state.clip() ? DepthMode.CLIP : unclip ? DepthMode.NONE : depthMode, tube, Collections.unmodifiableList(out),
-                buffers, bufferStructs, postTargets, emissionInput, implicitFeatures);
+                buffers, bufferStructs, postTargets, emissionInput, implicitFeatures, domain, maskClip, separateTranslucency);
+    }
+
+    /** This parse as a file of the material format: {@code domain}, its {@code MaskClip} and its translucency pass. */
+    CgParsedShader inFormat(CgMaterialDomain domain, @Nullable String maskClip, boolean separate) {
+        return new CgParsedShader(shaderType, properties, featureNames, permutations, engineBuffers, renderQueue, renderType,
+                sceneColorMargin, unlit, surfaceLit, handedLights, handedSun, handedScene, writesCustomData,
+                unfogged, linearColor, linearLight, unmediated, emissiveOpacity, depthMode, tube, passes,
+                buffers, bufferStructs, postTargets, emissionInput, implicitFeatures, domain, maskClip, separate);
     }
 
     /**

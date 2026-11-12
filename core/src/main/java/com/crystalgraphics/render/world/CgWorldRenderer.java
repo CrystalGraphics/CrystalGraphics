@@ -1469,7 +1469,7 @@ public final class CgWorldRenderer {
         draws.orders[draws.count] = d.order;
         draws.batchKeys[draws.count] = d.batchKey;
         draws.layers[draws.count] = d.layer;
-        if (d.material.state().separateTranslucency()
+        if (CgMaterialProxy.of(d.material).separateTranslucency()
                 && d.queue >= CgRenderQueue.TRANSPARENT_THRESHOLD && d.queue < CgRenderQueue.OVERLAY_THRESHOLD) {
             // Unreal's separate translucency: after every other translucent draw, unbent by their distortion
             draws.queues[draws.count] = Math.max(d.queue, CgRenderQueue.AFTER_DISTORTION);

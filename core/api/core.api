@@ -916,10 +916,12 @@ com/crystalgraphics/api/material/CgMaterialDomain
   access public,final,enum
   extends java/lang/Enum
   field public,static,final DECAL Lcom/crystalgraphics/api/material/CgMaterialDomain;
+  field public,static,final GLOBAL Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final POST Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final SURFACE Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final TEXT Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final UI Lcom/crystalgraphics/api/material/CgMaterialDomain;
+  method public,static ofDirective (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static ofSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static values ()[Lcom/crystalgraphics/api/material/CgMaterialDomain;
@@ -1222,6 +1224,26 @@ com/crystalgraphics/api/material/CgShadingModels
   method public,static register (Lcom/crystalgraphics/api/material/CgShadingModel;)V
   method public,static registerKit (Ljava/lang/String;Ljava/nio/file/Path;)Ljava/util/List;
   method public,static registerKit (Ljava/lang/String;Ljava/util/Map;)Ljava/util/List;
+com/crystalgraphics/api/material/CgVertexFactory
+  access public,final
+  extends java/lang/Object
+  field public,static,final MESH Ljava/lang/String;
+  field public,static,final PROCEDURAL Ljava/lang/String;
+  method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;
+  method public,static names ()Ljava/util/List;
+  method public,static register (Lcom/crystalgraphics/api/material/CgVertexFactory$Factory;)V
+com/crystalgraphics/api/material/CgVertexFactory$Factory
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;)V
+  method public engineBuffers ()Ljava/util/List;
+  method public fill ()Ljava/lang/String;
+  method public name ()Ljava/lang/String;
+  method public placesNothing ()Z
+  method public vertexType ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/mesh/CgCookedMesh
   access public,final
   extends java/lang/Object
@@ -6711,9 +6733,11 @@ com/crystalgraphics/material/CgMaterialProperty
   method public getSamplerUnit ()I
   method public getType ()Lcom/crystalgraphics/material/CgMaterialProperty$Type;
   method public isArray ()Z
+  method public isHdr ()Z
   method public isHidden ()Z
   method public isRowable ()Z
   method public isRows ()Z
+  method public markHdr ()V
   method public markRows ()V
   method public resetToDefault ()V
   method public set (F)Z
@@ -6804,6 +6828,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public samplerUnit (Ljava/lang/String;)I
+  method public separateTranslucency ()Z
   method public solid ()Z
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
   method public surfaceLit ()Z
@@ -6995,11 +7020,12 @@ com/crystalgraphics/material/parse/CgParsedPass
 com/crystalgraphics/material/parse/CgParsedShader
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/material/parse/CgPermutationDomain;Ljava/util/List;ILjava/lang/String;FZZZZZZZZZZZLcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;Lcom/crystalgraphics/material/parse/CgParsedShader$Tube;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;Lcom/crystalgraphics/material/parse/CgPermutationDomain;Ljava/util/List;ILjava/lang/String;FZZZZZZZZZZZLcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;Lcom/crystalgraphics/material/parse/CgParsedShader$Tube;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/material/CgMaterialDomain;Ljava/lang/String;Z)V
   method public buffer (Ljava/lang/String;)Lcom/crystalgraphics/compute/source/CgBufferDecl;
   method public bufferStructs ()Ljava/lang/String;
   method public buffers ()Ljava/util/List;
   method public depthMode ()Lcom/crystalgraphics/material/parse/CgParsedShader$DepthMode;
+  method public domain ()Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public emissionInput ()Ljava/lang/String;
   method public emissiveOpacity ()Z
   method public engineBuffers ()Ljava/util/List;
@@ -7014,6 +7040,7 @@ com/crystalgraphics/material/parse/CgParsedShader
   method public linearColor ()Z
   method public linearLight ()Z
   method public lit ()Z
+  method public maskClip ()Ljava/lang/String;
   method public mediated ()Z
   method public passes ()Ljava/util/List;
   method public permutations ()Lcom/crystalgraphics/material/parse/CgPermutationDomain;
@@ -7023,6 +7050,7 @@ com/crystalgraphics/material/parse/CgParsedShader
   method public renderQueue ()I
   method public renderType ()Ljava/lang/String;
   method public sceneColorMargin ()F
+  method public separateTranslucency ()Z
   method public shaderType ()Ljava/lang/String;
   method public surfaceLit ()Z
   method public tube ()Lcom/crystalgraphics/material/parse/CgParsedShader$Tube;
@@ -7099,7 +7127,8 @@ com/crystalgraphics/material/parse/CgShaderParser
 com/crystalgraphics/material/parse/CgShaderParser$V2fField
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public interpolation ()Ljava/lang/String;
   method public name ()Ljava/lang/String;
   method public type ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z

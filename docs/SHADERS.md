@@ -11,6 +11,41 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 
 The primary authoring surface of this repo. Most feature work touches these systems.
 
+### The material format: `#domain` files
+
+A file whose first line is `#domain surface` or `#domain global` is in the material format, which replaces the one
+below as every shader is converted. You say what the surface is, not how to draw it: the engine writes the passes.
+
+```glsl
+#domain surface
+Material { BlendMode Translucent  ShadingModel Unlit }     // every property has a default
+Keywords { GLOW ("Glows")  SHAPE ("Shape") = BOX | CONE }   // #ifdef GLOW, #ifdef SHAPE_BOX
+Properties {
+    _Tint ("Tint", color, hdr) = (1, 1, 1, 0.5)            // hdr, range(a, b): marks for editors
+    _Heat ("Heat", float, range(0, 20)) = 6
+}
+struct v2f { vec2 uv0; };                                    // no vertex(): uv0-3, color, normal, world, light filled
+void surface(in v2f i, inout CgSurface s) {
+    s.baseColor = _Tint.rgb;
+    s.opacity = _Tint.a;
+    s.emissive = _Tint.rgb * _Heat * i.uv0.x;                // naming emissive draws the glow
+}
+```
+
+- **The outputs it names decide its passes**: `emissive` a glow, `refraction` a bend; a translucent material naming
+  neither `baseColor` nor `opacity` draws no colour.
+- **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
+  `gl_Position`. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns `v.world`.
+- **No `#pragma`**: `Keywords { }`, `PerDrawValues On` (per-draw values), and `CG_GLOBAL_*` or the world's lights
+  found by name.
+- **No parameter is special by its name**: `MaskClip` is the opacity mask's threshold, `_EmissionColor` and `_Clip`
+  are ordinary parameters.
+- `#domain global` is a raw `RenderState`, `vertex(out v2f o)` and `fragment(in v2f i, out vec4 c)`: the engine's own
+  passes. `post` and `ui` are not parsed yet.
+
+The whole format, every property and output: plan `renderer/shader-format.md`. The rest of this document is the old
+format, which every shader still in it parses as before.
+
 ### The `.shader` File Format
 
 **Reference file**: `src/main/resources/assets/crystalgraphics/shaders/example.shader`

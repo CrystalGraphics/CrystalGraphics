@@ -303,8 +303,24 @@ public final class CgMaterialProxy {
                     + this);
         }
         if (enabledKeywords.contains(name) == on) return material;
+        if (on) refuseSecondValue(name);
         int mask = keywordMask(declared);
         return variant(on ? mask | 1 << bit : mask & ~(1 << bit), declared);
+    }
+
+    /** A material-format one-of ({@code SHAPE = BOX | CYLINDER}) holds one value: a second is refused, naming the first. */
+    private void refuseSecondValue(String name) {
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        if (parsed == null || parsed.domain() == null) return;
+        for (List<String> one : parsed.permutations().dimensions()) {
+            if (one.size() < 2 || !one.contains(name)) continue;
+            for (String other : one) {
+                if (!other.equals(name) && enabledKeywords.contains(other)) {
+                    throw new IllegalArgumentException("Keyword '" + name + "' and '" + other + "' are two values of one"
+                            + " one-of in " + this + ": turn '" + other + "' off first");
+                }
+            }
+        }
     }
 
     private CgMaterial variant(int mask, List<String> declared) {
@@ -1262,6 +1278,17 @@ public final class CgMaterialProxy {
      */
     public boolean readsSceneDepth() {
         return cgMaterialShader == null || cgMaterialShader.readsSceneDepth();
+    }
+
+    /**
+     * Whether its translucent draws go after every other, Unreal's separate translucency: its state's
+     * {@code separateTranslucency()}, or its shader's {@code TranslucencyPass Separate}. False for the shader's until it
+     * is parsed.
+     */
+    public boolean separateTranslucency() {
+        if (state.separateTranslucency()) return true;
+        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        return parsed != null && parsed.separateTranslucency();
     }
 
     /**

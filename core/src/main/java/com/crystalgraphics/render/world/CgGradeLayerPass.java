@@ -319,7 +319,7 @@ final class CgGradeLayerPass {
         if (!stage.resources().has(CgFrameKeys.SCENE) || !stage.host().target().lendsAttachments()) return 0;
         int moved = 0;
         for (int i = 0; i < draws.count; i++) {
-            if (draws.phase[i] != CgWorldDraws.AFTER || !draws.materials[i].state().separateTranslucency()) continue;
+            if (draws.phase[i] != CgWorldDraws.AFTER || !CgMaterialProxy.of(draws.materials[i]).separateTranslucency()) continue;
             if (!layerable(i)) {
                 if (!separateMultiplyWarned) {
                     CgWorldRenderer.LOGGER.warn("A separate translucency draw whose blend multiplies draws into the scene, where colour regions grade it");

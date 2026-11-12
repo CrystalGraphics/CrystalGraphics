@@ -33,22 +33,51 @@ public enum CgMaterialDomain {
      * its tint the vertex colour in linear, blended by the material's own state. A retainer's effect samples the
      * retained image at its texture parameter.
      */
-    UI;
+    UI,
+    /**
+     * One of the renderer's own passes, or a consumer's own mesh pass: a raw vertex and fragment pair under a
+     * {@code RenderState}, never a mesh's material. {@code #domain global}.
+     */
+    GLOBAL;
 
     private static final Pattern TAG = Pattern.compile("\"Domain\"\\s*=\\s*\"(\\w+)\"");
 
+    /** The first line of a file in the material format: {@code #domain surface}. */
+    private static final Pattern DIRECTIVE = Pattern.compile("(?m)^\\s*#domain\\s+(\\w+)");
+
     /**
-     * The domain a {@code .shader} source names in its tags, {@link #SURFACE} when it names none.
+     * The domain a {@code .shader} source names: its {@code #domain} line, or in the old format its tags;
+     * {@link #SURFACE} when it names none.
      *
      * @throws IllegalArgumentException for a domain that does not exist
      */
     public static CgMaterialDomain ofSource(String source) {
+        Matcher directive = DIRECTIVE.matcher(source);
+        if (directive.find()) return ofDirective(directive.group(1));
         Matcher m = TAG.matcher(source);
         if (!m.find()) return SURFACE;
         try {
             return valueOf(m.group(1).toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("\"Domain\" = \"" + m.group(1) + "\" is no domain: Surface, Post, Decal, Text or UI");
+        }
+    }
+
+    /**
+     * The domain a {@code #domain} line names: {@code surface}, {@code post}, {@code ui}, {@code decal} or
+     * {@code global}, lower case as written.
+     *
+     * @throws IllegalArgumentException for any other word
+     */
+    public static CgMaterialDomain ofDirective(String word) {
+        switch (word) {
+            case "surface": return SURFACE;
+            case "post": return POST;
+            case "ui": return UI;
+            case "decal": return DECAL;
+            case "global": return GLOBAL;
+            default:
+                throw new IllegalArgumentException("#domain " + word + " is no domain: surface, post, ui, decal or global");
         }
     }
 }

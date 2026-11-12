@@ -35,11 +35,16 @@ final class CgStructureParser {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
+    /** A v2f field: its interpolation qualifier (group 1, optional), type and name. */
     static final Pattern V2F_FIELD_PATTERN =
-            Pattern.compile("^\\s*(float|vec[234]|mat[34])\\s+(\\w+)\\s*;\\s*$");
+            Pattern.compile("^\\s*(?:(flat|noperspective|smooth)\\s+)?(float|vec[234]|mat[34]|int|uint|[iu]vec[234])\\s+(\\w+)\\s*;\\s*$");
 
+    /** A v2f field of an integer type: legal only {@code flat}, since an integer is not interpolated. */
     static final Pattern INTEGER_TYPE_PATTERN =
-            Pattern.compile("^\\s*(int|uint|[iu]vec[234])\\b");
+            Pattern.compile("^\\s*(?:(?:noperspective|smooth)\\s+)?(int|uint|[iu]vec[234])\\b");
+
+    /** The interpolation qualifiers a v2f field may carry, which a struct member may not. */
+    static final Pattern V2F_QUALIFIER = Pattern.compile("\\b(?:flat|noperspective|smooth)\\s+");
 
     private static final Pattern OLD_RENDER_QUEUE_PATTERN =
             Pattern.compile("(?m)^\\s*RenderQueue\\s+\\S");
@@ -693,14 +698,14 @@ final class CgStructureParser {
         for (String line : v2fDeclarations(body)) {
             if (INTEGER_TYPE_PATTERN.matcher(line).find()) {
                 throw new CgShaderParseException(
-                        "[" + resourcePath + "] Integer types forbidden in struct v2f. Found: '" + line + "'");
+                        "[" + resourcePath + "] An integer v2f field is 'flat', since it is not interpolated. Found: '" + line + "'");
             }
             Matcher m = V2F_FIELD_PATTERN.matcher(line);
             if (!m.matches()) {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] Invalid v2f field: '" + line + "'.");
             }
-            validateNotReservedPrefix(m.group(2), "struct v2f", resourcePath);
+            validateNotReservedPrefix(m.group(3), "struct v2f", resourcePath);
         }
     }
 }

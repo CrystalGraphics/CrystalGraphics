@@ -539,7 +539,9 @@ public final class CgMaterialShaderCompiler {
         // Check 4: culling is not OFF (NONE means double-sided — shadow pass must cull correctly)
         CgCullState cull = pass.renderState().getCull();
         boolean cullingIsOff = (cull != null && cull == CgCullState.NONE);
-        return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff;
+        // A material format's vertex() is code this check cannot see: World Position Offset lives there.
+        boolean noMaterialVertex = !vertexBody.contains(CgMaterialFormat.MATERIAL_VERTEX);
+        return noUserProps && noEngineAnimation && noDiscard && !cullingIsOff && noMaterialVertex;
     }
 
     /** Whether the pass's vertex body names a buffer of the material's: it places vertices from a kernel's output. */
@@ -1027,7 +1029,9 @@ public final class CgMaterialShaderCompiler {
         sb.append("// v2f struct\n");
         sb.append("struct v2f {\n");
         // GLSL has no empty struct: a pass passing nothing still declares a member, never a varying.
-        sb.append(v2fStructBody.isBlank() ? "    int cg_Unused;" : v2fStructBody).append("\n");
+        // A field's interpolation qualifier belongs to the varying, never a struct member.
+        sb.append(v2fStructBody.isBlank() ? "    int cg_Unused;"
+                : CgStructureParser.V2F_QUALIFIER.matcher(v2fStructBody).replaceAll("")).append("\n");
         sb.append("};\n");
     }
 
@@ -1044,7 +1048,9 @@ public final class CgMaterialShaderCompiler {
         if (fields.isEmpty() && !normals) return;
         sb.append(direction).append(" _CgV2fBlock {\n");
         for (CgShaderParser.V2fField f : fields) {
-            sb.append("    ").append(f.type()).append(" ").append(f.name()).append(";\n");
+            sb.append("    ");
+            if (!f.interpolation().isEmpty()) sb.append(f.interpolation()).append(' ');
+            sb.append(f.type()).append(" ").append(f.name()).append(";\n");
         }
         if (normals) sb.append("    vec3 _cg_normalWs;\n");
         sb.append("} _cg_v2f;\n");
@@ -1121,8 +1127,9 @@ public final class CgMaterialShaderCompiler {
         if (shader.handedLights()) sb.append("#define CG_HANDED_LIGHTS 1\n");
         if (shader.handedSun()) sb.append("#define CG_HANDED_SUN 1\n");
         sb.append("#define CG_EMISSION (vec3(1.0)");
-        if (hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
-        if (hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
+        // The material format names no parameter for it: its emissive output carries its own colour and strength.
+        if (shader.domain() == null && hasProperty(shader, "_EmissionColor", 4)) sb.append(" * _EmissionColor.rgb");
+        if (shader.domain() == null && hasProperty(shader, "_EmissionStrength", 1)) sb.append(" * _EmissionStrength");
         if (shader.readsObjectRecord()) sb.append(" * CG_OBJECT_EMISSION");
         if (CgParsedPass.LIGHT_MODE_EMISSIVE.equals(pass.lightMode())) sb.append(" * CG_SCENE_GLOW");
         sb.append(")\n");
@@ -1138,7 +1145,9 @@ public final class CgMaterialShaderCompiler {
      */
     private static void appendClip(StringBuilder sb, CgParsedShader shader, CgParsedPass pass, CompileConfig config) {
         if (shader.depthMode() == CgParsedShader.DepthMode.NONE && !names(pass, "cg_Clip")) return;
-        sb.append("#define CG_CLIP_THRESHOLD ").append(hasProperty(shader, "_Clip", 1) ? "_Clip" : "0.5").append('\n');
+        String threshold = shader.maskClip() != null ? shader.maskClip()
+                : shader.domain() == null && hasProperty(shader, "_Clip", 1) ? "_Clip" : "0.5";
+        sb.append("#define CG_CLIP_THRESHOLD ").append(threshold).append('\n');
         if (shader.depthMode() == CgParsedShader.DepthMode.NONE) {
             sb.append("#define cg_Clip(v)\n");
         } else if (CgParsedPass.LIGHT_MODE_DEPTH.equals(pass.lightMode()) || config.activeKeywords().contains(DEPTH_PREPASS)) {

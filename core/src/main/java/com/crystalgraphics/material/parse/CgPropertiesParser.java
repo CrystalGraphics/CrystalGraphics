@@ -93,9 +93,22 @@ final class CgPropertiesParser {
                 String name        = newM.group(1);
                 String displayName = newM.group(2);
                 String[] typeAndDef = parseNewStyleTypeAndDefault(newM.group(3), resourcePath, line);
-                String typeRaw = typeAndDef[0];
+                List<String> marks = splitTopLevel(typeAndDef[0]);
+                String typeRaw = marks.remove(0);
                 String defRaw  = typeAndDef[1];
                 validateName(name, engine, resourcePath);
+                boolean hdr = false;
+                for (String mark : marks) {
+                    Matcher range = RANGE_MARK.matcher(mark);
+                    if (mark.equals("hdr") && ("color".equals(typeRaw) || typeRaw.startsWith("color["))) {
+                        hdr = true;
+                    } else if (range.matches() && "float".equals(typeRaw)) {
+                        typeRaw = "Range(" + range.group(1) + ", " + range.group(2) + ")";
+                    } else {
+                        throw new CgShaderParseException("[" + resourcePath + "] '" + mark + "' is no mark of a " + typeRaw
+                                + ": 'hdr' on a color, 'range(a, b)' on a float. In: '" + line + "'");
+                    }
+                }
                 int length = 0;
                 Matcher arrayM = ARRAY_TYPE_PATTERN.matcher(typeRaw);
                 if (arrayM.matches()) {
@@ -111,6 +124,7 @@ final class CgPropertiesParser {
                 CgMaterialProperty prop = length > 0
                         ? CgMaterialProperty.fromDecl(name, displayName, typeBase, defRaw, length)
                         : buildProperty(name, displayName, typeBase, typeRaw, defRaw);
+                if (hdr) prop.markHdr();
                 result.add(prop);
                 continue;
             }
@@ -138,6 +152,27 @@ final class CgPropertiesParser {
             result.add(buildProperty(name, name, typeBase, typeRaw, defRaw));
         }
         return Collections.unmodifiableList(result);
+    }
+
+    /** A slider's ends on a float: {@code range(0, 1)}. */
+    private static final Pattern RANGE_MARK =
+            Pattern.compile("range\\(\\s*([-+]?[0-9]*\\.?[0-9]+)\\s*,\\s*([-+]?[0-9]*\\.?[0-9]+)\\s*\\)");
+
+    /** {@code s} split at its commas outside parentheses, each part trimmed: a type and its marks. */
+    private static List<String> splitTopLevel(String s) {
+        List<String> out = new ArrayList<>();
+        int depth = 0, from = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if (c == '(') depth++;
+            else if (c == ')') depth--;
+            else if (c == ',' && depth == 0) {
+                out.add(s.substring(from, i).trim());
+                from = i + 1;
+            }
+        }
+        out.add(s.substring(from).trim());
+        return out;
     }
 
     private static void validateName(String name, boolean engine, String resourcePath) {

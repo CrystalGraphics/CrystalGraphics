@@ -136,10 +136,11 @@ public final class CgShaderParser {
             """;
 
     /** A single field parsed from the {@code struct v2f { }} block.
-     * @param type  GLSL type (e.g. {@code "vec3"}). Only float-family types are valid.
-     * @param name  Field name (e.g. {@code "worldPos"}). */
+     * @param type          GLSL type (e.g. {@code "vec3"}); an integer type only {@code flat}
+     * @param name          Field name (e.g. {@code "worldPos"})
+     * @param interpolation {@code "flat"}, {@code "noperspective"}, {@code "smooth"} or {@code ""}, as written */
     @Desugar
-    public record V2fField(String type, String name) {}
+    public record V2fField(String type, String name, String interpolation) {}
 
     private CgShaderParser() {}
 
@@ -227,6 +228,13 @@ public final class CgShaderParser {
     private static CgParsedShader parseLocating(String source, String resourcePath) {
         if (source == null || source.isEmpty()) {
             throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing: source is empty");
+        }
+        if (CgMaterialFormat.isDomainFile(source)) {
+            // Lowered onto the passes the old format writes, then parsed as one.
+            CgMaterialFormat.Lowered lowered = CgMaterialFormat.lower(source, resourcePath);
+            CgParsedShader parsed = parseLocating(lowered.source(), resourcePath);
+            requireMaskClip(parsed.properties(), lowered.maskClip(), resourcePath);
+            return parsed.inFormat(lowered.domain(), lowered.maskClip(), lowered.separate());
         }
 
         // ── Step 1: top-level validations ──────────────────────────────────
@@ -549,7 +557,17 @@ public final class CgShaderParser {
                 buffers.buffers(),
                 buffers.structs(),
                 Collections.unmodifiableList(postTargets),
-                emissionInput, implicitFeatures);
+                emissionInput, implicitFeatures, null, null, false);
+    }
+
+    /** A {@code MaskClip} naming a parameter names a float one the file declares. */
+    private static void requireMaskClip(List<CgMaterialProperty> props, String maskClip, String resourcePath) {
+        if (maskClip == null || !maskClip.startsWith("_")) return;
+        for (CgMaterialProperty p : props) {
+            if (p.getName().equals(maskClip) && p.getType().getComponents() == 1 && !p.getType().isSampler()) return;
+        }
+        throw new CgShaderParseException("[" + resourcePath + "] 'MaskClip " + maskClip + "' names no float parameter:"
+                + " declare it, e.g. " + maskClip + " (\"Cut below\", float, range(0, 1)) = 0.5");
     }
 
     /**
@@ -752,14 +770,14 @@ public final class CgShaderParser {
         for (String line : CgStructureParser.v2fDeclarations(body)) {
             if (CgStructureParser.INTEGER_TYPE_PATTERN.matcher(line).find()) {
                 throw new CgShaderParseException(
-                        "Integer types (int, uint, ivec*, uvec*) are forbidden in struct v2f. Found: '" + line + "'");
+                        "An integer v2f field (int, uint, ivec*, uvec*) is 'flat'. Found: '" + line + "'");
             }
             Matcher m = CgStructureParser.V2F_FIELD_PATTERN.matcher(line);
             if (!m.matches()) {
                 throw new CgShaderParseException(
-                        "Invalid v2f field declaration: '" + line + "'. Expected: '<float-family-type> <name>;'");
+                        "Invalid v2f field declaration: '" + line + "'. Expected: '[flat|noperspective] <type> <name>;'");
             }
-            fields.add(new V2fField(m.group(1), m.group(2)));
+            fields.add(new V2fField(m.group(2), m.group(3), m.group(1) == null ? "" : m.group(1)));
         }
         return Collections.unmodifiableList(fields);
     }
