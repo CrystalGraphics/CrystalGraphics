@@ -71,7 +71,7 @@ final class CgWorldDistortion {
     /** How far an apply samples from its rect, a share of the target's height: the apply shader's SceneColorMargin. */
     private static final float MARGIN = 0.1f;
     /** A bend's layer starts empty: no offset, no split. */
-    private static final CgLoad CLEAR = CgLoad.clear(0f, 0f, 0f, 0f);
+    private static final CgLoad CLEAR = CgLoad.CLEAR;
     /** Pixels an apply's offsets spread past its rect when read bilinearly from a half-size target, and then some. */
     private static final float SPREAD = 4f;
     private static final CgFormat FORMAT = CgFormat.RGBA16_FLOAT;

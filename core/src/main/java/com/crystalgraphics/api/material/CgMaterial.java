@@ -77,7 +77,7 @@ import com.crystalgraphics.material.CgAttachedBuffer;
  * <pre>{@code
  * CgWorldRenderer.get().draw(mesh, material).at(x, y, z).submit();        // into the world, recorded
  *
- * CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 0)).camera(camera);   // a pass of yours
+ * CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.CLEAR).camera(camera);   // a pass of yours
  * pass.draw(mesh, material).transform(model);
  * pass.end();
  * }</pre>

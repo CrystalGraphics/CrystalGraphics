@@ -133,7 +133,7 @@ public record CgTextureDesc(int width, int height, int depth, CgFormat format, i
      *
      * <pre>{@code
      * CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, CgFormat.RGBA16_FLOAT));
-     * CgRasterPass slot2 = rec.raster("textureDesc.field").color(field, 0, 2, CgLoad.clear(0, 0, 0, 0)).constants(constants);
+     * CgRasterPass slot2 = rec.raster("textureDesc.field").color(field, 0, 2, CgLoad.CLEAR).constants(constants);
      * }</pre>
      */
     public static CgTextureDesc array(int width, int height, int layers, CgFormat format) {

@@ -105,7 +105,7 @@ host owns. The platform guide has each.
 
 ```java
 // In core/ — never a raw GL call, never an LWJGL import: record a pass, and the device draws it
-CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 0)).camera(camera);
+CgRasterPass pass = rec.raster("preview").color(picture, CgLoad.CLEAR).camera(camera);
 pass.draw(mesh, material).transform(model);
 pass.end();
 CgRenderer.executeNow(rec);

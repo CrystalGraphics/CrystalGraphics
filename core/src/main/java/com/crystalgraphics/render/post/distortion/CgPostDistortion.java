@@ -83,7 +83,7 @@ public final class CgPostDistortion {
         if (pipeline == null) return source;
         camera.write(block, 0);
         constants.read(block, 0).resolution(desc.width(), desc.height());
-        CgRasterPass pass = recording.raster("postDistortion.result").color(result, CgLoad.clear(0f, 0f, 0f, 0f)).constants(constants)
+        CgRasterPass pass = recording.raster("postDistortion.result").color(result, CgLoad.CLEAR).constants(constants)
                 .timed(GPU_BEND);
         CgChunkBuilder chunks = recording.chunks().begin();
         chunks.draw(pipeline, material.captureBindings(recording.bindings()), FULLSCREEN);

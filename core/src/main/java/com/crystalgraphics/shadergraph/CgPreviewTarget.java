@@ -76,9 +76,9 @@ public final class CgPreviewTarget {
      */
     public CgRasterPass begin(CgRecording recording, CgPassConstants camera, CgRenderState state) {
         CgGraphTexture into = multisampled != null ? multisampled : resolved;
-        CgRasterPass pass = recording.raster("shadergraph.preview").color(into, CgLoad.clear(0f, 0f, 0f, 0f))
+        CgRasterPass pass = recording.raster("shadergraph.preview").color(into, CgLoad.CLEAR)
                 .constants(camera).state(state).order(CgOrder.LOOKBACK);
-        if (into == multisampled) pass.depth(multisampledDepth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE);
+        if (into == multisampled) pass.depth(multisampledDepth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE);
         return pass;
     }
 

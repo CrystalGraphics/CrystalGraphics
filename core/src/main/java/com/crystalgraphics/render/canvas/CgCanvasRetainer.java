@@ -100,7 +100,7 @@ public final class CgCanvasRetainer {
         constants.view.identity();
         constants.projection.identity().ortho(0f, texelsWide / scale, texelsHigh / scale, 0f, -1f, 1f);
         constants.resolution(texelsWide, texelsHigh).cameraFromView();
-        canvas.recordInto(recording, texture, CgLoad.clear(0f, 0f, 0f, 0f), constants);
+        canvas.recordInto(recording, texture, CgLoad.CLEAR, constants);
         painting = true;
         return canvas;
     }

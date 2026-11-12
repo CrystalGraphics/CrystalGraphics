@@ -9453,6 +9453,8 @@ com/crystalgraphics/render/graph/CgGraphTexture$Stencil
 com/crystalgraphics/render/graph/CgLoad
   access public,final
   extends java/lang/Object
+  field public,static,final CLEAR Lcom/crystalgraphics/render/graph/CgLoad;
+  field public,static,final CLEAR_DEPTH Lcom/crystalgraphics/render/graph/CgLoad;
   method public a ()F
   method public andStencil (I)Lcom/crystalgraphics/render/graph/CgLoad;
   method public b ()F

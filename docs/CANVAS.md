@@ -608,11 +608,11 @@ set-target, set-constants and set-scissor.
 ```java
 CgRecording frame = new CgRecording();
 CgCanvas canvas = new CgCanvas();
-canvas.recordInto(frame, target, CgLoad.clear(0, 0, 0, 0), screen);   // passes on target from here
+canvas.recordInto(frame, target, CgLoad.CLEAR, screen);   // passes on target from here
 canvas.pushScissor(x, y, w, h);                                         // clips what follows
 canvas.quad(BOX).at(x, y).size(w, h).submit();
 canvas.popScissor();
-canvas.recordInto(frame, layer, CgLoad.clear(0, 0, 0, 0), layerOrtho); // another target; the pass ends
+canvas.recordInto(frame, layer, CgLoad.CLEAR, layerOrtho); // another target; the pass ends
 canvas.recordInto(frame, target, CgLoad.load(), screen);                // back, after the layer
 canvas.stop();                                                           // everything lands
 CgRenderer.executeNow(frame);

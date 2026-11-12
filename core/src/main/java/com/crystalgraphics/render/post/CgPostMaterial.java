@@ -209,7 +209,7 @@ public final class CgPostMaterial implements CgPostEffect {
             if (into == null || into.getWidth() != w || into.getHeight() != h) {
                 textures[t] = into = CgGraphTexture.transientTexture("cg_post_pass_" + t, new CgTextureDesc(w, h, TARGET, 1));
             }
-            draw(recording, into, CgLoad.clear(0f, 0f, 0f, 0f), post, pipelines[t], screen);
+            draw(recording, into, CgLoad.CLEAR, post, pipelines[t], screen);
             bind(target.property(), into);
         }
         draw(recording, screen, CgLoad.load(), post, pipeline, screen);

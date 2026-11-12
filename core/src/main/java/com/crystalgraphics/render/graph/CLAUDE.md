@@ -13,7 +13,7 @@ Three stages, three threads at most (`render-graph` §3.1):
 
 ```java
 CgRecording rec = new CgRecording();
-CgRasterPass pass = rec.raster("ui.layer").color(target, CgLoad.clear(0, 0, 0, 0))
+CgRasterPass pass = rec.raster("ui.layer").color(target, CgLoad.CLEAR)
         .constants(constants).state(uiState).order(CgOrder.LOOKBACK);
 pass.add(chunk);
 pass.end();
@@ -59,14 +59,14 @@ jar. The executor's own resolution (`storage()`, `bufferId()`) is not a binding 
 
 ```java
 rec.raster("world.glow")
-        .color(glow, CgLoad.clear(0, 0, 0, 0))
+        .color(glow, CgLoad.CLEAR)
         .depth(sceneDepth, CgLoad.load(), CgDepthAccess.WRITE)
         .reads(noise)
         .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT)
         .constants(constants);
 ```
 
-- A colour's load clears colour, a depth's depth and stencil (`CgLoad.clearDepth(1).andStencil(0)`); each throws for
+- A colour's load clears colour, a depth's depth and stencil (`CgLoad.CLEAR_DEPTH.andStencil(0)`); each throws for
   the other's. A second colour loads as the first.
 - A pass declaring a depth and no colour draws depth alone.
 
@@ -145,7 +145,7 @@ is one array texture, each pass attaching its layer.
 
 ```java
 CgGraphTexture field = CgGraphTexture.transientTexture("field", CgTextureDesc.array(w, h, 5, CgFormat.RGBA16_FLOAT));
-CgRasterPass slot = rec.raster("field.slot").color(field, 0, k, CgLoad.clear(0, 0, 0, 0)).constants(constants).state(additive);
+CgRasterPass slot = rec.raster("field.slot").color(field, 0, k, CgLoad.CLEAR).constants(constants).state(additive);
 material.applyProperties(b -> b.sampler("_Fields", 0, field).set1i("_Count", used));   // texture(_Fields, vec3(uv, k))
 rec.readback(field, 0, 0, 0, k, w, h, 1, data -> check(data));                         // layer k
 ```
@@ -189,7 +189,7 @@ holds. Beside the current target the device's
 pass attaches the host's colour and depth as imported textures, so the host's own framebuffer is never changed. The world's normal target is the user (`render/world/CLAUDE.md`).
 
 ```java
-recording.raster("world.normalsClear").color(normals, CgLoad.clear(0, 0, 0, 0)).constants(constants).end();
+recording.raster("world.normalsClear").color(normals, CgLoad.CLEAR).constants(constants).end();
 CgRasterPass pass = recording.raster("world.opaque").color(CgGraphTexture.current(), CgLoad.load())
         .color(normals, CgLoad.load()).constants(constants).state(state);
 chunks.draw(material.pipeline(CgInstanceKind.OBJECT).as(CgPipelineForm.NORMALS), bindings, mesh);    // writes both slots
@@ -220,7 +220,7 @@ recording.raster("world.scene").color(scene, CgLoad.load()).depth(CgGraphTexture
 CgGraphTexture depth = CgGraphTexture.transientTexture("map_depth", CgTextureDesc.of(s, s, CgFormat.DEPTH32_FLOAT));
 CgGraphTexture map = CgGraphTexture.transientTexture("map", CgTextureDesc.of(s, s, CgFormat.R32_FLOAT));
 recording.raster("sun.map").color(map, CgLoad.clear(1e30f, 0, 0, 0))
-        .depth(depth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(constants);   // clears both
+        .depth(depth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE).constants(constants);   // clears both
 ```
 
 - Only a depth of the graph's may be cleared by a pass's `depth(...)`: an external target's is its owner's, and the pass throws.
@@ -335,7 +335,7 @@ same way. Counters `graph.target-copies` (blits) and `graph.depth-copies-shared`
 state that says `DepthWrite OFF` keeps the copy alive; one that says nothing ends it.
 
 ```java
-recording.raster("world.glow").color(glow, CgLoad.clear(0, 0, 0, 0)).constants(constants)
+recording.raster("world.glow").color(glow, CgLoad.CLEAR).constants(constants)
         .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);
 ```
 

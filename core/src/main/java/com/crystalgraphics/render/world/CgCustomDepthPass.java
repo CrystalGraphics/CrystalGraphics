@@ -45,7 +45,7 @@ final class CgCustomDepthPass {
     /** CustomDepth and CustomStencil (CgFrameKeys.CUSTOM_DEPTH): Unreal's PF_DepthStencil, cleared to far and 0. */
     static final CgFormat CUSTOM_DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT_STENCIL8;
 
-    static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.clearDepth(1.0).andStencil(0);
+    static final CgLoad CUSTOM_DEPTH_CLEAR = CgLoad.CLEAR_DEPTH.andStencil(0);
 
     static final int GPU_CUSTOM_DEPTH = CgGpuTrace.name("world.customDepth");
 

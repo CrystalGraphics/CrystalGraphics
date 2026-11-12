@@ -28,14 +28,14 @@ import java.util.Objects;
  *
  * <pre>{@code
  * CgRasterPass pass = rec.raster("ui.layer")
- *         .color(layer, CgLoad.clear(0, 0, 0, 0))
+ *         .color(layer, CgLoad.CLEAR)
  *         .constants(constants).state(uiState).order(CgOrder.LOOKBACK);
  * pass.add(chunk);
  * pass.add(otherChunk);
  * pass.end();                // the layer's contents are complete: a draw recorded after this reads them
  *
  * rec.raster("world.glow")
- *         .color(glow, CgLoad.clear(0, 0, 0, 0))
+ *         .color(glow, CgLoad.CLEAR)
  *         .color(normals, CgLoad.load())                                 // colour 1
  *         .depth(sceneDepth, CgLoad.load(), CgDepthAccess.WRITE)
  *         .reads(noise)                                                   // a graph texture its draws sample
@@ -224,8 +224,8 @@ public final class CgRasterPass extends CgPass {
      *
      * <pre>{@code
      * CgRasterPass pass = rec.raster("preview")
-     *         .color(picture, CgLoad.clear(0, 0, 0, 0))
-     *         .depth(depth, CgLoad.clearDepth(1f), CgDepthAccess.WRITE)
+     *         .color(picture, CgLoad.CLEAR)
+     *         .depth(depth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE)
      *         .camera(CgCamera.perspective(60f, 1f, 0.05f, 100f).lookAt(eye, target));
      * pass.draw(mesh, material).transform(model).customData(0, r, g, b, 1f);
      * pass.end();
@@ -314,7 +314,7 @@ public final class CgRasterPass extends CgPass {
      * colour or keeps it; a depth is declared with {@link #depth}.
      *
      * <pre>{@code
-     * rec.raster("ui.layer").color(layer, CgLoad.clear(0, 0, 0, 0));
+     * rec.raster("ui.layer").color(layer, CgLoad.CLEAR);
      * rec.raster("world.opaque").color(scene, CgLoad.load()).color(normals, CgLoad.load());   // normals are colour 1
      * }</pre>
      *
@@ -337,7 +337,7 @@ public final class CgRasterPass extends CgPass {
      *
      * <pre>{@code
      * rec.raster("bloom.down").color(bloom, 2, 0, CgLoad.load()).constants(constants.resolution(w >> 2, h >> 2));
-     * for (int k = 0; k < used; k++) rec.raster("field.slot").color(field, 0, k, CgLoad.clear(0, 0, 0, 0));
+     * for (int k = 0; k < used; k++) rec.raster("field.slot").color(field, 0, k, CgLoad.CLEAR);
      * }</pre>
      *
      * <ul>
@@ -399,7 +399,7 @@ public final class CgRasterPass extends CgPass {
      * {@code load} clears depth and stencil or keeps them. A pass declaring a depth and no colour draws depth alone.
      *
      * <pre>{@code
-     * rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 1)).depth(pictureDepth, CgLoad.clearDepth(1), CgDepthAccess.WRITE);
+     * rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 1)).depth(pictureDepth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE);
      * rec.raster("world.base").color(scene, CgLoad.load()).depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE);
      * }</pre>
      *
@@ -484,7 +484,7 @@ public final class CgRasterPass extends CgPass {
      * sample by normalized uv ({@code gl_FragCoord.xy / CG_RESOLUTION}). Declare its colour first.
      *
      * <pre>{@code
-     * rec.raster("world.glow").color(glow, CgLoad.clear(0, 0, 0, 0))
+     * rec.raster("world.glow").color(glow, CgLoad.CLEAR)
      *         .readsDepth(CgGraphTexture.current(), CgBindingPoints.DEPTH_TEXTURE_UNIT);   // occluded by the scene
      * }</pre>
      *

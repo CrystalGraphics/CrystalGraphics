@@ -49,7 +49,7 @@ final class CgCustomDataPass {
      */
     static final CgLoad HOST_LIT_CLEAR = CgLoad.clear(256f, 0f, 0f, 0f);
 
-    static final CgLoad DEPTH_CLEAR = CgLoad.clearDepth(1.0).andStencil(0);
+    static final CgLoad DEPTH_CLEAR = CgLoad.CLEAR_DEPTH.andStencil(0);
 
 
     /** A custom-data pipeline's state tested against the host's depth and writing none ({@link #recordCustomData}). */

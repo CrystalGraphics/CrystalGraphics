@@ -415,8 +415,8 @@ seen through a `CgCamera`, executed now:
 CgCamera camera = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(CgFrameClock.seconds());
 CgRecording rec = new CgRecording();
 CgRasterPass pass = rec.raster("preview")
-        .color(picture, CgLoad.clear(0, 0, 0, 0))
-        .depth(depth, CgLoad.clearDepth(1f), CgDepthAccess.WRITE)
+        .color(picture, CgLoad.CLEAR)
+        .depth(depth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE)
         .camera(camera);
 pass.draw(mesh, material).transform(model).customData(0, r, g, b, 1f);   // the engine writes the record
 pass.end();

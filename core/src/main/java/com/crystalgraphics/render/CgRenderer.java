@@ -32,8 +32,8 @@ import java.util.List;
  * CgRecording rec = new CgRecording();
  * CgGraphTexture picture = CgGraphTexture.requested("preview", CgTextureDesc.of(256, 256, CgFormat.RGBA8));
  * CgRasterPass pass = rec.raster("preview")
- *         .color(picture, CgLoad.clear(0, 0, 0, 0))
- *         .depth(rec.scratch("preview.depth", ...), CgLoad.clearDepth(1f), CgDepthAccess.WRITE)
+ *         .color(picture, CgLoad.CLEAR)
+ *         .depth(rec.scratch("preview.depth", ...), CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE)
  *         .camera(CgCamera.perspective(60f, 1f, 0.05f, 100f).lookAt(eye, target));
  * pass.draw(mesh, material).transform(model);
  * pass.end();

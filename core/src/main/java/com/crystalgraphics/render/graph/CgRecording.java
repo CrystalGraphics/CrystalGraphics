@@ -39,7 +39,7 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
  * CgGraphTexture layer = CgGraphTexture.transientTexture("fade", desc);
  *
  * CgRasterPass frame = rec.raster("recording.surface").color(surface, CgLoad.load()).constants(constants).state(uiState).order(CgOrder.LOOKBACK);
- * CgRasterPass inner = rec.raster("recording.layer").color(layer, CgLoad.clear(0, 0, 0, 0)).constants(constants).state(uiState).order(CgOrder.LOOKBACK);
+ * CgRasterPass inner = rec.raster("recording.layer").color(layer, CgLoad.CLEAR).constants(constants).state(uiState).order(CgOrder.LOOKBACK);
  * inner.add(rec.chunks().begin() ... .end());
  * inner.end();                                     // the layer is written
  * frame.add(compositeOf(layer));                   // reads it: the graph runs `inner` first
@@ -240,7 +240,7 @@ public final class CgRecording {
      *
      * <pre>{@code
      * CgRasterPass pass = rec.raster("bloom.source")
-     *         .color(glow, CgLoad.clear(0, 0, 0, 0))
+     *         .color(glow, CgLoad.CLEAR)
      *         .reads(sceneColor)
      *         .constants(constants);
      * pass.add(chunk);

@@ -49,11 +49,11 @@ import com.crystalgraphics.render.graph.CgDepthAccess;
  *
  * <pre>{@code
  * CgCanvas canvas = new CgCanvas();
- * canvas.recordInto(frame, frameTarget, CgLoad.clear(0, 0, 0, 0), screen);   // the frame's passes start here
+ * canvas.recordInto(frame, frameTarget, CgLoad.CLEAR, screen);   // the frame's passes start here
  * canvas.scissor(x, y, w, h);                                                // what draws after this is clipped
  * canvas.quad(box).at(x, y).size(w, h).submit();
  * canvas.view(window, layerX, layerY);                                       // the layer's place in root space
- * canvas.recordInto(frame, layer, CgLoad.clear(0, 0, 0, 0), layerOrtho);     // another target; the pass ends
+ * canvas.recordInto(frame, layer, CgLoad.CLEAR, layerOrtho);     // another target; the pass ends
  * canvas.view(0, 0f, 0f);
  * canvas.recordInto(frame, frameTarget, CgLoad.load(), screen);              // back, in a pass after the layer
  * canvas.stop();                                                             // everything drawn lands

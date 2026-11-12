@@ -1442,7 +1442,7 @@ public final class CgWorldLights {
             sunConstants.view.identity();
             sunConstants.projection.identity();
             CgRasterPass pass = recording.raster("world.sunMap").color(sunMap, SUN_CLEAR)
-                    .depth(sunDepth, CgLoad.clearDepth(1.0), CgDepthAccess.WRITE).constants(sunConstants).timed(GPU_SUN);
+                    .depth(sunDepth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE).constants(sunConstants).timed(GPU_SUN);
             CgChunkBuilder chunks = recording.chunks().begin();
             float length = (float) Math.sqrt(sunDirection[0] * sunDirection[0] + sunDirection[1] * sunDirection[1]
                     + sunDirection[2] * sunDirection[2]);

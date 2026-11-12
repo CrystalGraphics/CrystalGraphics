@@ -11,7 +11,7 @@ import org.joml.Vector3fc;
  *
  * <pre>{@code
  * CgCamera camera = CgCamera.perspective(60f, w / (float) h, 0.05f, 100f).lookAt(eye, target).time(seconds);
- * rec.raster("preview").color(picture, CgLoad.clear(0, 0, 0, 0)).camera(camera);
+ * rec.raster("preview").color(picture, CgLoad.CLEAR).camera(camera);
  *
  * CgCamera screen = CgCamera.screen(w, h);   // pixels, y down, as a UI draws
  * }</pre>
