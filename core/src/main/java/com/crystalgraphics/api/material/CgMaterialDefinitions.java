@@ -125,7 +125,7 @@ public final class CgMaterialDefinitions {
             throw new CgAssetException(id + " turns depth_test off on a " + blend + " blend: only a translucent blend may"
                     + " (Unreal's bDisableDepthTest)");
         }
-        CgMaterialPermutation permutation = CgMaterialPermutation.of(archetypes.resolve(shader),
+        CgMaterialPermutation permutation = CgMaterialPermutation.of(shader,
                 new TreeSet<>(keywords), blend, "masked".equals(blend), depthTest, shading);
 
         Map<String, float[]> constants = new LinkedHashMap<>();

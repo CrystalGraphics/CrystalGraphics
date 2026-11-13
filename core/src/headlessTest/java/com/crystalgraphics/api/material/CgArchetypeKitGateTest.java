@@ -27,14 +27,15 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
- * Every kit material on an archetype the engine has ported compiles against it with its keywords, values and textures.
+ * Every kit material compiles against its kit's own archetype with its keywords, values and textures.
  * Runs over {@code -Pkits=<namespace>=<dir>;...}; skipped without, since the kits are private. A kit's own programs
- * resolve only with {@code -PkitRoots} naming a folder that holds them as {@code assets/<kit>/shaders}, and a kit's
+ * (its archetypes) resolve only with {@code -PkitRoots} naming a folder that holds them as
+ * {@code assets/<kit>/shaders}, and a kit's
  * shading models only with {@code -PkitShading=<namespace>=<kit dir>;...}.
  */
 public class CgArchetypeKitGateTest {
 
-    /** The archetypes written so far, in census order. A new one joins here. */
+    /** The NSUNS4 kit's archetypes, in census order: its materials on them must all compile. */
     static final Set<String> BUILT = new HashSet<>(Arrays.asList("cc2_effect", "cc2_toon", "cc2_outline",
             "cc2_scene_distortion", "cc2_scene_luma_ramp", "cc2_water", "cc2_surface", "cc2_scene_channel_ramp",
             "cc2_scene_tint"));

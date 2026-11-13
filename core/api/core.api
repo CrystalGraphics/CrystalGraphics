@@ -817,12 +817,9 @@ com/crystalgraphics/api/material/CgMaterial
 com/crystalgraphics/api/material/CgMaterialArchetypes
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final ENGINE_ARCHETYPES Ljava/lang/String;
   field public,static,final FILES Lcom/crystalgraphics/api/material/CgMaterialArchetypes;
   method public domain (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
-  method public resolve (Ljava/lang/String;)Ljava/lang/String;
   method public,abstract parse (Ljava/lang/String;)Lcom/crystalgraphics/material/parse/CgParsedShader;
-  method public,static engineArchetype (Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/api/material/CgMaterialDefinition
   access public,final,record
   extends java/lang/Record
