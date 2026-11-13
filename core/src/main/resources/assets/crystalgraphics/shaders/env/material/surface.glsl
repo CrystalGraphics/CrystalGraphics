@@ -1,7 +1,7 @@
 #pragma once
 // What a #domain surface material's vertex() and surface() take: included ahead of the material's own code, before
 // cg_env.glsl, so it declares types only. The engine fills a CgVertex from the material's vertex factory, and a
-// CgSurface with its defaults before surface() runs (CgMaterialFormat).
+// CgSurface with its defaults before surface() runs (CgGlslWriter).
 
 // A vertex as its factory supplies it. world is camera-relative and the one value the engine projects: move it to move
 // the vertex (World Position Offset), or assign it outright where the material places its own vertices.

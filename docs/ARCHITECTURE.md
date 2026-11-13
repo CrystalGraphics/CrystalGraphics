@@ -103,7 +103,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `render/draw/CLAUDE.md` | `CgPipeline` (a CPU key), `CgMaterialBindings` (a material's version, handles), `CgFrameBindings` (a frame's index), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
 | `render/graph/CLAUDE.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor` and its encoders, `CgDraw` — the frame graph |
 | `material/CLAUDE.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |
-| `material/parse/CLAUDE.md` | `CgShaderParser` facade, `CgParsedShader`, `CgMaterialShaderCompiler`, sub-parsers |
+| `material/shader/CLAUDE.md` | `CgShaderSpec.read`, the domains, `CgGlslWriter`; `syntax/` (lexer, tree, grammars, `CgShaderError`) and `glsl/` |
 | `compute/CLAUDE.md` | `CgCompute`, `CgKernel`, `.compute` parsing and emission, `CgKernelProgram` — kernels |
 
 ### Shaders

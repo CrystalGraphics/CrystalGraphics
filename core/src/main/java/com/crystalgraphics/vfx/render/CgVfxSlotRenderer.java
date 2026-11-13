@@ -2,6 +2,7 @@ package com.crystalgraphics.vfx.render;
 
 import com.crystalgraphics.api.material.CgMaterialArchetypes;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -9,7 +10,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -165,7 +166,7 @@ public final class CgVfxSlotRenderer {
             else if (d != null) throw new IllegalArgumentException(who + "'s material " + material + " is not a material");
         }
         if (definition != null && definition.tube() != null && slot.kind() != CgVfxSlot.Kind.TUBE
-                && !CgMaterialArchetypes.FILES.parse(definition.permutation().shader()).featureNames()
+                && !CgMaterialArchetypes.FILES.parse(definition.permutation().shader()).features()
                         .contains(CgVfxSlot.Kind.TUBE.keyword())) {
             throw new IllegalArgumentException(who + " draws " + material + ", whose archetype needs a tube (\"Tube\" = \""
                     + definition.tube() + "\"), on " + slot);
@@ -253,7 +254,7 @@ public final class CgVfxSlotRenderer {
 
     /** The tube geometry its material's archetype needs; null for the chunked tube or no definition. */
     @Nullable
-    public CgParsedShader.Tube tube() {
+    public CgShaderSpec.Tube tube() {
         return definition == null ? null : definition.tube();
     }
 
@@ -592,7 +593,7 @@ public final class CgVfxSlotRenderer {
                 String stem = shader.endsWith(".shader") ? shader.substring(0, shader.length() - ".shader".length()) : shader;
                 CgMaterialDefinition.Builder b = CgMaterialDefinition.of((owner != null ? owner : stem) + "/" + tree.get("id"),
                         shader);
-                b.order(order != null ? order : CgMaterialArchetypes.FILES.parse(shader).getPassByLightMode("Distortion") != null
+                b.order(order != null ? order : CgMaterialArchetypes.FILES.parse(shader).pass(CgRenderPassVariant.DISTORTION) != null
                         ? 2 * CgVfxLook.BAND : CgVfxLook.SURFACE);
                 for (Consumer<CgMaterialDefinition.Builder> step : made) step.accept(b);
                 definition = b.build();

@@ -31,7 +31,7 @@ This is the top of the CrystalShader material stack.
 | `CgMaterialManifest` | A move's permutations by slot-kind keyword and half size: what a precache request builds (`CgPipelinePrecache.request(p -> p.add(manifest))`) |
 | `CgMaterialRoute`, `CgMaterialRow` | The three routes a value takes (constant, row, global) and one draw's row of a definition, written by slot |
 | `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, declarations)`, or `registerKit(namespace, folder)` reading the kit's `shading.yaml`, `shading:` name to `index`, `base`, `keyword`); `SURFACE`, `POST`, `DECAL`, `UI` (a text paint is a UI material on `Primitive Text`), `GLOBAL`, read from a file's `#domain` line |
-| `CgVertexFactory` | What draws a `#domain surface` material (Unreal's vertex factory). A factory is a file, `VertexFactory Name` resolving `crystalgraphics:shaders/factories/Name.factory` and `ns:Name` its namespace's, read at first use (`material.parse.CgFormatTemplates`, which has the file's shape); the engine's seven are files (`Mesh`, `Procedural`, `Sprites`, `MeshParticles`, `Tube`, `TubeClosed`, `TubeVolume`). This class registers one built in Java (`register(builder(name).vertexType(..).fill(..)...build())`, `get`, `all`), found before a file. A factory brings its engine buffers, declarations, properties its draws bind, material tags and a parameters variable (`cg_Particle`) whose fields `surface()` names are passed to the fragment, one interpolator each (`_cg_in_` v2f fields). `v.normal` is world-space. A name registered twice throws |
+| `CgVertexFactory` | What draws a `#domain surface` material (Unreal's vertex factory). A factory is a file, `VertexFactory Name` resolving `crystalgraphics:shaders/factories/Name.factory` and `ns:Name` its namespace's, read at first use (`material.shader.CgShaderTemplates`, which has the file's shape); the engine's seven are files (`Mesh`, `Procedural`, `Sprites`, `MeshParticles`, `Tube`, `TubeClosed`, `TubeVolume`). This class registers one built in Java (`register(builder(name).vertexType(..).fill(..)...build())`, `get`, `all`), found before a file. A factory brings its engine buffers, declarations, properties its draws bind, material tags and a parameters variable (`cg_Particle`) whose fields `surface()` names are passed to the fragment, one interpolator each (`_cg_in_` v2f fields). `v.normal` is world-space. A name registered twice throws |
 | `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `AFTER_DISTORTION` (3500: transparent, drawn after the distortion apply), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `AFTER_DISTORTION_THRESHOLD` (3500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
 
@@ -118,7 +118,7 @@ CgMaterialInstance pane = panes.of(panes.material().keyword("WITH_NOISE", noise 
 ```
 
 **Rules and limits:**
-- Maximum **31 keywords** per shader (a game archetype carries its feature mask and its material's static switches); past 8 its variants sit in a sparse table. Exceeding this throws `CgShaderParseException` at parse time.
+- Maximum **31 keywords** per shader (a game archetype carries its feature mask and its material's static switches); past 8 its variants sit in a sparse table. Exceeding this throws `CgShaderError` at parse time.
 - Keyword names must match `[A-Z][A-Z0-9_]*` — all uppercase, start with a letter.
 - Only names in that shader's `Keywords { }` are accepted — `keyword(name, true)`
   throws `IllegalArgumentException` for an undeclared name; `keyword(name, false)` of one not on answers the material.
@@ -200,7 +200,7 @@ CgMesh mesh = CgMeshShapes.cube(format);
 
 A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order; the
 view's (lightmap, depth, scene colour) are another set's and never collide. A shader declaring more than
-`CgBindingModel.MATERIAL_TEXTURES` fails to load with a `CgShaderParseException` naming the count.
+`CgBindingModel.MATERIAL_TEXTURES` fails to load with a `CgShaderError` naming the count.
 
 ## Ownership Rules
 
@@ -228,7 +228,7 @@ their bindings: never declare them again.
 
 | Package | Relationship |
 |---------|-------------|
-| `material/` | Provides `CgShaderParser` (parse) and `CgMaterialShaderCompiler` (generate GLSL) |
+| `material/` | `material/shader/`: `CgShaderSpec.read` (the spec) and `CgGlslWriter` (its GLSL) |
 | `gpu/resource/` | `CgUniformBuffer` (UBO frame data), `CgShaderBuffer` (SSBO per-object data) |
 | `api/shader/` | `CgShaderPreprocessor`, the source pipeline every shader goes through |
 | `material/` | `CgShader`, what each pass and keyword set compiles into |

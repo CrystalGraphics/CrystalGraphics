@@ -772,7 +772,6 @@ public final class CgWorldRenderer {
         boolean layersOnDevice = CgExecutor.drawsOnDevice();
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
         ready &= builtAs(skinned, proxy.pipeline(CgInstanceKind.OBJECT));
-        if (proxy.hasDepthPass()) ready &= builtAs(skinned, proxy.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT));
         CgPipeline forward = proxy.pipeline(CgInstanceKind.OBJECT);
         if (forward != null) ready &= builtAs(skinned, forward.as(CgPipelineForm.DEPTH));
         // The normals and custom data an opaque draw writes whenever the lights or a post material ask: warm
@@ -1963,7 +1962,7 @@ public final class CgWorldRenderer {
         draws.keys[i] = transparent
                 ? transparentKey(i, queue, distance, view)
                 : CgSortKey.opaque(queue, draws.layers[i].rank(), draws.orders[i], material.getMaterialId(), System.identityHashCode(draws.meshes[i]), distance);
-        boolean prepass = !transparent && (CgMaterialProxy.of(material).hasDepthPass() || queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD);
+        boolean prepass = !transparent && queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD;
         return prepass ? CgWorldDraws.FORWARD_AND_PREPASS : CgWorldDraws.FORWARD;
     }
 

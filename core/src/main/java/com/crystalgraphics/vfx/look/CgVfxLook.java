@@ -9,7 +9,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMeshLods;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.settings.CgQuality;
 
 import java.util.ArrayList;
@@ -127,12 +127,12 @@ public final class CgVfxLook {
 
         /** Whether a tube slot draws it chunk by chunk on a sphere: its archetype's {@code "Tube" = "Volume"}. */
         public boolean volume() {
-            return slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.VOLUME;
+            return slotRenderer != null && slotRenderer.tube() == CgShaderSpec.Tube.VOLUME;
         }
 
         /** Whether a tube slot draws it closed at both ends: its archetype's {@code "Tube" = "Closed"}. */
         public boolean closed() {
-            return slotRenderer != null && slotRenderer.tube() == CgParsedShader.Tube.CLOSED;
+            return slotRenderer != null && slotRenderer.tube() == CgShaderSpec.Tube.CLOSED;
         }
 
         /** The slot it draws on, a slot renderer's; none for an emitter's renderer. */

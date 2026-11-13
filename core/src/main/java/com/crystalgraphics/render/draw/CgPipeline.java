@@ -4,9 +4,9 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.material.CgMaterialShader;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderSpec;
+import com.crystalgraphics.material.shader.CgShaderPermutations;
 
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -94,9 +94,6 @@ public final class CgPipeline {
     private final Set<String> compiled;
     /** {@link #as} answers, by form. */
     private final CgPipeline[] twins = new CgPipeline[CgPipelineForm.ALL.length];
-    /** {@link #slotWrites()}, for the shader revision {@link #slotsRevision}. */
-    private int slots, slotsRevision = -1;
-
     @Nullable
     private CgShader program;
     private int programRevision = -1;
@@ -121,8 +118,8 @@ public final class CgPipeline {
      */
     private void warnOutsideDomain() {
         if (domainWarned) return;
-        CgParsedShader parsed = shader.ensureParsed();
-        CgPermutationDomain domain = parsed == null ? CgPermutationDomain.EMPTY : parsed.permutations();
+        CgShaderSpec parsed = shader.ensureParsed();
+        CgShaderPermutations domain = parsed == null ? CgShaderPermutations.NONE : parsed.permutations();
         if (domain.dimensions().isEmpty()) return;
         domainWarned = true;
         for (List<String> d : domain.dimensions()) {
@@ -207,12 +204,9 @@ public final class CgPipeline {
         if (made != null) return made;
         if ((forms & form.excludes) != 0 || form.forwardOnly && pass != CgRenderPassVariant.FORWARD) return null;
         if (form.forwardOnly) {
-            CgParsedShader parsed = shader.ensureParsed();
+            CgShaderSpec parsed = shader.ensureParsed();
             if (parsed == null || !form.admits(parsed, state)) return null;
-            if (form.singleOutput) {
-                CgParsedPass own = ownPass(parsed);
-                if (own == null || own.fragOutput().isMrt()) return null;
-            }
+            if (form.singleOutput && ownPass(parsed) == null) return null;
         }
         made = INTERNED.computeIfAbsent(new Key(shader, pass, passName, keywords, form.state(state), kind,
                 (forms | bit) & ~form.drops), CgPipeline::register);
@@ -233,23 +227,11 @@ public final class CgPipeline {
 
     /**
      * The colour attachments its program writes, a bit each: slot 0 always, slot 1 for {@link CgPipelineForm#VOLUME},
-     * {@link CgPipelineForm#NORMALS} and {@link CgPipelineForm#LAYER}, and an MRT output's {@code : RTn} slots. A pass drawing into more than one masks every other slot off for it, so an
-     * unwritten output never lands. Render thread.
+     * {@link CgPipelineForm#NORMALS} and {@link CgPipelineForm#LAYER}. A pass drawing into more than one masks every
+     * other slot off for it, so an unwritten output never lands.
      */
     public int slotWrites() {
-        int revision = shader.getRevisionNumber();
-        if (slotsRevision == revision) return slots;
-        int bits = 1;
-        if (has(CgPipelineForm.VOLUME) || has(CgPipelineForm.NORMALS) || has(CgPipelineForm.LAYER)) bits |= 2;
-        CgParsedShader parsed = shader.ensureParsed();
-        CgParsedPass own = ownPass(parsed);
-        if (own != null && own.fragOutput().isMrt()) {
-            bits = 0;
-            for (int location : own.fragOutput().locations()) bits |= 1 << location;
-        }
-        slots = bits;
-        slotsRevision = revision;
-        return bits;
+        return has(CgPipelineForm.VOLUME) || has(CgPipelineForm.NORMALS) || has(CgPipelineForm.LAYER) ? 3 : 1;
     }
 
     private static CgPipeline register(Key key) {
@@ -303,7 +285,7 @@ public final class CgPipeline {
      * {@code clip} or {@code shape}: whatever kind draws it, its pass binds them.
      */
     public boolean readsTables() {
-        CgParsedShader parsed = shader.ensureParsed();
+        CgShaderSpec parsed = shader.ensureParsed();
         if (parsed == null) return false;
         if (parsed != tablesParse) {
             boolean reads = false;
@@ -318,7 +300,7 @@ public final class CgPipeline {
 
     /** {@link #readsTables()}, for the parse it was read from. */
     @Nullable
-    private volatile CgParsedShader tablesParse;
+    private volatile CgShaderSpec tablesParse;
     private volatile boolean tables;
 
     /**
@@ -345,9 +327,9 @@ public final class CgPipeline {
 
     /** The parsed pass it draws: by its name where it has one, else its variant's. */
     @Nullable
-    private CgParsedPass ownPass(@Nullable CgParsedShader parsed) {
+    private CgShaderPass ownPass(@Nullable CgShaderSpec parsed) {
         if (parsed == null) return null;
-        return passName != null ? parsed.getPassByName(passName) : parsed.getPassByLightMode(pass.lightModeName());
+        return passName != null ? parsed.pass(passName) : parsed.pass(pass);
     }
 
     public Set<String> keywords() {

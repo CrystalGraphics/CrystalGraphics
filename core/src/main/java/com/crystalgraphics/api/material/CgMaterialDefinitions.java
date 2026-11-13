@@ -21,7 +21,7 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
 
@@ -78,7 +78,7 @@ public final class CgMaterialDefinitions {
         Object shaderValue = m.get("shader");
         if (!(shaderValue instanceof String)) throw new CgAssetException(id + " names no shader, nor does any parent");
         String shader = (String) shaderValue;
-        CgParsedShader parsed;
+        CgShaderSpec parsed;
         try {
             parsed = archetypes.parse(shader);
         } catch (RuntimeException e) {
@@ -93,9 +93,9 @@ public final class CgMaterialDefinitions {
 
         List<String> keywords = strings(m.get("keywords"));
         for (String k : keywords) {
-            if (!parsed.featureNames().contains(k)) {
+            if (!parsed.features().contains(k)) {
                 throw new CgAssetException(id + " enables keyword " + k + ", which " + shader + " does not declare; it "
-                        + "declares " + parsed.featureNames());
+                        + "declares " + parsed.features());
             }
         }
         Map<Object, Object> state = map(m.get("state"));
@@ -110,7 +110,7 @@ public final class CgMaterialDefinitions {
                         + "registers its own (CgShadingModels.registerKit)");
             }
             String k = model.keyword();
-            if (k != null && parsed.featureNames().contains(k) && !keywords.contains(k)) {
+            if (k != null && parsed.features().contains(k) && !keywords.contains(k)) {
                 keywords = new ArrayList<>(keywords);
                 keywords.add(k);
             }
@@ -189,7 +189,7 @@ public final class CgMaterialDefinitions {
         CgMaterialDefinition d = new CgMaterialDefinition(id, asset.parent() == null ? null : asset.parent().id(),
                 permutation, Collections.unmodifiableMap(constants), Collections.unmodifiableMap(forms),
                 Collections.unmodifiableMap(textures), CgMaterialRowLayout.of(parsed.properties()), draw, order,
-                sortLayer, map(m.get("post")), domain, model, parsed.getPassByLightMode("Distortion") != null, parsed.tube(),
+                sortLayer, map(m.get("post")), domain, model, parsed.pass(CgRenderPassVariant.DISTORTION) != null, parsed.tube(),
                 usage, Collections.unmodifiableMap(m));
         for (String name : forms.keySet()) {
             if (d.route(name) == CgMaterialRoute.ROW) d.requireRow(name, "its bind");
@@ -201,15 +201,15 @@ public final class CgMaterialDefinitions {
      * What draws a material: its file's {@code usage}, static mesh where it lists none, each checked against what its
      * archetype can be compiled for (see {@link CgMaterialUsage}).
      */
-    private static Set<CgMaterialUsage> usage(String id, String shader, CgParsedShader parsed, List<String> names) {
+    private static Set<CgMaterialUsage> usage(String id, String shader, CgShaderSpec parsed, List<String> names) {
         Set<CgMaterialUsage> usage = EnumSet.noneOf(CgMaterialUsage.class);
         for (String n : names) usage.add(CgMaterialUsage.of(n));
         if (usage.isEmpty()) usage.add(CgMaterialUsage.STATIC_MESH);
         Set<CgMaterialUsage> serves = EnumSet.noneOf(CgMaterialUsage.class);
         for (CgMaterialUsage u : CgMaterialUsage.values()) {
-            // What a particle program takes undeclared (CgParsedShader.implicitFeatures) says nothing of what it serves
+            // What a particle program takes undeclared (CgShaderSpec.implicitFeatures) says nothing of what it serves
             String k = u.keyword();
-            if (k != null && parsed.featureNames().contains(k) && !parsed.implicitFeatures().contains(k)) serves.add(u);
+            if (k != null && parsed.features().contains(k) && !parsed.implicitFeatures().contains(k)) serves.add(u);
         }
         boolean particles = parsed.engineBuffers().contains("particle");
         // With no usage keyword a particle program is placed by each particle factory

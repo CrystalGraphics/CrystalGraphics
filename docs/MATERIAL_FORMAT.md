@@ -64,6 +64,12 @@ Every block is optional except `#domain` and the domain's function. Comments are
 `#pragma`, `Pass`, `Tags` or `Queue`: each has a better-named home below, and writing one fails with a message saying
 where it went.
 
+A file that breaks a rule fails to load with the place and the reason, as an editor reads them:
+
+```
+mymod:shaders/moss.shader:3:22: 'BlendMode Glassy' is one of [Opaque, Masked, Translucent, AlphaComposite, Additive, Modulate, Subtract]
+```
+
 ---
 
 ## 3. Domains: what the file is
@@ -840,6 +846,5 @@ Write a `surface`, `post` or `ui` material instead wherever one fits.
 | The engine's factories | `crystalgraphics:shaders/factories/*.factory` |
 | The engine's ui primitives | `crystalgraphics:shaders/canvas/primitives/*.primitive` |
 | The structs `vertex()` and `surface()` take | `crystalgraphics:shaders/env/material/surface.glsl` |
-| How a format file becomes passes (engine side) | `material/parse/CgMaterialFormat`, `CgFormatTemplates` |
-| The older `Pass { }` format, still read for unconverted shaders | [`SHADERS.md`](SHADERS.md) |
+| How a format file becomes passes (engine side) | `material/shader/`: `SurfaceDomain`, `GlobalDomain`, `PostDomain`, `UiDomain`, `CgShaderTemplates`; its `CLAUDE.md` |
 | Precaching a material you draw | [`PRECACHE.md`](PRECACHE.md) |

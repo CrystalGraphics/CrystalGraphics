@@ -1,7 +1,7 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.shader.CgShaderPermutations;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -81,7 +81,7 @@ public interface CgMaterialInterface {
      * The keywords a renderer switches on its shader at runtime (its {@code switched} keywords and one-ofs), from the parse alone:
      * every combination a precache of the shader builds.
      */
-    default CgPermutationDomain permutations() {
+    default CgShaderPermutations permutations() {
         return material().permutations();
     }
 

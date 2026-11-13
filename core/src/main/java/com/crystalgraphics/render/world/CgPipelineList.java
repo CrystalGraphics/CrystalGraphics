@@ -18,7 +18,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.shader.CgShaderPermutations;
 
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -166,7 +166,7 @@ public final class CgPipelineList {
     private static void forEachVariant(Map<String, CgMaterial> probes, String shader, String[] keywords,
                                        Consumer<CgMaterial> sink) {
         CgMaterial base = probe(probes, shader, Arrays.asList(keywords));
-        CgPermutationDomain domain = base.permutations();
+        CgShaderPermutations domain = base.permutations();
         if (domain.dimensions().isEmpty()) {
             sink.accept(base);
             return;

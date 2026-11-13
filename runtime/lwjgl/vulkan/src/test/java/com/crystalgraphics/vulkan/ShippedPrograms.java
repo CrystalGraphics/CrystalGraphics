@@ -1,13 +1,14 @@
 package com.crystalgraphics.vulkan;
 
-import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 
 import java.net.URI;
 import java.nio.file.FileSystem;
@@ -57,34 +58,32 @@ public final class ShippedPrograms {
                 failures.add(shader.lastCompileError());
                 continue;
             }
-            CgParsedShader parsed = shader.getLastParsed();
-            CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            for (CgParsedPass pass : parsed.passes()) {
+            CgShaderSpec parsed = shader.getLastParsed();
+            CgShaderPass forward = parsed.pass(CgRenderPassVariant.FORWARD);
+            for (CgShaderPass pass : parsed.passes()) {
                 List<Set<String>> variants = pass != forward ? List.of(Set.of())
-                        : everySubset ? variants(parsed.featureNames()) : singles(parsed.featureNames());
+                        : everySubset ? variants(parsed.features()) : singles(parsed.features());
                 for (Set<String> keywords : variants) {
                     programs++;
                     each.accept(path, shader, pass.name(), keywords);
                 }
             }
             String depth = CgRenderPassVariant.DEPTH.lightModeName();
-            if (parsed.getPassByName(depth) == null && shader.hasCompiledPass(depth)) {   // the generated depth pass
+            if (parsed.pass(depth) == null && shader.hasCompiledPass(depth)) {   // the generated depth pass
                 programs++;
                 each.accept(path, shader, depth, Set.of());
             }
-            if (forward != null && !forward.fragOutput().isMrt()) {   // the world renderer's volume pass, folded or not
-                List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET)));
-                if (CgMaterialShaderCompiler.sceneFolds(parsed)) {
-                    volumes.add(Set.of(CgMaterialShaderCompiler.VOLUME_TARGET, CgMaterialShaderCompiler.SCENE_FOLD));
+            if (forward != null) {   // the world renderer's volume pass, folded or not
+                List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgEngineKeywords.VOLUME_TARGET)));
+                if (parsed.sceneFolds()) {
+                    volumes.add(Set.of(CgEngineKeywords.VOLUME_TARGET, CgEngineKeywords.SCENE_FOLD));
                 }
                 for (Set<String> keywords : volumes) {
                     programs++;
                     each.accept(path, shader, forward.name(), keywords);
                 }
             }
-            CgMaterial material = CgMaterial.load(path);
-            if (parsed.renderQueue() < 3000 && forward != null && !CgMaterialProxy.of(material).hasDepthPass()
-                    && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
+            if (parsed.queue() < 3000 && forward != null && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
                 failures.add(path + ": the generated depth pass did not link (see log)");
         }
         return programs;
@@ -107,17 +106,17 @@ public final class ShippedPrograms {
      * a particle shader's programs past the test's heap.
      */
     private static List<Set<String>> variants(List<String> names) {
-        List<String> kinds = List.of(CgMaterialShaderCompiler.STRIP_BEAM, CgMaterialShaderCompiler.STRIP_ANIM);
+        List<String> kinds = List.of(CgEngineKeywords.STRIP_BEAM, CgEngineKeywords.STRIP_ANIM);
         List<String> plain = new ArrayList<>(names);
         plain.removeAll(kinds);
         List<Set<String>> out = subsets(plain);
-        if (!plain.contains(CgMaterialShaderCompiler.STRIP)) return out;
+        if (!plain.contains(CgEngineKeywords.STRIP)) return out;
         for (String kind : kinds) {
             if (!names.contains(kind)) continue;
-            out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind)));
+            out.add(new LinkedHashSet<>(List.of(CgEngineKeywords.STRIP, kind)));
             for (String other : plain) {
-                if (!other.equals(CgMaterialShaderCompiler.STRIP)) {
-                    out.add(new LinkedHashSet<>(List.of(CgMaterialShaderCompiler.STRIP, kind, other)));
+                if (!other.equals(CgEngineKeywords.STRIP)) {
+                    out.add(new LinkedHashSet<>(List.of(CgEngineKeywords.STRIP, kind, other)));
                 }
             }
         }
@@ -128,8 +127,8 @@ public final class ShippedPrograms {
     private static List<Set<String>> singles(List<String> names) {
         List<Set<String>> out = new ArrayList<>(List.of(Set.of()));
         for (String name : names) {
-            boolean kind = name.equals(CgMaterialShaderCompiler.STRIP_BEAM) || name.equals(CgMaterialShaderCompiler.STRIP_ANIM);
-            out.add(kind ? Set.of(CgMaterialShaderCompiler.STRIP, name) : Set.of(name));
+            boolean kind = name.equals(CgEngineKeywords.STRIP_BEAM) || name.equals(CgEngineKeywords.STRIP_ANIM);
+            out.add(kind ? Set.of(CgEngineKeywords.STRIP, name) : Set.of(name));
         }
         return out;
     }

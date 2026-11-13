@@ -1,6 +1,7 @@
 package com.crystalgraphics.compute.parse;
 
-import com.crystalgraphics.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
+import com.crystalgraphics.material.shader.syntax.CgShaderText;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -46,7 +47,7 @@ final class GlslText {
             if (c == '{') depth++;
             else if (c == '}' && --depth == 0) return i;
         }
-        throw CgShaderParseException.at("[" + path + "] '{' is never closed", text, open);
+        throw CgShaderError.at(new CgShaderText(text, path), open, "'{' is never closed");
     }
 
     /** The end of the line holding {@code at}: its newline's offset, or the text's length. */

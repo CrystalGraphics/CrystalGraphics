@@ -49,7 +49,7 @@ public class CgMaterialShaderFailureStateTest {
                 + "otherwise enableKeyword() blames the author's #pragma for a codegen bug",
                 shader.getLastParsed());
         assertNotNull("Declared feature names must survive a compile failure",
-                shader.getLastParsed().featureNames());
+                shader.getLastParsed().features());
     }
 
     /** And it must latch, or the next lazy-compile guard re-attempts it immediately. */

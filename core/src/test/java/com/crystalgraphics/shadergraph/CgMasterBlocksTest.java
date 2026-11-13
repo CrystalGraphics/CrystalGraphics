@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -10,7 +10,7 @@ import static org.junit.Assert.*;
  *
  * <h3>What is actually being asserted</h3>
  * <p>Same load-bearing assertion as {@code CgShaderEmitterTest}: that the emitted file <b>parses</b>
- * through the real {@code CgShaderParser}. A substring check passes happily while emitting GLSL the
+ * through the real {@code CgShaderSpec.read}. A substring check passes happily while emitting GLSL the
  * parser rejects, and every test here adds a new statement to the fragment body — exactly where that
  * would go wrong.</p>
  *
@@ -47,7 +47,7 @@ public class CgMasterBlocksTest {
     private static CgShaderEmitter.Result emit(CgShaderGraph graph, CgMasterNode master) {
         CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, master);
         assertTrue(String.join("\n", result.errors()), result.ok());
-        assertNotNull("the emitted source must parse", CgShaderParser.parse(result.source()));
+        assertNotNull("the emitted source must parse", CgShaderSpec.read(result.source(), "test:graph.shader"));
         return result;
     }
 
@@ -87,7 +87,7 @@ public class CgMasterBlocksTest {
      *
      * <p>GLSL has no empty struct — {@code struct v2f { };} is a compile error, not an empty type. This
      * shipped with 6.3.5 and hid for as long as nothing fed the emitter's output to a driver:
-     * {@code CgShaderParser} accepts it (structurally it is a fine {@code .shader}), so every test passed
+     * {@code CgShaderSpec.read} accepts it (structurally it is a fine {@code .shader}), so every test passed
      * and the editor's source pane displayed something that looked entirely correct. The first thing to
      * actually compile one was the main preview, which drew a plain white sphere — the material fallback
      * — for a graph whose GLSL was right in every other respect. The driver's own words were
@@ -137,7 +137,7 @@ public class CgMasterBlocksTest {
                 CgShaderEmitter.Shading.PREVIEW_LIT);
 
         assertTrue(String.join("\n", result.errors()), result.ok());
-        assertNotNull("the lit variant must parse", CgShaderParser.parse(result.source()));
+        assertNotNull("the lit variant must parse", CgShaderSpec.read(result.source(), "test:graph.shader"));
 
         String source = result.source();
         assertTrue("it needs a normal to shade with", source.contains("v_cg_preview_normal"));

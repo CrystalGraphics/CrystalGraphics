@@ -282,9 +282,8 @@ final class CgMeshDrawCommands {
         primitiveTables[i] = table;
     }
 
-    /** A material's depth pass, its depth prepass, or its forward pass writing depth alone. */
+    /** A material's depth prepass, or its forward pass writing depth alone. */
     CgPipeline depthPipeline(CgMaterialInterface material) {
-        if (CgMaterialProxy.of(material).hasDepthPass()) return CgMaterialProxy.of(material).pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
         CgPipeline forward = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (forward == null) return null;
         if (CgMaterialProxy.of(material).hasDepthPrepass()) return forward.as(CgPipelineForm.DEPTH);

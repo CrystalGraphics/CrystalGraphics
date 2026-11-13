@@ -7,14 +7,15 @@ import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParseException;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgVarying;
+import com.crystalgraphics.material.shader.CgShaderSpec;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.util.io.CgIO;
@@ -71,7 +72,7 @@ public class MaterialFormatTest {
 
     @Test
     public void aFactoryFadesWhatTheMaterialAddsAndStartsItsSurface() {
-        CgParsedPass forward = parse(path("faded")).passes().get(0);
+        CgShaderPass forward = parse(path("faded")).passes().get(0);
         String body = forward.fragmentBody();
         assertTrue(body, body.contains("s.light = vec2(15.0, 15.0);"));                     // its defaults
         assertTrue(body, body.contains("s.baseColor *= _cg_fade;") && body.contains("s.opacity *= _cg_fade;"));
@@ -122,19 +123,17 @@ public class MaterialFormatTest {
             return 0;
         }
         int programs = 0;
-        CgParsedShader parsed = shader.getLastParsed();
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        for (CgParsedPass pass : parsed.passes()) {
-            for (Set<String> keywords : pass == forward ? variants(parsed.featureNames()) : List.of(Set.<String>of())) {
+        CgShaderSpec parsed = shader.getLastParsed();
+        CgShaderPass forward = parsed.pass(CgRenderPassVariant.FORWARD);
+        for (CgShaderPass pass : parsed.passes()) {
+            for (Set<String> keywords : pass == forward ? variants(parsed.features()) : List.of(Set.<String>of())) {
                 programs++;
                 if (shader.getOrCompile(pass.name(), keywords) == null) {
                     failures.add(path + " pass " + pass.name() + " " + keywords + ": did not build (see log)");
                 }
             }
         }
-        CgMaterial material = CgMaterial.load(path);
-        if (parsed.renderQueue() < 3000 && !CgMaterialProxy.of(material).hasDepthPass()
-                && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName())) {
+        if (parsed.queue() < 3000 && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName())) {
             failures.add(path + ": the generated depth pass did not build (see log)");
         }
         return programs;
@@ -150,22 +149,22 @@ public class MaterialFormatTest {
 
     @Test
     public void worldPositionOffsetReachesTheDepthPass() {
-        CgParsedShader waves = parse(path("waves"));
-        CgParsedPass forward = waves.passes().get(0);
-        assertFalse("the material's vertex() is no simple vertex", CgMaterialShaderCompiler.isSimpleVertex(forward));
+        CgShaderSpec waves = parse(path("waves"));
+        CgShaderPass forward = waves.passes().get(0);
+        assertFalse("the material's vertex() is no simple vertex", forward.simpleVertex());
     }
 
     @Test
     public void aHelperReachesOnlyTheStagesCallingIt() {
-        CgParsedShader waves = parse(path("waves"));
-        String decls = waves.passes().get(0).globalDecls();
-        assertTrue(decls, decls.contains("#if !defined(CG_VERTEX_STAGE)\nfloat ripple("));
-        assertFalse(decls, decls.contains("#if !defined(CG_VERTEX_STAGE)\nfloat wave("));
+        CgShaderSpec waves = parse(path("waves"));
+        CgShaderPass forward = waves.passes().get(0);
+        assertEquals(CgShaderPass.FRAGMENT, stagesOf(forward, "float ripple("));
+        assertEquals(CgShaderPass.VERTEX, stagesOf(forward, "float wave("));
     }
 
     @Test
     public void marksAndTheGlobalDomainAreRead() {
-        CgParsedShader keywords = parse(path("keywords"));
+        CgShaderSpec keywords = parse(path("keywords"));
         for (CgMaterialProperty p : keywords.properties()) {
             if (p.getName().equals("_Tint")) assertTrue("hdr", p.isHdr());
             if (p.getName().equals("_Rough")) assertEquals("range", 1f, p.getRangeMax(), 0f);
@@ -194,9 +193,9 @@ public class MaterialFormatTest {
 
     @Test
     public void meshesAndParticlesTakeTheirOwnFactory() {
-        CgParsedShader both = parse(path("both"));
+        CgShaderSpec both = parse(path("both"));
         for (String usage : List.of("FX_ON_MESH_PARTICLES", "FX_ON_SPRITES", "FX_ON_RIBBONS")) {
-            assertTrue(usage + " declared", both.featureNames().contains(usage));
+            assertTrue(usage + " declared", both.features().contains(usage));
             assertFalse(usage + " served, not taken undeclared", both.implicitFeatures().contains(usage));
         }
         String vertex = both.passes().get(0).vertexBody();
@@ -215,10 +214,10 @@ public class MaterialFormatTest {
     public void aModsFactoryIsReadFromItsFile() {
         assertEquals(List.of("uv0", "_cg_in_Wobble_phase"), fieldNames(parse(path("wobble")).passes().get(0)));
         try {
-            CgShaderParser.parse("#domain surface\nMaterial { VertexFactory cgformat:Nowhere }\n"
+            CgShaderSpec.read("#domain surface\nMaterial { VertexFactory cgformat:Nowhere }\n"
                     + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }\n", "test:nowhere");
             fail("no factory file");
-        } catch (CgShaderParseException expected) {
+        } catch (CgShaderError expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("cgformat:shaders/factories/Nowhere.factory"));
         }
     }
@@ -229,16 +228,21 @@ public class MaterialFormatTest {
         assertEquals(CgMaterialDomain.POST, parse(path("post_chain")).domain());
     }
 
-    private static List<String> fieldNames(CgParsedPass pass) {
+    private static List<String> fieldNames(CgShaderPass pass) {
         List<String> out = new ArrayList<>();
-        for (CgShaderParser.V2fField f : CgShaderParser.parseV2fFields(pass)) out.add(f.name());
+        for (CgVarying v : pass.varyings()) out.add(v.name());
         return out;
     }
 
-    private static CgParsedShader parse(String path) {
+    private static int stagesOf(CgShaderPass pass, String declaration) {
+        for (CgShaderPass.Code c : pass.code()) if (c.text().contains(declaration)) return c.stages();
+        throw new AssertionError(declaration + " is in no chunk of " + pass.name());
+    }
+
+    private static CgShaderSpec parse(String path) {
         String source = CgIO.loadSource(path);
         assertNotNull("no source at " + path, source);
-        return CgShaderParser.parse(source, path);
+        return CgShaderSpec.read(source, path);
     }
 
     private static String path(String name) {

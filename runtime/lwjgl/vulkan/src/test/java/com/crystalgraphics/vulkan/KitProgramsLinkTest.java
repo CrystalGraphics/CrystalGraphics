@@ -19,10 +19,12 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderSpec;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.BeforeClass;
@@ -335,7 +337,7 @@ public class KitProgramsLinkTest {
         try {
             CgMaterialShaderRegistry.get().getOrCreateGenerated(UNFACTORED_PORT).recompile();
             fail("a port loaded against a factory that does not exist");
-        } catch (CgShaderParseException expected) {
+        } catch (CgShaderError expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains("'VertexFactory Nowhere' is no factory"));
         }
     }
@@ -489,14 +491,14 @@ public class KitProgramsLinkTest {
             failures.add(name + ": " + shader.lastCompileError());
             return 0;
         }
-        CgParsedShader parsed = shader.getLastParsed();
+        CgShaderSpec parsed = shader.getLastParsed();
         List<Set<String>> variants = new ArrayList<>();
         variants.add(Set.of());
-        for (String keyword : parsed.featureNames()) variants.add(Set.of(keyword));
-        if (parsed.featureNames().size() > 1) variants.add(new HashSet<>(parsed.featureNames()));
-        if (parsed.engineBuffers().contains("particle")) variants.add(Set.of(CgMaterialShaderCompiler.STRIP));
+        for (String keyword : parsed.features()) variants.add(Set.of(keyword));
+        if (parsed.features().size() > 1) variants.add(new HashSet<>(parsed.features()));
+        if (parsed.engineBuffers().contains("particle")) variants.add(Set.of(CgEngineKeywords.STRIP));
         int programs = 0;
-        for (CgParsedPass pass : parsed.passes()) {
+        for (CgShaderPass pass : parsed.passes()) {
             for (Set<String> keywords : variants) {
                 programs++;
                 if (shader.getOrCompile(pass.name(), keywords) == null) {

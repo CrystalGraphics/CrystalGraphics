@@ -19,10 +19,9 @@ import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgPermutationDomain;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderPermutations;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.draw.CgBlockVersion;
@@ -51,7 +50,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -155,7 +153,7 @@ public final class CgMaterialProxy {
 
     /** The parse {@link #propStore} was built from: a new parse rebuilds it, keeping the values set. */
     @Nullable
-    private CgParsedShader propsParse;
+    private CgShaderSpec propsParse;
 
     /** The properties block as a capture copies it. */
     @Nullable
@@ -172,11 +170,11 @@ public final class CgMaterialProxy {
     @Nullable
     private CgPipeline[] pipelines;
     @Nullable
-    private CgParsedShader pipelinesParse;
+    private CgShaderSpec pipelinesParse;
 
     /**
      * Its enabled keywords, of those its shader declares ({@code Keywords { }}).
-     * Only names present in {@link CgParsedShader#featureNames()} are accepted.
+     * Only names present in {@link CgShaderSpec#featureNames()} are accepted.
      */
     private final Set<String> enabledKeywords = new LinkedHashSet<>();
     /** One view of {@link #enabledKeywords} for every bind: a program lookup hits by its identity. */
@@ -310,8 +308,8 @@ public final class CgMaterialProxy {
 
     /** A material-format one-of ({@code SHAPE = BOX | CYLINDER}) holds one value: a second is refused, naming the first. */
     private void refuseSecondValue(String name) {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
-        if (parsed == null || parsed.domain() == null) return;
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        if (parsed == null) return;
         List<List<String>> dimensions = parsed.permutations().dimensions();
         for (int d = 0; d < dimensions.size(); d++) {   // indexed: keyword() allocates nothing once made
             List<String> one = dimensions.get(d);
@@ -560,10 +558,10 @@ public final class CgMaterialProxy {
      * The keywords a renderer switches on its shader at runtime (its {@code switched} keywords and one-ofs), from the parse alone:
      * every combination a precache of the shader builds.
      */
-    public CgPermutationDomain permutations() {
+    public CgShaderPermutations permutations() {
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed == null ? CgPermutationDomain.EMPTY : parsed.permutations();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed == null ? CgShaderPermutations.NONE : parsed.permutations();
     }
 
     /**
@@ -576,7 +574,7 @@ public final class CgMaterialProxy {
      */
     public boolean declaresBuffer(String name) {
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed != null && parsed.buffer(name) != null;
     }
 
@@ -698,7 +696,7 @@ public final class CgMaterialProxy {
     @Nullable
     private CgRenderState forwardRenderState;
     @Nullable
-    private CgParsedShader forwardRenderStateParse;
+    private CgShaderSpec forwardRenderStateParse;
 
     /**
      * Returns {@code true} if the given keyword is currently enabled on this material instance.
@@ -783,9 +781,9 @@ public final class CgMaterialProxy {
      * The passes of a multi-pass post material that draw into targets of their own, in order; empty for one pass, and
      * while the shader does not parse. The same list until the shader parses again.
      */
-    public List<CgParsedShader.PostTarget> postTargets() {
+    public List<CgShaderSpec.PostTarget> postTargets() {
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed == null ? Collections.emptyList() : parsed.postTargets();
     }
 
@@ -796,7 +794,7 @@ public final class CgMaterialProxy {
     @Nullable
     public String postLocation() {
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed == null ? null : parsed.postLocation();
     }
 
@@ -811,20 +809,11 @@ public final class CgMaterialProxy {
     @Nullable
     public String lastForwardPass() {
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null) return null;
         String last = null;
-        String forward = CgRenderPassVariant.FORWARD.lightModeName();
-        for (CgParsedPass p : parsed.passes()) if (forward.equals(p.lightMode())) last = p.name();
+        for (CgShaderPass p : parsed.passes()) if (p.variant() == CgRenderPassVariant.FORWARD) last = p.name();
         return last;
-    }
-
-    /** The {@code sampler2D} a post material reads what glows through ({@code "Emission"} tag); null for none. */
-    @Nullable
-    public String emissionInput() {
-        checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        return parsed == null ? null : parsed.emissionInput();
     }
 
     /**
@@ -847,11 +836,11 @@ public final class CgMaterialProxy {
     public CgPipeline pipeline(String pass, CgInstanceKind kind) {
         checkNotDeleted();
         if (cgMaterialShader == null) return null;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return null;
-        CgParsedPass own = parsed.getPassByName(pass);
+        CgShaderPass own = parsed.pass(pass);
         if (own == null) return null;
-        return CgPipeline.pass(cgMaterialShader, pass, enabledKeywords, own.renderState(), kind);
+        return CgPipeline.pass(cgMaterialShader, pass, enabledKeywords, own.state(), kind);
     }
 
     /**
@@ -864,11 +853,11 @@ public final class CgMaterialProxy {
     public CgPipeline pipeline(CgRenderPassVariant pass, CgInstanceKind kind) {
         checkNotDeleted();
         if (cgMaterialShader == null) return null;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return null;
         int slot = pass == CgRenderPassVariant.FORWARD ? 0 : pass == CgRenderPassVariant.EMISSIVE ? 1
                 : pass == CgRenderPassVariant.DISTORTION ? 2 : -1;
-        List<String> declared = parsed.featureNames();
+        List<String> declared = parsed.features();
         int mask = keywordMask(declared);
         if (slot < 0 || mask < 0) {
             return CgPipeline.of(cgMaterialShader, pass, enabledKeywords, getPassRenderState(pass), kind);
@@ -974,7 +963,7 @@ public final class CgMaterialProxy {
     @Nullable
     private CgMaterialBindings.Builder building;
     @Nullable
-    private CgParsedShader bindingsParse;
+    private CgShaderSpec bindingsParse;
     /**
      * Per engine uniform block its shader names, the version of what its writer (or this material's override) holds,
      * null where it holds nothing and the block binds as the buffer itself; with each one's slot and buffer.
@@ -1011,7 +1000,7 @@ public final class CgMaterialProxy {
     public CgMaterialProxy buffer(String name, CgBufferHandle buffer) {
         changes++;
         checkNotDeleted();
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null || parsed.buffer(name) == null) {
             throw new IllegalArgumentException("'" + name + "' is no buffer this material's Buffers { } declares");
         }
@@ -1038,10 +1027,10 @@ public final class CgMaterialProxy {
         return current;
     }
 
-    /** Its shader's arena where its values live there ({@link CgParsedShader#valuesInArena}); null otherwise. */
+    /** Its shader's arena where its values live there ({@link CgShaderSpec#valuesInArena}); null otherwise. */
     @Nullable
     private CgMaterialArena arena() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasUboProps()) return null;
         if (arenaFloats < 0) arenaFloats = propStore.buildUboFormat().getFloatCount();
         return cgMaterialShader.arena(arenaFloats);
@@ -1141,12 +1130,12 @@ public final class CgMaterialProxy {
      */
     public CgRenderState getPassRenderState(CgRenderPassVariant variant) {
         if (cgMaterialShader == null) return renderState;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return CgRenderState.DEFAULT;
         if (variant == CgRenderPassVariant.FORWARD) {
             if (forwardRenderState != null && forwardRenderStateParse == parsed) return forwardRenderState;
-            CgParsedPass forwardPass = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-            CgRenderState own = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.renderState();
+            CgShaderPass forwardPass = parsed.pass(CgRenderPassVariant.FORWARD);
+            CgRenderState own = forwardPass == null ? CgRenderState.DEFAULT : forwardPass.state();
             forwardRenderState = state.onPass(own, true);
             forwardRenderStateParse = parsed;
             return forwardRenderState;
@@ -1169,28 +1158,13 @@ public final class CgMaterialProxy {
     private volatile CgRenderState[] passStates;
 
     /**
-     * Returns {@code true} when this material has an explicitly authored Depth pass in the
-     * last successful parse. Based on parse-time pass presence — use to gate a Depth pipeline
-     * ({@link #pipeline(CgRenderPassVariant, CgInstanceKind)}).
-     *
-     * <p>This is a parse-state check (explicit authored {@code [Depth]} block only).
-     * To also detect auto-generated depth variants produced by {@code recompile()},
-     * use {@link #hasCompiledDepthPass()} instead.</p>
-     *
-     * @see #hasCompiledDepthPass()
-     */
-    public boolean hasDepthPass() {
-        return cgMaterialShader != null && cgMaterialShader.hasParsedPass(CgRenderPassVariant.DEPTH.lightModeName());
-    }
-
-    /**
      * Whether this material authors an Emissive pass: the world renderer then draws it into the bloom target too. A
      * parse, never a compile, so it is answered on any thread.
      */
     public boolean hasEmissivePass() {
         if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null;
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.pass(CgRenderPassVariant.EMISSIVE) != null;
     }
 
     /**
@@ -1203,9 +1177,9 @@ public final class CgMaterialProxy {
      */
     public boolean readsExposure() {
         if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.engineBuffers().contains(CgShaderParser.ROWS) && (parsed.linearLight()
-                || parsed.getPassByLightMode(CgRenderPassVariant.EMISSIVE.lightModeName()) != null);
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.engineBuffers().contains(CgShaderSpec.ROWS) && (parsed.linearLight()
+                || parsed.pass(CgRenderPassVariant.EMISSIVE) != null);
     }
 
     /**
@@ -1214,8 +1188,8 @@ public final class CgMaterialProxy {
      */
     public boolean hasDepthPrepass() {
         if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.depthMode() == CgParsedShader.DepthMode.PREPASS;
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.depthMode() == CgShaderSpec.DepthMode.PREPASS;
     }
 
     /**
@@ -1226,10 +1200,10 @@ public final class CgMaterialProxy {
      */
     public boolean writesDepth() {
         if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         if (parsed == null) return false;
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        CgDepthState depth = forward == null ? null : forward.renderState().getDepth();
+        CgShaderPass forward = parsed.pass(CgRenderPassVariant.FORWARD);
+        CgDepthState depth = forward == null ? null : forward.state().getDepth();
         return depth != null && depth.write();
     }
 
@@ -1243,8 +1217,8 @@ public final class CgMaterialProxy {
      */
     public boolean solid() {
         if (!writesDepth()) return false;
-        CgParsedPass forward = cgMaterialShader.ensureParsed().getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        CgBlendState blend = forward.renderState().getBlend();
+        CgShaderPass forward = cgMaterialShader.ensureParsed().pass(CgRenderPassVariant.FORWARD);
+        CgBlendState blend = forward.state().getBlend();
         return blend == null || !blend.enabled();
     }
 
@@ -1254,20 +1228,13 @@ public final class CgMaterialProxy {
      */
     public boolean hasDistortionPass() {
         if (cgMaterialShader == null) return false;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
-        return parsed != null && parsed.getPassByLightMode(CgRenderPassVariant.DISTORTION.lightModeName()) != null;
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.pass(CgRenderPassVariant.DISTORTION) != null;
     }
 
     /**
-     * Returns {@code true} when a compiled depth prepass GL program exists for this material.
-     *
-     * <p>Unlike {@link #hasDepthPass()} (which checks for an explicit authored
-     * {@code [Depth]} pass), this method also returns {@code true} for auto-generated depth
-     * variants produced by {@link CgMaterialShader#recompile()}
-     * during {@code CgMaterialShaderMap.autoGenDepth()}. It is the correct query for
-     * a depth prepass deciding whether to bind {@code DEPTH} or fall back to the forward pass.</p>
-     *
-     * @return {@code true} if a compiled depth variant program is available
+     * Whether its generated depth pass is compiled ({@code CgMaterialShaderMap.autoGenDepth()}, an opaque material's):
+     * what a depth prepass asks before binding {@code DEPTH} rather than falling back to the forward pass.
      */
     public boolean hasCompiledDepthPass() {
         return cgMaterialShader != null && cgMaterialShader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName());
@@ -1301,7 +1268,7 @@ public final class CgMaterialProxy {
      */
     public boolean separateTranslucency() {
         if (state.separateTranslucency()) return true;
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
         return parsed != null && parsed.separateTranslucency();
     }
 
@@ -1310,7 +1277,7 @@ public final class CgMaterialProxy {
      * so the world's lights write their directional volume in a frame that draws it. False until it is parsed.
      */
     public boolean surfaceLit() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
         return parsed != null && parsed.surfaceLit();
     }
 
@@ -1320,13 +1287,13 @@ public final class CgMaterialProxy {
      * until it is parsed.
      */
     public boolean writesCustomData() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
         return parsed != null && parsed.writesCustomData();
     }
 
     /** Whether its shader reads the scene textures it is handed ({@code CG_CUSTOM_STENCIL(}, {@code CG_CUSTOM_DATA(}, ...). */
     public boolean handedScene() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed != null && parsed.handedScene();
     }
 
@@ -1336,7 +1303,7 @@ public final class CgMaterialProxy {
      * the grid bound. False for a shader that cannot be parsed.
      */
     public boolean handedLights() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed != null && parsed.handedLights();
     }
 
@@ -1345,7 +1312,7 @@ public final class CgMaterialProxy {
      * sun's shadow map to its draws. Parses it if nothing has. False for a shader that cannot be parsed.
      */
     public boolean handedSun() {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         return parsed != null && parsed.handedSun();
     }
 
@@ -1358,7 +1325,7 @@ public final class CgMaterialProxy {
      * }</pre>
      */
     public int samplerUnit(String name) {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
         if (parsed == null) return -1;
         int unit = 0;
         for (CgMaterialProperty p : parsed.properties()) {
@@ -1382,16 +1349,8 @@ public final class CgMaterialProxy {
      * </ul>
      */
     public boolean names(String identifier) {
-        CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null) return false;
-        Pattern word = Pattern.compile("\\b" + Pattern.quote(identifier) + "\\b");
-        for (CgParsedPass pass : parsed.passes()) {
-            if (word.matcher(pass.globalDecls()).find() || word.matcher(pass.vertexBody()).find()
-                    || word.matcher(pass.fragmentBody()).find()) {
-                return true;
-            }
-        }
-        return false;
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.names(identifier);
     }
 
     /** As {@link #readsSceneDepth()}, for the scene's colour ({@code cg_SceneColor}). */
@@ -1454,7 +1413,7 @@ public final class CgMaterialProxy {
      */
     private void syncPropsToParse() {
         if (cgMaterialShader == null) return;
-        CgParsedShader parsed = cgMaterialShader.ensureParsed();
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         if (parsed == null || parsed == propsParse) return;
         propsParse = parsed;
         List<CgMaterialProperty> clones = cloneProperties(parsed.properties());
@@ -1485,7 +1444,7 @@ public final class CgMaterialProxy {
      */
     private List<String> getDeclaredFeatureNames() {
         if (cgMaterialShader != null && cgMaterialShader.getLastParsed() != null) {
-            return cgMaterialShader.getLastParsed().featureNames();
+            return cgMaterialShader.getLastParsed().features();
         }
         if (testFeatureNames != null) {
             return testFeatureNames;

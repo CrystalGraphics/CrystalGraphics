@@ -15,8 +15,8 @@ import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.material.parse.CgGlslEmitter;
-import com.crystalgraphics.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.shader.glsl.CgGlslBlocks;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 import java.util.Set;
@@ -42,7 +42,7 @@ import java.util.Set;
  * function that bounds-checks the access, reports one out of range to {@link #CHECK_BLOCK} and skips it; each part of
  * the file is preceded by {@code #line}, so the lines are the file's.</p>
  *
- * @throws CgShaderParseException when the kernel asks for more than the target has: invocations, a size, shared memory
+ * @throws CgShaderError when the kernel asks for more than the target has: invocations, a size, shared memory
  */
 public final class CgKernelEmitter {
 
@@ -156,7 +156,7 @@ public final class CgKernelEmitter {
         for (String token : source.engineBuffers()) {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
             CgShaderBuffer buffer = provider.buffer().get();
-            sb.append(CgGlslEmitter.emitSsbo(buffer.getFormat(), buffer.getName(), provider.macroName(), !general,
+            sb.append(CgGlslBlocks.storageBlock(buffer.getFormat(), buffer.getName(), provider.macroName(), !general,
                     CgBindingModel.token(provider.macroName())));
             if (provider.envPath() != null) include(sb, provider.envPath());
         }
@@ -191,35 +191,35 @@ public final class CgKernelEmitter {
         String named = "[" + source.path() + "] kernel " + kernel.name();
         for (int axis = 0; axis < 3; axis++) {
             if (kernel.size(axis) > target.maxSize(axis)) {
-                throw new CgShaderParseException(named + " is " + kernel.size(axis) + " wide along " + "xyz".charAt(axis)
+                throw new CgShaderError(named + " is " + kernel.size(axis) + " wide along " + "xyz".charAt(axis)
                         + "; this device allows " + target.maxSize(axis));
             }
         }
         int appends = checkPoint(source) - source.buffers().size();
         if (appends > KERNEL_WORDS) {
-            throw new CgShaderParseException(named + "'s file declares " + appends + " append buffers; a kernel takes "
+            throw new CgShaderError(named + "'s file declares " + appends + " append buffers; a kernel takes "
                     + KERNEL_WORDS);
         }
         int samplers = 0;
         for (CgMaterialProperty p : new CgMaterialProperties(source.properties()).all()) if (p.getType().isSampler()) samplers++;
         if (checkPoint(source) + 1 > CgBindingModel.FIRST_KERNEL_IMAGE - CgBindingModel.FIRST_KERNEL_BUFFER
                 || samplers > CgBindingModel.FIRST_KERNEL_BUFFER - CgBindingModel.FIRST_TEXTURE) {
-            throw new CgShaderParseException(named + "'s file declares " + source.buffers().size() + " buffers ("
+            throw new CgShaderError(named + "'s file declares " + source.buffers().size() + " buffers ("
                     + appends + " appending) and " + samplers + " samplers, more than a kernel's set holds");
         }
         if (kernel.groupSize() > target.maxInvocations()) {
-            throw new CgShaderParseException(named + " asks for " + kernel.groupSize() + " invocations a group; this "
+            throw new CgShaderError(named + " asks for " + kernel.groupSize() + " invocations a group; this "
                     + "device allows " + target.maxInvocations());
         }
         boolean emulated = !kernel.subgroups().isEmpty() && !target.nativeSubgroups();
         if (emulated && kernel.subgroups().contains("CG_SUBGROUP_BALLOT") && kernel.groupSize() > 128) {
-            throw new CgShaderParseException(named + " ballots across " + kernel.groupSize() + " invocations; where "
+            throw new CgShaderError(named + " ballots across " + kernel.groupSize() + " invocations; where "
                     + "subgroups are emulated, as on this device, a ballot holds 128");
         }
         if (kernel.sharedBytes() >= 0) {
             int bytes = kernel.sharedBytes() + (emulated ? (kernel.groupSize() + 4) * 4 : 0);
             if (bytes > target.maxSharedMemory()) {
-                throw new CgShaderParseException(named + " holds " + bytes + " bytes of shared memory"
+                throw new CgShaderError(named + " holds " + bytes + " bytes of shared memory"
                         + (emulated ? " (subgroup emulation included)" : "") + "; this device allows "
                         + target.maxSharedMemory());
             }
@@ -268,7 +268,7 @@ public final class CgKernelEmitter {
               .append(p.getName()).append(";\n");
         }
         if (properties.hasUboProps()) {
-            sb.append(CgGlslEmitter.emitUbo(properties.buildUboFormat(), PROPERTY_BLOCK, CgBindingModel.MATERIAL_BLOCK));
+            sb.append(CgGlslBlocks.uniformBlock(properties.buildUboFormat(), PROPERTY_BLOCK, CgBindingModel.MATERIAL_BLOCK));
         }
     }
 

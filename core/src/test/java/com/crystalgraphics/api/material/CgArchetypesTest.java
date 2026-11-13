@@ -10,7 +10,7 @@ import org.junit.Test;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -26,8 +26,8 @@ public class CgArchetypesTest {
 
     @Test
     public void aKitsMaterialCompilesAgainstItsOwnArchetype() {
-        CgParsedShader effect = CgMaterialArchetypes.FILES.parse("cgtest:shaders/kit_effect.shader");
-        assertTrue(effect.featureNames().containsAll(Arrays.asList("SECOND_LAYER", "RIM_FALLOFF")));
+        CgShaderSpec effect = CgMaterialArchetypes.FILES.parse("cgtest:shaders/kit_effect.shader");
+        assertTrue(effect.features().containsAll(Arrays.asList("SECOND_LAYER", "RIM_FALLOFF")));
         Map<String, Object> tree = new LinkedHashMap<>();
         tree.put("_v", 1);
         tree.put("shader", "cgtest:shaders/kit_effect.shader");

@@ -50,7 +50,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  * ({@link CgKernel#cpu}); {@link CgKernel#form()} says which, and the frame graph runs whichever it is.</p>
  *
  * <ul>
- *   <li>A file that fails to parse throws {@code CgShaderParseException} from {@link #load}, naming the file, the
+ *   <li>A file that fails to parse throws {@code CgShaderError} from {@link #load}, naming the file, the
  *       kernel and the line; one that parses but exceeds the device throws from {@link CgKernel#program()}.</li>
  *   <li>{@link #load} and {@link #fromSource} may run on any thread; programs are the render thread's.</li>
  * </ul>

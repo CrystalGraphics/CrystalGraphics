@@ -19,7 +19,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgBinaryAsset;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.github.bsideup.jabel.Desugar;
@@ -62,7 +62,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
                                    Map<String, Texture> textures, CgMaterialRowLayout rows, Draw draw, int order,
                                    String sortLayer, @Nullable Map<Object, Object> post, CgMaterialDomain domain,
                                    @Nullable CgShadingModel shading, boolean distortion,
-                                   @Nullable CgParsedShader.Tube tube, Set<CgMaterialUsage> usage,
+                                   @Nullable CgShaderSpec.Tube tube, Set<CgMaterialUsage> usage,
                                    Map<Object, Object> resolved) {
 
     /**

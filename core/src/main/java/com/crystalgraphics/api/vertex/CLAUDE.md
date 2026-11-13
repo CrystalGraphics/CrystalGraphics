@@ -33,9 +33,9 @@ through `CG_INSTANCE_ID`.
 
 | Package | Relationship |
 |---------|-------------|
-| `api/mesh/`, `render/mesh/` | A mesh's vertices are in one `CgVertexFormat`; the store keeps one pool for it, and the material compiler's fetch (`CgGlslEmitter.emitVertexFetch`) decodes its words by it |
+| `api/mesh/`, `render/mesh/` | A mesh's vertices are in one `CgVertexFormat`; the store keeps one pool for it, and the material compiler's fetch (`CgGlslBlocks.vertexFetch`) decodes its words by it |
 | `gpu/staging/` | `CgVertexWriter` is driven by `CgVertexFormat` semantics |
-| `material/parse/` | A `.shader` file's `#type` names a registered format |
+| `material/shader/` | A material's vertex factory names a registered format |
 
 ---
 

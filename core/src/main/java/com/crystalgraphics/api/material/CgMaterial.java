@@ -5,7 +5,7 @@ import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
-import com.crystalgraphics.material.parse.CgPermutationDomain;
+import com.crystalgraphics.material.shader.CgShaderPermutations;
 import com.crystalgraphics.api.state.CgRenderState;
 
 import javax.annotation.Nullable;
@@ -248,7 +248,7 @@ public final class CgMaterial implements CgMaterialInterface {
     }
 
     @Override
-    public CgPermutationDomain permutations() {
+    public CgShaderPermutations permutations() {
         return proxy.permutations();
     }
 

@@ -8,7 +8,7 @@ import com.crystalgraphics.compute.source.CgImageFormat;
 import com.crystalgraphics.compute.source.CgKernelDecl;
 import com.crystalgraphics.compute.source.CgKernelShape;
 import com.crystalgraphics.compute.source.CgSourcePart;
-import com.crystalgraphics.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.Test;
 
@@ -40,7 +40,7 @@ public class CgComputeParserTest {
     private static String refusal(String pragmas, String body) {
         try {
             parse(pragmas, body);
-        } catch (CgShaderParseException e) {
+        } catch (CgShaderError e) {
             return e.getMessage();
         }
         fail("parsed: " + pragmas);
@@ -207,7 +207,7 @@ public class CgComputeParserTest {
             CgComputeParser.parse("#pragma kernel K general\nBuffers {\n    B (\"B\", Late, readwrite)\n}\n"
                     + "struct Late { vec4 a; };\nvoid K() {}", "test:shaders/late.compute");
             fail();
-        } catch (CgShaderParseException e) {
+        } catch (CgShaderError e) {
             assertTrue(e.getMessage(), e.getMessage().contains("declared after Buffers"));
             assertEquals(3, e.line());
         }
@@ -218,7 +218,7 @@ public class CgComputeParserTest {
         try {
             parse("#pragma kernel K map", "void K() {\n    OUT_STORE(0, OUT(1));\n}");
             fail();
-        } catch (CgShaderParseException e) {
+        } catch (CgShaderError e) {
             assertEquals(10, e.line());
         }
     }

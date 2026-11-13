@@ -21,6 +21,8 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 
 ## What it did, and where (at `7f9984fa`)
 
+Names are that commit's: `material/parse/` (`CgMaterialShaderCompiler`, `CgGlslEmitter`, `CgBufferReaders`) is now `material/shader/` (`CgGlslWriter`, `glsl/CgGlslBlocks`).
+
 | Piece | Where |
 |---|---|
 | A shader buffer as a buffer texture: `glTexBuffer` over its storage, bound to a texture unit, the shader's `samplerBuffer` set to it | `gpu/resource/CgTextureBuffer`, made by `CgShaderBuffer.createInternal` when the path was TBO |
@@ -44,6 +46,6 @@ The seams were left in place so reconnecting is restoring code, not redesigning:
 2. Put back each `PATH == TBO` branch above: the factories, `wireBlock`, `bindRecords`, the raster pass's accesses,
    the material's texel buffers and the binding table's texel section, the compiler's `useSsbo` and 330.
 3. Restore `cg_env.glsl`'s two TBO branches behind a define the compiler emits only on the TBO path, and a second
-   compiler target below `CgMaterialShaderCompiler.VERSION`.
+   compiler target below `CgGlslWriter.VERSION`.
 4. Retained storage is now staged (`RetainedStreamBuffer`, copied in at offset 0), which `glTexBuffer` reads as it
    read the orphaned storage.

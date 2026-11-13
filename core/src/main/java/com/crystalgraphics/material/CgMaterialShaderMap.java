@@ -6,9 +6,11 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.gpu.resource.CgUniformBuffer;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.trace.CgTrace;
@@ -66,7 +68,7 @@ final class CgMaterialShaderMap {
 
     /** One pass's generated GLSL, and the same preprocessed: what a {@link CgShader} compiles. */
     @Desugar
-    record Sources(CgMaterialShaderCompiler.CompiledSource compiled, String vertex, String fragment) {
+    record Sources(CgGlslProgram compiled, String vertex, String fragment) {
     }
 
     /** A variant's sources a worker is making, and the files it read making them. */
@@ -79,7 +81,7 @@ final class CgMaterialShaderMap {
 
     /** The shader's resource path, or a generated shader's label: what log lines and program labels name. */
     final String label;
-    final CgParsedShader parsed;
+    final CgShaderSpec parsed;
     /** The properties block the GLSL is generated against; null for a shader with no non-sampler property. */
     @Nullable
     final CgUniformBuffer block;
@@ -111,7 +113,7 @@ final class CgMaterialShaderMap {
     /** Bumped whenever {@link #programs} changes. */
     private int version;
 
-    private CgMaterialShaderMap(String label, CgParsedShader parsed, @Nullable CgUniformBuffer block,
+    private CgMaterialShaderMap(String label, CgShaderSpec parsed, @Nullable CgUniformBuffer block,
                                 List<CgAttachedBuffer> buffers) {
         this.label = label;
         this.parsed = parsed;
@@ -120,7 +122,7 @@ final class CgMaterialShaderMap {
     }
 
     /** An empty map for this parse, its template block and engine buffers made now. Render thread: both are GPU objects. */
-    static CgMaterialShaderMap of(String label, CgParsedShader parsed) {
+    static CgMaterialShaderMap of(String label, CgShaderSpec parsed) {
         CgMaterialProperties properties = new CgMaterialProperties(parsed.properties());
         CgUniformBuffer block = properties.hasUboProps() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
                 properties.buildUboFormat(), CgBindingModel.MATERIAL_BLOCK) : null;
@@ -128,7 +130,7 @@ final class CgMaterialShaderMap {
     }
 
     /** The buffers of the engine tokens a parse names. Unknown tokens were refused by the parse. */
-    private static List<CgAttachedBuffer> engineBuffers(CgParsedShader parsed) {
+    private static List<CgAttachedBuffer> engineBuffers(CgShaderSpec parsed) {
         List<CgAttachedBuffer> buffers = new ArrayList<>();
         for (String token : parsed.engineBuffers()) {
             CgEngineBufferRegistry.Provider provider = CgEngineBufferRegistry.get(token);
@@ -239,22 +241,19 @@ final class CgMaterialShaderMap {
     }
 
     /**
-     * The depth pass an opaque shader leaves unauthored, generated from its Forward pass and kept under no keywords;
-     * null where none is wanted, or where it was compiled now and failed (logged: the engine's depth shader draws
-     * instead). Throws the generator's {@code CgPreprocessorException}.
+     * An opaque shader's depth pass, generated from its Forward pass and kept under no keywords; null where none is
+     * wanted, or where it was compiled now and failed (logged: the engine's depth shader draws instead). Throws the
+     * writer's {@code CgPreprocessorException}.
      */
     @Nullable
     CgShader autoGenDepth(boolean defer) {
-        if (parsed.renderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD || parsed.getPassByLightMode(DEPTH) != null) {
-            return null;
-        }
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        if (parsed.queue() >= CgRenderQueue.TRANSPARENT_THRESHOLD) return null;
+        CgShaderPass forward = parsed.pass(CgRenderPassVariant.FORWARD);
         if (forward == null) {
             LOGGER.warn("'{}': opaque material has no Forward pass — depth auto-gen skipped.", label);
             return null;
         }
-        CgMaterialShaderCompiler.CompiledSource compiled = CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward,
-                buffers, block, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+        CgGlslProgram compiled = CgGlslWriter.writeDepth(parsed, forward, buffers, block, Set.of());
         CgShader depth = build(label, CgMaterialShader.prepare(compiled, label), DEPTH, defer);
         if (!defer && !depth.isCompiled()) {
             String err = depth.getLastCompileError();
@@ -299,16 +298,14 @@ final class CgMaterialShaderMap {
 
     /** Whether the parse has the pass, or it is the depth pass the compile generated. */
     private boolean has(String passName) {
-        return parsed.getPassByName(passName) != null || isAutoGenerated(passName) && programs.containsKey(DEPTH_KEY);
+        return parsed.pass(passName) != null || isAutoGenerated(passName) && programs.containsKey(DEPTH_KEY);
     }
 
     /** A variant's generated GLSL. Reads only what the map was made from, so safe on a worker. */
-    private CgMaterialShaderCompiler.CompiledSource source(ProgramKey key) {
-        CgMaterialShaderCompiler.CompileConfig config = new CgMaterialShaderCompiler.CompileConfig(key.keywords());
-        CgParsedPass pass = parsed.getPassByName(key.passName());
-        if (pass != null) return CgMaterialShaderCompiler.compile(parsed, pass, buffers, block, config);
-        CgParsedPass forward = parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
-        return CgMaterialShaderCompiler.compileDepthAutoGen(parsed, forward, buffers, block, config);
+    private CgGlslProgram source(ProgramKey key) {
+        CgShaderPass pass = parsed.pass(key.passName());
+        if (pass != null) return CgGlslWriter.write(parsed, pass, buffers, block, key.keywords());
+        return CgGlslWriter.writeDepth(parsed, parsed.pass(CgRenderPassVariant.FORWARD), buffers, block, key.keywords());
     }
 
     private VariantAhead startVariant(ProgramKey key) {

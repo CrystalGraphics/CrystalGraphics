@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -10,7 +10,7 @@ import static org.junit.Assert.*;
  *
  * <h3>What is actually being asserted</h3>
  * <p>That the emitted file <b>parses</b>. Every other test in this package checks a fragment of GLSL;
- * this one runs the real {@code CgShaderParser} over the whole output, which is the only way to know the
+ * this one runs the real {@code CgShaderSpec.read} over the whole output, which is the only way to know the
  * generated file is a {@code .shader} rather than something that merely looks like one. Still no GL —
  * parsing is structural, and the driver's opinion is a separate question.</p>
  */
@@ -114,7 +114,7 @@ public class CgShaderEmitterTest {
         CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, master);
 
         assertTrue(String.join("\n", result.errors()), result.ok());
-        assertNotNull("the emitted source must parse", CgShaderParser.parse(result.source()));
+        assertNotNull("the emitted source must parse", CgShaderSpec.read(result.source(), "test:graph.shader"));
         assertTrue(result.source().contains("#domain surface"));
         // Narrowed to .xyz: BaseColor is a vec3, Alpha a port of its own. @see CgShaderEmitter#adapted
         assertTrue("the colour reaches the output",
@@ -142,7 +142,7 @@ public class CgShaderEmitterTest {
         // bool is spelled `boolean` in a Properties block — emitting the GLSL name here would produce
         // a file the parser rejects.
         assertTrue(source, source.contains("_Toggle (\"_Toggle\", boolean) = true"));
-        assertNotNull(CgShaderParser.parse(source));
+        assertNotNull(CgShaderSpec.read(source, "test:graph.shader"));
     }
 
     /** An empty graph still emits a valid shader rather than nothing. */
@@ -156,7 +156,7 @@ public class CgShaderEmitterTest {
         CgShaderEmitter.Result result = CgShaderEmitter.emit(graph, master);
 
         assertTrue(String.join("\n", result.errors()), result.ok());
-        assertNotNull(CgShaderParser.parse(result.source()));
+        assertNotNull(CgShaderSpec.read(result.source(), "test:graph.shader"));
         assertTrue("the master's own default is used",
                 result.source().contains("s.baseColor = vec3(1.0, 1.0, 1.0);"));
         assertFalse("and an unwired position is the factory's own", result.source().contains("v.world"));
@@ -191,7 +191,7 @@ public class CgShaderEmitterTest {
         assertEquals("exactly one value crosses the stage boundary", 1, result.varyings().size());
 
         String source = result.source();
-        assertNotNull(CgShaderParser.parse(source));
+        assertNotNull(CgShaderSpec.read(source, "test:graph.shader"));
         assertTrue("the varying is declared in v2f",
                 source.contains("vec3 v_pos_Out;"));
         assertTrue("written in the vertex stage", source.contains("o.v_pos_Out = node_pos_Out;"));

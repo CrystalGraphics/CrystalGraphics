@@ -9,7 +9,7 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -84,11 +84,10 @@ public final class CgPostMaterial implements CgPostEffect {
     private boolean warm;
 
     // The parse its passes were resolved for, per pass but the last its pipeline and texture, and the last's pipeline.
-    private List<CgParsedShader.PostTarget> resolved;
+    private List<CgShaderSpec.PostTarget> resolved;
     private CgPipeline[] pipelines = new CgPipeline[0];
     private CgPipeline over;
     private CgGraphTexture[] textures = new CgGraphTexture[0];
-    private String emissionInput;
 
     private CgPostMaterial(CgMaterialInstance material, CgPostPoint point, int order) {
         this.material = Objects.requireNonNull(material, "material");
@@ -199,11 +198,6 @@ public final class CgPostMaterial implements CgPostEffect {
         CgPipeline pipeline = over != null ? over : CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgRecording recording = post.recording();
-        if (emissionInput != null) {
-            CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
-            if (scene == null) return;
-            bind(emissionInput, scene);
-        }
         if (CgMaterialProxy.of(material).handedScene()) {
             // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.
             CgGraphTexture custom = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
@@ -217,7 +211,7 @@ public final class CgPostMaterial implements CgPostEffect {
         // The host's size: an imported target's texture knows none until it executes.
         int screenW = post.stage().host().width(), screenH = post.stage().host().height();
         for (int t = 0; t < textures.length; t++) {
-            CgParsedShader.PostTarget target = resolved.get(t);
+            CgShaderSpec.PostTarget target = resolved.get(t);
             int w = Math.max(1, Math.round(screenW * target.scale()));
             int h = Math.max(1, Math.round(screenH * target.scale()));
             CgGraphTexture into = textures[t];
@@ -295,7 +289,7 @@ public final class CgPostMaterial implements CgPostEffect {
 
     /** Each pass's pipeline, resolved again when the shader parses again; false while one is not ready. */
     private boolean resolve() {
-        List<CgParsedShader.PostTarget> targets = CgMaterialProxy.of(material).postTargets();
+        List<CgShaderSpec.PostTarget> targets = CgMaterialProxy.of(material).postTargets();
         if (targets != resolved) {
             CgPipeline[] made = new CgPipeline[targets.size()];
             for (int t = 0; t < made.length; t++) {
@@ -311,7 +305,6 @@ public final class CgPostMaterial implements CgPostEffect {
             over = last;
             pipelines = made;
             textures = new CgGraphTexture[made.length];
-            emissionInput = CgMaterialProxy.of(material).emissionInput();
             resolved = targets;
         }
         return true;

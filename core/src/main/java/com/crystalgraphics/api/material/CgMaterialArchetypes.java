@@ -3,8 +3,7 @@ package com.crystalgraphics.api.material;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.util.io.CgIO;
 
 /**
@@ -14,7 +13,7 @@ import com.crystalgraphics.util.io.CgIO;
  *
  * <pre>{@code
  * CgMaterialArchetypes.FILES.parse("mymod:shaders/fx.shader");             // read through CgIO, parsed once
- * CgMaterialDefinitions.archetypes(path -> CgShaderParser.parse(SOURCES.get(path), path));   // a test's own
+ * CgMaterialDefinitions.archetypes(path -> CgShaderSpec.read(SOURCES.get(path), path));   // a test's own
  * }</pre>
  */
 @FunctionalInterface
@@ -22,12 +21,12 @@ public interface CgMaterialArchetypes {
 
     /** The engine's: each path read through {@link CgIO} and parsed once. */
     CgMaterialArchetypes FILES = new CgMaterialArchetypes() {
-        private final Map<String, CgParsedShader> parsed = new ConcurrentHashMap<>();
+        private final Map<String, CgShaderSpec> parsed = new ConcurrentHashMap<>();
         private final Map<String, CgMaterialDomain> domains = new ConcurrentHashMap<>();
 
         @Override
-        public CgParsedShader parse(String shader) {
-            return parsed.computeIfAbsent(shader, p -> CgShaderParser.parse(source(p), p));
+        public CgShaderSpec parse(String shader) {
+            return parsed.computeIfAbsent(shader, p -> CgShaderSpec.read(source(p), p));
         }
 
         @Override
@@ -47,7 +46,7 @@ public interface CgMaterialArchetypes {
      *
      * @throws RuntimeException naming it when it is missing or does not parse
      */
-    CgParsedShader parse(String shader);
+    CgShaderSpec parse(String shader);
 
     /** The domain {@code shader}'s {@code #domain} line names ({@link CgMaterialDomain#ofSource}); {@code SURFACE} unless overridden. */
     default CgMaterialDomain domain(String shader) {

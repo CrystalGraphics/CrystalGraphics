@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -80,7 +80,7 @@ public class CgPreviewEmitterTest {
 
         assertTrue(String.join("\n", result.errors()), result.ok());
         assertNotNull("the preview must parse like any other material",
-                CgShaderParser.parse(result.source()));
+                CgShaderSpec.read(result.source(), "test:graph.shader"));
         assertTrue(result.source(), result.source().contains(fragColorLine("node_c1_Out.rgb")));
     }
 
@@ -171,7 +171,7 @@ public class CgPreviewEmitterTest {
         // vec4 * float resolved to vec4 — shown as rgb rather than wrapped in vec3(...), which is what
         // a float-resolved output would have produced.
         assertTrue(result.source(), result.source().contains(fragColorLine("node_m1_Out.rgb")));
-        assertNotNull(CgShaderParser.parse(result.source()));
+        assertNotNull(CgShaderSpec.read(result.source(), "test:graph.shader"));
     }
 
     // ── Geometry propagation ────────────────────────────────────────────────
@@ -248,7 +248,7 @@ public class CgPreviewEmitterTest {
         assertTrue(String.join("\n", result.errors()), result.ok());
         assertEquals("a position is spatial, so it previews on a sphere",
                 CgPreviewGeometry.SPHERE, result.geometry());
-        assertNotNull(CgShaderParser.parse(result.source()));
+        assertNotNull(CgShaderSpec.read(result.source(), "test:graph.shader"));
 
         // Asserted on the NODE's contribution, not the whole file: the preview's own fixed vertex shader
         // legitimately reads cg_Position to fill the varying, so searching the file for it would fail on

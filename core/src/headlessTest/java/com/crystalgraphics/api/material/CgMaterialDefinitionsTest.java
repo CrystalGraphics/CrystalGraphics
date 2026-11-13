@@ -13,8 +13,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -67,11 +66,11 @@ public class CgMaterialDefinitionsTest {
 
     static final CgMaterialArchetypes ARCHETYPES = new CgMaterialArchetypes() {
         @Override
-        public CgParsedShader parse(String path) {
-            if (path.equals(MESH_SPECK)) return CgShaderParser.parse(particle("MeshParticles"), path);
-            if (path.equals(SPRITE)) return CgShaderParser.parse(particle("Sprites"), path);
-            if (path.equals(FX) || path.equals(POST)) return CgShaderParser.parse(SOURCE, path);
-            if (path.equals(DECAL)) return CgShaderParser.parse(DECAL_SOURCE, path);
+        public CgShaderSpec parse(String path) {
+            if (path.equals(MESH_SPECK)) return CgShaderSpec.read(particle("MeshParticles"), path);
+            if (path.equals(SPRITE)) return CgShaderSpec.read(particle("Sprites"), path);
+            if (path.equals(FX) || path.equals(POST)) return CgShaderSpec.read(SOURCE, path);
+            if (path.equals(DECAL)) return CgShaderSpec.read(DECAL_SOURCE, path);
             throw new IllegalArgumentException(path + " is not a shader");
         }
 

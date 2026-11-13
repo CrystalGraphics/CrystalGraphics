@@ -1,6 +1,7 @@
 package com.crystalgraphics.compute.parse;
 
-import com.crystalgraphics.material.parse.CgShaderParseException;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
+import com.crystalgraphics.material.shader.syntax.CgShaderText;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -118,7 +119,7 @@ final class TopLevel {
         return new String[]{m.group(1), m.group(3)};
     }
 
-    static CgShaderParseException fail(String path, String text, int at, String message) {
-        return CgShaderParseException.at("[" + path + "] " + message, text, at);
+    static CgShaderError fail(String path, String text, int at, String message) {
+        return CgShaderError.at(new CgShaderText(text, path), at, message);
     }
 }

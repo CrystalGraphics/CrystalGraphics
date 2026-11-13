@@ -4,7 +4,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.gpu.resource.CgEngineTextures;
 import lombok.Getter;
 
@@ -465,7 +465,7 @@ public final class CgMaterialProperty {
     /**
      * Returns a fresh {@code CgMaterialProperty} with the same name, display name, type, and
      * raw default, with the value reset to that default. Used when initialising per-material
-     * property stores from a shared {@link CgParsedShader}.
+     * property stores from a shared {@link CgShaderSpec}.
      *
      * <p>The returned instance is independent — mutating the copy does not affect the original.</p>
      */

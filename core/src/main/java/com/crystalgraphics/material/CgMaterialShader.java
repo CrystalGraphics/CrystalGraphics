@@ -15,11 +15,12 @@ import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.material.CgMaterialShaderMap.ProgramKey;
 import com.crystalgraphics.material.CgMaterialShaderMap.Sources;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParseException;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderPass;
+import com.crystalgraphics.material.shader.CgShaderSpec;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.job.CgJobLane;
 import com.crystalgraphics.mc.CgAssetReloader;
@@ -141,7 +142,7 @@ public final class CgMaterialShader implements CgReloadable {
      *  before first successful compile. 
      */
     @Getter
-    private volatile CgParsedShader lastParsed;
+    private volatile CgShaderSpec lastParsed;
 
     /** {@link #ensureParsed()} found the source unreadable or unparseable; cleared by {@link #markDirty()}. */
     private boolean parseFailed;
@@ -159,7 +160,7 @@ public final class CgMaterialShader implements CgReloadable {
     /** The programs compiled from the last committed parse; null until a compile has succeeded. */
     @Nullable
     private CgMaterialShaderMap map;
-    /** Where its materials' values live ({@link CgParsedShader#valuesInArena}), for the block size it was made for. */
+    /** Where its materials' values live ({@link CgShaderSpec#valuesInArena}), for the block size it was made for. */
     @Nullable
     private CgMaterialArena arena;
     private boolean warnedUncompiled;
@@ -272,7 +273,7 @@ public final class CgMaterialShader implements CgReloadable {
      * that cannot be parsed.
      */
     public boolean usesEngineBuffer(String token) {
-        CgParsedShader parsed = ensureParsed();
+        CgShaderSpec parsed = ensureParsed();
         return parsed != null && parsed.engineBuffers().contains(token);
     }
 
@@ -281,9 +282,9 @@ public final class CgMaterialShader implements CgReloadable {
      * material's bindings, without the driver. CPU only, and safe on any thread.
      *
      * <pre>{@code
-     * CgParsedShader parsed = shader.ensureParsed();
+     * CgShaderSpec parsed = shader.ensureParsed();
      * if (parsed == null) return;               // unreadable or unparseable: the log says which
-     * List<String> features = parsed.featureNames();
+     * List<String> features = parsed.features();
      * }</pre>
      *
      * <p>Null after a failure until {@link #markDirty()}, so a broken file is read once, not once per draw.</p>
@@ -299,8 +300,8 @@ public final class CgMaterialShader implements CgReloadable {
         return a;
     }
 
-    public CgParsedShader ensureParsed() {
-        CgParsedShader parsed = lastParsed;
+    public CgShaderSpec ensureParsed() {
+        CgShaderSpec parsed = lastParsed;
         if (parsed != null) return parsed;
         synchronized (this) {
             if (lastParsed != null || parseFailed || deleted) return lastParsed;
@@ -316,11 +317,11 @@ public final class CgMaterialShader implements CgReloadable {
         if (source == null || source.isEmpty()) {
             failure = "could not load its source";
         } else {
-            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
-                parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.read")) {
+                parsed = CgShaderSpec.read(source, resourcePath).withState(state, resourcePath);
                 requireMargin(parsed, source);
                 requireUnits(parsed);
-            } catch (CgShaderParseException e) {
+            } catch (CgShaderError e) {
                 failure = e.getMessage();
             }
         }
@@ -331,7 +332,7 @@ public final class CgMaterialShader implements CgReloadable {
                 LOGGER.error("Cannot parse '{}': {}", resourcePath, failure);
                 return null;
             }
-            this.renderQueue = parsed.renderQueue();
+            this.renderQueue = parsed.queue();
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
             this.sceneColor = sceneColorIn(source);
@@ -457,24 +458,24 @@ public final class CgMaterialShader implements CgReloadable {
         // ── Step 2: Parse ──────────────────────────────────────────────────────
         // The same text keeps its parse, so a pipeline named before the first compile -- keyed on the parse's
         // render states -- is the one that draws after it.
-        CgParsedShader parsed;
+        CgShaderSpec parsed;
         synchronized (this) {   // with ensureParsed, which a recorder may be running
             parsed = lastParsed;
             if ((parsed == null || !source.equals(parsedSource)) && ahead != null && ahead.landed.parsed() != null) {
                 parsed = ahead.landed.parsed();
             } else if (parsed == null || !source.equals(parsedSource)) {
-                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.parse")) {
-                    parsed = CgShaderParser.parse(source, resourcePath).withState(state, resourcePath);
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.read")) {
+                    parsed = CgShaderSpec.read(source, resourcePath).withState(state, resourcePath);
                     requireMargin(parsed, source);
                     requireUnits(parsed);
-                } catch (CgShaderParseException e) {
+                } catch (CgShaderError e) {
                     if (isFirst) throw e;
                     LOGGER.error("Reload failed for '" + resourcePath + "': parse error — " + e.getMessage());
                     return;
                 }
             }
             // ── Step 2a: commit the pure-parse products immediately (see below) ──
-            this.renderQueue = parsed.renderQueue();
+            this.renderQueue = parsed.queue();
             this.renderType = parsed.renderType();
             if (!source.equals(parsedSource)) {
                 this.sceneDepth = sceneDepthIn(source);
@@ -506,13 +507,13 @@ public final class CgMaterialShader implements CgReloadable {
         }
 
         // ── Step 5: Compile all declared passes (no-keyword variant) ──────────
-        for (CgParsedPass pass : parsed.passes()) {
+        for (CgShaderPass pass : parsed.passes()) {
             Sources made = ahead != null ? ahead.sources(next, pass) : null;
             if (made == null) {
-                CgMaterialShaderCompiler.CompiledSource compiled;
+                CgGlslProgram compiled;
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.codegen")) {
-                    compiled = CgMaterialShaderCompiler.compile(parsed, pass, next.buffers, next.block,
-                            CgMaterialShaderCompiler.CompileConfig.DEFAULT);
+                    compiled = CgGlslWriter.write(parsed, pass, next.buffers, next.block,
+                            Set.of());
                 } catch (CgPreprocessorException e) {
                     next.delete();
                     if (isFirst) throw e;
@@ -527,8 +528,8 @@ public final class CgMaterialShader implements CgReloadable {
 
             if (DUMP_GLSL.get()) {
                 LOGGER.info("=== CgMaterialShader GLSL dump for '" + resourcePath + "' pass '" + pass.name() + "' ===");
-                LOGGER.info("--- VERTEX ---\n{}", made.compiled().vertexSource());
-                LOGGER.info("--- FRAGMENT ---\n{}", made.compiled().fragmentSource());
+                LOGGER.info("--- VERTEX ---\n{}", made.compiled().vertex());
+                LOGGER.info("--- FRAGMENT ---\n{}", made.compiled().fragment());
                 LOGGER.info("=== end GLSL dump ===");
             }
 
@@ -727,7 +728,7 @@ public final class CgMaterialShader implements CgReloadable {
      *
      * <p>Must be called after at least one successful {@link #recompile()}.</p>
      *
-     * @param passName       the pass to compile ({@link CgParsedPass#name()})
+     * @param passName       the pass to compile ({@link CgShaderPass#name()})
      * @param activeKeywords active feature-flag keyword names (set-equal keys share a cache entry)
      * @return a fully compiled and wired shader; {@code null} on link failure
      */
@@ -757,7 +758,7 @@ public final class CgMaterialShader implements CgReloadable {
         CgMaterialShaderMap current = map;
         if (current == null) return true;
         if (passName == null) {
-            CgParsedPass forward = current.parsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+            CgShaderPass forward = current.parsed.pass(CgRenderPassVariant.FORWARD);
             if (forward == null) return true;
             passName = forward.name();
         }
@@ -792,7 +793,7 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public CgShader getOrCompileForwardPass(Set<String> activeKeywords) {
         if (lastParsed == null) return null;
-        CgParsedPass forwardPass = lastParsed.getPassByLightMode(CgRenderPassVariant.FORWARD.lightModeName());
+        CgShaderPass forwardPass = lastParsed.pass(CgRenderPassVariant.FORWARD);
         if (forwardPass == null) {
             LOGGER.error("'{}': no Forward pass found — cannot compile forward variant", resourcePath);
             return null;
@@ -811,17 +812,8 @@ public final class CgMaterialShader implements CgReloadable {
      */
     public CgRenderState getRenderState(String passName) {
         if (lastParsed == null) return CgRenderState.DEFAULT;
-        CgParsedPass pass = lastParsed.getPassByName(passName);
-        return pass != null ? pass.renderState() : CgRenderState.DEFAULT;
-    }
-
-    /**
-     * Returns {@code true} when the last successful parse includes a pass with the given name.
-     *
-     * @param passName authored or auto-assigned pass name to check
-     */
-    public boolean hasParsedPass(String passName) {
-        return lastParsed != null && lastParsed.getPassByName(passName) != null;
+        CgShaderPass pass = lastParsed.pass(passName);
+        return pass != null ? pass.state() : CgRenderState.DEFAULT;
     }
 
     /**
@@ -891,7 +883,7 @@ public final class CgMaterialShader implements CgReloadable {
     private Ahead ahead;
 
     /** What a worker reads before anything is generated: the source, expanded for the unchanged check, parsed. */
-    private record Front(String source, @Nullable String expanded, @Nullable CgParsedShader parsed, Set<String> reads) {
+    private record Front(String source, @Nullable String expanded, @Nullable CgShaderSpec parsed, Set<String> reads) {
     }
 
     /** Every pass's sources by name, and what preprocessing them read. */
@@ -919,7 +911,7 @@ public final class CgMaterialShader implements CgReloadable {
 
         /** The map made for this parse, now the compile's; null where it was made for another. */
         @Nullable
-        CgMaterialShaderMap takeMap(CgParsedShader parsed) {
+        CgMaterialShaderMap takeMap(CgShaderSpec parsed) {
             if (map == null || map.parsed != parsed) return null;
             taken = true;
             return map;
@@ -927,7 +919,7 @@ public final class CgMaterialShader implements CgReloadable {
 
         /** A pass's sources, where they were generated for this map; null otherwise. */
         @Nullable
-        Sources sources(CgMaterialShaderMap next, CgParsedPass pass) {
+        Sources sources(CgMaterialShaderMap next, CgShaderPass pass) {
             if (passes == null || map != next) return null;
             if (!passes.isDone() || passes.isCompletedExceptionally()) return null;
             return passes.join().sources().get(pass.name());
@@ -985,9 +977,9 @@ public final class CgMaterialShader implements CgReloadable {
                 String source = generated != null ? generated : CgIO.loadSource(path);
                 if (source == null || source.isEmpty()) throw new IllegalStateException("no source: " + path);
                 String expanded = expandedForComparison(source);
-                CgParsedShader parsed = null;
+                CgShaderSpec parsed = null;
                 if (!source.equals(known)) {
-                    parsed = CgShaderParser.parse(source, path).withState(state, path);
+                    parsed = CgShaderSpec.read(source, path).withState(state, path);
                     requireMargin(parsed, source);
                     requireUnits(parsed);
                 }
@@ -999,7 +991,7 @@ public final class CgMaterialShader implements CgReloadable {
     /** Between the hops, on the frame: the map made (its block and buffers are GPU objects), then every pass on a worker. */
     private void startPasses(Ahead a, Front front) {
         a.landed = front;
-        CgParsedShader parsed;
+        CgShaderSpec parsed;
         synchronized (this) {
             parsed = front.parsed() != null ? front.parsed() : lastParsed;
         }
@@ -1012,9 +1004,9 @@ public final class CgMaterialShader implements CgReloadable {
         a.passes = CompletableFuture.supplyAsync(() -> {
             try (CgIO.Reads reads = CgIO.recordReads()) {
                 Map<String, Sources> sources = new HashMap<>();
-                for (CgParsedPass pass : parsed.passes()) {
-                    sources.put(pass.name(), prepare(CgMaterialShaderCompiler.compile(parsed, pass, made.buffers,
-                            made.block, CgMaterialShaderCompiler.CompileConfig.DEFAULT), path));
+                for (CgShaderPass pass : parsed.passes()) {
+                    sources.put(pass.name(), prepare(CgGlslWriter.write(parsed, pass, made.buffers,
+                            made.block, Set.of()), path));
                 }
                 return new Passes(sources, new HashSet<>(reads.paths()));
             }
@@ -1159,29 +1151,28 @@ public final class CgMaterialShader implements CgReloadable {
      * {@code "SceneColorMargin"} tag. NaN until parsed and for a shader that does not read it.
      */
     public float sceneColorMargin() {
-        CgParsedShader parsed = lastParsed;
+        CgShaderSpec parsed = lastParsed;
         return parsed == null ? Float.NaN : parsed.sceneColorMargin();
     }
 
     /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
-    private void requireMargin(CgParsedShader parsed, String source) {
+    private void requireMargin(CgShaderSpec parsed, String source) {
         if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
-            throw new CgShaderParseException("[" + resourcePath + "] samples the scene's colour without a SceneColorMargin: "
-                    + "the share of the target's height it samples past its geometry, " + (parsed.domain() != null
-                    ? "e.g. Material { SceneColorMargin 0.05 } (0.001 for its own pixel alone)"
-                    : "in the top-level Tags, e.g. Tags { \"RenderType\" = \"Transparent\" \"SceneColorMargin\" = \"0.05\" }"));
+            throw CgShaderError.of(resourcePath, "samples the scene's colour without a SceneColorMargin: the share of the"
+                    + " target's height it samples past its geometry, e.g. Material { SceneColorMargin 0.05 } (0.001 for its"
+                    + " own pixel alone)");
         }
     }
 
     /** A shader binds at most {@link CgBindingModel#MATERIAL_TEXTURES} textures: its set's room before a kernel's buffers. */
-    private void requireUnits(CgParsedShader parsed) {
+    private void requireUnits(CgShaderSpec parsed) {
         int samplers = 0;
         for (CgMaterialProperty property : parsed.properties()) {
             if (property.getType().isSampler()) samplers++;
         }
         if (samplers > CgBindingModel.MATERIAL_TEXTURES) {
-            throw new CgShaderParseException("[" + resourcePath + "] declares " + samplers + " samplers; a material binds "
-                    + "at most " + CgBindingModel.MATERIAL_TEXTURES);
+            throw CgShaderError.of(resourcePath, "declares " + samplers + " samplers; a material binds at most "
+                    + CgBindingModel.MATERIAL_TEXTURES);
         }
     }
 
@@ -1204,9 +1195,9 @@ public final class CgMaterialShader implements CgReloadable {
     // ── The source a compiler takes ────────────────────────────────────────────────
 
     /** A pass's generated GLSL preprocessed, as a compiler takes it. Any thread. */
-    static Sources prepare(CgMaterialShaderCompiler.CompiledSource compiled, String path) {
+    static Sources prepare(CgGlslProgram compiled, String path) {
         return new Sources(compiled,
-                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.vertexSource(), path)),
-                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.fragmentSource(), path)));
+                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.vertex(), path)),
+                CgGlslSources.ascii(new CgShaderPreprocessor().process(compiled.fragment(), path)));
     }
 }

@@ -4,7 +4,7 @@ import com.crystalgraphics.api.shader.CgShaderPreprocessor;
 import com.crystalgraphics.compute.parse.CgComputeParser;
 import com.crystalgraphics.compute.source.CgComputeSource;
 import com.crystalgraphics.compute.source.CgKernelDecl;
-import com.crystalgraphics.material.parse.ShippedShaderStagePurityTest;
+import com.crystalgraphics.material.shader.ShippedShaderStagePurityTest;
 import com.crystalgraphics.api.shader.CgShaderStages;
 import com.crystalgraphics.util.io.CgIO;
 import org.junit.Test;

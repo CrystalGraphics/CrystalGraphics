@@ -4,8 +4,10 @@ import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgGlslWriter;
+import com.crystalgraphics.material.shader.CgGlslProgram;
+import com.crystalgraphics.material.shader.CgEngineKeywords;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 
 /**
  * A way a pipeline draws its pass other than plainly: how its vertices are placed ({@link #SKINNED}) or what its
@@ -24,19 +26,19 @@ import com.crystalgraphics.material.parse.CgParsedShader;
  * }</pre>
  *
  * <ul>
- *   <li>{@link CgPipeline#as} answers null where a form does not apply: another pass, an MRT output where it writes
- *       one target, a form it excludes already held, or the shader's own refusal ({@link #admits}).
+ *   <li>{@link CgPipeline#as} answers null where a form does not apply: another pass, a pass the shader writes itself, where it
+ *       writes one target, a form it excludes already held, or the shader's own refusal ({@link #admits}).
  *       {@link #SKINNED} and {@link #OVERDRAW} always apply.</li>
  *   <li>A new form is a constant here, its row in the table, and its keyword's handling in
- *       {@code CgMaterialShaderCompiler}.</li>
+ *       {@code CgGlslWriter}.</li>
  * </ul>
  */
 public enum CgPipelineForm {
 
     /** Vertices placed by their bones from the draw's palette (Unreal's GPU skin vertex factory). */
-    SKINNED(CgMaterialShaderCompiler.SKINNED, false, false),
+    SKINNED(CgEngineKeywords.SKINNED, false, false),
     /** A count of 1 in red into a target with no depth, with the pass's depth test and discard: the overdraw view. */
-    OVERDRAW(CgMaterialShaderCompiler.DEBUG_OVERDRAW, false, false) {
+    OVERDRAW(CgEngineKeywords.DEBUG_OVERDRAW, false, false) {
         @Override
         CgRenderState state(CgRenderState own) {
             return CgRenderState.builder().blend(CgBlendState.SUM).depth(CgDepthState.NONE).cull(own.getCull())
@@ -44,10 +46,10 @@ public enum CgPipelineForm {
         }
     },
     /** Its Emissive pass drawn in the same draw, into the HDR scene, under its own blend. */
-    FOLD(CgMaterialShaderCompiler.SCENE_FOLD, true, false) {
+    FOLD(CgEngineKeywords.SCENE_FOLD, true, false) {
         @Override
-        boolean admits(CgParsedShader parsed, CgRenderState own) {
-            return CgMaterialShaderCompiler.sceneFolds(parsed);
+        boolean admits(CgShaderSpec parsed, CgRenderState own) {
+            return parsed.sceneFolds();
         }
     },
     /**
@@ -55,10 +57,10 @@ public enum CgPipelineForm {
      * {@code cg_Clip}. Both programs declare {@code invariant gl_Position}, so its colour draw passes its depth test
      * exactly where this wrote.
      */
-    DEPTH(CgMaterialShaderCompiler.DEPTH_PREPASS, true, false) {
+    DEPTH(CgEngineKeywords.DEPTH_PREPASS, true, false) {
         @Override
-        boolean admits(CgParsedShader parsed, CgRenderState own) {
-            return parsed.depthMode() == CgParsedShader.DepthMode.PREPASS;
+        boolean admits(CgShaderSpec parsed, CgRenderState own) {
+            return parsed.depthMode() == CgShaderSpec.DepthMode.PREPASS;
         }
 
         @Override
@@ -70,19 +72,19 @@ public enum CgPipelineForm {
         }
     },
     /** Beside its colour, at location 1, the depth {@code CG_VOLUME_DEPTH(eye)} names: what a temporal resolve reprojects by. */
-    VOLUME(CgMaterialShaderCompiler.VOLUME_TARGET, true, true),
+    VOLUME(CgEngineKeywords.VOLUME_TARGET, true, true),
     /** Beside its colour, at location 1, the vertex normal: what the world lights read for our surfaces. */
-    NORMALS(CgMaterialShaderCompiler.NORMAL_TARGET, true, true),
+    NORMALS(CgEngineKeywords.NORMAL_TARGET, true, true),
     /** In place of its colour, the custom data and shading model its fragment names, for a post material reading them. */
-    CUSTOM_DATA(CgMaterialShaderCompiler.CUSTOM_DATA_TARGET, true, true),
+    CUSTOM_DATA(CgEngineKeywords.CUSTOM_DATA_TARGET, true, true),
     /**
      * Black at its colour's alpha, under its blend, hidden by the scene's depth: a surface glowing nothing, covering the
      * glows behind it where glows are drawn apart from the scene. Refused where it adds ({@code dst} factor ONE), since
      * it would cover nothing.
      */
-    COVER(CgMaterialShaderCompiler.EMISSION_COVER, true, true) {
+    COVER(CgEngineKeywords.EMISSION_COVER, true, true) {
         @Override
-        boolean admits(CgParsedShader parsed, CgRenderState own) {
+        boolean admits(CgShaderSpec parsed, CgRenderState own) {
             CgBlendState blend = own.getBlend();
             return blend == null || !blend.adds();
         }
@@ -96,15 +98,15 @@ public enum CgPipelineForm {
         }
     },
     /** Full coverage, alpha 1, whatever its fragment wrote: an opaque draw redrawn into a graded layer. */
-    SOLID(CgMaterialShaderCompiler.SOLID_COVER, true, true),
+    SOLID(CgEngineKeywords.SOLID_COVER, true, true),
     /**
      * Beside its colour, at location 1, the same colour into its look's graded layer under its blend's layer form
      * ({@link CgBlendState#layered}): the transparent draw drawing its layer too, where the layer pass drew it again.
      * Refused where its blend has no layer form (a multiply). On a device alone: GL's state has one blend for all.
      */
-    LAYER(CgMaterialShaderCompiler.LAYER_TARGET, true, true) {
+    LAYER(CgEngineKeywords.LAYER_TARGET, true, true) {
         @Override
-        boolean admits(CgParsedShader parsed, CgRenderState own) {
+        boolean admits(CgShaderSpec parsed, CgRenderState own) {
             return layerBlend(own) != null;
         }
 
@@ -154,7 +156,7 @@ public enum CgPipelineForm {
     }
 
     /** Whether a shader takes it, beyond the table; {@code parsed} is never null. */
-    boolean admits(CgParsedShader parsed, CgRenderState own) {
+    boolean admits(CgShaderSpec parsed, CgRenderState own) {
         return true;
     }
 

@@ -457,7 +457,7 @@ public final class CgShaderEmitter {
             // GLSL has no empty struct — `struct v2f { };` is a COMPILE ERROR, not an empty type.
             //
             // This shipped with 6.3.5 and was invisible for as long as nothing fed the emitter's output
-            // to a driver: `CgShaderParser` accepts it happily (it is structurally a fine `.shader`), so
+            // to a driver: `CgShaderSpec.read` accepts it happily (it is structurally a fine `.shader`), so
             // every test passed, and the source pane displayed it looking entirely correct. The first
             // thing to actually compile one was the main preview, which drew a white sphere — the
             // material's fallback — for a graph whose GLSL was right in every other respect.

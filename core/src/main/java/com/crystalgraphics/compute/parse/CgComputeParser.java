@@ -15,8 +15,10 @@ import com.crystalgraphics.compute.source.CgKernelShape;
 import com.crystalgraphics.compute.source.CgSourcePart;
 import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.material.parse.CgShaderParseException;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.syntax.CgShaderError;
+import com.crystalgraphics.material.shader.syntax.CgShaderText;
+import com.crystalgraphics.material.shader.syntax.CgPropertyGrammar;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -41,7 +43,7 @@ import java.util.regex.Pattern;
  * CgComputeSource source = CgComputeParser.parse(CgIO.loadSource(path), path);
  * }</pre>
  *
- * @throws CgShaderParseException naming the file, the kernel and the construct, placed at its line where it can be
+ * @throws CgShaderError naming the file, the kernel and the construct, placed at its line where it can be
  */
 public final class CgComputeParser {
 
@@ -129,8 +131,11 @@ public final class CgComputeParser {
         CgComputeParser parser = new CgComputeParser(source, path);
         try {
             return parser.run();
-        } catch (CgShaderParseException e) {
-            throw e.locate(parser.source, quoted(e.getMessage()));
+        } catch (CgShaderError e) {
+            if (e.placed()) throw e;
+            String token = quoted(e.why());
+            int at = token == null ? -1 : parser.source.indexOf(token);
+            throw at < 0 ? e : e.placed(new CgShaderText(parser.source, path), at);
         }
     }
 
@@ -223,7 +228,7 @@ public final class CgComputeParser {
         switch (item.name()) {
             case "Properties" -> {
                 if (!properties.isEmpty()) throw fail(item.start(), "declares Properties twice");
-                properties = CgShaderParser.parseProperties(blanked.substring(item.start(), item.end()), path);
+                properties = CgPropertyGrammar.readBlock(blanked.substring(item.start(), item.end()), path);
             }
             case "Buffers" -> {
                 if (!buffers.isEmpty()) throw fail(item.start(), "declares Buffers twice");
@@ -306,25 +311,25 @@ public final class CgComputeParser {
             if (line.isEmpty()) continue;
             Matcher m = DECLARATION.matcher(line);
             if (!m.matches() || m.group(5) != null) {
-                throw new CgShaderParseException("[" + path + "] Buffers: '" + line + "' is not 'NAME (\"Display\", element, readonly)'");
+                throw CgShaderError.of(path, "Buffers: '" + line + "' is not 'NAME (\"Display\", element, readonly)'");
             }
             String name = m.group(1);
             String element = m.group(3);
             if (!MACRO_NAME.matcher(name).matches() || name.startsWith("CG_")) {
-                throw new CgShaderParseException("[" + path + "] '" + name + "' cannot name a buffer: upper case, digits and '_', not starting CG_");
+                throw CgShaderError.of(path, "'" + name + "' cannot name a buffer: upper case, digits and '_', not starting CG_");
             }
             for (CgBufferDecl b : read) {
-                if (b.name().equals(name)) throw new CgShaderParseException("[" + path + "] declares buffer '" + name + "' twice");
+                if (b.name().equals(name)) throw CgShaderError.of(path, "declares buffer '" + name + "' twice");
             }
             if (CgBufferAccess.of(m.group(4)) != CgBufferAccess.READONLY) {
-                throw new CgShaderParseException("[" + path + "] buffer '" + name + "' is " + m.group(4)
+                throw CgShaderError.of(path, "buffer '" + name + "' is " + m.group(4)
                         + ": a material only reads a buffer, so it is readonly");
             }
             Std430.Layout layout = std430.of(element);
-            if (layout == null) throw new CgShaderParseException("[" + path + "] buffer " + name + ": '" + element
+            if (layout == null) throw CgShaderError.of(path, "buffer " + name + ": '" + element
                     + "' is no type this compiler lays out: a scalar, vector or struct declared before Buffers { }");
             if (!lowerable(element, structs)) {
-                throw new CgShaderParseException("[" + path + "] buffer " + name + "'s element '" + element + "' is not one "
+                throw CgShaderError.of(path, "buffer " + name + "'s element '" + element + "' is not one "
                         + "every tier holds: float, int or uint, their 2- and 4-vectors, or a struct of vec4, ivec4 and uvec4 only");
             }
             read.add(new CgBufferDecl(name, m.group(2), element, CgBufferAccess.READONLY, layout.stride(), true,
@@ -585,14 +590,14 @@ public final class CgComputeParser {
         return name.startsWith("cg_") || name.startsWith("CG_") || name.startsWith("_cg_") || name.startsWith("_v2f_");
     }
 
-    private CgShaderParseException fail(int at, String message) {
-        return CgShaderParseException.at("[" + path + "] " + message, source, at);
+    private CgShaderError fail(int at, String message) {
+        return CgShaderError.at(new CgShaderText(source, path), at, message);
     }
 
     /** Placed at the first whole-word {@code token} in the code, or unplaced. */
-    private CgShaderParseException fail(String token, String message) {
+    private CgShaderError fail(String token, String message) {
         Matcher m = Pattern.compile("(?<![A-Za-z0-9_])" + Pattern.quote(token) + "(?![A-Za-z0-9_])").matcher(blanked);
-        return m.find() ? fail(m.start(), message) : new CgShaderParseException("[" + path + "] " + message);
+        return m.find() ? fail(m.start(), message) : CgShaderError.of(path, message);
     }
 
     private static String quoted(String message) {

@@ -420,7 +420,7 @@ pipelines.add("mymod:shaders/rune.shader", "GLOW");              // each combina
 
 - **Only what a renderer switches.** A keyword set once on a material (a look's feature, a VFX slot kind) is the
   material's: precaching the material covers it.
-- A domain spans at most 256 combinations (`CgPermutationDomain.MAX_VARIANTS`); more fails to load.
+- A domain spans at most 256 combinations (`CgShaderPermutations.MAX_VARIANTS`); more fails to load.
 - A keyword passed to `add` or `addPass` pins its dimension: `addPass(shader, "FILTER_CHEAP")` builds only the
   combinations with it.
 - A draw of a material with a domain that still misses its pipeline is logged once whatever
@@ -578,7 +578,7 @@ scene colour.
 - **Times `CG_SCENE_GLOW`** (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a strength set for a blurred
   bloom floods a sharp core).
 - **Folded into the colour's draw where it can**: a translucent material's glow costs no draw of its own when it blends
-  as its colour does (`CgMaterialShaderCompiler.emissionMerge`, `CgPipeline.sceneFold`). Otherwise it draws apart, a
+  as its colour does (`CgShaderSpec.emissionMerge`, `CgPipeline.sceneFold`). Otherwise it draws apart, a
   transparent draw's right after its colour and an opaque one's before the transparent pass, so what is in front covers
   it.
 - **Hidden by the scene, not by a depth test**: the glow's target has no depth, so a fragment further than the scene's
@@ -831,7 +831,7 @@ not in the mod or content pack that first needed it: only what is one product's 
      `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)`.
 4. **Prove and document it**: its check in `--mode=material-library`, and its row in the table above.
 
-**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/parse/CLAUDE.md`
+**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/shader/CLAUDE.md`
 
 ### No raw shaders
 
@@ -1493,7 +1493,7 @@ String glsl = kernel.glsl();                // the source it compiles from on th
 ```
 
 - A kernel that fails to compile throws with the driver's log and the emitted source, numbered. One that fails to
-  parse throws `CgShaderParseException` from `CgCompute.load`, naming the file, the kernel and the line.
+  read throws `CgShaderError` from `CgCompute.load`, naming the file, the kernel and the line.
 - **Checked mode**, `-Dcrystalgraphics.compute.checked=true`: every buffer and image access a kernel makes is
   bounds-checked, one out of range is skipped, and the first of each dispatch is logged a frame or two later,
   once a place (`CgComputeCheck.reported()` lists them):

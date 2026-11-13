@@ -1,6 +1,6 @@
 package com.crystalgraphics.shadergraph;
 
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import org.junit.Test;
 
 import static org.junit.Assert.*;
@@ -31,7 +31,7 @@ public class CgPropertyDeclarationTest {
     private static void assertParses(String source) {
         // Parsing is the assertion. A generated file that merely LOOKS right is exactly what shipped
         // before, and the parser is the only thing that knows what it refuses.
-        CgShaderParser.parse(source, "test:properties");
+        CgShaderSpec.read(source, "test:properties");
     }
 
     // ── The landmine ────────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ public class CgPropertyDeclarationTest {
         String handWritten = emitWith(new CgMasterNode())
                 .replace("Material { ", "Properties {\n    _Dir (\"_Dir\", vec3) = (0,1,0)\n}\n\nMaterial { ");
         try {
-            CgShaderParser.parse(handWritten, "test:vec3");
+            CgShaderSpec.read(handWritten, "test:vec3");
             fail("vec3 is banned as a property type — if it no longer is, the vec4 workaround in "
                     + "CgShaderType.propertyDeclarationType can go");
         } catch (RuntimeException expected) {

@@ -194,7 +194,7 @@ public final class CgVertexAttribute {
      * </ul>
      *
      * <p>No GL calls — pure derivation from existing fields. Called by
-     * {@code CgGlslEmitter.emitVertexInputs()} to generate {@code in <type> <name>;} declarations
+     * {@code CgGlslBlocks.vertexDeclarations} to generate {@code in <type> <name>;} declarations
      * in compiled vertex shader source.</p>
      *
      * @return GLSL type string (e.g. {@code "vec3"}, {@code "uvec4"}, {@code "int"})

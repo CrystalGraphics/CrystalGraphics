@@ -9,7 +9,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
-import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.render.world.CgWorldLights;
 import com.crystalgraphics.vfx.effect.beam.CgBeamBody;
 import com.crystalgraphics.vfx.look.CgVfxKit;
@@ -105,8 +105,8 @@ public class CgVfxSlotRendererTest {
     @Test
     public void aTubeTaggedMaterialDrawsOnlyOnATube() {
         CgMaterialDefinition volume = material("test:materials/volume", VOLUME);
-        assertEquals(CgParsedShader.Tube.VOLUME, volume.tube());
-        assertEquals(CgParsedShader.Tube.VOLUME,
+        assertEquals(CgShaderSpec.Tube.VOLUME, volume.tube());
+        assertEquals(CgShaderSpec.Tube.VOLUME,
                 CgVfxSlotRenderer.of("l1", CgBeamBody.BODY).material(volume).build().tube());
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
                 () -> CgVfxSlotRenderer.of("l1", CgBeamBody.HEAD).material(volume).build());
