@@ -26,7 +26,7 @@
 //              its own bloom, added over the frame's look as only what it contributes: its tone of the scene less its
 //              tone of what is behind it, less the frame's tone of the same. A pixel no layer reaches is unchanged
 #domain global
-#include "crystalgraphics:shaders/lib/post/impact.glsl"
+#include "crystalgraphics:shaders/post/impact.glsl"
 Material { SceneColorMargin 0.02  Media On }
 
 Keywords {

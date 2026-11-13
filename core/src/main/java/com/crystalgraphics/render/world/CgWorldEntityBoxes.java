@@ -17,7 +17,7 @@ import java.util.function.IntConsumer;
 /**
  * The boxes of the living entities nearest the camera, at most {@link #MAX} within {@link #REACH} blocks, gathered from
  * {@link CgEntityQuery} once a frame something reads them: the world lights' shadow rays ({@link CgWorldLights}) and the
- * particle steps that collide with entities ({@code fx_entities_at.glsl}). Items and projectiles are left out. Render
+ * particle steps that collide with entities ({@code vfx/sim/data/entities.glsl}). Items and projectiles are left out. Render
  * thread.
  *
  * <pre>{@code

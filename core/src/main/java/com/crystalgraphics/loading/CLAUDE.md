@@ -14,7 +14,7 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 | `CgLoadingScreen.Task` | Lyra's `ULoadingProcessTask`: work started and ended in code (`task(reason)` ... `close()`) |
 | `task/` | `CgLoadPlan` (named tasks: `task(id).after(...).work(...).render(step).start()`, `track(id, reply)`, `begin(id)`; listeners get it in `onLoad`; its `frame()` runs in the frame tick's host section, starting tasks whose `after` ended and running render parts within `crystalgraphics.loading.renderBudget`, a part that only waits calling `task.nextFrame()` so it is polled once a frame), `CgLoadTask` (one task: id `<owner>:<name>`, state, `after`, start and end, reported progress and detail), `CgLoadStep` (a render part, a slice a call), `CgLoadTracker` (every task of this load: `running()`, `progress(now)` for the bar, history per `key`, the timeline logged at the hide) |
 | `watchdog/` | `CgLoadWatchdog`: Unreal's `FGameThreadHitchHeartBeatThreaded`. The frame beats; a thread polls every 8 ms, samples the render thread's stack each poll once a frame is held past `crystalgraphics.loading.stallMs` (100), and reports the hold when it ends: how long, the render thread's CPU time over it, and where its samples landed (the lifecycle callback, else the first stack frame outside the JDK, class loading and the engine's plumbing: a class defined at its first use is named `loading classes for` the code that used it). A hold whose samples sit mostly in a GL call, a swap, a fence or a sleep is a **wait** (the driver or GPU catching up), and so is one where the render thread barely ran and was in no read (the machine had it descheduled); any other is **work**, a read from disk included. A pipeline built or linked at its draw (`vkCreate*Pipelines`, the tracker's `takeAhead`, a link wait) is work named as one to precache, never a wait. The hide logs both counts; `loading.strict` fails the run when work held it |
-| `view/` | `CgLoadingView` / `CgLogoLoadingView`: what it draws: the engine's lockup (`textures/gui/lockup.png`) over a view up at the ocean's surface (`shaders/loading/loading_fx.shader`), Minecraft's white outlined bar under it; under `crystalgraphics.loading.showTasks` the running tasks a line each under the bar, owner, name, percent (the engine's default font, the installed sans-serif: `api/font/CgDefaultFont`). `warm` starts its lockup decoding on a worker at the graphics start; `ready` answers once that and its shader's pipeline are built |
+| `view/` | `CgLoadingView` / `CgLogoLoadingView`: what it draws: the engine's lockup (`textures/gui/lockup.png`) over a view up at the ocean's surface (`shaders/loading/logo.shader`), Minecraft's white outlined bar under it; under `crystalgraphics.loading.showTasks` the running tasks a line each under the bar, owner, name, percent (the engine's default font, the installed sans-serif: `api/font/CgDefaultFont`). `warm` starts its lockup decoding on a worker at the graphics start; `ready` answers once that and its shader's pipeline are built |
 
 ## Rules
 
@@ -53,7 +53,7 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
 - **Anything that stands the engine down hides it** (`hideNow`), so a held opening never waits forever.
 - **The screen draws nothing of its own until its view is `ready()`** (its shaders built, its textures loaded): the
   host's own loading screen stays up meanwhile, and the fade-in starts at the first frame drawn whole. Its first frame
-  built `loading_fx` at the draw and waited half a second on its pipelines (26.2, Vulkan). The view is warmed first in
+  built `loading/logo.shader` at the draw and waited half a second on its pipelines (26.2, Vulkan). The view is warmed first in
   the graphics start, before the engine's programs queue, and asked from then on at each frame and draw.
 - **The screen draws from the engine's start, over the host's own loading screen** (`hostDraws()` while shown), so
   its fade-in crosses from that screen, or from the host's first screen where that opened before the view was ready.
@@ -66,7 +66,7 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
   a host that stops drawing still gets its opening.
 - **`draw` runs inside a host section**, whose close sets the host's state back (`GLHostState`): a view binds its
   program and sets its render state, and 1.7.10 draws with fixed function through whatever program is left bound.
-  Leaving `loading_fx` bound drew 1.7.10's menu black.
+  Leaving `logo.shader` bound drew 1.7.10's menu black.
 - **The world frame the screen fires draws as the host's world does** (`hostWorld(depth, reversed, zeroToOne)`, from
   the host before its first draw): on a Vulkan device a pipeline is built for its target's formats and depth test, and
   one built for a target the world never uses is a compile wasted on the render thread. Minecraft 26.2+ passes

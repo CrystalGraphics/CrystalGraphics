@@ -141,7 +141,7 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 // program (no vertex data, or FX_ON_SPRITES) the sprite factory, any other mesh's.
 // The strip factory: Unreal's beam-and-trail vertex factory (ParticleBeamTrailVertexFactory), compiled where a draw
 // enables FX_ON_RIBBONS, which every particle program takes. Each particle is a strip, placed from CG_VERTEX_ID, of the
-// draw's kind; a beam (CgVfxBeamRendererProperties) is a run of its pool's PARTICLE_BEAMS (fx_beam.glsl's FX_BEAM_*)
+// draw's kind; a beam (CgVfxBeamRendererProperties) is a run of its pool's PARTICLE_BEAMS (lib/vfx/beam.glsl's FX_BEAM_*)
 // drawn as ParticleSystemRender.cpp's beam fills draw it. What CgVfxFrame passes:
 //   CUSTOM0  the draw's first particle, its count, the renderer's size, sheets + 256 * segments a sheet
 //   CUSTOM1  the slot's first run, its runs (its capacity), vec4s a run, noise points a run
@@ -149,8 +149,8 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 //            tiles or the blocks a tile, the noise's frequency
 // An include is resolved once whatever #if it sits in, so what both factories read is included ahead of either.
 #if defined(CG_VERTEX_STAGE) && (defined(FX_ON_RIBBONS) || defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES) || defined(CG_TYPE_SPATIAL))
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 #endif
 #if defined(CG_VERTEX_STAGE) && defined(FX_ON_RIBBONS)
 // One strip kind a program: a beam renderer's material compiles with FX_STRIP_BEAM, an anim trail's with
@@ -158,7 +158,7 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 // Every kind in one program cost NVIDIA 0.5-2 s a link.
 #ifdef FX_STRIP_BEAM
 #define FX_BEAM_RUN(at) CG_PARTICLE_BEAM(at)
-#include "crystalgraphics:shaders/lib/vfx/fx_beam.glsl"
+#include "crystalgraphics:shaders/lib/vfx/beam.glsl"
 
 // One vertex of the draw's beam strips: the particle CG_VERTEX_ID falls in, its sheet, its point along and its side.
 void _cg_beam(float cameraOffset, float drawnBits, out CgMaterialVertex v, out CgMaterialParticle p) {
@@ -180,7 +180,7 @@ void _cg_beam(float cameraOffset, float drawnBits, out CgMaterialVertex v, out C
     int noisePoints = int(CG_OBJECT_CUSTOM1.w + 0.5), filled = fx_beam_filled(at, noisePoints, segments);
     int hereAt = min(k, filled);
     int from = (flags & 2) != 0 ? 0 : max(hereAt - 1, 0), to = (flags & 2) != 0 ? 1 : max(hereAt, 1);
-    // Its points in a loop the data sizes, so fx_beam_point is compiled once (fx_beam.glsl). Turned segment by
+    // Its points in a loop the data sizes, so fx_beam_point is compiled once (lib/vfx/beam.glsl). Turned segment by
     // segment, its own point is from's or to's; turned as a whole it needs a third.
     int index[3] = int[3](from, to, hereAt);
     vec3 points[3];

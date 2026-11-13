@@ -95,7 +95,7 @@ public final class CgBloom implements CgPostEffect {
     /** The blooms one chain runs: the frame's and each graded layer's ({@link CgGradeLayers#MAX}). */
     static final int BLOOMS = 1 + CgGradeLayers.MAX;
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/bloom.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/post/bloom.compute";
     /** Unreal's bloom format; written from kernels as the media's R16F is. */
     private static final CgFormat FORMAT = CgFormat.RG11B10_UFLOAT;
     private static final int GPU_BLOOM = CgGpuTrace.name("post.bloom");

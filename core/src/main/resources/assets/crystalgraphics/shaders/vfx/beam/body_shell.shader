@@ -5,7 +5,7 @@
 // scene rather than paling it; its streaks bloom, added. _Shell is the skin, its alpha a strength; _ShellHot its hottest
 // streaks and filaments. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Tube  PerDrawValues On }
 
 Properties {

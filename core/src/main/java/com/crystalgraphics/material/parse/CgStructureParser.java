@@ -62,11 +62,11 @@ final class CgStructureParser {
         static final MaterialBuffers NONE = new MaterialBuffers(List.of(), "");
     }
 
-    /** The world's light, as the light list holds it ({@code lib/lights.glsl}). */
+    /** The world's light, as the light list holds it ({@code world/lights/lights.glsl}). */
     private static final String LIGHT_STRUCT = "vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; "
             + "vec4 ambient; vec4 air;";
 
-    /** The light grid's buffers a program handed the world's lights reads ({@code handed_lights.glsl}). */
+    /** The light grid's buffers a program handed the world's lights reads ({@code env/handed/lights.glsl}). */
     private static final String HANDED_BUFFERS = """
             WORLD_LIGHTS ("The world's lights", CgLight, readonly)
             WORLD_LIGHT_CELLS ("Each light-grid cell's count and where its list starts", uint, readonly)

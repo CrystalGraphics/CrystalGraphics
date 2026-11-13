@@ -71,15 +71,15 @@ import java.util.Objects;
  * @param handedLights
  *     {@code true} where its source names {@code cg_NearestLights} or {@code CG_DRAW_POINT_LIGHT_*}: it carries its own
  *     lighting and is handed the world's lights, its {@link #buffers} ending with the light grid's three and its
- *     {@link #properties} with the grid's {@code _cg_Light*} ({@code handed_lights.glsl}).
+ *     {@link #properties} with the grid's {@code _cg_Light*} ({@code env/handed/lights.glsl}).
  * @param handedSun
  *     {@code true} where its source names {@code CG_DIRECTIONAL_SHADOW(}: it is handed the sun's shadow map, its
- *     {@link #properties} ending with {@code _cg_SunMap} and the cascades' rows ({@code handed_sun.glsl}).
+ *     {@link #properties} ending with {@code _cg_SunMap} and the cascades' rows ({@code env/handed/sun.glsl}).
  * @param handedScene
  *     {@code true} where its source reads a scene texture Unreal's post materials sample ({@code CG_CUSTOM_STENCIL(},
  *     {@code CG_SCENE_WORLD_NORMAL(}, {@code CG_CUSTOM_DATA(}, {@code CG_SHADING_MODEL_ID(}): it is handed them, its
  *     {@link #properties} ending with {@code _cg_CustomStencil}, {@code _cg_WorldNormal} and {@code _cg_CustomData}
- *     ({@code handed_scene.glsl}).
+ *     ({@code env/handed/scene.glsl}).
  * @param writesCustomData
  *     {@code true} where its source names {@code CG_CUSTOM_DATA_OUT} or {@code CG_SHADING_MODEL_OUT}: its opaque draws
  *     are drawn again into the custom data a post material reads, in a frame one does (Unreal's GBufferD).

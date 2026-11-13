@@ -8,7 +8,7 @@
 // streak down the white's middle blooms. _Core is the white, its alpha a strength; _Shell the band (_Band on). The
 // layer's size is the hull's; the core is _CoreSize of it at rest, never past the hull. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_volume.glsl"
+#include "crystalgraphics:shaders/lib/vfx/volume.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Strict  DepthWrite On  VertexFactory TubeClosed  PerDrawValues On }
 
 Properties {

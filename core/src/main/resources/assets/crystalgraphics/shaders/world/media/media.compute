@@ -1,0 +1,39 @@
+// The world's media (CgWorldMedia): what gets through from the eye to each froxel's far edge, summed from the eye
+// outward through the extinction the injectors added, and the light the world's lights scattered toward the eye on the
+// way (_Scatter, CgWorldLights' lit air): Unreal's FinalIntegrationCS (VolumetricFog.usf:1210-1250), Frostbite's
+// energy-conserving sum. What cg_MediaTransmit and cg_MediaLight read.
+//
+// IntegrateColumns is Unreal's: a thread a column, walking it from the eye once and storing every slice.
+#pragma kernel IntegrateColumns 8 8 general
+
+#include "crystalgraphics:shaders/world/media/media.glsl"
+
+Properties {
+    _Media ("Extinction a block, each froxel", sampler3D) = "black"
+    _Scatter ("Light scattered toward the eye a block, each froxel: the scattering times the light", sampler3D) = "black"
+}
+
+Images {
+    MEDIA_TRANSMIT ("To each froxel's far edge: the light scattered toward the eye, then what gets through", rgba16f, writeonly, 3d)
+}
+
+// One slice's step of the sum: its light added to what came before, and what gets through past it.
+void integrate_step(ivec3 at, float s, inout vec3 light, inout float through) {
+    float sigma = max(texelFetch(_Media, at, 0).x, 0.0), dz = media_eye(s + 1.0) - media_eye(s);
+    vec3 scatter = texelFetch(_Scatter, at, 0).rgb;
+    float t = exp(-sigma * dz);
+    light += through * (sigma > 1.0e-5 ? (scatter - scatter * t) / sigma : scatter * dz);
+    through *= t;
+}
+
+void IntegrateColumns() {
+    if (!CG_IN_RANGE) return;
+    vec3 light = vec3(0.0);
+    float through = 1.0;
+    int slices = MEDIA_TRANSMIT_SIZE().z;
+    for (int s = 0; s < slices; s++) {   // LOOP-BOUND: the transmittance texture's depth
+        ivec3 at = ivec3(CG_DISPATCH_ID.xy, s);
+        integrate_step(at, float(s), light, through);
+        MEDIA_TRANSMIT_STORE(at, vec4(light, through));
+    }
+}

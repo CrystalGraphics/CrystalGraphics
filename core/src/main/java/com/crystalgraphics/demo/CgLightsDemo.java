@@ -160,7 +160,7 @@ public final class CgLightsDemo {
 
     public void precache() {
         vfx.precache(particles);
-        glass = CgMaterial.load("crystalgraphics:shaders/demo/demo_glass.shader");
+        glass = CgMaterial.load("crystalgraphics:shaders/demo/glass.shader");
         programs = CgPipelinePrecache.request(pipelines -> pipelines.add(glass, false));
     }
 

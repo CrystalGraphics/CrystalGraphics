@@ -30,12 +30,12 @@ import java.util.Objects;
 public final class CgVfxSlot {
 
     /**
-     * What a slot's draws are. Every kind's {@code CG_OBJECT_CUSTOM3} is the draw header ({@code fx_draw.glsl}: its row,
+     * What a slot's draws are. Every kind's {@code CG_OBJECT_CUSTOM3} is the draw header ({@code lib/vfx/draw.glsl}: its row,
      * the effect's age, its seed, its presence); the first three customs are the kind's own.
      */
     public enum Kind {
         /**
-         * Chunked tube draws along a path ({@code fx_tube.glsl}): {@code CUSTOM0} the path's row, the chunk's first
+         * Chunked tube draws along a path ({@code lib/vfx/tube.glsl}): {@code CUSTOM0} the path's row, the chunk's first
          * ring, the layer's size and 0; {@code CUSTOM1} the chunk's centre less the effect's origin and its share of the
          * draw.
          */
@@ -59,14 +59,14 @@ public final class CgVfxSlot {
         PARTICLES,
         /**
          * A prefab part on each particle of a {@code SEQUENCE} emitter, its node where the particle's clip has it
-         * ({@code fx_sequence.glsl}, reading {@code FX_CLIPS} from its {@code Buffers { }}): Range's object records, so
+         * ({@code lib/vfx/sequence.glsl}, reading {@code FX_CLIPS} from its {@code Buffers { }}): Range's object records, so
          * {@code CUSTOM0} the particle's velocity and age and {@code CUSTOM1} its life 0..1, seed, opacity and heat;
          * {@code CUSTOM2} the node's first vec4, its row's length, the clip's frames a second of age and the node's step
          * mask. A shader drawing here declares {@code FX_ON_SEQUENCE}.
          */
         SEQUENCE,
         /**
-         * A {@code CgVfxFluid}, marched through a box round the tiles it holds ({@code fx_fluid.glsl}), reading
+         * A {@code CgVfxFluid}, marched through a box round the tiles it holds ({@code lib/vfx/fluid.glsl}), reading
          * {@code CgVfxFluidAtlas.shade()} as {@code _FluidShade}, {@code restA()} and {@code restB()} as
          * {@code _FluidRestA} and {@code _FluidRestB}, and {@code pages()} as {@code _FluidPages}, declared first and in
          * that order: the box a unit cube scaled by the transform; {@code CUSTOM0} the fluid's place in the atlas, its
@@ -75,8 +75,8 @@ public final class CgVfxSlot {
          */
         FLUID,
         /**
-         * A {@code CgVfxGrid3D}, marched through a box round the tiles it holds ({@code fx_grid.glsl},
-         * {@code fx_sparse.glsl}), reading {@code CgVfxGridAtlas.view()} as {@code _GridView}, {@code light()} as
+         * A {@code CgVfxGrid3D}, marched through a box round the tiles it holds ({@code lib/vfx/grid.glsl},
+         * {@code lib/vfx/sparse.glsl}), reading {@code CgVfxGridAtlas.view()} as {@code _GridView}, {@code light()} as
          * {@code _GridLight} and {@code pages()} as {@code _GridPages}, declared first and in that order: the box a unit
          * cube scaled by the transform; {@code CUSTOM0} the grid's place in the atlas, its cell in blocks, 0 and the
          * layer's size; {@code CUSTOM1} its grid's low corner from the box's middle, and its extinction a block.

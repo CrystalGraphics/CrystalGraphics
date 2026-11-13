@@ -45,8 +45,8 @@ final class CgSceneTarget {
     /** After the post stack blends its volumes (0), before anything draws the world. */
     static final int ORDER = 1;
 
-    private static final String IN = "crystalgraphics:shaders/world_scene_in.shader";
-    private static final String OUT = "crystalgraphics:shaders/world_scene_out.shader";
+    private static final String IN = "crystalgraphics:shaders/world/scene_in.shader";
+    private static final String OUT = "crystalgraphics:shaders/world/scene_out.shader";
     private static final CgFormat SCENE = CgFormat.RGBA16_FLOAT;
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU = CgGpuTrace.name("world.sceneIn"), GPU_OPAQUE = CgGpuTrace.name("world.opaqueSceneIn"),

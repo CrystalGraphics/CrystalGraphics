@@ -77,7 +77,7 @@ public final class CgFrameKeys {
 
     /**
      * Unreal's custom data (GBufferD) and shading model of our opaque surfaces this firing, packed into RG32F as
-     * {@code handed_scene.glsl} reads them ({@code CG_CUSTOM_DATA}, {@code CG_SHADING_MODEL_ID}): the draws whose
+     * {@code env/handed/scene.glsl} reads them ({@code CG_CUSTOM_DATA}, {@code CG_SHADING_MODEL_ID}): the draws whose
      * materials write them ({@code CG_CUSTOM_DATA_OUT}, {@code CG_SHADING_MODEL_OUT}), where they show. Published near
      * the top of {@code WORLD_TRANSPARENT} where {@link #CUSTOM_DATA_READ} was put.
      */

@@ -1,10 +1,10 @@
 // Lightning crawling along an energy wave's body: bolts between two points of its surface, each a run along the body that
 // winds partway round it, bowed off it and jagged at every scale, forking into branches that strike back onto it; some
 // leap far off the body before coming down. A strike holds its channel and strobes through its return strokes.
-// Stateless ribbons that read the path itself (fx_ring_at, fx_lightning.glsl): three per bolt, its channel and two
+// Stateless ribbons that read the path itself (fx_ring_at, lib/vfx/lightning.glsl): three per bolt, its channel and two
 // forks. _Spiral is the glow, its alpha a strength; _Core the white core. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_lightning.glsl"
+#include "crystalgraphics:shaders/lib/vfx/lightning.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory PathRibbons  PerDrawValues On }
 
 Properties {

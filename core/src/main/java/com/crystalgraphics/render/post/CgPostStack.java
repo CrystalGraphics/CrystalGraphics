@@ -122,7 +122,7 @@ public final class CgPostStack {
      * ahead of it ({@link #lookPasses}).
      */
     private static final String[] WARMED = {
-            "crystalgraphics:shaders/world_scene_in.shader", "crystalgraphics:shaders/world_scene_out.shader",
+            "crystalgraphics:shaders/world/scene_in.shader", "crystalgraphics:shaders/world/scene_out.shader",
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", "crystalgraphics:shaders/post/composite_copy.shader"};
 
@@ -207,7 +207,7 @@ public final class CgPostStack {
         if (readsScene()) stage.resources().put(CgFrameKeys.WORLD_NORMALS_READ, Boolean.TRUE);
     }
 
-    /** Whether an active post material reads the scene textures it is handed ({@code handed_scene.glsl}). */
+    /** Whether an active post material reads the scene textures it is handed ({@code env/handed/scene.glsl}). */
     private boolean readsScene() {
         for (CgPostEffect e : effects) {
             if (e instanceof CgPostMaterial m && m.weight() > 0f && CgMaterialProxy.of(m.material()).handedScene()) return true;

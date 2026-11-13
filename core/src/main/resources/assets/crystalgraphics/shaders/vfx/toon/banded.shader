@@ -1,5 +1,5 @@
 // A toon energy body in one draw: up to three flat bands of colour and a soft halo past them, on a tube or a sphere,
-// by how near the view ray passes the tube's axis or the sphere's centre (fx_bands.glsl). Reads as flat bands from
+// by how near the view ray passes the tube's axis or the sphere's centre (lib/vfx/bands.glsl). Reads as flat bands from
 // any side and from inside, each edge antialiased over a pixel. _Bands is the palette, innermost first and the halo's
 // colour last, each alpha a strength; the layer's size is the halo's edge, _Edges each band's as a share of it.
 //
@@ -7,9 +7,9 @@
 // mesh slot's sphere from its centre, cg_VfxMesh.values.z an intensity which below 1 shrinks it. It tests the scene's
 // depth where the ray passes nearest and writes none. Only its glow blooms. CgEnergyWave.TOON.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_volume.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_bands.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/volume.glsl"
+#include "crystalgraphics:shaders/lib/vfx/bands.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  VertexFactory VfxMesh, TubeClosed  PerDrawValues On }
 
 Properties {

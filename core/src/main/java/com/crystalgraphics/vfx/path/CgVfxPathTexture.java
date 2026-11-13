@@ -14,7 +14,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
  * This frame's {@link CgVfxPath}s, one per row of an RGBA32F texture that tube shaders read with {@code texelFetch}
- * ({@code fx_tube.glsl}). Texel 0 of a row is its header (ring count, length, seed, age); ring {@code i} is texels
+ * ({@code lib/vfx/tube.glsl}). Texel 0 of a row is its header (ring count, length, seed, age); ring {@code i} is texels
  * {@code 1 + 3i} to {@code 3 + 3i}: position and radius, tangent and arc length, normal and intensity.
  *
  * <pre>{@code

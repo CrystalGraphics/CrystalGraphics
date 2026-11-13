@@ -144,12 +144,12 @@ public final class CgKernelEmitter {
         sb.append("layout(local_size_x = ").append(kernel.sizeX()).append(", local_size_y = ").append(kernel.sizeY())
           .append(", local_size_z = ").append(kernel.sizeZ()).append(") in;\n");
         include(sb, ENV + "cg_env.glsl");
-        include(sb, ENV + "compute/kernel.glsl");
-        include(sb, ENV + "compute/atomic.glsl");
-        if (subgroups) include(sb, ENV + "compute/subgroup.glsl");
+        include(sb, ENV + "kernel/kernel.glsl");
+        include(sb, ENV + "kernel/atomic.glsl");
+        if (subgroups) include(sb, ENV + "kernel/subgroup.glsl");
         if (checked) {
             sb.append("#define CG_CHECK_BINDING ").append(checkPoint(source)).append('\n');
-            include(sb, ENV + "compute/check.glsl");
+            include(sb, ENV + "kernel/check.glsl");
         }
 
         properties(sb, source);

@@ -9,8 +9,8 @@
 // Linear light; what passes 1 in its colour map is what it gives off, and all that blooms.
 #domain surface
 #include "crystalgraphics:shaders/lib/color.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_wavelet.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_fluid.glsl"
+#include "crystalgraphics:shaders/lib/vfx/wavelet.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fluid.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Off  ColorSpace Linear  VertexFactory FluidVolume  PerDrawValues On }
 
 Properties {

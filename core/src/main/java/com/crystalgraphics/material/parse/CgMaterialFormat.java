@@ -392,7 +392,7 @@ final class CgMaterialFormat {
         out.append("        Cull ").append(cull).append('\n');
         if (!color) out.append("        ColorMask 0\n");
         out.append("    }\n");
-        out.append("#include \"crystalgraphics:shaders/env/material.glsl\"\n").append(SURFACE_DEFAULTS);
+        out.append("#include \"crystalgraphics:shaders/env/material/surface.glsl\"\n").append(SURFACE_DEFAULTS);
         out.append(CgFormatTemplates.pragmas(factory.declarations(), false));
         appendCode(out, code, vertex, surface, functions);
         out.append("    void vertex(out v2f o) {\n        CgVertex v;\n");
@@ -633,8 +633,8 @@ final class CgMaterialFormat {
             }
             if (set.containsKey("Scale")) out.append(" \"Scale\" = \"").append(set.get("Scale")).append('"');
             out.append(" }\n    RenderState {\n        Blend OFF\n        DepthTest ALWAYS\n        DepthWrite OFF\n        Cull OFF\n    }\n")
-               .append("#include \"crystalgraphics:shaders/lib/post/post_material.glsl\"\n")
-               .append("#include \"crystalgraphics:shaders/env/material.glsl\"\n");
+               .append("#include \"crystalgraphics:shaders/env/material/post.glsl\"\n")
+               .append("#include \"crystalgraphics:shaders/env/material/surface.glsl\"\n");
             StringBuilder body = new StringBuilder();
             appendCode(body, passCode, null, surface, passFunctions);
             String sized = STEP_SIZE.matcher(body).replaceAll("textureSize(" + STEP_PREFIX + "$1, 0)");
@@ -705,7 +705,7 @@ final class CgMaterialFormat {
         appendData(out, items, primitive.properties(), "Primitive " + kind, path);
         out.append("struct v2f {").append(primitive.v2f()).append("};\n");
         out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\" }\n").append(primitive.renderState()).append('\n')
-           .append("#include \"crystalgraphics:shaders/env/material.glsl\"\n").append(primitive.declarations());
+           .append("#include \"crystalgraphics:shaders/env/material/surface.glsl\"\n").append(primitive.declarations());
         appendCode(out, code, null, surface, functions);
         out.append(primitive.vertex()).append('\n')
            .append(primitive.fragment().replace(CgFormatTemplates.SURFACE_CALL + "(", MATERIAL_SURFACE + "(")).append("\n}\n");

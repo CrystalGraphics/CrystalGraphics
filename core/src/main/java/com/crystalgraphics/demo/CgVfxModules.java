@@ -109,7 +109,7 @@ public final class CgVfxModules {
     private static final Map<String, Object> GRID_8 = Map.of("size", List.of(8, 8));
     /** How deep behind the scene's depth a particle still counts as hitting it: under half a block, so one passing behind a mob is not snapped onto it. */
     private static final float DEPTH_THICKNESS = 0.4f;
-    private static final String SHEET_KERNELS = "crystalgraphics:shaders/demo/vfx_modules_sheets.compute";
+    private static final String SHEET_KERNELS = "crystalgraphics:shaders/demo/modules_sheets.compute";
     /** The station grid: columns along x, rows along z, toward the camera. */
     private static final float[] COLUMNS = {-21f, -7f, 7f, 21f}, ROWS = {-14f, 0f, 14f, 28f, 45f, 63f, 81f};
 
@@ -319,8 +319,8 @@ public final class CgVfxModules {
         this.font = font;
         sphere = CgMeshShapes.sphere(40, 80);
         cube = CgMeshShapes.cube();
-        mercury = CgMaterial.load("crystalgraphics:shaders/demo/vfx_mercury.shader");
-        copper = CgMaterial.load("crystalgraphics:shaders/demo/vfx_copper.shader");
+        mercury = CgMaterial.load("crystalgraphics:shaders/demo/mercury.shader");
+        copper = CgMaterial.load("crystalgraphics:shaders/demo/copper.shader");
         CgTexture2D smokeSheet = sheet("Smoke", 8, 8, 128);
         CgTexture2D fireSheet = sheet("Fire", 4, 4, 128);
         CgTexture2D dot = sheet("Dot", 1, 1, 64);
@@ -2588,7 +2588,7 @@ public final class CgVfxModules {
         stations.add(new Station(name, x, z, look.draw(draw).build(), emitters, sources, props));
     }
 
-    /** A flipbook sheet or stamp, and the kernel of {@code vfx_modules_sheets.compute} that fills it. */
+    /** A flipbook sheet or stamp, and the kernel of {@code demo/modules_sheets.compute} that fills it. */
     private record Sheet(CgTexture2D storage, CgKernel kernel, int columns, int cell) {
     }
 

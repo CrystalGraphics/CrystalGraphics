@@ -114,8 +114,8 @@ public final class CgVfxFluidAtlas {
     /** Flow's divergence and burn channels' damping and fade a second (its defaults: 0.01 and 1 cm, 0 and 0). */
     private static final float DIVERGENCE_DAMPING = 0.01f, DIVERGENCE_FADE = 0.01f;
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/fluid.compute";
-    private static final String MEDIA_KERNELS = "crystalgraphics:shaders/env/compute/vfx/media.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/fluid/fluid.compute";
+    private static final String MEDIA_KERNELS = "crystalgraphics:shaders/vfx/grid/media.compute";
 
     /** Every kernel a fluid dispatches, its media injection's included: what VFX's collector builds while loading. */
     public static void precacheKernels() {

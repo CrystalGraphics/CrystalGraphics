@@ -46,8 +46,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
     /** The engine's lockup, its shadows included, exported by tools/logo/export_lockup.py. */
     public static final String LOCKUP = "crystalgraphics:textures/gui/lockup.png";
     /** Its shader, which the screen precaches with the engine's passes. */
-    public static final String FX ="crystalgraphics:shaders/loading/loading_fx.shader";
-    /** {@code loading_fx.shader}'s modes. */
+    public static final String FX ="crystalgraphics:shaders/loading/logo.shader";
+    /** {@code loading/logo.shader}'s modes. */
     private static final int BACKDROP = 0, GLOW = 1, IMAGE = 2, BAR = 3;
     /** The icon's height against the lockup image's, and each side's padding against its width. */
     private static final float ICON_SHARE = 64f / 92f, SIDE_PAD = 14f / 486.8f;
@@ -237,7 +237,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
         return lockup;
     }
     /**
-     * A quad of {@code loading_fx.shader} in {@code mode}, {@code param} its per-mode value (the sweep, the fill),
+     * A quad of {@code loading/logo.shader} in {@code mode}, {@code param} its per-mode value (the sweep, the fill),
      * {@code texture} at unit 0 where it samples one.
      */
     private void quad(CgMaterial fx, @Nullable CgTexture2D texture, float x, float y, float w, float h, int argb, float param,

@@ -45,13 +45,13 @@ import java.util.function.IntFunction;
  *
  * <ul>
  *   <li>Every tier: an {@code append} kernel lowers, so G40 and G33 run it through transform feedback.</li>
- *   <li>A kind's file is {@code crystalgraphics:shaders/lib/vfx/sim/fx_<kind>.glsl}; a missing one throws from
+ *   <li>A kind's file is its {@code gpuFile()}, else {@code crystalgraphics:shaders/vfx/sim/<kind>.glsl}; a missing one throws from
  *       {@link #compile}, naming it.</li>
  * </ul>
  */
 public final class CgVfxEmitterCompiler {
 
-    private static final String KIND_DIR = "crystalgraphics:shaders/lib/vfx/sim/fx_";
+    private static final String KIND_DIR = "crystalgraphics:shaders/vfx/sim/";
 
     private CgVfxEmitterCompiler() {
     }
@@ -193,7 +193,7 @@ public final class CgVfxEmitterCompiler {
             pack(w, "p.trailUp", ribbon + 4, 4);
             pack(w, "p.trailExtra", ribbon + 8, 4);
         }
-        // The simulated part; the drawn part is the Look stage's (env/compute/vfx/look.compute).
+        // The simulated part; the drawn part is the Look stage's (vfx/particle/look.compute).
         s.append("\nFxRecord step_pack(FxParticle p, uint paramRow) {\n    FxRecord r;\n");
         for (int v = 0; v < record.vectors(); v++) {
             s.append("    r.w").append(v).append(" = uvec4(");
@@ -220,13 +220,13 @@ public final class CgVfxEmitterCompiler {
     }
 
     /** The libraries every Step includes: the step's own code, not a kind's. */
-    private static final List<String> STEP_LIBRARIES = List.of("crystalgraphics:shaders/lib/vfx/sim/fx_types.glsl",
-            "crystalgraphics:shaders/lib/vfx/fx_rand.glsl", "crystalgraphics:shaders/lib/vfx/fx_event.glsl");
+    private static final List<String> STEP_LIBRARIES = List.of("crystalgraphics:shaders/vfx/sim/types.glsl",
+            "crystalgraphics:shaders/lib/vfx/rand.glsl", "crystalgraphics:shaders/lib/vfx/event.glsl");
 
     /** The libraries {@code shape}'s inputs bring, in include order. */
     private static List<String> libraries(CgVfxShape shape) {
         List<String> libs = new ArrayList<>();
-        if (shape.readsClips()) libs.add("crystalgraphics:shaders/lib/vfx/fx_clip.glsl");
+        if (shape.readsClips()) libs.add("crystalgraphics:shaders/lib/vfx/clip.glsl");
         for (CgVfxDataInterface di : shape.dataInterfaces()) libs.addAll(di.libraries());
         return libs;
     }
@@ -732,7 +732,7 @@ public final class CgVfxEmitterCompiler {
         if (shape.tier() > 0) s.append("""
                 // Child c of this step's parent events: row c / _ChildMax's child c % _ChildMax, for the slot its feed
                 // names, launched about the event's normal from where it fired, with a share of its velocity. The
-                // tier's rows come sorted by region (a pool's event, env/compute/vfx/event_cap.compute): row r is a
+                // tier's rows come sorted by region (a pool's event, vfx/particle/event_cap.compute): row r is a
                 // region's local-th, and only its first max-per-frame spawn.
                 bool step_child(int c, out FxParticle p) {
                     if (_ChildMax == 0 || _Feeds == 0) return false;

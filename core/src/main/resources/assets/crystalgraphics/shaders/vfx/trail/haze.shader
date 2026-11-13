@@ -1,10 +1,10 @@
 // The air a fast thing tears through: the scene behind a strip shimmering in its wake, strongest down its middle and
 // near its head, gone at its edges and its tail, rippling as it streams back. Draws nothing in the scene, only bends
 // what is behind it (s.refraction), so the streak it trails stays sharp. A ribbon's material, widening by half again
-// toward its tail; its renderer tiles UV1 once a block (fx_strip.glsl).
+// toward its tail; its renderer tiles UV1 once a block (lib/vfx/strip.glsl).
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/strip.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

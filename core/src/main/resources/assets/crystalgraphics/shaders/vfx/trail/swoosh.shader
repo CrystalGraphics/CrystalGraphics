@@ -3,7 +3,7 @@
 // thinning toward the base and eaten away toward the tail; faded where it is seen edge-on, so it never shows as a
 // line. Added, and it blooms. An anim trail's material: its edge's first point the base, its second the tip.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

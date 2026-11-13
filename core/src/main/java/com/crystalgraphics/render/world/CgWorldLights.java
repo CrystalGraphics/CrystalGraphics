@@ -90,7 +90,7 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  *
  * // its kernel: CgLight declared in its own file (STRUCT), LIGHTS an append buffer of it
  * #pragma kernel Gather append
- * #include "crystalgraphics:shaders/lib/lights.glsl"
+ * #include "crystalgraphics:shaders/world/lights/lights.glsl"
  * struct CgLight { vec4 positionRadius; vec4 colorExponent; vec4 spotCos; vec4 segmentCone; vec4 ambient; vec4 air; };
  * Properties { _LightEye ("The firing's eye, absolute", vec4) = (0, 0, 0, 0) }
  * Buffers { EMBERS ("Embers", vec4, readonly)  LIGHTS ("Lights", CgLight, append) }
@@ -182,8 +182,8 @@ public final class CgWorldLights {
      * plane fixed where Unreal fits it to the furthest light, since a kernel's lights are not known here.
      */
     private static final float GRID_NEAR = 0.05f + 0.095f, GRID_FAR = 256.1f, GRID_SPREAD = 4.05f;
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/light_grid.compute";
-    private static final String VOLUME_KERNELS = "crystalgraphics:shaders/env/compute/light_volume.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/world/lights/grid.compute";
+    private static final String VOLUME_KERNELS = "crystalgraphics:shaders/world/lights/volume.compute";
     private static final int GPU_VOLUME = CgGpuTrace.name("world.lightsVolume");
     /** Unreal's r.TranslucencyLightingVolume.Dim. */
     private static final CgVar.Int VOLUME_CELLS = CgVar.integer("crystalgraphics.world.lightsVolumeCells", 64, 8, 64,
@@ -217,23 +217,23 @@ public final class CgWorldLights {
     private static final CgVar.Num VOLUME_OUTER = CgVar.number("crystalgraphics.world.lightsVolumeOuter", 50f, 2f, 256f,
             CgVar.DEV, "Blocks from the eye its second reaches: r.TranslucencyLightingVolume.OuterDistance, 50 m.");
     /** What adds the lights onto the scene: a full-screen pass reading the grid. */
-    static final String APPLY_SHADER = "crystalgraphics:shaders/world_lights.shader";
+    static final String APPLY_SHADER = "crystalgraphics:shaders/world/lights/lights.shader";
     /**
      * Each pixel's normal in the view, written once a firing for every lighting pass (Unreal's GBufferA in role): half
      * floats, so it is the normal each pass rebuilt from depth, to a thousandth.
      */
-    static final String GBUFFER_KERNELS = "crystalgraphics:shaders/env/compute/lights/gbuffer.compute";
+    static final String GBUFFER_KERNELS = "crystalgraphics:shaders/world/lights/gbuffer.compute";
     private static final CgFormat GBUFFER_FORMAT = CgFormat.RGBA16_FLOAT;
     private static final int GPU_GBUFFER = CgGpuTrace.name("world.lightsGBuffer");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
     private static final int GPU_APPLY = CgGpuTrace.name("world.lightsApply");
     /** The shadow passes, MegaLights': samples traced, shaded, accumulated over frames, filtered across the screen. */
-    static final String SAMPLE_KERNELS = "crystalgraphics:shaders/env/compute/lights/sample.compute",
-            SHADE_KERNELS = "crystalgraphics:shaders/env/compute/lights/shade.compute",
-            TEMPORAL_KERNELS = "crystalgraphics:shaders/env/compute/lights/temporal.compute",
-            DENOISE_KERNELS = "crystalgraphics:shaders/env/compute/lights/denoise.compute",
-            TILES_KERNELS = "crystalgraphics:shaders/env/compute/lights/tiles.compute",
-            TILE_DEPTH_KERNELS = "crystalgraphics:shaders/env/compute/lights/tile_depth.compute";
+    static final String SAMPLE_KERNELS = "crystalgraphics:shaders/world/lights/sample.compute",
+            SHADE_KERNELS = "crystalgraphics:shaders/world/lights/shade.compute",
+            TEMPORAL_KERNELS = "crystalgraphics:shaders/world/lights/temporal.compute",
+            DENOISE_KERNELS = "crystalgraphics:shaders/world/lights/denoise.compute",
+            TILES_KERNELS = "crystalgraphics:shaders/world/lights/tiles.compute",
+            TILE_DEPTH_KERNELS = "crystalgraphics:shaders/world/lights/tile_depth.compute";
     private static final int GPU_SAMPLE = CgGpuTrace.name("world.lightsSample"), GPU_SHADE = CgGpuTrace.name("world.lightsShade"),
             GPU_TEMPORAL = CgGpuTrace.name("world.lightsTemporal"), GPU_DENOISE = CgGpuTrace.name("world.lightsDenoise"),
             GPU_TILES = CgGpuTrace.name("world.lightsTiles"),
@@ -264,9 +264,9 @@ public final class CgWorldLights {
     private static final CgVar.Int SUN_CASCADES = CgVar.integer("crystalgraphics.world.sunShadowCascades", CASCADES, 1,
             CASCADES, CgVar.DEV, "Cascades of the sun's shadow map drawn, each 3 times the depth of the last.");
     private static final float CASCADE_EXPONENT = 3f, CASCADE_TRANSITION = 0.1f, SUN_NEAR = 0.05f;
-    /** Blocks the sun's ray through the blocks and entities runs: lights/sample.compute's sun_visibility. */
+    /** Blocks the sun's ray through the blocks and entities runs: world/lights/sample.compute's sun_visibility. */
     private static final float SUN_RAY = 96f;
-    static final String SUN_SHADOW_SHADER = "crystalgraphics:shaders/world_sun_shadow.shader";
+    static final String SUN_SHADOW_SHADER = "crystalgraphics:shaders/world/lights/sun_shadow.shader";
     private static final int GPU_SUN = CgGpuTrace.name("world.sunShadow");
     /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, drawn with a depth test's. */
     private static final CgFormat SUN_MAP_FORMAT = CgFormat.R32_FLOAT, SUN_DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT;
@@ -363,7 +363,7 @@ public final class CgWorldLights {
     private static final int BLOCK_MOST = 1024;
     /** Our opaque draws casting shadows through their meshes' distance fields: how many a firing, and how far. */
     private static final int MOST_CASTERS = 256, CASTER_FLOATS = 20;
-    /** Where the sun's cascade rows start in the casters' texture: lights/sample.compute's SUN_ROWS_AT. */
+    /** Where the sun's cascade rows start in the casters' texture: world/lights/sample.compute's SUN_ROWS_AT. */
     private static final int SUN_ROWS_AT = MOST_CASTERS * CASTER_FLOATS / 4;
     private static final float CASTER_REACH = 96f;
     private CgKernel view, coarse, cell;
@@ -1219,7 +1219,7 @@ public final class CgWorldLights {
     /**
      * The lights casting shadows, lit as Unreal's MegaLights lights them (MegaLights.cpp's pass order): four samples a
      * pixel, or a downsampled one ({@link #DOWNSAMPLE}), picked by weighted reservoir from its cell's lights and traced across the screen then
-     * through the occluders ({@code lights/sample.compute}); every pixel shaded from a nearby downsampled pixel's
+     * through the occluders ({@code world/lights/sample.compute}); every pixel shaded from a nearby downsampled pixel's
      * samples ({@code shade.compute}); accumulated over frames into the first firing's history ({@code temporal.compute});
      * filtered across the screen where still noisy ({@code denoise.compute}): each a compute pass of 8x8 groups, as
      * MegaLights' are. The apply adds the result. False while a program is unbuilt, and the apply lights every light unshadowed.
@@ -1578,7 +1578,7 @@ public final class CgWorldLights {
                 .vec4("_cg_SunEye", eye.x, eye.y, eye.z, 0f);
     }
 
-    /** Where the grid lay when it was last binned, for {@code handed_lights.glsl}. */
+    /** Where the grid lay when it was last binned, for {@code env/handed/lights.glsl}. */
     private void handValues(CgMaterialValues b) {
         b.vec4("_cg_LightGrid", gridX, gridY, SLICES, handLive ? 1f : 0f)
                 .vec4("_cg_LightTile", tileU, tileV, 0f, 0f).vec4("_cg_LightZ", zParams[0], zParams[1], zParams[2], 0f)
@@ -1602,7 +1602,7 @@ public final class CgWorldLights {
     }
 
     /**
-     * Binds the light grid to {@code material}, a program handed the world's lights ({@code handed_lights.glsl}): the
+     * Binds the light grid to {@code material}, a program handed the world's lights ({@code env/handed/lights.glsl}): the
      * list, the cells and their indices as the last firing to bin lights left them, and where the grid lay. After
      * {@link #record} in a transparent firing that is this firing's; in an opaque one, the last frame's.
      */
@@ -1617,7 +1617,7 @@ public final class CgWorldLights {
     }
 
     /**
-     * Binds the sun's shadow map to {@code material}, a program composing its own ({@code handed_sun.glsl}): this
+     * Binds the sun's shadow map to {@code material}, a program composing its own ({@code env/handed/sun.glsl}): this
      * firing's after {@link #apply} in a transparent firing, none in an opaque one, whose pixels the deferred pass
      * shadows.
      */
@@ -1637,7 +1637,7 @@ public final class CgWorldLights {
     /**
      * Unreal's translucency lighting volume (TranslucentLighting.cpp:270-370): each cascade the sphere round its slice of
      * a fixed 45-degree, square view (r.TranslucencyLightingVolume.AdaptToPerspective 0), its centre weighted to the far
-     * end and snapped to whole cells in absolute space; then light_volume.compute lights every cell, after the light
+     * end and snapped to whole cells in absolute space; then world/lights/volume.compute lights every cell, after the light
      * grid and the shadows' inputs are this firing's. With {@code directional}, each cell's direction too, behind them.
      */
     /**
@@ -1691,7 +1691,7 @@ public final class CgWorldLights {
 
     /**
      * Unreal's translucency lighting volume (TranslucentLighting.cpp): two cascades of {@link #VOLUME_CELLS} a side round
-     * the view, which light_volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
+     * the view, which world/lights/volume.compute fills and every lit transparent pass reads ({@code cg_LocalLights}).
      */
     private void recordVolume(CgStageFrame stage, CgRecording recording, boolean directional) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_VOLUME)) {
@@ -1741,7 +1741,7 @@ public final class CgWorldLights {
 
     /**
      * The air lit, after the media's injectors and before their integration: each froxel holding extinction lit by its
-     * light-grid cell's lights through light_volume.compute's {@code Scatter} (Unreal's LightScatteringCS), into a
+     * light-grid cell's lights through world/lights/volume.compute's {@code Scatter} (Unreal's LightScatteringCS), into a
      * froxel volume of the light scattered toward the eye. Null with no light binned this firing.
      */
     @Nullable
@@ -1783,7 +1783,7 @@ public final class CgWorldLights {
     }
 
 
-    /** What both of light_volume.compute's kernels read: the lights, their grid, and the shadows' inputs this firing. */
+    /** What both of world/lights/volume.compute's kernels read: the lights, their grid, and the shadows' inputs this firing. */
     private void traceInputs(CgDispatch d, CgTexture lightmap, CgGraphBuffer none) {
         CgGraphBuffer boxes = CgWorldEntityBoxes.buffer();
         boolean traced = shadowsOn, meshes = traced && casterCount > 0;

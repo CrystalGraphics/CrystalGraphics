@@ -517,7 +517,7 @@ final class CgVfxMaterials {
         return withClips(material);
     }
 
-    /** The baked clips, as a shader declaring them reads them ({@code fx_sequence.glsl}). */
+    /** The baked clips, as a shader declaring them reads them ({@code lib/vfx/sequence.glsl}). */
     private static final String CLIPS = "FX_CLIPS";
     /** Materials whose shader declares {@link #CLIPS}: each is pointed at the atlas's buffer as it is asked for. */
     private final Map<CgMaterialInstance, Boolean> clipReaders = new IdentityHashMap<>();
@@ -567,7 +567,7 @@ final class CgVfxMaterials {
         }
         if (kind == CgVfxSlot.Kind.SEQUENCE && !material.isKeywordEnabled(kind.keyword())) {
             throw new IllegalStateException(r.definition.id() + " draws a part a clip plays, but its shader declares no "
-                    + kind.keyword() + ": place its vertices by FX_SEQUENCE_TO_WORLD (fx_sequence.glsl)");
+                    + kind.keyword() + ": place its vertices by FX_SEQUENCE_TO_WORLD (lib/vfx/sequence.glsl)");
         }
         CgMaterialInstance instance = material.instance();
         for (Map.Entry<String, Integer> slot : r.slots.entrySet()) {

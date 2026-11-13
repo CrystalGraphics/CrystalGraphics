@@ -1,6 +1,6 @@
-// The engine's world_scene_in.shader as a #domain global
+// The engine's world/scene_in.shader as a #domain global
 #domain global
-#include "crystalgraphics:shaders/lib/post/composite.glsl"
+#include "crystalgraphics:shaders/post/composite.glsl"
 Material { SceneColorMargin 0.001 }
 Keywords {
     DEPTH ("Writes the host's depth into the scene's own", switched)

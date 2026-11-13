@@ -45,7 +45,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * holding cells only where something is, in tiles of {@link CgVfxTiles#TILE} drawn from one pool through its page table,
  * as the gases hold theirs. A tile is given out where particles splat and where what a grid holds spreads, and taken
  * back once it has been empty a while, so a grid reaches as far as its particles go. Stepped once a frame by
- * {@code env/compute/vfx/grid.compute} on {@link CgRenderStage#WORLD_OPAQUE}, after the particles that splat into it and
+ * {@code vfx/grid/grid.compute} on {@link CgRenderStage#WORLD_OPAQUE}, after the particles that splat into it and
  * the gases: each pool's particles that rasterize are drawn into their grids where Range draws them this frame, then
  * every channel steps, a rebuilt one taking that frame's alone. A grid's layers and the particles reading it take {@link #view()} and {@link #pages()}; its light (the sun's
  * transmittance and the sky's light through channel x) is {@link #light()}.
@@ -55,7 +55,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * CgGraphTexture pages = atlas.pages();   // a sampler3D: grid b's tile (x, y, z) at texel (x, y, z + PAGES * b), slot + 1
  * CgGraphTexture view = atlas.view();     // the channels: slot s's tile at (s % 8, s / 8 % 8, s / 64) * 20, two cells of apron
  * CgGraphTexture light = atlas.light();   // laid out as view: x the sun's transmittance, y the sky's light
- * // read through fx_grid.glsl: fx_grid_read(_GridView, _GridPages, grid, cell)
+ * // read through lib/vfx/grid.glsl: fx_grid_read(_GridView, _GridPages, grid, cell)
  * }</pre>
  *
  * <ul>
@@ -109,8 +109,8 @@ public final class CgVfxGridAtlas {
     /** The most a channel spreads in a frame: explicit diffusion past a sixth of its difference a neighbour rings. */
     private static final float MOST_SPREAD = 0.16f;
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/grid.compute";
-    private static final String MEDIA_KERNELS = "crystalgraphics:shaders/env/compute/vfx/media.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/grid/grid.compute";
+    private static final String MEDIA_KERNELS = "crystalgraphics:shaders/vfx/grid/media.compute";
 
     /** Every kernel a grid dispatches, its media injection's included: what VFX's collector builds while loading. */
     public static void precacheKernels() {

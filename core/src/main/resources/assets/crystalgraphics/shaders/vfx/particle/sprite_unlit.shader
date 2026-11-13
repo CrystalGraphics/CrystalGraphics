@@ -11,9 +11,9 @@
 //   DISC: the disc, its middle _Hot, in place of the sheet; with _Additive 1, a spark.
 //   _Aside sits it a random share of its size aside on each axis: a shadow copy, drawn black (_Color) under another.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

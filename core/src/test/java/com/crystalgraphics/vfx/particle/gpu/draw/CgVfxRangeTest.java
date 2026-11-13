@@ -10,8 +10,8 @@ import static org.junit.Assert.assertTrue;
 
 public class CgVfxRangeTest {
 
-    private static final String RANGE = "crystalgraphics:shaders/env/compute/vfx/range.compute";
-    private static final String LOOK = "crystalgraphics:shaders/env/compute/vfx/look.compute";
+    private static final String RANGE = "crystalgraphics:shaders/vfx/particle/range.compute";
+    private static final String LOOK = "crystalgraphics:shaders/vfx/particle/look.compute";
 
     @Test
     public void rangesKernelsParse() {

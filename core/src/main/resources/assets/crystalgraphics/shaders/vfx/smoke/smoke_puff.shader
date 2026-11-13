@@ -7,8 +7,8 @@
 // 0..1, y its seed, z its opacity, w how hot it still is 0..1. _Color is the smoke, its alpha a strength; _Hot the
 // fire's light in it.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  DepthTest Off  VertexFactory Billboard  PerDrawValues On }
 
 Properties {

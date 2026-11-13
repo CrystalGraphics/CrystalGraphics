@@ -8,8 +8,8 @@ Properties {
 }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/tube.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
     CgTube cg_Tube;
 }
 

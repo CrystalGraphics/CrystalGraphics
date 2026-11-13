@@ -22,7 +22,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * A sparse volume's tiles: a pool of {@link #TILE}-cell tiles shared by up to {@code owners} volumes, each a grid of
  * {@link #SPAN} cells a side holding tiles only where it has something, found through its page table. OpenVDB's and
  * Houdini's sparse Pyro's layout. The fluids and the grids each keep one; their kernels read it through
- * {@code fx_sparse.glsl} ({@code fx_sparse_slot_of}, {@code fx_sparse_pool_uvw}), whatever the volume.
+ * {@code lib/vfx/sparse.glsl} ({@code fx_sparse_slot_of}, {@code fx_sparse_pool_uvw}), whatever the volume.
  *
  * <pre>{@code
  * CgVfxTiles tiles = new CgVfxTiles("vfx.grid", 4);

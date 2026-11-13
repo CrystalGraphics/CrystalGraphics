@@ -25,8 +25,8 @@ import java.util.Objects;
 /**
  * One step of an emitter's update, run over all its particles every tick, in the order the emitter lists them: the
  * pieces a particle's physics is built from, as Niagara's update modules are. Each is data, a kind and its numbers,
- * which the GPU simulation runs ({@link CgVfxGpuModule}: each kind's {@code fx_<kind>.glsl} in
- * {@code shaders/lib/vfx/sim/}). Force modules add to the accelerations and drags the solver integrates;
+ * which the GPU simulation runs ({@link CgVfxGpuModule}: each kind's file under
+ * {@code shaders/vfx/sim/}, a folder a kind of module). Force modules add to the accelerations and drags the solver integrates;
  * {@link Ground}, {@link Current}, {@link Collide}, {@link Kill}, {@link Orbit} and {@link LimitSpeed} run after the
  * solver, on the moved particles. Units are blocks and seconds.
  *
@@ -63,7 +63,7 @@ import java.util.Objects;
  *   <li>{@link Ground} lands particles on the voxel window's blocks, or on the instance's ground height where the host
  *       has no world ({@link CgVfxEmitterInstance#ground(float)}).</li>
  *   <li>A new kind is a record here, its declaration in {@link CgVfxModuleTypes} (its inputs, which are its GPU
- *       numbers) and its GPU side: {@code fx_<kind>.glsl} and the {@link CgVfxGpuModule} methods. A mod's own kind
+ *       numbers) and its GPU side: its {@code .glsl}, named by {@code gpuFile()}, and the {@link CgVfxGpuModule} methods. A mod's own kind
  *       implements {@link CgVfxGpuModule} instead and declares itself.</li>
  * </ul>
  */
@@ -122,6 +122,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "gravity";
         }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/gravity.glsl";
+        }
     }
 
     /**
@@ -139,7 +144,12 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             return "drag";
         }
 
-        /** Its declared inputs' words: the drag, a scale of 1, use_quadratic and the quadratic term ({@code fx_drag.glsl}). */
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/drag.glsl";
+        }
+
+        /** Its declared inputs' words: the drag, a scale of 1, use_quadratic and the quadratic term ({@code vfx/sim/forces/drag.glsl}). */
     }
 
     /**
@@ -152,10 +162,15 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "wind";
         }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/wind.glsl";
+        }
     }
 
     /**
-     * Swirling air: a curl-noise force (Bridson's, {@code fx_curl.glsl}) of up to about {@code strength} blocks a second squared,
+     * Swirling air: a curl-noise force (Bridson's, {@code lib/vfx/curl.glsl}) of up to about {@code strength} blocks a second squared,
      * with eddies about 1 / {@code frequency} blocks across, the field drifting at {@code evolve} a second. The same field
      * for every emitter at a point, so neighbouring particles swirl together.
      */
@@ -165,7 +180,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
             return new Turbulence(strength * scale, frequency / scale, evolve);
         }
 
-        /** Each octave's lattice cell and fraction of where the instance's origin samples (fx_curl.glsl). */
+        /** Each octave's lattice cell and fraction of where the instance's origin samples (lib/vfx/curl.glsl). */
         private static final CgVfxLane[] LANES = {CgVfxLane.IVEC4, CgVfxLane.VEC4, CgVfxLane.IVEC4, CgVfxLane.VEC4};
         /** fx_curl's second octave: x * 2.03 + offset. */
         private static final double OCTAVE = 2.03, OFFSET_X = 5.2, OFFSET_Y = 1.3, OFFSET_Z = 7.9;
@@ -178,6 +193,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "curl_noise";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/curl_noise.glsl";
         }
 
         @Override
@@ -220,6 +240,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "buoyancy";
         }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/buoyancy.glsl";
+        }
     }
 
     /**
@@ -249,6 +274,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "updraft";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/updraft.glsl";
         }
 
         @Override
@@ -294,6 +324,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "ground";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/ground.glsl";
         }
 
         @Override
@@ -343,6 +378,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/current.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
@@ -354,6 +394,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "spin";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/spin.glsl";
         }
     }
 
@@ -372,6 +417,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "sprite_rotation";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/sprite_rotation.glsl";
         }
     }
 
@@ -492,6 +542,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/attract.glsl";
+        }
+
+        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -527,6 +582,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "source_movement";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/source_movement.glsl";
         }
 
         @Override
@@ -571,6 +631,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/orbit.glsl";
+        }
+
+        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -610,6 +675,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "vortex";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/vortex.glsl";
         }
 
         @Override
@@ -671,6 +741,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/flock.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return NEIGHBOURS;
         }
@@ -713,6 +788,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "flow";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/gas/flow.glsl";
         }
 
         @Override
@@ -762,6 +842,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "physics_field";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/physics_field.glsl";
         }
 
         @Override
@@ -820,6 +905,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/gas/feed.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return FEEDS;
         }
@@ -852,7 +942,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public String gpuFile() {
-            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_splat.glsl";
+            return "crystalgraphics:shaders/vfx/sim/grid/splat.glsl";
         }
 
         @Override
@@ -907,7 +997,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public String gpuFile() {
-            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_follow.glsl";
+            return "crystalgraphics:shaders/vfx/sim/grid/follow.glsl";
         }
 
         @Override
@@ -939,7 +1029,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
 
         @Override
         public String gpuFile() {
-            return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_gradient.glsl";
+            return "crystalgraphics:shaders/vfx/sim/grid/gradient.glsl";
         }
 
         @Override
@@ -972,6 +1062,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "force";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/force.glsl";
         }
     }
 
@@ -1025,6 +1120,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/vector_field.glsl";
+        }
+
+        @Override
         public CgVfxLane[] instanceLanes() {
             return LANES;
         }
@@ -1068,6 +1168,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "set_position";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/set_position.glsl";
         }
     }
 
@@ -1133,6 +1238,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/beam/source.glsl";
+        }
+
+        @Override
         public CgVfxLane[] instanceLanes() {
             return BeamSource.ACTOR_LANES;
         }
@@ -1187,6 +1297,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "beam_target";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/beam/target.glsl";
         }
 
         @Override
@@ -1251,6 +1366,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/beam/noise.glsl";
+        }
+
+        @Override
         public boolean afterSolve() {
             return true;
         }
@@ -1286,6 +1406,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/beam/modifier.glsl";
+        }
+
+        @Override
         public boolean afterSolve() {
             return true;
         }
@@ -1315,6 +1440,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         public String gpuKind() {
             return "scale_velocity";
         }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/scale_velocity.glsl";
+        }
     }
 
     /**
@@ -1326,6 +1456,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "damping";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/forces/damping.glsl";
         }
     }
 
@@ -1346,6 +1481,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "limit_speed";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/limit_speed.glsl";
         }
     }
 
@@ -1387,6 +1527,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "conform";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/motion/conform.glsl";
         }
 
         @Override
@@ -1468,6 +1613,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "collide";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/collide.glsl";
         }
 
         @Override
@@ -1707,6 +1857,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/world.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return WORLD;
         }
@@ -1761,6 +1916,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "collide_depth";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/depth.glsl";
         }
 
         @Override
@@ -1861,6 +2021,12 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return source == Source.BLOCKS ? "crystalgraphics:shaders/vfx/sim/occlusion/blocks.glsl"
+                    : "crystalgraphics:shaders/vfx/sim/occlusion/depth.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return source == Source.BLOCKS ? BLOCKS : DEPTH;
         }
@@ -1936,6 +2102,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         }
 
         @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/entities.glsl";
+        }
+
+        @Override
         public CgVfxDataInterface[] dataInterfaces() {
             return ENTITIES;
         }
@@ -1975,6 +2146,11 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
         @Override
         public String gpuKind() {
             return "kill";
+        }
+
+        @Override
+        public String gpuFile() {
+            return "crystalgraphics:shaders/vfx/sim/collision/kill.glsl";
         }
 
         @Override

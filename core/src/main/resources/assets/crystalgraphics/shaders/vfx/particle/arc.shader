@@ -4,9 +4,9 @@
 // source, so CG_OBJECT_TO_WORLD[3] is the source. _Color is the ink, its alpha a strength. Solid ink: it writes depth
 // wherever it covers half a pixel, so what is behind it is hidden.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  ClipDepth On  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

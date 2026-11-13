@@ -45,7 +45,7 @@ import java.util.Arrays;
  */
 public final class CgCollisionDebug {
 
-    static final String SHADER = "crystalgraphics:shaders/debug/collision_lines.shader";
+    static final String SHADER = "crystalgraphics:shaders/collision/debug_lines.shader";
     private static final double MARK = 0.4;
     private static final int ZONE_SHOW = CgTrace.name("collision.debug.show"), ZONE_FACES = CgTrace.name("collision.debug.faces"),
             ZONE_LINES = CgTrace.name("collision.debug.lines"), ZONE_WRITE = CgTrace.name("collision.debug.write");
@@ -167,7 +167,7 @@ public final class CgCollisionDebug {
             int argb = batch.colours[i];
             float r = (argb >>> 16 & 0xFF) / 255f, g = (argb >>> 8 & 0xFF) / 255f, b = (argb & 0xFF) / 255f;
             float a = (argb >>> 24) / 255f;
-            // the colour rides in the normal, its alpha in u: collision_lines.shader reads them back
+            // the colour rides in the normal, its alpha in u: collision/debug_lines.shader reads them back
             for (int c = 0; c < batch.corners; c++, at += 3) {
                 m.vertex().position(p[at], p[at + 1], p[at + 2]).uv(a, 0f).normal(r, g, b).end();
             }

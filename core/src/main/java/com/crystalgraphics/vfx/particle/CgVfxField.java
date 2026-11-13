@@ -13,7 +13,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 /**
  * A 3D grid of vectors a {@link CgVfxModule.VectorField} pushes particles by, stretched over its box: Godot's vector
  * field attractor, Unity VFX Graph's and Niagara's vector field. The CPU path samples it here and the GPU path samples
- * its texture, both trilinearly between texel centres by the same sums ({@code fx_vector_field.glsl} filters by hand), so
+ * its texture, both trilinearly between texel centres by the same sums ({@code vfx/sim/forces/vector_field.glsl} filters by hand), so
  * the two agree to float rounding.
  *
  * <pre>{@code
@@ -139,7 +139,7 @@ public final class CgVfxField {
         return vectors[((z * height + y) * width + x) * 3 + c];
     }
 
-    /** {@code fx_vector_field.glsl}'s mix, term for term. */
+    /** {@code vfx/sim/forces/vector_field.glsl}'s mix, term for term. */
     private static float lerp(float a, float b, float t) {
         return a + (b - a) * t;
     }

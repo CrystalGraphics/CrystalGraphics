@@ -321,7 +321,7 @@ Its emitter's size over life tapers it.
 | `smoke` | lit smoke billowing wider and drifting up as it ages; `_Glow` a fire's hot head |
 | `scorch` | burnt ground with embers cooling in its cracks: an anim trail along the ground, its edge either side of the path |
 
-`lib/vfx/fx_strip.glsl` has what they read (`fx_strip`) and the glow they share (`fx_strip_glow`), for a look of your own.
+`lib/vfx/strip.glsl` has what they read (`fx_strip`) and the glow they share (`fx_strip_glow`), for a look of your own.
 
 ### Easy to get wrong
 

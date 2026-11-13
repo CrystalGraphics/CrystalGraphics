@@ -13,7 +13,7 @@ import com.crystalgraphics.sequence.CgSequenceTarget;
  * given. The flash is what Minecraft's overlay draws (the hurt flash, red at 0.3); the tint multiplies.
  *
  * <pre>{@code
- * // the entity look (crystalgraphics:shaders/role/entity.shader): each strength rides its colour's alpha
+ * // the entity look (crystalgraphics:shaders/materials/entity.shader): each strength rides its colour's alpha
  * CgRoleFlash flash = new CgRoleFlash(role, "_Tint", null, "_Flash", null);
  *
  * // a material with scalars of its own for the strengths

@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
  * <pre>{@code
  * VertexFactory Sprites            ->  crystalgraphics:shaders/factories/Sprites.factory
  * VertexFactory mymod:Ribbons      ->  mymod:shaders/factories/Ribbons.factory
- * Primitive mymod:Ring             ->  mymod:shaders/primitives/Ring.primitive
+ * Primitive mymod:Ring             ->  mymod:shaders/canvas/primitives/Ring.primitive
  * }</pre>
  *
  * <p>A factory file, every block but {@code Factory} and {@code fill} optional:</p>
@@ -174,7 +174,7 @@ public final class CgFormatTemplates {
     @Nullable
     static synchronized Primitive primitive(String name) {
         if (PRIMITIVES.containsKey(name)) return PRIMITIVES.get(name);
-        String file = location(name, "primitives", "primitive");
+        String file = location(name, "canvas/primitives", "primitive");
         String source = CgIO.loadSource(file);
         Primitive made = source == null ? null : parsePrimitive(name, source, file);
         PRIMITIVES.put(name, made);

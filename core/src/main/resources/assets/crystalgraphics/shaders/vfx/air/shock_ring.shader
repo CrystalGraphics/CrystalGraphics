@@ -1,12 +1,12 @@
 // A shock front running out along the ground: the air in a short wall round the blast, leaning outward and sinking as
 // it spreads, bending the scene behind it out from the blast, most at its foot and where the wall is seen edge-on, and
 // none at its top. With ring.shader's bright foot on the same particle it reads as the front sweeping the ground ahead
-// of the dust. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere vertex() bends into the wall (fx_ring.glsl),
+// of the dust. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere vertex() bends into the wall (lib/vfx/ring.glsl),
 // its radius the particle's drawn size. Draws nothing, only bends what is behind it (s.refraction), so it bends smoke
 // and glow but never a bright body.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ring.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ring.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Both  Fog Off  VertexFactory MeshParticles  PerDrawValues On }
 
 Properties {

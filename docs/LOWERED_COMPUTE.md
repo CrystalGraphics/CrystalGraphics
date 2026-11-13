@@ -62,10 +62,10 @@ Bringing it back means restoring the pieces above and reconnecting each of these
    `CgLoweredKernel.scope()`; on compute, `DrawArgsMany` writes them all from a row table.
 4. **Fallback kernels.** `#pragma fallback General Lowerable` named the kernel a tier without compute ran instead;
    `#pragma compute_only` marked a kernel with none, which callers asked `runs()` about. They paired as:
-   - `ops/sort.compute`: `SortCount`… (FidelityFX) on compute; `RadixCount`, `RadixScatter`, `RadixScatterKeys` plus a
+   - `compute/ops/sort.compute`: `SortCount`… (FidelityFX) on compute; `RadixCount`, `RadixScatter`, `RadixScatterKeys` plus a
      `CgGpuOps.scanLevel` over the digit cells below it (`CgGpuOps.radixSort`'s `grouped` branch, `precacheSort`).
-   - `ops/histogram.compute`: `HistogramGroups` on compute for ≤1024 bins, else `Histogram` (still used above 1024).
-   - `light_grid.compute`: `Coarse` + `Cell` (two-level) on compute; `Count`, a `CgGpuOps.scan` into `starts`, then
+   - `compute/ops/histogram.compute`: `HistogramGroups` on compute for ≤1024 bins, else `Histogram` (still used above 1024).
+   - `world/lights/grid.compute`: `Coarse` + `Cell` (two-level) on compute; `Count`, a `CgGpuOps.scan` into `starts`, then
      `Write` below it, with `counts`/`starts` buffers (`CgWorldLights.bin`, `precacheBin`, `kernelsBuilt`).
    - `media.compute`: `IntegrateColumns` (a thread a column) on compute; `Integrate` (a thread a froxel, dispatched
      `SLICES` deep) below it (`CgWorldMedia`'s `byColumn`).

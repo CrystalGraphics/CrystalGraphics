@@ -2,13 +2,13 @@
 // else in the scene, under a faint sheet of light fading up the wall, brightest where it is seen edge-on, in the blast's
 // light, breaking up round its length and gone by _FlashFor of its life; past that the dust it lifts shows it. Its air is
 // shock_ring.shader on the same particle. A mesh particle (CgVfxFrame.particles, MESHES) whose sphere vertex() bends
-// into the wall (fx_ring.glsl), its radius the particle's drawn size; the line is where the wall comes within _Width of
+// into the wall (lib/vfx/ring.glsl), its radius the particle's drawn size; the line is where the wall comes within _Width of
 // the scene behind it, so it finds a floor anywhere within _Below under the centre. _Color is the glow, its alpha a
 // strength; _Hot its middle. Its light blooms.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ring.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ring.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory MeshParticles  PerDrawValues On }
 
 Properties {

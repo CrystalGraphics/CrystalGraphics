@@ -42,7 +42,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *
  * <ul>
  *   <li>The sixteen sit on a 4x4 grid {@link #SPACING} apart, {@link #HEIGHT} above {@code y}, the first row the
- *       furthest along -z. {@code vfx_floor.shader} mirrors the grid and {@link #GLOW}: change them together.</li>
+ *       furthest along -z. {@code demo/floor.shader} mirrors the grid and {@link #GLOW}: change them together.</li>
  *   <li>Every effect animates on the frame clock its shaders read; pass the same seconds here.</li>
  *   <li>Materials belong to the material registry; {@link #delete} frees only the meshes.</li>
  * </ul>
@@ -60,7 +60,7 @@ public final class CgVfxShowcase {
             "blackhole", "galaxy", "shield", "circuit",
     };
 
-    /** Per sphere, the glow around it: rgb and strength, 0 for none. Mirrored by vfx_floor.shader's pools. */
+    /** Per sphere, the glow around it: rgb and strength, 0 for none. Mirrored by demo/floor.shader's pools. */
     static final float[][] GLOW = {
             {0f, 0f, 0f, 0f}, {0f, 0f, 0f, 0f}, {0f, 0f, 0f, 0f}, {0f, 0f, 0f, 0f},
             {0.6f, 0.8f, 1.0f, 0.15f}, {0f, 0f, 0f, 0f}, {0.2f, 0.8f, 1.2f, 0.6f}, {0.3f, 0.6f, 1.2f, 0.35f},
@@ -518,13 +518,13 @@ public final class CgVfxShowcase {
         if (sphere != null) return;
         sphere = CgMeshShapes.sphere(80, 160);
         floor = CgMesh.build(CgVertexFormat.SPATIAL, m -> CgMeshShapes.plane(m, 1, 1, 120f, 120f));
-        for (int k = 0; k < COUNT; k++) materials[k] = CgMaterial.load("crystalgraphics:shaders/demo/vfx_" + SHADERS[k] + ".shader");
-        glow = CgMaterial.load("crystalgraphics:shaders/demo/vfx_glow.shader");
-        corona = CgMaterial.load("crystalgraphics:shaders/demo/vfx_supernova_corona.shader");
-        bolt = CgMaterial.load("crystalgraphics:shaders/demo/vfx_bolt.shader");
-        sky = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky.shader");
-        horizon = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_horizon.shader");
-        seal = CgMaterial.load("crystalgraphics:shaders/demo/vfx_sky_seal.shader");
-        floorMaterial = CgMaterial.load("crystalgraphics:shaders/demo/vfx_floor.shader").instance();
+        for (int k = 0; k < COUNT; k++) materials[k] = CgMaterial.load("crystalgraphics:shaders/demo/" + SHADERS[k] + ".shader");
+        glow = CgMaterial.load("crystalgraphics:shaders/demo/glow.shader");
+        corona = CgMaterial.load("crystalgraphics:shaders/demo/supernova_corona.shader");
+        bolt = CgMaterial.load("crystalgraphics:shaders/demo/bolt.shader");
+        sky = CgMaterial.load("crystalgraphics:shaders/demo/sky.shader");
+        horizon = CgMaterial.load("crystalgraphics:shaders/demo/sky_horizon.shader");
+        seal = CgMaterial.load("crystalgraphics:shaders/demo/sky_seal.shader");
+        floorMaterial = CgMaterial.load("crystalgraphics:shaders/demo/floor.shader").instance();
     }
 }

@@ -38,7 +38,7 @@ public record CgVfxSpriteRendererProperties(Common common, Map<String, Object> t
     public enum Sort { NONE, VIEW_DEPTH, VIEW_DISTANCE, SPAWN_ORDER, OLDEST_FIRST, NEWEST_FIRST }
 
     /**
-     * The sprite factory's facing ({@code _cg_Facing}): {@code fx_particle.glsl}'s {@code FX_FACE_*} plus 8 times its
+     * The sprite factory's facing ({@code _cg_Facing}): {@code lib/vfx/particle.glsl}'s {@code FX_FACE_*} plus 8 times its
      * {@code FX_ALIGN_*}. Camera 0, aligned to velocity 8, turned to the eye round up 3.
      */
     public static final float FACE_CAMERA = 0f, FACE_POSITION_UP = 3f, FACE_ALIGNED = 8f;

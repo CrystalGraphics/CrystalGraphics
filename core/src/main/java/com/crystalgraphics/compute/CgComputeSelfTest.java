@@ -43,7 +43,7 @@ import java.util.function.Supplier;
 public final class CgComputeSelfTest {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
-    private static final String PATH = "crystalgraphics:shaders/env/compute/self_test.compute";
+    private static final String PATH = "crystalgraphics:shaders/compute/self_test.compute";
     private static final int N = 64, SPAWN_CAPACITY = 128, COUNTED = 256, PICTURE = 64, ACCUM = 16;
     /** Enough elements for many work groups, and the appends they make. */
     private static final int BIG = 200_000, MANY = (BIG + 2) / 3;

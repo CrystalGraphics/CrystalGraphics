@@ -85,7 +85,7 @@ public final class CgFilmLut {
     /** Rows of the kernel's parameters ({@code film_lut.compute}'s {@code ROW_*}), each a vec4. */
     static final int ROW_MODE = 23, ROW_LEGACY = 24, ROW_FILMIC = 27, ROW_AP1_TO_AP0 = 30, ROW_AP0_TO_AP1 = 33,
             ROW_BLUE = 36, ROW_BLUE_INV = 39, ROW_EXPAND = 42, ROWS = 45;
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/post/film_lut.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/post/film_lut.compute";
     private static final CgFormat TABLE_FORMAT = CgFormat.RGBA32_FLOAT;
     static final int GPU_FILM_LUT = CgGpuTrace.name("post.filmLut");
     /** Unreal's {@code r.LUT.UpdateEveryFrame}: the table built every frame, settings moved or not, to time it. */

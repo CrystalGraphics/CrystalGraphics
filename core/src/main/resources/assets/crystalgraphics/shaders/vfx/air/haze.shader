@@ -11,8 +11,8 @@
 // second, _Reference radii), so a haze of any size has the same few cells filling its inside: an explosion's, swelling.
 // _Edge pulls the bend in from the silhouette, so a shell drawn at its edge stays unbent.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

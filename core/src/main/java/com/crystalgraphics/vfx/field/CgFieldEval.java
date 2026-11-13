@@ -3,7 +3,7 @@ package com.crystalgraphics.vfx.field;
 import com.crystalgraphics.vfx.particle.CgVfxEmitterInstance;
 
 /**
- * A field graph evaluated on the CPU, node for node as {@code fx_field.glsl} evaluates it on the GPU: Chaos's field nodes
+ * A field graph evaluated on the CPU, node for node as {@code vfx/sim/data/field.glsl} evaluates it on the GPU: Chaos's field nodes
  * ({@code FieldSystemNodes.cpp}'s {@code Evaluate}). The mirror the GPU is held to, and a field's value where a tool
  * asks.
  *

@@ -3,8 +3,8 @@
 // wall at the layer's radius, the core 0.8 of it; cg_VfxMesh.values.z an intensity. _Core is the core, its alpha a
 // strength; _CoreRim its rim. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_volume.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/volume.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

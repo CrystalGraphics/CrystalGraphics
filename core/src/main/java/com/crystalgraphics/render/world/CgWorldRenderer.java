@@ -160,9 +160,9 @@ public final class CgWorldRenderer {
     static final CgRenderState TRANSPARENT_STATE = CgRenderState.builder()
             .depth(CgDepthState.TEST_ONLY).blend(CgBlendState.ALPHA).build();
     /** The host's depth copied into the custom data's own, where the host lends none. */
-    static final String DEPTH_IN_SHADER = "crystalgraphics:shaders/world_depth_in.shader";
+    static final String DEPTH_IN_SHADER = "crystalgraphics:shaders/world/depth_in.shader";
 
-    static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world_half_upsample.shader";
+    static final String UPSAMPLE_SHADER = "crystalgraphics:shaders/world/half_upsample.shader";
     static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private final Draw scratch = new Draw();

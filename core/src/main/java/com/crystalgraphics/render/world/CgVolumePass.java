@@ -41,9 +41,9 @@ final class CgVolumePass {
 
     static final int GPU_VOLUME = CgGpuTrace.name("world.volume"), GPU_VOLUME_RESOLVE = CgGpuTrace.name("world.volumeResolve");
 
-    static final String RESOLVE_KERNELS = "crystalgraphics:shaders/env/compute/volume_resolve.compute";
+    static final String RESOLVE_KERNELS = "crystalgraphics:shaders/world/media/volume_resolve.compute";
 
-    static final String COMPOSITE_SHADER = "crystalgraphics:shaders/world_volume_composite.shader";
+    static final String COMPOSITE_SHADER = "crystalgraphics:shaders/world/media/volume_composite.shader";
 
     /** Half-size volumes: premultiplied light, and the eye depth each was marched to (0 for none). */
     static final CgFormat VOLUME_FORMAT = CgFormat.RGBA16_FLOAT;

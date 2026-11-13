@@ -13,7 +13,7 @@ import static org.junit.Assert.*;
 
 public class CgKernelEmitterTest {
 
-    private static final String EXAMPLE = "crystalgraphics:shaders/example.compute";
+    private static final String EXAMPLE = "crystalgraphics:shaders/reference/kernel.compute";
     private static final CgKernelTarget EMULATED = CgKernelTarget.GL43.withSubgroups(0);
 
     private static CgComputeSource example() {
@@ -60,7 +60,7 @@ public class CgKernelEmitterTest {
         String plain = emit("Integrate", CgKernelTarget.GL43);
         String checked = emit("Integrate", CgKernelTarget.GL43.withChecked(true));
         assertFalse(plain.contains("cg_c_") || plain.contains("#line") || plain.contains("check.glsl"));
-        assertTrue(checked.contains("#include \"crystalgraphics:shaders/env/compute/check.glsl\""));
+        assertTrue(checked.contains("#include \"crystalgraphics:shaders/env/kernel/check.glsl\""));
         assertTrue(checked.contains("cg_Violation(") && checked.contains(", __LINE__)"));
 
         String text = CgIO.loadSource(EXAMPLE);
@@ -117,8 +117,8 @@ public class CgKernelEmitterTest {
         String emulated = emit("Reduce", EMULATED);
         assertFalse(emulated.contains("GL_KHR_shader_subgroup"));
         assertFalse(emulated.contains("#define CG_SUBGROUPS"));
-        assertTrue(emulated.contains("compute/subgroup.glsl"));
-        assertFalse(emit("Integrate", CgKernelTarget.GL43).contains("compute/subgroup.glsl"));
+        assertTrue(emulated.contains("env/kernel/subgroup.glsl"));
+        assertFalse(emit("Integrate", CgKernelTarget.GL43).contains("env/kernel/subgroup.glsl"));
     }
 
     @Test

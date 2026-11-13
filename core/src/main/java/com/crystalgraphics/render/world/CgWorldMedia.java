@@ -56,7 +56,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * <pre>{@code
  * // its kernel: declares PROPERTIES and the MEDIA_OUT image, adds to what came before
  * #pragma kernel Inject 4 4 4 image
- * #include "crystalgraphics:shaders/lib/media.glsl"
+ * #include "crystalgraphics:shaders/world/media/media.glsl"
  * Properties { ...CgWorldMedia.PROPERTIES, copied... _Clouds (...) }
  * Images { MEDIA_OUT ("Extinction so far", r16f, writeonly, 3d) }
  * void Inject() {
@@ -118,7 +118,7 @@ public final class CgWorldMedia {
         boolean inject(CgComputePass pass, CgWorldMedia media);
     }
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/media.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/world/media/media.compute";
     /** The GPU's three steps, each a pass of its own: the injectors, the world's lights lighting it, the sum. */
     private static final int GPU_INJECT = CgGpuTrace.name("world.mediaInject"), GPU_SCATTER = CgGpuTrace.name("world.mediaScatter"),
             GPU_INTEGRATE = CgGpuTrace.name("world.mediaIntegrate");
@@ -131,7 +131,7 @@ public final class CgWorldMedia {
         CgCompute.load(KERNELS).kernel("IntegrateColumns").precache();
     }
 
-    static final String LIGHT_SHADER = "crystalgraphics:shaders/world_media_light.shader";
+    static final String LIGHT_SHADER = "crystalgraphics:shaders/world/media/light.shader";
     private static final int GPU_LIGHT = CgGpuTrace.name("world.mediaLight");
     private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
@@ -213,7 +213,7 @@ public final class CgWorldMedia {
 
     /**
      * How far past a spot's cone the lit air widens it, at most {@code z * out[0] + out[1]} blocks at eye depth z: half a
-     * froxel's diagonal (light_volume.compute's spread), from a pixel's width at unit depth across and up and the
+     * froxel's diagonal (world/lights/volume.compute's spread), from a pixel's width at unit depth across and up and the
      * slices' depth (cg_env.glsl's {@code CG_MEDIA_*}: (z + O / B) ln 2 / spread a slice).
      */
     static void spread(float acrossPerPixel, float upPerPixel, float[] out) {
@@ -308,7 +308,7 @@ public final class CgWorldMedia {
 
     /**
      * The light the lit air scattered toward the eye, added over the opaque scene before the transparent passes
-     * ({@code world_media_light.shader}): after {@link #record} answered {@code media}, when the air was lit.
+     * ({@code world/media/light.shader}): after {@link #record} answered {@code media}, when the air was lit.
      */
     void composite(CgStageFrame stage, CgRecording recording, CgGraphTexture media) {
         if (!lit) return;

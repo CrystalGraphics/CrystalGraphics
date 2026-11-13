@@ -77,7 +77,7 @@ final class CgWorldDistortion {
     /** Pixels an apply's offsets spread past its rect when read bilinearly from a half-size target, and then some. */
     private static final float SPREAD = 4f;
     private static final CgFormat FORMAT = CgFormat.RGBA16_FLOAT;
-    static final String APPLY_SHADER = "crystalgraphics:shaders/world_distortion_apply.shader";
+    static final String APPLY_SHADER = "crystalgraphics:shaders/world/distortion_apply.shader";
     /** Offsets add, ONE ONE, hidden by the scene's copied depth rather than a depth test. */
     private static final CgRenderState BEND_STATE = CgRenderState.builder()
             .depth(CgDepthState.NONE).blend(CgBlendState.SUM).build();

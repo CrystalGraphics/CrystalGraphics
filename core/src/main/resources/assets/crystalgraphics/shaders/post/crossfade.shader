@@ -1,7 +1,7 @@
 // A cut's crossfade (CgPostCrossfade): the held frame laid over the picture at POST_WEIGHT, which falls to 0 over the
 // crossfade, blended in the target's encoding.
 #domain global
-#include "crystalgraphics:shaders/lib/post/post_material.glsl"
+#include "crystalgraphics:shaders/env/material/post.glsl"
 Material { Media On }
 
 RenderState {

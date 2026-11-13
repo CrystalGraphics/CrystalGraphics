@@ -1,6 +1,6 @@
 // A crossfade's hold (CgPostCrossfade): the target as drawn, cg_SceneColor, copied into the held frame texel for texel.
 #domain global
-#include "crystalgraphics:shaders/lib/post/post_material.glsl"
+#include "crystalgraphics:shaders/env/material/post.glsl"
 Material { SceneColorMargin 0.001  Media On }
 
 RenderState {

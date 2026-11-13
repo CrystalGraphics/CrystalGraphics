@@ -9,9 +9,9 @@
 // (_SoftDistance), as it does against anything else. _Color is the dust, its alpha a strength; _Hot the blast's light,
 // black for none.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode AlphaComposite  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

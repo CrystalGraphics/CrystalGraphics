@@ -26,7 +26,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
- * The engine's noise volumes, baked once by kernels ({@code noise_bake.compute}) and sampled by any shader or kernel
+ * The engine's noise volumes, baked once by kernels ({@code noise/bake.compute}) and sampled by any shader or kernel
  * through a sampler property whose default names one, so a shader reads a texel where it hashed eight corners:
  * tiling RGBA16F cubes of gradient noise, value noise, cellular noise and a curl flow, and wavelet noise's tile.
  *
@@ -38,20 +38,20 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *     _ValueGradient ("Value slope", sampler3D) = "cg_value_gradient"   // value noise's gradient and value: a normal
  *     _Wavelet ("Wavelet noise", sampler3D) = "cg_wavelet_noise"
  * }
- * float n = cg_noise3(_Noise, p);                           // lib/noise_volume.glsl
- * float w = fx_wavelet(_Wavelet, p);                        // lib/vfx/fx_wavelet.glsl: p in lattice units
+ * float n = cg_noise3(_Noise, p);                           // noise/volume.glsl
+ * float w = fx_wavelet(_Wavelet, p);                        // lib/vfx/wavelet.glsl: p in lattice units
  * }</pre>
  *
  * <ul>
  *   <li>{@link #PERIOD} lattice cells across every RGBA volume: sample at {@code p / PERIOD}, repeating.
- *       {@code lib/noise_volume.glsl} does it.</li>
+ *       {@code noise/volume.glsl} does it.</li>
  *   <li>Each RGBA channel is the same noise with its own seed, so one fetch gives four independent values. At texel
- *       centres a volume holds {@code fx_common.glsl}'s functions at lattice coordinate {@code (x + 0.5) * PERIOD / SIZE},
+ *       centres a volume holds {@code lib/vfx/common.glsl}'s functions at lattice coordinate {@code (x + 0.5) * PERIOD / SIZE},
  *       the lattice wrapped.</li>
  *   <li>Wavelet noise (Cook and DeRose, 2005) is band-limited, all of its detail within one octave, so octaves of it
  *       stack without the blur and aliasing Perlin noise brings. Its tile is baked as Mantaflow bakes it (Apache-2.0,
  *       {@code source/noisefield.cpp}, {@code WaveletNoiseField::generateTile}, tile 0), {@link #WAVELET_TILE} lattice
- *       units a side, R16F, repeating; {@code fx_wavelet.glsl} reads it as Mantaflow's {@code WNoise} does. Mantaflow
+ *       units a side, R16F, repeating; {@code lib/vfx/wavelet.glsl} reads it as Mantaflow's {@code WNoise} does. Mantaflow
  *       fills its tile from its Mersenne Twister and the kernels from PCG, so the values differ; the spectrum is the
  *       same.</li>
  *   <li>Baked behind the loading screen, mip chains included, as the task {@code crystalgraphics:noise}, once its
@@ -65,7 +65,7 @@ public final class CgNoiseVolumes {
     public static final String GRADIENT = "cg_noise", VALUE = "cg_value_noise", VORONOI = "cg_voronoi", CURL = "cg_curl",
             VORONOI_NEAREST = "cg_voronoi_nearest", VALUE_GRADIENT = "cg_value_gradient", WAVELET = "cg_wavelet_noise";
 
-    /** Lattice cells across an RGBA volume; {@code CG_NOISE_PERIOD} in {@code lib/noise_volume.glsl}. */
+    /** Lattice cells across an RGBA volume; {@code CG_NOISE_PERIOD} in {@code noise/volume.glsl}. */
     public static final int PERIOD = 16;
     /** The wavelet tile's lattice units a side: Mantaflow's {@code NOISE_TILE_SIZE}. */
     public static final int WAVELET_TILE = 128;
@@ -73,7 +73,7 @@ public final class CgNoiseVolumes {
     public static final int SIZE = CgVar.integer("crystalgraphics.noise.size", 64, 16, 256, CgVar.DEV | CgVar.RESTART,
             "Texels a side of each engine noise volume: 64 (2 MB a volume) or 128.").get();
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/noise_bake.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/noise/bake.compute";
     /** Each volume's name, then the kernel writing its level 0; the curl's reads the gradient's. The wavelet tile last. */
     private static final String[] NAMES = {GRADIENT, VALUE, VORONOI, CURL, VORONOI_NEAREST, VALUE_GRADIENT, WAVELET};
     private static final String[] LEVEL0 = {"Gradient", "Value", "Voronoi", "Curl", "VoronoiNearest", "ValueGradient"};

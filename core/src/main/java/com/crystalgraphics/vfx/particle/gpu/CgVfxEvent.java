@@ -40,7 +40,7 @@ import javax.annotation.Nullable;
  *   <li>{@link Trigger#AGE}: the step {@code age - dt < seconds <= age}; at 0 its first step, the format's
  *       {@code spawn}. Its normal as a death's.</li>
  *   <li>{@link Trigger#COLLISION}: each step a kind after the solver reports an impact ({@code fx_hit} in
- *       {@code fx_types.glsl}: Unity VFX Graph's punctual contact, never resting or sliding), the surface's normal its
+ *       {@code vfx/sim/types.glsl}: Unity VFX Graph's punctual contact, never resting or sliding), the surface's normal its
  *       normal, its velocity the one it struck with. Firing n is the particle's n-th impact, from 1.</li>
  *   <li>{@link Trigger#RATE}: each step {@code floor((age - dt - from) / period) < floor((age - from) / period)}, while
  *       {@code age <= until} ({@link #between}): first one period past {@code from}, at most once a step.</li>
@@ -77,7 +77,7 @@ public final class CgVfxEvent {
     /** Firings a frame that spawn children unless told: Unreal's {@code MaxEventsPerFrame} ({@code NiagaraEmitter.h}). */
     public static final int MAX_PER_FRAME = 64;
 
-    /** {@link #childKey}'s GLSL twin, bit for bit: {@code lib/vfx/fx_event.glsl} holds it. */
+    /** {@link #childKey}'s GLSL twin, bit for bit: {@code lib/vfx/event.glsl} holds it. */
     public static final String CHILD_KEY_GLSL = "uint fx_child_key(uint parent, uint event, uint i)";
 
     /** {@link #childKey(int, int, int, int)}'s GLSL twin, in the same file. */

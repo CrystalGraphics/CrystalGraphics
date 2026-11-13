@@ -10,7 +10,7 @@ Factory { VertexType none  Parameters cg_Particle  Fade cg_Vfx.presence }
 EngineBuffers { particle }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
     CgMaterialParticle cg_Particle;
     mat3 cg_SpriteAxes;
 }

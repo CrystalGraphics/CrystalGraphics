@@ -4,9 +4,9 @@
 // wall, each pixel once; the opaque scene hides it by depth. cg_VfxMesh.values.z is an intensity. _Core is the hot
 // heart, its alpha a strength; _Shell the cool edge. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

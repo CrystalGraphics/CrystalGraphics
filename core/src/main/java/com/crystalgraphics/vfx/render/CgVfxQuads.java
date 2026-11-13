@@ -7,7 +7,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
  * one per particle, which a shader places from the slot's particle records: quad
  * {@code i} reads record {@code base + i}. The draw is indirect, its count the particles Range kept for the view.
  *
- * <p>The mesh carries no vertex data (the Sprites factory's {@code VertexType none}): {@code fx_common.glsl} gives a vertex its quad and corner.</p>
+ * <p>The mesh carries no vertex data (the Sprites factory's {@code VertexType none}): {@code lib/vfx/common.glsl} gives a vertex its quad and corner.</p>
  *
  * <pre>{@code
  * // in a particle factory's fill()

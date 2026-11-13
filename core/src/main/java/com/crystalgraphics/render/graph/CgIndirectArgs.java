@@ -14,7 +14,7 @@ import java.util.function.IntConsumer;
 
 /**
  * An executor's indirect commands: one per indirect draw of the raster pass about to run, written
- * before the pass begins by {@code crystalgraphics:shaders/env/compute/args.compute} from the count a kernel wrote and
+ * before the pass begins by {@code crystalgraphics:shaders/compute/ops/args.compute} from the count a kernel wrote and
  * the range the mesh store placed. Each command has a slot of its own, aligned for a storage binding, so each write
  * binds only its slot and no two writes overlap. Render thread.
  *
@@ -33,7 +33,7 @@ final class CgIndirectArgs {
     /** Five {@code uint}s a command, for either form: arrays use four. */
     static final int COMMAND_BYTES = 20;
 
-    private static final String SOURCE = "crystalgraphics:shaders/env/compute/args.compute";
+    private static final String SOURCE = "crystalgraphics:shaders/compute/ops/args.compute";
     /** Words a command's row of {@code DrawArgsMany}'s PARAMS holds. */
     private static final int ROW = 11;
     private static final int DISPATCHES = CgTrace.name("graph.args-dispatches");

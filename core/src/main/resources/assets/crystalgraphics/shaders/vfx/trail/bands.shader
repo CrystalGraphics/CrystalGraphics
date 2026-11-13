@@ -3,8 +3,8 @@
 // streaks rather than fading, an optional ink edge. The banded toon look (toon/banded.shader) on a ribbon. _Bands binds
 // the look's `bands`.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/strip.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

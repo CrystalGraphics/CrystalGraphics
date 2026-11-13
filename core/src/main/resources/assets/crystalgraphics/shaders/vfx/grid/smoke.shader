@@ -9,7 +9,7 @@
 // full light.
 #domain surface
 #include "crystalgraphics:shaders/lib/color.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_detail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/detail.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Off  ColorSpace Linear  VertexFactory GridVolume  PerDrawValues On }
 
 Properties {

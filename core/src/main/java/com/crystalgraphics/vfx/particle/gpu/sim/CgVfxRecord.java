@@ -32,7 +32,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class CgVfxRecord {
 
-    /** Core word offsets, the same in every layout ({@code lib/vfx/fx_record.glsl}): xyz from the first. */
+    /** Core word offsets, the same in every layout ({@code lib/vfx/record.glsl}): xyz from the first. */
     public static final int POSITION = 0, AGE = 3, VELOCITY = 4, SIZE = 7, LIFE = 8, SEED = 9, SPIN = 10, SPIN_RATE = 11,
             HEAT = 12, ID = 13, SLOT = 14, PARAM_ROW = 15;
     public static final int CORE_WORDS = 16;
@@ -63,7 +63,7 @@ public final class CgVfxRecord {
         /** Its mesh rotation rate at birth from a spawn form. */
         TURN_RATE(3),
         /**
-         * A beam's state ({@code fx_beam.glsl}): its source and the source's tangent and strength, its target and the
+         * A beam's state ({@code lib/vfx/beam.glsl}): its source and the source's tangent and strength, its target and the
          * target's, its noise clock and its effect's orientation: six vec4s, what Cascade's beam payload keeps between
          * updates.
          */
@@ -92,7 +92,7 @@ public final class CgVfxRecord {
          */
         RIBBON(12),
         /**
-         * What physics fields keep on it, each a rate added once a step ({@code fx_field.glsl}): a rotator added to its
+         * What physics fields keep on it, each a rate added once a step ({@code vfx/sim/data/field.glsl}): a rotator added to its
          * mesh turn, its scale per axis from 1 (none drawn at or below 0) and its speed scale from 1 (floored at 0), which
          * multiplies the solve's motion.
          */

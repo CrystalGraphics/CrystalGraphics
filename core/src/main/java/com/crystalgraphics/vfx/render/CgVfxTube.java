@@ -16,7 +16,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
  * Draws a {@link CgVfxPath} as a tube: one static chunk mesh, {@link #SPANS} ring spans by {@link #SIDES} sides, drawn
- * once per chunk of the path and skinned onto its rings in the vertex shader ({@code fx_tube.glsl}).
+ * once per chunk of the path and skinned onto its rings in the vertex shader ({@code lib/vfx/tube.glsl}).
  *
  * <p>Each chunk is its own {@link CgWorldRenderer} draw, at its centre and scaled to its bounds, so the world renderer
  * culls and sorts chunks one by one. What a chunk's shader reads:</p>
@@ -25,7 +25,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *   <li>{@code CG_OBJECT_CUSTOM1.xyz}: the chunk's centre minus the effect's origin, so
  *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin, camera-relative; {@code .w} how many
  *       rings from the first the chunk owns, each ring owned by one chunk.</li>
- *   <li>{@code CG_OBJECT_CUSTOM3}: the draw header ({@code fx_draw.glsl}): the effect's row for the layer, its age, its
+ *   <li>{@code CG_OBJECT_CUSTOM3}: the draw header ({@code lib/vfx/draw.glsl}): the effect's row for the layer, its age, its
  *       seed and its presence.</li>
  * </ul>
  * <p>The mesh's uv is (ring within the chunk, angle as 0..1), its seam column doubled, and a closed mesh's end centres

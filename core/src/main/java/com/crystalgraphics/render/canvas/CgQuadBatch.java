@@ -35,7 +35,7 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  * }</pre>
  *
  * <p>A material it draws is a {@code #domain ui} material; its Quad primitive
- * ({@code crystalgraphics:shaders/primitives/Quad.primitive}) binds the record and reads it through {@code cg_env.glsl}'s
+ * ({@code crystalgraphics:shaders/canvas/primitives/Quad.primitive}) binds the record and reads it through {@code cg_env.glsl}'s
  * {@code CG_QUAD_*} macros:</p>
  *
  * <pre>{@code

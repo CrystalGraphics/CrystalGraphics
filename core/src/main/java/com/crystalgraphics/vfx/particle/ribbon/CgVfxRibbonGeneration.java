@@ -50,7 +50,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
  */
 public final class CgVfxRibbonGeneration {
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/ribbon.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/trail/ribbon.compute";
     /** A slot's settings, FxRibbonSlot: seven vec4s. */
     private static final int SLOT_WORDS = 64, SLOT_RECORD = 10, POSITION_RECORD = 4;
     /** The most points between two anim trail samples the draw holds, where its renderer sets none. */

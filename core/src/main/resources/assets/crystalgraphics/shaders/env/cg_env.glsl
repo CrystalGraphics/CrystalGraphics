@@ -83,7 +83,7 @@ CG_BIND(1, 3) layout(std430) readonly buffer CgObjectIdBuffer {
 // draw is by indices, a mesh without them by 0, 1, 2 ...: GL gives an array draw's base vertex as 0, Vulkan its first.
 // A first instance with CG_SHARED_RECORD set names the one record every instance reads (an indirect INSTANCES draw's):
 // bit 30, not Unreal's 31, since gl_BaseInstance is signed. The fragment stage reads the result as a flat varying the
-// compiler wires. A kernel has neither: its invocations are env/compute/kernel.glsl's.
+// compiler wires. A kernel has neither: its invocations are env/kernel/kernel.glsl's.
 #define CG_SHARED_RECORD 0x40000000
 #ifdef CG_VERTEX_STAGE
 #if __VERSION__ >= 460
@@ -177,7 +177,7 @@ float cg_EngineDepth(float windowDepth) {
 #define CG_SCENE_EYE_DEPTH(uv) cg_LinearEyeDepth(textureLod(cg_DepthBuffer, (uv), 0.0).r)
 
 // CG_CUSTOM_STENCIL, CG_SCENE_WORLD_NORMAL, CG_CUSTOM_DATA and CG_SHADING_MODEL_ID are handed to a post material naming
-// them (env/handed_scene.glsl). CustomDepth as an eye distance, and the rest of what Unreal's post materials sample, are
+// them (env/handed/scene.glsl). CustomDepth as an eye distance, and the rest of what Unreal's post materials sample, are
 // written by no pass yet: a material reading one fails to link, naming the read, rather than drawing as if nothing were
 // there. SceneTexture's ambient occlusion, PostProcessInput1 (separate translucency), PostProcessInput2, the velocity.
 #define CG_CUSTOM_EYE_DEPTH(uv) cg_custom_depth_has_no_pass_writing_it_yet(uv)
@@ -205,7 +205,7 @@ uvec2 _cg_shadingModel = uvec2(0u);
 // it) and colour, the sky light's colour, and the four point lights nearest the draw, i 0 to 3 (camera-relative
 // position, colour, the light's four attenuation parameters; intensity 0 where there is none). Either stage. The
 // colours split the host's light at the draw's (CG_OBJECT_LIGHT): the sun takes CG_SUN_SHARE of what sky light adds by
-// day, and the sky the rest, block light included. The point lights are env/handed_lights.glsl's, included for a
+// day, and the sky the rest, block light included. The point lights are env/handed/lights.glsl's, included for a
 // program naming them; these stand where it is not, failing to link by name.
 #define CG_DIRECTIONAL_LIGHT_DIRECTION CG_SUN_DIRECTION
 #define CG_DIRECTIONAL_LIGHT_COLOR cg_DirectionalLightColor(CG_OBJECT_LIGHT)
@@ -215,7 +215,7 @@ uvec2 _cg_shadingModel = uvec2(0u);
 #define CG_DRAW_POINT_LIGHT_PARAMS(i) cg_draw_point_light_has_no_pass_writing_it_yet(i)
 // The casting directional light's shadow for a program composing its own (Unreal's modulated shadow): its visibility at
 // camera-relative p, 1 lit and faded out by distance; the colour a shadow tints toward; the program's wrap of N.L.
-// Fragment stage. env/handed_sun.glsl's, included for a program naming them; these stand where it is not.
+// Fragment stage. env/handed/sun.glsl's, included for a program naming them; these stand where it is not.
 #define CG_DIRECTIONAL_SHADOW(p) cg_directional_shadow_has_no_pass_writing_it_yet(p)
 #define CG_DIRECTIONAL_SHADOW_COLOR cg_directional_shadow_has_no_pass_writing_it_yet
 #define CG_DIRECTIONAL_SHADOW_WRAP cg_directional_shadow_has_no_pass_writing_it_yet
@@ -462,7 +462,7 @@ float cg_DepthFadeOf(float sceneEye, float distance) {
 #endif
 
 // What a lit material's colour becomes: times the lightmap at cg_Light, and lit by the world's lights as the opaque
-// scene is (world_lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
+// scene is (world/lights/lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
 // colour is decoded after, so the gain is taken to the decode's inverse power.
 vec4 cg_Lit(vec4 color) {
     vec3 local = cg_LocalLightAt(cg_FragmentPosition());

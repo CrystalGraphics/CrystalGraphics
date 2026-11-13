@@ -7,9 +7,9 @@
 // an intensity, taken at most 1. The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under
 // 0.02 of the height.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/haze.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

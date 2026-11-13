@@ -31,7 +31,7 @@ import static org.junit.Assert.*;
 public class CgMaterialShaderFailureStateTest {
 
     /** Has no {@code #pragma cg_use}, so nothing tries to allocate an engine buffer on the way. */
-    private static final String SHADER = "crystalgraphics:shaders/demo_render.shader";
+    private static final String SHADER = "crystalgraphics:shaders/demo/matte.shader";
 
     @After
     public void clearCapabilitiesCache() throws Exception {

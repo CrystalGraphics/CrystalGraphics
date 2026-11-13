@@ -33,6 +33,29 @@ CgMaterial stone = CgMaterial.load("crystalgraphics:shaders/reference/surface.sh
 CgWorldRenderer.get().draw(mesh, stone).at(x, y, z).submit();
 ```
 
+A kernel's reference is [`reference/kernel.compute`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/kernel.compute)
+(§ *Compute*).
+
+### Where the engine's shaders live
+
+Under `crystalgraphics:shaders/`, one folder per owner: a pass, its kernels and its includes sit together.
+
+| Folder | What is in it | Yours to use? |
+|---|---|---|
+| `reference/` | One reference file a domain, and `kernel.compute` | Copy them |
+| `lib/` | Include libraries: `math`, `color`, `noise`, `sdf`… (§ *GLSL Standard Library*); `lib/material/` Unreal's material expressions; `lib/vfx/` what VFX materials and factories read (`particle.glsl`, `depth.glsl`, `ribbon.glsl`…) | Include them |
+| `materials/` | General-purpose materials: `emission_only`, `entity` and `entity_emissive` (a Minecraft entity and its glow layer), `sky` and `grid` (a scene's backdrop and ground) | Load them |
+| `factories/` | What draws a material in the world: `VertexFactory Sprites` | Name them |
+| `vfx/` | The VFX materials, a folder a feature (`particle/`, `trail/`, `beam/`, `air/`…), each beside the kernels its feature runs; `vfx/sim/` the particle simulation's modules, a folder a kind (`forces/`, `motion/`, `collision/`, `occlusion/`, `beam/`, `gas/`, `grid/`) and `data/` what they read; `vfx/archetype/` the NSUNS4 kit's archetypes | Load the materials |
+| `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; `buffer/` the engine buffers | Never include |
+| `world/` | The world renderer's passes; `world/lights/` lighting and shadows, `world/media/` fog volumes | The engine's |
+| `post/` | The post stack's materials, its bloom and film kernels and the composite's includes | The engine's |
+| `canvas/` | The canvas's materials (`CgCanvasMaterials`); `canvas/primitives/` what draws a ui material, `Primitive Quad` | Name the primitives |
+| `compute/` | `compute/ops/`, the GPU ops' kernels (`CgGpuOps`), and the self test | The engine's |
+| `noise/` | The baked noise volumes (`CgNoiseVolumes`) | The engine's |
+| `collision/`, `loading/` | The collision debug lines; the loading screen's logo | The engine's |
+| `demo/` | The demo scenes' materials | Read them |
+
 ### The format in one screen
 
 ```glsl
@@ -61,7 +84,7 @@ void surface(in v2f i, inout CgSurface s) {
   `PathRibbons`, `Sequence` and `Tube`, `TubeClosed`, `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex
   is, and `_FxPath` bound for you). Each is a file, `shaders/factories/<Name>.factory`; `VertexFactory mymod:Ribbons`
   reads `mymod:shaders/factories/Ribbons.factory` (§ 5.3), and `CgVertexFactory.register` adds one built in Java. A ui
-  `Primitive` is `shaders/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach
+  `Primitive` is `shaders/canvas/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach
   the fragment field by field, only those named:
 
   ```glsl
@@ -210,12 +233,12 @@ the engine hands each draw, in world passes, in both stages unless said:
 - The directional and the sky split the lightmap at the draw's light (`CG_OBJECT_LIGHT`) as the world's lights split
   it for the sun's shadow: the sun takes `CG_SUN_SHARE` of what sky light adds by day (`CG_DAYLIGHT`), and the sky
   keeps the rest, block light included. By night the directional is black.
-- **The point lights are the world's light grid** (`env/handed_lights.glsl`): a program naming `cg_NearestLights` or
+- **The point lights are the world's light grid** (`env/handed/lights.glsl`): a program naming `cg_NearestLights` or
   `CG_DRAW_POINT_LIGHT_*`, itself or in a file it includes, is handed the grid's three buffers after its own
   `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. A transparent firing reads this
   frame's grid, an opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is
   its system's.
-- **The shadow is the sun's cascaded shadow map of our casters** (`env/handed_sun.glsl`, `LIGHTS.md` §7): a program
+- **The shadow is the sun's cascaded shadow map of our casters** (`env/handed/sun.glsl`, `LIGHTS.md` §7): a program
   naming `CG_DIRECTIONAL_SHADOW` is handed the map as `_cg_SunMap` and its cascades as `_cg_Sun*` properties, read
   with the sample pass's PCF, the last cascade fading to lit. Only a transparent firing has the map: in an opaque one
   it reads 1, since the deferred pass shadows our opaque pixels already. Minecraft's sun lights nothing past the
@@ -744,7 +767,6 @@ two includes of it are one.
 | `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)`: pixel-art filtering, nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded** |
 | `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)`: the whole shared body of every `CgCurveBatch` consumer, taper, caps, feathered edge |
 | `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage`: Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table. **Fragment-only, guarded** |
-| `occlusion.glsl` | `cg_occluded(pyramid, size, clipX..clipW, eye, lo, hi)`: whether a box hides behind a `CgGpuOps.depthPyramid` pyramid |
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
 | `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage`: Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table |
 
@@ -797,7 +819,7 @@ standard library.
 
 A `.compute` holds **kernels**: GLSL functions the GPU runs once per element, as a compute shader on GL 4.3 and up
 and on the Vulkan device, with the same answer on each ([Where kernels run](#where-kernels-run)).
-**`crystalgraphics:shaders/example.compute` is the reference**: every part of the format, annotated, compiled by the
+**`crystalgraphics:shaders/reference/kernel.compute` is the reference**: every part of the format, annotated, compiled by the
 tests on every target. Files live under `shaders/`, beside the `.shader` that draws what they write. Designing one:
 [Designing a kernel](#designing-a-kernel). Plan:
 `plan/crystalgraphics/gpu-compute.md`; the package's internals: `compute/CLAUDE.md`. The VFX particle kernels are
@@ -1359,6 +1381,8 @@ for (int l = 0; l < cull.levels(); l++) {
 
 - `visible` holds `CgGpuOps.cullRecords(cull, n)` records; `counts` a word a level. The place and the view are
   camera-relative, the camera subtracted in doubles.
+- A kernel of your own tests a box against the pyramid with `cg_occluded(pyramid, size, clipX..clipW, eye, lo, hi)`,
+  from `crystalgraphics:shaders/compute/ops/occlusion.glsl`.
 - The pyramid is `CgGpuOps.PYRAMID_FORMAT` with mips, the size of the target it reads; one built from this frame's
   depth hides what is behind the host's world as drawn so far.
 - Where draws join, the levels are one multi-draw call (`render/graph/CLAUDE.md` § *Multi-draw*).

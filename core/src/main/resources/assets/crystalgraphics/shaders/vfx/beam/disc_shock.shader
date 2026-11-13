@@ -3,7 +3,7 @@
 // facing the eye. cg_VfxMesh.values.z is an intensity, .w the ring's progress 0..1. _CoreRim is the edge, its alpha a
 // strength; _Shell the wake. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

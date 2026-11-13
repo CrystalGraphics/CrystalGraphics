@@ -5,9 +5,9 @@
 // record (CgVfxFrame.particles, ARCS); the draw is centred on the source, so CG_OBJECT_TO_WORLD[3] is the source. _Color
 // is the glow, its alpha a strength; _Hot the middle. Its light blooms, as it adds.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

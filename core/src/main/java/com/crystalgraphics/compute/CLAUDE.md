@@ -5,7 +5,7 @@ A `.compute` holds kernels: GLSL functions the GPU runs once per element, declar
 compiles and wires it, and runs it as a compute shader: GL 4.3 and up, or a device.
 **Writing and running a kernel — the format, the built-ins, the graph's compute pass, `CgGpuOps` and what is easy to
 get wrong — is `docs/SHADERS.md` § *Compute*, loaded below.** This guide is the package's inside.
-`crystalgraphics:shaders/example.compute` is the reference file; the graph's half is `render/graph/CLAUDE.md`.
+`crystalgraphics:shaders/reference/kernel.compute` is the reference file; the graph's half is `render/graph/CLAUDE.md`.
 **A pass of real work with drawing before its reader runs `async()`**: mark every one that fits (`SHADERS.md` §
 *Beside the drawing*).
 
@@ -21,10 +21,11 @@ reconnectable in `docs/LOWERED_COMPUTE.md`.
 | `parse` | `CgComputeParser`, GL-free; package-private `TopLevel` (file scope, item by item), `GlslText`, `Std430`, `ConstantInt` |
 | `emit` | `CgKernelEmitter` (one kernel's GLSL for a target), `CgKernelTarget` (the device's GLSL, subgroups, float atomics, limits) and `CgPropertyBlock` (where each `Properties` value sits in `CgKernelBlock`, GL-free, so a dispatch packs its values when recorded) |
 | `program` | `CgKernelProgram`: a compiled, wired kernel; its direct dispatch, and `dispatchBound` for a graph that binds everything itself; `submit` links without waiting, a `Pending` that `finish()` makes the program. `CgComputeCheck`: checked mode's report slots, read back at `tickFrame` |
-| `ops` | The library (C7): `CgGpuOps`, `CgGpuCount`, `CgCull` (what a cull tests against, C9b), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/env/compute/ops/` |
+| `ops` | The library (C7): `CgGpuOps`, `CgGpuCount`, `CgCull` (what a cull tests against, C9b), `CgRng` (`lib/rng.glsl`'s Java twin), `CgGpuOpsCheck` (every op checked against Java on this context); kernels in `shaders/compute/ops/` |
 
-The engine's own kernels are `.compute` files under `shaders/env/compute/`, beside what every kernel includes
-(`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`): `args.compute` writes indirect draws' commands (C4).
+A kernel lives beside its owner's other shaders (`shaders/world/lights/`, `shaders/vfx/particle/`); the GPU ops'
+are `shaders/compute/ops/`, where `args.compute` writes indirect draws' commands (C4). What every kernel includes
+(`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`) is `shaders/env/`, beside the materials' `cg_env.glsl`.
 
 ## The path
 
@@ -41,7 +42,7 @@ still collapses a lib the engine's env files include too.
 
 One header, `CgKernelEmitter.VERSION` (`#version 450 core`, the materials' target; the KHR subgroup extensions
 where they are native), the keywords asked for, `CG_COMPUTE_STAGE`, the size macros, `cg_env.glsl`,
-`env/compute/kernel.glsl` and `atomic.glsl` (and `subgroup.glsl` if it uses `CG_SUBGROUP_*`), the properties, the
+`env/kernel/kernel.glsl` and `atomic.glsl` (and `subgroup.glsl` if it uses `CG_SUBGROUP_*`), the properties, the
 engine buffers, then **the file's code with every function and `shared` variable this kernel does not reach left
 out**, the `Buffers`/`Images` blocks replaced in place by declarations and accessors for the buffers and images it
 reaches (a stage holds 16 storage blocks on NVIDIA, and a file may declare more), and a `main` that calls the kernel —
@@ -91,7 +92,7 @@ What the kernel declares is bound at emission (`layout(binding = n)`, read back 
 on every device against CPU-written data, subgroups native and emulated.
 
 **`CgComputeSelfTest` is the gate**, and it ships: one kernel per shape
-(`crystalgraphics:shaders/env/compute/self_test.compute`), each result worked out in Java. It runs two ways:
+(`crystalgraphics:shaders/compute/self_test.compute`), each result worked out in Java. It runs two ways:
 
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--mode=compute-tiers --rhi=vulkan"

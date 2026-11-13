@@ -3,9 +3,9 @@
 // (CgVfxFrame.particles, QUADS), stretched here rather than by the renderer's alignment. _Color is the bloom, its alpha
 // a strength; _Hot the centre. Its light blooms, as it adds.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

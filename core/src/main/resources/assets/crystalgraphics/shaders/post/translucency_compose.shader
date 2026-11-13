@@ -2,7 +2,7 @@
 // scene times what the translucency left of it plus the light it added. _Translucency holds rgb premultiplied and a
 // its coverage, so the blend is ONE ONE_MINUS_SRC_ALPHA; over a graded layer its alpha composes the same way.
 #domain global
-#include "crystalgraphics:shaders/lib/post/post_material.glsl"
+#include "crystalgraphics:shaders/env/material/post.glsl"
 Material { Media On }
 
 RenderState {

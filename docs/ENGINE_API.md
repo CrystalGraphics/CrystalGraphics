@@ -389,7 +389,7 @@ if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit)
   effect* has the rules; `--mode=post-effects` is one at each point.
 - **An effect that is only a material** is a `CgPostMaterial` (Unreal's post-process material): its `.shader` drawn over
   the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, at a weight its shader reads as `POST_WEIGHT`
-  (`lib/post/post_material.glsl`); 0 draws nothing.
+  (`env/material/post.glsl`); 0 draws nothing.
 - **A post material of several steps** draws them in order: each `Step` but the last (`Target RGBA16_FLOAT  Scale 0.5`)
   draws into a texture of its own, that share of the screen, which every step after reads as `CG_STEP(name, uv)`; the
   last draws over the scene. `MATERIAL_FORMAT.md` § 7.1 and `CgPostMaterial`'s javadoc have the example.

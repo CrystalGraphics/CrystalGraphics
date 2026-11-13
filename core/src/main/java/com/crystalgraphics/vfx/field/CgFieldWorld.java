@@ -23,7 +23,7 @@ import com.crystalgraphics.vfx.CgVfxEffect;
 /**
  * The client world's field instances, flattened once a frame for the particle steps: Chaos's physics field manager
  * ({@code UPhysicsFieldComponent}). Each group keeps the {@link #PER_GROUP} instances nearest the camera that reach
- * it; their graphs go into one buffer the Step's {@code physics_field} modules read through {@code fx_field.glsl}.
+ * it; their graphs go into one buffer the Step's {@code physics_field} modules read through {@code vfx/sim/data/field.glsl}.
  * Render thread.
  *
  * <pre>{@code
@@ -57,7 +57,7 @@ public final class CgFieldWorld {
                 _FieldAnchorZ ("z",                                     int) = 0
             """;
 
-    /** The kinds the GPU evaluates, each under its place plus one; {@code fx_field.glsl}'s {@code FX_FIELD_*}. */
+    /** The kinds the GPU evaluates, each under its place plus one; {@code vfx/sim/data/field.glsl}'s {@code FX_FIELD_*}. */
     static final List<CgFieldNode.Kind> OPCODES = List.of(CgFieldNodes.RADIAL_FALLOFF, CgFieldNodes.PLANE_FALLOFF,
             CgFieldNodes.BOX_FALLOFF, CgFieldNodes.WAVE_SCALAR, CgFieldNodes.UNIFORM_SCALAR, CgFieldNodes.UNIFORM_VECTOR,
             CgFieldNodes.RADIAL_VECTOR, CgFieldNodes.ROTATED_RADIAL_VECTOR, CgFieldNodes.RANDOM_VECTOR, CgFieldNodes.OPERATOR,
@@ -80,7 +80,7 @@ public final class CgFieldWorld {
     private static final Vector3f CENTRE = new Vector3f();
 
     static {
-        // fx_field.glsl reads each kind's numbers at fixed places: its declaration's order, which these hold.
+        // vfx/sim/data/field.glsl reads each kind's numbers at fixed places: its declaration's order, which these hold.
         check(CgFieldNodes.RADIAL_FALLOFF, "magnitude", 0, "min_range", 1, "max_range", 2, "default", 3, "radius", 4, "position", 5, "falloff", 8);
         check(CgFieldNodes.PLANE_FALLOFF, "distance", 4, "position", 5, "normal", 8, "falloff", 11);
         check(CgFieldNodes.BOX_FALLOFF, "transform", 4, "falloff", 14);
@@ -98,7 +98,7 @@ public final class CgFieldWorld {
     private static void check(CgFieldNode.Kind kind, Object... at) {
         for (int i = 0; i < at.length; i += 2) {
             if (kind.offset((String) at[i]) != (Integer) at[i + 1]) {
-                throw new IllegalStateException(kind.name() + "." + at[i] + " moved in its declaration: fx_field.glsl reads it at " + at[i + 1]);
+                throw new IllegalStateException(kind.name() + "." + at[i] + " moved in its declaration: vfx/sim/data/field.glsl reads it at " + at[i + 1]);
             }
         }
     }

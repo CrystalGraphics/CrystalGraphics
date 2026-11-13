@@ -7,7 +7,7 @@
 // darkens the glows behind it. cg_VfxMesh.values.z is an intensity, .w the blast's progress 0..1. _Core is the hot
 // burst, its alpha a strength; _Shell the cool shell. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

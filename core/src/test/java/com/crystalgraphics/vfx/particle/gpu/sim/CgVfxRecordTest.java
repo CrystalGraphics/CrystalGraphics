@@ -64,7 +64,7 @@ public class CgVfxRecordTest {
 
     @Test
     public void theSharedKernelsReadTheCoreWhereEveryLayoutPutsIt() {
-        String lib = CgIO.loadSource("crystalgraphics:shaders/lib/vfx/fx_record.glsl");
+        String lib = CgIO.loadSource("crystalgraphics:shaders/lib/vfx/record.glsl");
         assertEquals(CgVfxRecord.POSITION, 4 * vector(lib, "FX_RECORD_POSITION_AGE"));
         assertEquals(CgVfxRecord.AGE, 4 * vector(lib, "FX_RECORD_POSITION_AGE") + 3);
         assertEquals(CgVfxRecord.VELOCITY, 4 * vector(lib, "FX_RECORD_VELOCITY_SIZE"));

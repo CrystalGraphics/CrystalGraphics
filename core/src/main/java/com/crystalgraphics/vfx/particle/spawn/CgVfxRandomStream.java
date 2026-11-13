@@ -18,8 +18,6 @@ package com.crystalgraphics.vfx.particle.spawn;
  * int at = CgVfxRandomStream.skip(seed, (long) k * d);    // the state before spawn k's first draw
  * float x = CgVfxRandomStream.fraction(CgVfxRandomStream.next(at));
  * }</pre>
- *
- * <p>{@code fx_cascade_stream.glsl} is the GPU's twin, bit for bit.</p>
  */
 public final class CgVfxRandomStream {
 

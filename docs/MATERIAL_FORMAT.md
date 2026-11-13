@@ -297,7 +297,7 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `PathRibbons` | A VFX path-ribbons slot (`CgVfxFrame.pathRibbons`): stateless strips riding a beam's path | nothing: your `vertex()` assigns `v.world` from `cg_PathRibbon` and the path's rings |
 | `GridVolume` | A VFX grid slot (`CgVfxGrid3D`): the box round a grid's tiles, drawn on its far wall | the box; `cg_Grid`; the grid atlas bound as `_GridView`, `_GridLight`, `_GridPages` |
 | `FluidVolume` | A VFX fluid slot (`CgVfxFluid`): the box round a fluid's tiles, drawn on its far wall | the box; `cg_Fluid`; the fluid atlas bound as `_FluidShade`, `_FluidRestA`/`B`, `_FluidPages` |
-| `Sequence` | A prefab part a clip plays on a sequence particle (`fx_sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
+| `Sequence` | A prefab part a clip plays on a sequence particle (`lib/vfx/sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
 | `TubeVolume` | A tube slot, each chunk on a sphere round it | the sphere's vertices; `cg_Tube` |
@@ -331,7 +331,7 @@ the quad.
 
 **`cg_Grid`** and **`cg_Fluid`** are the volume to march: `.index` its place in the atlas, `.cell` its cell in
 blocks, `.lo` and `.hi` the box, `.corner` the grid's low corner, `.size` the layer's size; a grid's `.extinction`, a
-fluid's `.weight` (its first UV grid's). The march is the material's (`fx_scatter_box`, `fx_sparse.glsl`); it names the
+fluid's `.weight` (its first UV grid's). The march is the material's (`fx_scatter_box`, `lib/vfx/sparse.glsl`); it names the
 depth its light came from with `s.volumeDepth`.
 
 **`cg_Ribbon`** and **`cg_PathRibbon`** say where the vertex lies on its strip: `.index` the strip, `.along` 0..1 down
@@ -703,13 +703,13 @@ void surface(in CgUiInput i, inout CgUiSurface s) { s.color = cg_UiTexture(_Main
 
 ### 8.3 Writing your own primitive
 
-A new kind of canvas element is a file, **`assets/mymod/shaders/primitives/Ring.primitive`**, read when a material
+A new kind of canvas element is a file, **`assets/mymod/shaders/canvas/primitives/Ring.primitive`**, read when a material
 says `Primitive mymod:Ring`. It is real GLSL: a `v2f`, a `vertex()`, and a `fragment()` that fills a `CgUiInput`
 and a `CgUiSurface`, runs the material at **`CG_SURFACE(input, s)`**, then writes `fragColor`. The engine's three
-(`crystalgraphics:shaders/primitives/Quad.primitive`, `Curve`, `Text`) are the examples to start from.
+(`crystalgraphics:shaders/canvas/primitives/Quad.primitive`, `Curve`, `Text`) are the examples to start from.
 
 ```glsl
-// assets/mymod/shaders/primitives/Ring.primitive
+// assets/mymod/shaders/canvas/primitives/Ring.primitive
 Primitive { Queue Transparent }
 EngineBuffers { quad clip }                         // what its elements are recorded into
 Keywords { THICK ("A wider band") }                 // its own switches, as a material's (optional)
@@ -820,8 +820,8 @@ Write a `surface`, `post` or `ui` material instead wherever one fits.
 | What | Where |
 |---|---|
 | The engine's factories | `crystalgraphics:shaders/factories/*.factory` |
-| The engine's ui primitives | `crystalgraphics:shaders/primitives/*.primitive` |
-| The structs `vertex()` and `surface()` take | `crystalgraphics:shaders/env/material.glsl` |
+| The engine's ui primitives | `crystalgraphics:shaders/canvas/primitives/*.primitive` |
+| The structs `vertex()` and `surface()` take | `crystalgraphics:shaders/env/material/surface.glsl` |
 | How a format file becomes passes (engine side) | `material/parse/CgMaterialFormat`, `CgFormatTemplates` |
 | The older `Pass { }` format, still read for unconverted shaders | [`SHADERS.md`](SHADERS.md) |
 | Precaching a material you draw | [`PRECACHE.md`](PRECACHE.md) |

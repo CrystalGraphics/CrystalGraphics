@@ -1,10 +1,10 @@
 // A smoke trail: what a meteor, a falling fireball or a ki blast through dust leaves behind. Thin and dense at its
 // head, billowing wider and thinner as it ages, its edge torn by rolling noise that drifts up and outward, lit by the
 // world's light and the sun with a darker underside, hot at its head where _Glow says (a fire's own smoke).
-// Blended over what is behind it. A Cascade trail's material; its renderer tiles UV1 once a block (fx_strip.glsl).
+// Blended over what is behind it. A Cascade trail's material; its renderer tiles UV1 once a block (lib/vfx/strip.glsl).
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/strip.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

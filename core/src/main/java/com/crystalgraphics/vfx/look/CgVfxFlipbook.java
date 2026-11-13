@@ -33,7 +33,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *   <li>A rect table is a texture made at its first draw and kept for the session, one per {@link #rects} call
  *       however many flipbooks are derived from it; a server never makes it.</li>
  *   <li>The layer's shader reads {@code _SubImage}, {@code _SubUV} and {@code _SubImages}: {@code sprite} and
- *       {@code sprite_glow} do, through {@code fx_particle.glsl}'s {@code fx_subuv_frames}.</li>
+ *       {@code sprite_glow} do, through {@code lib/vfx/particle.glsl}'s {@code fx_subuv_frames}.</li>
  * </ul>
  */
 public final class CgVfxFlipbook {

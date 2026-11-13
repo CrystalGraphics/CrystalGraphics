@@ -5,7 +5,7 @@
 // cg_VfxMesh.values: x how far the reveal has swept along u (past 1 the whole mesh shows), y a strength, z how much the
 // part behind the reveal fades (0 none), w unused.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

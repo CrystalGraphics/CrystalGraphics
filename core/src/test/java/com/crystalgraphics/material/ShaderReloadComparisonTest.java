@@ -21,7 +21,7 @@ import static org.junit.Assert.assertTrue;
 public class ShaderReloadComparisonTest {
 
     /** Shipped, and includes {@code lib/stroke.glsl}: the case the skip has to stay honest about. */
-    private static final String WITH_INCLUDE = "crystalgraphics:shaders/primitives/Curve.primitive";
+    private static final String WITH_INCLUDE = "crystalgraphics:shaders/canvas/primitives/Curve.primitive";
 
     private static String expand(String path) {
         String source = CgIO.loadSource(path);

@@ -39,7 +39,7 @@ final class CgCustomDataPass {
     private final CgWorldDraws draws;
     private final CgMeshDrawCommands commands;
 
-    /** Custom data and the shading model, packed as {@code handed_scene.glsl} reads them: two exact floats. */
+    /** Custom data and the shading model, packed as {@code env/handed/scene.glsl} reads them: two exact floats. */
     static final CgFormat CUSTOM_DATA_FORMAT = CgFormat.RG32_FLOAT;
 
     static final int GPU_CUSTOM_DATA = CgGpuTrace.name("world.customData");

@@ -3365,7 +3365,7 @@ public final class CgVfxEmitterAssets {
     /**
      * A file's {@code sprite_size} to our size: Unreal's sprite size is the full width (its corners at Size times
      * UV + pivot, the pivot at -0.5, ParticleSpriteVertexFactory.ush:505-507), ours a half width (a quad spans
-     * -size..size, fx_common.glsl's FX_QUAD_CORNER).
+     * -size..size, lib/vfx/common.glsl's FX_QUAD_CORNER).
      */
     private static final float SPRITE_SIZE_TO_OURS = 0.5f;
 

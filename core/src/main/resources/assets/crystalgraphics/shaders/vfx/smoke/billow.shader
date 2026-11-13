@@ -8,14 +8,14 @@
 // It fades into the surface it rests on, and dissolves from its edge inward at the end of its life, and as the camera
 // comes near, so a player inside a blast still sees out. Premultiplied, sorted far to near over its own depth prepass:
 // wherever it is solid (_Clip), its fade into the ground included, only its nearest surface is shaded, and its own back
-// lobes, what is behind it and the blast stay hidden. Shape and density are fx_billow.glsl's. A mesh particle
+// lobes, what is behind it and the blast stay hidden. Shape and density are lib/vfx/billow.glsl's. A mesh particle
 // (CgVfxFrame.particles, MESHES) on a sphere, turned and sized per billow; its velocity points away from the blast it
 // rolls out of. Where it meets a floor or a wall (CG_OBJECT_SPARE: the surface's normal and its centre's height over it,
 // Range's) it squashes against it, and its underside's shade climbs the lobes near it. _Color is the body, _Hot the
 // blast's light.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_billow.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/billow.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  DepthPrepass On  MaskClip _Clip  VertexFactory MeshParticles  PerDrawValues On }
 
 Properties {

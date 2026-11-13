@@ -48,7 +48,7 @@ public final class CgVfxDataInterfaces {
     /** The vec4s of the instance row a gas and a grid each keep: the instance's offset and slot, then its cell. */
     public static final int GAS_LANES = 2, GRID_LANES = 2;
 
-    /** The scene's depth as {@code fx_depth_at.glsl} reads it; the pool binds them. */
+    /** The scene's depth as {@code vfx/sim/data/depth.glsl} reads it; the pool binds them. */
     private static final String DEPTH_PROPERTIES = """
                 _DepthPyramid ("The scene's eye depth: CgGpuOps.depthPyramid's level 0", sampler2D) = "white"
                 _DepthSize    ("Its width and height; 0 with no depth",                   vec4)      = (0, 0, 0, 0)
@@ -66,14 +66,14 @@ public final class CgVfxDataInterfaces {
                 _DepthEyeFrac ("Where in that block",                                     vec4)      = (0, 0, 0, 0)
             """;
 
-    private static final String SIM = "crystalgraphics:shaders/lib/vfx/sim/";
+    private static final String SIM = "crystalgraphics:shaders/vfx/sim/";
 
     /**
-     * The voxel window, as an {@code FxWorld} that {@code fx_world_at.glsl}'s readers take: solid octants, fluid and
+     * The voxel window, as an {@code FxWorld} that {@code vfx/sim/data/world.glsl}'s readers take: solid octants, fluid and
      * light at a point relative to the instance's origin. With no level they answer "nothing there".
      */
     public static final CgVfxDataInterface WORLD = register(new Engine("world", "FxWorld", "step_world(inst)") {
-        @Override public List<String> libraries() { return List.of(SIM + "fx_world_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "data/world.glsl"); }
         @Override public String properties() { return CgWorldVoxelWindow.PROPERTIES; }
         @Override public String functions(int lanesAt) {
             return """
@@ -121,13 +121,13 @@ public final class CgVfxDataInterfaces {
     });
 
     /**
-     * The scene's depth as the camera saw it this frame, as an {@code FxDepth} that {@code fx_depth_at.glsl}'s readers
+     * The scene's depth as the camera saw it this frame, as an {@code FxDepth} that {@code vfx/sim/data/depth.glsl}'s readers
      * take: Niagara's and Unity's depth buffer collision. Blind off screen and behind the first surface; the voxel window
      * is the primary collider, this one for what it does not hold (entities, a mod's meshes). Read in
      * {@code WORLD_OPAQUE}, after the opaque pass and its pyramid ({@link CgVfxParticlePool#depth}).
      */
     public static final CgVfxDataInterface DEPTH = register(new Engine("depth", "FxDepth", "step_depth(inst)") {
-        @Override public List<String> libraries() { return List.of(SIM + "fx_depth_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "data/depth.glsl"); }
         @Override public String properties() { return DEPTH_PROPERTIES; }
         @Override public String functions(int lanesAt) {
             return """
@@ -147,12 +147,12 @@ public final class CgVfxDataInterfaces {
     });
 
     /**
-     * The entities round the camera this frame, as boxes in an {@code FxEntities} that {@code fx_entities_at.glsl}'s
+     * The entities round the camera this frame, as boxes in an {@code FxEntities} that {@code vfx/sim/data/entities.glsl}'s
      * readers take ({@code fx_entities_enter}): mobs and players a particle can strike from any side, on screen or not.
      * At most {@code CgWorldEntityBoxes.MAX} of them, the living nearest the camera.
      */
     public static final CgVfxDataInterface ENTITIES = register(new Engine("entities", "FxEntities", "step_entities(inst)") {
-        @Override public List<String> libraries() { return List.of(SIM + "fx_entities_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "data/entities.glsl"); }
         @Override public String properties() { return CgWorldEntityBoxes.PROPERTIES; }
         @Override public String buffers() { return "    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n"; }
         @Override public String functions(int lanesAt) {
@@ -186,12 +186,12 @@ public final class CgVfxDataInterfaces {
 
     /**
      * The fields placed in the world this frame ({@code vfx.field.CgFieldWorld}), as an {@code FxFields} that
-     * {@code fx_field.glsl}'s {@code fx_field_apply} takes: every group's nearest instances, flattened once a frame.
+     * {@code vfx/sim/data/field.glsl}'s {@code fx_field_apply} takes: every group's nearest instances, flattened once a frame.
      * Its lane is the instance's origin from the fields' anchor block, written from doubles.
      */
     public static final CgVfxDataInterface FIELDS = register(new Engine("fields", "FxFields", "step_fields(inst)") {
         @Override public boolean beforeSolver() { return true; }
-        @Override public List<String> libraries() { return List.of(SIM + "fx_field.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "data/field.glsl"); }
         @Override public String properties() { return CgFieldWorld.PROPERTIES; }
         @Override public String buffers() { return "    FIELDS        (\"Field instances and their nodes\", uvec4,   readonly)\n"; }
         @Override public int instanceLanes() { return 1; }
@@ -219,7 +219,7 @@ public final class CgVfxDataInterfaces {
     });
 
     /**
-     * The particles near this one from the last step, as an {@code FxNeighbours} that {@code fx_neighbours_at.glsl}
+     * The particles near this one from the last step, as an {@code FxNeighbours} that {@code vfx/sim/data/neighbours.glsl}
      * walks: every particle of its slot in the 27 cells round it, each cell as wide as the widest
      * {@code neighbourRadius} of the pool's kinds. A force from its neighbours (boids, a swarm). Green's sort-based grid,
      * built after every step on every tier; a newborn is not in it yet.
@@ -227,7 +227,7 @@ public final class CgVfxDataInterfaces {
     public static final CgVfxDataInterface NEIGHBOURS = register(new Engine("neighbours", "FxNeighbours",
             "step_neighbours(CG_ELEMENT < live ? CG_ELEMENT : -1, p.slot)") {
         @Override public boolean beforeSolver() { return true; }
-        @Override public List<String> libraries() { return List.of(SIM + "fx_neighbours_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "data/neighbours.glsl"); }
         @Override public String properties() {
             return """
                         _NeighbourCell  ("The neighbour grid's cell width, blocks", float) = 1.0
@@ -275,12 +275,12 @@ public final class CgVfxDataInterfaces {
 
     /**
      * The gas its instance is carried by ({@code CgVfxEmitterInstance.inGas}), as an {@code FxGas} that
-     * {@code fx_gas_at.glsl}'s {@code fx_gas_flow} reads: its velocity at a point from the instance's origin, as its last
+     * {@code vfx/sim/gas/at.glsl}'s {@code fx_gas_flow} reads: its velocity at a point from the instance's origin, as its last
      * step left it, and 1 inside its box (0 outside it, and with no gas). A force from the flow.
      */
     public static final CgVfxDataInterface GAS = register(new Engine("gas", "FxGas", "step_gas(inst)") {
         @Override public boolean beforeSolver() { return true; }
-        @Override public List<String> libraries() { return List.of(SIM + "fx_gas_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "gas/at.glsl"); }
         @Override public String properties() { return CgVfxFluidAtlas.FLOW_PROPERTIES; }
         @Override public int instanceLanes() { return GAS_LANES; }
         @Override public String functions(int lanesAt) {
@@ -343,13 +343,13 @@ public final class CgVfxDataInterfaces {
 
     /**
      * The grid its instance is in ({@code CgVfxEmitterInstance.inGrid}), as an {@code FxGrid} that
-     * {@code sim/grid/fx_grid_at.glsl} reads: {@code fx_grid_value(grid, p)}, its four channels at a point from the
+     * {@code vfx/sim/grid/at.glsl} reads: {@code fx_grid_value(grid, p)}, its four channels at a point from the
      * instance's origin as the last frame left them, and {@code fx_grid_gradient_at(grid, p, mask)}, a channel's slope a
      * block. Nothing outside it, and with no grid. A force from the grid.
      */
     public static final CgVfxDataInterface GRID = register(new Engine("grid", "FxGrid", "step_grid(inst)") {
         @Override public boolean beforeSolver() { return true; }
-        @Override public List<String> libraries() { return List.of(SIM + "grid/fx_grid_at.glsl"); }
+        @Override public List<String> libraries() { return List.of(SIM + "grid/at.glsl"); }
         @Override public String properties() { return CgVfxGridAtlas.VIEW_PROPERTIES; }
         @Override public int instanceLanes() { return GRID_LANES; }
         @Override public String functions(int lanesAt) {
@@ -452,11 +452,11 @@ public final class CgVfxDataInterfaces {
 
     /**
      * What a beam kind reads of its instance ({@code CgVfxModule.BeamSource} and the rest), as an {@code FxBeamFrame}
-     * ({@code fx_beam.glsl}): its orientation, its origin in the world and its loop's seconds. A shape taking it with a
+     * ({@code lib/vfx/beam.glsl}): its orientation, its origin in the world and its loop's seconds. A shape taking it with a
      * {@code beam_noise} keeps its beams' noise points ({@code CgVfxBeams}), written after each step.
      */
     public static final CgVfxDataInterface BEAM = register(new Engine("beam", "FxBeamFrame", "step_beam_frame(inst)") {
-        @Override public List<String> libraries() { return List.of("crystalgraphics:shaders/lib/vfx/fx_beam.glsl"); }
+        @Override public List<String> libraries() { return List.of("crystalgraphics:shaders/lib/vfx/beam.glsl"); }
         @Override public String functions(int lanesAt) {
             return """
 

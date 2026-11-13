@@ -4,8 +4,8 @@ import com.crystalgraphics.api.texture.CgTexture;
 
 /**
  * A module kind's GPU side: the GLSL function the emitter compiler calls in its Step kernel, in stack order, and what
- * that call gets. A kind is one function, {@code fx_<kind>} in {@code crystalgraphics:shaders/lib/vfx/sim/fx_<kind>.glsl},
- * which includes {@code fx_types.glsl} for its structs. Its numbers are its declaration's
+ * that call gets. A kind is one function, {@code fx_<kind>} in the file {@link #gpuFile()} names,
+ * which includes {@code vfx/sim/types.glsl} for its structs. Its numbers are its declaration's
  * ({@code CgVfxModuleTypes.declare}): the inputs it lists, packed into {@code vec4 m0..mN} in that order. A new kind
  * is that file, the declaration and these methods, never a compiler change.
  *
@@ -16,9 +16,10 @@ import com.crystalgraphics.api.texture.CgTexture;
  *                 (m, in) -> in.f("strength", m.strength()));
  *     }
  *     public String gpuKind() { return "mymod_pull"; }
+ *     public String gpuFile() { return "mymod:shaders/vfx/pull.glsl"; }
  *     public boolean afterSolve() { return false; }
  * }
- * // fx_mymod_pull.glsl
+ * // mymod:shaders/vfx/pull.glsl
  * void fx_mymod_pull(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) { f.accel -= p.position * m.x; }
  * }</pre>
  *
@@ -66,8 +67,8 @@ public interface CgVfxGpuModule {
     String gpuKind();
 
     /**
-     * The kind's GLSL, in place of {@code fx_<kind>.glsl}; null for the file. It sees {@code fx_types.glsl}, and
-     * {@code fx_world_at.glsl} when the kind takes the world. One text a kind name: two kinds giving different text under
+     * The kind's GLSL, in place of its file; null for the file. It sees {@code vfx/sim/types.glsl}, and
+     * {@code vfx/sim/data/world.glsl} when the kind takes the world. One text a kind name: two kinds giving different text under
      * one name throw when the second is compiled. Prefix the name with the mod's, as for any resource.
      */
     default String gpuSource() {
@@ -75,11 +76,12 @@ public interface CgVfxGpuModule {
     }
 
     /**
-     * The file holding the kind's {@code fx_<kind>}, when it is not {@code shaders/lib/vfx/sim/fx_<kind>.glsl}: kinds
-     * grouped in a folder of their own. Null for that default; ignored where {@link #gpuSource} gives text.
+     * The file holding the kind's {@code fx_<kind>}: a mod's in its own namespace; the engine's under
+     * {@code crystalgraphics:shaders/vfx/sim/}, a folder a kind of module ({@code forces/}, {@code collision/}…). Null
+     * for {@code crystalgraphics:shaders/vfx/sim/<kind>.glsl}; ignored where {@link #gpuSource} gives text.
      *
      * <pre>{@code
-     * public String gpuFile() { return "crystalgraphics:shaders/lib/vfx/sim/grid/fx_grid_splat.glsl"; }
+     * public String gpuFile() { return "mymod:shaders/vfx/pull.glsl"; }
      * }</pre>
      */
     default String gpuFile() {

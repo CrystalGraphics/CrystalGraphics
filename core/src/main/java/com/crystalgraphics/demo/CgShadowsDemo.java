@@ -46,7 +46,7 @@ import java.util.Locale;
  */
 public final class CgShadowsDemo {
 
-    private static final String MATERIAL = "crystalgraphics:shaders/demo_render.shader";
+    private static final String MATERIAL = "crystalgraphics:shaders/demo/matte.shader";
     private static final String SHADOWS = "crystalgraphics.world.lightsShadows";
     private static final String FRAMES = "crystalgraphics.world.lightsShadowFrames", SPATIAL = "crystalgraphics.world.lightsShadowSpatial";
     private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace";

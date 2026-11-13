@@ -72,7 +72,7 @@ objects wrote. Minecraft writes none, so the pass **rebuilds one from Minecraft'
 | A G-buffer stores | Rebuilt from |
 |---|---|
 | Position | the depth at the pixel, unprojected |
-| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are; our meshes' own where the opaque pass drew them. Written once a firing (`lights/gbuffer.compute`, half floats) and read by the apply and every shadow pass, which each rebuilt it before, the shade and denoise passes once per neighbour they weigh |
+| Normal | the neighbouring depths: whichever neighbour each way is the smaller step, so a block's edge does not bend it (Wicked Engine's improved normal reconstruction), snapped to a world axis within 10 degrees, as blocks are; our meshes' own where the opaque pass drew them. Written once a firing (`world/lights/gbuffer.compute`, half floats) and read by the apply and every shadow pass, which each rebuilt it before, the shade and denoise passes once per neighbour they weigh |
 | Albedo | the scene's colour over Minecraft's lightmap value at the light's block: what the surface would be under white light |
 | Roughness, metalness | nothing: no specular |
 
@@ -81,7 +81,7 @@ In GL terms, after Minecraft's level has drawn:
 ```
 bind Minecraft's depth (cg_DepthBuffer)
 glBlendFunc(GL_DST_COLOR, GL_ONE)            // result = scene + scene × added
-draw a full-screen triangle with world_lights.shader:
+draw a full-screen triangle with world/lights/lights.shader:
     p = unproject(depth); n = normal from the neighbouring depths
     for each light in p's light-grid cell:
         added += colour × falloff × N·L / π / lightmap(light's block)
@@ -168,12 +168,12 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
 
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
-| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `lights/sample.compute`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
-| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `lights/tiles.compute`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
-| Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `lights/shade.compute` |
-| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `lights/temporal.compute`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
-| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `lights/denoise.compute` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
-| Composite | adds into scene colour | `world_lights.shader` adds it beside the unshadowed lights |
+| Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world/lights/sample.compute`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
+| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `world/lights/tiles.compute`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
+| Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world/lights/shade.compute` |
+| Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world/lights/temporal.compute`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
+| Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world/lights/denoise.compute` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
+| Composite | adds into scene colour | `world/lights/lights.shader` adds it beside the unshadowed lights |
 
 - **The sun** is not one of MegaLights' lights (Unreal's `r.MegaLights.DirectionalLights` is 0): our objects shadow it
   through a **cascaded shadow map**, Unreal's for a movable directional light, while it is up and something of ours is
@@ -258,7 +258,7 @@ fragColor = vec4(albedo, alpha);                         // in a transparent fir
 vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by hand, for a material that opted out
 ```
 
-- **The volume** (`env/compute/light_volume.compute`, GPU zone `world.lightsVolume`): two cascades of 64 cells a side,
+- **The volume** (`world/lights/volume.compute`, GPU zone `world.lightsVolume`): two cascades of 64 cells a side,
   the first to `crystalgraphics.world.lightsVolumeInner` blocks (15), the second to `...lightsVolumeOuter` (50), each
   the sphere round its slice of a fixed 45-degree view, weighted to its far end and snapped to whole cells
   (TranslucentLighting.cpp:270-370). Filled each transparent firing that draws something, after the light grid: each
@@ -283,7 +283,7 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
   (two Surface panes, one facing the light). `CgLightsDemo` shows it: glass round the carousel.
 
 - **Handed to a program carrying its own lighting** (`SHADERS.md` § *What a program carrying its own lighting
-  reads*): the four lights nearest a draw, or a point, read from the grid cell it falls in (`env/handed_lights.glsl`),
+  reads*): the four lights nearest a draw, or a point, read from the grid cell it falls in (`env/handed/lights.glsl`),
   the grid bound to its draws by `CgWorldLights.hand`. `--mode=lights-volume` checks a pane handed the light.
 
 ## 9. In the air
@@ -296,7 +296,7 @@ CgWorldHaze haze = new CgWorldHaze().box(x - 24, y, z - 20, x + 24, y + 18, z + 
 CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VFX smoke lights the same way
 ```
 
-- **Scattering** (`light_volume.compute`'s `Scatter`, between the injectors and the integration): each froxel holding
+- **Scattering** (`world/lights/volume.compute`'s `Scatter`, between the injectors and the integration): each froxel holding
   extinction takes its light-grid cell's lights as `LightScatteringCS` does (VolumetricFog.usf:1085-1169): colour x
   falloff x day fade x the Henyey-Greenstein phase toward the eye (g 0.2, the height fog's default) x the froxel's
   scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
@@ -336,7 +336,7 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
   scale 32 (`cg_env.glsl`'s `CG_MEDIA_*`): a cell 40 blocks out is 1.2 blocks deep, as Unreal's 64 slices to 60 m
   make it. The distance bias is the cell's size, so slices as deep as an exponential spacing gives (3.7 blocks there)
   dimmed a light's beam near the light seen from afar.
-- **Composite** (`world_media_light.shader`, GPU zone `world.mediaLight`): the scattered light added over the opaque
+- **Composite** (`world/media/light.shader`, GPU zone `world.mediaLight`): the scattered light added over the opaque
   scene at each pixel's depth, out to the grid's far end where there is sky, before the transparent passes. The grid is
   read cubic B-spline across the screen (`cg_MediaSample`, four trilinear reads), so a beam's edge shows no cells:
   Unreal leaves that to its temporal anti-aliasing, which a Minecraft frame does not have. The media

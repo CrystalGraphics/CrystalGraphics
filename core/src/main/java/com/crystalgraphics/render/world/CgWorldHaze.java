@@ -23,7 +23,7 @@ import com.crystalgraphics.render.graph.CgComputePass;
  */
 public final class CgWorldHaze implements CgWorldMedia.Injector {
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/media_haze.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/world/media/haze.compute";
 
     /** Its kernel, for the world's collector: compiled at the first haze otherwise. */
     static void precacheKernels() {

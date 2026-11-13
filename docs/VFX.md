@@ -1962,7 +1962,7 @@ engine's factories (§ 5.2 there):
 
 ```glsl
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 // a sphere (VfxMesh), and a tube slot too (Tube, under FX_ON_TUBE); every number readable per draw
 Material { BlendMode AlphaComposite  ShadingModel Unlit  VertexFactory VfxMesh, Tube  PerDrawValues On }
 
@@ -1983,7 +1983,7 @@ void surface(in v2f i, inout CgSurface s) {
 
 - **`PerDrawValues On`** makes every numeric property (float, vector, colour, and arrays of vec4 or colour) read either
   the material's value or the draw's row, whichever the renderer chose. Nothing changes in how the shader reads it.
-- **The header** (`fx_draw.glsl`, `cg_Vfx`): the effect's age, seed and presence (1 unless an ending fades it); the
+- **The header** (`lib/vfx/draw.glsl`, `cg_Vfx`): the effect's age, seed and presence (1 unless an ending fades it); the
   factory reads the slot kind's customs (`CgVfxSlot.Kind`) and fades what the material adds by the presence.
 - **Name colours for what they are** (`_Core`, `_Shell`, `_Hot`); a renderer binds each to a parameter. Nothing binds
   by name.
@@ -2002,9 +2002,9 @@ A shader drawing a fluid of your own look declares the fluid's four volumes firs
 what `CgVfxSlot.Kind.FLUID` documents:
 
 ```glsl
-#include "crystalgraphics:shaders/lib/vfx/fx_sparse.glsl"   // fx_sparse_slot_of, fx_sparse_pool_uvw
-#include "crystalgraphics:shaders/lib/vfx/fx_wavelet.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_fluid.glsl"    // FX_FLUID_STEP_CELLS, fx_fluid_detail
+#include "crystalgraphics:shaders/lib/vfx/sparse.glsl"   // fx_sparse_slot_of, fx_sparse_pool_uvw
+#include "crystalgraphics:shaders/lib/vfx/wavelet.glsl"
+#include "crystalgraphics:shaders/lib/vfx/fluid.glsl"    // FX_FLUID_STEP_CELLS, fx_fluid_detail
 
 Properties {
     _FluidShade ("Smoke, temperature, sun, sky", sampler3D) = "black"   // these four first, in this order
@@ -2050,7 +2050,7 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
     }
     public String gpuKind() { return "mymod_swirl"; }
     public boolean afterSolve() { return false; }
-    public String gpuSource() {                          // or a file: shaders/lib/vfx/sim/fx_mymod_swirl.glsl
+    public String gpuSource() {                          // or a file: shaders/vfx/sim/mymod_swirl.glsl
         return """
                 void fx_mymod_swirl(inout FxParticle p, inout FxForces f, FxStep s, vec4 m) {
                     f.accel += cross(vec3(0.0, 1.0, 0.0), p.position) * m.x * step(p.position.y, m.y);
@@ -2068,12 +2068,12 @@ record Swirl(float strength, float height) implements CgVfxGpuModule {
 | the world after the solver (floor, blocks, light) | `afterSolve()` true, `dataInterfaces()` | the world values, after the lanes; `FxWorld` for the voxel window |
 | a texture (a field, a heightfield) | `textures()` | a `sampler2D` or `sampler3D` each, after the world |
 | an impact that fires `onCollision` | after the solver; call `fx_hit(p, n, FX_HIT_BLOCK)` on a punctual impact | — |
-| the entities round the camera | `dataInterfaces()` of `ENTITIES` | `FxEntities` (`fx_entities_at.glsl`) |
-| the particles near it, as a force before the solver | `dataInterfaces()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`fx_neighbours_at.glsl`: 27 cells to walk) |
-| the fluid its instance is in, before or after the solver | `dataInterfaces()` of `GAS` | `FxGas` (`fx_gas_at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
-| to pour into that fluid, or push it | `dataInterfaces()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`fx_gas_feed.glsl`) |
+| the entities round the camera | `dataInterfaces()` of `ENTITIES` | `FxEntities` (`vfx/sim/data/entities.glsl`) |
+| the particles near it, as a force before the solver | `dataInterfaces()` of `NEIGHBOURS`, `neighbourRadius()` | `FxNeighbours` (`vfx/sim/data/neighbours.glsl`: 27 cells to walk) |
+| the fluid its instance is in, before or after the solver | `dataInterfaces()` of `GAS` | `FxGas` (`vfx/sim/gas/at.glsl`: `fx_gas_flow`, its velocity and 1 inside its box) |
+| to pour into that fluid, or push it | `dataInterfaces()` of `GAS_FEED` | `FxGas`, and `step_feed(gas, p.position, p.velocity, density, heat, couple, s.dt)` (`vfx/sim/gas/feed.glsl`) |
 
-- `fx_types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
+- `vfx/sim/types.glsl` defines `FxParticle`, `FxForces` and `FxStep`. Kill a particle with `p.life = p.age`.
 - **A pool stores only what outlives a step** (`CgVfxRecord`, a layout per shape): `p.resting` and `p.collisions`
   are kept where some kind of the shape writes them or calls `fx_hit`, and read false and 0 elsewhere; `p.previous` is
   the step's start, set before your function runs, so reading it costs nothing.

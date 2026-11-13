@@ -6,7 +6,7 @@
 //   BLOOM  the bloom chain's level 0 (every level already summed into it), tinted, added; or mixed in, energy-conserving
 //   FADE   _Fade.a of the way to _Fade.rgb, last: dst * (1 - a) + rgb with the fade's share in both
 #domain global
-#include "crystalgraphics:shaders/lib/post/composite.glsl"
+#include "crystalgraphics:shaders/post/composite.glsl"
 Material { Media On }
 
 Keywords {

@@ -1,13 +1,13 @@
-// A textured sprite: a frame of a flipbook sheet on a quad facing as its renderer says (fx_particle.glsl's FX_FACE_* and
+// A textured sprite: a frame of a flipbook sheet on a quad facing as its renderer says (lib/vfx/particle.glsl's FX_FACE_* and
 // FX_ALIGN_*), lit by the world where it is and blended over what is behind: smoke, dust, leaves. A CgVfxQuads quad
 // placed from its particle record (CgVfxFrame.particles). _Color tints the sheet, its alpha a strength.
 //
 //     CgVfxRenderers.sprite("puffs").material(PUFF).bind("_Color", TINT)      // PUFF: this shader, _Sheet a texture
 //             .subImage(Map.of("size", List.of(8, 8))).alignment("custom").build()
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_particle.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
+#include "crystalgraphics:shaders/lib/vfx/particle.glsl"
 Material { BlendMode AlphaComposite  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

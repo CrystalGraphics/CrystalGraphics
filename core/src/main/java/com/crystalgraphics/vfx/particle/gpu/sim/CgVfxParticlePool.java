@@ -206,7 +206,7 @@ public final class CgVfxParticlePool {
             CAPPED_ROWS = new int[CgVfxShape.TIERS - 1];
     private static final int[][] REGION_WORDS = new int[CgVfxShape.TIERS - 1][64];
     private static final CgGpuCount[] RUN_FILLS = new CgGpuCount[CgVfxShape.TIERS - 1];
-    private static final String EVENT_CAP_KERNELS = "crystalgraphics:shaders/env/compute/vfx/event_cap.compute";
+    private static final String EVENT_CAP_KERNELS = "crystalgraphics:shaders/vfx/particle/event_cap.compute";
     private static CgKernel capKeys, capRuns, capGather, capDirect;
     private static CgGraphBuffer reportStream, reportCounts, unfed;
     /** Every stepping pool's instance rows and shared spawn rows, this recording's (uploadRows), and their staging. */
@@ -224,7 +224,7 @@ public final class CgVfxParticlePool {
     private static final int MIN_COUNTS = 1024;
     /** The step stage's skip group: every pool reads and appends to its own entries, so none waits for another. */
     private static final int STEP_GROUP = 1;
-    private static final String COUNT_KERNELS = "crystalgraphics:shaders/env/compute/vfx/counts.compute";
+    private static final String COUNT_KERNELS = "crystalgraphics:shaders/vfx/particle/counts.compute";
     private static CgKernel clearCounts;
     /** Entries the buffer holds, and those ever handed out; past those, every entry is zero. */
     private static int countCapacity, countsMade;
@@ -244,8 +244,8 @@ public final class CgVfxParticlePool {
     private static final CgGpuCount ONE = CgGpuCount.of(1);
     private static final int MIN_STORAGE = 1024;
     /** The Step's last stage: each live particle's drawn part, written into its record. */
-    private static final String LOOK_KERNELS = "crystalgraphics:shaders/env/compute/vfx/look.compute";
-    private static final String NEIGHBOUR_KERNELS = "crystalgraphics:shaders/env/compute/vfx/neighbours.compute";
+    private static final String LOOK_KERNELS = "crystalgraphics:shaders/vfx/particle/look.compute";
+    private static final String NEIGHBOUR_KERNELS = "crystalgraphics:shaders/vfx/particle/neighbours.compute";
     /** A neighbour grid's hashed cells: twice the records, a power of two, within these. */
     private static final int MIN_CELLS = 64, MAX_CELLS = 1 << 20;
 
@@ -1283,7 +1283,7 @@ public final class CgVfxParticlePool {
         d.bind("SORTED", cellValues).bind("CELL_RUNS", cellRuns).set("_NeighbourCell", cellWidth).set("_NeighbourCells", cells);
     }
 
-    /** The scene's depth as {@code fx_depth_at.glsl} reads it, or none. */
+    /** The scene's depth as {@code vfx/sim/data/depth.glsl} reads it, or none. */
     static void bindDepth(CgDispatch d) {
         if (depthPyramid == null) {
             d.set("_DepthSize", 0f, 0f, 0f, 0f);
@@ -2290,7 +2290,7 @@ public final class CgVfxParticlePool {
 
     /**
      * Every beam's run as the newest step wrote it, vec4s each: a tag and its record's beam state
-     * ({@code fx_beam.glsl}'s {@code FX_BEAM_*}), then {@code shape().beamPoints()} noise points, then as many it heads
+     * ({@code lib/vfx/beam.glsl}'s {@code FX_BEAM_*}), then {@code shape().beamPoints()} noise points, then as many it heads
      * for; null where its particles are no beams. A beam draw binds it at {@code CgParticleBeamBuffer.SLOT}.
      */
     @Nullable
@@ -2303,7 +2303,7 @@ public final class CgVfxParticlePool {
         return beams == null ? 0 : beams.first(slot);
     }
 
-    /** vec4s each beam's run takes: {@code fx_beam.glsl}'s header, then its noise points twice; 0 for no beams. */
+    /** vec4s each beam's run takes: {@code lib/vfx/beam.glsl}'s header, then its noise points twice; 0 for no beams. */
     public int beamRunVectors() {
         return beams == null ? 0 : beams.per();
     }

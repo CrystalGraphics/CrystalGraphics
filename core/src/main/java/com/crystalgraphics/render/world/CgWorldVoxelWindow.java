@@ -38,7 +38,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * CgWorldVoxelWindow window = CgWorldVoxelWindow.get();
  * window.use();                       // any frame something reads it: it fills only while used
  * window.useDistance();               // and any frame something reads its distance field
- * // a kernel recorded on WORLD_OPAQUE after ORDER, which includes lib/vfx/fx_world.glsl and declares PROPERTIES:
+ * // a kernel recorded on WORLD_OPAQUE after ORDER, which includes lib/vfx/world.glsl and declares PROPERTIES:
  * window.bind(dispatch);
  * }</pre>
  *
@@ -92,7 +92,7 @@ public final class CgWorldVoxelWindow {
     private static final int FILL_ZONE = CgTrace.name("world.voxels.fill");
     private static final int SECTIONS_FILLED = CgTrace.name("world.voxels.sections-filled");
     private static final int GPU_DISTANCE = CgGpuTrace.name("world.voxels.distance");
-    private static final String DISTANCE_KERNELS = "crystalgraphics:shaders/env/compute/vfx/world_distance.compute";
+    private static final String DISTANCE_KERNELS = "crystalgraphics:shaders/world/voxel_distance.compute";
     /** The flood's steps, in blocks: from the field's reach down, then 1 again (JFA+1). */
     private static final int[] JUMPS = {8, 4, 2, 1, 1};
     /** A slot whose solid octants are not known: no section hashes to it. */
@@ -229,7 +229,7 @@ public final class CgWorldVoxelWindow {
 
     /**
      * The volume and where it sits, without its distance field, on a dispatch of a kernel declaring {@link #PROPERTIES}
-     * less {@code _WorldDistance}: one reading only light and floors ({@code env/compute/vfx/look.compute}), since below
+     * less {@code _WorldDistance}: one reading only light and floors ({@code vfx/particle/look.compute}), since below
      * compute every sampler a kernel declares takes a unit.
      */
     public CgDispatch bindBlocks(CgDispatch d) {
@@ -321,7 +321,7 @@ public final class CgWorldVoxelWindow {
     /**
      * The distance field, flooded again over the blocks within {@link #DISTANCE_REACH} of the changed sections (the
      * whole window when asked to): Seed and the jumps over those blocks and as far again, then Settle over the window,
-     * keeping the rest of the field (world_distance.compute).
+     * keeping the rest of the field (world/voxel_distance.compute).
      */
     private void flood(CgRecording recording) {
         distanceDirty = false;

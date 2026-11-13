@@ -97,7 +97,7 @@ public final class CgVfxRange {
     /** A view's visible particles as read back, a frame or two late. */
     private static final int VISIBLE = CgTrace.name("vfx.range.visible");
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/range.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/particle/range.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int GPU_RANGE = CgGpuTrace.name("vfx.pool.range");
     /** An index into its pool's records: what {@link #order()} holds per drawn particle. */

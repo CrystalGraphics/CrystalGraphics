@@ -60,7 +60,7 @@ public class CgVfxEmitterCompilerTest {
         }
         assertTrue(glsl.indexOf("fx_drag(p, f, s", at) > at);                                // the second drag, last
         assertTrue(glsl.indexOf("fx_ground(p, s") > solve);
-        assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/lib/vfx/sim/fx_drag.glsl\""));
+        assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/vfx/sim/forces/drag.glsl\""));
     }
 
     @Test
@@ -75,7 +75,7 @@ public class CgVfxEmitterCompilerTest {
         assertTrue(glsl, glsl.contains("fx_ground(p, s, step_param(row + " + shape.paramAt(ground) + "), step_floor(p, inst));"));
         // the floor needs the voxel window's functions, so the kernel takes it too
         assertTrue(shape.takes(CgVfxDataInterfaces.WORLD));
-        assertTrue(glsl.contains("lib/vfx/sim/fx_world_at.glsl") && glsl.contains("_WorldLive") && glsl.contains("float step_floor("));
+        assertTrue(glsl.contains("vfx/sim/data/world.glsl") && glsl.contains("_WorldLive") && glsl.contains("float step_floor("));
     }
 
     /** A kind given as text, bouncing on the window's distance field, its impacts and a rate as events. */
@@ -222,7 +222,7 @@ public class CgVfxEmitterCompilerTest {
                 .build();
         CgVfxShape shape = CgVfxShape.of(catalogue);
         String glsl = CgVfxEmitterCompiler.source(shape);
-        assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/lib/vfx/sim/fx_collide.glsl\""));
+        assertEquals(1, count(glsl, "#include \"crystalgraphics:shaders/vfx/sim/collision/collide.glsl\""));
         assertTrue(shape.takes(CgVfxDataInterfaces.WORLD));
         assertTrue(shape.takes(CgVfxDataInterfaces.ENTITIES));
         assertTrue("a row carries what was struck and its entity", glsl.contains("ev.normal = vec4(n, hit)")

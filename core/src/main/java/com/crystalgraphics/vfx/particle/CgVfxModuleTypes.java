@@ -67,7 +67,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
  *   <li>Declare before the first definition holding the kind opens in a pool: a kind with no declaration throws there,
  *       naming it. A second declaration of an id by another class throws.</li>
  *   <li>A shape is {@code volume} (a sphere's radius three times, a box's half extents or a plane's normal) then
- *       {@code shape}, one vec4 as {@code fx_contact.glsl} reads it; its centre ({@code offset}) and a plane's radius
+ *       {@code shape}, one vec4 as {@code vfx/sim/collision/contact.glsl} reads it; its centre ({@code offset}) and a plane's radius
  *       are {@code PER_INSTANCE}, written to the instance lane.</li>
  *   <li>A field ({@link CgVfxModule.VectorField}) is an object input: a texture, outside the words.</li>
  *   <li>Declared in a registry of their own, so the bible gate's global types are untouched. Names follow

@@ -12,7 +12,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 
 /**
  * A pool's beams ({@code CgVfxModule.BeamSource} and the rest): a run of vec4s per beam particle of each open slot,
- * {@code env/compute/vfx/beam.compute}'s {@code Noise} writing them after every step from the step's records and the
+ * {@code vfx/beam/beam.compute}'s {@code Noise} writing them after every step from the step's records and the
  * last step's runs. A run is a header (a tag and the record's beam state), then {@link CgVfxShape#beamPoints()} current
  * noise points, then as many next ones. The beams' draws read {@link #runs()}.
  *
@@ -24,8 +24,8 @@ import com.crystalgraphics.render.graph.CgRecording;
  */
 final class CgVfxBeams {
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/beam.compute";
-    /** vec4s ahead of a run's noise points: {@code fx_beam.glsl}'s {@code FX_BEAM_HEADER}. */
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/beam/beam.compute";
+    /** vec4s ahead of a run's noise points: {@code lib/vfx/beam.glsl}'s {@code FX_BEAM_HEADER}. */
     static final int HEADER = 7;
 
     private final CgVfxParticlePool pool;

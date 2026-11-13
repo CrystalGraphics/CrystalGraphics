@@ -26,15 +26,15 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Chromium (Blink)** font fallback | `com/crystalgraphics/text/font/ScriptFallbacks` | BSD-3-Clause — © 2006–2012 Google Inc. | Ported source, modified. Licence below |
 | **Skia** mask blur | `com/crystalgraphics/text/shadow/{CgMaskBlurFilter,CgGaussFilter}` | BSD-3-Clause — © 2017 Google LLC | Ported source, modified. Licence below |
 | **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/lib/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
-| **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
-| **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/lib/vfx/sim/fx_{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
+| **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/**/*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
+| **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
 | **Effekseer** procedural models and curl noise | `com/crystalgraphics/api/mesh/CgProceduralMesh`, `CgMeshNoise` | MIT — © 2011 Effekseer Project | Ported source, modified. Licence below |
 | **GeckoLib** models, animations and easings | `com/crystalgraphics/api/mesh/geckolib/`, `com/crystalgraphics/asset/curve/CgRichCurve` | MIT — © 2026 GeckoLib | Ported source, modified. Licence below |
-| **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/env/compute/vfx/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
+| **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
 | **bcdec** BC7 decoder | `com/crystalgraphics/util/io/CgBc7` | MIT (of MIT or the Unlicense) — © 2022 Sergii Kudlai | Ported source, modified. Licence below |
 | **Inigo Quilez** filtered checkerboard | `assets/crystalgraphics/shaders/canvas/grid.shader` (`CHECKER`) | MIT — © 2017 Inigo Quilez | Ported source. Licence below |
-| **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgNoiseVolumes`, `assets/crystalgraphics/shaders/env/compute/noise_bake.compute`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
+| **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgNoiseVolumes`, `assets/crystalgraphics/shaders/noise/bake.compute`, `assets/crystalgraphics/shaders/lib/vfx/wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
 
@@ -168,7 +168,7 @@ SOFTWARE.
 
 ## AMD FidelityFX Parallel Sort
 
-`assets/crystalgraphics/shaders/env/compute/ops/sort.compute` ports its compute-only radix sort from
+`assets/crystalgraphics/shaders/compute/ops/sort.compute` ports its compute-only radix sort from
 `FFX_ParallelSort.h`.
 
 ```

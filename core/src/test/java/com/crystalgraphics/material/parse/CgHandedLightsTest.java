@@ -57,7 +57,7 @@ public class CgHandedLightsTest {
         assertTrue(parsed.properties().stream().anyMatch(p -> p.getName().equals("_cg_LightGrid")));
         String fragment = CgMaterialShaderCompiler.compile(parsed, Collections.emptyList()).fragmentSource();
         assertTrue(fragment, fragment.contains("#define CG_HANDED_LIGHTS 1"));
-        assertTrue(fragment, fragment.contains("handed_lights.glsl"));
+        assertTrue(fragment, fragment.contains("env/handed/lights.glsl"));
     }
 
     @Test
@@ -86,7 +86,7 @@ public class CgHandedLightsTest {
         assertTrue(parsed.properties().stream().anyMatch(p -> p.getName().equals("_cg_SunMap")));
         String fragment = CgMaterialShaderCompiler.compile(parsed, Collections.emptyList()).fragmentSource();
         assertTrue(fragment, fragment.contains("#define CG_HANDED_SUN 1"));
-        assertTrue(fragment, fragment.contains("handed_sun.glsl"));
+        assertTrue(fragment, fragment.contains("env/handed/sun.glsl"));
     }
 
     @Test

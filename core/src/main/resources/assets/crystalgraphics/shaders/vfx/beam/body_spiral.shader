@@ -2,7 +2,7 @@
 // and broken up so no band runs unbroken, faded in from the muzzle and out before the head. A tube layer. _Spiral is
 // the bands, its alpha a strength; _Core where they cross. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Tube  PerDrawValues On }
 
 Properties {

@@ -249,7 +249,7 @@ sub_image: { size: [8, 8], frames: [16, 31] }                            # rows 
 - **A loop and random run on the particle's age in seconds**, so a long-lived particle loops more times than a
   short-lived one; linear runs on its life.
 - A rect table (`rects`) is not built yet and fails at load.
-- A shader of your own reads the same: `_cg_SubImage`, `_cg_SubUV` and `_cg_SubImages`, through `fx_particle.glsl`'s
+- A shader of your own reads the same: `_cg_SubImage`, `_cg_SubUV` and `_cg_SubImages`, through `lib/vfx/particle.glsl`'s
   `fx_subuv_frames` (a direct frame from `CG_PARTICLE_DRAWN(n).color.x`) and `fx_subimage_uv`, as the sprite factory
   does.
 

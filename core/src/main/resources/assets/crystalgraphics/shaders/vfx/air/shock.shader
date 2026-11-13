@@ -5,8 +5,8 @@
 // nothing, only bends what is behind it (s.refraction), so it bends smoke and glow but never a bright body.
 // cg_VfxMesh.values.z is an intensity. The bend reaches _Strength times the intensity, at most about 0.08 of the height.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

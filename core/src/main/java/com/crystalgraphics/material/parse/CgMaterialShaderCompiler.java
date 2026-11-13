@@ -101,11 +101,11 @@ public final class CgMaterialShaderCompiler {
 
     private static final String ENV_INCLUDE = "crystalgraphics:shaders/env/cg_env.glsl";
     /** The world's lights a program carrying its own lighting is handed: {@code CgParsedShader.handedLights()}. */
-    private static final String HANDED_LIGHTS_INCLUDE = "crystalgraphics:shaders/env/handed_lights.glsl";
+    private static final String HANDED_LIGHTS_INCLUDE = "crystalgraphics:shaders/env/handed/lights.glsl";
     /** The sun's shadow handed to one: {@code CgParsedShader.handedSun()}. */
-    private static final String HANDED_SUN_INCLUDE = "crystalgraphics:shaders/env/handed_sun.glsl";
+    private static final String HANDED_SUN_INCLUDE = "crystalgraphics:shaders/env/handed/sun.glsl";
     /** The scene textures handed to a post material: {@code CgParsedShader.handedScene()}. */
-    private static final String HANDED_SCENE_INCLUDE = "crystalgraphics:shaders/env/handed_scene.glsl";
+    private static final String HANDED_SCENE_INCLUDE = "crystalgraphics:shaders/env/handed/scene.glsl";
 
     /**
      * What a device reading textures by index from its bindless heap defines after {@code #version}, before any code:
@@ -196,7 +196,7 @@ public final class CgMaterialShaderCompiler {
      * A single-output Forward pass writing, in place of its colour, what its fragment names with
      * {@code CG_CUSTOM_DATA_OUT} and {@code CG_SHADING_MODEL_OUT}, packed into two exact floats (Unreal's GBufferD and
      * GBufferB's shading model): what {@code CgWorldRenderer} draws custom data with, read back by
-     * {@code handed_scene.glsl}.
+     * {@code env/handed/scene.glsl}.
      */
     public static final String CUSTOM_DATA_TARGET = "CG_CUSTOM_DATA_TARGET";
 

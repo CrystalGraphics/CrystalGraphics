@@ -1434,7 +1434,7 @@ public final class CgVfxEmitterInstance {
 
     /**
      * A number in 0..1 for channel {@code k} of the {@code n}-th particle (or loop) an instance seeded with {@code seed}
-     * spawned. {@code fx_rand.glsl} gives the same bits on the GPU. A roll of an input passes its seed xor the input's
+     * spawned. {@code lib/vfx/rand.glsl} gives the same bits on the GPU. A roll of an input passes its seed xor the input's
      * key, so moving an element reshuffles nothing else.
      *
      * <pre>{@code

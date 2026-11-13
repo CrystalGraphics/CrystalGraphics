@@ -1,0 +1,81 @@
+#pragma once
+// What the emitter compiler's Step kernel hands a module kind (vfx-gpu §13.2). A kind is one function,
+// fx_<kind>, in the file its module names (gpuFile, under shaders/vfx/sim/), including this file:
+//
+//   before the solver:  void fx_<kind>(inout FxParticle p, inout FxForces f, FxStep s, <params>, <lanes>)
+//   after the solver:   void fx_<kind>(inout FxParticle p, FxStep s, <params>, <lanes>, <world inputs>)
+//
+// <params> are its numbers, vec4 m (or m0, m1, ...); <lanes> its per-instance values; <world inputs> what the kernel
+// fetched for it (float floorY, FxWorld world: vfx/sim/data/world.glsl). Each is declared by the kind's Java side
+// (CgVfxGpuModule).
+
+// A particle, unpacked from its pool record. Positions are relative to its instance's origin, in blocks; times in
+// seconds. previous is where it was a step ago, what a frame interpolates from. collisions counts its impacts so far
+// (16 bits, saturating); hit is this step's, set by fx_hit and never stored, and hitEntity the entity it struck when
+// hit.w is FX_HIT_ENTITY. A kind kills a particle by setting life to its age: it dies, and its death events fire, at the
+// end of this step.
+struct FxParticle {
+    vec4 color;
+    vec3 position, previous, velocity, scale, turn, turnRate;
+    // A beam's state (lib/vfx/beam.glsl's FX_BEAM_*): stored only where a kind writes it.
+    vec4 beamSource, beamSourceTangent, beamTarget, beamTargetTangent, beamNoise, beamTurn;
+    // Its light's radius scale and exponent from birth (CgVfxRecord.Tail.LIGHT).
+    vec2 light;
+    float age, life, size, seed, spin, spinRate, heat;
+    bool resting;
+    // A collision's completion (vfx/sim/collision/contact.glsl's FX_STATE_*): stored with resting and the collisions.
+    uint state;
+    // Its mesh turn as Look takes it, start + rate * (turnBase + turnScale * turnClock): a collision damps the rate from
+    // the clock it strikes at, keeping the turn so far. (0, 1) unless a kind writes them. turnClock is the age, or where
+    // the rate changes over life its scale integrated to the age; set each step, never stored.
+    vec3 turnBase, turnScale, turnClock;
+    // Its orbit from birth (CgVfxRecord.Tail.ORBIT): the offset drawn from its place, its rotation and rotation rate.
+    vec3 orbitOffset, orbitTurn, orbitRate;
+    // A Cascade trail's payload (CgVfxRecord.Tail.RIBBON): its tangent, trail + 1024 * spawned points; its up (an anim
+    // trail's edge), the trail's distance at its birth; its chain, an anim trail's interpolation parameter.
+    vec4 trailTangent, trailUp, trailExtra;
+    // What physics fields keep on it (CgVfxRecord.Tail.FIELD): a rotator added to its mesh turn, its scale from 1 and
+    // its speed scale from 1. Those defaults unless a field writes them.
+    vec3 fieldTurn, fieldScale;
+    float speedScale;
+    // Its share the scene does not cover this step (CgVfxRecord.Tail.VISIBILITY): 1 unless an occlusion kind writes it.
+    float visibility;
+    uint id, slot, collisions, hitEntity;
+    vec4 hit;
+};
+
+// An impact this step against a surface whose normal is n: what a COLLISION event fires on, and what collisions
+// counts. Unity VFX Graph's punctual contact: call it when the speed into the surface reaches the kind's bounce
+// threshold, never for a particle resting or sliding along it, or a resting particle fires every step. The last call
+// in a step gives the normal and what was met (hit.w, an FX_HIT_ code: CgVfxEventRows.HIT_*); each call counts.
+#define FX_HIT_OTHER 1.0
+#define FX_HIT_SHAPE 2.0
+#define FX_HIT_SCENE 3.0
+#define FX_HIT_BLOCK 4.0
+#define FX_HIT_GROUND 5.0
+#define FX_HIT_ENTITY 6.0
+
+void fx_hit(inout FxParticle p, vec3 n, float what) {
+    p.hit = vec4(n, what);
+    p.collisions = min(p.collisions + 1u, 65535u);
+}
+
+void fx_hit(inout FxParticle p, vec3 n) {
+    fx_hit(p, n, FX_HIT_OTHER);
+}
+
+// What modules before the solver add to: acceleration in blocks a second squared, linear drag a second, quadratic
+// drag a block; and how the solve moves it, velocity times motionScale plus motionSet (1 and 0 unless a module sets
+// them), the stored velocity left as the forces made it, as Cascade's base velocity is. Reset each step, never stored.
+struct FxForces {
+    vec3 accel;
+    float drag, dragQuad;
+    vec3 motionScale, motionSet;
+};
+
+// The step: its length in seconds, and the system's wind in blocks a second.
+struct FxStep {
+    float dt;
+    vec3 wind;
+    vec3 ownerScale;   // its effect's world scale: what an owner_scale input multiplies by
+};

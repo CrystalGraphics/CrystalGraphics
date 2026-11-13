@@ -36,7 +36,7 @@ public final class CgVfxEventRows {
     private int count, dropped;
 
     /**
-     * What a collision met, {@code fx_hit}'s codes ({@code FX_HIT_*} in {@code fx_types.glsl}): nothing said, a kind that
+     * What a collision met, {@code fx_hit}'s codes ({@code FX_HIT_*} in {@code vfx/sim/types.glsl}): nothing said, a kind that
      * does not say, a shape collider, the scene's depth, a block, the fixed ground, an entity.
      */
     public static final int HIT_NONE = 0, HIT_OTHER = 1, HIT_SHAPE = 2, HIT_SCENE = 3, HIT_BLOCK = 4, HIT_GROUND = 5,

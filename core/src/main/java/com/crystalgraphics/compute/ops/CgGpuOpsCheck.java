@@ -61,7 +61,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 public final class CgGpuOpsCheck {
 
     private static final Logger LOG = LogManager.getLogger("CrystalGraphics");
-    private static final String PATH = "crystalgraphics:shaders/env/compute/ops/check.compute";
+    private static final String PATH = "crystalgraphics:shaders/compute/ops/check.compute";
     private static final int[] COUNTS = {0, 1, 16, 17, 300, 5000, 70000};
     /** Words past every buffer's capacity, which nothing may write. */
     private static final int PAD = 16;

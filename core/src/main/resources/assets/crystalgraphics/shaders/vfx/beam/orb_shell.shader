@@ -4,7 +4,7 @@
 // (_Cover), so it shows its colour over a bright scene. Its back fades out by _Back; cg_VfxMesh.values.z is an
 // intensity. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks. Its filaments bloom. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {

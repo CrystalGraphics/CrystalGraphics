@@ -2,7 +2,7 @@
 // (ColorCorrectRegionsShader.usf): the shape's alpha at each pixel's world point, the grade in ACEScg, the temperature,
 // then the scene mixed toward it by the alpha raised to the falloff, times the intensity.
 #domain global
-#include "crystalgraphics:shaders/lib/post/post_material.glsl"
+#include "crystalgraphics:shaders/env/material/post.glsl"
 Material { SceneColorMargin 0.001  Media On }
 
 Keywords {
@@ -69,7 +69,7 @@ vec3 region_grade(vec3 c, vec4 sat, vec4 con, vec4 gam, vec4 gain, vec4 off) {
 }
 
 // A gain lighting as a flash does where the world is lit by less than a full day: each channel's lift divided by
-// the ambient the host's lightmap lit the region's centre with, as the world lights divide theirs (lights/shade.compute).
+// the ambient the host's lightmap lit the region's centre with, as the world lights divide theirs (world/lights/shade.compute).
 vec4 region_gain(vec4 gain) {
     if (_Adapt.x <= 0.0) return gain;
     vec3 lm = CG_LIGHTMAP(_Adapt.yz);

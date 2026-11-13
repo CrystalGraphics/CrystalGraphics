@@ -2,10 +2,10 @@
 // centre colour over side colours), energy flowing back along it in streaks and eaten away toward its tail as it fades.
 // _Wobble shakes its line across, more toward the tail: energy too wild to hold one. Added, so crossing streaks pile
 // into light, and it blooms. A ribbon's material: a Cascade trail behind a moving thing, or a ribbon through particles;
-// its renderer tiles UV1 once a block (fx_strip.glsl), and its emitter's size over life tapers it.
+// its renderer tiles UV1 once a block (lib/vfx/strip.glsl), and its emitter's size over life tapers it.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/strip.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {

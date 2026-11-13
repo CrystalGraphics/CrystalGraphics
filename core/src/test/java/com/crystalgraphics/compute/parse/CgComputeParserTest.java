@@ -19,7 +19,7 @@ import static org.junit.Assert.*;
 
 public class CgComputeParserTest {
 
-    private static final String EXAMPLE = "crystalgraphics:shaders/example.compute";
+    private static final String EXAMPLE = "crystalgraphics:shaders/reference/kernel.compute";
 
     private static CgComputeSource example() {
         return CgComputeParser.parse(CgIO.loadSource(EXAMPLE), EXAMPLE);

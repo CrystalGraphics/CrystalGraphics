@@ -16,7 +16,7 @@ import java.util.Arrays;
 
 /**
  * Particles as lights: the slots drawing a {@code light} renderer this frame, each of whose
- * live particles {@code env/compute/vfx/lights.compute} appends to the world's light list, as Cascade gathers a light
+ * live particles {@code vfx/particle/lights.compute} appends to the world's light list, as Cascade gathers a light
  * module's particles into simple lights ({@code ParticleSystemRender.cpp:870-935}).
  *
  * <pre>{@code
@@ -33,7 +33,7 @@ import java.util.Arrays;
  */
 public final class CgVfxParticleLights implements CgWorldLights.Appender {
 
-    private static final String KERNELS = "crystalgraphics:shaders/env/compute/vfx/lights.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/vfx/particle/lights.compute";
     /**
      * Floats a slot in {@code SLOTS}: its origin from the eye and its share; then the inverse square's intensity scale (0
      * for none), its light in the air, 1 where it leaves transparent surfaces unlit, and 1 where the shadow passes sample

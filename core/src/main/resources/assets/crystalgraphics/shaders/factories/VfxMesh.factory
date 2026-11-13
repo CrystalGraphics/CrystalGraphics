@@ -5,7 +5,7 @@
 Factory { VertexType spatial  Fade cg_Vfx.presence  Usage FX_ON_MESH }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
     struct CgVfxMesh { float size; vec4 values; };
     #define cg_VfxMesh CgVfxMesh(CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM1)
 }

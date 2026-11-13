@@ -101,10 +101,10 @@ public final class CgGpuOps {
     /** What one element of a level folds of the level below it. */
     static final int BLOCK = 16;
 
-    private static final String FILL_PATH = "crystalgraphics:shaders/env/compute/ops/fill.compute";
-    private static final String SCAN_PATH = "crystalgraphics:shaders/env/compute/ops/scan.compute";
-    private static final String SORT_PATH = "crystalgraphics:shaders/env/compute/ops/sort.compute";
-    private static final String HISTOGRAM_PATH = "crystalgraphics:shaders/env/compute/ops/histogram.compute";
+    private static final String FILL_PATH = "crystalgraphics:shaders/compute/ops/fill.compute";
+    private static final String SCAN_PATH = "crystalgraphics:shaders/compute/ops/scan.compute";
+    private static final String SORT_PATH = "crystalgraphics:shaders/compute/ops/sort.compute";
+    private static final String HISTOGRAM_PATH = "crystalgraphics:shaders/compute/ops/histogram.compute";
     private static final int REDUCE_STEP = 0, REDUCE_LAST = 1, SCAN_BLOCK = 2, COMPACT_INDICES = 3, COMPACT_VALUES = 4,
             COMPACT_COUNT = 5;
     private static final String[] SCAN_KERNELS = {"ReduceStep", "ReduceLast", "ScanBlock", "CompactIndices",
@@ -121,11 +121,11 @@ public final class CgGpuOps {
     private static final int GROUP_BINS = 1024, HISTOGRAM_GROUPS = 256, HISTOGRAM_GROUP_KEYS = 4096;
     private static final CgKernel[][] SORT_VARIANTS = new CgKernel[SORT_KERNELS.length][3 * 2];
     private static final String[] SUMS = levels("ops.sums."), PREFIXES = levels("ops.prefixes.");
-    private static final String IMAGE_PATH = "crystalgraphics:shaders/env/compute/ops/image.compute";
-    private static final String CULL_PATH = "crystalgraphics:shaders/env/compute/ops/cull.compute";
-    private static final String INDIRECT_ARGS = "crystalgraphics:shaders/env/compute/args.compute";
-    private static final String EXPAND_PATH = "crystalgraphics:shaders/env/compute/ops/expand.compute";
-    private static final String PYRAMID_PATH = "crystalgraphics:shaders/env/compute/ops/depth_pyramid.compute";
+    private static final String IMAGE_PATH = "crystalgraphics:shaders/compute/ops/image.compute";
+    private static final String CULL_PATH = "crystalgraphics:shaders/compute/ops/cull.compute";
+    private static final String INDIRECT_ARGS = "crystalgraphics:shaders/compute/ops/args.compute";
+    private static final String EXPAND_PATH = "crystalgraphics:shaders/compute/ops/expand.compute";
+    private static final String PYRAMID_PATH = "crystalgraphics:shaders/compute/ops/depth_pyramid.compute";
     /** Levels one pyramid dispatch makes past its first: a 64-texel tile to one texel, and seven images bound. */
     private static final int PYRAMID_BATCH = 6, PYRAMID_TILE = 64;
     private static final int GPU_PYRAMID = CgGpuTrace.name("ops.depthPyramid");

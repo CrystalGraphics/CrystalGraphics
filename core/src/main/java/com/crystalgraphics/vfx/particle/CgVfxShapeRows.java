@@ -10,7 +10,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import java.util.Objects;
 
 /**
- * A module's shape as {@code sim/fx_contact.glsl} reads it: a {@link CgSphere}, {@link CgBox} or {@link CgPlane}. Its
+ * A module's shape as {@code vfx/sim/collision/contact.glsl} reads it: a {@link CgSphere}, {@link CgBox} or {@link CgPlane}. Its
  * volume vec4 is declared ({@code CgVfxModuleTypes}: {@code volume} then {@code shape}); its centre is the instance lane
  * written here.
  */

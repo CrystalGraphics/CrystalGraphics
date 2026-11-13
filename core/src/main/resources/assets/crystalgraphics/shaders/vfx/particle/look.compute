@@ -1,0 +1,74 @@
+// The Step's last stage (CgVfxParticlePool, P14): after a step, every live particle's drawn part written into the
+// pool's drawn buffer at its record's index, which draws read through Range's order: its look over life or speed from its row's curves, its starts rolled
+// per channel from its seed (Niagara's non-uniform ranges), its light from the voxel window at its block, and the floor
+// under it. A stage of its own rather than the Step's tail, so the Step keeps its units below compute; a map, so it runs
+// at every tier. A shape whose particles carry drawn slots (CgVfxDrawnChannel) takes two elements a particle: the drawn
+// part, then its slots, each channel a value over life rolled between two as its row says; one whose particles give
+// light a third, its light's colour scale and brightness (Cascade's Light module), which Range's lights read.
+#pragma kernel Look map
+
+#include "crystalgraphics:shaders/lib/vfx/rand.glsl"
+#include "crystalgraphics:shaders/lib/vfx/world.glsl"
+#include "crystalgraphics:shaders/lib/vfx/record.glsl"
+
+Properties {
+    _InstanceAt    ("This step's instance rows",                          int)       = 0
+    _InstanceRow   ("An instance row's vec4s",                            int)       = 0
+    _Floors        ("1 when the pool's kinds land on a floor",           int)       = 0
+    _Texels        ("Samples each curve of a row holds",                  int)       = 256
+    _RowVectors    ("A parameter row's vec4s: CgVfxShape.rowVectors",    int)       = 518
+    _DrawnStride   ("Drawn elements a particle: 2 with drawn slots",      int)       = 1
+    _Drawn         ("The drawn slots it carries, a bit each; 32 a mesh orientation", int) = 0
+    _LifeRollAt    ("Its life rolls' first vec4 in a row: CgVfxShape.lifeRollAt", int) = -1
+    _LifeRolls     ("How many: CgVfxShape.lifeRolls",                    int)       = 0
+    _LifeBindAt    ("Bound multipliers' vec4 in an instance row: CgVfxShape.lifeBindAt", int) = -1
+    _DrawnBindAt   ("Drawn slots' bound channels in an instance row, a vec4 a slot: CgVfxShape.drawnBindAt", int) = -1
+    _LightAt       ("Its light's block in a row: CgVfxShape.lightAt",    int)       = -1
+    _LightBindAt   ("Its light's bound channels in an instance row: CgVfxShape.lightBindAt", int) = -1
+    _World         ("The voxel window: a block a texel",                  sampler3D) = "black"
+    _WorldSections ("Which of its sections are filled",                   sampler3D) = "black"
+    _WorldBaseX    ("Its lowest block, absolute: x",                      int)       = 0
+    _WorldBaseY    ("y",                                                  int)       = 0
+    _WorldBaseZ    ("z",                                                  int)       = 0
+    _WorldWrapX    ("That block's texel: x",                              int)       = 0
+    _WorldWrapY    ("y",                                                  int)       = 0
+    _WorldWrapZ    ("z",                                                  int)       = 0
+    _WorldLive     ("1 with a level, else 0: read nothing",               int)       = 0
+    _RecordVectors ("A record's uvec4s: its pool's layout",               int)       = 4
+    _PreviousAt    ("Its previous position's word; -1 reads the position", int)      = -1
+    _ColorAt       ("Its stored colour's word; -1 rolls the row's starts", int)       = -1
+    _ScaleAt       ("Its stored mesh scale's word; -1 rolls the row's starts", int)   = -1
+    _TurnAt        ("Its stored rotator's word; -1 rolls the row's start", int)     = -1
+    _TurnRateAt    ("Its stored rotation rate's word; -1 rolls the row's rate", int) = -1
+    _TurnStateAt   ("Its stored turn age map's word; -1 turns by its age", int) = -1
+    _OrbitAt       ("Its stored orbit's word; -1 for none",               int)       = -1
+    _FieldAt       ("What physics fields keep on it, its word; -1 for none", int)    = -1
+    _VisibilityAt  ("Its stored visibility's word; -1 is always seen",       int)    = -1
+}
+
+// A particle's drawn part: CgVfxRecord.DRAWN_GLSL.
+struct FxDrawn { vec4 place; vec4 motion; vec4 state; vec4 light; vec4 color; vec4 scale; };
+
+Buffers {
+    IN        ("Particles, after the step",                         uvec4,    readonly)
+    DRAWN     ("Their drawn parts, at the same index",              FxDrawn,  writeonly)
+    LIVE      ("How many are alive",                                uint,     readonly)
+    INSTANCES ("Instance rows",                                     uvec4,    readonly)
+    CURVES    ("Each parameter row's curves and start values",      vec4,     readonly)
+}
+
+// The particle Look reads, by its record's first vector in IN; the library after the buffers it reads.
+int look_e;
+#define LOOK_IN(k) IN(look_e + (k))
+#include "crystalgraphics:shaders/lib/vfx/look.glsl"
+
+void Look() {
+    FxDrawn d;
+    d.place = d.motion = d.state = d.light = d.color = d.scale = vec4(0.0);
+    int particle = CG_ELEMENT / _DrawnStride, part = CG_ELEMENT - particle * _DrawnStride;
+    if (particle < int(LIVE(0))) {
+        look_e = particle * _RecordVectors;
+        d = look_part(part);
+    }
+    DRAWN_WRITE(d);
+}

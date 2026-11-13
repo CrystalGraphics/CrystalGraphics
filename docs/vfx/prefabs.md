@@ -12,7 +12,7 @@ look draws it.
 static final CgMaterialDefinition LENS = CgMaterialDefinition.of("mymod:materials/lens",
         "mymod:shaders/vfx/lens.shader").build();
 static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/lens_glow",
-        "crystalgraphics:shaders/emission_only.shader").build();
+        "crystalgraphics:shaders/materials/emission_only.shader").build();
 
 static final CgVfxPrefab LENS_CORE = CgVfxPrefab.builder("mymod:lens_core")
         .node("ball03")
@@ -411,20 +411,20 @@ A character drawn into Minecraft looks like the game's own entities with the eng
 
 ```java
 static final CgMaterialDefinition BODY = CgMaterialDefinition.of("mymod:materials/hero",
-        "crystalgraphics:shaders/role/entity.shader")
+        "crystalgraphics:shaders/materials/entity.shader")
         .texture("_MainTex", "mymod:hero", CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP).build();   // a texture asset
 static final CgMaterialDefinition EYES = CgMaterialDefinition.of("mymod:materials/hero_eyes",
-        "crystalgraphics:shaders/role/entity_emissive.shader")
+        "crystalgraphics:shaders/materials/entity_emissive.shader")
         .texture("_MainTex", "mymod:hero_eyes", CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP).build();
 
 hero.material(0, BODY).material(1, EYES);
 world.draw(hero);
 ```
 
-- **`role/entity.shader`**: Minecraft's two fixed lights on the normal (`CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1`, the
+- **`materials/entity.shader`**: Minecraft's two fixed lights on the normal (`CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1`, the
   Nether's where the host says so), cutout below `_Cutoff` (0.1), the lightmap at the draw's light and the world's
   fog. Translucent or double-sided is its `CgMaterialState`.
-- **`role/entity_emissive.shader`**: the glowing layer, eyes and glowmasks: no shading and no lightmap, added over
+- **`materials/entity_emissive.shader`**: the glowing layer, eyes and glowmasks: no shading and no lightmap, added over
   what is behind, faded by the fog.
 - **The material contract** rides on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the
   texture by its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. A

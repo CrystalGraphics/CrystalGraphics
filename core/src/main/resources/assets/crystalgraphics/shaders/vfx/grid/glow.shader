@@ -6,7 +6,7 @@
 // steps with the last ones'. Linear light; the layer's size is a brightness scale.
 #domain surface
 #include "crystalgraphics:shaders/lib/color.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_detail.glsl"
+#include "crystalgraphics:shaders/lib/vfx/detail.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Off  ColorSpace Linear  VertexFactory GridVolume  PerDrawValues On }
 
 Properties {

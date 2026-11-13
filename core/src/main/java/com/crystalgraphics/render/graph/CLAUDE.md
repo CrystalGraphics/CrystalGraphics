@@ -347,7 +347,7 @@ recording.raster("world.glow").color(glow, CgLoad.CLEAR).constants(constants)
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
 `CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
-draw's command with an engine kernel (`env/compute/args.compute`, `CgIndirectArgs`) from the count and the range the
+draw's command with an engine kernel (`compute/ops/args.compute`, `CgIndirectArgs`) from the count and the range the
 mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. A pass's commands are one
 `DrawArgsMany` dispatch per count buffer, each command a row of a frame-local table. On a context where no draw takes a
 count from a buffer, the batch is drawn with its count read back (a stall, `buffer.readbacks`).

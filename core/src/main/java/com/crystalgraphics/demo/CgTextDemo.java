@@ -29,7 +29,7 @@ import org.joml.Quaternionf;
  * Seventeen text styles in the world, a station each: a 4×4 grid and Kakarot's "Critical!" left of its front row,
  * fixed where it was placed and facing where the camera stood then, a caption under each word naming what it shows: gradients over a glyph and a line; outlines under a fill,
  * over it and alone; stacked outlines; hard, soft, outlined, inset and additive shadows; skew, letter spacing and case;
- * a counting damage number; and seven shader stations, each a Text-domain material (one shader, {@code text_fx},
+ * a counting damage number; and seven shader stations, each a Text-domain material (one shader, {@code demo/text.shader},
  * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Drawn through the
  * transparent stage's canvas, as a mod draws world text whose style takes an additive or material layer.
  *
@@ -147,7 +147,7 @@ public final class CgTextDemo {
 
     private final CgFont font = CgDefaultFont.bold(PX);
     private final CgFont labelFont;
-    /** One program for every shader station: each its definition of text_fx.shader with its own effect. */
+    /** One program for every shader station: each its definition of demo/text.shader with its own effect. */
     private final CgMaterial warm;
     private final CgTextStyle[] styles;
     /** Kakarot's "Critical!" as live text: an asset, so an edit to its file draws on the next frame (hot reload). */
@@ -238,10 +238,10 @@ public final class CgTextDemo {
         return style;
     }
 
-    /** {@code text_fx.shader} as effect {@code effect}: a station's Text-domain material. */
+    /** {@code demo/text.shader} as effect {@code effect}: a station's Text-domain material. */
     private static CgMaterialDefinition fx(String name, int effect) {
         return CgMaterialDefinition.of("crystalgraphics:materials/demo_text_" + name,
-                "crystalgraphics:shaders/demo/text_fx.shader").value("_Effect", effect).build();
+                "crystalgraphics:shaders/demo/text.shader").value("_Effect", effect).build();
     }
 
     /**

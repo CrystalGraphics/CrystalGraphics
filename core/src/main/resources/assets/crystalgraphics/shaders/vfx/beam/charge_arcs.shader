@@ -1,11 +1,11 @@
 // Lightning crackling over a charging orb: bolts jumping between two points of its bright core, bowed off it and jagged
 // at every scale, each forking once or twice into branches that strike back down into it. A strike holds its channel and
-// strobes through its return strokes, several new strikes a second. Stateless ribbons (fx_lightning.glsl): three per
+// strobes through its return strokes, several new strikes a second. Stateless ribbons (lib/vfx/lightning.glsl): three per
 // bolt, its channel and two forks, in a unit space where the orb's radius is 1 and the core shows at about two thirds
 // of it. cg_Ribbon.values.x is the orb's radius in blocks, .z an intensity. _Spiral is the glow, its alpha a strength;
 // _Core the white core. Its light blooms. CgEnergyWave.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_lightning.glsl"
+#include "crystalgraphics:shaders/lib/vfx/lightning.glsl"
 Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Ribbons  PerDrawValues On }
 
 Properties {

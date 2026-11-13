@@ -1,6 +1,6 @@
 // A traced sphere inside its hull, faded by its factory: the engine's eye, ray, depth fade and s.depth.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Strict  DepthWrite On  VertexFactory cgformat:Faded }
 struct v2f { vec3 world; };
 void surface(in v2f i, inout CgSurface s) {

@@ -6,9 +6,9 @@
 // (s.refraction), so the sharp layers stay unbent. A ray through the beam itself, within _Core times its ring's radius
 // of the path, is left unbent.
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/depth.glsl"
+#include "crystalgraphics:shaders/lib/vfx/haze.glsl"
 Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory Tube  PerDrawValues On }
 
 Properties {

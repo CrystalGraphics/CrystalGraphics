@@ -2,10 +2,10 @@
 // its middle and ragged at its edges, with embers glowing in its cracks that are hottest just behind the thing and cool
 // to nothing as it ages, the scorch itself lasting. Blended over the ground, lifted a touch toward the eye so it never
 // fights it. An anim trail's material, its edge two points either side of the path on the ground; its renderer tiles
-// UV1 once a block (fx_strip.glsl).
+// UV1 once a block (lib/vfx/strip.glsl).
 #domain surface
-#include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_strip.glsl"
+#include "crystalgraphics:shaders/lib/vfx/common.glsl"
+#include "crystalgraphics:shaders/lib/vfx/strip.glsl"
 Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
