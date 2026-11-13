@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
@@ -189,6 +190,14 @@ public final class CgShaderSpec {
     }
 
     /** Reads {@code source}, a {@code .shader}; {@code path} names it in errors. */
+    /**
+     * The keyword a material asset's {@code layers:} entry turns on: {@code LAYER_MOSS_WET_MOSS} for slot {@code Moss}
+     * and its layer {@code wet_moss}, {@code LAYER_MOSS_HIDDEN} for {@code hidden} ({@code Layers { }}).
+     */
+    public static String layerKeyword(String slot, String choice) {
+        return "LAYER_" + slot.toUpperCase(Locale.ROOT) + "_" + choice.toUpperCase(Locale.ROOT);
+    }
+
     public static CgShaderSpec read(String source, String path) {
         return SpecReader.read(source, path);
     }

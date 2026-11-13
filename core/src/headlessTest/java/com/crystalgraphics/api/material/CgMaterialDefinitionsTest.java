@@ -57,6 +57,27 @@ public class CgMaterialDefinitionsTest {
 
     private static final String MESH_SPECK = "test:shaders/mesh_speck.shader", SPRITE = "test:shaders/sprite.shader";
 
+    private static final String LAYERED = "test:shaders/layered.shader";
+    /** Two layer slots, the second of two layers and with a property of its own. */
+    private static final String LAYERED_SOURCE = String.join("\n",
+            "#domain surface",
+            "Material { ShadingModel DefaultLit }",
+            "Layers {",
+            "    Rock  rock",
+            "    Moss  moss | wet_moss  by slope {",
+            "        Tint (\"Moss colour\", color) = (0.3, 0.5, 0.2, 1)",
+            "    }",
+            "}",
+            "struct v2f { vec2 uv0; };",
+            "CgSurface rock(in v2f i, CgSurface s) { s.roughness = 0.9; return s; }",
+            "CgSurface moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb; return s; }",
+            "CgSurface wet_moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb * 0.5; s.roughness = 0.2; return s; }",
+            "CgSurface slope(in v2f i, CgSurface below, CgSurface top) {",
+            "    below.baseColor = mix(below.baseColor, top.baseColor, i.uv0.y);",
+            "    return below;",
+            "}",
+            "void surface(in v2f i, inout CgSurface s) { s = cg_MaterialLayers(i, s); }");
+
     /** A particle material naming no usage keyword: its factory decides how it is placed. */
     private static String particle(String factory) {
         return String.join("\n",
@@ -72,6 +93,7 @@ public class CgMaterialDefinitionsTest {
             if (path.equals(SPRITE)) return CgShaderSpec.read(particle("Sprites"), path);
             if (path.equals(FX) || path.equals(POST)) return CgShaderSpec.read(SOURCE, path);
             if (path.equals(DECAL)) return CgShaderSpec.read(DECAL_SOURCE, path);
+            if (path.equals(LAYERED)) return CgShaderSpec.read(LAYERED_SOURCE, path);
             throw new IllegalArgumentException(path + " is not a shader");
         }
 
@@ -117,6 +139,20 @@ public class CgMaterialDefinitionsTest {
                 Arrays.asList("sprites", "mesh_particles", "ribbons")), null), ARCHETYPES);
         assertTrue(ARCHETYPES.parse(MESH_SPECK).implicitFeatures().contains("FX_ON_SPRITES"));
         CgMaterialDefinitions.compile(asset("test:sprite", tree("shader", SPRITE, "usage", Arrays.asList("sprites", "ribbons")), null), ARCHETYPES);
+    }
+
+    @Test
+    public void aLayerSlotsChoiceIsItsKeywordAndItsPropertiesAreItsOwn() {
+        CgMaterialDefinition wet = CgMaterialDefinitions.compile(asset("test:wet_rock", tree("shader", LAYERED,
+                "layers", map("Moss", "wet_moss"), "values", map("Moss_Tint", Arrays.asList(0.1, 0.2, 0.3, 1.0))), null),
+                ARCHETYPES);
+        assertEquals(Arrays.asList("LAYER_MOSS_WET_MOSS"), wet.permutation().keywords());
+        assertArrayEquals(new float[] {0.1f, 0.2f, 0.3f, 1f}, wet.constants().get("Moss_Tint"), 1e-6f);
+        CgMaterialDefinition bare = CgMaterialDefinitions.compile(asset("test:bare_rock", tree("shader", LAYERED,
+                "layers", map("Moss", "hidden")), null), ARCHETYPES);
+        assertEquals(Arrays.asList("LAYER_MOSS_HIDDEN"), bare.permutation().keywords());
+        fails("slot Moss", asset("test:lichen", tree("shader", LAYERED, "layers", map("Moss", "lichen")), null));
+        fails("slot Rock", asset("test:no_base", tree("shader", LAYERED, "layers", map("Rock", "hidden")), null));
     }
 
     @Test

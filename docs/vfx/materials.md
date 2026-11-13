@@ -46,6 +46,10 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 
 - A name the shader does not declare fails at `build()`, or at load for a file, naming the material and the property.
 - A texture is a 2D image, its path the image's (`<namespace>:textures/....png`).
+- **A layered shader** (`Layers { }`, [`../MATERIAL_FORMAT.md`](../MATERIAL_FORMAT.md) § 4.8) takes `layers:`, each
+  slot's choice among the layers its shader offers or `hidden`, and its slots' own values as `Slot_Property`:
+  `layers: { Moss: wet_moss }`, `values: { Moss_Tint: [0.2, 0.35, 0.1, 1.0] }`; in Java,
+  `.layer("Moss", "wet_moss")`. Each choice is a program of its own, as a keyword is.
 
 ### `state`: how it draws, over its shader's
 

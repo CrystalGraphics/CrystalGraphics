@@ -90,7 +90,7 @@ public final class CgShaderSyntax {
 
     /** A {@code .shader} material. */
     public static final Vocabulary MATERIAL = new Vocabulary(Set.of("Material", "Keywords", "Properties", "Buffers",
-            "RenderState", "EngineBuffers"), true);
+            "RenderState", "EngineBuffers", "Layers"), true);
 
     private static final Set<String> OLD = Set.of("Pass", "Tags", "Queue", "SubShader");
 

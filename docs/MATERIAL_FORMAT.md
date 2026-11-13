@@ -272,6 +272,67 @@ Spark p = SPARKS(CG_VERTEX_ID >> 2);                     // in vertex() or surfa
 sparks.buffer("SPARKS", kernelOutput);
 ```
 
+### 4.8 `Layers { }`: a material as a stack
+
+A material built of whole surfaces laid one over another, Unreal's material layers: rock, moss over it where the face
+looks up, snow over both above a height. Each **layer** is a function returning a whole `CgSurface`; each **blend**
+lays one over the layers below it. An asset swaps a layer for another its shader offers, or hides one, without a
+shader of its own.
+
+```glsl
+#include "crystalgraphics:shaders/lib/material/blend_material_attributes.glsl"
+Material { ShadingModel DefaultLit }
+
+Layers {
+    Rock  rock                                  // the base: below everything, never hidden
+    Moss  moss | wet_moss  by slope {           // two layers to choose from, laid on by slope
+        Tint ("Moss colour", color) = (0.25, 0.45, 0.15, 1)    // this slot's own: Moss_Tint
+    }
+    Snow  snow  by height {
+        Line ("Snow line, blocks", float) = 64.0
+    }
+}
+
+struct v2f { vec2 uv0; vec3 normal; vec3 world; };
+
+CgSurface rock(in v2f i, CgSurface s) { s.baseColor = texture(_Rock, i.uv0).rgb; s.roughness = 0.85; return s; }
+CgSurface moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb; s.roughness = 0.7; return s; }
+CgSurface wet_moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb * 0.6; s.roughness = 0.25; return s; }
+CgSurface snow(in v2f i, CgSurface s) { s.baseColor = vec3(0.92); s.roughness = 0.6; return s; }
+
+CgSurface slope(in v2f i, CgSurface below, CgSurface top) {
+    return cg_blend_material_attributes(below, top, smoothstep(0.6, 0.85, normalize(i.normal).y));
+}
+CgSurface height(in v2f i, CgSurface below, CgSurface top) {
+    return cg_blend_material_attributes(below, top, smoothstep(Line - 2.0, Line + 2.0, i.world.y + CG_CAMERA_POSITION.y));
+}
+
+void surface(in v2f i, inout CgSurface s) {
+    s = cg_MaterialLayers(i, s);                // the stack: each layer from s, each blend over the ones below
+}
+```
+
+```yaml
+# a material asset of it: wet moss, no snow
+shader: mymod:shaders/rock.shader
+layers: { Moss: wet_moss, Snow: hidden }
+values: { Moss_Tint: [0.2, 0.35, 0.1, 1.0] }
+```
+
+| Line | Means |
+|---|---|
+| `Name layer` | the base slot: `CgSurface layer(in v2f i, CgSurface s)` |
+| `Name a \| b by blend` | a slot over the ones above it, `a` by default, `b` an asset's choice; `CgSurface blend(in v2f i, CgSurface below, CgSurface top)` |
+| `{ properties }` | the slot's own properties, `Name_Property` to an asset, read as `Property` by the slot's functions |
+
+- **Each choice is its own program**, as a keyword's is: a slot is the one-of `LAYER_<SLOT>` of its layers, and
+  `HIDDEN` for any slot but the base. Precache builds every stack; keep the choices to what assets pick.
+- **One function, several slots**: each slot gets its own copy, so `Tint` in `moss` is `Moss_Tint` in slot `Moss` and
+  `Snow_Tint` in a slot `Snow` using it too.
+- **Write the layer and blend functions, and what they call, before `surface()`**: the stack is written there.
+- A `Layers { }` that `surface()` never calls fails, as does a base with `by`, a slot after it without, or a layer
+  that is no function of the file.
+
 ---
 
 ## 5. Vertex factories: what draws a surface material

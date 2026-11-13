@@ -5,6 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import org.junit.Test;
@@ -108,6 +109,51 @@ public class CgShaderSpecTest {
                 + "void surface(in v2f i, inout CgSurface s) { s.opacity = 0.5; }\n", "WorldLit's");
         refused(v2f + "Material { ShadingModel DefaultLit }\n" + V2F
                 + "void surface(in v2f i, inout CgSurface s) { s.opacity = 0.5; }\n", "translucent");
+    }
+
+    private static final String LAYERS = "#domain surface\n"
+            + "Layers {\n    Rock rock\n    Moss moss | wet_moss by slope {\n        Tint (\"Moss colour\", color) = (0.3, 0.5, 0.2, 1)\n"
+            + "    }\n    Snow moss by slope {\n        Tint (\"Snow colour\", color) = (1, 1, 1, 1)\n    }\n}\n" + V2F
+            + "CgSurface rock(in v2f i, CgSurface s) { s.baseColor = vec3(0.5); return s; }\n"
+            + "CgSurface moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb; return s; }\n"
+            + "CgSurface wet_moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb * 0.5; return s; }\n"
+            + "CgSurface slope(in v2f i, CgSurface below, CgSurface top) { below.baseColor = mix(below.baseColor, top.baseColor, i.uv0.y); return below; }\n"
+            + "void surface(in v2f i, inout CgSurface s) { s = cg_MaterialLayers(i, s); }\n";
+
+    @Test
+    public void aLayerStackIsItsSlotsOneOfsAndItsFunctionsOncePerSlot() {
+        CgShaderSpec spec = CgShaderSpec.read(LAYERS, "test:layers.shader");
+        assertTrue(spec.features().containsAll(List.of("LAYER_MOSS_MOSS", "LAYER_MOSS_WET_MOSS", "LAYER_MOSS_HIDDEN",
+                "LAYER_SNOW_MOSS", "LAYER_SNOW_HIDDEN")));
+        assertFalse("a base of one layer is no dimension", spec.features().contains("LAYER_ROCK_ROCK"));
+        // One function, two slots, two values: each slot's own property
+        CgMaterialProperty moss = null, snow = null;
+        for (CgMaterialProperty p : spec.properties()) {
+            if (p.getName().equals("Moss_Tint")) moss = p;
+            if (p.getName().equals("Snow_Tint")) snow = p;
+        }
+        assertNotNull(moss);
+        assertNotNull(snow);
+        assertEquals("Moss: Moss colour", moss.getDisplayName());
+        StringBuilder code = new StringBuilder();
+        for (CgShaderPass.Code c : spec.pass(CgRenderPassVariant.FORWARD).code()) code.append(c.text()).append('\n');
+        String glsl = code.toString();
+        assertTrue(glsl, glsl.contains("#define Tint Moss_Tint") && glsl.contains("#define Tint Snow_Tint"));
+        assertTrue(glsl, glsl.contains("_cg_layer_Moss_moss(") && glsl.contains("_cg_layer_Snow_moss("));
+        // The stack before surface(), which calls it
+        assertTrue(glsl, glsl.indexOf("CgSurface cg_MaterialLayers(") < glsl.indexOf(SpecReader.MATERIAL_SURFACE + "("));
+    }
+
+    @Test
+    public void layerRefusals() {
+        String v2f = "#domain surface\n";
+        String fns = V2F + "CgSurface a(in v2f i, CgSurface s) { return s; }\n"
+                + "CgSurface b(in v2f i, CgSurface below, CgSurface top) { return top; }\n";
+        String calls = "void surface(in v2f i, inout CgSurface s) { s = cg_MaterialLayers(i, s); }\n";
+        refused(v2f + "Layers {\n    Base a by b\n}\n" + fns + calls, "the base layer");
+        refused(v2f + "Layers {\n    Base a\n    Top a\n}\n" + fns + calls, "needs 'by <blend>'");
+        refused(v2f + "Layers {\n    Base a\n    Top lichen by b\n}\n" + fns + calls, "'lichen' is no function");
+        refused(v2f + "Layers {\n    Base a\n}\n" + fns + "void surface(in v2f i, inout CgSurface s) { }\n", "never drawn");
     }
 
     @Test

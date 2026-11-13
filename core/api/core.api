@@ -862,6 +862,7 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
   method public depthTest (Z)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public depthWrite (Z)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public keyword (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
+  method public layer (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public masked (F)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public order (I)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public separateTranslucency ()Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
@@ -6750,6 +6751,7 @@ com/crystalgraphics/material/CgMaterialProperty
   method public blockName ()Ljava/lang/String;
   method public blockName (I)Ljava/lang/String;
   method public boundTexture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public copyNamed (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty;
   method public copyValueFrom (Lcom/crystalgraphics/material/CgMaterialProperty;)V
   method public copyWithDefaults ()Lcom/crystalgraphics/material/CgMaterialProperty;
   method public getCount ()I
@@ -7097,6 +7099,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public vertexType ()Ljava/lang/String;
   method public withState (Lcom/crystalgraphics/api/material/CgMaterialState;Ljava/lang/String;)Lcom/crystalgraphics/material/shader/CgShaderSpec;
   method public writesCustomData ()Z
+  method public,static layerKeyword (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public,static read (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/material/shader/CgShaderSpec;
 com/crystalgraphics/material/shader/CgShaderSpec$ColorSpace
   access public,final,enum

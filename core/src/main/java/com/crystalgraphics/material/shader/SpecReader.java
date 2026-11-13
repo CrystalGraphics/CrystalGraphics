@@ -298,6 +298,12 @@ final class SpecReader {
          */
         void material(CgShaderSyntax file, List<CgShaderSyntax.Item> items, @Nullable CgShaderSyntax.Function first,
                       CgShaderSyntax.Function second, boolean rename) {
+            material(file, items, first, second, rename, null);
+        }
+
+        /** {@link #material} with {@code beforeSecond}, fragment code generated for it, written just before it. */
+        void material(CgShaderSyntax file, List<CgShaderSyntax.Item> items, @Nullable CgShaderSyntax.Function first,
+                      CgShaderSyntax.Function second, boolean rename, @Nullable String beforeSecond) {
             Map<String, List<CgShaderSyntax.Function>> functions = functions(items);
             Set<String> vertexReach = reach(file, functions, first), fragmentReach = reach(file, functions, second);
             CgShaderTokens t = file.tokens();
@@ -319,7 +325,16 @@ final class SpecReader {
                 }
                 pieces.add(new Piece(file, i, text, stages));
             }
-            lay(pieces, true);
+            int at = -1;
+            for (int k = 0; beforeSecond != null && k < pieces.size(); k++) if (pieces.get(k).item() == second) at = k;
+            if (at < 0) {
+                lay(pieces, true);
+                if (beforeSecond != null) code(beforeSecond, CgShaderPass.FRAGMENT);
+                return;
+            }
+            lay(pieces.subList(0, at), true);
+            code(beforeSecond, CgShaderPass.FRAGMENT);
+            lay(pieces.subList(at, pieces.size()), true);
         }
 
         /**

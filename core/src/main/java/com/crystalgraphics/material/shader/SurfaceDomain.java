@@ -119,6 +119,11 @@ final class SurfaceDomain {
         List<String> sig = SpecReader.signature(file, surface, "void", "surface", "(", "in?", "v2f", "*", ",", "inout",
                 "CgSurface", "*", ")");
         if (sig == null) throw t.error(surface.first(), "'surface(' is 'void surface(in v2f i, inout CgSurface s)'");
+        LayerStack layers = LayerStack.read(file, functions);
+        if (layers != null && !SpecReader.scan(file, surface).names(LayerStack.CALL)) {
+            throw t.error(file.block("Layers").first(), "'Layers { }' is never drawn: surface() writes s = "
+                    + LayerStack.CALL + "(i, s)");
+        }
         CgShaderSyntax.Function vertex = SpecReader.only(file, functions, "vertex");
         if (vertex != null && SpecReader.signature(file, vertex, "void", "vertex", "(", "inout", "CgVertex", "*", ",",
                 "out", "v2f", "*", ")") == null) {
@@ -277,7 +282,7 @@ final class SurfaceDomain {
         // The factory's parameters surface() reads, each passed as an interpolator
         refuseOtherParameters(file, code, factory);
         StringBuilder passOut = new StringBuilder(), passIn = new StringBuilder();
-        for (String[] p : passedParameters(file, factory, functions, surface)) {
+        for (String[] p : passedParameters(file, factory, functions, surface, layers == null ? Set.of() : layers.functions())) {
             String type = p[0], qualifier = "";
             int space = type.lastIndexOf(' ');
             if (space > 0) {
@@ -302,6 +307,10 @@ final class SurfaceDomain {
         spec.vertexType = factory.vertexType();
         factory.declareKeywords(spec, path);
         spec.materialKeywords();
+        if (layers != null) {
+            spec.keywords(layers.keywords(), false);
+            spec.layerProperties = layers.properties();
+        }
         spec.uses.addAll(factory.engineBuffers());
         if (rows && !spec.uses.contains(CgShaderSpec.ROWS)) spec.uses.add(CgShaderSpec.ROWS);
         if (SpecReader.namesGlobals(file, code) && !spec.uses.contains("globals")) spec.uses.add("globals");
@@ -350,7 +359,16 @@ final class SurfaceDomain {
         passCode.code(SURFACE_DEFAULTS, CgShaderPass.FRAGMENT);
         passCode.glsl(factory.declarations(), path);
         if (lit) passCode.code(DEFAULT_LIT_INCLUDE, CgShaderPass.FRAGMENT);
-        passCode.material(file, code, vertex, surface, true);
+        if (layers == null) {
+            passCode.material(file, code, vertex, surface, true);
+        } else {
+            // The layer and blend functions are written once a slot, with the stack, before surface()
+            List<CgShaderSyntax.Item> own = new ArrayList<>();
+            for (CgShaderSyntax.Item i : code) {
+                if (!(i instanceof CgShaderSyntax.Function f && layers.functions().contains(f.name()))) own.add(i);
+            }
+            passCode.material(file, own, vertex, surface, true, layers.glsl(file, functions));
+        }
 
         StringBuilder vertexBody = new StringBuilder("\n        CgVertex v;\n");
         for (String l : factory.fill().strip().split("\n")) vertexBody.append("        ").append(l.strip()).append('\n');
@@ -454,14 +472,19 @@ final class SurfaceDomain {
      */
     private static List<String[]> passedParameters(CgShaderSyntax file, FactoryUse factory,
                                                    Map<String, List<CgShaderSyntax.Function>> functions,
-                                                   CgShaderSyntax.Function surface) {
+                                                   CgShaderSyntax.Function surface, Set<String> layerFunctions) {
         List<String[]> out = new ArrayList<>();
         String variable = factory.parameters();
         if (variable == null) return out;
         Set<String> chains = new LinkedHashSet<>();
         boolean whole = false;   // passed whole, as to cg_dynamic_parameter(cg_Particle, ...)
         List<CgCodeScan> read = new ArrayList<>();
-        for (String name : SpecReader.reach(file, functions, surface)) {
+        Set<String> reached = new LinkedHashSet<>(SpecReader.reach(file, functions, surface));
+        // A layer's functions are surface()'s, through the stack it calls
+        for (String layer : layerFunctions) {
+            for (CgShaderSyntax.Function root : functions.get(layer)) reached.addAll(SpecReader.reach(file, functions, root));
+        }
+        for (String name : reached) {
             for (CgShaderSyntax.Function f : functions.get(name)) read.add(SpecReader.body(file, f));
         }
         // The factory's own defaults and fade read them in the fragment too

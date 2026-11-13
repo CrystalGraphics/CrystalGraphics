@@ -95,7 +95,17 @@ public final class CgMaterialDefinitions {
         Map<String, CgMaterialProperty> props = new LinkedHashMap<>();
         for (CgMaterialProperty p : parsed.properties()) if (!p.isHidden()) props.put(p.getName(), p);
 
-        List<String> keywords = strings(m.get("keywords"));
+        List<String> keywords = new ArrayList<>(strings(m.get("keywords")));
+        // A layer slot's choice is its one-of's keyword (Layers { }): a different stack, a different program
+        Map<Object, Object> layers = map(m.get("layers"));
+        for (Map.Entry<Object, Object> e : layers == null ? Map.<Object, Object>of().entrySet() : layers.entrySet()) {
+            String k = CgShaderSpec.layerKeyword(String.valueOf(e.getKey()), String.valueOf(e.getValue()));
+            if (!parsed.features().contains(k)) {
+                throw new CgAssetException(id + " puts " + e.getValue() + " in layer slot " + e.getKey() + ", which " + shader
+                        + " does not offer: its Layers { } names each slot's layers, and any slot but the first may be hidden");
+            }
+            keywords.add(k);
+        }
         for (String k : keywords) {
             if (!parsed.features().contains(k)) {
                 throw new CgAssetException(id + " enables keyword " + k + ", which " + shader + " does not declare; it "

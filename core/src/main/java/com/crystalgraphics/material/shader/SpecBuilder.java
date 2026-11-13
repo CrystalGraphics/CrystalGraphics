@@ -93,6 +93,8 @@ final class SpecBuilder {
     final List<String> uses = new ArrayList<>();
     /** The template's properties, written as entries, and whose they are, for an error. */
     String templateProperties = "", templateOwner = "";
+    /** A {@code Layers { }} block's properties, each under its slot's name. */
+    List<CgMaterialProperty> layerProperties = List.of();
     int queue = CgRenderQueue.GEOMETRY;
     String renderType = "Opaque";
     CgShaderSpec.Lighting lighting = CgShaderSpec.Lighting.LIT;
@@ -209,6 +211,17 @@ final class SpecBuilder {
                 : CgPropertyGrammar.read(templateProperties, path, false);
         CgShaderSyntax.Block own = file.block("Properties");
         List<CgMaterialProperty> mine = own == null ? List.of() : CgPropertyGrammar.read(t, own.open() + 1, own.close(), false);
+        if (!layerProperties.isEmpty()) {
+            Set<String> declared = new LinkedHashSet<>();
+            for (CgMaterialProperty p : mine) declared.add(p.getName());
+            for (CgMaterialProperty p : layerProperties) {
+                if (!declared.add(p.getName())) {
+                    throw CgShaderError.of(path, "'" + p.getName() + "' is a layer slot's property and the material's: rename one");
+                }
+            }
+            mine = new ArrayList<>(mine);
+            mine.addAll(layerProperties);
+        }
         Set<String> theirs = new LinkedHashSet<>();
         for (CgMaterialProperty p : template) theirs.add(p.getName());
         for (CgMaterialProperty p : mine) {

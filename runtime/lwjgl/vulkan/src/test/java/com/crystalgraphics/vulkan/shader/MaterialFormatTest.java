@@ -86,7 +86,7 @@ public class MaterialFormatTest {
         int programs = 0;
         // and docs/MATERIAL_FORMAT.md's examples, so the guide compiles as written
         List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "faded","guide/glass", "guide/moss", "guide/haze",
-                "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer"));
+                "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer", "guide/layers"));
         shapes.addAll(SHAPES);
         for (String shape : shapes) programs += build(path(shape), failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
