@@ -28,6 +28,6 @@ float vfx_limb(float near, float source) {
 
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // How far along a view ray the opaque scene is, from the depth snapshot. Fragment stage only; a macro for the frame
-// block, as FX_CAMERA is.
+// block, as CG_CAMERA_POSITION is.
 #define VFX_SCENE_DISTANCE(ray) (CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION) / max(dot(ray, -vec3(cg_ViewMatrix[0][2], cg_ViewMatrix[1][2], cg_ViewMatrix[2][2])), 1.0e-4))
 #endif

@@ -9,7 +9,7 @@
 // =============================================================================
 #domain global
 #include "crystalgraphics:shaders/lib/noise.glsl"
-Material { ColorSpace sRGB }
+Material { ColorSpace sRGB  Media On }
 EngineBuffers { quad }
 
 RenderState {

@@ -3,6 +3,7 @@
 // its coverage, so the blend is ONE ONE_MINUS_SRC_ALPHA; over a graded layer its alpha composes the same way.
 #domain global
 #include "crystalgraphics:shaders/lib/post/post_material.glsl"
+Material { Media On }
 
 RenderState {
     Blend ONE ONE_MINUS_SRC_ALPHA

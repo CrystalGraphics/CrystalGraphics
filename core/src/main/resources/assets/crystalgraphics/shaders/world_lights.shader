@@ -15,18 +15,23 @@
 // looks into, as Unreal's shadow takes a directional light's part and leaves the sky light. Minecraft's curve is steep,
 // so a share of the light level would leave far less than that share of the light. Where Minecraft's light-giving
 // blocks are withheld (_Visibility's y), its block light level is cut by the share withheld, as its flood would be. The pass reads the scene and writes the whole pixel, so it can darken as well as add.
-#type none
+#domain global
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
 #include "crystalgraphics:shaders/lib/lights.glsl"
 #include "crystalgraphics:shaders/lib/light_shadow.glsl"
-// A spot or a tube among the lights shaded here this frame (CgWorldLights picks the variant). Without it every light is a
-// point and the general path is not compiled: carried unused, its registers cost the loop half again on a floor of
-// particle lights, as Unreal compiles a deferred light's shader per type.
-#pragma cg_feature CG_LIGHTS_SHAPED
+Material { SceneColorMargin 0.01  Queue Transparent }
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" "Media" = "Off" "SceneColorMargin" = "0.01" }
-Queue = "Transparent"
+Keywords {
+    CG_LIGHTS_SHAPED ("CG_LIGHTS_SHAPED")
+}
+
+RenderState {
+    Blend OFF
+    DepthTest ALWAYS
+    DepthWrite OFF
+    Cull OFF
+}
 
 Properties {
     _Grid    ("Cells across, up and deep",                         vec4) = (1, 1, 32, 0)
@@ -59,147 +64,141 @@ Properties {
     _Scale   ("Target pixels a shadow-pass texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
 }
 
-// light_grid.compute's: each light in the view with what it is shaded by, worked out once a light.
-struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
-
 Buffers {
     CELLS   ("Each cell's light count and start", uint, readonly)
     INDICES ("The cells' light indices",       uint,    readonly)
     VIEWED  ("Each light in the grid's view, as the grid binned it", CgViewLight, readonly)
 }
 
+struct CgViewLight { vec4 positionRadius; vec4 spot; vec4 kind; vec4 segment; vec4 radiance; };
+
 struct v2f { vec2 uv; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend OFF
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull OFF
-    }
 
-    // The surface at pixel px, in the grid's view: cg_LinearEyeDepth under the bob-free perspective
-    // (CgWorldLights.splitPerspective), along the pixel's ray.
-    vec3 to_world_dir(vec3 v) {
-        return vec3(dot(vec3(_ToView0.x, _ToView1.x, _ToView2.x), v), dot(vec3(_ToView0.y, _ToView1.y, _ToView2.y), v),
-                dot(vec3(_ToView0.z, _ToView1.z, _ToView2.z), v));
-    }
 
-    vec3 lightmap(vec2 light) {
-        vec3 c = CG_LIGHTMAP(light);
-        return CG_LINEAR_SCENE ? srgb_to_linear(c) : c;
-    }
 
-    vec3 surface(ivec2 px) {
-        px = clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1);
-        float window = texelFetch(cg_DepthBuffer, px, 0).r, ndc = cg_EngineDepth(window);
-        float depth = _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
-                : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
-        vec2 uv = (vec2(px) + 0.5) / CG_RESOLUTION;
-        return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
-    }
+// The surface at pixel px, in the grid's view: cg_LinearEyeDepth under the bob-free perspective
+// (CgWorldLights.splitPerspective), along the pixel's ray.
+vec3 to_world_dir(vec3 v) {
+    return vec3(dot(vec3(_ToView0.x, _ToView1.x, _ToView2.x), v), dot(vec3(_ToView0.y, _ToView1.y, _ToView2.y), v),
+            dot(vec3(_ToView0.z, _ToView1.z, _ToView2.z), v));
+}
 
-    // The shadow passes' lighting and visibility at pixel px: its own texel, or when downsampled the four round it
-    // weighed by distance and by how near the depth each stands for is to px's, the nearest in depth where none agrees
-    // (world_half_upsample's joint bilateral upsample). A texel stands for the first pixel of its block.
-    void shadowed_at(ivec2 px, out vec3 lighting, out vec2 vis) {
-        if (_Scale <= 1) {
-            lighting = texelFetch(_Shadowed, px, 0).rgb;
-            vis = texelFetch(_Visibility, px, 0).xy;
-            return;
+vec3 lightmap(vec2 light) {
+    vec3 c = CG_LIGHTMAP(light);
+    return CG_LINEAR_SCENE ? srgb_to_linear(c) : c;
+}
+
+vec3 surfaceAt(ivec2 px) {
+    px = clamp(px, ivec2(0), ivec2(CG_RESOLUTION) - 1);
+    float window = texelFetch(cg_DepthBuffer, px, 0).r, ndc = cg_EngineDepth(window);
+    float depth = _Depth.z == 0.0 ? (_Depth.y - ndc) / _Depth.x
+            : (_Depth.y - _Depth.x / _Depth.z * _Depth.w) / (ndc - _Depth.x / _Depth.z);
+    vec2 uv = (vec2(px) + 0.5) / CG_RESOLUTION;
+    return vec3(mix(_Rays.xy, _Rays.zw, uv) * depth, -depth);
+}
+
+// The shadow passes' lighting and visibility at pixel px: its own texel, or when downsampled the four round it
+// weighed by distance and by how near the depth each stands for is to px's, the nearest in depth where none agrees
+// (world_half_upsample's joint bilateral upsample). A texel stands for the first pixel of its block.
+void shadowed_at(ivec2 px, out vec3 lighting, out vec2 vis) {
+    if (_Scale <= 1) {
+        lighting = texelFetch(_Shadowed, px, 0).rgb;
+        vis = texelFetch(_Visibility, px, 0).xy;
+        return;
+    }
+    ivec2 size = textureSize(_Shadowed, 0);
+    float depth = -surfaceAt(px).z;
+    vec2 at = vec2(px) / float(_Scale);
+    ivec2 base = ivec2(floor(at));
+    vec2 f = at - vec2(base);
+    vec3 sum = vec3(0.0), nearest = vec3(0.0);
+    vec2 visSum = vec2(0.0), visNearest = vec2(1.0);
+    float total = 0.0, best = 1.0e30;
+    for (int k = 0; k < 4; k++) {
+        ivec2 o = ivec2(k & 1, k >> 1), t = clamp(base + o, ivec2(0), size - 1);
+        float gap = abs(-surfaceAt(t * _Scale).z - depth) / max(depth, 1.0e-3);
+        vec3 c = texelFetch(_Shadowed, t, 0).rgb;
+        vec2 v = texelFetch(_Visibility, t, 0).xy;
+        if (gap < best) {
+            best = gap;
+            nearest = c;
+            visNearest = v;
         }
-        ivec2 size = textureSize(_Shadowed, 0);
-        float depth = -surface(px).z;
-        vec2 at = vec2(px) / float(_Scale);
-        ivec2 base = ivec2(floor(at));
-        vec2 f = at - vec2(base);
-        vec3 sum = vec3(0.0), nearest = vec3(0.0);
-        vec2 visSum = vec2(0.0), visNearest = vec2(1.0);
-        float total = 0.0, best = 1.0e30;
-        for (int k = 0; k < 4; k++) {
-            ivec2 o = ivec2(k & 1, k >> 1), t = clamp(base + o, ivec2(0), size - 1);
-            float gap = abs(-surface(t * _Scale).z - depth) / max(depth, 1.0e-3);
-            vec3 c = texelFetch(_Shadowed, t, 0).rgb;
-            vec2 v = texelFetch(_Visibility, t, 0).xy;
-            if (gap < best) {
-                best = gap;
-                nearest = c;
-                visNearest = v;
-            }
-            float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y) * exp(-gap * 50.0);
-            sum += c * w;
-            visSum += v * w;
-            total += w;
-        }
-        lighting = total > 1.0e-4 ? sum / total : nearest;
-        vis = total > 1.0e-4 ? visSum / total : visNearest;
+        float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y) * exp(-gap * 50.0);
+        sum += c * w;
+        visSum += v * w;
+        total += w;
     }
+    lighting = total > 1.0e-4 ? sum / total : nearest;
+    vis = total > 1.0e-4 ? visSum / total : visNearest;
+}
 
-    void vertex(out v2f o) {
-        vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
-        o.uv = p * 0.5 + 0.5;
-        gl_Position = vec4(p, 0.0, 1.0);
-    }
 
-    void fragment(in v2f i, out vec4 fragColor) {
-        ivec2 px = ivec2(gl_FragCoord.xy);
-        vec3 p = surface(px);
-        // Its normal, written once a firing for every lighting pass (lights/gbuffer.compute).
-        vec3 n = texelFetch(_GBuffer, px, 0).xyz;
-        ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
-        int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
-        int from = CG_LIGHT_CELL_START(e);
-        vec3 sum = vec3(0.0);
-        bool shadows = _Shadows > 0.5;
-        // With the shadow passes running the lights they sample are theirs (_Shadowed); the rest, and without them
-        // every lit light, are shaded here exactly: one run of the cell's list, each light read from the grid's view,
-        // which holds everything it is shaded with. A cell lists many small lights that reach few of its pixels: each
-        // is rejected by its reach first.
-        ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
-        int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
-        float offset = CG_LIGHT_OFFSET(px, CG_FRAME_INDEX);
-        for (int c = 0; c < walked; c++) {
-            int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
-            vec4 reach = VIEWED(index).positionRadius;
-            if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
-            vec4 kind = VIEWED(index).kind;
+
+void vertex(out v2f o) {
+    vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
+    o.uv = p * 0.5 + 0.5;
+    gl_Position = vec4(p, 0.0, 1.0);
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    ivec2 px = ivec2(gl_FragCoord.xy);
+    vec3 p = surfaceAt(px);
+    // Its normal, written once a firing for every lighting pass (lights/gbuffer.compute).
+    vec3 n = texelFetch(_GBuffer, px, 0).xyz;
+    ivec3 cell = cg_light_cell(p, _ZParams.xyz, _Rays.xy, _Rays.zw, _Tile.xy, ivec2(_Grid.xy));
+    int e = (cell.z * int(_Grid.y) + cell.y) * int(_Grid.x) + cell.x;
+    int from = CG_LIGHT_CELL_START(e);
+    vec3 sum = vec3(0.0);
+    bool shadows = _Shadows > 0.5;
+    // With the shadow passes running the lights they sample are theirs (_Shadowed); the rest, and without them
+    // every lit light, are shaded here exactly: one run of the cell's list, each light read from the grid's view,
+    // which holds everything it is shaded with. A cell lists many small lights that reach few of its pixels: each
+    // is rejected by its reach first.
+    ivec2 span = shadows ? CG_LIGHTS_EXACT(e) : CG_LIGHTS_LIT(e);
+    int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
+    float offset = CG_LIGHT_OFFSET(px, CG_FRAME_INDEX);
+    for (int c = 0; c < walked; c++) {
+        int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
+        vec4 reach = VIEWED(index).positionRadius;
+        if (dot(reach.xyz - p, reach.xyz - p) >= reach.w * reach.w) continue;
+        vec4 kind = VIEWED(index).kind;
 #ifdef CG_LIGHTS_SHAPED
-            float lit = CG_VIEW_SPOT(kind) || CG_VIEW_TUBE(kind)
-                    ? cg_light_surface(reach.xyz, reach.w, kind.y, VIEWED(index).spot, VIEWED(index).segment, kind.z, p, n)
-                    : cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
+        float lit = CG_VIEW_SPOT(kind) || CG_VIEW_TUBE(kind)
+                ? cg_light_surface(reach.xyz, reach.w, kind.y, VIEWED(index).spot, VIEWED(index).segment, kind.z, p, n)
+                : cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
 #else
-            float lit = cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
+        float lit = cg_light_point(reach.xyz, reach.w, kind.y, kind.z, p, n);
 #endif
-            if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
-        }
-        sum *= CG_LIGHT_STRIDE(count);
-        vec3 shadowedLight = vec3(0.0);
-        vec2 shadowedVis = vec2(1.0);
-        if (shadows) {
-            shadowed_at(px, shadowedLight, shadowedVis);
-            sum += shadowedLight;
-        }
-
-        // The sun withheld: the sky light at the block this face looks into, less the sun's direct share; the block
-        // light less the share of it withheld.
-        vec3 ratio = vec3(1.0);
-        float window = texelFetch(cg_DepthBuffer, px, 0).r;
-        bool sky = cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0;
-        vec2 seen = shadowedVis;
-        float vis = _Sun.x > 0.5 ? seen.x : 1.0;
-        if (!sky && min(vis, seen.y) < 0.999 && _WorldLive != 0) {
-            vec3 w = to_world_dir(p + n * 0.5 - vec3(_ToView0.w, _ToView1.w, _ToView2.w)) + _EyeFrac.xyz;
-            ivec3 block = ivec3(_EyeX, _EyeY, _EyeZ) + ivec3(floor(w));
-            vec2 light = fx_world_light(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
-                    ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), block, vec2(-1.0));
-            if (light.x >= 0.0) {
-                float block = light.x * seen.y, withheld = _Sun.y * clamp(CG_DAYLIGHT, 0.0, 1.0) * (1.0 - vis);
-                vec3 lit = lightmap(vec2(block, light.y)), sky = lit - lightmap(vec2(block, 0.0));
-                ratio = max(lit - sky * withheld, vec3(0.0)) / max(lightmap(light), vec3(1.0e-3));
-            }
-        }
-        vec4 scene = texelFetch(cg_SceneColor, px, 0);
-        fragColor = vec4(scene.rgb * (ratio + sum), scene.a);
+        if (lit > 0.0) sum += VIEWED(index).radiance.rgb * lit;
     }
+    sum *= CG_LIGHT_STRIDE(count);
+    vec3 shadowedLight = vec3(0.0);
+    vec2 shadowedVis = vec2(1.0);
+    if (shadows) {
+        shadowed_at(px, shadowedLight, shadowedVis);
+        sum += shadowedLight;
+    }
+
+    // The sun withheld: the sky light at the block this face looks into, less the sun's direct share; the block
+    // light less the share of it withheld.
+    vec3 ratio = vec3(1.0);
+    float window = texelFetch(cg_DepthBuffer, px, 0).r;
+    bool sky = cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0;
+    vec2 seen = shadowedVis;
+    float vis = _Sun.x > 0.5 ? seen.x : 1.0;
+    if (!sky && min(vis, seen.y) < 0.999 && _WorldLive != 0) {
+        vec3 w = to_world_dir(p + n * 0.5 - vec3(_ToView0.w, _ToView1.w, _ToView2.w)) + _EyeFrac.xyz;
+        ivec3 block = ivec3(_EyeX, _EyeY, _EyeZ) + ivec3(floor(w));
+        vec2 light = fx_world_light(_World, _WorldSections, ivec3(_WorldBaseX, _WorldBaseY, _WorldBaseZ),
+                ivec3(_WorldWrapX, _WorldWrapY, _WorldWrapZ), block, vec2(-1.0));
+        if (light.x >= 0.0) {
+            float block = light.x * seen.y, withheld = _Sun.y * clamp(CG_DAYLIGHT, 0.0, 1.0) * (1.0 - vis);
+            vec3 lit = lightmap(vec2(block, light.y)), sky = lit - lightmap(vec2(block, 0.0));
+            ratio = max(lit - sky * withheld, vec3(0.0)) / max(lightmap(light), vec3(1.0e-3));
+        }
+    }
+    vec4 scene = texelFetch(cg_SceneColor, px, 0);
+    fragColor = vec4(scene.rgb * (ratio + sum), scene.a);
 }

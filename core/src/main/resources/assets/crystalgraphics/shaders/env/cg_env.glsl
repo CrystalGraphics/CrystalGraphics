@@ -321,6 +321,8 @@ vec3 cg_LocalLightDirectional(vec3 p) {
 // apply pulls nothing nearer than that depth into the bend. Alpha is the closeness, kept by a MAX blend.
 #define CG_DISTORTION(offset, split, eyeDepth) vec4((offset), (split), 1.0 / max((eyeDepth), 0.01))
 #define CG_DEPTH_REVERSED      (cg_DepthParams.x > 0.5)
+// A clip-space z at the far plane for clip w, in the pass's depth convention: what a sky's vertex takes (Sky On).
+#define CG_FAR_PLANE_Z(w)      ((w) * (CG_DEPTH_REVERSED ? 1.0e-5 : 1.0 - 1.0e-5))
 // Whether this pass draws into the linear HDR scene. A Forward pass's colour is authored as sRGB, so the generated
 // main decodes it there (cg_SceneDecode), unless the shader is tagged "ColorSpace" = "Linear" or "Target".
 #define CG_LINEAR_SCENE        (cg_DepthParams.z > 0.5)

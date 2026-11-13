@@ -2,6 +2,7 @@
 // frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp. The distortion view is
 // debug_distortion.shader. CgPostDebug draws it (-Dcrystalgraphics.post.debug); nothing else should.
 #domain global
+Material { Media On }
 
 Keywords {
     HEAT ("HEAT")

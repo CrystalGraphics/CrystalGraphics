@@ -27,7 +27,7 @@
 //              tone of what is behind it, less the frame's tone of the same. A pixel no layer reaches is unchanged
 #domain global
 #include "crystalgraphics:shaders/lib/post/impact.glsl"
-Material { SceneColorMargin 0.02 }
+Material { SceneColorMargin 0.02  Media On }
 
 Keywords {
     SCENE ("SCENE", switched)

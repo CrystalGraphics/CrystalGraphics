@@ -3,7 +3,7 @@
 // is written white: the texture is (1, 1, 1, coverage), drawn later tinted by a box. CgCanvasMaterials.coverage().
 #domain global
 #include "crystalgraphics:shaders/lib/stroke.glsl"
-Material { ColorSpace sRGB }
+Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 
 RenderState {

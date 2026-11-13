@@ -2,7 +2,7 @@
 // joint, so a sum beads there; the max is their union. CgCanvasMaterials.strokeCoverage().
 #domain global
 #include "crystalgraphics:shaders/lib/stroke.glsl"
-Material { ColorSpace sRGB }
+Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 
 RenderState {

@@ -2,6 +2,7 @@
 // each texel takes _Source from where the offsets at it point, summed over the _FieldCount layers of _Fields in use.
 // CgPostDistortion draws it.
 #domain global
+Material { Media On }
 
 RenderState {
     Blend OFF

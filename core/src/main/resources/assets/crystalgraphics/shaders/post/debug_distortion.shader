@@ -1,6 +1,7 @@
 // The post stack's distortion debug view: the firing's offsets summed over the layers in use, |offset| x 50 in red and
 // green, the split in blue. CgPostDebug draws it (-Dcrystalgraphics.post.debug=distortion); nothing else should.
 #domain global
+Material { Media On }
 
 RenderState {
     Blend OFF

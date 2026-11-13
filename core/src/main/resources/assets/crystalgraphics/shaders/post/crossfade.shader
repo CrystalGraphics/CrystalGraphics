@@ -2,6 +2,7 @@
 // crossfade, blended in the target's encoding.
 #domain global
 #include "crystalgraphics:shaders/lib/post/post_material.glsl"
+Material { Media On }
 
 RenderState {
     Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA

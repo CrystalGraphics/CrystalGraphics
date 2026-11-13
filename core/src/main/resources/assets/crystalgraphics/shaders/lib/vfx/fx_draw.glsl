@@ -18,8 +18,3 @@ struct CgVfx {
 // an include.
 #define cg_Vfx CgVfx(CG_OBJECT_CUSTOM3.x, CG_OBJECT_CUSTOM3.y, CG_OBJECT_CUSTOM3.z, CG_OBJECT_CUSTOM3.w)
 
-// The old format's spellings, until its last shader is rewritten (P2.5 F5)
-#define FX_ROW (CG_OBJECT_CUSTOM3.x)
-#define FX_AGE (CG_OBJECT_CUSTOM3.y)
-#define FX_SEED (CG_OBJECT_CUSTOM3.z)
-#define FX_PRESENCE (CG_OBJECT_CUSTOM3.w)

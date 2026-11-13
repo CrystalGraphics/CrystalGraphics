@@ -2,7 +2,7 @@
 // shape sums exactly. No discard: a sliver's 0.02 has to add up. CgCanvasMaterials.colourCoverage().
 #domain global
 #include "crystalgraphics:shaders/lib/stroke.glsl"
-Material { ColorSpace sRGB }
+Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 
 RenderState {

@@ -6,31 +6,21 @@
 //
 // Colour is read from CG_OBJECT_CUSTOM0.rgb (set by each draw's custom(0, ...)).
 // -----------------------------------------------------------------------------
-#type spatial
-
-Tags  { "RenderType" = "Opaque" }
-Queue = "Geometry"
+#domain surface
 
 struct v2f { vec3 normalWs; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        DepthTest  LEQUAL
-        DepthWrite ON
-        Cull       BACK
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+    o.normalWs  = CG_NORMAL_MATRIX * cg_Normal;
+}
 
-    void vertex(out v2f o) {
-        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
-        o.normalWs  = CG_NORMAL_MATRIX * cg_Normal;
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec3  n     = normalize(i.normalWs);
-        vec3  w     = n * n;
-        float shade = w.x * 0.6 + w.z * 0.8 + w.y * (n.y > 0.0 ? 1.0 : 0.5);
-        vec3  col   = CG_OBJECT_CUSTOM0.rgb * shade;
-        fragColor   = vec4(col, 1.0);
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 fragColor = vec4(0.0);
+    vec3  n     = normalize(i.normalWs);
+    vec3  w     = n * n;
+    float shade = w.x * 0.6 + w.z * 0.8 + w.y * (n.y > 0.0 ? 1.0 : 0.5);
+    vec3  col   = CG_OBJECT_CUSTOM0.rgb * shade;
+    fragColor   = vec4(col, 1.0);
+    s.baseColor = fragColor.rgb;
 }

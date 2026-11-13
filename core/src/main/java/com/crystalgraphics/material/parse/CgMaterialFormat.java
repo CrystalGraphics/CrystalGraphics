@@ -350,7 +350,7 @@ final class CgMaterialFormat {
         if (namesGlobals(code)) uses.add("globals");
         refuseNamedBuffers(code, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
-        out.append("Tags { \"RenderType\" = \"").append(translucent ? "Transparent" : "Opaque").append('"')
+        out.append("Tags { \"RenderType\" = \"").append(sky ? "Background" : translucent ? "Transparent" : "Opaque").append('"')
            .append(" \"Lighting\" = \"").append(unlit ? "Unlit" : surfaceLit ? "Surface" : "Lit").append('"');
         if (!fog) out.append(" \"Fog\" = \"Off\"");
         if (!media) out.append(" \"Media\" = \"Off\"");
@@ -400,7 +400,10 @@ final class CgMaterialFormat {
         for (String l : factory.fill().strip().split("\n")) out.append("        ").append(l.strip()).append('\n');
         if (vertex != null) out.append("        ").append(MATERIAL_VERTEX).append("(v, o);\n");
         out.append(autoFill).append(passOut);
-        out.append("        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);\n    }\n");
+        out.append("        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(v.world, 1.0);\n");
+        // A sky stands at the far plane, behind everything whatever its mesh's size, as Unreal's sky materials do
+        if (sky) out.append("        gl_Position.z = CG_FAR_PLANE_Z(gl_Position.w);\n");
+        out.append("    }\n");
         // What the factory starts the surface from, and how it fades what the material adds
         StringBuilder start = new StringBuilder("        CgSurface s = cg_SurfaceDefaults();\n");
         for (String l : factory.defaults().strip().split("\n")) if (!l.isBlank()) start.append("        ").append(l.strip()).append('\n');
@@ -462,10 +465,15 @@ final class CgMaterialFormat {
     // ── global ──────────────────────────────────────────────────────────────────
 
     private static Lowered lowerGlobal(List<Item> items, String path) {
-        Map<String, String> m = properties(block(items, "Material"), List.of("SceneColorMargin", "ColorSpace"), path);
+        Map<String, String> m = properties(block(items, "Material"),
+                List.of("SceneColorMargin", "ColorSpace", "Queue", "Media"), path);
         // What its colour is: Target, written as it means, by default; sRGB decoded into a linear scene, Linear encoded
         // onto an encoded target
         String colorSpace = choice(m, "ColorSpace", "Target", path, "Target", "sRGB", "Linear");
+        // Where a consumer's own mesh pass sorts among the world's draws, and whether the smoke in front dims it
+        String queue = choice(m, "Queue", "Overlay", path, "Background", "Geometry", "AlphaTest", "Transparent",
+                "AfterDistortion", "Overlay");
+        boolean media = onOff(m, "Media", false, path);
         Item state = block(items, "RenderState");
         List<Item> code = code(items, path);
         Map<String, List<Item>> functions = functions(code);
@@ -493,12 +501,12 @@ final class CgMaterialFormat {
         }
         refuseNamedBuffers(code, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
-        out.append("Tags { \"RenderType\" = \"Opaque\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\" \"Media\" = \"Off\"")
-           .append(" \"ColorSpace\" = \"").append(colorSpace).append('"');
+        out.append("Tags { \"RenderType\" = \"Opaque\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\"")
+           .append(media ? "" : " \"Media\" = \"Off\"").append(" \"ColorSpace\" = \"").append(colorSpace).append('"');
         if (m.containsKey("SceneColorMargin")) {
             out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
         }
-        out.append(" }\nQueue = \"Overlay\"\n");
+        out.append(" }\nQueue = \"").append(queue).append("\"\n");
         appendData(out, items, "", "", path);
         Item v2f = struct(items, "v2f");
         out.append("struct v2f {").append(v2f == null ? "" : v2f.body()).append("};\n");

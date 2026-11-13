@@ -4,7 +4,7 @@
 //     float index = FX_RIBBON_INDEX, along = FX_RIBBON_ALONG, side = FX_RIBBON_SIDE;   // fx_common.glsl
 //     vec4 h = fx_hash41(index + seed * 101.0);
 //     vec3 world = (CG_OBJECT_TO_WORLD * vec4(pointOnPath, 1.0)).xyz;
-//     world = fx_ribbon_vertex(world, tangentInWorld, FX_CAMERA, halfWidth, side);
+//     world = fx_ribbon_vertex(world, tangentInWorld, CG_CAMERA_POSITION, halfWidth, side);
 #pragma once
 
 // Four 0..1 numbers from one, stable for the same input (Dave Hoskins' hash without sine).

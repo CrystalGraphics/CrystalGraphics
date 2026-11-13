@@ -1,22 +1,13 @@
-// What every effect shader shares, the vfx engine's and the showcase's alike: the eye, hashes, the noise volumes' two
-// kinds of 3D noise and their fractals, cellular noise, erf and a filmic curve. Pure functions: nothing here reads a
-// derivative, so it compiles into both stages.
+// What every effect shader shares, the vfx engine's and the showcase's alike: hashes, the noise volumes' two kinds of
+// 3D noise and their fractals, cellular noise, erf and a filmic curve. The eye and the pixel's view ray are the
+// engine's (CG_CAMERA_POSITION, cg_PixelRay()). Pure functions: nothing here reads a derivative, so it compiles into
+// both stages.
 //
 //   fx_noise / fx_fbm / fx_ridged / fx_warped   gradient noise, about -1..1: smooth, no lattice showing; flowing energy
 //   fx_value_noise / _fbm / _ridged             value noise, 0..1: blotchier; surfaces and patterns
 #pragma once
 
-// The eye and the pixel's view ray are the engine's (cg_env.glsl): these names go with their last callers (P2.5 F5).
-#define FX_CAMERA CG_CAMERA_POSITION
-#define FX_PIXEL_RAY cg_PixelRay()
-// The window depth of point p in the pass's convention, reversed or not: what gl_FragDepth takes.
-#define FX_WINDOW_DEPTH(p) fx_window_depth(cg_ProjMatrix * (cg_ViewMatrix * vec4((p), 1.0)))
-
-float fx_window_depth(vec4 clip) {
-    return clamp(clip.z / clip.w, 0.0, 1.0);
-}
-
-// Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only, like FX_CAMERA.
+// Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only.
 // CgVfxQuads (CgMesh.quads): the vertex's quad, and its corner -1..1 on each axis.
 #define FX_QUAD_INDEX float(CG_VERTEX_ID >> 2)
 #define FX_QUAD_CORNER (CG_VERTEX_CORNER * 2.0 - 1.0)

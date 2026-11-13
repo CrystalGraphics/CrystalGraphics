@@ -7,6 +7,7 @@
 //   FADE   _Fade.a of the way to _Fade.rgb, last: dst * (1 - a) + rgb with the fade's share in both
 #domain global
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
+Material { Media On }
 
 Keywords {
     BLOOM ("BLOOM", switched)

@@ -3,7 +3,7 @@
 // then the scene mixed toward it by the alpha raised to the falloff, times the intensity.
 #domain global
 #include "crystalgraphics:shaders/lib/post/post_material.glsl"
-Material { SceneColorMargin 0.001 }
+Material { SceneColorMargin 0.001  Media On }
 
 Keywords {
     SHAPE_BOX ("SHAPE_BOX")

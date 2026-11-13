@@ -208,7 +208,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | `Media` | `On`, `Off` | Dimmed by the smoke and dust in front of it |
 | `ColorSpace` | `sRGB`, `Linear` | What its colours are written in |
 | `SceneColorMargin` | a number | How far past its own pixel it samples the scene, as a share of the screen's height: required where it reads `CG_SCENE_COLOR` (0.001 for its own pixel alone) |
-| `Sky` | `Off`, `On` | Drawn first, behind everything |
+| `Sky` | `Off`, `On` | Drawn first, at the far plane behind everything, whatever its mesh's size |
 | `PerDrawValues` | `Off`, `On` | Each property may be set per draw, by the draw's row (a VFX look's) |
 | `VertexFactory` | `Mesh`, … | What draws it (§ 5) |
 
@@ -745,8 +745,14 @@ For the renderer's own passes and a consumer's own mesh pass: a raw vertex and f
 applied for you. The one domain that writes `gl_Position` and a `RenderState`, and names the engine buffers it reads
 (`EngineBuffers { curve clip }`), since nothing else draws it.
 
-Its colour is written as it means it (`ColorSpace Target`); `Material { ColorSpace sRGB }` has the engine decode it into
-a linear scene, `ColorSpace Linear` encode it onto an encoded target, as a surface material's.
+`Material { }` takes:
+
+| Setting | Values | Does |
+|---|---|---|
+| `ColorSpace` | `Target` (default), `sRGB`, `Linear` | `Target`: its colour is written as it means it; `sRGB` is decoded into a linear scene, `Linear` encoded onto an encoded target, as a surface material's |
+| `Queue` | `Overlay` (default), `Background`, `Geometry`, `AlphaTest`, `Transparent`, `AfterDistortion` | where a mesh pass of yours sorts among the world's draws |
+| `Media` | `Off` (default), `On` | whether the smoke and gas in front of it dim it, as a translucent surface material's |
+| `SceneColorMargin` | a number | how far past its pixel it samples the scene |
 
 ```glsl
 #domain global
