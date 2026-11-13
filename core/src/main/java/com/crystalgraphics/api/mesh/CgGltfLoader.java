@@ -70,11 +70,12 @@ final class CgGltfLoader {
         CgMeshTopology topology = topologyOf(primitives);
         List<String> materials = new ArrayList<>();
         for (MeshPrimitiveModel p : primitives) materials.add(materialName(p));
+        boolean tangents = tangents(primitives);
         CgMesh mesh = CgMeshLoader.mesh(format != null ? format : CgVertexFormat.SPATIAL, shared, m -> {
             m.topology(topology);
             for (int i = 0; i < primitives.size(); i++) {
                 if (i > 0) m.submesh();
-                write(m, primitives.get(i), null);
+                write(m, primitives.get(i), null, tangents);
             }
         });
         return new CgMeshLoader.Model(mesh, Collections.unmodifiableList(materials));
@@ -128,10 +129,11 @@ final class CgGltfLoader {
         CgMeshTopology topology = topologyOf(primitives);
         if (topology != CgMeshTopology.TRIANGLES) throw new IOException("a skinned mesh of " + topology);
 
+        boolean tangents = tangents(primitives);
         CgMesh mesh = CgMeshLoader.mesh(CgVertexFormat.skinned(bones.skeleton.boneCount()), shared, m -> {
             for (int i = 0; i < primitives.size(); i++) {
                 if (i > 0) m.submesh();
-                write(m, primitives.get(i), jointBones.get(i));
+                write(m, primitives.get(i), jointBones.get(i), tangents);
             }
         });
 
@@ -208,15 +210,25 @@ final class CgGltfLoader {
     }
 
     /**
-     * One primitive's vertices and indices. {@code jointBones} maps the primitive's skin joints to bones, null for a
-     * static primitive.
+     * Whether every primitive carries {@code TANGENT}: the file's tangents are taken only then, a mesh's vertices all
+     * given one or none, and with none the writer makes MikkTSpace's, as glTF asks of a reader.
      */
-    private static void write(CgMeshWriter m, MeshPrimitiveModel p, @Nullable int[] jointBones) {
+    private static boolean tangents(List<MeshPrimitiveModel> primitives) {
+        for (MeshPrimitiveModel p : primitives) if (!p.getAttributes().containsKey("TANGENT")) return false;
+        return true;
+    }
+
+    /**
+     * One primitive's vertices and indices. {@code jointBones} maps the primitive's skin joints to bones, null for a
+     * static primitive; {@code tangents} takes its {@code TANGENT}.
+     */
+    private static void write(CgMeshWriter m, MeshPrimitiveModel p, @Nullable int[] jointBones, boolean tangents) {
         Map<String, AccessorModel> attributes = p.getAttributes();
         AccessorModel position = attributes.get("POSITION");
         AccessorModel uv = attributes.get("TEXCOORD_0"), normal = attributes.get("NORMAL"), color = attributes.get("COLOR_0");
         AccessorModel[] sets = {attributes.get("TEXCOORD_1"), attributes.get("TEXCOORD_2"), attributes.get("TEXCOORD_3")};
         AccessorModel joints = attributes.get("JOINTS_0"), weights = attributes.get("WEIGHTS_0");
+        AccessorModel tangent = tangents ? attributes.get("TANGENT") : null;
         if (jointBones != null) {
             if (joints == null || weights == null) throw new IllegalArgumentException("a skinned primitive has no JOINTS_0 or WEIGHTS_0");
             if (attributes.containsKey("JOINTS_1")) {
@@ -237,6 +249,10 @@ final class CgGltfLoader {
                     .color(value(color, v, 0, 1f), value(color, v, 1, 1f), value(color, v, 2, 1f), value(color, v, 3, 1f));
             for (int set = 1; set <= more.length / 2 && !Float.isNaN(more[set * 2 - 2]); set++) {
                 m.uv(set, more[set * 2 - 2], more[set * 2 - 1]);
+            }
+            if (tangent != null) {
+                m.tangent(value(tangent, v, 0, 1f), value(tangent, v, 1, 0f), value(tangent, v, 2, 0f),
+                        value(tangent, v, 3, 1f) < 0f ? -1f : 1f);
             }
             if (jointBones != null) {
                 for (int i = 0; i < 4; i++) {

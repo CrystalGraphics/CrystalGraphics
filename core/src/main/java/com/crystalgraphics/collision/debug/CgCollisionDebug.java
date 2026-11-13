@@ -169,7 +169,7 @@ public final class CgCollisionDebug {
             float a = (argb >>> 24) / 255f;
             // the colour rides in the normal, its alpha in u: collision/debug_lines.shader reads them back
             for (int c = 0; c < batch.corners; c++, at += 3) {
-                m.vertex().position(p[at], p[at + 1], p[at + 2]).uv(a, 0f).normal(r, g, b).end();
+                m.vertex().position(p[at], p[at + 1], p[at + 2]).uv(a, 0f).normal(r, g, b).tangent(1f, 0f, 0f, 1f).end();
             }
         }
     }

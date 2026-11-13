@@ -115,6 +115,9 @@ flat in int cg_InstanceId;
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)
+// The drawn object's position, camera-relative, either stage: Unreal's GetObjectWorldPosition. A particle factory
+// redefines it as its system's bounds' centre.
+#define CG_OBJECT_POSITION (CG_OBJECT_TO_WORLD[3].xyz)
 #define CG_NORMAL_MATRIX mat3(CG_OBJECT_DATA.normalMatrix)
 #define CG_OBJECT_CUSTOM0 (CG_OBJECT_DATA.custom0)
 #define CG_OBJECT_CUSTOM1 (CG_OBJECT_DATA.custom1)
@@ -160,6 +163,15 @@ CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
 // any affine transform of eye space: Minecraft multiplies its view bobbing and hurt shake into the projection, which
 // scales [2][2] and tilts the w row. The perspective's own terms are recovered from both rows, since read off [2][2]
 // alone a half-degree bob moved a point at render distance by half its distance or more.
+// A vertex's tangent, bitangent and normal in the world, from its world normal n, its tangent t carried to the world
+// by the object's matrix and its bitangent's sign w: Unreal's TangentToLocal (LocalVertexFactory.ush), t made
+// perpendicular to n, the bitangent cross(n, t) * w. A tangent of zero takes any perpendicular.
+mat3 cg_TangentFrame(vec3 n, vec3 t, float w) {
+    t -= n * dot(n, t);
+    t = dot(t, t) > 1.0e-12 ? normalize(t) : normalize(cross(n, abs(n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    return mat3(t, cross(n, t) * (w < 0.0 ? -1.0 : 1.0), n);
+}
+
 float cg_LinearEyeDepth(float windowDepth) {
     float ndc = windowDepth;
     if (cg_ProjMatrix[2][3] == 0.0) return (cg_ProjMatrix[3][2] - ndc) / cg_ProjMatrix[2][2];

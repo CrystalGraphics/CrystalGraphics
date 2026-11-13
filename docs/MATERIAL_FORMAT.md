@@ -298,10 +298,10 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 
 | `VertexFactory` | What draws it | It hands you |
 |---|---|---|
-| `Mesh` (default) | A mesh: `pass.draw(mesh, material)`, static, instanced or skinned | the mesh's vertices |
+| `Mesh` (default) | A mesh: `pass.draw(mesh, material)`, static, instanced or skinned | the mesh's vertices; `cg_TangentToWorld` |
 | `Procedural` | A draw of a vertex count, no mesh | nothing: your `vertex()` assigns `v.world`, usually from `Buffers { }` and `CG_VERTEX_ID` |
 | `Sprites` | A particle renderer's camera-facing quads (`CgVfxRenderers.sprite`); a beam's or ribbon's strips | each corner placed, faced and flipbooked; `cg_Particle` |
-| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle` |
+| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle`; `cg_TangentToWorld` |
 | `VfxMesh` | A VFX mesh slot (`CgVfxFrame.mesh`): a unit sphere or the layer's mesh, placed by the slot | the mesh's vertices; `cg_VfxMesh` |
 | `Billboard` | A VFX billboard slot (`CgVfxFrame.billboard`): one camera-facing quad, a lone particle | the quad's corner (`v.position` -1..1); `cg_Billboard` |
 | `Ribbons` | A VFX ribbons slot (`CgVfxFrame.ribbons`): stateless strips of 32 segments, placed by the material | nothing: your `vertex()` assigns `v.world` from `cg_Ribbon` |
@@ -312,6 +312,26 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
 | `TubeVolume` | A tube slot, each chunk on a sphere round it | the sphere's vertices; `cg_Tube` |
+
+**`cg_TangentToWorld`** (`Mesh`, `MeshParticles`) is the vertex's tangent, bitangent and normal in the world, in
+`vertex()`: what a normal map is read in. Every mesh carries a tangent (`cg_Tangent`, its bitangent's sign in `w`):
+the file's, or MikkTSpace's made when it loads, as Unreal's mesh build makes them. Pass it to `surface()` through your
+`v2f`:
+
+```glsl
+struct v2f { vec2 uv0; mat3 tangentToWorld; };
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv0 = v.uv0;
+    o.tangentToWorld = cg_TangentToWorld;
+}
+void surface(in v2f i, inout CgSurface s) {
+    vec3 n = texture(_Normal, i.uv0).xyz * 2.0 - 1.0;          // tangent space: x along u, y along v
+    s.normal = normalize(i.tangentToWorld * n);                  // ShadingModel DefaultLit lights by it
+}
+```
+
+**`CG_OBJECT_POSITION`** is what is drawn's position, camera-relative, under every factory: the mesh's origin, or for
+a particle its system's bounds' centre (Unreal's ObjectPositionWS).
 
 **`cg_Particle`** is the particle the vertex belongs to, readable in `vertex()` and `surface()`:
 
@@ -472,6 +492,8 @@ void vertex(inout CgVertex v, out v2f o) {
 ```
 
 Factories listed together share a vertex type, and at most one has parameters: read them only under its keywords.
+Every factory but `Mesh` and `Procedural` has a `Usage` keyword, so any of them may follow the first; those two are
+bases, as Unreal's static mesh takes no usage flag.
 
 **Meshes and particles both** (a game's material marked for static meshes, mesh particles and sprites): list `Mesh`
 then `MeshParticles`. Static and skeletal meshes take `Mesh`; every particle draw (a mesh, a sprite, a strip) takes

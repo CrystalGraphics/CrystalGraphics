@@ -5,7 +5,7 @@
 // origin (camera-relative), .intensity the slot's, .size the layer's; read in either stage. Copy it once
 // (CgPathRibbon r = cg_PathRibbon): its header is a texture read. cg_Vfx is the draw's header; an ending's fade is
 // applied for the material.
-Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence }
+Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence  Usage FX_ON_PATH_RIBBONS }
 
 Properties {
     _FxPath ("Path rings", sampler2D) = "black"

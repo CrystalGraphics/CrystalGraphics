@@ -1,10 +1,20 @@
 // Mesh: a mesh component's vertices, static, instanced or skinned (the skinned program is the engine's variant),
-// placed by its draw's transform. The default VertexFactory.
+// placed by its draw's transform. The default VertexFactory, so the base usage (Unreal's static mesh, which takes no
+// flag). cg_TangentToWorld is the vertex's tangent, bitangent and normal in the world, from the mesh's tangent: what a
+// normal map is read in. A material passes it to surface() through its v2f:
+//     o.tangentToWorld = cg_TangentToWorld;            // vertex()
+//     s.normal = normalize(i.tangentToWorld * (texture(_Normal, i.uv0).xyz * 2.0 - 1.0));   // surface()
 Factory { VertexType spatial }
+
+Declarations {
+    #include "crystalgraphics:shaders/factories/tangent_frame.glsl"
+}
 
 void fill(inout CgVertex v) {
     v.position = cg_Position;
-    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    cg_TangentToWorld = cg_TangentFrame(normalize(CG_NORMAL_MATRIX * cg_Normal), mat3(CG_OBJECT_TO_WORLD) * cg_Tangent.xyz,
+            cg_Tangent.w);
+    v.normal = cg_TangentToWorld[2];
     v.color = cg_Color;
     v.uv0 = cg_TexCoord0;
     v.uv1 = cg_TexCoord1;

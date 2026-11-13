@@ -6,7 +6,7 @@
 // its right).
 // cg_Vfx is the draw's header; an ending's fade (cg_Vfx.presence) is applied for the material, and a lit particle is
 // lit by its own light.
-Factory { VertexType none  Parameters cg_Particle  Fade cg_Vfx.presence }
+Factory { VertexType none  Parameters cg_Particle  Fade cg_Vfx.presence  Usage FX_ON_SPRITES }
 EngineBuffers { particle }
 
 Declarations {

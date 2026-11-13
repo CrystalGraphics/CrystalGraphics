@@ -4,7 +4,7 @@
 // cg_Grid.index is the grid's place in the atlas, .cell its cell in blocks, .size the layer's size, .extinction a
 // block, .lo and .hi the box, .corner the grid's low corner; read in either stage. cg_Vfx is the draw's header; an
 // ending's fade is applied for the material.
-Factory { VertexType spatial  Fade cg_Vfx.presence }
+Factory { VertexType spatial  Fade cg_Vfx.presence  Usage FX_ON_GRID_VOLUME }
 
 Properties {
     _GridView   ("The grid atlas's channels (CgVfxGridAtlas)", sampler3D) = "black"

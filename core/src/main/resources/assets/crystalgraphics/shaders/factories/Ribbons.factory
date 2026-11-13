@@ -4,7 +4,7 @@
 // 1 across it, the vertex stage's alone (pass what the pixel needs in v2f); .size is the layer's size and .values the
 // four the effect documents for the slot, read in either stage. cg_Vfx is the draw's header; an ending's fade is applied
 // for the material.
-Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence }
+Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence  Usage FX_ON_RIBBONS }
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/common.glsl"

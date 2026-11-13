@@ -211,8 +211,8 @@ public final class CgGlslWriter {
     }
 
     /**
-     * The skinned factory, after the engine buffers: the bone palettes, then {@code cg_Position} and {@code cg_Normal}
-     * redefined as the vertex skinned by its bones (Unreal's {@code SkinPosition} and {@code SkinTangents}). The
+     * The skinned factory, after the engine buffers: the bone palettes, then {@code cg_Position}, {@code cg_Normal} and
+     * {@code cg_Tangent} redefined as the vertex skinned by its bones (Unreal's {@code SkinPosition} and {@code SkinTangents}). The
      * function reading the attributes comes before the macros, so it reads the mesh's; {@code main} calls it first.
      */
     private static void skinnedFactory(StringBuilder sb) {
@@ -220,16 +220,18 @@ public final class CgGlslWriter {
         sb.append("#include \"").append(BONES_ENV).append("\"\n");
         // Either width's vertex, as the draw's record says: Unreal's fetched skin weights read their index size likewise
         sb.append(CgGlslBlocks.vertexFetch(CgVertexFormat.SKINNED, CgVertexFormat.SKINNED_WIDE, "CG_BONES_WIDE"));
-        sb.append("vec3 _cg_skinPosition;\nvec3 _cg_skinNormal;\n")
+        sb.append("vec3 _cg_skinPosition;\nvec3 _cg_skinNormal;\nvec4 _cg_skinTangent;\n")
           .append("void _cg_skin() {\n")
           .append("  vec4 r0, r1, r2;\n")
           .append("  cg_BoneBlend(cg_BoneIndices, cg_BoneWeights, r0, r1, r2);\n")
-          .append("  vec4 p = vec4(cg_Position, 1.0), n = vec4(cg_Normal, 0.0);\n")
+          .append("  vec4 p = vec4(cg_Position, 1.0), n = vec4(cg_Normal, 0.0), t = vec4(cg_Tangent.xyz, 0.0);\n")
           .append("  _cg_skinPosition = vec3(dot(r0, p), dot(r1, p), dot(r2, p));\n")
           .append("  vec3 skinned = vec3(dot(r0, n), dot(r1, n), dot(r2, n));\n")
           .append("  _cg_skinNormal = dot(skinned, skinned) > 0.0 ? normalize(skinned) : cg_Normal;\n")
+          .append("  vec3 tangent = vec3(dot(r0, t), dot(r1, t), dot(r2, t));\n")
+          .append("  _cg_skinTangent = vec4(dot(tangent, tangent) > 0.0 ? normalize(tangent) : cg_Tangent.xyz, cg_Tangent.w);\n")
           .append("}\n")
-          .append("#define cg_Position _cg_skinPosition\n#define cg_Normal _cg_skinNormal\n");
+          .append("#define cg_Position _cg_skinPosition\n#define cg_Normal _cg_skinNormal\n#define cg_Tangent _cg_skinTangent\n");
     }
 
     // ── The fragment stage ────────────────────────────────────────────────────────

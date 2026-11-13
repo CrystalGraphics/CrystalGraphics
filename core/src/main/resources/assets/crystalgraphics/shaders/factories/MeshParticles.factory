@@ -13,7 +13,7 @@ EngineBuffers { particle }
 Declarations {
     #include "crystalgraphics:shaders/factories/draw.glsl"
     CgMaterialParticle cg_Particle;
-    mat3 cg_TangentToWorld;
+    #include "crystalgraphics:shaders/factories/tangent_frame.glsl"
 }
 
 Parameters {

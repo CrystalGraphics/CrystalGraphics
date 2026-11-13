@@ -43,6 +43,7 @@ struct CgMaterialParticle {
 // The drawing system's bounds, Unreal's Primitive.ObjectWorldPositionAndRadius: its centre, camera-relative, and its
 // sphere's radius in blocks, either stage. The renderer writes its fixed bounds per effect, the centre absolute, since
 // the camera moves between the row and the draw. A system with no fixed bounds is refused when it loads.
+#undef CG_OBJECT_POSITION
 #define CG_OBJECT_POSITION (_cg_Bounds.xyz - cg_WorldOrigin.xyz)
 #define CG_OBJECT_RADIUS (_cg_Bounds.w)
 
@@ -618,10 +619,9 @@ CgMaterialVertex _cg_mesh_vertex(float cameraOffset, float keepSize, float drawn
     v.texCoords[1] = cg_TexCoord1;
     v.texCoords[2] = cg_TexCoord2;
     v.texCoords[3] = cg_TexCoord3;
-    // The format carries no tangent: a frame about the normal (Duff et al., "Building an Orthonormal Basis, Revisited").
-    vec3 n = normalize(CG_NORMAL_MATRIX * cg_Normal);
-    float s = n.z >= 0.0 ? 1.0 : -1.0, a = -1.0 / (s + n.z), b = n.x * n.y * a;
-    v.tangentToWorld = mat3(vec3(1.0 + s * n.x * n.x * a, s * b, -s * n.x), vec3(b, s + n.y * n.y * a, -n.y), n);
+    // The mesh's own tangent, as MeshParticleVertexFactory.ush's TangentToLocal turned by the particle
+    v.tangentToWorld = cg_TangentFrame(normalize(CG_NORMAL_MATRIX * cg_Normal), mat3(CG_OBJECT_TO_WORLD) * cg_Tangent.xyz,
+            cg_Tangent.w);
     v.vertexColor = cg_Color;
     return v;
 }

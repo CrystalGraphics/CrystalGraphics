@@ -23,8 +23,8 @@ import java.util.Arrays;
  * <ul>
  *   <li>The mesh must be in a skinned format with its CPU copy, and {@code skinning} hold a matrix for every bone a
  *       vertex names.</li>
- *   <li>Colour, UVs and submeshes are kept as stored; a normal skinned to zero keeps its bind-pose normal, as the
- *       shader does.</li>
+ *   <li>Colour, UVs and submeshes are kept as stored; a normal or tangent skinned to zero keeps its bind pose's, as
+ *       the shader does.</li>
  * </ul>
  */
 public final class CgSkinning {
@@ -46,10 +46,12 @@ public final class CgSkinning {
 
         CgVertexAttribute position = from.getAttribute(from.indexOf("cg_Position"));
         CgVertexAttribute normal = from.getAttribute(from.indexOf("cg_Normal"));
+        CgVertexAttribute tangent = from.getAttribute(from.indexOf("cg_Tangent"));
         CgVertexAttribute indices = from.getAttribute(from.indexOf("cg_BoneIndices"));
         CgVertexAttribute weights = from.getAttribute(from.indexOf("cg_BoneWeights"));
         int positionAt = to.getAttribute(to.indexOf("cg_Position")).getOffset();
         int normalAt = to.getAttribute(to.indexOf("cg_Normal")).getOffset();
+        int tangentAt = to.getAttribute(to.indexOf("cg_Tangent")).getOffset();
         float[] rows = new float[12];
         for (int v = 0; v < vertices; v++) {
             int at = v * stride;
@@ -84,6 +86,17 @@ public final class CgSkinning {
             dst.putShort(o + normalAt, snorm16(nx));
             dst.putShort(o + normalAt + 2, snorm16(ny));
             dst.putShort(o + normalAt + 4, snorm16(nz));
+            // The tangent through the same 3x3, its sign kept: Unreal's SkinTangents
+            float tx = tangent.read(src, at, 0), ty = tangent.read(src, at, 1), tz = tangent.read(src, at, 2);
+            float ux = rows[0] * tx + rows[1] * ty + rows[2] * tz;
+            float uy = rows[4] * tx + rows[5] * ty + rows[6] * tz;
+            float uz = rows[8] * tx + rows[9] * ty + rows[10] * tz;
+            float tl = (float) Math.sqrt(ux * ux + uy * uy + uz * uz);
+            if (tl > 0f) {
+                dst.putShort(o + tangentAt, snorm16(ux / tl));
+                dst.putShort(o + tangentAt + 2, snorm16(uy / tl));
+                dst.putShort(o + tangentAt + 4, snorm16(uz / tl));
+            }
         }
 
         int indexCount = skinned.indexCount();

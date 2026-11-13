@@ -62,7 +62,8 @@ public final class CgMeshWriter {
     private final CgVertexFormat format;
     private final int stride;
     private final CgVertexAttribute[] attributes;
-    private final int positionAttribute, normalAttribute, colorAttribute, boneIndexAttribute, boneWeightAttribute;
+    private final int positionAttribute, normalAttribute, colorAttribute, boneIndexAttribute, boneWeightAttribute,
+            tangentAttribute;
     /** The attribute of each UV set by its index, -1 where the format has none. */
     private final int[] uvAttributes = {-1, -1, -1, -1};
     private final int required;
@@ -84,6 +85,8 @@ public final class CgMeshWriter {
     private final int[] givenBones = new int[MAX_GIVEN_BONES], rawWeights = new int[MAX_GIVEN_BONES];
     private final float[] givenWeights = new float[MAX_GIVEN_BONES];
     private int givenBoneCount;
+    /** Vertices given a tangent, and not: a body gives every one, or none and MikkTSpace's are made. */
+    private int tangentsGiven, tangentsMissing;
 
     byte[] vertices;
     int vertexCount;
@@ -106,7 +109,7 @@ public final class CgMeshWriter {
         this.components = new int[n];
         this.sizes = new int[n];
         this.byteSizes = new int[n];
-        int position = -1, normal = -1, color = -1, boneIndices = -1, boneWeights = -1;
+        int position = -1, normal = -1, color = -1, boneIndices = -1, boneWeights = -1, tangent = -1;
         for (int i = 0; i < attributes.length; i++) {
             CgVertexAttribute a = format.getAttribute(i);
             attributes[i] = a;
@@ -120,6 +123,7 @@ public final class CgMeshWriter {
             switch (a.getSemantic()) {
                 case POSITION: position = i; break;
                 case NORMAL: normal = i; break;
+                case TANGENT: tangent = i; break;
                 case COLOR: color = i; break;
                 case BONE_INDICES: boneIndices = i; break;
                 case BONE_WEIGHTS: boneWeights = i; break;
@@ -135,6 +139,7 @@ public final class CgMeshWriter {
         this.colorAttribute = color;
         this.boneIndexAttribute = boneIndices;
         this.boneWeightAttribute = boneWeights;
+        this.tangentAttribute = tangent;
         this.maxBones = boneIndices < 0 ? 0 : 1 << (8 * sizes[boneIndices]);
         this.required = (1 << attributes.length) - 1;
         this.scratchBytes = new byte[stride];
@@ -152,6 +157,8 @@ public final class CgMeshWriter {
         given = 0;
         open = false;
         anyPosition = false;
+        tangentsGiven = 0;
+        tangentsMissing = 0;
         Arrays.fill(bounds, 0f);
         this.topology = topology;
     }
@@ -215,6 +222,24 @@ public final class CgMeshWriter {
 
     public CgMeshWriter normal(float x, float y, float z) {
         return normalAttribute < 0 ? this : floats(normalAttribute, x, y, z, 1f, 3);
+    }
+
+    /**
+     * The tangent a normal map's x runs along, and in {@code w} its bitangent's sign, 1 or -1: the bitangent is
+     * {@code cross(normal, tangent) * w}, glTF's and MikkTSpace's convention. Nothing where the format has none.
+     *
+     * <pre>{@code
+     * m.vertex().position(x, y, z).normal(0, 1, 0).uv(u, v).tangent(1, 0, 0, 1).end();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Give every vertex one, or none: a body that gives none is given MikkTSpace's when it ends, its vertices
+     *       split where a mirrored UV island meets its twin. Some and not others throws.</li>
+     *   <li>A mesh edited every frame gives its own: MikkTSpace is a load's work, not a frame's.</li>
+     * </ul>
+     */
+    public CgMeshWriter tangent(float x, float y, float z, float w) {
+        return tangentAttribute < 0 ? this : floats(tangentAttribute, x, y, z, w, 4);
     }
 
     /** Colour as {@code 0xAARRGGBB}. */
@@ -308,6 +333,14 @@ public final class CgMeshWriter {
             given |= 1 << at;
         }
         if (givenBoneCount > 0) writeBones();
+        if (tangentAttribute >= 0) {
+            if ((given & (1 << tangentAttribute)) != 0) {
+                tangentsGiven++;
+            } else {
+                floats(tangentAttribute, 0f, 0f, 0f, 1f, 4);   // made at finish()
+                tangentsMissing++;
+            }
+        }
         if (given != required) throw new IllegalStateException(missing());
         int at = vertexCount * stride;
         if (at + stride > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(at + stride, vertices.length * 2));
@@ -377,6 +410,7 @@ public final class CgMeshWriter {
         int at = vertexCount * stride, length = count * stride;
         if (at + length > vertices.length) vertices = Arrays.copyOf(vertices, Math.max(at + length, vertices.length * 2));
         System.arraycopy(bytes, from, vertices, at, length);
+        if (tangentAttribute >= 0) tangentsGiven += count;
         if (positionAttribute >= 0) {
             CgVertexAttribute p = attributes[positionAttribute];
             ByteBuffer view = ByteBuffer.wrap(vertices).order(ByteOrder.nativeOrder());
@@ -450,7 +484,10 @@ public final class CgMeshWriter {
         submeshFirstVertex = vertexCount;
     }
 
-    /** Closes the last submesh and checks every index names a vertex of its own submesh. */
+    /**
+     * Closes the last submesh, checks every index names a vertex of its own submesh, and makes the tangents a body
+     * gave none of ({@link CgMeshTangents}).
+     */
     void finish() {
         if (open) throw new IllegalStateException("vertex() without end()");
         closeSubmesh();
@@ -463,6 +500,12 @@ public final class CgMeshWriter {
                 }
             }
         }
+        if (tangentsMissing == 0) return;
+        if (tangentsGiven > 0) {
+            throw new IllegalStateException(tangentsMissing + " of " + (tangentsGiven + tangentsMissing) + " vertices of "
+                    + format.getKey() + " have no tangent: give every vertex one, or none and MikkTSpace's are made");
+        }
+        CgMeshTangents.make(this);
     }
 
     // ── Encoding ───────────────────────────────────────────────────────────────
