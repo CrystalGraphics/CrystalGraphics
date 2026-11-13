@@ -1,7 +1,7 @@
 // A fill with colours of its own into a texture: each cell adds its premultiplied colour times its area, so the
 // shape sums exactly. No discard: a sliver's 0.02 has to add up. CgCanvasMaterials.colourCoverage().
 #domain global
-#include "crystalgraphics:shaders/lib/stroke.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/stroke.glsl"
 Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 

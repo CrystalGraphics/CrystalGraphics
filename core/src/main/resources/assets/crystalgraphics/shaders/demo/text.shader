@@ -1,6 +1,6 @@
 // A text style's paint for CgTextDemo's shader stations: one Text-domain material, its effect picked by _Effect, so
 // each station is a material definition of it with its own value and every station shares one program. The glyph's
-// coverage is cg_text_layer's (env/buffer/text.glsl); this paints under it, across the whole run (cg_text_run_uv).
+// coverage is cg_text_layer's (canvas/primitives/text.glsl); this paints under it, across the whole run (cg_text_run_uv).
 //
 //   0 plasma     1 hologram    2 rainbow (HSV, cycling)    3 fire    4 electric    5 glitch    6 galaxy
 #domain ui

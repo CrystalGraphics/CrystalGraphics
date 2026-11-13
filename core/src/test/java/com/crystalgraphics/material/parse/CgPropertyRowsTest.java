@@ -98,7 +98,7 @@ public class CgPropertyRowsTest {
         CgParsedShader parsed = CgShaderParser.parseLowered(ROWS, "test:rows.shader");
         CgMaterialShaderCompiler.CompiledSource source = CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS);
         for (String stage : new String[] {source.vertexSource(), source.fragmentSource()}) {
-            assertTrue(stage.contains("#include \"crystalgraphics:shaders/env/buffer/rows.glsl\""));
+            assertTrue(stage.contains("#include \"crystalgraphics:shaders/env/rows.glsl\""));
             assertTrue(stage.contains(
                     "#define _Radius (_cg_at_Radius < 0 ? _cgm_Radius : CG_ROW(CG_PROPERTY_ROW + _cg_at_Radius).x)"));
             assertTrue(stage.contains("#define _Core (_cg_at_Core < 0 ? _cgm_Core : CG_ROW(CG_PROPERTY_ROW + _cg_at_Core))"));

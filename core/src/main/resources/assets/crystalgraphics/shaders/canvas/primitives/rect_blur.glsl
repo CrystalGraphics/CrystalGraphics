@@ -1,19 +1,9 @@
-// =============================================================================
-// rect_blur.glsl -- the coverage of a Gaussian-blurred rectangle, analytically.
+// A Gaussian-blurred rectangle's coverage, analytically. Ported from Skia Graphite (BSD-3-Clause, THIRD-PARTY.md):
+// $rect_blur_coverage_fn (sksl_graphite_frag.sksl), AnalyticBlurMask::MakeRect, skgpu::CreateIntegralTable.
 //
-// Ported from Skia Graphite (BSD-3-Clause, see THIRD-PARTY.md): the fragment function
-// $rect_blur_coverage_fn in sksl_graphite_frag.sksl, set up by AnalyticBlurMask::MakeRect, with the
-// integral table of skgpu::CreateIntegralTable (src/gpu/BlurUtils.cpp).
-//
-// ONE DELIBERATE CHANGE: the table is evaluated as the function it tabulates,
-//   T(t) = 0.5 * (erf((3 - 6t) / sqrt(2)) + 1),  exactly 1 from t = 0 in and 0 from t = 1 out, the two
-//   end texels CreateIntegralTable pins,
-// because a second sampler would split the batch it is drawn in. erf is Abramowitz and Stegun 7.1.26,
-// whose error (1.5e-7) is far below the table's eight bits.
-//
-// Coordinates are whatever space the rect is given in; the text shadow passes the quad's unit
-// parameter, with sigma per axis, so the blur transforms with the quad.
-// =============================================================================
+// Changed: the integral table is evaluated as its function, T(t) = 0.5 * (erf((3 - 6t) / sqrt(2)) + 1), since a second
+// sampler would split the batch; erf is Abramowitz and Stegun 7.1.26 (error 1.5e-7, below the table's 8 bits).
+// Coordinates are the rect's own space: the text shadow passes the quad's unit parameter, sigma per axis.
 #pragma once
 
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)

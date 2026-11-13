@@ -9,7 +9,7 @@ Properties {
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/tube.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
     CgTube cg_Tube;
 }
 

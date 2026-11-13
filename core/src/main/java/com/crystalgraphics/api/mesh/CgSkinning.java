@@ -9,7 +9,7 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 
 /**
- * A skinned mesh posed on the CPU: the Java twin of the skinned vertex factory ({@code env/buffer/bones.glsl}), each
+ * A skinned mesh posed on the CPU: the Java twin of the skinned vertex factory ({@code factories/bones.glsl}), each
  * vertex moved by the weighted sum of its bones' 3×4 transforms (Unreal's {@code ComputeBoneMatrixWithLimitedInfluences}),
  * its normal by the same matrix, renormalised. What a gate compares the GPU's skinning against, and what a tool bakes a
  * pose with; never a frame's path.

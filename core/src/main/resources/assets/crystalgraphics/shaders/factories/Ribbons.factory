@@ -9,7 +9,7 @@ Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence }
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/common.glsl"
     #include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
     struct CgRibbon { float index; float along; float side; float size; vec4 values; };
     #ifdef CG_VERTEX_STAGE
     #define cg_Ribbon CgRibbon(FX_RIBBON_INDEX, FX_RIBBON_ALONG, FX_RIBBON_SIDE, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM1)

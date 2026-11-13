@@ -2,7 +2,7 @@
 Factory { VertexType spatial  Fade cg_Vfx.presence }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
 }
 
 void fill(inout CgVertex v) {

@@ -16,8 +16,8 @@ Properties {
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/common.glsl"
     #include "crystalgraphics:shaders/lib/vfx/depth.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/scatter.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
+    #include "crystalgraphics:shaders/factories/scatter.glsl"
     #include "crystalgraphics:shaders/lib/vfx/sparse.glsl"
     struct CgFluid { int index; float cell; float weight; float size; vec3 lo; vec3 hi; vec3 corner; };
     CgFluid _cg_fluid() {

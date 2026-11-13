@@ -1,14 +1,9 @@
-// CgClipTable's shader environment: the frame's rounded clips, read in the fragment stage.
+// CgClipTable: the frame's rounded clips, fragment stage. A primitive multiplies what it draws by
+// CG_CLIP_QUAD_COVERAGE or CG_CLIP_CURVE_COVERAGE: its alpha if straight, its whole colour if premultiplied.
 //
-// INJECTED for the `clip` engine buffer, immediately after the table's own declaration. A material that also
-// declares `quad` or `curve` multiplies what it draws by CG_CLIP_QUAD_COVERAGE or CG_CLIP_CURVE_COVERAGE:
-// its alpha when it outputs straight alpha, its whole colour when it outputs premultiplied.
-//
-// An entry is a rounded box in its own space, reached from gl_FragCoord through toLocal0/toLocal1 (rows of a
-// 2x3 affine), less the band between its outer and inner edges -- what a mask drawn with a transparent border
-// reveals. The distance and the ramp are a shape's (canvas/box.shader's), so an edge antialiases as a box's own does. toLocal0.w
-// is the parent entry and toLocal1.w the ramp: 1 on the pixel grid, wider off it. space.x is the spatial node the
-// box is under: 0 reads gl_FragCoord as it is, any other maps it into the node through the palette first.
+// An entry is a rounded box in its own space (toLocal0/toLocal1, rows of a 2x3 affine from gl_FragCoord), less its
+// inner box, antialiased as box.shader's edge. toLocal0.w is the parent entry, toLocal1.w the ramp (1 on the pixel
+// grid), space.x the spatial node it is under (0: gl_FragCoord as it is).
 #pragma once
 
 #include "crystalgraphics:shaders/lib/sdf.glsl"

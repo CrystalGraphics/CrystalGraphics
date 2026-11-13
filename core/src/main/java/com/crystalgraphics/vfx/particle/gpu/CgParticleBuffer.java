@@ -10,7 +10,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The particle record a shader reads through the {@code particle} engine buffer, which the particle factories bind (the {@code CG_PARTICLE_*} macros in
- * {@code env/buffer/particle.glsl}): a GPU pool's drawn part, written by the step's last stage into the pool's own
+ * {@code factories/particle.glsl}): a GPU pool's drawn part, written by the step's last stage into the pool's own
  * buffer at each record's index, read at {@link #SLOT}. A draw's particle {@code n} is the record
  * {@code CgParticleOrderBuffer} names at {@code n}: Range's culled, sorted order, as Niagara's GPU renderers read the
  * simulation's buffer through its sorted indices.

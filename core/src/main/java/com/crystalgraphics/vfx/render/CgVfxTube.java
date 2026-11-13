@@ -25,7 +25,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *   <li>{@code CG_OBJECT_CUSTOM1.xyz}: the chunk's centre minus the effect's origin, so
  *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin, camera-relative; {@code .w} how many
  *       rings from the first the chunk owns, each ring owned by one chunk.</li>
- *   <li>{@code CG_OBJECT_CUSTOM3}: the draw header ({@code lib/vfx/draw.glsl}): the effect's row for the layer, its age, its
+ *   <li>{@code CG_OBJECT_CUSTOM3}: the draw header ({@code factories/draw.glsl}): the effect's row for the layer, its age, its
  *       seed and its presence.</li>
  * </ul>
  * <p>The mesh's uv is (ring within the chunk, angle as 0..1), its seam column doubled, and a closed mesh's end centres

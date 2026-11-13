@@ -1,6 +1,6 @@
 // A prefab part as CC2's particle-played clips draw one: its texture through a UV window, tinted, faded by its node's
 // opacity and alpha-tested by _Clip, _Glare of it glowing. On a SEQUENCE particle its node places it and the clip's
-// material scalars override the material's (lib/vfx/sequence.glsl); on a mesh slot it draws as the prefab instance places it.
+// material scalars override the material's (factories/sequence.glsl); on a mesh slot it draws as the prefab instance places it.
 // Premultiplied over what is behind it.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"

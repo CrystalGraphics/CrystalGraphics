@@ -7,7 +7,7 @@ EngineBuffers { curve clip }
 Keywords { SCREEN ("A 2D camera: each fragment's point from gl_FragCoord") }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/stroke.glsl"
+    #include "crystalgraphics:shaders/canvas/primitives/stroke.glsl"
 }
 
 RenderState {

@@ -1,13 +1,8 @@
-// CgPalette's shader environment: each spatial node's affine into the bound raster pass's target, and each effect
-// node's opacity.
+// CgPalette: each spatial node's affine into the pass's target, each effect node's opacity. Brought in by `quad`,
+// `curve` and `clip`, every stage.
 //
-// INJECTED for the `palette` engine buffer, which `quad`, `curve` and `clip` require, so their macros can read it -- a material
-// never declares it itself. Compiled into every stage; fragment-only code guards itself against the vertex and compute stages.
-//
-// A record's `node` field packs both of its nodes: spatial + 4096 * effect (CgPalette.pack). Node 0 is the pass's own
-// space at opacity 1 and its entry is never read, so a record at the root costs one branch. The packed value is an
-// exact integer below 2^24, which a float holds exactly and an int conversion reads back -- adding 0.5 would round
-// past 2^23.
+// A record's `node` packs spatial + 4096 * effect (CgPalette.pack); node 0 is the target's own space at opacity 1, never
+// read. An exact integer below 2^24, so int() reads it back; adding 0.5 would round past 2^23.
 #pragma once
 
 int cg_node_spatial(float node) {

@@ -78,7 +78,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
  * <ul>
  *   <li>A slot no layer of the look draws on costs nothing: a look without its realistic body draws no tube.</li>
  *   <li>A renderer above this frame's quality tier (its {@code quality}) draws nothing.</li>
- *   <li>Every draw's {@code CG_OBJECT_CUSTOM3} is its header ({@code lib/vfx/draw.glsl}): its row of bound values, the
+ *   <li>Every draw's {@code CG_OBJECT_CUSTOM3} is its header ({@code factories/draw.glsl}): its row of bound values, the
  *       effect's age, its seed and its presence. The other customs are the slot kind's ({@link CgVfxSlot.Kind}).</li>
  *   <li>Calling a method of another kind than the slot's throws.</li>
  * </ul>

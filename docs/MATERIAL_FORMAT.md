@@ -297,7 +297,7 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `PathRibbons` | A VFX path-ribbons slot (`CgVfxFrame.pathRibbons`): stateless strips riding a beam's path | nothing: your `vertex()` assigns `v.world` from `cg_PathRibbon` and the path's rings |
 | `GridVolume` | A VFX grid slot (`CgVfxGrid3D`): the box round a grid's tiles, drawn on its far wall | the box; `cg_Grid`; the grid atlas bound as `_GridView`, `_GridLight`, `_GridPages` |
 | `FluidVolume` | A VFX fluid slot (`CgVfxFluid`): the box round a fluid's tiles, drawn on its far wall | the box; `cg_Fluid`; the fluid atlas bound as `_FluidShade`, `_FluidRestA`/`B`, `_FluidPages` |
-| `Sequence` | A prefab part a clip plays on a sequence particle (`lib/vfx/sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
+| `Sequence` | A prefab part a clip plays on a sequence particle (`factories/sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
 | `TubeVolume` | A tube slot, each chunk on a sphere round it | the sphere's vertices; `cg_Tube` |

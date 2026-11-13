@@ -137,14 +137,14 @@ public final class CgMaterialShaderCompiler {
 
     /**
      * The engine's keyword for the skinned vertex factory's variant of any pass of a {@code #type spatial} shader: the
-     * vertex is skinned by its draw's bone palette ({@code env/buffer/bones.glsl}) before the material's code runs, which
+     * vertex is skinned by its draw's bone palette ({@code factories/bones.glsl}) before the material's code runs, which
      * reads it as {@code cg_Position} and {@code cg_Normal}, as Unreal compiles a material for its GPU skin vertex
      * factory. The world renderer asks for it for a {@code SKINNED} or {@code SKINNED_WIDE} mesh.
      */
     public static final String SKINNED = "CG_SKINNED";
 
     /** The skinned factory's environment, after the bone palettes' declaration. */
-    private static final String BONES_ENV = "crystalgraphics:shaders/env/buffer/bones.glsl";
+    private static final String BONES_ENV = "crystalgraphics:shaders/factories/bones.glsl";
 
     /**
      * The engine's keyword for the overdraw view's variant of any pass: the pass's own vertex stage, depth test (as a

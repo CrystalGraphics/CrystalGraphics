@@ -1983,7 +1983,7 @@ void surface(in v2f i, inout CgSurface s) {
 
 - **`PerDrawValues On`** makes every numeric property (float, vector, colour, and arrays of vec4 or colour) read either
   the material's value or the draw's row, whichever the renderer chose. Nothing changes in how the shader reads it.
-- **The header** (`lib/vfx/draw.glsl`, `cg_Vfx`): the effect's age, seed and presence (1 unless an ending fades it); the
+- **The header** (`factories/draw.glsl`, `cg_Vfx`): the effect's age, seed and presence (1 unless an ending fades it); the
   factory reads the slot kind's customs (`CgVfxSlot.Kind`) and fades what the material adds by the presence.
 - **Name colours for what they are** (`_Core`, `_Shell`, `_Hot`); a renderer binds each to a parameter. Nothing binds
   by name.

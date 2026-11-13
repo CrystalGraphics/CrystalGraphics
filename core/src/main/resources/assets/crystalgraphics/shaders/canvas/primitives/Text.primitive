@@ -1,5 +1,5 @@
 // Text: CgTextBatch's glyph layers on bitmap, MSDF and MTSDF glyphs. surface() changes the paint (a colour, or the
-// gradient a quad's custom0.w names); cg_text_layer (env/buffer/text.glsl) covers and premultiplies it. MSDF_MODE and
+// gradient a quad's custom0.w names); cg_text_layer (canvas/primitives/text.glsl) covers and premultiplies it. MSDF_MODE and
 // WORLD_LABEL are CgTextMaterials' four fixed instances, never toggled.
 Primitive { Queue Overlay }
 EngineBuffers { quad clip text }

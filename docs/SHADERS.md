@@ -45,16 +45,18 @@ Under `crystalgraphics:shaders/`, one folder per owner: a pass, its kernels and 
 | `reference/` | One reference file a domain, and `kernel.compute` | Copy them |
 | `lib/` | Include libraries: `math`, `color`, `noise`, `sdf`… (§ *GLSL Standard Library*); `lib/material/` Unreal's material expressions; `lib/vfx/` what VFX materials and factories read (`particle.glsl`, `depth.glsl`, `ribbon.glsl`…) | Include them |
 | `materials/` | General-purpose materials: `emission_only`, `entity` and `entity_emissive` (a Minecraft entity and its glow layer), `sky` and `grid` (a scene's backdrop and ground) | Load them |
-| `factories/` | What draws a material in the world: `VertexFactory Sprites` | Name them |
+| `factories/` | What draws a material in the world (`VertexFactory Sprites`), and what the factories alone read: the particle records (`particle.glsl`), the bone palettes (`bones.glsl`), `draw.glsl`, `sequence.glsl`, `scatter.glsl` | Name the factories |
 | `vfx/` | The VFX materials, a folder a feature (`particle/`, `trail/`, `beam/`, `air/`…), each beside the kernels its feature runs; `vfx/sim/` the particle simulation's modules, a folder a kind (`forces/`, `motion/`, `collision/`, `occlusion/`, `beam/`, `gas/`, `grid/`) and `data/` what they read | Load the materials |
-| `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; `buffer/` the engine buffers | Never include |
+| `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; the scene data any material reads, `globals.glsl` (parameter collections) and `rows.glsl` (per-draw values) | Never include |
 | `world/` | The world renderer's passes; `world/lights/` lighting and shadows, `world/media/` fog volumes | The engine's |
 | `post/` | The post stack's materials, its bloom and film kernels and the composite's includes | The engine's |
-| `canvas/` | The canvas's materials (`CgCanvasMaterials`); `canvas/primitives/` what draws a ui material, `Primitive Quad` | Name the primitives |
+| `canvas/` | The canvas's materials (`CgCanvasMaterials`); `canvas/primitives/` what draws a ui material (`Primitive Quad`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `shape`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
 | `compute/` | `compute/ops/`, the GPU ops' kernels (`CgGpuOps`), and the self test | The engine's |
 | `noise/` | The baked noise volumes (`CgNoiseVolumes`) | The engine's |
 | `collision/`, `loading/` | The collision debug lines; the loading screen's logo | The engine's |
 | `demo/` | The demo scenes' materials | Read them |
+
+**An engine buffer lives with its owner.** A factory's or a primitive's buffer (the particle records, the canvas's quads) sits beside it and only its file names it, in `EngineBuffers { }`; the scene data every material may read (`globals`, `rows`) is the environment's, reached by reading it (`CG_GLOBAL_*`, `PerDrawValues On`). A material names neither: only a `#domain global` pass, the renderer's own, writes `EngineBuffers`. Unreal's split: a vertex factory owns its streams, the scene's uniform buffers and parameter collections reach every material.
 
 ### The format in one screen
 
@@ -111,7 +113,7 @@ void surface(in v2f i, inout CgSurface s) {
 `src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every program stands on: the
 frame block, the per-instance object data, the instance-id bridge, the scene samplers and the convenience macros over
 them. The engine includes it in every stage of every program; a material never includes it. **A renderer's own macros
-are not in it**: `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, brought only
+are not in it**: `CG_QUAD_*` lives in `canvas/primitives/quad.glsl` and `CG_CURVE_*` in `canvas/primitives/curve.glsl`, brought only
 by the primitive that binds their buffer.
 
 #### Frame Data — `CgViewBlock` and `CgEnvironmentBlock`
@@ -290,7 +292,7 @@ Unreal's local vertex factory's slots, in its order. A mesh written with no colo
 not given repeats the set before: Unreal's null colour stream and its repeated UV channel.
 
 **On a skinned mesh** every material on the `Mesh` factory draws its `CG_SKINNED` variant, the skinned vertex factory:
-the engine declares `cg_BoneIndices`, `cg_BoneWeights` and the draw's palette (`env/buffer/bones.glsl`), and
+the engine declares `cg_BoneIndices`, `cg_BoneWeights` and the draw's palette (`factories/bones.glsl`), and
 `cg_Position` and `cg_Normal` read as the vertex skinned by its bones, so a material needs no code for it. The mesh
 picks the variant (`CgPipelineForm.SKINNED`), in every pass; a material on a factory reading no mesh fails to compile
 on one.
@@ -442,13 +444,13 @@ need is bound by what draws them: a factory or primitive names it in `EngineBuff
 | `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `_SIZE` / `_VELOCITY` / `_PROGRESS` / `_SEED` / `_SPIN` / `_HEAT` / `_OPACITY` / `_LIGHT` / `_ID` / `_FLOOR` / `_COLOR` / `_SCALE` / `_AGE`: a GPU pool's drawn parts (`CgParticleBuffer`), written after each step at each particle's record index; a draw reads its own range of Range's order. It brings `rows` | The particle factories (`Sprites`, `MeshParticles`), which hand it to a material as `cg_Particle` |
 | `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`: Unreal's material parameter collections ([below](#global-parameters-cg_global_)) | Any program naming one |
 
-> **A screen-space quad material antialiases its own edges, without MSAA.** `env/buffer/quad.glsl` provides
+> **A screen-space quad material antialiases its own edges, without MSAA.** `canvas/primitives/quad.glsl` provides
 > `CG_QUAD_EDGE_PARAM` (the vertex's parameter, grown by half a pixel when the element is rotated or sheared in device
 > space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad never samples past the rect)
 > and `CG_QUAD_EDGE_COVERAGE(param)`: the exact area a straight edge leaves of the pixel. Axis-aligned elements are left
 > alone: the rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. The Quad
 > primitive applies it; a 3D quad must not (half a pixel means nothing under a perspective projection).
-> `cg_texel_aa_sample` (`lib/texel.glsl`) is the pixel-art filter: nearest everywhere, one screen pixel of blend at a
+> `cg_texel_aa_sample` (`canvas/primitives/texel.glsl`) is the pixel-art filter: nearest everywhere, one screen pixel of blend at a
 > texel boundary.
 
 > **A record names a spatial and an effect node** (`Quad.node`, `Curve.node`, `CgTextDraw.node`), recorded in a
@@ -465,7 +467,7 @@ need is bound by what draws them: a factory or primitive names it in `EngineBuff
 `CURVE_DATA(CG_INSTANCE_ID)` for its control points.
 
 A buffer's GLSL is declared **while the program is parsed, before anything can compile**, so its names exist whatever
-compiles it first. A token may carry an env file of macros written against it (`shaders/env/buffer/<token>.glsl`),
+compiles it first. A token may carry an env file of macros written against it (`shaders/<owner's folder>/<token>.glsl`),
 included right after the declaration. Register a mod's own with `CgEngineBufferRegistry.register(...)`: providers hold
 a `Supplier`, so registering never makes the buffer before a context exists. Never attach a buffer from Java: bound
 from the program's declaration, a compile before the first draw already has it.
@@ -764,14 +766,11 @@ two includes of it are one.
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x/y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
 | `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
-| `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)`: pixel-art filtering, nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded** |
-| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)`: the whole shared body of every `CgCurveBatch` consumer, taper, caps, feathered edge |
-| `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage`: Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table. **Fragment-only, guarded** |
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
-| `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage`: Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table |
 
-> **`stroke.glsl` exists so there is exactly one copy of the cap logic**: `canvas/curve.shader` and CrystalGUI's
-> coverage passes all include it.
+The canvas's own (`texel`, pixel-art filtering; `stroke`, the one copy of a curve's caps and taper; `rect_blur`,
+Skia's analytic rect blur; `text_gamma`, Skia's text gamma) are `canvas/primitives/`: what its primitives and coverage
+passes read.
 
 ```glsl
 #include "crystalgraphics:shaders/lib/color.glsl"

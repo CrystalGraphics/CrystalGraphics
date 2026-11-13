@@ -1,7 +1,7 @@
 // A stroke's coverage into a texture: as coverage.shader, combined by max. A stroke's segments overlap at every
 // joint, so a sum beads there; the max is their union. CgCanvasMaterials.strokeCoverage().
 #domain global
-#include "crystalgraphics:shaders/lib/stroke.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/stroke.glsl"
 Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 

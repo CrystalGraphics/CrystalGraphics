@@ -7,7 +7,7 @@ Primitive { Queue Transparent }
 EngineBuffers { quad clip shape }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/texel.glsl"
+    #include "crystalgraphics:shaders/canvas/primitives/texel.glsl"
     #if !defined(CG_VERTEX_STAGE)
     vec4 cg_UiTexture(sampler2D tex, CgUiInput i) {
         return CG_QUAD_EDGE_ROTATED ? cg_texel_aa_sample(tex, i.uv, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER) : texture(tex, i.uv);

@@ -1,6 +1,6 @@
 // Baked clips (CgVfxClipAtlas): where a particle's age falls in its clip. A node's row r, frame f is vec4
 // base + r * length + f; this says which two frames to read and how far between, and the reader mixes them. Shared by
-// the Step kernel's clip events and lib/vfx/sequence.glsl's draws, so both play a clip at the same frame.
+// the Step kernel's clip events and factories/sequence.glsl's draws, so both play a clip at the same frame.
 #pragma once
 
 // The frames to read at `age` seconds, `rate` frames a second, held at `frames`, the last: a then b, t of the way. A

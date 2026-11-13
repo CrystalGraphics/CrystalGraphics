@@ -1,7 +1,5 @@
-// CgBonePalettes' shader environment: the skinned vertex factory, Unreal's GPU skin vertex factory.
-//
-// INJECTED in a material's CG_SKINNED variant, after the buffer's declaration; never declared by hand. The compiler
-// then reads cg_Position and cg_Normal as the skinned vertex, so a material skins with no code of its own.
+// CgBonePalettes, Unreal's GPU skin vertex factory: compiled into a material's CG_SKINNED variant, never declared by
+// hand. cg_Position and cg_Normal then read as the skinned vertex, so a material skins with no code of its own.
 #pragma once
 
 // Where the draw's palette starts, in bones: its object record's spare x (CgWorldRenderer's .bones(base)).

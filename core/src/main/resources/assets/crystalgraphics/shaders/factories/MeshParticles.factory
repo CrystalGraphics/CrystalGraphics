@@ -11,7 +11,7 @@ Factory { VertexType spatial  Parameters cg_Particle  Fade cg_Vfx.presence
 EngineBuffers { particle }
 
 Declarations {
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
     CgMaterialParticle cg_Particle;
     mat3 cg_TangentToWorld;
 }

@@ -25,7 +25,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **msdfgen** 1.13 | `natives/*/` (compiled in) | MIT — © 2014–2025 Viktor Chlumsky | Licence below |
 | **Chromium (Blink)** font fallback | `com/crystalgraphics/text/font/ScriptFallbacks` | BSD-3-Clause — © 2006–2012 Google Inc. | Ported source, modified. Licence below |
 | **Skia** mask blur | `com/crystalgraphics/text/shadow/{CgMaskBlurFilter,CgGaussFilter}` | BSD-3-Clause — © 2017 Google LLC | Ported source, modified. Licence below |
-| **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/lib/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
+| **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/canvas/primitives/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
 | **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/**/*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
 | **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |

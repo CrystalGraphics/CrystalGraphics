@@ -2,7 +2,7 @@
 // coverage where compositing the cells one by one would not (two halves of a pixel blend to three quarters). The colour
 // is written white: the texture is (1, 1, 1, coverage), drawn later tinted by a box. CgCanvasMaterials.coverage().
 #domain global
-#include "crystalgraphics:shaders/lib/stroke.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/stroke.glsl"
 Material { ColorSpace sRGB  Queue Transparent  Media On }
 EngineBuffers { curve }
 

@@ -1,8 +1,7 @@
-// One layer of a text style on one glyph quad: its coverage, times a paint (CgTextBatch). What text.shader draws with,
-// and what a Text-domain material calls with its own paint, as Slate applies a font material's colour under the
-// glyph's coverage (SlateElementPixelShader.usf GetSdfTextElementColor).
+// One text layer on one glyph quad: its coverage times a paint (CgTextBatch), as Slate's GetSdfTextElementColor. The
+// `text` engine buffer's file, included after quad's and clip's declarations; MSDF_MODE is the material's own keyword.
 //
-// A quad's slots (the quad buffer), as CgTextBatch writes them:
+// A quad's slots, as CgTextBatch writes them:
 //   CG_QUAD_COLOR   the layer's colour: the paint's (or white under a gradient or material) times the draw's tint
 //                   and the layer's opacity
 //   CG_QUAD_CUSTOM0 a fill or outline: (a, b, c, row) with row > 0, the gradient t = a + b*u + c*v over the quad's
@@ -23,13 +22,10 @@
 //   -4    either  (invSixSigmaU, invSixSigmaV, 0)    inset rect (L, T, R, B)                      rect + 3 sigma
 //   -5    either  (offsetU, offsetV, invSixSigmaU)   (invSixSigmaV, spreadU, spreadV, 0)          the rect
 // -4 and -5 sample nothing and are tested first. @see CgTextShadowPlan
-//
-// The text token's env file (the text buffer, which brings quad and clip): included after their declarations, which a
-// material's own #include is not. MSDF_MODE is the shader's own feature.
 
-#include "crystalgraphics:shaders/lib/texel.glsl"
-#include "crystalgraphics:shaders/lib/rect_blur.glsl"
-#include "crystalgraphics:shaders/lib/text_gamma.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/texel.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/rect_blur.glsl"
+#include "crystalgraphics:shaders/canvas/primitives/text_gamma.glsl"
 
 // Fragment-only: derivatives. Guarded by the stages that cannot have them.
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
@@ -79,9 +75,7 @@ vec4 cg_text_layer(sampler2DArray atlas, vec2 uv, float atlasLayer, vec2 param, 
     float pxRange = strokeParams.w;
     vec2 atlasSize = vec2(textureSize(atlas, 0).xy);
 
-    // The Jacobian, not fwidth: one screenPxRange for both axes is wrong under scale, skew and rotation. Direction
-    // from the field's gradient, magnitude from the uv Jacobian, as Skia's GrDistanceFieldA8TextGeoProc does for
-    // non-similarity transforms.
+    // The Jacobian, not fwidth, which is wrong under skew and rotation: Skia's GrDistanceFieldA8TextGeoProc.
     vec2 distGrad = vec2(dFdx(signedDistance), dFdy(signedDistance));
     float gradLenSq = dot(distGrad, distGrad);
     distGrad = gradLenSq < 1.0e-8 ? vec2(0.70710678) : distGrad * inversesqrt(gradLenSq);
@@ -92,9 +86,8 @@ vec4 cg_text_layer(sampler2DArray atlas, vec2 uv, float atlasLayer, vec2 param, 
     float screenPxDist = screenPxRange * (signedDistance - 0.5);
     float opacity = clamp(screenPxDist + 0.5, 0.0, 1.0);
 
-    // What the field describes past the edge, with a texel of headroom (a bilinear tap reads half a texel either side;
-    // Skia's SK_DistanceFieldInset), or a screen pixel when minified; in field units, so an anisotropic transform
-    // cannot push a width past it. @see CgStrokeFieldRangeTest, CgAnisotropicFieldRangeTest
+    // How far past the edge the field reaches, in field units, less a texel of headroom (Skia's SK_DistanceFieldInset)
+    // or a screen pixel when minified. @see CgStrokeFieldRangeTest, CgAnisotropicFieldRangeTest
     float reachField = max(0.5 - max(1.0 / max(screenPxRange, 1.0e-6), 1.0 / max(pxRange, 1.0e-6)), 0.0);
     float widthField = strokeParams.x / max(pxRange, 1.0e-6);
     float roundJoin = step(2.5, strokeParams.y);
@@ -140,10 +133,9 @@ vec4 cg_text_layer(sampler2DArray atlas, vec2 uv, float atlasLayer, vec2 param, 
             coverage = clipCoverage * (1.0 - holeCoverage);
         }
     } else if (strokeParams.x > 0.0) {
-        // An outline: the glyph grown to the outer edge, or the ring alone over a fill. The ring is a difference of two
-        // coverages, not a band test, so a sub-pixel outline fades instead of flickering. Only a round join's outer
-        // edge reads the true distance (MTSDF's alpha), which rounds a corner the median mitres.
-        // @see CgStrokeFieldRangeTest#medianAndTrueDistanceDisagreeAtCorners
+        // An outline: the grown glyph, or the ring alone over a fill, as a difference of coverages so a sub-pixel ring
+        // fades rather than flickers. A round join's outer edge reads the true distance (MTSDF alpha), which rounds
+        // a corner the median mitres.
         float outerDist = roundJoin > 0.5 && outward > 0.0 ? screenPxRange * (fieldSample.a - 0.5) : screenPxDist;
         float ringOuter = clamp(outerDist + min(outward, reachField) * screenPxRange + 0.5, 0.0, 1.0);
         float ringInner = clamp(screenPxDist - min(inward, reachField) * screenPxRange + 0.5, 0.0, 1.0);
@@ -169,7 +161,7 @@ vec4 cg_text_layer(sampler2DArray atlas, vec2 uv, float atlasLayer, vec2 param, 
         float c11 = texture(atlas, vec3((base + vec2(1.5, 1.5)) / cellSize, atlasLayer)).r;
         coverage = mix(mix(c00, c10, weight.x), mix(c01, c11, weight.x), weight.y);
     } else {
-        // Rotated, a nearest-sampled bitmap glyph takes the texel filter rather than a staircase (lib/texel.glsl).
+        // Rotated, a nearest-sampled bitmap glyph takes the texel filter rather than a staircase (canvas/primitives/texel.glsl).
         float bitmap = CG_QUAD_EDGE_ROTATED
                 ? cg_texel_aa_sample(atlas, uvw, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER).r
                 : texture(atlas, uvw).r;

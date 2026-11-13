@@ -1,17 +1,13 @@
-// A prefab part a clip plays on a SEQUENCE particle (CgVfxSlot.Kind.SEQUENCE): its node's rows at the particle's age,
-// from the baked clips (CgVfxClipAtlas). A shader drawing on that kind declares FX_ON_SEQUENCE, includes this, declares
-// the baked clips in its Buffers { } and places its vertices by the node:
+// The Sequence factory's: a clip's node on a SEQUENCE particle at the particle's age, from the baked clips
+// (CgVfxClipAtlas). The factory places the part; a material declares the clips and reads the node's values:
 //
-//     Material { VertexFactory VfxMesh, Sequence }   // FX_ON_SEQUENCE where Sequence draws it
-//     #include "crystalgraphics:shaders/lib/vfx/sequence.glsl"
+//     Material { VertexFactory VfxMesh, Sequence }
 //     Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }
-//     ...
-//     vec4 world = FX_SEQUENCE_TO_WORLD * vec4(cg_Position, 1.0);     // CG_OBJECT_TO_WORLD on any other kind
-//     float opacity = FX_SEQUENCE_OPACITY;                             // the node's own
-//     vec2 offset = vec2(FX_SEQ_SCALAR(0, _UV0Window.x), FX_SEQ_SCALAR(1, _UV0Window.y));   // the clip's, else the material's
+//     float opacity = FX_SEQUENCE_OPACITY;                                                   // under FX_ON_SEQUENCE
+//     vec2 offset = vec2(FX_SEQ_SCALAR(0, _UV0Window.x), FX_SEQ_SCALAR(1, _UV0Window.y));   // the clip's, else its own
 //
-// Its macros name CG_OBJECT_CUSTOM0 (w: the particle's age) and CUSTOM2 (the node's first vec4, its row's length, the
-// clip's frames a second of age, its step mask), so they read in either stage.
+// CG_OBJECT_CUSTOM0.w is the particle's age, CUSTOM2 the node (first vec4, row length, frames a second of age, step
+// mask): either stage.
 #pragma once
 
 #include "crystalgraphics:shaders/lib/vfx/clip.glsl"

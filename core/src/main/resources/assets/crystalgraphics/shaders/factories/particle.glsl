@@ -1,11 +1,5 @@
-// CgParticleBuffer's shader environment: the frame's particle records, read by index.
-//
-// INJECTED for the `particle` engine buffer, immediately after the buffer's own declaration -- see CgEngineBufferRegistry,
-// which holds the path. A shader that does not declare the pragma never sees any of this.
-//
-// A GPU pool's records, written by its Step once a frame, read through PARTICLE_ORDER: a draw's particle n is the
-// record Range's culled, sorted order names at n. A draw reads its own range, [base, base + count), naming base and
-// count in its own per-draw data.
+// CgParticleBuffer: the frame's particle records, written by each pool's Step, read through Range's culled, sorted
+// order (PARTICLE_ORDER). A draw reads its own [base, base + count) of it, named in its per-draw data.
 //
 //     vec3 p = CG_PARTICLE_POSITION(base + index);
 //     float size = CG_PARTICLE_SIZE(base + index), life = CG_PARTICLE_PROGRESS(base + index);
@@ -47,4 +41,4 @@
 #define CG_PARTICLE_BEAM(i) (PARTICLE_BEAM_DATA(i).value)
 
 // The vertex factory a kit's material program reads: cg_material_vertex(), cg_material_particle().
-#include "crystalgraphics:shaders/env/buffer/particle_factory.glsl"
+#include "crystalgraphics:shaders/factories/particle_factory.glsl"

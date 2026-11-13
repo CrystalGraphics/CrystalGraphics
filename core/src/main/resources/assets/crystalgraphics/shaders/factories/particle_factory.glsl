@@ -10,10 +10,8 @@
 //         gl_Position = cg_material_project(v);
 //     }
 //
-// The factory is the program's #type: none is the sprite factory (Unreal's sprite vertex factory), spatial the mesh
-// factory (its mesh particle vertex factory). A port never places a vertex: facing, stretch, camera offset and the
-// flipbook are the renderer's settings, the _cg_ row properties this token declares. The accessors are macros, so
-// they expand where a port calls them, after its properties exist.
+// A port never places a vertex: facing, stretch, camera offset and the flipbook are the renderer's settings, the _cg_
+// row properties the `particle` token declares. The accessors are macros, so they expand after those properties exist.
 #pragma once
 
 struct CgMaterialVertex {
@@ -136,13 +134,11 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 }
 #endif
 
-// The factory follows the usage a program is compiled for, as Unreal compiles a material once per vertex factory
-// its usages enable: a strip (FX_ON_RIBBONS, which every particle program takes) gets the strip factory, a sprite
-// program (no vertex data, or FX_ON_SPRITES) the sprite factory, any other mesh's.
-// The strip factory: Unreal's beam-and-trail vertex factory (ParticleBeamTrailVertexFactory), compiled where a draw
-// enables FX_ON_RIBBONS, which every particle program takes. Each particle is a strip, placed from CG_VERTEX_ID, of the
-// draw's kind; a beam (CgVfxBeamRendererProperties) is a run of its pool's PARTICLE_BEAMS (lib/vfx/beam.glsl's FX_BEAM_*)
-// drawn as ParticleSystemRender.cpp's beam fills draw it. What CgVfxFrame passes:
+// The factory follows the program's usage, as Unreal compiles a material once per vertex factory: FX_ON_RIBBONS (every
+// particle program takes it) the strip factory, no vertex data or FX_ON_SPRITES the sprite factory, else the mesh's.
+// The strip factory, Unreal's ParticleBeamTrailVertexFactory: each particle a strip placed from CG_VERTEX_ID; a beam
+// (CgVfxBeamRendererProperties) is a run of its pool's PARTICLE_BEAMS (lib/vfx/beam.glsl), drawn as
+// ParticleSystemRender.cpp's beam fill. What CgVfxFrame passes:
 //   CUSTOM0  the draw's first particle, its count, the renderer's size, sheets + 256 * segments a sheet
 //   CUSTOM1  the slot's first run, its runs (its capacity), vec4s a run, noise points a run
 //   CUSTOM2  interpolation points, flags (1 noise on the target, 2 one up for the whole beam, 4 tiles by distance), its

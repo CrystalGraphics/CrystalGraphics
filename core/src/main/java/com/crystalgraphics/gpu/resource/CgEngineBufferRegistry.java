@@ -23,7 +23,10 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
 import com.crystalgraphics.material.CgPropertyRows;
 
 /**
- * Engine-provided shader buffers a factory or ui primitive binds for its draws: {@code EngineBuffers { <token> }}.
+ * Engine-provided shader buffers: a factory's or ui primitive's, which only its file names in
+ * {@code EngineBuffers { <token> }}, and the scene data any material reads ({@code globals}, {@code rows}). Each
+ * token's GLSL lives beside its owner: {@code canvas/primitives/quad.glsl}, {@code factories/particle.glsl},
+ * {@code env/rows.glsl}.
  *
  * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
  * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
@@ -57,16 +60,16 @@ public final class CgEngineBufferRegistry {
 
     static {
         register("palette", CgPalette::buffer, CgPalette.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/palette.glsl");
+                "crystalgraphics:shaders/canvas/primitives/palette.glsl");
         // A quad or curve is positioned through its spatial node, so either brings the palette with it.
         register("quad", CgQuadBatch::instanceBuffer, CgQuadBatch.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/quad.glsl", "palette");
+                "crystalgraphics:shaders/canvas/primitives/quad.glsl", "palette");
         register("curve", CgCurveBatch::instanceBuffer, CgCurveBatch.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/curve.glsl", "palette");
+                "crystalgraphics:shaders/canvas/primitives/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/clip.glsl", "palette");
+                "crystalgraphics:shaders/canvas/primitives/clip.glsl", "palette");
         register("shape", CgShapeTable::buffer, CgShapeTable.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/shape.glsl");
+                "crystalgraphics:shaders/canvas/primitives/shape.glsl");
         // A particle is read through the culled, sorted order Range writes, so the order comes with it.
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
         // A beam draw's noise points, for the strip factory a particle program gets beside its own.
@@ -74,13 +77,13 @@ public final class CgEngineBufferRegistry {
         // Bound by each draw: a device draw reads none an upload left bound. _cg_Exposure is what the
         // generated main scales linear light by, written per effect.
         put(new Provider("rows", CgPropertyRows::buffer, CgPropertyRows.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/rows.glsl", List.of(), null, true, """
+                "crystalgraphics:shaders/env/rows.glsl", List.of(), null, true, """
                     _cg_Exposure ("Its effect's exposure: a Linear colour and every glow times this; written per effect", float) = 1
                     """));
         // The sprite factory's settings, the renderer's to set per draw: a port never declares them, and the rows that
         // carry them per draw come with the particle.
         registerWithProperties("particle", CgParticleBuffer::buffer, CgParticleBuffer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/particle.glsl", """
+                "crystalgraphics:shaders/factories/particle.glsl", """
                     _cg_Facing ("FX_FACE_* + 8 * FX_ALIGN_*: Niagara's facing and alignment", float) = 0
                     _cg_FacingVector ("The CUSTOM facing's vector, Niagara's Particles.SpriteFacing", vec4) = (1, 0, 0, 0)
                     _cg_AlignmentVector ("The CUSTOM alignment's vector, Niagara's Particles.SpriteAlignment", vec4) = (1, 0, 0, 0)
@@ -101,14 +104,14 @@ public final class CgEngineBufferRegistry {
                     _cg_SubImages ("CgVfxFlipbook: a rect table, a rect a texel", sampler2D) = "white"
                     """, "particle_order", "particle_beams", "rows");
         registerGenerated("globals", CgParameterCollectionBuffer::buffer, CgParameterCollectionBuffer.MACRO_NAME,
-                "crystalgraphics:shaders/env/buffer/globals.glsl", () -> {
+                "crystalgraphics:shaders/env/globals.glsl", () -> {
                     // The engine's own collections, declared before any material reads its globals.
                     CgDirectionalLights.declare();
                     return CgParameterCollection.glsl();
                 });
         // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
         // tokens before it keep their bindings. Its env file is the text layer, which reads quad's and clip's slots.
-        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/env/buffer/text.glsl",
+        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/canvas/primitives/text.glsl",
                 "quad", "clip");
     }
 
@@ -136,7 +139,7 @@ public final class CgEngineBufferRegistry {
      *
      * <p>The compiler emits an {@code #include} of it immediately after the buffer's own declaration,
      * so the macros always have the struct to read and a shader that never declares the token never
-     * pays for either. Convention is {@code shaders/env/buffer/<token>.glsl}; a mod's own buffer gets
+     * pays for either. Convention is {@code shaders/<owner's folder>/<token>.glsl}; a mod's own buffer gets
      * the same treatment by passing its own path.</p>
      *
      * @param envPath a {@code CgIO} resource path, or null for a buffer whose declaration is all there
@@ -256,7 +259,7 @@ public final class CgEngineBufferRegistry {
 
         /** What a shader reading {@link #generated} is tracked by: no file, a name for {@code CgAssetReloader}. */
         public String generatedPath() {
-            return "crystalgraphics:shaders/env/buffer/" + token + ".generated";
+            return "crystalgraphics:shaders/env/" + token + ".generated";
         }
     }
 }

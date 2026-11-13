@@ -521,7 +521,6 @@ vec4 cg_Fog(vec4 color) {
 #define CG_ABSOLUTE_WORLD_POS(p) ((p) + cg_WorldOrigin.xyz)
 
 // -- Per-renderer environments ----------------------------------------------
-// Everything above is universal. A renderer's own macros are NOT: they live beside the buffer
-// they read, in env/buffer/<token>.glsl, and arrive only when a shader declares
-// a factory's or primitive's `EngineBuffers { <token> }`. Three quarters of this file used to be CgQuadBatch's and
-// CgCurveBatch's, paid for by every shader including the ones that draw neither.
+// Everything above is universal. A renderer's own macros are NOT: they live with what draws them
+// (canvas/primitives/quad.glsl, factories/particle.glsl), and arrive only through a factory's or primitive's
+// `EngineBuffers { <token> }`.

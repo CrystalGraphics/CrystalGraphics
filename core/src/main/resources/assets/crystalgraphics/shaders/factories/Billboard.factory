@@ -7,7 +7,7 @@ Factory { VertexType none  Fade cg_Vfx.presence  Usage FX_ON_BILLBOARD }
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
     struct CgBillboard { float size; vec4 values; vec3 right; vec3 up; };
     #define cg_Billboard CgBillboard(length(CG_OBJECT_TO_WORLD[0].xyz), CG_OBJECT_CUSTOM1, vec3(cg_ViewMatrix[0][0], cg_ViewMatrix[1][0], cg_ViewMatrix[2][0]), vec3(cg_ViewMatrix[0][1], cg_ViewMatrix[1][1], cg_ViewMatrix[2][1]))
 }

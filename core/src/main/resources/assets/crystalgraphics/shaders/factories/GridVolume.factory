@@ -15,8 +15,8 @@ Properties {
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/common.glsl"
     #include "crystalgraphics:shaders/lib/vfx/depth.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/draw.glsl"
-    #include "crystalgraphics:shaders/lib/vfx/scatter.glsl"
+    #include "crystalgraphics:shaders/factories/draw.glsl"
+    #include "crystalgraphics:shaders/factories/scatter.glsl"
     #include "crystalgraphics:shaders/lib/vfx/grid.glsl"
     struct CgGrid { int index; float cell; float size; float extinction; vec3 lo; vec3 hi; vec3 corner; };
     CgGrid _cg_grid() {
