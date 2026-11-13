@@ -1,13 +1,14 @@
-// A linear or radial gradient over a box in one draw, as CSS draws one; CgCanvasGradient packs every property. Drawn
-// PREMULTIPLIED (CgCanvasMaterials).
+// A linear, radial or conic gradient over a box in one draw, as CSS draws one; CgCanvasGradient packs every property.
+// Drawn PREMULTIPLIED (CgCanvasMaterials).
 //
 // - Up to eight stops per draw, Skia's unrolled ramp (SkGradientShader); more stops are more draws, each owning a
 //   window of t.
 // - CSS's gradient line (Images 3 section 3.4.1): through the centre, |W sin a| + |H cos a| long, so 0 and 1 land on the
-//   corners; _Axis makes t one dot product. RADIAL: t is the distance from _Centre over _Radii (section 3.5).
+//   corners; _Axis makes t one dot product. RADIAL: t is the distance from _Centre over _Radii (section 3.5). CONIC:
+//   the turn about _Centre (Images 4 section 3.3, Skia's SkSweepGradient).
 // - Premultiplied (section 3.4.3): a straight lerp toward `transparent` passes through a dark half-colour.
 // - Dithered by half a level, or an 8-bit target bands a shallow ramp (Skia dithers by default).
-// - WITH_MASK clips to elliptical corner radii with the box's SDF.
+// - WITH_MASK clips to elliptical corner radii with the box's SDF; _Border paints only the band inside that edge.
 #domain ui
 #include "crystalgraphics:shaders/lib/noise.glsl"
 #include "crystalgraphics:shaders/lib/sdf.glsl"
@@ -33,6 +34,10 @@ Properties {
     _Radii        ("Radial radii (px)",            vec2)  = (1.0, 1.0)
     // The half-open range of t this draw owns, [x, y).
     _Window       ("Owned range of t",             vec2)  = (-1.0, 2.0)
+    // CONIC only: where t = 0 points, in turns clockwise from up.
+    _Start        ("Conic start (turns)",          float) = 0.0
+    // WITH_MASK only: the band inside the rounded edge it paints, in px; 0 fills the box.
+    _Border       ("Painted band (px)",            float) = 0.0
     // WITH_MASK only: CSS order, one vec4 per axis.
     _CornerRadiusX ("Corner Radii X (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
     _CornerRadiusY ("Corner Radii Y (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
@@ -42,13 +47,18 @@ Properties {
 Keywords {
     WITH_MASK ("Clipped to rounded corners", switched)
     RADIAL ("Radial", switched)
+    CONIC ("Conic", switched)
 }
 
 void surface(in CgUiInput i, inout CgUiSurface s) {
     // Clamped, so the rotated pad holds the end colours.
     vec2 uv = i.uv;
-#ifdef RADIAL
+#if defined(RADIAL)
     float t = length((uv * _BoxSize - _Centre) / _Radii);
+#elif defined(CONIC)
+    // CSS's conic-gradient: the turn about _Centre, 0 up and clockwise on the Y-down box, from _Start.
+    vec2 d = uv * _BoxSize - _Centre;
+    float t = fract(atan(d.x, -d.y) / 6.28318530718 - _Start);
 #else
     float t = 0.5 + dot(uv - 0.5, _Axis);
 #endif
@@ -72,8 +82,15 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     // The SDF finishes the straight sides too, so no edge coverage on top; the unclamped parameter, since past the
     // box is what it cuts.
     vec2 unclamped = mix(QUAD_DATA(CG_INSTANCE_ID).uv0, QUAD_DATA(CG_INSTANCE_ID).uv1, i.param);
-    float dist = sdf_rounded_box((unclamped - 0.5) * _BoxSize, _BoxSize * 0.5, _CornerRadiusX, _CornerRadiusY);
-    s.coverage = shape * sdf_coverage(dist, CG_QUAD_EDGE_ROTATED ? CG_QUAD_EDGE_FILTER : 1.0);
+    vec2 local = (unclamped - 0.5) * _BoxSize;
+    float ramp = CG_QUAD_EDGE_ROTATED ? CG_QUAD_EDGE_FILTER : 1.0;
+    s.coverage = shape * sdf_coverage(sdf_rounded_box(local, _BoxSize * 0.5, _CornerRadiusX, _CornerRadiusY), ramp);
+    if (_Border > 0.0) {
+        // A border's band: the box less the one inset by it, whose radii shrink by as much (CSS's inner border edge)
+        vec2 inner = max(_BoxSize * 0.5 - _Border, vec2(0.0));
+        float hole = sdf_rounded_box(local, inner, max(_CornerRadiusX - _Border, 0.0), max(_CornerRadiusY - _Border, 0.0));
+        s.coverage *= 1.0 - sdf_coverage(hole, ramp);
+    }
 #else
     s.coverage *= shape;
 #endif

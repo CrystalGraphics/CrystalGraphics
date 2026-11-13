@@ -8,9 +8,10 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
- * A linear or radial gradient over a box, as CSS draws one: any number of stops, interpolated premultiplied, dithered,
- * optionally masked by elliptical corner radii. Set it up, then draw a quad over the box per window: up to eight stops
- * a draw (Skia's unrolled shape), each draw owning its window of the gradient line.
+ * A linear, radial or conic gradient over a box, as CSS draws one: any number of stops, interpolated premultiplied,
+ * dithered, optionally masked by elliptical corner radii, or painted only in a band inside them. Set it up, then draw a
+ * quad over the box per window: up to eight stops a draw (Skia's unrolled shape), each draw owning its window of the
+ * gradient line.
  *
  * <pre>{@code
  * CgCanvasGradient wash = new CgCanvasGradient(CgCanvasMaterials.SCREEN);    // once: it owns its material
@@ -23,13 +24,20 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  *
  * glow.size(w, h).radial(w / 2, h, w / 2, h).radii(8, 8, 8, 8, 0, 0, 0, 0)  // a glow off the bottom, top corners round
  *         .clearStops().stop(0f, 0xFFFFE080).stop(1f, 0x00FFE080);
+ *
+ * ring.size(d, d).conic(d / 2, d / 2, 0f).radii(d / 2, d / 2, d / 2, d / 2, d / 2, d / 2, d / 2, d / 2)
+ *         .border(d * 0.14f)                                                // a hue ring: a conic, round, a band
+ *         .clearStops().stop(0f, 0xFFFF0000).stop(0.5f, 0xFF00FFFF).stop(1f, 0xFFFF0000);
  * }</pre>
  *
  * <ul>
  *   <li>Stops ascend: a position below the one before is raised to it, as CSS does. Two at one position are a hard
  *       stop. Colours are straight ARGB; the quad's colour tints them.</li>
  *   <li>Positions are along the gradient line, 0 to 1: CSS's line for {@link #angle} (0 up, clockwise; 0 and 1 at the
- *       corners), or the ending shape for {@link #radial}. Before the first stop and past the last, the end colours.</li>
+ *       corners), the ending shape for {@link #radial}, or one clockwise turn for {@link #conic}. Before the first stop
+ *       and past the last, the end colours.</li>
+ *   <li>{@link #border} paints only a band inside the rounded edge, CSS's border box less its padding box: a ring, from
+ *       round radii. It needs no radii to work on a square box.</li>
  *   <li>{@link #window} writes the material's values; a quad captures them as it is submitted, so set and submit each
  *       window in turn. One instance per drawer: its material is its own and holds the last window written.</li>
  *   <li>Premultiplied out: a {@link CgCanvasMaterials#SCREEN} gradient draws over the screen, a {@code WORLD} one is
@@ -40,7 +48,9 @@ public final class CgCanvasGradient {
 
     /** Stops one draw evaluates. */
     public static final int STOPS_PER_DRAW = 8;
-    static final String WITH_MASK = "WITH_MASK", RADIAL = "RADIAL";
+    static final String WITH_MASK = "WITH_MASK", RADIAL = "RADIAL", CONIC = "CONIC";
+
+    private enum Shape { LINEAR, RADIAL, CONIC }
 
     private static final String[] COLOR_PROPERTIES = {
             "_Color0", "_Color1", "_Color2", "_Color3", "_Color4", "_Color5", "_Color6", "_Color7"};
@@ -54,9 +64,9 @@ public final class CgCanvasGradient {
     private int count;
 
     private float width, height;
-    private boolean radial;
+    private Shape shape = Shape.LINEAR;
     private float angle;
-    private float centreX, centreY, radiusX, radiusY;
+    private float centreX, centreY, radiusX, radiusY, start, border;
     private final float[] radii = new float[8];
 
     private int first, end;
@@ -82,18 +92,36 @@ public final class CgCanvasGradient {
 
     /** Linear, CSS's angle in degrees: 0 points up, 90 right, turning clockwise on a Y-down screen. */
     public CgCanvasGradient angle(float degrees) {
-        this.radial = false;
+        this.shape = Shape.LINEAR;
         this.angle = degrees;
         return this;
     }
 
     /** Radial: 0 at {@code (centreX, centreY)}, 1 on the ellipse of radii {@code (radiusX, radiusY)}, all box-relative. */
     public CgCanvasGradient radial(float centreX, float centreY, float radiusX, float radiusY) {
-        this.radial = true;
+        this.shape = Shape.RADIAL;
         this.centreX = centreX;
         this.centreY = centreY;
         this.radiusX = radiusX;
         this.radiusY = radiusY;
+        return this;
+    }
+
+    /**
+     * Conic, CSS's {@code conic-gradient(from <fromDegrees> at <centre>)}: 0 to 1 over one clockwise turn about
+     * {@code (centreX, centreY)}, box-relative, starting {@code fromDegrees} clockwise from up.
+     */
+    public CgCanvasGradient conic(float centreX, float centreY, float fromDegrees) {
+        this.shape = Shape.CONIC;
+        this.centreX = centreX;
+        this.centreY = centreY;
+        this.start = fromDegrees / 360f;
+        return this;
+    }
+
+    /** Paints only the band {@code width} wide inside the box's rounded edge; 0 (the default) fills it. */
+    public CgCanvasGradient border(float width) {
+        this.border = Math.max(0f, width);
         return this;
     }
 
@@ -146,9 +174,10 @@ public final class CgCanvasGradient {
         int last = count - 1;
         first = index * (STOPS_PER_DRAW - 1);
         end = Math.min(first + STOPS_PER_DRAW - 1, last);
-        boolean rounded = false;
-        for (float r : radii) rounded |= r > 0f;
-        current = instances.of(instances.material().keyword(WITH_MASK, rounded).keyword(RADIAL, radial));
+        boolean masked = border > 0f;
+        for (float r : radii) masked |= r > 0f;
+        current = instances.of(instances.material().keyword(WITH_MASK, masked)
+                .keyword(RADIAL, shape == Shape.RADIAL).keyword(CONIC, shape == Shape.CONIC));
         write(current);
         return this;
     }
@@ -168,14 +197,22 @@ public final class CgCanvasGradient {
         b.set1f("_Count", end - first + 1);
         // A middle window owns [its first stop, its last): its neighbours own the rest, and the ends run on forever.
         b.vec2("_Window", first == 0 ? -1f : positions[first], end == count - 1 ? 2f : positions[end]);
-        if (radial) {
-            b.vec2("_Centre", centreX, centreY);
-            // A zero radius is a point: every fragment is past it and takes the last stop, as CSS draws it.
-            b.vec2("_Radii", Math.max(radiusX, 1e-4f), Math.max(radiusY, 1e-4f));
-        } else {
-            axis(angle, width, height, axis);
-            b.vec2("_Axis", axis[0], axis[1]);
+        switch (shape) {
+            case RADIAL -> {
+                b.vec2("_Centre", centreX, centreY);
+                // A zero radius is a point: every fragment is past it and takes the last stop, as CSS draws it.
+                b.vec2("_Radii", Math.max(radiusX, 1e-4f), Math.max(radiusY, 1e-4f));
+            }
+            case CONIC -> {
+                b.vec2("_Centre", centreX, centreY);
+                b.set1f("_Start", start);
+            }
+            case LINEAR -> {
+                axis(angle, width, height, axis);
+                b.vec2("_Axis", axis[0], axis[1]);
+            }
         }
+        b.set1f("_Border", border);
         b.vec4("_CornerRadiusX", radii[0], radii[2], radii[4], radii[6]);
         b.vec4("_CornerRadiusY", radii[1], radii[3], radii[5], radii[7]);
         b.vec2("_BoxSize", width, height);

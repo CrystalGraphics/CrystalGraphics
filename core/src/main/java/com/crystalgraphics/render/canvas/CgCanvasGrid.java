@@ -18,24 +18,29 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * canvas.quad(ruling.material()).at(x, y).size(w, h).submit();
  *
  * ruling.size(w, h).cell(8f, 8f).line(1f).color(argb).radii(6, 6, 6, 6, 6, 6, 6, 6).apply();   // rounded
+ *
+ * ruling.size(w, h).cell(4f, 4f).checker(0xFF9E9E9E, 0xFF707070).apply();   // a transparency checkerboard
  * }</pre>
  *
  * <ul>
  *   <li>Cells and lines are in the units the quad is drawn in; a cell under half a unit is half a unit.</li>
+ *   <li>{@link #checker} fills alternate cells instead of ruling them, until {@link #color} rules again; the line width
+ *       does nothing to it. Under a pixel a cell, it fades to the two colours' mean.</li>
  *   <li>{@link #apply} writes the material's values; a quad captures them as it is submitted. One instance per drawer.</li>
  *   <li>Lines are straight ARGB, tinted by the quad's colour; premultiplied out.</li>
  * </ul>
  */
 public final class CgCanvasGrid {
 
-    static final String WITH_MASK = "WITH_MASK";
+    static final String WITH_MASK = "WITH_MASK", CHECKER = "CHECKER";
 
     /** An instance with its mask and one without. */
     private final CgMaterialInstances instances;
     private CgMaterialInstance current;
 
     private float width, height, cellWidth = 16f, cellHeight = 16f, lineWidth = 1f;
-    private int argb = 0xFFFFFFFF;
+    private int argb = 0xFFFFFFFF, second;
+    private boolean checker;
     private final float[] radii = new float[8];
 
     public CgCanvasGrid(CgCanvasMaterials materials) {
@@ -65,8 +70,18 @@ public final class CgCanvasGrid {
         return this;
     }
 
+    /** Ruled lines in {@code argb}, straight ARGB. */
     public CgCanvasGrid color(int argb) {
         this.argb = argb;
+        this.checker = false;
+        return this;
+    }
+
+    /** Alternate cells filled {@code first} and {@code second}, straight ARGB, the top-left cell {@code first}. */
+    public CgCanvasGrid checker(int first, int second) {
+        this.argb = first;
+        this.second = second;
+        this.checker = true;
         return this;
     }
 
@@ -82,18 +97,23 @@ public final class CgCanvasGrid {
     public CgCanvasGrid apply() {
         boolean rounded = false;
         for (float r : radii) rounded |= r > 0f;
-        current = instances.of(instances.material().keyword(WITH_MASK, rounded));
+        current = instances.of(instances.material().keyword(WITH_MASK, rounded).keyword(CHECKER, checker));
         write(current);
         return this;
     }
 
     private void write(CgMaterialValues b) {
-        float a = ((argb >>> 24) & 0xFF) / 255f;
-        b.vec4("_Color", ((argb >>> 16) & 0xFF) / 255f * a, ((argb >>> 8) & 0xFF) / 255f * a, (argb & 0xFF) / 255f * a, a);
+        premultiplied(b, "_Color", argb);
+        if (checker) premultiplied(b, "_Color2", second);
         b.vec2("_Cell", cellWidth, cellHeight);
         b.vec2("_LineWidth", lineWidth, lineWidth);
         b.vec2("_BoxSize", width, height);
         b.vec4("_CornerRadiusX", radii[0], radii[2], radii[4], radii[6]);
         b.vec4("_CornerRadiusY", radii[1], radii[3], radii[5], radii[7]);
+    }
+
+    private static void premultiplied(CgMaterialValues b, String name, int argb) {
+        float a = ((argb >>> 24) & 0xFF) / 255f;
+        b.vec4(name, ((argb >>> 16) & 0xFF) / 255f * a, ((argb >>> 8) & 0xFF) / 255f * a, (argb & 0xFF) / 255f * a, a);
     }
 }

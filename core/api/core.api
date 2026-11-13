@@ -8669,7 +8669,9 @@ com/crystalgraphics/render/canvas/CgCanvasGradient
   field public,static,final STOPS_PER_DRAW I
   method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public angle (F)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
+  method public border (F)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public clearStops ()Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
+  method public conic (FFF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public radial (FFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
@@ -8684,6 +8686,7 @@ com/crystalgraphics/render/canvas/CgCanvasGrid
   method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
   method public apply ()Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public cell (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
+  method public checker (II)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public color (I)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public line (F)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
@@ -12659,11 +12662,14 @@ com/crystalgraphics/shadergraph/CgMasterNode
   field public,static,final ALPHA Ljava/lang/String;
   field public,static,final ALPHA_CLIP_THRESHOLD Ljava/lang/String;
   field public,static,final BASE_COLOR Ljava/lang/String;
+  field public,static,final BLEND_MODES Ljava/util/List;
   field public,static,final FRAGMENT_PORTS Ljava/util/List;
   field public,static,final POSITION Ljava/lang/String;
   field public,static,final VERTEX_PORTS Ljava/util/List;
   implements com/crystalgraphics/shadergraph/CgShaderNode
   method public <init> ()V
+  method public blendMode ()Ljava/lang/String;
+  method public blendMode (Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgMasterNode;
   method public clearShaderProperties ()Lcom/crystalgraphics/shadergraph/CgMasterNode;
   method public generateCode (Lcom/crystalgraphics/shadergraph/CgNodeCodeContext;)Ljava/lang/String;
   method public id ()Ljava/lang/String;
@@ -12672,14 +12678,8 @@ com/crystalgraphics/shadergraph/CgMasterNode
   method public outputs ()Ljava/util/List;
   method public ports ()Ljava/util/List;
   method public property (Ljava/lang/String;Lcom/crystalgraphics/shadergraph/CgShaderType;Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgMasterNode;
-  method public queue ()Ljava/lang/String;
-  method public queue (Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgMasterNode;
-  method public renderType ()Ljava/lang/String;
-  method public renderType (Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgMasterNode;
   method public revision ()I
   method public shaderProperties ()Ljava/util/Collection;
-  method public vertexFormat ()Ljava/lang/String;
-  method public vertexFormat (Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgMasterNode;
   method public,static blockOf (Ljava/lang/String;)Lcom/crystalgraphics/shadergraph/CgShaderDomain;
   method public,static defaultExpressionFor (Ljava/lang/String;)Ljava/lang/String;
 com/crystalgraphics/shadergraph/CgMasterNode$Property

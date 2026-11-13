@@ -33,6 +33,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **GeckoLib** models, animations and easings | `com/crystalgraphics/api/mesh/geckolib/`, `com/crystalgraphics/asset/curve/CgRichCurve` | MIT — © 2026 GeckoLib | Ported source, modified. Licence below |
 | **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/env/compute/vfx/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
 | **bcdec** BC7 decoder | `com/crystalgraphics/util/io/CgBc7` | MIT (of MIT or the Unlicense) — © 2022 Sergii Kudlai | Ported source, modified. Licence below |
+| **Inigo Quilez** filtered checkerboard | `assets/crystalgraphics/shaders/canvas/grid.shader` (`CHECKER`) | MIT — © 2017 Inigo Quilez | Ported source. Licence below |
 | **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgNoiseVolumes`, `assets/crystalgraphics/shaders/env/compute/noise_bake.compute`, `assets/crystalgraphics/shaders/lib/vfx/fx_wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
@@ -423,4 +424,24 @@ SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PRO
 SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
 WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## Inigo Quilez
+
+The canvas grid's checkerboard (`canvas/grid.shader`, `CHECKER`) ports the box-filtered checker of his "Filtering
+procedurals" article and its Shadertoy reference, `XlcSz2`.
+
+```
+The MIT License
+Copyright (c) 2017 Inigo Quilez
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit
+persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright notice
+and this permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```

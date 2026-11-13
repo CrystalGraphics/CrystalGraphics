@@ -185,8 +185,9 @@ int field = canvas.shapes().begin(CgShapeTable.FLAT, 200, 22).radii(3, 3, 3, 3, 
 
 ### Gradients
 
-A **gradient** is a box filled with colours that blend from one to the next: CSS's `linear-gradient` and
-`radial-gradient`. A wash fading a panel into the world behind it, a glow under a selected slot, a sky. It is drawn
+A **gradient** is a box filled with colours that blend from one to the next: CSS's `linear-gradient`,
+`radial-gradient` and `conic-gradient`. A wash fading a panel into the world behind it, a glow under a selected slot, a
+sky, a colour picker's hue ring. It is drawn
 by a `CgCanvasGradient`, which owns its material: set it up for the box, then draw a quad over the box under its
 `material()`.
 
@@ -218,10 +219,18 @@ glow.size(w, h)
 // A hard stop: two colours at one position, a two-tone bar
 bar.size(w, h).angle(90f).clearStops()
    .stop(0f, 0xFF3FBF4F).stop(health, 0xFF3FBF4F).stop(health, 0xFF5A1010).stop(1f, 0xFF5A1010);
+
+// A ring sweeping red to cyan and back: a conic about the centre, round corners, and only a band 12 wide painted
+ring.size(d, d)
+    .conic(d / 2, d / 2, 0f)                     // centre (x, y), and where 0 points: degrees clockwise from up
+    .radii(d / 2, d / 2, d / 2, d / 2, d / 2, d / 2, d / 2, d / 2)
+    .border(12f)                                 // the band inside the edge; 0 fills the box
+    .clearStops().stop(0f, 0xFFFF0000).stop(0.5f, 0xFF00FFFF).stop(1f, 0xFFFF0000);
 ```
 
 - **Positions run 0 to 1 along the gradient line.** For an angle that is CSS's line, through the box's centre, so 0
-  and 1 land on the corners at any angle; for a radial, 0 is the centre and 1 the ellipse.
+  and 1 land on the corners at any angle; for a radial, 0 is the centre and 1 the ellipse; for a conic, one clockwise
+  turn from its start.
 - **Before the first stop and past the last, the end colours fill**, as in CSS.
 - **Stops must ascend**: one below the stop before is raised to it.
 - **Colours blend premultiplied**, as CSS specifies: a fade to transparent keeps its hue instead of passing through
@@ -230,7 +239,8 @@ bar.size(w, h).angle(90f).clearStops()
   written after it does not reach it.
 - **One gradient per drawer.** Its material holds the last window written; two drawers sharing one overwrite each
   other.
-- The quad's colour tints the whole gradient. `radii(...)` rounds the gradient's own corners.
+- The quad's colour tints the whole gradient. `radii(...)` rounds the gradient's own corners; `border(width)` paints
+  only the band that wide inside them, CSS's border box less its padding box.
 
 ### Grids
 
@@ -251,7 +261,13 @@ canvas.quad(ruling.material()).at(x, y).size(w, h).submit();
 
 // Zoomed: scale the cell with the view and keep the line at a pixel; rounded corners
 ruling.size(w, h).cell(16f * zoom, 16f * zoom).line(1f).color(0x30FFFFFF).radii(6, 6, 6, 6, 6, 6, 6, 6).apply();
+
+// A transparency checkerboard: alternate cells filled, the top-left one the first colour
+ruling.size(w, h).cell(4f, 4f).checker(0xFF9E9E9E, 0xFF707070).apply();
 ```
+
+`checker(first, second)` fills the cells rather than ruling them, until `color(...)` rules again; below a pixel a cell,
+it fades to the two colours' mean (Inigo Quilez's filtered checkerboard).
 
 - Cells, lines and the box are in the units the quad is drawn in. A cell is at least half a unit.
 - **`apply()` before each quad**: like a gradient's window, the quad takes the material's values as it is submitted.

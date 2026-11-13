@@ -36,7 +36,7 @@ public final class CgMasterNode implements CgShaderNode {
     /** Fragment-stage output: the surface colour, <b>without</b> alpha. @see #ALPHA */
     public static final String BASE_COLOR = "BaseColor";
 
-    /** Fragment-stage output: opacity. Only visible with a blending {@code RenderState}. */
+    /** Fragment-stage output: opacity. Only visible under a {@code Translucent} {@link #blendMode}. */
     public static final String ALPHA = "Alpha";
 
     /** Fragment-stage output: {@code discard} below this alpha. Zero disables it. */
@@ -68,9 +68,8 @@ public final class CgMasterNode implements CgShaderNode {
      * {@code "Lighting" = "Unlit"} and Base Color lit through {@code cg_Lit}).</p>
      *
      * <p>{@link #ALPHA} and {@link #ALPHA_CLIP_THRESHOLD} are here precisely because they are the two that
-     * <em>are</em> consumable today: a {@code .shader} can declare
-     * {@code Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA}, {@code Queue} has {@code Transparent} and
-     * {@code AlphaTest}, and the world renderer's transparent pass actually runs.</p>
+     * <em>are</em> consumable today: a {@link #blendMode} of {@code Translucent} weighs by Alpha, and the
+     * world renderer's transparent pass actually runs.</p>
      *
      * <p><b>This is a queue, not a graveyard.</b> The rejected ports come back the day a lighting model
      * lands, which is why the blocks are declared as data here rather than implied by a hard-coded pair
@@ -120,9 +119,7 @@ public final class CgMasterNode implements CgShaderNode {
     public record Property(String name, CgShaderType type, String defaultValue) {
     }
 
-    private String vertexFormat = "spatial";
-    private String renderType = "Opaque";
-    private String queue = "Geometry";
+    private String blendMode = "Opaque";
     private final Map<String, Property> properties = new LinkedHashMap<>();
 
     @Override public String id() { return "cg:master"; }
@@ -134,7 +131,7 @@ public final class CgMasterNode implements CgShaderNode {
     /**
      * Emits nothing.
      *
-     * <p>The master's inputs become {@code gl_Position} and {@code fragColor}, written by
+     * <p>The master's inputs become {@code v.world} and the surface's outputs, written by
      * {@link CgShaderEmitter} because only it knows which stage is being emitted. A node cannot know
      * that — it is handed resolved names and nothing else, which is the whole point of the inversion.</p>
      */
@@ -145,24 +142,19 @@ public final class CgMasterNode implements CgShaderNode {
 
     // ── Graph-level settings ────────────────────────────────────────────────
 
-    /** The {@code #type} line — the vertex format the graph draws with. */
-    public CgMasterNode vertexFormat(String value) {
-        if (!Objects.equals(vertexFormat, value)) revision++;
-        this.vertexFormat = value;
-        return this;
-    }
+    /** The material's blend modes a graph may take: what draws and sorts it, as Unreal's Blend Mode. */
+    public static final List<String> BLEND_MODES = List.of("Opaque", "Translucent", "Additive");
 
-    /** {@code Tags { "RenderType" = ... }}. Drives depth auto-generation. */
-    public CgMasterNode renderType(String value) {
-        if (!Objects.equals(renderType, value)) revision++;
-        this.renderType = value;
-        return this;
-    }
-
-    /** {@code Queue = "..."} — Background, Geometry, AlphaTest, Transparent, Overlay. */
-    public CgMasterNode queue(String value) {
-        if (!Objects.equals(queue, value)) revision++;
-        this.queue = value;
+    /**
+     * The material's {@code BlendMode}: {@code Opaque} (the default), {@code Translucent}, which weighs by
+     * {@link #ALPHA}, or {@code Additive}. Sorting follows from it.
+     *
+     * @throws IllegalArgumentException for a value not in {@link #BLEND_MODES}
+     */
+    public CgMasterNode blendMode(String value) {
+        if (!BLEND_MODES.contains(value)) throw new IllegalArgumentException("Blend mode " + value + " is one of " + BLEND_MODES);
+        if (!Objects.equals(blendMode, value)) revision++;
+        this.blendMode = value;
         return this;
     }
 
@@ -192,9 +184,7 @@ public final class CgMasterNode implements CgShaderNode {
         return this;
     }
 
-    public String vertexFormat() { return vertexFormat; }
-    public String renderType() { return renderType; }
-    public String queue() { return queue; }
+    public String blendMode() { return blendMode; }
 
     /**
      * The material's {@code Properties { }} block — declared uniforms, in declaration order.

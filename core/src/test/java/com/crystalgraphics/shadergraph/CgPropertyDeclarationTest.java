@@ -61,7 +61,7 @@ public class CgPropertyDeclarationTest {
     @Test
     public void theParserGenuinelyRefusesAVec3Property() {
         String handWritten = emitWith(new CgMasterNode())
-                .replace("Queue = ", "Properties {\n    _Dir (\"_Dir\", vec3) = (0,1,0)\n}\n\nQueue = ");
+                .replace("Material { ", "Properties {\n    _Dir (\"_Dir\", vec3) = (0,1,0)\n}\n\nMaterial { ");
         try {
             CgShaderParser.parse(handWritten, "test:vec3");
             fail("vec3 is banned as a property type — if it no longer is, the vec4 workaround in "

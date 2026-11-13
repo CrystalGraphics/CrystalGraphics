@@ -173,7 +173,9 @@ public final class CgPreviewEmitter {
                                 CgPreviewGeometry geometry) {
         StringBuilder out = new StringBuilder(768);
         out.append("// Generated preview shader. Not part of any build output.\n");
-        out.append("#type spatial\n\n");
+        // global: an engine draw into a private target, written as it is to be read back, its alpha the
+        // coverage. A surface material cannot write an opaque draw's alpha.
+        out.append("#domain global\n");
 
         Set<String> includes = new LinkedHashSet<>(compiled.includes());
         // Always, for linear_to_srgb below. Safe to hoist into the vertex stage too — color.glsl is pure
@@ -182,26 +184,21 @@ public final class CgPreviewEmitter {
         for (String include : includes) out.append("#include \"").append(include).append("\"\n");
         out.append('\n');
 
-        // Opaque and Geometry: a thumbnail draws into a cleared private target with nothing behind it,
-        // so there is nothing to blend with and sorting has no meaning.
-        //
-        out.append("Tags { \"RenderType\" = \"Opaque\" }\n");
-        out.append("Queue = \"Geometry\"\n\n");
+        // Unblended: a thumbnail draws into a cleared private target with nothing behind it. sRGB, as the
+        // encode below writes it.
+        out.append("Material { ColorSpace sRGB }\n\n");
         out.append(V2F).append('\n');
 
-        out.append("Pass {\n");
-        out.append("    Tags { \"LightMode\" = \"Forward\" }\n\n");
+        out.append("void vertex(out v2f o) {\n");
+        out.append("    o.uv = cg_TexCoord0;\n");
+        out.append("    o.objectPos = cg_Position;\n");
+        out.append("    o.normal = CG_NORMAL_MATRIX * cg_Normal;\n");
+        out.append("    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n");
+        out.append("}\n\n");
 
-        out.append("    void vertex(out v2f o) {\n");
-        out.append("        o.uv = cg_TexCoord0;\n");
-        out.append("        o.objectPos = cg_Position;\n");
-        out.append("        o.normal = CG_NORMAL_MATRIX * cg_Normal;\n");
-        out.append("        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n");
-        out.append("    }\n\n");
-
-        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n");
+        out.append("void fragment(in v2f i, out vec4 fragColor) {\n");
         out.append(surface(geometry));
-        out.append(reindent(compiled.code()));
+        out.append(compiled.code());
         // ENCODED TO sRGB, which is the difference between our thumbnails and Unity's.
         //
         // A shader's values are linear; a display is not. Writing linear numbers into an RGBA8 that the
@@ -211,9 +208,8 @@ public final class CgPreviewEmitter {
         // hardest. The geometry was centred the whole time.
         //
         // Alpha is the coverage and is deliberately NOT encoded: it is a blend weight, not a colour.
-        out.append("        fragColor = vec4(linear_to_srgb(").append(displayRgb(variable, type))
+        out.append("    fragColor = vec4(linear_to_srgb(").append(displayRgb(variable, type))
                 .append("), cg_coverage);\n");
-        out.append("    }\n");
         out.append("}\n");
 
         // The shape is not written into the file — the same source draws on either, and which one is
@@ -246,7 +242,7 @@ public final class CgPreviewEmitter {
         // still works when the preview mesh becomes a cube, a cylinder or a user's own model.
         //
         // Antialiasing is therefore a RESOLUTION problem, solved by supersampling the target.
-        return "        float cg_coverage = 1.0;\n";
+        return "    float cg_coverage = 1.0;\n";
     }
 
     /**
@@ -290,16 +286,6 @@ public final class CgPreviewEmitter {
     /** Whether a value of this type can be shown as a thumbnail at all. */
     public static boolean isPreviewable(CgShaderType type) {
         return displayRgb("x", type) != null;
-    }
-
-    /** The compiler indents to one level; a pass body sits at two. */
-    private static String reindent(String code) {
-        if (code.isEmpty()) return "";
-        StringBuilder out = new StringBuilder(code.length() + 32);
-        for (String line : code.split("\n", -1)) {
-            if (!line.isEmpty()) out.append("    ").append(line).append('\n');
-        }
-        return out.toString();
     }
 
 }

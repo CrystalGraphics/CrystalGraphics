@@ -411,7 +411,7 @@ public final class CgShaderEmitter {
         boolean preview = shading.isPreview();
         StringBuilder out = new StringBuilder(1024);
         out.append("// Generated from a shader graph. Edits here are lost on the next compile.\n");
-        out.append("#type ").append(master.vertexFormat()).append("\n\n");
+        out.append("#domain surface\n");
 
         Set<String> includes = new LinkedHashSet<>(vertex.includes());
         includes.addAll(fragment.includes());
@@ -423,8 +423,11 @@ public final class CgShaderEmitter {
         }
         if (!includes.isEmpty()) out.append('\n');
 
-        out.append("Tags { \"RenderType\" = \"").append(master.renderType()).append("\" }\n");
-        out.append("Queue = \"").append(master.queue()).append("\"\n\n");
+        // Unlit: the graph's output is the colour drawn. The blend mode sorts it, as Unreal's does.
+        boolean translucent = !master.blendMode().equals("Opaque");
+        out.append("Material { ");
+        if (translucent) out.append("BlendMode ").append(master.blendMode()).append("  ");
+        out.append("ShadingModel Unlit }\n\n");
 
         if (!master.shaderProperties().isEmpty()) {
             out.append("Properties {\n");
@@ -466,33 +469,31 @@ public final class CgShaderEmitter {
         }
         out.append("};\n\n");
 
-        out.append("Pass {\n");
-        out.append("    Tags { \"LightMode\" = \"Forward\" }\n\n");
-
-        out.append("    void vertex(out v2f o) {\n");
+        out.append("void vertex(inout CgVertex v, out v2f o) {\n");
         mapOwners(lineOwners, vertex.lineOwners(), nextLine(out));
-        out.append(reindent(vertex.code()));
+        out.append(vertex.code());
         // Adapted like the fragment ports: a vec4 wired into Position would otherwise become
-        // vec4(someVec4, 1.0). No varying substitution — this IS the vertex stage.
-        out.append("        gl_Position = CG_MATRIX_MVP * vec4(")
-                .append(adapted(graph, masterId, CgMasterNode.POSITION, vertex, null))
-                .append(", 1.0);\n");
+        // vec4(someVec4, 1.0). No varying substitution — this IS the vertex stage. Unwired, the factory has
+        // placed it already.
+        String position = adapted(graph, masterId, CgMasterNode.POSITION, vertex, null);
+        if (!position.equals("cg_Position")) {
+            out.append("    v.world = (CG_OBJECT_TO_WORLD * vec4(").append(position).append(", 1.0)).xyz;\n");
+        }
         for (Varying varying : varyings) {
-            out.append("        o.").append(varying.field()).append(" = ")
+            out.append("    o.").append(varying.field()).append(" = ")
                     .append(varying.vertexVariable()).append(";\n");
         }
         if (lit) {
             // The mesh's own normal, in world space. Deliberately NOT the master's Vertex block: there is
             // no Normal port, and giving one a consumer that exists only in the preview is exactly the
             // trap Shading's own doc warns about.
-            out.append("        o.").append(PREVIEW_NORMAL_FIELD)
-                    .append(" = CG_NORMAL_MATRIX * cg_Normal;\n");
+            out.append("    o.").append(PREVIEW_NORMAL_FIELD).append(" = v.normal;\n");
         }
-        out.append("    }\n\n");
+        out.append("}\n\n");
 
-        out.append("    void fragment(in v2f i, out vec4 fragColor) {\n");
+        out.append("void surface(in v2f i, inout CgSurface s) {\n");
         mapOwners(lineOwners, fragment.lineOwners(), nextLine(out));
-        out.append(reindent(substituteVaryings(fragment.code(), varyings)));
+        out.append(substituteVaryings(fragment.code(), varyings));
 
         String baseColor = fragmentExpression(graph, masterId, CgMasterNode.BASE_COLOR, varyings,
                 fragment, vertex);
@@ -502,23 +503,23 @@ public final class CgShaderEmitter {
 
         // Alpha is resolved into a local before the clip test so the expression is evaluated once — it may
         // be an arbitrary node chain, and writing it twice would duplicate whatever work produced it.
-        out.append("        float cg_alpha = ").append(alpha).append(";\n");
+        out.append("    float cg_alpha = ").append(alpha).append(";\n");
 
         // Emitted only when the threshold is genuinely wired or non-zero. A constant `< 0.0` is dead code
         // every driver would strip, but it is also a `discard` sitting in the source of every shader in
         // the project, and `discard` is the single most misread instruction in a fragment body — someone
         // will eventually conclude their opaque shader is doing alpha testing.
         if (isClippingEnabled(graph, masterId, clip)) {
-            out.append("        if (cg_alpha < ").append(clip).append(") discard;\n");
+            out.append("    if (cg_alpha < ").append(clip).append(") discard;\n");
         }
 
         if (lit) {
             appendPreviewLighting(out, baseColor);
         } else {
-            out.append("        fragColor = vec4(").append(displayed(baseColor, preview))
-                    .append(", cg_alpha);\n");
+            out.append("    s.baseColor = ").append(displayed(baseColor, preview)).append(";\n");
         }
-        out.append("    }\n");
+        // Only a translucent blend weighs by it, as Unreal's opacity: an opaque or added one ignores it.
+        if (master.blendMode().equals("Translucent")) out.append("    s.opacity = cg_alpha;\n");
         out.append("}\n");
         return out.toString();
     }
@@ -541,25 +542,24 @@ public final class CgShaderEmitter {
      * still read as a curved one.</p>
      */
     private static void appendPreviewLighting(StringBuilder out, String baseColor) {
-        out.append("        // Preview-only shading. Not a lighting model -- see CgShaderEmitter.Shading.\n");
-        out.append("        vec3 cg_n = normalize(mat3(cg_ViewMatrix) * i.")
+        out.append("    // Preview-only shading. Not a lighting model -- see CgShaderEmitter.Shading.\n");
+        out.append("    vec3 cg_n = normalize(mat3(cg_ViewMatrix) * i.")
                 .append(PREVIEW_NORMAL_FIELD).append(");\n");
-        out.append("        vec3 cg_l = normalize(mat3(cg_ViewMatrix) * ")
+        out.append("    vec3 cg_l = normalize(mat3(cg_ViewMatrix) * ")
                 .append(PREVIEW_LIGHT_DIR).append(");\n");
         // Orthographic: one view vector for every pixel.
-        out.append("        vec3 cg_v = vec3(0.0, 0.0, 1.0);\n");
-        out.append("        vec3 cg_h = normalize(cg_l + cg_v);\n");
+        out.append("    vec3 cg_v = vec3(0.0, 0.0, 1.0);\n");
+        out.append("    vec3 cg_h = normalize(cg_l + cg_v);\n");
         // Two-sided: a back-facing normal would otherwise leave a cap or a quad's reverse pitch black.
-        out.append("        if (cg_n.z < 0.0) cg_n = -cg_n;\n");
-        out.append("        float cg_ndl = max(dot(cg_n, cg_l), 0.0);\n");
-        out.append("        float cg_ndh = max(dot(cg_n, cg_h), 0.0);\n");
-        out.append("        vec3 cg_base = ").append(baseColor).append(";\n");
-        out.append("        vec3 cg_lit = cg_base * (").append(PREVIEW_AMBIENT)
+        out.append("    if (cg_n.z < 0.0) cg_n = -cg_n;\n");
+        out.append("    float cg_ndl = max(dot(cg_n, cg_l), 0.0);\n");
+        out.append("    float cg_ndh = max(dot(cg_n, cg_h), 0.0);\n");
+        out.append("    vec3 cg_base = ").append(baseColor).append(";\n");
+        out.append("    vec3 cg_lit = cg_base * (").append(PREVIEW_AMBIENT)
                 .append(" + ").append(PREVIEW_KEY).append(" * cg_ndl)\n");
-        out.append("                + vec3(").append(PREVIEW_SPECULAR).append(") * pow(cg_ndh, ")
+        out.append("            + vec3(").append(PREVIEW_SPECULAR).append(") * pow(cg_ndh, ")
                 .append(PREVIEW_SHININESS).append(");\n");
-        out.append("        fragColor = vec4(").append(displayed("cg_lit", true))
-                .append(", cg_alpha);\n");
+        out.append("    s.baseColor = ").append(displayed("cg_lit", true)).append(";\n");
     }
 
     /**
@@ -759,27 +759,6 @@ public final class CgShaderEmitter {
             out = out.replace(varying.vertexVariable(), "i." + varying.field());
         }
         return out;
-    }
-
-    /**
-     * The compiler indents to one level; a pass body sits at two.
-     *
-     * <p><b>Preserves the line count exactly</b>, blank lines included. It used to drop empties, which
-     * was invisible in the output and fatal to {@link Result#ownerOfLine}: every line after the first
-     * blank one would be attributed to the wrong node, and the error would point at a plausible
-     * neighbour rather than the culprit.</p>
-     */
-    private static String reindent(String code) {
-        if (code.isEmpty()) return "";
-        StringBuilder out = new StringBuilder(code.length() + 32);
-        for (String line : code.split("\n", -1)) {
-            if (!line.isEmpty()) out.append("    ").append(line);
-            out.append('\n');
-        }
-        // split() with a trailing newline yields one empty trailing element, so the loop added a newline
-        // the source did not have.
-        if (code.endsWith("\n")) out.setLength(out.length() - 1);
-        return out.toString();
     }
 
     /** The 1-based line number the next append will start on. */

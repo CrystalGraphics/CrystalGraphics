@@ -115,19 +115,17 @@ public class CgShaderEmitterTest {
 
         assertTrue(String.join("\n", result.errors()), result.ok());
         assertNotNull("the emitted source must parse", CgShaderParser.parse(result.source()));
-        assertTrue(result.source().contains("#type spatial"));
-        // Narrowed to .xyz because BaseColor is a vec3 now that Alpha is a port of its own, and composed
-        // back with the alpha local. @see CgShaderEmitter#adapted
+        assertTrue(result.source().contains("#domain surface"));
+        // Narrowed to .xyz: BaseColor is a vec3, Alpha a port of its own. @see CgShaderEmitter#adapted
         assertTrue("the colour reaches the output",
-                result.source().contains("fragColor = vec4(node_c_Out.xyz, cg_alpha);"));
+                result.source().contains("s.baseColor = node_c_Out.xyz;"));
     }
 
     /** The master's settings land in the file rather than being defaults nobody can change. */
     @Test
     public void masterSettingsAndPropertiesAreEmitted() {
         CgMasterNode master = new CgMasterNode()
-                .queue("Transparent")
-                .renderType("Transparent")
+                .blendMode("Translucent")
                 .property("_Tint", CgShaderType.VEC4, "(1.0, 1.0, 1.0, 1.0)")
                 .property("_Toggle", CgShaderType.BOOL, "true");
         CgShaderGraph graph = new CgShaderGraph()
@@ -138,8 +136,8 @@ public class CgShaderEmitterTest {
 
         String source = CgShaderEmitter.emit(graph, master).source();
 
-        assertTrue(source.contains("Queue = \"Transparent\""));
-        assertTrue(source.contains("\"RenderType\" = \"Transparent\""));
+        assertTrue(source, source.contains("BlendMode Translucent"));
+        assertTrue("a translucent graph weighs by its alpha", source.contains("s.opacity = cg_alpha;"));
         assertTrue(source.contains("_Tint (\"_Tint\", vec4) = (1.0, 1.0, 1.0, 1.0)"));
         // bool is spelled `boolean` in a Properties block — emitting the GLSL name here would produce
         // a file the parser rejects.
@@ -160,9 +158,8 @@ public class CgShaderEmitterTest {
         assertTrue(String.join("\n", result.errors()), result.ok());
         assertNotNull(CgShaderParser.parse(result.source()));
         assertTrue("the master's own default is used",
-                result.source().contains("fragColor = vec4(vec3(1.0, 1.0, 1.0), cg_alpha);"));
-        assertTrue("and the position default keeps the geometry transforming",
-                result.source().contains("vec4(cg_Position, 1.0)"));
+                result.source().contains("s.baseColor = vec3(1.0, 1.0, 1.0);"));
+        assertFalse("and an unwired position is the factory's own", result.source().contains("v.world"));
     }
 
     // ── The stage split ─────────────────────────────────────────────────────
@@ -201,7 +198,7 @@ public class CgShaderEmitterTest {
         assertTrue("and read in the fragment stage", source.contains("i.v_pos_Out"));
 
         // The decisive one: the vertex attribute must not appear in the fragment body at all.
-        String fragmentBody = source.substring(source.indexOf("void fragment"));
+        String fragmentBody = source.substring(source.indexOf("void surface"));
         assertFalse("a vertex attribute must never reach the fragment stage",
                 fragmentBody.contains("cg_Position"));
     }
