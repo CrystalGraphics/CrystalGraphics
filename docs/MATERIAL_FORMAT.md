@@ -94,11 +94,16 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 
 | Output | Type | Default | What it is |
 |---|---|---|---|
-| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour: lit by the world, or shown as written under `ShadingModel Unlit` |
-| `opacity` | `float` | `1` | How much it hides what is behind it (translucent blend modes) |
+| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour: lit by the world, or shown as written under `ShadingModel Unlit`; linear albedo under `DefaultLit` and `Subsurface` |
+| `metallic` | `float` | `0` | `DefaultLit` and `Subsurface`: 1 a metal, whose base colour is its reflection |
+| `specular` | `float` | `0.5` | `DefaultLit` and `Subsurface`: a non-metal's reflectance, 0.08 times this |
+| `roughness` | `float` | `0.5` | `DefaultLit` and `Subsurface`: 0 a mirror, 1 matte |
+| `ambientOcclusion` | `float` | `1` | `DefaultLit` and `Subsurface`: how much of the sky's light reaches it |
+| `subsurfaceColor` | `vec3` | `(1, 1, 1)` | `Subsurface`: the colour light takes through it |
+| `opacity` | `float` | `1` | How much it hides what is behind it (translucent blend modes); under `Subsurface`, how much the normal counts in the light through it |
 | `opacityMask` | `float` | `1` | Where it is solid: kept at or above `MaskClip` (`Masked`, `ClipDepth`, `DepthPrepass`) |
 | `emissive` | `vec3` | `(0, 0, 0)` | Light it gives off, linear and unlit; past 1, it blooms |
-| `normal` | `vec3` | `(0, 1, 0)` | World-space normal, lighting a translucent surface (`TranslucencyLighting Surface`) |
+| `normal` | `vec3` | the mesh's, or `(0, 1, 0)` | World-space normal, lighting a `DefaultLit` or `Subsurface` surface (the mesh's by default, toward the eye on a back face) or a translucent one (`TranslucencyLighting Surface`) |
 | `refraction` | `vec2` | `(0, 0)` | How far it bends what is behind it, in screen UV (0.02 = 2% of the screen) |
 | `refractionSplit` | `float` | `0` | The bend split by colour: red bends `1 + split` as far, blue `1 - split` |
 | `refractionDepth` | `float` | the pixel's eye depth | Where the bend starts, for a haze traced inside a volume |
@@ -201,7 +206,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | Property | Values (default first) | What it does |
 |---|---|---|
 | `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` ignore `opacity` and leave what is behind's alpha as it was |
-| `ShadingModel` | `WorldLit`, `Unlit` | Lit by the world's light, or shown as written |
+| `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; shown as written; or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |
 | `TranslucencyPass` | `Standard`, `AfterDistortion`, `Separate`, `Overlay` | When a translucent material draws: with the others, after the bend, after everything translucent, or over the world |

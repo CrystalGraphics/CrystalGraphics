@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
+import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import org.junit.Test;
@@ -74,6 +75,39 @@ public class CgShaderSpecTest {
         assertEquals(CgShaderSpec.Lighting.SURFACE,
                 surface("BlendMode Translucent  TranslucencyLighting Surface", "s.opacity = 0.5; s.normal = vec3(0, 0, 1);")
                         .lighting());
+    }
+
+    @Test
+    public void aLitModelIsLitByTheTemplateAfterTheWorldLights() {
+        CgShaderSpec rock = surface("ShadingModel DefaultLit", "s.baseColor = vec3(0.5); s.metallic = 1.0; s.roughness = 0.3;");
+        assertEquals(CgShaderSpec.Lighting.UNLIT, rock.lighting());
+        assertEquals(CgShaderSpec.ColorSpace.LINEAR, rock.colorSpace());
+        // A solid lit forward draws after the deferred apply, which would light it again
+        assertEquals(CgRenderQueue.TRANSPARENT, rock.queue());
+        assertTrue(rock.pass(CgRenderPassVariant.FORWARD).state().getDepth().write());
+        assertTrue(rock.handedLights());
+        assertTrue(rock.handedSun());
+        assertTrue(rock.pass(CgRenderPassVariant.FORWARD).fragmentBody().contains("cg_default_lit(s, i."));
+
+        CgShaderSpec leaf = surface("ShadingModel Subsurface", "s.subsurfaceColor = vec3(0.5, 1.0, 0.2); s.opacity = 0.3;");
+        assertTrue(leaf.pass(CgRenderPassVariant.FORWARD).fragmentBody().contains(", true);"));
+
+        // Every other model leaves the light to the world, as before
+        assertEquals(CgShaderSpec.Lighting.LIT, surface("", "s.baseColor = vec3(1.0);").lighting());
+    }
+
+    @Test
+    public void litOutputsAreRefusedWhereNothingReadsThem() {
+        String v2f = "#domain surface\n";
+        refused(v2f + V2F + "void surface(in v2f i, inout CgSurface s) { s.roughness = 0.2; }\n", "DefaultLit or Subsurface");
+        refused(v2f + "Material { ShadingModel DefaultLit }\n" + V2F
+                + "void surface(in v2f i, inout CgSurface s) { s.subsurfaceColor = vec3(1.0); }\n", "Subsurface");
+        refused(v2f + "Material { ShadingModel DefaultLit  ColorSpace sRGB }\n" + V2F
+                + "void surface(in v2f i, inout CgSurface s) { }\n", "linear");
+        refused(v2f + "Material { BlendMode Translucent  ShadingModel DefaultLit  TranslucencyLighting Surface }\n" + V2F
+                + "void surface(in v2f i, inout CgSurface s) { s.opacity = 0.5; }\n", "WorldLit's");
+        refused(v2f + "Material { ShadingModel DefaultLit }\n" + V2F
+                + "void surface(in v2f i, inout CgSurface s) { s.opacity = 0.5; }\n", "translucent");
     }
 
     @Test

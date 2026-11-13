@@ -17,12 +17,20 @@ struct CgVertex {
 };
 
 // A material's outputs, Unreal's material result pins. Each output written decides the passes the material draws in.
+// A function may take and return one whole (Unreal's material attributes): cg_blend_material_attributes mixes two.
 struct CgSurface {
-    vec3 baseColor;          // (1, 1, 1): lit by the shading model, or shown as written when Unlit
-    float opacity;           // 1: how much it hides what is behind it, in a translucent blend mode
+    vec3 baseColor;          // (1, 1, 1): lit by the shading model, or shown as written when Unlit; linear under DefaultLit
+    float metallic;          // 0: DefaultLit and Subsurface's, as Unreal's defaults
+    float specular;          // 0.5: the reflectance of a dielectric, 0.08 x this
+    float roughness;         // 0.5
+    float ambientOcclusion;  // 1: of the sky's light alone
+    vec3 subsurfaceColor;    // (1, 1, 1): Subsurface's, the colour light takes through it
+    float opacity;           // 1: how much it hides what is behind it, in a translucent blend mode; Subsurface's
+                             // scattering in an opaque one
     float opacityMask;       // 1: solid where at or above MaskClip (Masked, ClipDepth, DepthPrepass)
     vec3 emissive;           // (0, 0, 0): light given off, linear, unlit; past 1 blooms
-    vec3 normal;             // (0, 1, 0): world space, for TranslucencyLighting Surface
+    vec3 normal;             // world space: the mesh's under DefaultLit and Subsurface, (0, 1, 0) for TranslucencyLighting
+                             // Surface
     vec2 refraction;         // (0, 0): the bend of what is behind it, in screen UV
     float refractionSplit;   // 0: red bends 1 + split as far, blue 1 - split
     float refractionDepth;   // the pixel's eye depth: where the bend starts

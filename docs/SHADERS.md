@@ -218,6 +218,56 @@ void surface(in v2f i, inout CgSurface s) {
   volume's direction too, at twice the volume's cost (`LIGHTS.md` §8).
 - `CgMaterial.surfaceLit()` says whether a material is one.
 
+#### Unreal's lit surfaces: `ShadingModel DefaultLit` and `Subsurface`
+
+A surface lit as Unreal's Default Lit model lights it: the material says what the surface is, and the engine lights it
+after `surface()` with Lambert diffuse and the GGX lobe under the sun, the four nearest point lights and the sky. A
+port of an Unreal material with a lit shading model is written this way; a block-like surface that should match
+Minecraft's terrain stays `WorldLit`.
+
+```glsl
+Material { ShadingModel DefaultLit }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 orm = texture(_ORM, i.uv0).rgb;                 // occlusion, roughness, metallic
+    s.baseColor = texture(_Color, i.uv0).rgb;             // linear albedo
+    s.ambientOcclusion = orm.r;
+    s.roughness = orm.g;
+    s.metallic = orm.b;
+    s.normal = normalize(i.tangentToWorld * normalXy(texture(_Normal, i.uv0).xy));   // the mesh's normal if left
+}
+```
+
+| Output | Default | Is |
+|---|---|---|
+| `s.metallic` | 0 | a metal's base colour is its reflection; a dielectric's is its diffuse |
+| `s.specular` | 0.5 | a dielectric's reflectance, 0.08 times this: Unreal's Specular pin |
+| `s.roughness` | 0.5 | kept above 0.02 |
+| `s.ambientOcclusion` | 1 | of the sky's light alone |
+| `s.subsurfaceColor` | (1, 1, 1) | `Subsurface` only: the colour light takes through it |
+| `s.normal` | the mesh's, facing the eye on a back face | world space |
+
+- **`Subsurface`** adds Unreal's transmission: light through the surface, scattered in where the eye looks into the
+  light and wrapped round where it does not. `s.opacity` says how much the normal still counts (0 none, 1 fully),
+  in an opaque blend mode too, as Unreal's Opacity pin does under Subsurface.
+- **The base colour is linear**, as Unreal's is, and so is the light it gives off: `ColorSpace sRGB` is refused, and
+  the engine encodes the result for its target.
+- **A solid draws in the transparent firing**, after the world lights' deferred apply, which would otherwise light
+  it a second time; it still writes depth and is masked by `s.opacityMask` under `BlendMode Masked`. It does not
+  cast shadows yet: only opaque draws are casters.
+- `s.emissive` is added unlit, as before. `TranslucencyLighting` is refused: every pixel is lit by its own normal.
+- The outputs are refused under `WorldLit` and `Unlit`, where nothing reads them.
+- **A whole surface is a value**: a function may take and return a `CgSurface`, and
+  `cg_blend_material_attributes(a, b, alpha)` (`lib/material/blend_material_attributes.glsl`, Unreal's
+  BlendMaterialAttributes) mixes two by a mask:
+
+  ```glsl
+  #include "crystalgraphics:shaders/lib/material/blend_material_attributes.glsl"
+  CgSurface rock = s, moss = s;
+  rock.baseColor = texture(_Rock, i.uv0).rgb;   rock.roughness = 0.8;
+  moss.baseColor = texture(_Moss, i.uv0).rgb;   moss.roughness = 0.6;
+  s = cg_blend_material_attributes(rock, moss, smoothstep(0.6, 0.8, s.normal.y));
+  ```
+
 #### What a program carrying its own lighting reads
 
 A ported program that keeps its game's lighting formulas (an `Unlit` material, or a `global` program) reads the lights
@@ -789,6 +839,8 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 | `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
 | `particle_sub_uv.glsl` | On a particle factory, `cg_particle_sub_uv(tex, cg_Particle, blend)`; anywhere, `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)` | ParticleSubUV |
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
+| `blend_material_attributes.glsl` | `cg_blend_material_attributes(a, b, alpha)`: two `CgSurface`s, every output lerped, the shading model a's | BlendMaterialAttributes |
+| `default_lit.glsl` | In a fragment, `cg_default_lit(s, p, subsurface)`: the light `s` gives off at camera-relative `p`, which `ShadingModel DefaultLit` and `Subsurface` call for you | Default Lit, Subsurface |
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"

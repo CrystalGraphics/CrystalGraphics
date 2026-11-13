@@ -171,30 +171,49 @@ public class KitProgramsLinkTest {
             }
             """;
 
-    /** A solid mesh particle lit as Unreal's Default Lit, as a stage's debris is: drawn in the transparent firing. */
+    /** A masked mesh particle lit as Unreal's Default Lit, as a stage's debris is, its surfaces blended by a mask. */
     private static final String DEFAULT_LIT_PORT = """
             #domain surface
-            #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
-            Material { BlendMode AlphaComposite  DepthWrite On  ShadingModel Unlit  ColorSpace Linear  VertexFactory MeshParticles }
+            #include "crystalgraphics:shaders/lib/material/blend_material_attributes.glsl"
+            Material { BlendMode Masked  ShadingModel DefaultLit  VertexFactory MeshParticles }
 
             Properties {
                 _Color ("Base colour", sampler2D) = "white"
                 _ORM ("Occlusion, roughness, metallic", sampler2D) = "white"
             }
 
-            struct v2f { vec2 uv; vec3 normal; vec3 position; };
+            struct v2f { vec2 uv; };
 
             void vertex(inout CgVertex v, out v2f o) {
                 o.uv = v.uv0;
-                o.normal = v.normal;
                 v.world += CG_PARTICLE_LOCAL_TO_WORLD * (v.normal * 0.01);
-                o.position = v.world;
             }
 
             void surface(in v2f i, inout CgSurface s) {
-                vec3 orm = texture(_ORM, i.uv).rgb, lit;
-                CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
-                s.baseColor = CG_DEFAULT_LIT_OUTPUT(lit);
+                vec3 orm = texture(_ORM, i.uv).rgb;
+                CgSurface rock = s, dust = s;
+                rock.baseColor = texture(_Color, i.uv).rgb;
+                rock.metallic = orm.b;
+                rock.roughness = orm.g;
+                rock.ambientOcclusion = orm.r;
+                dust.roughness = 1.0;
+                s = cg_blend_material_attributes(rock, dust, orm.r);
+                s.opacityMask = orm.r;
+            }
+            """;
+
+    /** An opaque mesh lit as Unreal's Subsurface, light passing through it tinted. */
+    private static final String SUBSURFACE_PORT = """
+            #domain surface
+            Material { ShadingModel Subsurface }
+
+            struct v2f { vec2 uv0; };
+
+            void surface(in v2f i, inout CgSurface s) {
+                s.baseColor = vec3(0.4, 0.8, 0.3);
+                s.subsurfaceColor = vec3(0.6, 1.0, 0.2);
+                s.opacity = 0.4;
+                s.roughness = 0.7;
             }
             """;
 
@@ -328,6 +347,7 @@ public class KitProgramsLinkTest {
         CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(DEFAULT_LIT_PORT);
         List<String> failures = new ArrayList<>();
         int programs = link("the default lit port", shader, failures);
+        programs += link("the subsurface port", CgMaterialShaderRegistry.get().getOrCreateGenerated(SUBSURFACE_PORT), failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
         assertTrue("no program was linked", programs > 0);
     }

@@ -42,9 +42,17 @@ final class SurfaceDomain {
             "ColorSpace", "SceneColorMargin", "Sky", "PerDrawValues", "VertexFactory");
 
     /** A surface's outputs. */
-    private static final Set<String> OUTPUTS = Set.of("baseColor", "opacity", "opacityMask", "emissive", "normal",
-            "refraction", "refractionSplit", "refractionDepth", "pixelDepthOffset", "customData", "shadingModelId",
-            "light", "volumeDepth", "depth");
+    private static final Set<String> OUTPUTS = Set.of("baseColor", "metallic", "specular", "roughness",
+            "ambientOcclusion", "subsurfaceColor", "opacity", "opacityMask", "emissive", "normal", "refraction",
+            "refractionSplit", "refractionDepth", "pixelDepthOffset", "customData", "shadingModelId", "light",
+            "volumeDepth", "depth");
+
+    /** What DefaultLit and Subsurface light by, and nothing else reads. */
+    private static final List<String> LIT_OUTPUTS = List.of("metallic", "specular", "roughness", "ambientOcclusion",
+            "subsurfaceColor");
+
+    /** What lights a DefaultLit or Subsurface surface, after surface(): Unreal's BxDFs, forward. */
+    private static final String DEFAULT_LIT_INCLUDE = "#include \"crystalgraphics:shaders/lib/material/default_lit.glsl\"";
 
     /** The v2f fields a material with no {@code vertex()} has filled, their type and what fills them. */
     private static final Map<String, String[]> AUTO_FIELDS = new LinkedHashMap<>();
@@ -65,6 +73,11 @@ final class SurfaceDomain {
             CgSurface cg_SurfaceDefaults() {
                 CgSurface s;
                 s.baseColor = vec3(1.0);
+                s.metallic = 0.0;
+                s.specular = 0.5;
+                s.roughness = 0.5;
+                s.ambientOcclusion = 1.0;
+                s.subsurfaceColor = vec3(1.0);
                 s.opacity = 1.0;
                 s.opacityMask = 1.0;
                 s.emissive = vec3(0.0);
@@ -134,7 +147,11 @@ final class SurfaceDomain {
                 "AlphaComposite", "Additive", "Modulate", "Subtract");
         boolean masked = blendMode.equals("Masked");
         boolean translucent = !blendMode.equals("Opaque") && !masked;
-        boolean unlit = SpecReader.choice(file, m, "ShadingModel", "WorldLit", "WorldLit", "Unlit").equals("Unlit");
+        String shading = SpecReader.choice(file, m, "ShadingModel", "WorldLit", "WorldLit", "Unlit", "DefaultLit", "Subsurface");
+        boolean unlit = shading.equals("Unlit");
+        // Unreal's lit models: lit by the template after surface(), forward, in linear light
+        boolean subsurface = shading.equals("Subsurface");
+        boolean lit = subsurface || shading.equals("DefaultLit");
         boolean surfaceLit = SpecReader.choice(file, m, "TranslucencyLighting", "Volume", "Volume", "Surface").equals("Surface");
         String faces = SpecReader.choice(file, m, "Faces", "Front", "Front", "Back", "Both");
         String pass = SpecReader.choice(file, m, "TranslucencyPass", "Standard", "Standard", "AfterDistortion", "Separate", "Overlay");
@@ -183,7 +200,8 @@ final class SurfaceDomain {
                 }
             }
             for (String o : List.of("opacity", "refraction", "refractionSplit", "refractionDepth")) {
-                if (named.contains(o)) {
+                // Unreal's Subsurface reads its opacity in an opaque blend: how far light scatters through
+                if (named.contains(o) && !(subsurface && o.equals("opacity"))) {
                     throw t.error(surface.first(), "'s." + o + "' is a translucent blend mode's: BlendMode " + blendMode
                             + " is solid" + (o.equals("opacity") ? " (Masked cuts with s.opacityMask)" : ""));
                 }
@@ -207,9 +225,24 @@ final class SurfaceDomain {
             throw t.error(m.get("TranslucencyLighting").keyToken(), "'TranslucencyLighting Surface' lights by the normal:"
                     + " not ShadingModel Unlit");
         }
-        if (named.contains("normal") && !surfaceLit) {
-            throw t.error(surface.first(), "'s.normal' lights only TranslucencyLighting Surface; an opaque surface is lit"
-                    + " by its mesh's normal");
+        if (named.contains("normal") && !surfaceLit && !lit) {
+            throw t.error(surface.first(), "'s.normal' lights only ShadingModel DefaultLit, Subsurface or"
+                    + " TranslucencyLighting Surface; a WorldLit surface is lit by its mesh's normal");
+        }
+        for (String o : LIT_OUTPUTS) {
+            if (!named.contains(o)) continue;
+            if (!lit || (o.equals("subsurfaceColor") && !subsurface)) {
+                throw t.error(surface.first(), "'s." + o + "' is lit only by ShadingModel "
+                        + (o.equals("subsurfaceColor") ? "Subsurface" : "DefaultLit or Subsurface") + ", not " + shading);
+            }
+        }
+        if (lit && m.containsKey("TranslucencyLighting")) {
+            throw t.error(m.get("TranslucencyLighting").keyToken(), "'TranslucencyLighting' is WorldLit's: ShadingModel "
+                    + shading + " lights every pixel by its own normal");
+        }
+        if (lit && !linear && m.containsKey("ColorSpace")) {
+            throw t.error(m.get("ColorSpace").keyToken(), "'ColorSpace sRGB' with ShadingModel " + shading + ": a lit"
+                    + " surface's base colour is linear, as Unreal's, and the light it gives off is too");
         }
         if (sky && translucent) throw t.error(m.get("Sky").keyToken(), "'Sky On' draws first, behind everything: not a translucent blend mode");
         if (factory.placesNothing() && vertex == null) {
@@ -255,6 +288,14 @@ final class SurfaceDomain {
             passOut.append("        o.").append(p[1]).append(" = ").append(p[2]).append(";\n");
             passIn.append("        ").append(p[2]).append(" = i.").append(p[1]).append(";\n");
         }
+        // A lit surface's normal and position as its vertex left them, for the lighting after surface()
+        String litNormal = CgShaderNames.PASSED + "litNormal", litWorld = CgShaderNames.PASSED + "litWorld";
+        if (lit) {
+            varyings.add(new CgVarying("vec3", litNormal, ""));
+            varyings.add(new CgVarying("vec3", litWorld, ""));
+            passOut.append("        o.").append(litNormal).append(" = v.normal;\n")
+                   .append("        o.").append(litWorld).append(" = v.world;\n");
+        }
 
         // The material
         SpecBuilder spec = new SpecBuilder(file, CgMaterialDomain.SURFACE);
@@ -265,16 +306,21 @@ final class SurfaceDomain {
         if (rows && !spec.uses.contains(CgShaderSpec.ROWS)) spec.uses.add(CgShaderSpec.ROWS);
         if (SpecReader.namesGlobals(file, code) && !spec.uses.contains("globals")) spec.uses.add("globals");
         SpecReader.refuseNamedBuffers(file, code, spec.uses);
-        spec.renderType = sky ? "Background" : translucent ? "Transparent" : "Opaque";
-        spec.lighting = unlit ? CgShaderSpec.Lighting.UNLIT : surfaceLit ? CgShaderSpec.Lighting.SURFACE : CgShaderSpec.Lighting.LIT;
+        // A lit solid draws in the transparent firing, after the world lights' deferred apply, which would light it
+        // again: forward, as the lights' own G-buffer has no shading model to skip it by (R13)
+        boolean afterLights = lit && !translucent && !sky;
+        spec.renderType = sky ? "Background" : translucent || afterLights ? "Transparent" : "Opaque";
+        spec.lighting = unlit || lit ? CgShaderSpec.Lighting.UNLIT
+                : surfaceLit ? CgShaderSpec.Lighting.SURFACE : CgShaderSpec.Lighting.LIT;
         spec.fog = fog;
         spec.media = media;
-        spec.colorSpace = linear ? CgShaderSpec.ColorSpace.LINEAR : CgShaderSpec.ColorSpace.SRGB;
+        spec.colorSpace = linear || lit ? CgShaderSpec.ColorSpace.LINEAR : CgShaderSpec.ColorSpace.SRGB;
         spec.depthMode = clipDepth || masked ? CgShaderSpec.DepthMode.CLIP
                 : prepass ? CgShaderSpec.DepthMode.PREPASS : CgShaderSpec.DepthMode.NONE;
         spec.sceneColorMarginText = m.containsKey("SceneColorMargin") ? m.get("SceneColorMargin").value() : null;
         spec.tube = tube(file, factory, factoryToken);
-        spec.queue = sky ? CgRenderQueue.BACKGROUND : masked ? CgRenderQueue.ALPHA_TEST : !translucent ? CgRenderQueue.GEOMETRY
+        spec.queue = sky ? CgRenderQueue.BACKGROUND : afterLights ? CgRenderQueue.TRANSPARENT
+                : masked ? CgRenderQueue.ALPHA_TEST : !translucent ? CgRenderQueue.GEOMETRY
                 : pass.equals("AfterDistortion") ? CgRenderQueue.AFTER_DISTORTION
                 : pass.equals("Overlay") ? CgRenderQueue.OVERLAY : CgRenderQueue.TRANSPARENT;
         spec.maskClip = maskClip;
@@ -303,6 +349,7 @@ final class SurfaceDomain {
         passCode.directive("#include \"crystalgraphics:shaders/env/material/surface.glsl\"");
         passCode.code(SURFACE_DEFAULTS, CgShaderPass.FRAGMENT);
         passCode.glsl(factory.declarations(), path);
+        if (lit) passCode.code(DEFAULT_LIT_INCLUDE, CgShaderPass.FRAGMENT);
         passCode.material(file, code, vertex, surface, true);
 
         StringBuilder vertexBody = new StringBuilder("\n        CgVertex v;\n");
@@ -316,7 +363,16 @@ final class SurfaceDomain {
         // What the factory starts the surface from, and how it fades what the material adds
         StringBuilder start = new StringBuilder("        CgSurface s = cg_SurfaceDefaults();\n");
         for (String l : factory.defaults().strip().split("\n")) if (!l.isBlank()) start.append("        ").append(l.strip()).append('\n');
-        String run = "        " + SpecReader.MATERIAL_SURFACE + "(i, s);\n" + fade(factory.fade(), blendMode);
+        String lighting = "";
+        if (lit) {
+            // The face seen: a back face's normal turned toward the eye, as Unreal's two-sided lighting does
+            start.append("        s.normal = normalize(gl_FrontFacing ? i.").append(litNormal).append(" : -i.")
+                 .append(litNormal).append(");\n");
+            if (subsurface) start.append("        s.shadingModelId = uvec2(2u, 0u);\n");
+            // Lit before the factory's fade, which weighs the light given off as it weighs an unlit colour
+            lighting = "        s.baseColor = cg_default_lit(s, i." + litWorld + ", " + subsurface + ");\n";
+        }
+        String run = "        " + SpecReader.MATERIAL_SURFACE + "(i, s);\n" + lighting + fade(factory.fade(), blendMode);
         StringBuilder fragmentBody = new StringBuilder("\n").append(passIn).append(start).append(run);
         if (named.contains("pixelDepthOffset")) fragmentBody.append("        CG_PIXEL_DEPTH_OFFSET(s.pixelDepthOffset);\n");
         if (named.contains("depth")) fragmentBody.append("        gl_FragDepth = cg_WindowDepth(s.depth);\n");

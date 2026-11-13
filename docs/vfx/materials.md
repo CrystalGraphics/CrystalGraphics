@@ -225,27 +225,28 @@ o.colour = cg_particle_sub_uv(_Sheet, cg_Particle, true);
 float a = cg_depth_fade(i.colour.a, 0.5);
 ```
 
-### Unreal's Default Lit: `default_lit.glsl`
+### Unreal's Default Lit: `ShadingModel DefaultLit`
 
-A solid lit as Unreal's Default Lit shading model does, Lambert and the GGX lobe under the sun, the four nearest point
-lights and the sky, for a ported material whose game lit it so (stage debris). It is drawn in the **transparent**
-firing as a solid, writing depth: there the deferred apply has run and leaves it alone, the light grid is this
-frame's and the sun's shadow map is bound. In the opaque firing it would be lit twice.
+A particle lit as Unreal's Default Lit shading model lights it, for a ported material whose game lit it so (stage
+debris): the material writes what the surface is, and the engine lights it after `surface()`, Lambert and the GGX
+lobe under the sun, the four nearest point lights and the sky
+([`../SHADERS.md`](../SHADERS.md) § *Unreal's lit surfaces*).
 
 ```glsl
-#include "crystalgraphics:shaders/lib/material/default_lit.glsl"
-Material { BlendMode AlphaComposite  DepthWrite On  ShadingModel Unlit  ColorSpace Linear  VertexFactory MeshParticles }
+Material { BlendMode Masked  ShadingModel DefaultLit  VertexFactory MeshParticles }
 void surface(in v2f i, inout CgSurface s) {
-    vec3 orm = texture(_ORM, i.uv0).rgb, lit;   // occlusion, roughness, metallic
-    CG_DEFAULT_LIT(lit, texture(_Color, i.uv0).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.world);
-    s.baseColor = CG_DEFAULT_LIT_OUTPUT(lit);
+    vec3 orm = texture(_ORM, i.uv0).rgb;   // occlusion, roughness, metallic
+    s.baseColor = texture(_Color, i.uv0).rgb;
+    s.ambientOcclusion = orm.r;
+    s.roughness = orm.g;
+    s.metallic = orm.b;
+    s.opacityMask = cg_Particle.color.a;
 }
 ```
 
-- `CG_DEFAULT_LIT(out, baseColor, metallic, specular, roughness, occlusion, n, p)`: linear base colour, Unreal's
-  specular (0.5 its default), occlusion of the sky's light alone, world normal and camera-relative position.
-- **Set `ColorSpace Linear`** and write `CG_DEFAULT_LIT_OUTPUT`: linear light, which the engine writes as it
-  is into the HDR scene and encodes onto the host's own target.
+- The base colour is **linear**, as Unreal's is; the normal is the mesh's unless `surface()` writes `s.normal`.
+- A solid draws in the **transparent** firing, writing depth: there the deferred apply has run and leaves it alone,
+  the light grid is this frame's and the sun's shadow map is bound. In the opaque firing it would be lit twice.
 - It does not cast shadows yet: only opaque draws are casters.
 
 ### Easy to get wrong
