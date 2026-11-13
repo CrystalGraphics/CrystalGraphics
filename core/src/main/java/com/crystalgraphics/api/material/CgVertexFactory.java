@@ -19,7 +19,7 @@ import java.util.Map;
  *
  * <p>A factory is a file, found by its name the first time a material names it: {@code Sprites} is
  * {@code crystalgraphics:shaders/factories/Sprites.factory}, {@code mymod:Ribbons} is
- * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgFormatTemplates}). The engine's are files:
+ * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgShaderTemplates}). The engine's are files:
  * {@code Mesh}, {@code Procedural}, {@code Sprites}, {@code MeshParticles}, {@code Tube}, {@code TubeClosed},
  * {@code TubeVolume}, {@code VfxMesh}, {@code Billboard}, {@code Sequence}, {@code Ribbons}, {@code PathRibbons},
  * {@code GridVolume}, {@code FluidVolume}. This class registers one made in Java, which a file of the same name never replaces:</p>
@@ -101,6 +101,8 @@ public final class CgVertexFactory {
      * @param placesNothing   whether the material must place each vertex itself, with a {@code vertex()} assigning
      *                        {@code v.world}
      * @param engineBuffers   the engine buffers ({@code CgEngineBufferRegistry} tokens) its draws bind
+     * @param keywords        its own {@code Keywords { }} entries, as a material writes them: declared for every
+     *                        material it draws ({@code Sequence}'s {@code FX_ON_MESH_PARTICLES})
      * @param declarations    GLSL at file scope, both stages, before the material's code: includes, the parameters
      *                        struct's variable
      * @param properties      {@code Properties { }} entries its draws bind (a material may not declare them again)
@@ -117,7 +119,8 @@ public final class CgVertexFactory {
      */
     @Desugar
     public record Factory(String name, String vertexType, String fill, boolean placesNothing,
-                          List<String> engineBuffers, String declarations, String properties, Map<String, String> tags,
+                          List<String> engineBuffers, String keywords, String declarations, String properties,
+                          Map<String, String> tags,
                           @Nullable String parameters, Map<String, String> parameterFields, String defaults,
                           @Nullable String fade, List<String> usages) {
         public Factory {
@@ -131,7 +134,7 @@ public final class CgVertexFactory {
     /** Builds a {@link Factory}: {@code vertexType} and {@code fill} are required. */
     public static final class Builder {
         private final String name;
-        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade;
+        private String vertexType, fill, keywords = "", declarations = "", properties = "", parameters, defaults = "", fade;
         private boolean placesNothing;
         private final List<String> buffers = new ArrayList<>(), usages = new ArrayList<>();
         private final Map<String, String> tags = new LinkedHashMap<>(), fields = new LinkedHashMap<>();
@@ -164,7 +167,13 @@ public final class CgVertexFactory {
             return this;
         }
 
-        /** GLSL at file scope in both stages, before the material's code. */
+        /** Its own {@code Keywords { }} entries, as a material writes them: {@code SCREEN ("A 2D camera")}. */
+        public Builder keywords(String entries) {
+            this.keywords = entries;
+            return this;
+        }
+
+        /** GLSL at file scope in both stages, before the material's code: no {@code #pragma}, a switch is a keyword. */
         public Builder declarations(String glsl) {
             this.declarations = glsl;
             return this;
@@ -209,8 +218,8 @@ public final class CgVertexFactory {
 
         public Factory build() {
             if (vertexType == null || fill == null) throw new IllegalStateException(name + ": vertexType and fill are required");
-            return new Factory(name, vertexType, fill, placesNothing, buffers, declarations, properties, tags, parameters,
-                    fields, defaults, fade, usages);
+            return new Factory(name, vertexType, fill, placesNothing, buffers, keywords, declarations, properties, tags,
+                    parameters, fields, defaults, fade, usages);
         }
     }
 
