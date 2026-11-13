@@ -118,6 +118,11 @@ public final class CgMaterialProperties implements CgMaterialValues {
      * {@code sampler3D} a white volume, a {@code usampler2D} the integer 0), as an Unreal texture parameter always has its default.
      */
     public void captureSamplers(CgMaterialBindings.Builder bindings) {
+        if (samplerProps.size() > CgMaterialBindings.MAX_TEXTURES) {
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; i < samplerProps.size(); i++) names.append(i == 0 ? "" : ", ").append(samplerProps.get(i).getName());
+            throw new IllegalStateException(samplerProps.size() + " samplers, at most " + CgMaterialBindings.MAX_TEXTURES + ": " + names);
+        }
         for (int i = 0; i < samplerProps.size(); i++) {
             CgTexture texture = samplerProps.get(i).boundTexture();
             if (texture == null) {

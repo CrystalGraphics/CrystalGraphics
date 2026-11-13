@@ -91,7 +91,12 @@ public final class CgBindingModel {
     public static final int FIRST_ATTACHED = 5, ATTACHED_COUNT = 8;
     /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
     public static final int FIRST_TEXTURE = 16;
-    /** How many textures a material binds at most, below the kernel buffers. */
+    /**
+     * How many textures a material reads at most, as Unreal's 16 samplers a material on SM5: bindings
+     * {@link #FIRST_TEXTURE} on, below the kernel buffers, where a device binds them to units. A host's own unit limits
+     * (Minecraft's {@code RenderSystem} tracks 12) bind only its draws: the device hands every unit back at its section's
+     * end.
+     */
     public static final int MATERIAL_TEXTURES = 16;
 
     /**

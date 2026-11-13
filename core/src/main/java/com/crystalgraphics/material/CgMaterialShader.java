@@ -1155,9 +1155,14 @@ public final class CgMaterialShader implements CgReloadable {
         return parsed == null ? Float.NaN : parsed.sceneColorMargin();
     }
 
-    /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
+    /**
+     * A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. An include
+     * that cannot be read counts as a read, so it is named instead.
+     */
     private void requireMargin(CgShaderSpec parsed, String source) {
         if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
+            String unread = new CgShaderPreprocessor().unreadableInclude(source, resourcePath);
+            if (unread != null) throw CgShaderError.of(resourcePath, "cannot read #include \"" + unread + "\"");
             throw CgShaderError.of(resourcePath, "samples the scene's colour without a SceneColorMargin: the share of the"
                     + " target's height it samples past its geometry, e.g. Material { SceneColorMargin 0.05 } (0.001 for its"
                     + " own pixel alone)");

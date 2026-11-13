@@ -38,8 +38,8 @@ import java.util.Objects;
  */
 public final class CgMaterialBindings {
 
-    /** A version's cap; a material binds at most {@link CgBindingModel#MATERIAL_TEXTURES}, checked at compile. */
-    public static final int MAX_TEXTURES = 12;
+    /** The material set's texture range, which its shader's compile checks: {@link CgBindingModel#MATERIAL_TEXTURES}. */
+    public static final int MAX_TEXTURES = CgBindingModel.MATERIAL_TEXTURES;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
     public static final int MAX_STORAGE = 4;
