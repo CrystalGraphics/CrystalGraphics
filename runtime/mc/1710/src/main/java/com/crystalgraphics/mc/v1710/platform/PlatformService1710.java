@@ -33,6 +33,7 @@ import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
+import com.crystalgraphics.platform.service.CgContainers;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
@@ -132,6 +133,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryService1710());
             CgPlatform.provide(CgGameThreads.HOST, new GameThreads1710());
             CgPlatform.provide(CgScreens.HOST, Screens1710.INSTANCE);
+            CgPlatform.provide(CgContainers.HOST, Containers1710.INSTANCE);
             CgPlatform.provide(CgGameSession.HOST, GameSession1710.INSTANCE);
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);
             CgKeyBindings.hostProvided();

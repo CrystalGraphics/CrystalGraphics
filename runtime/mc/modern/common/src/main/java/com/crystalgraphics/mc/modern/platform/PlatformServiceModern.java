@@ -51,6 +51,7 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
+import com.crystalgraphics.platform.service.CgContainers;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgModelSpace;
@@ -132,6 +133,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgGameDirectory.HOST, new GameDirectoryModern());
         CgPlatform.provide(CgGameThreads.HOST, new GameThreadsModern());
         CgPlatform.provide(CgScreens.HOST, ScreensModern.INSTANCE);
+        CgPlatform.provide(CgContainers.HOST, ContainersModern.INSTANCE);
         CgPlatform.provide(CgGameSession.HOST, GameSessionModern.INSTANCE);
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();
