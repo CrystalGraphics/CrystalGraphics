@@ -264,6 +264,7 @@ com/crystalgraphics/platform/gl/CgGLDevice
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;IIZLcom/crystalgraphics/platform/gl/state/GLHostState;)V
   method public bindlessIndex (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
+  method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessSet ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
   method public close ()V
   method public contextState ()Lcom/crystalgraphics/platform/gl/state/GLContextState;
@@ -294,12 +295,14 @@ com/crystalgraphics/platform/gl/CgGLDevice
   method public prepareProgram (Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;)Z
   method public programCache (Ljava/nio/file/Path;Ljava/util/concurrent/Executor;)V
   method public release (Lcom/crystalgraphics/platform/rhi/resource/CgRHIResource;)V
+  method public releaseBindlessReference (I)V
   method public resize (II)V
   method public retiredFrame ()J
   method public supports (Lcom/crystalgraphics/platform/rhi/format/CgFormat;Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture$Usage;)Z
   method public surfaceColor ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public surfaceDepth ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public toHost ()V
+  method public updateBindlessReference (ILcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)V
   method public waitRetired (J)V
   method public whenRetired (JLjava/lang/Runnable;)V
 com/crystalgraphics/platform/gl/CgGLWorkerContext
@@ -680,6 +683,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_MAX_COLOR_ATTACHMENTS I
   field public,static,final GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_COMPUTE_SHARED_MEMORY_SIZE I
+  field public,static,final GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_COMPUTE_WORK_GROUP_COUNT I
   field public,static,final GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS I
   field public,static,final GL_MAX_COMPUTE_WORK_GROUP_SIZE I
@@ -688,11 +692,13 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_MAX_SAMPLES I
   field public,static,final GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS I
   field public,static,final GL_MAX_TEXTURE_BUFFER_SIZE I
+  field public,static,final GL_MAX_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_TEXTURE_MAX_ANISOTROPY I
   field public,static,final GL_MAX_TEXTURE_SIZE I
   field public,static,final GL_MAX_UNIFORM_BLOCK_SIZE I
   field public,static,final GL_MAX_UNIFORM_BUFFER_BINDINGS I
   field public,static,final GL_MAX_VERTEX_ATTRIBS I
+  field public,static,final GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS I
   field public,static,final GL_MAX_VIEWPORT_DIMS I
   field public,static,final GL_MIN I
   field public,static,final GL_MINOR_VERSION I
@@ -1763,13 +1769,16 @@ com/crystalgraphics/platform/rhi/CgRHI
   field public,static,final TRANSFER Lcom/crystalgraphics/variable/CgVar$Bool;
   method public bindlessIndex (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
+  method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessSet ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
   method public createsOnAnyThread ()Z
   method public fromHost ()V
   method public prepareProgram (Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout;[Lcom/crystalgraphics/platform/rhi/shader/CgShaderModule;)Z
+  method public releaseBindlessReference (I)V
   method public takesTransitions ()Z
   method public toHost ()V
   method public transientMemory ()Lcom/crystalgraphics/platform/rhi/memory/CgTransientMemory;
+  method public updateBindlessReference (ILcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)V
   method public,abstract createBindingLayout (Ljava/lang/String;Ljava/util/List;Z)Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public,abstract createBindingSet (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
   method public,abstract createBuffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
@@ -1843,11 +1852,12 @@ com/crystalgraphics/platform/rhi/CgRHI$Globals$Compute
 com/crystalgraphics/platform/rhi/CgRHI$Globals$Limits
   access public,final,record
   extends java/lang/Record
-  method public <init> (IIIIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)V
+  method public <init> (IIIIIIIIIIIIIIIIIIFLcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)V
   method public compute ()Lcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;
   method public max3DTextureSize ()I
   method public maxAnisotropy ()F
   method public maxArrayLayers ()I
+  method public maxBindlessTextures ()I
   method public maxColorAttachments ()I
   method public maxDynamicStorageBuffers ()I
   method public maxDynamicUniformBuffers ()I
@@ -2305,6 +2315,7 @@ com/crystalgraphics/platform/rhi/nulldrv/CgNullRHI
   method public <init> (IIIZ)V
   method public bindlessIndex (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
+  method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessSet ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
   method public createBindingLayout (Ljava/lang/String;Ljava/util/List;Z)Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public createBindingSet (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
@@ -2332,6 +2343,7 @@ com/crystalgraphics/platform/rhi/nulldrv/CgNullRHI
   method public ownsSubmission ()Z
   method public passes ()Ljava/util/List;
   method public release (Lcom/crystalgraphics/platform/rhi/resource/CgRHIResource;)V
+  method public releaseBindlessReference (I)V
   method public resize (II)V
   method public retireAll ()V
   method public retiredFrame ()J
@@ -2339,6 +2351,7 @@ com/crystalgraphics/platform/rhi/nulldrv/CgNullRHI
   method public surfaceColor ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public surfaceDepth ()Lcom/crystalgraphics/platform/rhi/resource/CgGpuTexture;
   method public transientMemory ()Lcom/crystalgraphics/platform/rhi/memory/CgTransientMemory;
+  method public updateBindlessReference (ILcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)V
   method public waitRetired (J)V
   method public whenRetired (JLjava/lang/Runnable;)V
   method public withCompute (Lcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)Lcom/crystalgraphics/platform/rhi/nulldrv/CgNullRHI;

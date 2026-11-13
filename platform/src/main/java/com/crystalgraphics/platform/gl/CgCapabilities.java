@@ -122,17 +122,8 @@ public final class CgCapabilities {
     // ── Render limits ─────────────────────────────────────────────────────────
     /** Maximum number of simultaneous draw buffer outputs (MRT); at least 1. */
     int maxDrawBuffers;
-    /** Maximum texture image units. */
-    @Getter(AccessLevel.NONE) int maxTextureUnits;
-
-    /**
-     * The fragment stage's texture units, at most {@value #MAX_UNITS}: the most a binding table names.
-     */
-    public int getMaxTextureUnits() {
-        return Math.min(maxTextureUnits, MAX_UNITS);
-    }
-
-    private static final int MAX_UNITS = 32;
+    /** Sampled textures one stage of a program binds: {@code Limits.maxTextureUnits}. */
+    int maxTextureUnits;
     /** Maximum 2D texture dimension (width/height). */
     int maxTextureSize;
     /** Maximum renderbuffer dimension. */

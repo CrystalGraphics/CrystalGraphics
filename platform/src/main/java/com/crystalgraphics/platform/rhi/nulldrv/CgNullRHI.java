@@ -78,7 +78,7 @@ public final class CgNullRHI implements CgRHI {
     }
 
     private static final CgRHI.Globals INFO = new CgRHI.Globals("recording", "CrystalGraphics", "0",
-            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 65536, 24, 8, 16, 4, 1 << 26,
+            new CgRHI.Globals.Limits(16384, 2048, 2048, 8, 8, 16, 32, 16384, 65536, 24, 8, 16, 4, 1 << 26,
                     256, 256, 16, 16384, 16f, CgRHI.Globals.Compute.MINIMUM), true, true, true, true, true, true, true, true, true,
             true);
     private CgRHI.Globals info = INFO;
@@ -149,7 +149,7 @@ public final class CgNullRHI implements CgRHI {
         CgRHI.Globals.Limits l = INFO.limits();
         info = new CgRHI.Globals(INFO.name(), INFO.vendor(), INFO.driver(), new CgRHI.Globals.Limits(l.maxTextureSize(),
                 l.max3DTextureSize(), l.maxArrayLayers(), l.maxColorAttachments(), l.maxSamples(), l.maxVertexAttributes(),
-                l.maxTextureUnits(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxDynamicUniformBuffers(),
+                l.maxTextureUnits(), l.maxBindlessTextures(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxDynamicUniformBuffers(),
                 l.maxStorageBufferBindings(), l.maxDynamicStorageBuffers(),
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
@@ -299,6 +299,8 @@ public final class CgNullRHI implements CgRHI {
     private final Map<CgTextureView, Map<CgGpuSampler, Integer>> heapViews = new HashMap<>();
     private final List<Integer> heapFree = new ArrayList<>();
     private int heapNext;
+    /** Each reference's view and sampler, by slot. */
+    private final Map<Integer, Object[]> references = new HashMap<>();
 
     @Override
     public CgBindingLayout bindlessLayout() {
@@ -327,6 +329,38 @@ public final class CgNullRHI implements CgRHI {
         bySampler.put(sampler, index);
         if (logging) record("bindlessIndex " + ref(view.texture()) + " " + ref(sampler) + " " + index);
         return index;
+    }
+
+    @Override
+    public int bindlessReference(CgTextureView view, CgGpuSampler sampler) {
+        referenced(view, sampler);
+        int slot = heapFree.isEmpty() ? heapNext++ : heapFree.remove(heapFree.size() - 1);
+        references.put(slot, new Object[] {view, sampler});
+        if (logging) record("bindlessReference " + ref(view.texture()) + " " + ref(sampler) + " " + slot);
+        return slot;
+    }
+
+    @Override
+    public void updateBindlessReference(int slot, CgTextureView view, CgGpuSampler sampler) {
+        referenced(view, sampler);
+        if (references.put(slot, new Object[] {view, sampler}) == null) throw new IllegalStateException("no reference " + slot);
+        if (logging) record("updateBindlessReference " + slot + " " + ref(view.texture()) + " " + ref(sampler));
+    }
+
+    @Override
+    public void releaseBindlessReference(int slot) {
+        if (!references.containsKey(slot)) throw new IllegalStateException("no reference " + slot);
+        if (logging) record("releaseBindlessReference " + slot);
+        whenRetired(frameIndex(), () -> {
+            references.remove(slot);
+            heapFree.add(slot);
+        });
+    }
+
+    private void referenced(CgTextureView view, CgGpuSampler sampler) {
+        use(view.texture(), sampler);
+        if (!view.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED))
+            throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
     }
 
     /** A released texture's heap indices, free again once its frame has retired. */

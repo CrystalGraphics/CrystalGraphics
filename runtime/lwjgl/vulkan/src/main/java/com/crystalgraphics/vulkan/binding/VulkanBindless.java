@@ -35,6 +35,10 @@ import static org.lwjgl.vulkan.VK12.*;
  * <pre>{@code
  * int slot = heap.texture(view, sampler, imageView, imageLayout, vkSampler);   // the pair's slot, written on first ask
  * heap.forget(texture);                                                       // destroyed: its frames have retired
+ *
+ * int ref = heap.reference();                                                 // a slot of its own (a texture reference)
+ * heap.write(ref, imageView, imageLayout, vkSampler);                         // pointed at a pair, again as it moves
+ * heap.release(ref);                                                          // its frames have retired
  * }</pre>
  *
  * <p>A slot holds a view and a sampler together, as {@code ARB_bindless_texture}'s handle does: GLSL passes only a
@@ -93,22 +97,47 @@ public final class VulkanBindless {
         Map<CgGpuSampler, Integer> bySampler = slots.get(view);
         Integer slot = bySampler == null ? null : bySampler.get(sampler);
         if (slot != null) return slot;
-        int s = freeCount > 0 ? free[--freeCount] : next++;
-        if (s >= SLOTS) throw new IllegalStateException("the bindless heap's " + SLOTS + " slots are full");
+        int s = take();
         if (bySampler == null) {
             slots.put(view, bySampler = new IdentityHashMap<>(2));
             viewsOf.computeIfAbsent(view.texture(), k -> new ArrayList<>(1)).add(view);
         }
         bySampler.put(sampler, s);
+        write(s, imageView, imageLayout, vkSampler);
+        return s;
+    }
+
+    /** A slot of its own, written by {@link #write} and given back by {@link #release}: Unreal's texture reference. */
+    public int reference() {
+        return take();
+    }
+
+    /** Writes {@code slot}: a view in {@code imageLayout} with {@code vkSampler}. */
+    public void write(int slot, long imageView, int imageLayout, long vkSampler) {
         try (MemoryStack stack = stackPush()) {
             VkWriteDescriptorSet.Buffer w = VkWriteDescriptorSet.calloc(1, stack);
-            w.get(0).sType$Default().dstSet(set.set).dstBinding(0).dstArrayElement(s).descriptorCount(1)
+            w.get(0).sType$Default().dstSet(set.set).dstBinding(0).dstArrayElement(slot).descriptorCount(1)
                     .descriptorType(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                     .pImageInfo(VkDescriptorImageInfo.calloc(1, stack).sampler(vkSampler).imageView(imageView)
                             .imageLayout(imageLayout));
             vkUpdateDescriptorSets(device, w, null);
         }
+    }
+
+    /** A reference's slot back to the heap: every frame that read it has retired. */
+    public void release(int slot) {
+        give(slot);
+    }
+
+    private int take() {
+        int s = freeCount > 0 ? free[--freeCount] : next++;
+        if (s >= SLOTS) throw new IllegalStateException("the bindless heap's " + SLOTS + " slots are full");
         return s;
+    }
+
+    private void give(int s) {
+        if (freeCount == free.length) free = Arrays.copyOf(free, free.length * 2);
+        free[freeCount++] = s;
     }
 
     /** The slots of {@code texture}'s views back to the heap, as it is destroyed: every frame that read them has retired. */
@@ -116,10 +145,7 @@ public final class VulkanBindless {
         List<CgTextureView> views = viewsOf.remove(texture);
         if (views == null) return;
         for (CgTextureView v : views) {
-            for (int s : slots.remove(v).values()) {
-                if (freeCount == free.length) free = Arrays.copyOf(free, free.length * 2);
-                free[freeCount++] = s;
-            }
+            for (int s : slots.remove(v).values()) give(s);
         }
     }
 

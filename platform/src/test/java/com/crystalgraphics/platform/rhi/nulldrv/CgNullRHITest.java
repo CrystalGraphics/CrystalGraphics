@@ -238,8 +238,8 @@ public class CgNullRHITest extends CgCommandListContract {
                 CgGraphicsPipelineDesc.StencilFace.KEEP, CgGraphicsPipelineDesc.StencilFace.KEEP, 0xFF, 0xFF);
         CgGraphicsPipelineDesc.DepthStencil write = new CgGraphicsPipelineDesc.DepthStencil(true, true, CgCompare.LESS, false,
                 CgGraphicsPipelineDesc.StencilFace.KEEP, CgGraphicsPipelineDesc.StencilFace.KEEP, 0xFF, 0xFF);
-        CgGraphicsPipeline testing = device.createPipeline(desc(none, List.of(), CgFormat.DEPTH24_PLUS_STENCIL8, test));
-        CgGraphicsPipeline writing = device.createPipeline(desc(none, List.of(), CgFormat.DEPTH24_PLUS_STENCIL8, write));
+        CgGraphicsPipeline testing = device.createPipeline(desc(none, List.of(), device.surfaceDepth().desc().format(), test));
+        CgGraphicsPipeline writing = device.createPipeline(desc(none, List.of(), device.surfaceDepth().desc().format(), write));
         CgRenderPass pass = cmd.beginPass(depthPass(true, CgPassDesc.LoadOp.LOAD));
         refused("writes depth or stencil", () -> pass.setPipeline(writing));
         refused("read-only", () -> pass.clearDepthStencil(true, 1, false, 0, 0, 0, 64, 64));
