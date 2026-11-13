@@ -7,7 +7,6 @@ import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.gl.CgCapabilities.ComputeTier;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.CgRHI;
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.shader.CgGlslCompiler;
 import com.crystalgraphics.render.CgCpuMeter;
 import com.crystalgraphics.render.CgGpuBudget;
@@ -24,7 +23,6 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
-import com.crystalgraphics.api.texture.CgTexture;
 
 /**
  * Runs a {@link CgFrame} on the render thread: uploads its snapshots and each kind's instances once, compiles what it
@@ -59,12 +57,9 @@ import com.crystalgraphics.api.texture.CgTexture;
 public final class CgExecutor {
 
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
-    private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
-    private static final int DEPTH_SHARED = CgTrace.name("graph.depth-copies-shared");
     /** Raster passes that joined the render pass of the one before them (Unreal RDG's {@code MergeRenderPasses}). */
     private static final int MERGED = CgTrace.name("graph.render-passes-merged");
     /** Another target's depth sampled where it is, where it was copied. */
-    private static final int DEPTH_SAMPLED = CgTrace.name("graph.depth-sampled-in-place");
     /** What every QUAD and CURVE instance expands. */
     static final CgMesh UNIT_QUAD = CgMesh.quads(1);
     private static final CgVar.Bool SPLIT = CgVar.bool("crystalgraphics.graph.splits", true, CgVar.DEV,
@@ -112,16 +107,8 @@ public final class CgExecutor {
     /** The run's second attachment, which a pass of it without one of its own draws beside, writes masked off. */
     @Nullable
     CgGraphTexture runAttachment;
-    /**
-     * One copy of a storage's depth, read by every pass after it that reads that depth until something may write it:
-     * Unreal resolves scene depth once after the base pass, where each pass copying its own cost a blit apiece.
-     * Released when the execution ends; its source null when it holds nothing. Keyed by the depth image and layer, not
-     * the storage: two graph textures importing one target are two storages over the same images.
-     */
-    private final CgTargetCopy sharedDepth = new CgTargetCopy();
-    @Nullable
-    private CgGpuTexture sharedDepthSource;
-    private int sharedDepthLayer;
+    /** The scene colour and depth copies this execution's compile decided ({@link CgFrameCompiler#sceneCopies}). */
+    final CgSceneCopies scene;
     /** Transients a step skipped this execution wrote, which a step run again may not read. */
     private final List<CgGraphResource> stale = new ArrayList<>();
     private final List<CgPass> staleBy = new ArrayList<>();
@@ -131,6 +118,7 @@ public final class CgExecutor {
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
         ring = CgStreamBuffer.frameLocalUniforms(1 << 20);
         transitions = new CgTransitions(this, device);
+        scene = new CgSceneCopies(this, device);
         raster = new CgRasterEncoder(this, device, depth);
         compute = new CgComputeEncoder(this, device);
         copies = new CgCopyEncoder(this, device);
@@ -349,18 +337,6 @@ public final class CgExecutor {
         CgGraphDevice.get().freeTexture(texture);
     }
 
-    /** Before a blit of {@code source} into {@code dest} inside an executing pass: the source read, the destination written. */
-    static void blitting(CgGraphStorage source, CgGraphStorage dest) {
-        CgExecutor execution = CgGraphDevice.get().executing();
-        if (execution != null) execution.transitions.blitting(source, dest);
-    }
-
-    /** After it: the source where it was, the copy sampled. */
-    static void blitted(CgGraphStorage source, CgGraphStorage dest) {
-        CgExecutor execution = CgGraphDevice.get().executing();
-        if (execution != null) execution.transitions.blitted(source, dest);
-    }
-
     /** What {@code pass} draws into: its target, or the current target for none. */
     static CgGraphTexture targetOf(CgRasterPass pass) {
         return pass.target != null ? pass.target : CgGraphTexture.current();
@@ -419,6 +395,7 @@ public final class CgExecutor {
         CgFrameCompiler.transitions(frame, asyncCompute, ASYNC_ALL, splits);
         CgFrameCompiler.multiDraws(frame, multiDraw);
         CgFrameCompiler.steps(frame, takes, again);
+        CgFrameCompiler.sceneCopies(frame, scene.depthSource);
         int resolved = 0;
         try {
             if (!again) {
@@ -452,9 +429,6 @@ public final class CgExecutor {
                 }
                 for (int t = 0; t < frame.transients.size(); t++) {
                     if (frame.releaseAfter[t] == s) {
-                        if (frame.transients.get(t) instanceof CgGraphTexture texture && sharesDepth(texture.storage())) {
-                            sharedDepthSource = null;
-                        }
                         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, GIVE_BACK)) {
                             device.giveBack(frame.transients.get(t));
                         }
@@ -466,8 +440,7 @@ public final class CgExecutor {
         } finally {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, FINISH)) {
                 if (takes) transitions.finish();
-                sharedDepth.release(device.pool);
-                sharedDepthSource = null;
+                scene.endExecution();
                 device.async.await(compute.asyncEnd);   // what the host may touch; the rest waits for its reader, or the frame's end
                 if (resolved > 0) {
                     for (CgGraphResource transientResource : frame.transients) {
@@ -625,7 +598,6 @@ public final class CgExecutor {
             }
             if (pass instanceof CgRasterPass r) {
                 raster.raster(frame, s, r);
-                if (frame.rasters[s].writesDepth && sharesDepth(depthDestination(r))) sharedDepthSource = null;
             } else if (pass instanceof CgComputePass c) {
                 if (async) compute.computeAsync(frame, s, c);
                 else compute.compute(frame, s, c);
@@ -648,12 +620,10 @@ public final class CgExecutor {
                 }
                 upload.request.complete();
             } else if (pass instanceof CgPass.Include include) {
-                sharedDepthSource = null;   // what it executes may write any depth
                 try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_INCLUDE)) {
                     include.execute();
                 }
             } else if (pass instanceof CgPass.Callback callback) {
-                sharedDepthSource = null;   // what it executes may draw anything
                 try (CgTrace.Zone zone = CgTrace.zone(CgChannels.GL, STEP_CALLBACK);
                      Into ignored = intoCallback(callback.target, callback.depth)) {
                     callback.body.run();
@@ -692,53 +662,10 @@ public final class CgExecutor {
                 if (frame.released.get(i) instanceof CgGraphBuffer buffer) {
                     device.freeBuffer(buffer);
                 } else {
-                    sharedDepthSource = null;
                     device.freeTexture((CgGraphTexture) frame.released.get(i));
                 }
             }
         }
-    }
-
-    // ── Depth read from another texture ──────────────────────────────────────
-
-    /**
-     * The depth of the texture a pass reads besides its own, as the texture it samples: in place where compiled so, else
-     * copied whole.
-     */
-    CgTexture depthFrom(CgPass pass, CgGraphTexture depth, CgTargetCopy copy, boolean inPlace) {
-        if (inPlace) {
-            // Not attached here, and moved to SAMPLED_READ with the step: sampled where it is, as Unreal samples SceneDepth.
-            CgTrace.add(CgChannels.GL, DEPTH_SAMPLED, 1);
-            return device.storage(depth).sampledDepth();
-        }
-        copy.borrowDepth(sharedDepth(device.storage(depth), pass));
-        return copy.depth;
-    }
-
-    /** The storage whose depth {@code pass} draws into; null where it draws with none. */
-    @Nullable
-    private CgGraphStorage depthDestination(CgRasterPass pass) {
-        CgGraphStorage storage = device.storage(pass.depthTexture());
-        return storage.depth() != null ? storage : null;
-    }
-
-    /** Whether {@link #sharedDepth} holds a copy of {@code storage}'s depth. */
-    private boolean sharesDepth(@Nullable CgGraphStorage storage) {
-        return storage != null && sharedDepthSource != null && storage.depth() == sharedDepthSource
-                && storage.depthLayer() == sharedDepthLayer;
-    }
-
-    /** The execution's copy of {@code source}'s depth, copied now unless it already holds it. */
-    CgTargetCopy sharedDepth(CgGraphStorage source, CgPass pass) {
-        if (sharesDepth(source)) {
-            CgTrace.add(CgChannels.GL, DEPTH_SHARED, 1);
-            return sharedDepth;
-        }
-        sharedDepth.copyDepth(source, pass, device.pool);
-        sharedDepthSource = source.depth();
-        sharedDepthLayer = source.depthLayer();
-        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
-        return sharedDepth;
     }
 
     /**

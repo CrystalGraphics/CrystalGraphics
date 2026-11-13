@@ -129,7 +129,7 @@ public class CgFrameBuilderTest {
         for (int b = 0; b < packed.count; b++) {
             if (packed.copyBefore[b] == 0) continue;
             assertEquals(reads.id(), packed.pipeline[b]);
-            assertEquals(CgTargetCopy.COLOR, packed.copyBefore[b]);
+            assertEquals(CgSceneCopies.COLOR, packed.copyBefore[b]);
             rects.add(Arrays.copyOfRange(packed.copyRect, b * 4, b * 4 + 4));
         }
         assertEquals(3, rects.size());
@@ -167,7 +167,7 @@ public class CgFrameBuilderTest {
             boolean reader = packed.pipeline[b] == reads.id();
             if (packed.copyBefore[b] != 0) {
                 assertTrue("a copy only before a reader", reader);
-                assertEquals(CgTargetCopy.COLOR, packed.copyBefore[b]);
+                assertEquals(CgSceneCopies.COLOR, packed.copyBefore[b]);
                 copies++;
             }
             if (reader) readersSeen++;
@@ -215,7 +215,7 @@ public class CgFrameBuilderTest {
 
         int depthCopies = 0;
         for (int b = 0; b < packed.count; b++) {
-            if ((packed.copyBefore[b] & CgTargetCopy.DEPTH) != 0) depthCopies++;
+            if ((packed.copyBefore[b] & CgSceneCopies.DEPTH) != 0) depthCopies++;
         }
         assertEquals(2, depthCopies);
         builder.recycle(frame);

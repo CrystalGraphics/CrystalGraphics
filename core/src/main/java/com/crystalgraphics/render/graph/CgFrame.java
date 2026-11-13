@@ -89,6 +89,8 @@ public final class CgFrame {
     boolean[] skipped = new boolean[8];
     /** Per step reading another texture's depth, whether it samples that depth in place rather than copying it. */
     boolean[] depthFromInPlace = new boolean[8];
+    /** Per step reading another texture's depth, what its read resolved to ({@link CgSceneCopies#SAMPLE_DEPTH} and the rest); 0 for none. */
+    int[] depthFromOp = new int[8];
     /**
      * Per step, its prologue's transitions, from {@code prologueFrom[s]} to {@code prologueFrom[s + 1]}: each a texture
      * moved to an access ({@link #prologueLevel}, {@link #prologueLayer}; -1 for every one) or a buffer's barrier. A step
@@ -148,6 +150,7 @@ public final class CgFrame {
             async = new boolean[size];
             skipped = new boolean[size];
             depthFromInPlace = new boolean[size];
+            depthFromOp = new int[size];
             prologued = new boolean[size];
             splits = new boolean[size];
             splitEnd = new int[size];
@@ -480,8 +483,10 @@ public final class CgFrame {
          */
         CgBufferHandle[] buffers = new CgBufferHandle[16 * CgDrawChunk.BUFFERS];
         CgBindingModel.Slot[] bufferAt = new CgBindingModel.Slot[16 * CgDrawChunk.BUFFERS];
-        /** Per batch, the {@code CgTargetCopy} bits of what to copy from the target before drawing it; 0 for none. */
+        /** Per batch, the {@code CgSceneCopies} bits ({@code COLOR}, {@code DEPTH}, {@code CLEAN}) of what the builder placed a copy of before it; 0 for none. */
         int[] copyBefore = new int[16];
+        /** Per batch, what the compile resolved those to, as {@code CgSceneCopies}' {@code COPY_COLOR} and the rest. */
+        int[] sceneOp = new int[16];
         /**
          * Per batch copying colour, the rect it copies in GL pixels from the bottom left, x0, y0, x1, y1; x1 below 0
          * for the whole target. Depth is always copied whole.
@@ -525,6 +530,7 @@ public final class CgFrame {
                 buffers = new CgBufferHandle[n * CgDrawChunk.BUFFERS];
                 bufferAt = new CgBindingModel.Slot[n * CgDrawChunk.BUFFERS];
                 copyBefore = new int[n];
+                sceneOp = new int[n];
                 copyRect = new int[n * 4];
             } else {
                 Arrays.fill(mesh, 0, count, null);

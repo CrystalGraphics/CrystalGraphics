@@ -68,8 +68,6 @@ final class CgRasterEncoder {
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
     /** Records written to the frame's table, once each, and ids the passes copied to name them: SR1's two counts. */
     private static final int PRIMITIVES = CgTrace.name("graph.primitives"), PRIMITIVE_IDS = CgTrace.name("graph.primitive-ids");
-    private static final int TARGET_COPIES = CgTrace.name("graph.target-copies");
-    private static final int TARGET_COPY_PIXELS = CgTrace.name("graph.target-copy-pixels");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
     /** Runs of draws a multi-draw ended only because the next draw binds other textures or properties. */
     private static final int BINDING_BREAKS = CgTrace.name("graph.multi-draw.binding-breaks");
@@ -334,13 +332,13 @@ final class CgRasterEncoder {
             view.clear();
             depthInPlace = frame.readOnlyDepth[s];
             if (pass.depthFrom() != null) {
-                view.put(CgBindingModel.SCENE_DEPTH, execution.depthFrom(pass, pass.depthFrom(), pass.depthFromCopy(),
-                        frame.depthFromInPlace[s]));
+                view.put(CgBindingModel.SCENE_DEPTH, execution.scene.depthFrom(frame.depthFromOp[s], device.storage(pass.depthFrom()), pass));
             }
-            if (pass.colorFrom() != null) copyColorFrom(pass);
-            if ((packed.copyBefore[0] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
-                copyTarget(pass, packed.copyBefore[0], packed.copyRect, 0);
+            if (pass.colorFrom() != null) {
+                execution.scene.copyColorFrom(device.storage(pass.colorFrom()));
+                view.put(CgBindingModel.SCENE_COLOR, execution.scene.colorFromView);
             }
+            if (packed.sceneOp[0] != 0) sceneCopy(pass, packed.sceneOp[0], packed.copyRect, 0);
             passBase.clear();
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) state(instanceBuffers[k]);
             if (tabled && (packed.kinds & (1 << OBJECT)) != 0) state(primitives);
@@ -443,7 +441,7 @@ final class CgRasterEncoder {
             CgDeviceSection.end();
             CgTrace.zoneDone(CgChannels.GL, DEVICE_SECTION, ended);
             CgTrace.zoneDone(CgChannels.GL, DEVICE_PASS, passed);
-            if (pass.targetCopy() != null) pass.targetCopy().release(device.pool);
+            execution.scene.endStep();
         }
     }
 
@@ -506,7 +504,7 @@ final class CgRasterEncoder {
         devicePass = null;
         ending.end();
         CgDeviceSection.end();
-        copyTarget(pass, packed.copyBefore[b], packed.copyRect, b * 4);
+        sceneCopy(pass, packed.sceneOp[b], packed.copyRect, b * 4);
         CgDeviceSection.begin();
         CgPassDesc d = devicePassDesc;
         List<CgPassDesc.Color> colors = new ArrayList<>(d.colors().size());
@@ -535,7 +533,7 @@ final class CgRasterEncoder {
         if (damage == null) rp.setScissor(0, 0, w, h);
         else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
         for (int b = 0; b < packed.count; b++) {
-            if (b > 0 && (packed.copyBefore[b] & (CgTargetCopy.COLOR | CgTargetCopy.DEPTH)) != 0) {
+            if (b > 0 && packed.sceneOp[b] != 0) {
                 rp = copyMidPass(rhi, pass, packed, b);
                 Arrays.fill(setLayout, null);
                 boundScissor = CgRasterPass.INHERIT;
@@ -730,14 +728,6 @@ final class CgRasterEncoder {
         return deviceLayouts[id];
     }
 
-    /** Copies another target's colour whole, for a pass reading it ({@link CgRasterPass#readsColor(CgGraphTexture)}). */
-    private void copyColorFrom(CgRasterPass pass) {
-        CgTargetCopy copy = pass.colorFromCopy();
-        copy.copyColor(device.storage(pass.colorFrom()), device.pool);
-        view.put(CgBindingModel.SCENE_COLOR, copy.color);
-        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
-    }
-
     /**
      * The pass's indirect commands, one per indirect batch in batch order, written before the pass begins; each
      * count's own barrier came with the pass's access list. Where draws join, the compiled runs ({@link #runs}) are
@@ -869,31 +859,27 @@ final class CgRasterEncoder {
     }
 
     /**
-     * Copies what {@code bits} name from the pass's target for the draws sampling it, colour in the rect at {@code at}
-     * of {@code rects}, and binds the copies.
+     * Replays what the compile decided for the draws sampling the pass's own target ({@code op}, colour in the rect at
+     * {@code at} of {@code rects}), and binds the copies.
      */
-    private void copyTarget(CgRasterPass pass, int bits, int[] rects, int at) {
-        CgTargetCopy copy = pass.targetCopy();
-        CgGraphStorage colour = device.storage(CgExecutor.targetOf(pass)), depth = device.storage(pass.depthTexture());
-        if (depthInPlace && (bits & CgTargetCopy.DEPTH) != 0) {
-            // Read-only in this pass: sampled where it is, no copy.
-            view.put(CgBindingModel.SCENE_DEPTH, depth.sampledDepth());
-            bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
-            if (bits == 0) return;
+    private void sceneCopy(CgRasterPass pass, int op, int[] rects, int at) {
+        CgSceneCopies scene = execution.scene;
+        CgGraphStorage depth = device.storage(pass.depthTexture());
+        if ((op & CgSceneCopies.SAMPLE_DEPTH) != 0) {
+            view.put(CgBindingModel.SCENE_DEPTH, scene.sampleDepth(depth));   // read-only in this pass: sampled where it is
+        } else if ((op & CgSceneCopies.REUSE_DEPTH) != 0) {
+            view.put(CgBindingModel.SCENE_DEPTH, scene.reuseDepth());
+        } else if ((op & CgSceneCopies.RESOLVE_DEPTH) != 0) {
+            scene.resolveDepth(depth, pass);
+            view.put(CgBindingModel.SCENE_DEPTH, scene.resolvedView);
+        } else if ((op & CgSceneCopies.COPY_DEPTH) != 0) {
+            scene.copyDepth(depth, pass);
+            view.put(CgBindingModel.SCENE_DEPTH, scene.depthView);
         }
-        if ((bits & (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) == (CgTargetCopy.DEPTH | CgTargetCopy.CLEAN)) {
-            // The target's depth as the pass found it: what an earlier pass may have copied already.
-            copy.borrowDepth(execution.sharedDepth(depth, pass));
-            view.put(CgBindingModel.SCENE_DEPTH, copy.depth);
-            bits &= ~(CgTargetCopy.DEPTH | CgTargetCopy.CLEAN);
-            if (bits == 0) return;
+        if ((op & CgSceneCopies.COPY_COLOR) != 0) {
+            scene.copyColor(device.storage(CgExecutor.targetOf(pass)), rects, at);
+            view.put(CgBindingModel.SCENE_COLOR, scene.colorView);
         }
-        bits &= ~CgTargetCopy.CLEAN;
-        long pixels = copy.copy(colour, depth, bits, rects, at, device.pool);
-        if ((bits & CgTargetCopy.COLOR) != 0) view.put(CgBindingModel.SCENE_COLOR, copy.color);
-        if ((bits & CgTargetCopy.DEPTH) != 0) view.put(CgBindingModel.SCENE_DEPTH, copy.depth);
-        CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
-        CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
     }
 
     void delete() {

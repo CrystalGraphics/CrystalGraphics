@@ -48,11 +48,9 @@ public final class CgComputePass extends CgPass {
     private boolean again;
     private boolean async;
     private boolean ended;
-    /** The target whose depth its kernels sample as {@code cg_DepthBuffer} ({@link #sceneDepth}), and the copy. */
+    /** The target whose depth its kernels sample as {@code cg_DepthBuffer} ({@link #sceneDepth}). */
     @Nullable
     private CgGraphTexture depthFrom;
-    @Nullable
-    private CgTargetCopy depthFromCopy, keptDepthFrom;
 
     CgComputePass(CgRecording recording, String name, CgPassConstants constants) {
         super(name, null, null);
@@ -73,7 +71,6 @@ public final class CgComputePass extends CgPass {
         async = false;
         ended = false;
         depthFrom = null;
-        depthFromCopy = null;
     }
 
     @Override
@@ -85,7 +82,6 @@ public final class CgComputePass extends CgPass {
         budget = null;
         meter = null;
         depthFrom = null;
-        depthFromCopy = null;
     }
 
     int shellCount() {
@@ -225,7 +221,6 @@ public final class CgComputePass extends CgPass {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none: name its depth texture");
         }
         depthFrom = from;
-        if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }
@@ -233,11 +228,6 @@ public final class CgComputePass extends CgPass {
     @Nullable
     CgGraphTexture depthFrom() {
         return depthFrom;
-    }
-
-    @Nullable
-    CgTargetCopy depthFromCopy() {
-        return depthFromCopy;
     }
 
     /** Ends the pass: every dispatch bound; its values and samplers are read as the frame is built. */

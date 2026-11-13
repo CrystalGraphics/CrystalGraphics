@@ -425,7 +425,6 @@ public final class CgFrameBuilder {
                 CgDepthConvention.reversed(), constantsScratch);
         CgGraphTexture depthFrom = pass.depthFrom();
         if (depthFrom != null) {
-            constants.texture(CgBindingModel.SCENE_DEPTH, pass.depthFromCopy().depth);
             frame.readsCurrentDepth |= usesCurrent(depthFrom);
         }
         packed.constants = constants.end();
@@ -551,7 +550,7 @@ public final class CgFrameBuilder {
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
         boolean writesDepth = pass.load.clearsDepth();
         for (int b = 0; b < packed.count && !writesDepth; b++) {
-            writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgTargetCopy.DEPTH) != 0;
+            writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgSceneCopies.DEPTH) != 0;
         }
         packed.writesDepth = writesDepth;
         placeCopies(pass, packed);
@@ -582,14 +581,8 @@ public final class CgFrameBuilder {
         if (!localLights && CgFallbackTextures.BLACK_VOLUME != null) {
             constants.texture(CgBindingModel.LOCAL_LIGHTS, CgFallbackTextures.BLACK_VOLUME);
         }
-        if (pass.readsOwnColor()) constants.texture(CgBindingModel.SCENE_COLOR, pass.targetCopy().color);
-        if (pass.readsOwnDepth()) constants.texture(CgBindingModel.SCENE_DEPTH, pass.targetCopy().depth);
-        if (pass.depthFrom() != null) {
-            constants.texture(CgBindingModel.SCENE_DEPTH, pass.depthFromCopy().depth);
-            frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
-        }
+        if (pass.depthFrom() != null) frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
         if (pass.colorFrom() != null) {
-            constants.texture(CgBindingModel.SCENE_COLOR, pass.colorFromCopy().color);
             frame.readsCurrentDepth |= pass.colorFrom().isCurrent();
         }
         // Drawn with the current target's depth: the execution needs that target opened, noted before any pass binds.
@@ -613,15 +606,15 @@ public final class CgFrameBuilder {
      * up to the next draw that writes colour without reading it, share the copy, which covers all their rects. A
      * reader's own colour writes leave what it reads clean, so readers in a row never see each other's colour; any
      * depth write, a reader's too, is seen by the next depth reader. A depth copy no draw of the pass wrote before is
-     * {@link CgTargetCopy#CLEAN}: the target's depth as the pass found it, which the executor may share between passes.
+     * {@link CgSceneCopies#CLEAN}: the target's depth as the pass found it, which the executor may share between passes.
      */
     private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
-        int sampled = (pass.readsOwnColor() ? CgTargetCopy.COLOR : 0) | (pass.readsOwnDepth() ? CgTargetCopy.DEPTH : 0);
+        int sampled = (pass.readsOwnColor() ? CgSceneCopies.COLOR : 0) | (pass.readsOwnDepth() ? CgSceneCopies.DEPTH : 0);
         if (sampled == 0) return;
         float width = CgPassConstants.width(pass.constants), height = CgPassConstants.height(pass.constants);
         // A pass into part of a layer is not in its target's pixels: its copies are whole.
         boolean regions = width > 0f && height > 0f && pass.viewOwner() == 0 && pass.viewX() == 0f && pass.viewY() == 0f;
-        int depthUnseen = sampled & CgTargetCopy.DEPTH;
+        int depthUnseen = sampled & CgSceneCopies.DEPTH;
         boolean depthWritten = pass.load.clearsDepth();
         int run = -1;   // the batch holding the copy the current readers share
         boolean copied = false;
@@ -631,10 +624,10 @@ public final class CgFrameBuilder {
             int reads = sampled & readsOf(pipeline);
             int writes = sampled & writesOf(pipeline, pass.state);
             if ((reads & depthUnseen) != 0) {
-                packed.copyBefore[b] |= depthWritten ? CgTargetCopy.DEPTH : CgTargetCopy.DEPTH | CgTargetCopy.CLEAN;
+                packed.copyBefore[b] |= depthWritten ? CgSceneCopies.DEPTH : CgSceneCopies.DEPTH | CgSceneCopies.CLEAN;
                 depthUnseen = 0;
             }
-            if ((reads & CgTargetCopy.COLOR) != 0) {
+            if ((reads & CgSceneCopies.COLOR) != 0) {
                 // NaN before its shader parses: the whole target. One texel more for the linear filter.
                 float share = pipeline.shader().sceneColorMargin();
                 screenRect(b, regions && !Float.isNaN(share), width, height, share * height + 1f, rect);
@@ -644,24 +637,24 @@ public final class CgFrameBuilder {
                     } else if (!copied || !contains(lastCopy, rect) || intersects(dirty, rect)) {
                         run = b;
                         copied = true;
-                        packed.copyBefore[b] |= CgTargetCopy.COLOR;
+                        packed.copyBefore[b] |= CgSceneCopies.COLOR;
                         System.arraycopy(rect, 0, packed.copyRect, b * 4, 4);
                         clear(dirty);
                     }
                 }
             }
-            if ((writes & CgTargetCopy.COLOR) != 0) {
+            if ((writes & CgSceneCopies.COLOR) != 0) {
                 screenRect(b, regions, width, height, 0f, rect);
                 union(dirty, 0, rect);
-                if ((reads & CgTargetCopy.COLOR) == 0 && run >= 0) {
+                if ((reads & CgSceneCopies.COLOR) == 0 && run >= 0) {
                     System.arraycopy(packed.copyRect, run * 4, lastCopy, 0, 4);
                     run = -1;
                 }
             }
             // A reader's depth write is seen by the next reader, unlike its colour: the distortion apply writes where it
             // read from, and the sky seal after it must test that, not the unbent depth.
-            if ((writes & CgTargetCopy.DEPTH) != 0) {
-                depthUnseen = sampled & CgTargetCopy.DEPTH;
+            if ((writes & CgSceneCopies.DEPTH) != 0) {
+                depthUnseen = sampled & CgSceneCopies.DEPTH;
                 depthWritten = true;
             }
         }
@@ -727,8 +720,8 @@ public final class CgFrameBuilder {
     }
 
     private static int readsOf(CgPipeline pipeline) {
-        return (pipeline.readsSceneColor() ? CgTargetCopy.COLOR : 0)
-                | (pipeline.readsSceneDepth() ? CgTargetCopy.DEPTH : 0);
+        return (pipeline.readsSceneColor() ? CgSceneCopies.COLOR : 0)
+                | (pipeline.readsSceneDepth() ? CgSceneCopies.DEPTH : 0);
     }
 
     /** What a pipeline's draws write into the target: its own state, else the pass's; undeclared is a write. */
@@ -743,7 +736,7 @@ public final class CgFrameBuilder {
         }
         CgDepthState depth = own != null && own.getDepth() != null ? own.getDepth()
                 : passState != null ? passState.getDepth() : null;
-        return (color ? CgTargetCopy.COLOR : 0) | (depth == null || depth.write() ? CgTargetCopy.DEPTH : 0);
+        return (color ? CgSceneCopies.COLOR : 0) | (depth == null || depth.write() ? CgSceneCopies.DEPTH : 0);
     }
 
     private void edge(int from, int to) {

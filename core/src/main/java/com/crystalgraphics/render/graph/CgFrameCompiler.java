@@ -265,6 +265,57 @@ final class CgFrameCompiler {
         }
     }
 
+    /**
+     * Each scene copy resolved for this execution: per raster batch what happens before it ({@link CgFrame.Raster#sceneOp},
+     * from the copies the builder placed), and per step reading another texture's depth ({@link CgFrame#depthFromOp}), as
+     * {@link CgSceneCopies}'s {@code COPY_COLOR}, {@code COPY_DEPTH}, {@code RESOLVE_DEPTH}, {@code REUSE_DEPTH} and
+     * {@code SAMPLE_DEPTH}. After {@link #renderPasses} and {@link #steps}.
+     *
+     * <p>Scene depth is resolved once (Unreal's {@code AddResolveSceneDepthPass}): walking the steps in order, the resolved
+     * copy names its source, and a reader of that source takes it as it is until something may write it: a raster step
+     * whose draws write the depth, an include or a callback, a release, or the end of the transient it was copied from.
+     * A skipped step does none of this.</p>
+     */
+    static void sceneCopies(CgFrame frame, CgSceneCopies.DepthSource resolved) {
+        resolved.forget();
+        int n = frame.stepCount;
+        for (int s = 0; s < n; s++) {
+            CgPass pass = frame.steps[s];
+            frame.depthFromOp[s] = 0;
+            if (!frame.skipped[s]) {
+                if (pass instanceof CgPass.Include || pass instanceof CgPass.Callback) {
+                    resolved.forget();   // what it executes may write any depth
+                } else if (pass instanceof CgRasterPass raster) {
+                    CgFrame.Raster packed = frame.rasters[s];
+                    if (raster.depthFrom() != null) {
+                        frame.depthFromOp[s] = frame.depthFromInPlace[s] ? CgSceneCopies.SAMPLE_DEPTH
+                                : resolved.read(raster.depthFrom());
+                    }
+                    boolean inPlace = frame.readOnlyDepth[s];
+                    for (int b = 0; b < packed.count; b++) {
+                        int wants = packed.copyBefore[b], op = 0;
+                        if ((wants & CgSceneCopies.COLOR) != 0) op |= CgSceneCopies.COPY_COLOR;
+                        if ((wants & CgSceneCopies.DEPTH) != 0) {
+                            if (inPlace) op |= CgSceneCopies.SAMPLE_DEPTH;
+                            else if ((wants & CgSceneCopies.CLEAN) != 0) op |= resolved.read(raster.depthTexture());
+                            else op |= CgSceneCopies.COPY_DEPTH;
+                        }
+                        packed.sceneOp[b] = op;
+                    }
+                    if (packed.writesDepth) resolved.written(raster.depthTexture());
+                } else if (pass instanceof CgComputePass compute && compute.depthFrom() != null) {
+                    frame.depthFromOp[s] = frame.depthFromInPlace[s] ? CgSceneCopies.SAMPLE_DEPTH : resolved.read(compute.depthFrom());
+                }
+            }
+            for (int t = 0; t < frame.transients.size(); t++) {
+                if (frame.releaseAfter[t] == s && frame.transients.get(t) instanceof CgGraphTexture texture) resolved.released(texture);
+            }
+            for (int i = 0; i < frame.released.size(); i++) {
+                if (frame.releasedAfter[i] == s) resolved.forget();
+            }
+        }
+    }
+
     private static boolean doneOnce(CgFrame frame, int s, boolean keepRequested) {
         CgPass pass = frame.steps[s];
         if (pass instanceof CgPass.TextureUpload || pass instanceof CgPass.Readback) return true;

@@ -118,19 +118,12 @@ public final class CgRasterPass extends CgPass {
     private boolean readsOwnColor, readsOwnDepth;
     /** Whether its first draw writes every pixel of its target ({@link #replaces}). */
     private boolean replaces;
-    /** Its copy of its target, made when it first declares a read of it. */
-    @Nullable
-    private CgTargetCopy targetCopy;
-    /** Another target whose depth its draws sample ({@link #readsDepth}), the unit, and the copy. */
+    /** Another target whose depth its draws sample ({@link #readsDepth}). */
     @Nullable
     private CgGraphTexture depthFrom;
-    @Nullable
-    private CgTargetCopy depthFromCopy;
-    /** Another target whose colour its draws sample ({@link #readsColor}), the unit, and the copy. */
+    /** Another target whose colour its draws sample ({@link #readsColor}). */
     @Nullable
     private CgGraphTexture colorFrom;
-    @Nullable
-    private CgTargetCopy colorFromCopy;
 
     /** Its second colour attachment, or null; and whether a target that takes none draws without it. */
     @Nullable
@@ -182,11 +175,8 @@ public final class CgRasterPass extends CgPass {
         readsOwnColor = false;
         readsOwnDepth = false;
         replaces = false;
-        targetCopy = null;
         depthFrom = null;
-        depthFromCopy = null;
         colorFrom = null;
-        colorFromCopy = null;
         attachment = null;
         attachmentOptional = false;
         dropTextures();
@@ -208,7 +198,6 @@ public final class CgRasterPass extends CgPass {
         depthFrom = null;
         colorFrom = null;
         attachment = null;
-        targetCopy = depthFromCopy = colorFromCopy = null;
         dropTextures();
     }
 
@@ -737,7 +726,6 @@ public final class CgRasterPass extends CgPass {
     private CgRasterPass ownColor() {
         requireLevelZero();
         readsOwnColor = true;
-        if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
 
@@ -771,17 +759,8 @@ public final class CgRasterPass extends CgPass {
     private CgRasterPass ownDepth() {
         requireLevelZero();
         readsOwnDepth = true;
-        if (targetCopy == null) targetCopy = keptCopy();
         return this;
     }
-
-    /** The copy this pass made once, reused by its later uses: its storage goes back to the pool as each ends. */
-    private CgTargetCopy keptCopy() {
-        if (kept == null) kept = new CgTargetCopy();
-        return kept;
-    }
-
-    private CgTargetCopy kept, keptDepthFrom, keptColorFrom;
 
     /** A target copy is of level 0 and layer 0: a pass drawing another would read the wrong picture. */
     private void requireLevelZero() {
@@ -794,14 +773,12 @@ public final class CgRasterPass extends CgPass {
             throw new IllegalArgumentException(this + " reads the depth of " + from + ", which has none: name its depth texture");
         }
         depthFrom = from;
-        if (depthFromCopy == null) depthFromCopy = keptDepthFrom != null ? keptDepthFrom : (keptDepthFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }
 
     private CgRasterPass colorFrom(CgGraphTexture from) {
         colorFrom = from;
-        if (colorFromCopy == null) colorFromCopy = keptColorFrom != null ? keptColorFrom : (keptColorFrom = new CgTargetCopy());
         recording.read(this, from, CgAccess.SAMPLED_READ);
         return this;
     }
@@ -812,18 +789,8 @@ public final class CgRasterPass extends CgPass {
     }
 
     @Nullable
-    CgTargetCopy colorFromCopy() {
-        return colorFromCopy;
-    }
-
-    @Nullable
     CgGraphTexture depthFrom() {
         return depthFrom;
-    }
-
-    @Nullable
-    CgTargetCopy depthFromCopy() {
-        return depthFromCopy;
     }
 
     /** Whether its draws sample a copy of its own target's colour ({@link #readsColor}). */
@@ -834,11 +801,6 @@ public final class CgRasterPass extends CgPass {
     /** Whether its draws sample a copy of its own target's depth ({@link #readsDepth}). */
     boolean readsOwnDepth() {
         return readsOwnDepth;
-    }
-
-    @Nullable
-    CgTargetCopy targetCopy() {
-        return targetCopy;
     }
 
     int textureCount() {

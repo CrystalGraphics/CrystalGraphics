@@ -34,10 +34,11 @@ textures its bindings sample, the graph buffers it binds as storage, its objects
 decision the step loop used to make is written into the frame's per-step arrays, and the loop replays them. Which raster
 steps share a render pass and their second colour (`runEnd`, `runAttachment`), read-only depth, each step's prologue of
 transitions (a run's by its first step) and the split transitions it begins, async placement, multi-draw runs
-(`Raster.joinEnd`), a re-execution's skips, a depth read sampled in place. It runs at execution, not at build, because
+(`Raster.joinEnd`), a re-execution's skips, a depth read sampled in place, and every scene colour and depth copy
+(`sceneCopies`: `Raster.sceneOp` per batch, `depthFromOp` per step). It runs at execution, not at build, because
 what an external target lends is known once the execution opens it. What stays in the loop is tracked state: a
 transition issued from the state `CgResourceStates` holds, an async fence waited on where a step's storage is pending
-on one, the shared depth copy, a history's version, transient storage taken at the step the build scheduled.
+on one, a history's version, transient storage taken at the step the build scheduled.
 
 **The execution** replays the compile through encoders, as RDG runs a pass lambda on a command list: `CgTransitions`
 issues a step's prologue and splits, `CgRasterEncoder` the render pass and its batches (with the frame's instance
@@ -290,7 +291,7 @@ raster pass's; each dispatch's entry holds its values and samplers alone, read a
 interned: two dispatches rarely share values, so hashing them found nothing (`CgFrameBindings.endUnique`).
 
 **Reading the target** (`CgRasterPass.readsColor(target, unit)`, `readsDepth(target, unit)` of its own colour): a draw whose shader reads
-`cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgTargetCopy`). The builder walks the
+`cg_SceneColor` or `cg_DepthBuffer` samples a copy of the pass's own target (`CgSceneCopies`). The builder walks the
 pass's batches in their sorted order and places a copy before a reader of what a draw since the last copy wrote:
 colour by any draw with colour writes on, depth only by a depth write. The pass starts with neither copied, so its
 first reader always copies. A reader's own colour writes leave what it reads clean, so readers in a row share one
@@ -300,9 +301,11 @@ readers' screen bounds, each grown by its shader's `SceneColorMargin` tag (a sha
 it samples past its geometry, required of every shader reading `cg_SceneColor`, which otherwise fails to parse), and
 refreshed in place in one texture per pass; a reader whose rect the last copy holds and no draw since wrote into
 takes none. Depth is copied whole. A world draw's bounds are its box projected to the screen, cut at the near plane,
-so only an eye inside the box covers the whole screen; a draw with none copies the whole target. The executor blits before the batch, scissor off, and binds the copy at the pass's
-unit (`graph.target-copies`, `graph.target-copy-pixels`); a blit is ordered among draws by the backend, as any copy
-is.
+so only an eye inside the box covers the whole screen; a draw with none copies the whole target. The compile turns those placements into per-batch operations (`CgFrameCompiler.sceneCopies`) and the encoder
+replays them: it blits before the batch, scissor off, and binds the copy as the view set's scene colour or depth
+(`graph.target-copies`, `graph.target-copy-pixels`); a blit is ordered among draws by the backend, as any copy is. A
+batch after the first that copies ends the render pass and begins it again loading (`graph.device-pass-splits`),
+as RDG splits a pass around a copy.
 
 ```java
 CgRasterPass pass = recording.raster("world.haze").color(target, CgLoad.load()).constants(constants).state(state)
@@ -327,10 +330,12 @@ CgRasterPass pass = recording.raster("world.haze").color(target, CgLoad.load()).
 reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
 Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The world's bloom is the user (`render/world/CLAUDE.md`).
 
-**One depth copy, shared.** The executor keeps one copy of a framebuffer's depth per execution, and every pass after it
+**One depth copy, shared.** The compile resolves a framebuffer's depth once per execution (`CgSceneCopies`' resolved
+half, the one `RESOLVE_DEPTH` copies and every `REUSE_DEPTH` reads), and every pass after it
 reading that depth, as another target's or as its own before any draw of its own wrote depth, reads that copy until
 something may write it: a raster pass into that framebuffer's depth that clears it or has a batch whose state writes it
-or does not say, a callback, an upload, a release, or the framebuffer going back to the pool. Unreal resolves scene depth once after the base pass the
+or does not say, a callback, an include, a release, or the framebuffer going back to the pool. A history never
+shares, and a write to any external target's depth ends a copy of an external one. Unreal resolves scene depth once after the base pass the
 same way. Counters `graph.target-copies` (blits) and `graph.depth-copies-shared` (copies read again). A pass's depth
 state that says `DepthWrite OFF` keeps the copy alive; one that says nothing ends it.
 

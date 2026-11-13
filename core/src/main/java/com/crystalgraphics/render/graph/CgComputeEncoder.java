@@ -78,8 +78,8 @@ final class CgComputeEncoder {
         // Before the compute pass, as a raster pass's copy: what the view set reads
         view.clear();
         if (pass.depthFrom() != null) {
-            view.put(CgBindingModel.SCENE_DEPTH, execution.depthFrom(pass, pass.depthFrom(), pass.depthFromCopy(),
-                    frame.depthFromInPlace[s]));
+            view.put(CgBindingModel.SCENE_DEPTH, execution.scene.depthFrom(frame.depthFromOp[s],
+                    device.storage(pass.depthFrom()), pass));
         }
         execution.deviceSets.prepare(frame.bindings);
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
@@ -104,7 +104,6 @@ final class CgComputeEncoder {
             device.compute.close();
             execution.transitions.endDeviceBarriers();
             device.computing = false;
-            if (pass.depthFromCopy() != null) pass.depthFromCopy().release(device.pool);
         }
     }
 

@@ -1115,7 +1115,7 @@ public final class CgMaterialShader implements CgReloadable {
      *
      * <pre>{@code
      * CgShader program = shader.getOrCompile("Pass0", keywords);
-     * if (program != null && shader.readsSceneDepth(program)) copies |= CgTargetCopy.DEPTH;
+     * if (program != null && shader.readsSceneDepth(program)) copiesDepth = true;
      * }</pre>
      */
     public boolean readsSceneDepth(CgShader program) {
