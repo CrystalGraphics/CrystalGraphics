@@ -141,6 +141,8 @@ public final class CgAssetRegistry {
     private final List<Consumer<CgAssetRegistryEvent>> listeners = new CopyOnWriteArrayList<>();
     private final List<Consumer<List<CgAssetRegistryEvent>>> batchListeners = new CopyOnWriteArrayList<>();
     private final Set<String> warned = ConcurrentHashMap.newKeySet();
+    /** Every root scanned or scanning, by its real path: a folder reached through a link is scanned once. */
+    private final Set<Path> scannedRoots = ConcurrentHashMap.newKeySet();
     @Nullable private Path cacheFile;
     /** The cache, read from {@link #cacheFile} on a background worker; a scan waits for it, its caller does not. */
     @Nullable private CompletableFuture<CgAssetRegistryCache> cache;
@@ -164,11 +166,21 @@ public final class CgAssetRegistry {
      * the workers, or taken from the cache, and nothing is added unless every id is free. The gameplay tags its
      * assets declare (a cue's {@code tag}, a rig's {@code tags}) are declared in {@code CgTagRegistry.global()}.
      *
+     * <p>A root already scanned, under any path that resolves to the same folder (a symbolic link, a junction), is not
+     * scanned again: its assets are registered once.</p>
+     *
      * @throws CgAssetException if an id is already registered from another file or by a builder
      */
     public synchronized void scan(String namespace, Path root, CgAssetSource source) {
         CgAssetKinds.register();
-        commit(gather(namespace, root, source, cacheLoad(), null));
+        Path real = realRoot(root);
+        if (!scannedRoots.add(real)) return;
+        try {
+            commit(gather(namespace, root, source, cacheLoad(), null));
+        } catch (RuntimeException e) {
+            scannedRoots.remove(real);
+            throw e;
+        }
         saveCache();
     }
 
@@ -186,10 +198,13 @@ public final class CgAssetRegistry {
      * <ul>
      *   <li>Start it on a thread that drains its job loop (Minecraft's client thread, the harness's frame).</li>
      *   <li>Nothing of the namespace is registered until it settles: declare refs to it in {@code then}.</li>
+     *   <li>A root already scanned or scanning, under any path to the same folder, settles at once.</li>
      * </ul>
      */
     public CgReply<Void> scanAsync(String namespace, Path root, CgAssetSource source) {
         CgAssetKinds.register();
+        Path real = realRoot(root);
+        if (!scannedRoots.add(real)) return CgReply.of(null);
         CompletableFuture<CgAssetRegistryCache> records;
         synchronized (this) {
             records = cacheLoad();
@@ -206,11 +221,24 @@ public final class CgAssetRegistry {
                         saveCacheLater();
                         scanned.resolve(null);
                     } catch (RuntimeException e) {
+                        scannedRoots.remove(real);
                         scanned.fail(CgReplyError.failed(e));
                     }
                 })
-                .onError(scanned::fail);
+                .onError(e -> {
+                    scannedRoots.remove(real);
+                    scanned.fail(e);
+                });
         return scanned;
+    }
+
+    /** {@code root} as the folder it is: its real path, links resolved; absolute and normalized where it is not there. */
+    private static Path realRoot(Path root) {
+        try {
+            return root.toRealPath();
+        } catch (IOException e) {
+            return root.toAbsolutePath().normalize();
+        }
     }
 
     /** What a scan read of one namespace: every entry, its content index and units, nothing registered yet. */
