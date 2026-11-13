@@ -842,6 +842,9 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 | `blend_material_attributes.glsl` | `cg_blend_material_attributes(a, b, alpha)`: two `CgSurface`s, every output lerped, the shading model a's | BlendMaterialAttributes |
 | `default_lit.glsl` | In a fragment, `cg_default_lit(s, p, subsurface)`: the light `s` gives off at camera-relative `p`, which `ShadingModel DefaultLit` and `Subsurface` call for you | Default Lit, Subsurface |
 | `refraction.glsl` | In a fragment, `cg_refraction(worldNormal, refraction, refractionBias, unitsPerBlock)`: Unreal's distortion offset for `s.refraction`, 1 bending nothing, the bias in Unreal's units (centimetres: 100 a block) | Refraction (the distortion pass) |
+| `fresnel.glsl` | `cg_fresnel(normal, cameraVector, exponent, baseReflectFraction)`; in a fragment `cg_fresnel(normal, exponent, baseReflectFraction)` against the pixel's camera vector. Not `fresnel()` in `lib/vector.glsl`, which has no base reflectance | Fresnel |
+| `desaturation.glsl` | `cg_desaturation(color, fraction[, luminanceFactors])`: lerp toward the grey, factors (0.3, 0.59, 0.11). Not `desaturate()` in `lib/color.glsl` | Desaturation |
+| `unpack_normal_map.glsl` | `cg_unpack_normal_map(textureSample)`: a normal map's red and green decoded, z rebuilt | The Normal sampler type |
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
