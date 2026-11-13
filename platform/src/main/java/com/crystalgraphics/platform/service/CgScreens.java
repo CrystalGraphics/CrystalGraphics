@@ -8,7 +8,8 @@ import com.crystalgraphics.platform.input.CgSystemInput;
  * A screen of the engine's in front of the host's game: what a UI drawn at the {@code SCREEN} render stage puts up to
  * take the player's attention. The host treats it as a screen of its own -- the cursor free, the player still, input
  * through {@code CgInputStage.SCREEN}, the {@code SCREEN} stage drawn over it each frame, Escape its owner's rather
- * than the pause menu's -- and it draws nothing itself and pauses nothing.
+ * than the pause menu's -- and it draws nothing itself and pauses the game only where its owner says
+ * ({@link Owner#pausesGame}).
  *
  * <pre>{@code
  * final class Menu implements CgScreens.Owner {
@@ -55,6 +56,14 @@ public final class CgScreens {
 
         /** Whether the game's HUD is hidden while it is up, where the host draws its HUD over screens (1.21.6 to 26.0). */
         default boolean hidesHud() {
+            return false;
+        }
+
+        /**
+         * Whether a single-player game stops while it is up, as the host's own container screens stop it. A paused
+         * integrated server pumps no connection, so a screen of a server's UI leaves it false.
+         */
+        default boolean pausesGame() {
             return false;
         }
 

@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
 
 /**
  * {@link CgScreens} on the modern tree: the engine's screen is one empty {@code Screen} holding its owner, which draws
- * nothing (the {@code SCREEN} stage draws over it), pauses nothing and gives Escape to its owner. Client only, from
+ * nothing (the {@code SCREEN} stage draws over it), pauses only where its owner asks and gives Escape to its owner. Client only, from
  * {@code PlatformServiceModern.installClient}.
  *
  * <ul>
@@ -189,10 +189,10 @@ public final class ScreensModern implements CgScreens.Host {
             return false;
         }
 
-        /** The game runs under it: a paused integrated server pumps no connection. */
+        /** The game runs under it unless its owner pauses: a paused integrated server pumps no connection. */
         @Override
         public boolean isPauseScreen() {
-            return false;
+            return owner.pausesGame();
         }
 
         // Nothing drawn: widgets, background and blur are none of its own, and the SCREEN stage draws over it.

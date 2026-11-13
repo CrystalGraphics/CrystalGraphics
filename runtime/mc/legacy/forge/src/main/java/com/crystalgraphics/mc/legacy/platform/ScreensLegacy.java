@@ -16,7 +16,7 @@ import java.lang.reflect.Method;
 
 /**
  * {@link CgScreens} on Forge 1.8 to 1.12.2: the engine's screen is one empty {@code GuiScreen} holding its owner, which draws nothing
- * (the {@code SCREEN} stage draws over it), pauses nothing and gives Escape to its owner. Client only, from
+ * (the {@code SCREEN} stage draws over it), pauses only where its owner asks and gives Escape to its owner. Client only, from
  * {@code PlatformServiceLegacy.install}.
  *
  * <ul>
@@ -141,10 +141,10 @@ public final class ScreensLegacy implements CgScreens.Host {
             if (keyCode == Keyboard.KEY_ESCAPE) owner.escape();
         }
 
-        /** The game runs under it: a paused integrated server pumps no connection. */
+        /** The game runs under it unless its owner pauses: a paused integrated server pumps no connection. */
         @Override
         public boolean doesGuiPauseGame() {
-            return false;
+            return owner.pausesGame();
         }
     }
 
