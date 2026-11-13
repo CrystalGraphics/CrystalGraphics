@@ -123,7 +123,8 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
         if ((flags & CG_SHAPE_SPLIT_BORDER) != 0) {
             float dx = halfSize.x - abs(localPos.x);
             float dy = halfSize.y - abs(localPos.y);
-            if (dy < dx) edgeColor = localPos.y < 0.0 ? SHAPE_DATA(shape).borderTop : SHAPE_DATA(shape).borderBottom;
+            edgeColor = dy < dx ? (localPos.y < 0.0 ? SHAPE_DATA(shape).borderTop : SHAPE_DATA(shape).borderBottom)
+                                : (localPos.x < 0.0 ? SHAPE_DATA(shape).borderLeft : SHAPE_DATA(shape).borderRight);
         }
         color = mix(edgeColor, fillColor, innerCoverage);
     }

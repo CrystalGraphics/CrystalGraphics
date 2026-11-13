@@ -2,7 +2,8 @@
 // meta (kind, flags, box width, box height), radiiX and radiiY (top-left, top-right, bottom-right, bottom-left),
 // borderWidths (left, top, right, bottom), fillColor, borderColor, borderTop, borderBottom, and for a nine-slice
 // sliceBorder, sliceOuterUv (u0 v0 u3 v3), sliceInnerUv (u1 v1 u2 v2), sliceTiles (x, y, source width, height) and
-// sliceMode (repeat x, repeat y, centre filled). Colours are straight alpha.
+// sliceMode (repeat x, repeat y, centre filled), then borderLeft and borderRight (the split border's side edges).
+// Colours are straight alpha.
 #pragma once
 
 // CgShapeTable's kinds and flags, which must agree.

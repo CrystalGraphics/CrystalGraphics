@@ -78,11 +78,13 @@ public final class CgShapeTable {
             .vec4("meta").vec4("radiiX").vec4("radiiY").vec4("borderWidths")
             .vec4("fillColor").vec4("borderColor").vec4("borderTop").vec4("borderBottom")
             .vec4("sliceBorder").vec4("sliceOuterUv").vec4("sliceInnerUv").vec4("sliceTiles").vec4("sliceMode")
+            .vec4("borderLeft").vec4("borderRight")
             .build();
     private static final String[] FIELDS = {"meta", "radiiX", "radiiY", "borderWidths", "fillColor", "borderColor",
-            "borderTop", "borderBottom", "sliceBorder", "sliceOuterUv", "sliceInnerUv", "sliceTiles", "sliceMode"};
+            "borderTop", "borderBottom", "sliceBorder", "sliceOuterUv", "sliceInnerUv", "sliceTiles", "sliceMode",
+            "borderLeft", "borderRight"};
 
-    static final int FLOATS = 52;
+    static final int FLOATS = 60;
     private static final int RESERVED = 2;
     /** The floats one entry takes in {@link #read}. */
     public static final int ENTRY_FLOATS = FLOATS;
@@ -268,12 +270,23 @@ public final class CgShapeTable {
          * inset field's bevel.
          */
         public Shape border(float left, float top, float right, float bottom, int argb, int topArgb, int bottomArgb) {
-            int flags = BORDER | (topArgb != argb || bottomArgb != argb ? SPLIT_BORDER : 0);
-            values[1] = flags;
+            return border(left, top, right, bottom, argb, topArgb, argb, bottomArgb, argb);
+        }
+
+        /**
+         * A border band whose four edges each take their own colour, CSS's order (top, right, bottom, left): a
+         * bevelled slot is dark on top and left and light on bottom and right. The corners split on the diagonal.
+         */
+        public Shape border(float left, float top, float right, float bottom, int argb,
+                            int topArgb, int rightArgb, int bottomArgb, int leftArgb) {
+            boolean split = topArgb != argb || rightArgb != argb || bottomArgb != argb || leftArgb != argb;
+            values[1] = BORDER | (split ? SPLIT_BORDER : 0);
             set(12, left, top, right, bottom);
             color(20, argb);
             color(24, topArgb);
             color(28, bottomArgb);
+            color(52, leftArgb);
+            color(56, rightArgb);
             return this;
         }
 
