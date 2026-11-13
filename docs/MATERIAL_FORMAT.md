@@ -295,6 +295,8 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `Billboard` | A VFX billboard slot (`CgVfxFrame.billboard`): one camera-facing quad, a lone particle | the quad's corner (`v.position` -1..1); `cg_Billboard` |
 | `Ribbons` | A VFX ribbons slot (`CgVfxFrame.ribbons`): stateless strips of 32 segments, placed by the material | nothing: your `vertex()` assigns `v.world` from `cg_Ribbon` |
 | `PathRibbons` | A VFX path-ribbons slot (`CgVfxFrame.pathRibbons`): stateless strips riding a beam's path | nothing: your `vertex()` assigns `v.world` from `cg_PathRibbon` and the path's rings |
+| `GridVolume` | A VFX grid slot (`CgVfxGrid3D`): the box round a grid's tiles, drawn on its far wall | the box; `cg_Grid`; the grid atlas bound as `_GridView`, `_GridLight`, `_GridPages` |
+| `FluidVolume` | A VFX fluid slot (`CgVfxFluid`): the box round a fluid's tiles, drawn on its far wall | the box; `cg_Fluid`; the fluid atlas bound as `_FluidShade`, `_FluidRestA`/`B`, `_FluidPages` |
 | `Sequence` | A prefab part a clip plays on a sequence particle (`fx_sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
@@ -326,6 +328,11 @@ fade of an ending: the VFX factories apply it to all the material adds.
 size; a billboard's half size in blocks) and `.values`, the four the effect documents for the slot (an intensity, a
 progress, a particle's life and seed). `cg_Billboard.right` and `.up` are the camera's axes, for a `vertex()` turning
 the quad.
+
+**`cg_Grid`** and **`cg_Fluid`** are the volume to march: `.index` its place in the atlas, `.cell` its cell in
+blocks, `.lo` and `.hi` the box, `.corner` the grid's low corner, `.size` the layer's size; a grid's `.extinction`, a
+fluid's `.weight` (its first UV grid's). The march is the material's (`fx_scatter_box`, `fx_sparse.glsl`); it names the
+depth its light came from with `s.volumeDepth`.
 
 **`cg_Ribbon`** and **`cg_PathRibbon`** say where the vertex lies on its strip: `.index` the strip, `.along` 0..1 down
 it, `.side` -1 or 1 across it. Those three are the vertex stage's: pass what the pixel needs in your `v2f`.

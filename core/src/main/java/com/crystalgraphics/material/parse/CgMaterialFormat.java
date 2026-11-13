@@ -808,11 +808,12 @@ final class CgMaterialFormat {
                 if (theirs.contains(own.group(1))) throw fail(path, "'" + own.group(1) + "' is " + owner + "'s: the engine binds it");
             }
         }
-        // One entry a line, as the old parser reads them: a format file may write several on one
+        // One entry a line, as the old parser reads them: a format file may write several on one. What the engine binds
+        // first, in its order: a grid's atlas is bound by position.
         String own = props == null ? "" : ENTRY_START.matcher(props.body().strip()).replaceAll("\n    ");
         if (!own.isEmpty() || !added.isEmpty()) {
-            out.append("Properties {\n    ").append(own).append(own.isEmpty() || added.isEmpty() ? "" : "\n    ")
-               .append(ENTRY_START.matcher(added).replaceAll("\n    ")).append("\n}\n");
+            out.append("Properties {\n    ").append(ENTRY_START.matcher(added).replaceAll("\n    "))
+               .append(own.isEmpty() || added.isEmpty() ? "" : "\n    ").append(own).append("\n}\n");
         }
         Set<String> elements = bufferElements(items);
         for (Item i : items) {

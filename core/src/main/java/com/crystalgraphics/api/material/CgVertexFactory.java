@@ -21,7 +21,8 @@ import java.util.Map;
  * {@code crystalgraphics:shaders/factories/Sprites.factory}, {@code mymod:Ribbons} is
  * {@code mymod:shaders/factories/Ribbons.factory} (its shape: {@code CgFormatTemplates}). The engine's are files:
  * {@code Mesh}, {@code Procedural}, {@code Sprites}, {@code MeshParticles}, {@code Tube}, {@code TubeClosed},
- * {@code TubeVolume}, {@code VfxMesh}, {@code Billboard}, {@code Sequence}, {@code Ribbons}, {@code PathRibbons}. This class registers one made in Java, which a file of the same name never replaces:</p>
+ * {@code TubeVolume}, {@code VfxMesh}, {@code Billboard}, {@code Sequence}, {@code Ribbons}, {@code PathRibbons},
+ * {@code GridVolume}, {@code FluidVolume}. This class registers one made in Java, which a file of the same name never replaces:</p>
  *
  * <pre>{@code
  * // A factory built at run time, registered before any material naming it is parsed:

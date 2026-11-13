@@ -1,0 +1,40 @@
+// GridVolume: a VFX grid slot (CgVfxFrame.grid, CgVfxGrid3D): the box round a grid's tiles, a unit cube scaled, which
+// the material marches from the pixel's ray (fx_scatter_box, fx_sparse.glsl), drawn on its far wall. The engine binds
+// the grid atlas (_GridView, its channels; _GridLight, the light its Shade left; _GridPages, each grid's page table).
+// cg_Grid.index is the grid's place in the atlas, .cell its cell in blocks, .size the layer's size, .extinction a
+// block, .lo and .hi the box, .corner the grid's low corner; read in either stage. cg_Vfx is the draw's header; an
+// ending's fade is applied for the material.
+Factory { VertexType spatial  Fade cg_Vfx.presence }
+
+Properties {
+    _GridView   ("The grid atlas's channels (CgVfxGridAtlas)", sampler3D) = "black"
+    _GridLight  ("Its light: sun transmittance, sky",          sampler3D) = "white"
+    _GridPages  ("Each grid's page table",                     sampler3D) = "black"
+}
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_scatter.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_grid.glsl"
+    struct CgGrid { int index; float cell; float size; float extinction; vec3 lo; vec3 hi; vec3 corner; };
+    CgGrid _cg_grid() {
+        vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
+        vec3 half_ = 0.5 * vec3(length(CG_OBJECT_TO_WORLD[0].xyz), length(CG_OBJECT_TO_WORLD[1].xyz), length(CG_OBJECT_TO_WORLD[2].xyz));
+        return CgGrid(int(CG_OBJECT_CUSTOM0.x + 0.5), CG_OBJECT_CUSTOM0.y, CG_OBJECT_CUSTOM0.w, CG_OBJECT_CUSTOM1.w,
+                centre - half_, centre + half_, centre + CG_OBJECT_CUSTOM1.xyz);
+    }
+    #define cg_Grid _cg_grid()
+}
+
+void fill(inout CgVertex v) {
+    v.position = cg_Position;
+    v.normal = normalize(CG_NORMAL_MATRIX * cg_Normal);
+    v.color = vec4(1.0);
+    v.uv0 = cg_TexCoord0;
+    v.uv1 = v.uv0;
+    v.uv2 = v.uv0;
+    v.uv3 = v.uv0;
+    v.world = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+}
