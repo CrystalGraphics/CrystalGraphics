@@ -109,7 +109,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
     float shell = length(CG_OBJECT_TO_WORLD[0].xyz);
@@ -164,7 +163,6 @@ void surface(in v2f i, inout CgSurface s) {
     // Nothing at the shell's edge, nothing from inside the heart.
     float edge = 1.0 - smoothstep(0.85, 1.0, pass.y / shell);
     float inside = smoothstep(heart * 0.95, heart * 1.3, length(camera - centre));
-    fragColor = vec4(color * CG_OBJECT_CUSTOM1.y * edge * inside, 1.0);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = color * CG_OBJECT_CUSTOM1.y * edge * inside;
+    s.opacity = 1.0;
 }

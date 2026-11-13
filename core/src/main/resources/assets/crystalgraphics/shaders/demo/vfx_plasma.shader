@@ -37,7 +37,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
     float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
@@ -77,6 +76,5 @@ void surface(in v2f i, inout CgSurface s) {
     light += vec3(1.3, 0.6, 1.5) * rays * exp(-pass * 3.0) * 0.9 * throb;
     // A deep violet haze behind it all, and a bright rim where the ball's light thickens.
     vec3 color = vec3(0.08, 0.0, 0.14) + light + vec3(0.9, 0.18, 1.3) * pow(1.0 - nv, 3.0) * 1.6 * throb;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

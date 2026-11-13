@@ -70,7 +70,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 centreWs = CG_OBJECT_TO_WORLD[3].xyz;
     vec3 p = normalize(i.objPos);
@@ -115,7 +114,6 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 color = cyan * edge * lines + blue * (fill + bevel * (0.05 + cellsLit * 0.6 + scan * 0.1));
     color += vec3(1.3, 1.5, 1.9) * (ring * 1.4 + flash * 3.0) + vec3(2.2, 0.7, 0.12) * splash * 2.5;
     if (!gl_FrontFacing) color *= 0.45;
-    fragColor = vec4(color, 1.0);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = color;
+    s.opacity = 1.0;
 }

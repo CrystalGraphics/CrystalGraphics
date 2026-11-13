@@ -54,7 +54,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 n = normalize(i.normalWs);
     vec3 v = normalize(CG_CAMERA_POSITION - i.worldPos);
@@ -87,7 +86,6 @@ void surface(in v2f i, inout CgSurface s) {
             + dots * vec3(0.55, 1.05, 1.45) * 1.25;
     color *= scan * flicker;
     if (!gl_FrontFacing) color *= 0.4;
-    fragColor = vec4(color, 1.0);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = color;
+    s.opacity = 1.0;
 }

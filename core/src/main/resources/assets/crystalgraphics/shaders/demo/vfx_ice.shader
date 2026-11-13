@@ -97,7 +97,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
     float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
     float floorY = centre.y - CG_OBJECT_CUSTOM3.x;
@@ -151,6 +150,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 seen = vfx_studio(i.worldPos, reflect(-v, crystal), 0.0, floorY);
     float glint = smoothstep(1.1, 3.2, dot(seen, vec3(0.2126, 0.7152, 0.0722))) * smoothstep(0.3, 0.1, cells.x) * frost;
     vec3 color = mix(clearIce, frostColor, frost * 0.85) + vec3(0.9, 0.97, 1.0) * glint * 4.0;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

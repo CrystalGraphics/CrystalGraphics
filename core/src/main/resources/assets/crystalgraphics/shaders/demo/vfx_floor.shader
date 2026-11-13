@@ -38,7 +38,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 camera = CG_CAMERA_POSITION;
     vec3 v = normalize(camera - i.worldPos);
@@ -74,6 +73,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 reflection = vfx_env(reflect(-v, n), 0.12) * mix(0.15, 1.0, fresnel);
     vec3 base = vec3(0.012, 0.012, 0.018);
     vec3 color = (base + reflection) * shade + grid * fade * shade + pools;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

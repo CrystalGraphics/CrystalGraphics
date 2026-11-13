@@ -551,13 +551,23 @@ on.close();                              // removes it
 | `AFTER_WORLD` | the finished world, linear HDR, before the engine's own looks |
 | `AFTER_COMPOSITE` | the final picture, in the screen's encoding: an outline, a CRT filter |
 
-`Material { }` takes `Location` and `SceneColorMargin`: how far past its own pixel it samples the scene, 0.001 (its
-own pixel) by default; a blur reading its neighbours sets more. It reads the scene by naming it: `CG_SCENE_COLOR(uv)`, `CG_SCENE_EYE_DEPTH(uv)`, `CG_CUSTOM_STENCIL`,
-`CG_CUSTOM_DATA`, `CG_SCENE_WORLD_NORMAL`.
+`Material { }` takes `Location`, `SceneColorMargin` and `ColorSpace`. `SceneColorMargin` is how far past its own pixel
+it samples the scene, 0.001 (its own pixel) by default; a blur reading its neighbours sets more. It reads the scene by
+naming it: `CG_SCENE_COLOR(uv)`, `CG_SCENE_EYE_DEPTH(uv)`, `CG_CUSTOM_STENCIL`, `CG_CUSTOM_DATA`,
+`CG_SCENE_WORLD_NORMAL`.
 
 **It works in linear light**, as Unreal's do: `s.color` starts as the scene decoded, and what it writes is encoded back
 where the screen is stored sRGB. Reading the scene anywhere but its own pixel, decode it the same way:
 `cg_PostDecode(CG_SCENE_COLOR(uv).rgb)`. A step into its own `Target` keeps linear.
+
+`ColorSpace Target` works on the values the screen stores instead, nothing decoded or encoded: an effect on the
+picture as shown, such as a negative.
+
+```glsl
+#domain post
+Material { Location AFTER_COMPOSITE  ColorSpace Target }
+void surface(in CgScreen i, inout CgPostSurface s) { s.color = mix(s.color, 1.0 - s.color, POST_WEIGHT); }
+```
 
 ### 7.1 Several steps
 

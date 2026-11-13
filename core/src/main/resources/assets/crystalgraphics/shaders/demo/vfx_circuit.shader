@@ -55,7 +55,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
     vec3 n = normalize(i.normalWs);
@@ -144,6 +143,5 @@ void surface(in v2f i, inout CgSurface s) {
     color = mix(color, copper * 0.9 + energy * surge * 2.0, pins * (1.0 - chipBody));
     // The surge washes faintly over the whole board as it passes.
     color += energy * surge * 0.15;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

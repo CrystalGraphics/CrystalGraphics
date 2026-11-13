@@ -15,7 +15,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
     float shell = length(CG_OBJECT_TO_WORLD[0].xyz);
     float source = shell * CG_OBJECT_CUSTOM2.x;
@@ -28,7 +27,6 @@ void surface(in v2f i, inout CgSurface s) {
     // Only the light in front of the scene, the glowing sphere included; none from inside that sphere.
     glow *= vfx_seen(pass.x, sqrt(max(pass.y, source) * source), VFX_SCENE_DISTANCE(ray)) * vfx_limb(pass.y, source);
     glow *= smoothstep(source * 0.95, source * 1.4, length(camera - centre));
-    fragColor = vec4(CG_OBJECT_CUSTOM1.rgb * CG_OBJECT_CUSTOM1.a * glow, 1.0);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = CG_OBJECT_CUSTOM1.rgb * CG_OBJECT_CUSTOM1.a * glow;
+    s.opacity = 1.0;
 }

@@ -29,7 +29,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec4 c = texture(_MainTex, i.uv);
     if (c.a < _Cutoff) discard;
     c *= i.colour;
@@ -41,6 +40,5 @@ void surface(in v2f i, inout CgSurface s) {
         float facing = 1.0 - max(dot(normalize(i.normal), toEye), 0.0);
         c.rgb += _RimColor.rgb * _RimStrength * pow(facing, _RimPower);
     }
-    fragColor = c;
-    s.baseColor = fragColor.rgb;
+    s.baseColor = c.rgb;
 }

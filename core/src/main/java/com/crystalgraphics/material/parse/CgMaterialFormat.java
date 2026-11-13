@@ -520,7 +520,9 @@ final class CgMaterialFormat {
     // ── post ────────────────────────────────────────────────────────────────────
 
     private static Lowered lowerPost(List<Item> items, String path) {
-        Map<String, String> m = properties(block(items, "Material"), List.of("Location", "SceneColorMargin"), path);
+        Map<String, String> m = properties(block(items, "Material"), List.of("Location", "SceneColorMargin", "ColorSpace"), path);
+        // Linear light by default; Target works on the stored values, as an effect on the picture's encoding does
+        boolean linear = choice(m, "ColorSpace", "Linear", path, "Linear", "Target").equals("Linear");
         String location = m.get("Location");
         if (location != null && !POST_POINTS.contains(location)) {
             throw fail(path, "'Location " + location + "' is one of " + POST_POINTS
@@ -580,6 +582,7 @@ final class CgMaterialFormat {
             stepCode.add(own);
         }
 
+        String decode = linear ? "cg_PostDecode" : "";
         StringBuilder out = new StringBuilder("#type none\n");
         keywordPragmas(out, keywords(block(items, "Keywords"), path));
         List<Item> all = new ArrayList<>(code);
@@ -643,13 +646,13 @@ final class CgMaterialFormat {
                .append("    void fragment(in v2f i, out vec4 fragColor) {\n")
                .append("        CgScreen _cg_screen;\n        _cg_screen.uv = i.uv;\n        _cg_screen.pixel = gl_FragCoord.xy;\n")
                .append("        CgPostSurface s;\n")
-               .append("        s.color = ").append(readsColor ? "cg_PostDecode(CG_SCENE_COLOR(i.uv).rgb)" : "vec3(0.0)").append(";\n")
+               .append("        s.color = ").append(readsColor ? decode + "(CG_SCENE_COLOR(i.uv).rgb)" : "vec3(0.0)").append(";\n")
                .append("        s.opacity = 1.0;\n")
                .append("        ").append(MATERIAL_SURFACE).append("(_cg_screen, s);\n");
             // Linear light in and out: the step writing the scene encodes it where the scene is stored sRGB; a step
             // into its own target keeps linear
-            String result = namesOpacity ? "mix(cg_PostDecode(CG_SCENE_COLOR(i.uv).rgb), s.color, s.opacity)" : "s.color";
-            if (!set.containsKey("Target")) result = "cg_PostEncode(" + result + ")";
+            String result = namesOpacity ? "mix(" + decode + "(CG_SCENE_COLOR(i.uv).rgb), s.color, s.opacity)" : "s.color";
+            if (linear && !set.containsKey("Target")) result = "cg_PostEncode(" + result + ")";
             out.append("        fragColor = vec4(").append(result).append(", 1.0);\n    }\n}\n");
         }
         return new Lowered(out.toString(), new CgParsedShader.Format(CgMaterialDomain.POST, null, false, location));

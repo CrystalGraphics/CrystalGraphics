@@ -18,7 +18,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec3 p = i.objPos;
     // Faint brush lines along each latitude, in the colour only: varying the roughness per line saws every
     // reflected edge.
@@ -30,6 +29,5 @@ void surface(in v2f i, inout CgSurface s) {
     float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
     vec3 copper = vec3(0.98, 0.56, 0.4) * (0.96 + 0.05 * brush);
     vec3 color = vfx_pbr_studio(i.worldPos, floorY, n, v, copper, 1.0, 0.14);
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

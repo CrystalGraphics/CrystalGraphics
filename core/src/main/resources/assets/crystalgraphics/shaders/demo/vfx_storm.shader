@@ -96,7 +96,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
     float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
@@ -204,6 +203,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 reflection = vfx_studio(i.worldPos, reflect(-v, n), 0.02, floorY)
             + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.03) * 2.0;
     vec3 color = inside * (1.0 - fresnel) + reflection * fresnel;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

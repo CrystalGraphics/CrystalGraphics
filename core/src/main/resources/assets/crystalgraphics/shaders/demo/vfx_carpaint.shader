@@ -32,7 +32,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec3 n = normalize(i.normalWs);
     // From inside the sphere its inner wall shows, facing in.
     if (!gl_FrontFacing) n = -n;
@@ -54,6 +53,5 @@ void surface(in v2f i, inout CgSurface s) {
             + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.04)
             + vfx_direct(n, v, VFX_RIM_DIR, VFX_RIM_COLOR, vec3(1.0), 0.0, 0.04);
     vec3 color = paint * (1.0 - coat) + clear * coat;
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

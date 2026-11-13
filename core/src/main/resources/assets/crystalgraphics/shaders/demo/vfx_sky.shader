@@ -19,10 +19,9 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec3 d = normalize(i.dir);
     // A pixel's angular size: the larger of its two screen steps. The length of fwidth overstates it up to 2.5x.
-    fragColor = vec4(vfx_sky(_ValueNoise, d, CG_TIME, max(length(dFdx(d)), length(dFdy(d))),
+    vec4 color = vec4(vfx_sky(_ValueNoise, d, CG_TIME, max(length(dFdx(d)), length(dFdy(d))),
             int(_StarLayers), int(_Moons)), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = color.rgb;
 }

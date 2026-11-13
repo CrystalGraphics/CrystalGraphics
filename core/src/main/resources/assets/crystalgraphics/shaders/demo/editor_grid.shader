@@ -51,7 +51,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     vec2 xz = CG_ABSOLUTE_WORLD_POS(i.worldPos).xz;
     vec2 dx = dFdx(xz), dy = dFdy(xz);
     vec2 deriv = vec2(length(vec2(dx.x, dy.x)), length(vec2(dx.y, dy.y)));
@@ -65,6 +64,5 @@ void surface(in v2f i, inout CgSurface s) {
     color = grid_over(color, vec3(0.95) * tint, grid_lines(xz * 0.1, deriv * 0.1, 0.015) * 0.6 * fade);
     color = grid_over(color, vec3(0.55, 0.86, 0.0), grid_axis(xz.x, deriv.x, 1.5) * fade);
     color = grid_over(color, vec3(1.0, 0.2, 0.32), grid_axis(xz.y, deriv.y, 1.5) * fade);
-    fragColor = color;
-    s.baseColor = fragColor.rgb;
+    s.baseColor = color.rgb;
 }

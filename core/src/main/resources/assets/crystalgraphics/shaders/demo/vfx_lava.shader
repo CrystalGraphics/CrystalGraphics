@@ -57,7 +57,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 dir = normalize(i.objPos);
     float floorY = CG_OBJECT_TO_WORLD[3].y - CG_OBJECT_CUSTOM3.x;
@@ -119,6 +118,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 plateColor = vec3(0.06, 0.02, 0.01) + vec3(1.2, 0.15, 0.01) * (1.0 - smoothstep(0.03, 0.14, skinCrack));
     vec3 sea = mix(molten, plateColor, plate);
     vec3 color = mix(crust, sea, flooded);
-    fragColor = vec4(fx_aces(0.8 * color), 1.0);
-    s.baseColor = fragColor.rgb;
+    s.baseColor = fx_aces(0.8 * color);
 }

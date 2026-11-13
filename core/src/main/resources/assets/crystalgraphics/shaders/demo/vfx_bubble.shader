@@ -34,7 +34,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     vec3 n = normalize(i.normalWs);
     vec3 v = normalize(CG_CAMERA_POSITION - i.worldPos);
@@ -57,7 +56,6 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 reflection = mirrored * film * (0.3 + 1.4 * fresnel);
     if (!gl_FrontFacing) reflection *= 0.6;
     float alpha = clamp(fresnel * 0.45 + 0.03, 0.0, 1.0);
-    fragColor = vec4(fx_aces(0.8 * reflection), alpha);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = fx_aces(0.8 * reflection);
+    s.opacity = alpha;
 }

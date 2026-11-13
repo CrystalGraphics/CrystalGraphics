@@ -14,10 +14,8 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float nv = abs(dot(normalize(i.normalWs), normalize(CG_CAMERA_POSITION - i.worldPos)));
     vec3 color = vec3(2.2, 0.55, 0.08) * pow(nv, 1.5) * 1.6 + vec3(1.6, 1.3, 0.9) * pow(nv, 6.0) * 3.5;
-    fragColor = vec4(color, 1.0);
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = color;
+    s.opacity = 1.0;
 }

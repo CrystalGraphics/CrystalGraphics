@@ -52,7 +52,6 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
-    vec4 fragColor = vec4(0.0);
     float t = CG_TIME;
     const float RS = 0.1;       // the Schwarzschild radius, in the sphere's radii
     const float DISK_IN = 3.0, DISK_OUT = 9.6;
@@ -146,7 +145,6 @@ void surface(in v2f i, inout CgSurface s) {
         light += transmit * lensed * bh_sky(outWorld);
         alpha = 1.0 - transmit * (1.0 - lensed);
     }
-    fragColor = vec4(fx_aces(0.8 * light), clamp(alpha, 0.0, 1.0));
-    s.baseColor = fragColor.rgb;
-    s.opacity = fragColor.a;
+    s.baseColor = fx_aces(0.8 * light);
+    s.opacity = clamp(alpha, 0.0, 1.0);
 }
