@@ -56,7 +56,7 @@ public class MaterialFormatTest {
             {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"},
             // F3: the VFX factories
             {"bits", "bits.old"},
-            {"body_core", "crystalgraphics:shaders/vfx/beam/body_core"}, {"volume", "volume.old"},
+            {"volume", "volume.old"},
             // F4: post and ui. A ui pair names the canvas state each is drawn under (CgCanvasMaterials): the format's
             // template is premultiplied out, so the curve, straight alpha today, is drawn PREMULTIPLIED once converted
             {"height_fog", "crystalgraphics:shaders/post/height_fog"}, {"post_chain", "post_chain.old"},

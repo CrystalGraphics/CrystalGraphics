@@ -1,6 +1,6 @@
 // TubeVolume: a VFX tube slot's chunks each drawn on a sphere round their rings and as far again as their light
 // reaches, for a shader summing its own chunk's light. cg_Tube's ring is the chunk's first, its angle and cap 0.
-Factory { VertexType spatial  Parameters cg_Tube  Usage FX_ON_TUBE }
+Factory { VertexType spatial  Parameters cg_Tube  Fade cg_Vfx.presence  Usage FX_ON_TUBE }
 Tags { "Tube" = "Volume" }
 
 Properties {
@@ -9,6 +9,7 @@ Properties {
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     CgTube cg_Tube;
 }
 

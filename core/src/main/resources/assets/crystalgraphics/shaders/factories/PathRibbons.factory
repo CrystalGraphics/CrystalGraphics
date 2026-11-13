@@ -1,0 +1,36 @@
+// PathRibbons: a VFX path-ribbons slot (CgVfxFrame.pathRibbons): stateless strips riding a beam's path, each 32
+// segments long, that the material places from the path's rings (fx_ring_at on _FxPath, bound by the draw). Its
+// vertex() assigns v.world. cg_PathRibbon.index, .along and .side are where the vertex lies on its strip, the vertex
+// stage's alone; .row is the path's row in _FxPath, .header its ring count, length, seed and age, .origin the effect's
+// origin (camera-relative), .intensity the slot's; read in either stage. Copy it once (CgPathRibbon r = cg_PathRibbon):
+// its header is a texture read. cg_Vfx is the draw's header; an ending's fade is applied for the material.
+Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence }
+
+Properties {
+    _FxPath ("Path rings", sampler2D) = "black"
+}
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    struct CgPathRibbon { float index; float along; float side; int row; vec4 header; vec3 origin; float intensity; };
+    #ifdef CG_VERTEX_STAGE
+    #define _CG_RIBBON_VERTEX FX_RIBBON_INDEX, FX_RIBBON_ALONG, FX_RIBBON_SIDE
+    #else
+    #define _CG_RIBBON_VERTEX 0.0, 0.0, 0.0
+    #endif
+    #define cg_PathRibbon CgPathRibbon(_CG_RIBBON_VERTEX, int(CG_OBJECT_CUSTOM0.x + 0.5), fx_path_header(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5)), CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz, CG_OBJECT_CUSTOM1.w)
+}
+
+void fill(inout CgVertex v) {
+    v.position = vec3(0.0);
+    v.normal = vec3(0.0, 1.0, 0.0);
+    v.color = vec4(1.0);
+    v.uv0 = vec2(0.0);
+    v.uv1 = v.uv0;
+    v.uv2 = v.uv0;
+    v.uv3 = v.uv0;
+    v.world = vec3(0.0);
+}

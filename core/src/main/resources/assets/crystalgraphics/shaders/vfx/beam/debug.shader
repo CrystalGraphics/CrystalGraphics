@@ -1,50 +1,25 @@
 // A tube layer that shows its own construction: a band every block along the path, eight sectors around it, and a
 // white line where the rotation-minimising normal points, which must run straight however the path bends. _Shell
 // tints it, _Core is the line. For checking CgVfxTube and CgVfxPath, not for looking at.
-#type spatial
-#pragma cg_use rows
-#include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+#domain surface
+Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Tube  PerDrawValues On }
 
 Properties {
     _Shell    ("Tints it", color) = (0.15, 0.55, 1.6, 1)
     _Core     ("The normal's line", color) = (1, 1, 1, 1)
-    _FxPath ("Path rings", sampler2D) = "black"
 }
 
-struct v2f { vec3 world; vec2 surface; };
+struct v2f { vec2 uv0; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-        Cull OFF
-    }
-
-    void vertex(out v2f o) {
-        FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
-                                        cg_TexCoord0, CG_OBJECT_CUSTOM0.z, 0.0);
-        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        o.world = origin + v.position;
-        o.surface = vec2(v.ring.arc, v.angle);
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        float arc = i.surface.x, angle = i.surface.y;
-        float band = abs(fract(arc) - 0.5);
-        float bandAa = max(fwidth(arc), 1.0e-4);
-        float bands = smoothstep(0.25 - bandAa, 0.25 + bandAa, band);
-        float sector = mod(floor(angle * 8.0), 2.0);
-        float seam = min(angle, 1.0 - angle) * 24.0;
-        float line = 1.0 - smoothstep(0.5, 0.5 + fwidth(seam) * 1.5, seam);
-        vec3 col = _Shell.rgb * (0.25 + 0.35 * sector + 0.4 * bands);
-        col = mix(col, _Core.rgb, line);
-        fragColor = vec4(col * (gl_FrontFacing ? 0.8 : 0.35), 1.0);
-    }
+void surface(in v2f i, inout CgSurface s) {
+    float arc = cg_Tube.ring.arc, angle = cg_Tube.angle;
+    float band = abs(fract(arc) - 0.5);
+    float bandAa = max(fwidth(arc), 1.0e-4);
+    float bands = smoothstep(0.25 - bandAa, 0.25 + bandAa, band);
+    float sector = mod(floor(angle * 8.0), 2.0);
+    float seam = min(angle, 1.0 - angle) * 24.0;
+    float line = 1.0 - smoothstep(0.5, 0.5 + fwidth(seam) * 1.5, seam);
+    vec3 col = _Shell.rgb * (0.25 + 0.35 * sector + 0.4 * bands);
+    col = mix(col, _Core.rgb, line);
+    s.baseColor = col * (gl_FrontFacing ? 0.8 : 0.35);
 }

@@ -1,0 +1,30 @@
+// Ribbons: a VFX ribbons slot (CgVfxFrame.ribbons, CgVfxRibbons): stateless strips, each 32 segments long, that the
+// material places inside the slot's unit cube (CG_OBJECT_TO_WORLD) from where the vertex lies on its strip. Its vertex()
+// assigns v.world, usually through fx_ribbon_vertex. cg_Ribbon.index is the strip, .along 0..1 down it and .side -1 or
+// 1 across it, the vertex stage's alone (pass what the pixel needs in v2f); .size is the layer's size and .values the
+// four the effect documents for the slot, read in either stage. cg_Vfx is the draw's header; an ending's fade is applied
+// for the material.
+Factory { VertexType none  PlacesNothing On  Fade cg_Vfx.presence }
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_ribbon.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
+    struct CgRibbon { float index; float along; float side; float size; vec4 values; };
+    #ifdef CG_VERTEX_STAGE
+    #define cg_Ribbon CgRibbon(FX_RIBBON_INDEX, FX_RIBBON_ALONG, FX_RIBBON_SIDE, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM1)
+    #else
+    #define cg_Ribbon CgRibbon(0.0, 0.0, 0.0, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM1)
+    #endif
+}
+
+void fill(inout CgVertex v) {
+    v.position = vec3(0.0);
+    v.normal = vec3(0.0, 1.0, 0.0);
+    v.color = vec4(1.0);
+    v.uv0 = vec2(cg_Ribbon.along, cg_Ribbon.side * 0.5 + 0.5);
+    v.uv1 = v.uv0;
+    v.uv2 = v.uv0;
+    v.uv3 = v.uv0;
+    v.world = vec3(0.0);
+}

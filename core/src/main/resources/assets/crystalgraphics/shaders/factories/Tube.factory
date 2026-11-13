@@ -1,7 +1,7 @@
 // Tube: a VFX tube slot's chunks (CgVfxTube), each an open run of rings, its mesh skinned onto the path's rings
 // (fx_tube.glsl). uv0 is (blocks along the path, 0..1 around); v.position is from the effect's origin. cg_Tube is where
 // on the path the vertex is (CgTube); _FxPath, the rings, is bound by the tube's draw.
-Factory { VertexType spatial  Parameters cg_Tube  Usage FX_ON_TUBE }
+Factory { VertexType spatial  Parameters cg_Tube  Fade cg_Vfx.presence  Usage FX_ON_TUBE }
 
 Properties {
     _FxPath ("Path rings", sampler2D) = "black"
@@ -9,6 +9,7 @@ Properties {
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     CgTube cg_Tube;
 }
 

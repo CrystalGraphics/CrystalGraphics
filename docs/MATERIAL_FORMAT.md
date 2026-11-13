@@ -293,6 +293,8 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle` |
 | `VfxMesh` | A VFX mesh slot (`CgVfxFrame.mesh`): a unit sphere or the layer's mesh, placed by the slot | the mesh's vertices; `cg_VfxMesh` |
 | `Billboard` | A VFX billboard slot (`CgVfxFrame.billboard`): one camera-facing quad, a lone particle | the quad's corner (`v.position` -1..1); `cg_Billboard` |
+| `Ribbons` | A VFX ribbons slot (`CgVfxFrame.ribbons`): stateless strips of 32 segments, placed by the material | nothing: your `vertex()` assigns `v.world` from `cg_Ribbon` |
+| `PathRibbons` | A VFX path-ribbons slot (`CgVfxFrame.pathRibbons`): stateless strips riding a beam's path | nothing: your `vertex()` assigns `v.world` from `cg_PathRibbon` and the path's rings |
 | `Sequence` | A prefab part a clip plays on a sequence particle (`fx_sequence.glsl`); listed after `VfxMesh` | the part's vertices placed by its node; the material declares `FX_CLIPS` |
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
@@ -324,6 +326,25 @@ fade of an ending: the VFX factories apply it to all the material adds.
 size; a billboard's half size in blocks) and `.values`, the four the effect documents for the slot (an intensity, a
 progress, a particle's life and seed). `cg_Billboard.right` and `.up` are the camera's axes, for a `vertex()` turning
 the quad.
+
+**`cg_Ribbon`** and **`cg_PathRibbon`** say where the vertex lies on its strip: `.index` the strip, `.along` 0..1 down
+it, `.side` -1 or 1 across it. Those three are the vertex stage's: pass what the pixel needs in your `v2f`.
+`cg_Ribbon.size` and `.values` are the slot's, as `cg_VfxMesh`'s; `cg_PathRibbon.row`, `.header` and `.origin` find
+the path in `_FxPath` (`fx_ring_at`), and `.intensity` is the slot's. Copy it once, `CgPathRibbon r = cg_PathRibbon;`:
+its header is a texture read.
+
+```glsl
+// A strip down each ribbon, facing the eye
+Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Ribbons }
+struct v2f { float side; };
+void vertex(inout CgVertex v, out v2f o) {
+    CgRibbon r = cg_Ribbon;
+    vec3 p = (CG_OBJECT_TO_WORLD * vec4(fx_sphere_dir(vec2(r.index * 0.1, 0.3)) * r.along, 1.0)).xyz;
+    v.world = fx_ribbon_vertex(p, mat3(CG_OBJECT_TO_WORLD) * vec3(0.0, 0.0, 1.0), CG_CAMERA_POSITION, 0.05, r.side);
+    o.side = r.side;
+}
+void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0 - abs(i.side)); }
+```
 
 ```glsl
 // A puff that fades as it ages

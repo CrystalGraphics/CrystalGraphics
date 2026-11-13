@@ -1,25 +1,18 @@
 // Heat haze along a beam: a sheath of bent air round a path, past the body's glow where the scene still shows through,
 // rippling forward along the beam and torn at its edge by rising noise, its strongest bend split slightly by colour.
 // The bend is a share of the screen's height, held to _Hold of the sheath's width on screen, so a far beam keeps it. A
-// tube layer: fx_tube.glsl's contract (_FxPath, CG_OBJECT_CUSTOM0..1 as CgVfxTube writes them), its radius the layer's
-// times the ring's, capped at _Cap blocks. Drawn on the tube's far wall, where the
-// ray meets it found analytically, so it bends from inside it too; a Distortion pass (Role.DISTORTION), so the sharp
-// layers stay unbent. A ray through the beam itself, within _Core times its ring's radius of the path, is left unbent.
-#type spatial
-#pragma cg_use rows
+// tube layer, its radius the layer's times the ring's, capped at _Cap blocks. Drawn on the tube's far wall, where the
+// ray meets it found analytically, so it bends from inside it too; draws nothing, only bends what is behind it
+// (s.refraction), so the sharp layers stay unbent. A ray through the beam itself, within _Core times its ring's radius
+// of the path, is left unbent.
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/fx_haze.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
-
-// The bend reaches _Strength times about 1.1 of noise, times 1 + _Fringe for red: under 0.016 of the height.
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" }
-Queue = "Transparent"
+Material { BlendMode Translucent  ShadingModel Unlit  Faces Back  DepthTest Off  Fog Off  VertexFactory Tube  PerDrawValues On }
 
 Properties {
     _Cap      ("Widest the sheath gets, blocks: it holds still while the beam throbs; 0 for no cap", float) = 0
-    _FxPath   ("Path rings", sampler2D) = "black"
     _Strength ("Bend at full intensity, share of the screen's height", float) = 0.012
     _Hold     ("The bend's most, as a share of the sheath's width on screen", float) = 0.12
     _Core     ("The beam's visible reach, in ring radii: left unbent", float) = 1
@@ -33,88 +26,54 @@ Properties {
     _Noise ("Noise", sampler3D) = "cg_noise"
 }
 
-// reach: the ring's radius, the sheath's radius, blocks along the path; origin: the path's, which the noise is fixed to
-struct v2f { vec3 world; vec3 axis; vec3 tangent; vec2 time; vec3 reach; vec3 origin; };
+// the path's point at this ring; the sheath's radius
+struct v2f { vec3 world; vec3 axis; float edge; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    // Writes nothing, so the world renderer skips it: the Distortion pass is the haze.
-    RenderState {
-        ColorMask 0
-        Blend OFF
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull FRONT
-    }
-
-    void vertex(out v2f o) {
-        float scale = CG_OBJECT_CUSTOM0.z, cap = _Cap;
-        FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
-                                        cg_TexCoord0, scale, 0.0);
-        // Capped below the body's throb, so the haze holds still while the beam pulses; the taper at its ends survives.
-        float full = max(v.ring.radius * scale, 1.0e-4);
-        float edge = cap > 0.0 ? min(full, cap) : full;
-        v.position = v.ring.position + (v.position - v.ring.position) * (edge / full);
-        vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;
-        o.world = origin + v.position;
-        o.axis = origin + v.ring.position;
-        o.origin = origin;
-        o.tangent = v.ring.tangent;
-        o.reach = vec3(v.ring.radius, edge, v.ring.arc);
-        // the effect's age and seed
-        o.time = vec2(v.header.w, v.header.z);
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(o.world, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        fragColor = vec4(0.0);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    // Capped below the body's throb, so the haze holds still while the beam pulses; the taper at its ends survives.
+    float full = max(cg_Tube.ring.radius * cg_Tube.size, 1.0e-4);
+    float edge = _Cap > 0.0 ? min(full, _Cap) : full;
+    v.position = cg_Tube.ring.position + (v.position - cg_Tube.ring.position) * (edge / full);
+    v.world = cg_Tube.origin + v.position;
+    o.world = v.world;
+    o.axis = cg_Tube.origin + cg_Tube.ring.position;
+    o.edge = edge;
 }
 
-Pass {
-    Tags { "LightMode" = "Distortion" }
-    // No depth test: it draws its far wall, and the apply keeps the foreground out of the bend.
-    RenderState {
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull FRONT
-    }
-
-    void fragment(in v2f i, out vec4 distortion) {
-        vec3 eye = FX_CAMERA;
-        vec3 ray = normalize(i.world - eye);
-        vec3 t = normalize(i.tangent);
-        float age = i.time.x, seed = i.time.y;
-        float ring = i.reach.x, edge = i.reach.y;
-        // Where the ray enters the sheath (0 from inside). Its strength is the air's at the point it sees nearest the
-        // path (the eye itself, looking out from inside); its shimmer is sampled there from outside, and halfway to
-        // where it leaves from inside, so the view from inside does not move as one sheet.
-        vec4 q = fx_ray_axis(eye, ray, i.axis, t);
-        float chord = sqrt(max(edge * edge - q.y * q.y, 0.0)) / max(q.w, 0.05);
-        float enter = max(q.x - chord, 0.0);
-        vec3 seen = eye + ray * max(q.x, 0.0) - i.axis;
-        float passes = length(seen - t * dot(seen, t));
-        vec3 at = eye + ray * max(q.x, 0.5 * (q.x + chord));
-        vec3 rel = at - i.axis;
-        float arc = i.reach.z + dot(rel, t);
-        // From the path's origin, not the camera: camera-relative, the shimmer slid as the camera moved.
-        vec3 local = at - i.origin;
-        vec3 drift = local * _Scale * 0.45 + vec3(0.0, -age * _Rise * _Scale * 0.45, 0.0) + seed * 7.0;
-        float tear = fx_noise(drift) * 0.7 + fx_noise(drift * 2.3 + 5.1) * 0.3;
-        // Unbent through the beam, strongest past its glow, torn away toward the sheath's edge.
-        float peak = min(_Peak * ring, edge * 0.7);
-        float sheath = smoothstep(ring * _Core * 0.9, peak, passes)
-                * (1.0 - smoothstep(peak, edge, passes + tear * 0.25 * (edge - peak)));
-        // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
-        float strength = sheath * FX_PRESENCE;
-        if (strength < 0.002) discard;
-        // Ripples racing toward the head push the scene along the beam on screen; the rest is rising shimmer.
-        float ripple = sin((arc * _Rings - age * _Pulse + tear * 0.5) * 6.28318531);
-        vec2 flow = FX_HAZE_SCREEN_DIR(t) * ripple * (0.6 + 0.4 * fx_noise(drift * 0.7 + 3.3));
-        vec2 wobble = mix(fx_heat(local * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
-        float hold = FX_HAZE_HOLD(_Strength, edge, distance(eye, at), _Hold);
-        vec2 offset = wobble * _Strength * hold * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0);
-        float fade = smoothstep(0.0, 0.1, strength);
-        distortion = CG_DISTORTION(offset * fade, _Fringe * fade, FX_EYE_DEPTH(ray, enter));
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 eye = CG_CAMERA_POSITION;
+    vec3 ray = normalize(i.world - eye);
+    vec3 t = normalize(cg_Tube.ring.tangent);
+    float age = cg_Tube.header.w, seed = cg_Tube.header.z;
+    float ring = cg_Tube.ring.radius, edge = i.edge;
+    // Where the ray enters the sheath (0 from inside). Its strength is the air's at the point it sees nearest the
+    // path (the eye itself, looking out from inside); its shimmer is sampled there from outside, and halfway to
+    // where it leaves from inside, so the view from inside does not move as one sheet.
+    vec4 q = fx_ray_axis(eye, ray, i.axis, t);
+    float chord = sqrt(max(edge * edge - q.y * q.y, 0.0)) / max(q.w, 0.05);
+    float enter = max(q.x - chord, 0.0);
+    vec3 seen = eye + ray * max(q.x, 0.0) - i.axis;
+    float passes = length(seen - t * dot(seen, t));
+    vec3 at = eye + ray * max(q.x, 0.5 * (q.x + chord));
+    vec3 rel = at - i.axis;
+    float arc = cg_Tube.ring.arc + dot(rel, t);
+    // From the path's origin, not the camera: camera-relative, the shimmer slid as the camera moved.
+    vec3 local = at - cg_Tube.origin;
+    vec3 drift = local * _Scale * 0.45 + vec3(0.0, -age * _Rise * _Scale * 0.45, 0.0) + seed * 7.0;
+    float tear = fx_noise(drift) * 0.7 + fx_noise(drift * 2.3 + 5.1) * 0.3;
+    // Unbent through the beam, strongest past its glow, torn away toward the sheath's edge.
+    float peak = min(_Peak * ring, edge * 0.7);
+    float strength = smoothstep(ring * _Core * 0.9, peak, passes)
+            * (1.0 - smoothstep(peak, edge, passes + tear * 0.25 * (edge - peak)));
+    // Nothing of the scene behind scales it: a fade by the scene's depth printed every silhouette into the bend.
+    if (strength < 0.002) discard;
+    // Ripples racing toward the head push the scene along the beam on screen; the rest is rising shimmer.
+    float ripple = sin((arc * _Rings - age * _Pulse + tear * 0.5) * 6.28318531);
+    vec2 flow = FX_HAZE_SCREEN_DIR(t) * ripple * (0.6 + 0.4 * fx_noise(drift * 0.7 + 3.3));
+    vec2 wobble = mix(fx_heat(local * _Scale, age, _Rise * _Scale, seed), flow, _Flow);
+    float hold = FX_HAZE_HOLD(_Strength, edge, distance(eye, at), _Hold);
+    float fade = smoothstep(0.0, 0.1, strength);
+    s.refraction = wobble * _Strength * hold * strength * vec2(CG_RESOLUTION.y / CG_RESOLUTION.x, 1.0) * fade;
+    s.refractionSplit = _Fringe * fade;
+    s.refractionDepth = FX_EYE_DEPTH(ray, enter);
 }

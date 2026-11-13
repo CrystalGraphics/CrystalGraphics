@@ -1,6 +1,6 @@
 // TubeClosed: as Tube, each chunk capped and the path's end rings pushed out a radius along it, so a shader tracing
 // the view ray through the rings has a closed hull; an end centre's angle is -1.
-Factory { VertexType spatial  Parameters cg_Tube  Usage FX_ON_TUBE }
+Factory { VertexType spatial  Parameters cg_Tube  Fade cg_Vfx.presence  Usage FX_ON_TUBE }
 Tags { "Tube" = "Closed" }
 
 Properties {
@@ -9,6 +9,7 @@ Properties {
 
 Declarations {
     #include "crystalgraphics:shaders/lib/vfx/fx_tube.glsl"
+    #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     CgTube cg_Tube;
 }
 
