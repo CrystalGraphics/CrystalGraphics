@@ -3,10 +3,12 @@
 // line-colour atlas _Tex0 through its UV window and alpha-tested by _Clip (research nsuns4 RENDER_PIPELINE.md §5).
 // The game's width is a global (g_outlineParam); _Width stands in for it per material.
 //   SCREEN_MASK   0000f002 masks the line by the game's mask target; the engine has none, so it draws unmasked
-#type spatial
-#pragma cg_feature SCREEN_MASK
+#domain surface
+Material { ShadingModel Unlit  Faces Back }
 
-Tags { "RenderType" = "Opaque" "Lighting" = "Unlit" }
+Keywords {
+    SCREEN_MASK ("SCREEN_MASK")
+}
 
 Properties {
     _Tex0          ("Line colour atlas", sampler2D) = "white"
@@ -36,36 +38,15 @@ Properties {
 
 struct v2f { vec2 uv0; vec4 colour; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Cull FRONT
-        DepthTest LEQUAL
-    }
-
-    void vertex(out v2f o) {
-        vec3 n = normalize(CG_NORMAL_MATRIX * cg_Normal);
-        vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
-        world.xyz += n * _Width;
-        o.uv0 = cg_TexCoord0 * _UV0Window.zw + _UV0Window.xy;
-        o.colour = cg_Color * _Color;
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * world;
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec4 c = texture(_Tex0, i.uv0) * i.colour;
-        if (c.a <= _Clip) discard;
-        fragColor = c;
-        CG_GLOW(c.rgb * c.a * _Glare);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    v.world += v.normal * _Width;
+    o.uv0 = v.uv0 * _UV0Window.zw + _UV0Window.xy;
+    o.colour = v.color * _Color;
 }
 
-// Its glare (CG_GLOW) into the world's bloom.
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 c = texture(_Tex0, i.uv0) * i.colour;
+    if (c.a <= _Clip) discard;
+    s.emissive = c.rgb * c.a * _Glare;
+    s.baseColor = c.rgb;
 }

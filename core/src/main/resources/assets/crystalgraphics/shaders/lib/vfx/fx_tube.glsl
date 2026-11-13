@@ -1,11 +1,8 @@
-// The rings of a CgVfxPath as CgVfxPathTexture lays them out, and a CgVfxTube vertex placed on them. A tube shader
-// declares the texture as a property and passes it in:
+// The rings of a CgVfxPath as CgVfxPathTexture lays them out, and a CgVfxTube vertex placed on them. The Tube factory
+// places the vertex; a surface on it reads the rings through the factory's _FxPath and cg_Tube:
 //
-//     Properties { _FxPath ("Path rings", sampler2D) = "black" }
-//     FxTubeVertex v = fx_tube_vertex(_FxPath, int(CG_OBJECT_CUSTOM0.x + 0.5), int(CG_OBJECT_CUSTOM0.y + 0.5),
-//                                     cg_TexCoord0, CG_OBJECT_CUSTOM0.z, 0.0);
-//     vec3 origin = CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz;   // the effect's origin, camera-relative
-//     vec3 world = origin + v.position;
+//     vec4 header = fx_path_header(_FxPath, cg_Tube.row);
+//     FxRing ring = fx_ring(_FxPath, cg_Tube.row, 0);   // the path's first ring
 //
 // Nothing here names cg_* or CG_*: an included file compiles ahead of the frame block.
 #pragma once

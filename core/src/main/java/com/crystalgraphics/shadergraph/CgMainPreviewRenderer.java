@@ -376,6 +376,8 @@ public final class CgMainPreviewRenderer {
             "#domain surface",
             "Material { ShadingModel Unlit }",
             "",
+            "struct v2f { vec2 uv0; };   // GLSL has no empty struct",
+            "",
             "void surface(in v2f i, inout CgSurface s) {",
             "    s.baseColor = vec3(1.0);",
             "}",

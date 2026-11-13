@@ -1,10 +1,11 @@
 // CC2's scene ramp per channel (NSUNS4 0001f012, research nsuns4 VFX_ENGINE.md §4 "scene"): each channel of the scene
 // behind it through its row of a ramp (_Tex1, SECOND_LAYER), shown where _Tex0's alpha on _UV0Window covers.
-#type spatial
-#pragma cg_feature SECOND_LAYER
+#domain surface
+Material { BlendMode AlphaComposite  ShadingModel Unlit  DepthWrite On  SceneColorMargin 0.001 }
 
-Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Keywords {
+    SECOND_LAYER ("SECOND_LAYER")
+}
 
 Properties {
     _Tex0      ("Mask", sampler2D) = "white"
@@ -17,43 +18,23 @@ Properties {
 
 struct v2f { vec2 uv0; vec4 colour; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        DepthTest LEQUAL
-    }
-
-    void vertex(out v2f o) {
-        o.uv0 = cg_TexCoord0 * _UV0Window.zw + _UV0Window.xy;
-        o.colour = cg_Color;
-        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec3 scene = CG_SCENE_COLOR(gl_FragCoord.xy / CG_RESOLUTION).rgb;
-#ifdef SECOND_LAYER
-        vec3 c = vec3(texture(_Tex1, vec2(scene.r, 1.0 / 6.0)).r, texture(_Tex1, vec2(scene.g, 0.5)).g,
-                texture(_Tex1, vec2(scene.b, 5.0 / 6.0)).b);
-#else
-        vec3 c = scene;
-#endif
-        float a = texture(_Tex0, i.uv0).a * i.colour.a;
-        if (a <= _Clip) discard;
-        c *= i.colour.rgb;
-#if CG_FOG_MODE == 0
-        fragColor = vec4(c, a);
-#else
-        fragColor = vec4(c * a, a);
-#endif
-        CG_GLOW(c * a * _Glare);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv0 = v.uv0 * _UV0Window.zw + _UV0Window.xy;
+    o.colour = v.color;
 }
 
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 scene = CG_SCENE_COLOR(gl_FragCoord.xy / CG_RESOLUTION).rgb;
+#ifdef SECOND_LAYER
+    vec3 c = vec3(texture(_Tex1, vec2(scene.r, 1.0 / 6.0)).r, texture(_Tex1, vec2(scene.g, 0.5)).g,
+            texture(_Tex1, vec2(scene.b, 5.0 / 6.0)).b);
+#else
+    vec3 c = scene;
+#endif
+    float a = texture(_Tex0, i.uv0).a * i.colour.a;
+    if (a <= _Clip) discard;
+    c *= i.colour.rgb;
+    s.emissive = c * a * _Glare;
+    s.baseColor = c;
+    s.opacity = a;
 }

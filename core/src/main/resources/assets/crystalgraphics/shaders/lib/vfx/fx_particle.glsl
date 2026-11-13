@@ -6,9 +6,10 @@
 #pragma once
 #include "crystalgraphics:shaders/lib/rng.glsl"
 
-// The record a vertex's quad or stroke reads: base + its index, or -1 when the draw has fewer particles than slots.
-int fx_particle_index(float slot, float base, float count) {
-    return slot < count ? int(base + slot + 0.5) : -1;
+// The record a vertex's quad or stroke reads: the draw's first + its index, or -1 when the draw has fewer particles
+// than slots. Parameters take an fx_ prefix: a material's sampler of the same name is a macro on a bindless device.
+int fx_particle_index(float slot, float fx_first, float fx_count) {
+    return slot < fx_count ? int(fx_first + slot + 0.5) : -1;
 }
 
 // A corner of a camera-facing quad: corner -1..1 on each axis, scaled by size (half-length along x, half-width along

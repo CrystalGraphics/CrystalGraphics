@@ -1,11 +1,12 @@
 // CC2's surface (NSUNS4 0007f00e, research nsuns4 VFX_ENGINE.md §4): a diffuse map (_Tex0) times _SurfaceColor, a
 // second map (_Tex1) its detail, lit by the sun scaled by _SurfaceParam.x. POINT_LIT draws as the sun alone: the engine
 // has no point lights for effects.
-#type spatial
-#pragma cg_feature POINT_LIT
+#domain surface
+Material { BlendMode AlphaComposite  ShadingModel Unlit  DepthWrite On }
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+Keywords {
+    POINT_LIT ("POINT_LIT")
+}
 
 Properties {
     _Tex0          ("Diffuse", sampler2D) = "white"
@@ -19,37 +20,17 @@ Properties {
 
 struct v2f { vec2 uv0; vec4 colour; vec3 normal; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        DepthTest LEQUAL
-    }
-
-    void vertex(out v2f o) {
-        o.uv0 = cg_TexCoord0 * _UV0Window.zw + _UV0Window.xy;
-        o.colour = cg_Color * _SurfaceColor;
-        o.normal = CG_NORMAL_MATRIX * cg_Normal;
-        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec4 c = texture(_Tex0, i.uv0) * texture(_Tex1, i.uv0) * i.colour;
-        float light = 0.35 + 0.65 * max(dot(normalize(i.normal), CG_SUN_DIRECTION), 0.0) * CG_DAYLIGHT;
-        c.rgb *= mix(1.0, light, clamp(_SurfaceParam.x, 0.0, 1.0));
-#if CG_FOG_MODE == 0
-        fragColor = c;
-#else
-        fragColor = vec4(c.rgb * c.a, c.a);
-#endif
-        CG_GLOW(c.rgb * c.a * _Glare);
-    }
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv0 = v.uv0 * _UV0Window.zw + _UV0Window.xy;
+    o.colour = v.color * _SurfaceColor;
+    o.normal = v.normal;
 }
 
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthTest LEQUAL
-        DepthWrite OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 c = texture(_Tex0, i.uv0) * texture(_Tex1, i.uv0) * i.colour;
+    float light = 0.35 + 0.65 * max(dot(normalize(i.normal), CG_SUN_DIRECTION), 0.0) * CG_DAYLIGHT;
+    c.rgb *= mix(1.0, light, clamp(_SurfaceParam.x, 0.0, 1.0));
+    s.emissive = c.rgb * c.a * _Glare;
+    s.baseColor = c.rgb;
+    s.opacity = c.a;
 }
