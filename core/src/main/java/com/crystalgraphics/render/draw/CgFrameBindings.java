@@ -205,6 +205,11 @@ public final class CgFrameBindings {
         return this;
     }
 
+    /** {@code buffer}'s whole storage at {@code slot}, as it is when the pass executes: the scene's records. */
+    public CgFrameBindings storage(CgBindingModel.Slot slot, CgBufferHandle buffer) {
+        return storage(slot.packed(), buffer);
+    }
+
     private CgFrameBindings storage(int point, CgBufferHandle buffer) {
         int e = building * ENTRY_INTS;
         int n = entries[e + 3];

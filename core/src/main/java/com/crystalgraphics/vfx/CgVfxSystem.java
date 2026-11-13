@@ -26,7 +26,7 @@ import com.crystalgraphics.render.stage.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.world.CgPipelineList;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgSortLayer;
+import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;

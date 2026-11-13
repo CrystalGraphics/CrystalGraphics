@@ -8,6 +8,7 @@ import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
+import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -24,6 +25,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
@@ -581,6 +583,9 @@ public final class CgFrameBuilder {
         if (!localLights && CgFallbackTextures.BLACK_VOLUME != null) {
             constants.texture(CgBindingModel.LOCAL_LIGHTS, CgFallbackTextures.BLACK_VOLUME);
         }
+        // The scene's records, or the device's empty buffer while it has none
+        CgBufferHandle sceneRecords = CgScene.client().gpu().records();
+        if (sceneRecords != null) constants.storage(CgBindingModel.SCENE_OBJECTS, sceneRecords);
         if (pass.depthFrom() != null) frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
         if (pass.colorFrom() != null) {
             frame.readsCurrentDepth |= pass.colorFrom().isCurrent();

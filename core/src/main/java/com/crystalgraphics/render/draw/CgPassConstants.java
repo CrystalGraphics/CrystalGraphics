@@ -6,6 +6,7 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
@@ -39,7 +40,8 @@ public final class CgPassConstants {
 
     /**
      * {@code CgViewBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, the
-     * previous frame's view-projection, and the frame's index, history validity and target encoding.
+     * previous frame's view-projection, and the frame's index, history validity and target encoding, and the origin's tile ({@link CgGpuScene#TILE}) and place in it, which a
+     * scene record's position is decoded by.
      */
     public static final CgBufferLayout VIEW_FORMAT = CgBufferLayout
             .builder(VIEW_BLOCK, CgBufferLayout.MemoryLayout.STD140)
@@ -52,6 +54,8 @@ public final class CgPassConstants {
             .vec4("cg_WorldOrigin")
             .mat4("cg_PrevViewProj")
             .vec4("cg_FrameParams")
+            .vec4("cg_ViewTile")
+            .vec4("cg_ViewTileOffset")
             .build();
 
     /** {@code CgEnvironmentBlock} in std140: the sun with the daylight, the fog colour, the fog's reach and the sun's share. */
@@ -63,7 +67,7 @@ public final class CgPassConstants {
             .build();
 
     /** Floats a packed pass holds: the view block's, then from {@link #VIEW_FLOATS} the environment block's. */
-    public static final int VIEW_FLOATS = 72, ENVIRONMENT_FLOATS = 12, FLOATS = VIEW_FLOATS + ENVIRONMENT_FLOATS;
+    public static final int VIEW_FLOATS = 80, ENVIRONMENT_FLOATS = 12, FLOATS = VIEW_FLOATS + ENVIRONMENT_FLOATS;
 
     /** {@link #sun}'s direction until set: high, toward +x and +z. */
     public static final float SUN_X = 0.3f, SUN_Y = 0.906f, SUN_Z = 0.3f;
@@ -91,6 +95,8 @@ public final class CgPassConstants {
     private float originX;
     private float originY;
     private float originZ;
+    /** The origin's tile and where in it the origin is: {@link #origin}'s, split in double. */
+    private float tileX, tileY, tileZ, inTileX, inTileY, inTileZ;
     private float sunX = SUN_X, sunY = SUN_Y, sunZ = SUN_Z, daylight = 1f, sunShare = SUN_SHARE;
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private boolean fog;
@@ -183,11 +189,21 @@ public final class CgPassConstants {
         return this;
     }
 
-    /** Where world space's origin is in absolute coordinates: what {@code CG_ABSOLUTE_WORLD_POS} adds. */
+    /**
+     * Where world space's origin is in absolute coordinates: what {@code CG_ABSOLUTE_WORLD_POS} adds, and what a scene
+     * record's tile is measured from.
+     */
     public CgPassConstants origin(double x, double y, double z) {
         this.originX = (float) x;
         this.originY = (float) y;
         this.originZ = (float) z;
+        double tx = CgGpuScene.tile(x), ty = CgGpuScene.tile(y), tz = CgGpuScene.tile(z);
+        tileX = (float) tx;
+        tileY = (float) ty;
+        tileZ = (float) tz;
+        inTileX = (float) (x - tx * CgGpuScene.TILE);
+        inTileY = (float) (y - ty * CgGpuScene.TILE);
+        inTileZ = (float) (z - tz * CgGpuScene.TILE);
         return this;
     }
 
@@ -287,6 +303,12 @@ public final class CgPassConstants {
         frameIndex = (int) block[at + 68];
         historyValid = block[at + 69] != 0f;
         encodedTarget = block[at + ENCODED_TARGET] != 0f;
+        tileX = block[at + 72];
+        tileY = block[at + 73];
+        tileZ = block[at + 74];
+        inTileX = block[at + 76];
+        inTileY = block[at + 77];
+        inTileZ = block[at + 78];
         int e = at + VIEW_FLOATS;
         sunX = block[e];
         sunY = block[e + 1];
@@ -342,6 +364,14 @@ public final class CgPassConstants {
         out[at + 69] = historyValid ? 1f : 0f;
         out[at + 70] = 0f;
         out[at + ENCODED_TARGET] = encodedTarget ? 1f : 0f;
+        out[at + 72] = tileX;
+        out[at + 73] = tileY;
+        out[at + 74] = tileZ;
+        out[at + 75] = (float) CgGpuScene.TILE;
+        out[at + 76] = inTileX;
+        out[at + 77] = inTileY;
+        out[at + 78] = inTileZ;
+        out[at + 79] = 0f;
         int e = at + VIEW_FLOATS;
         out[e] = sunX;
         out[e + 1] = sunY;

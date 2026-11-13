@@ -11,7 +11,7 @@ import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.world.CgSortLayer;
+import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;

@@ -21,7 +21,7 @@ import com.github.bsideup.jabel.Desugar;
  *
  * <table>
  *   <tr><th>Set</th><th>Holds</th><th>Made</th></tr>
- *   <tr><td>{@link #VIEW}</td><td>the view and environment blocks, scene depth and colour, the lightmap, the media, local lights</td><td>once a pass</td></tr>
+ *   <tr><td>{@link #VIEW}</td><td>the view and environment blocks, scene depth and colour, the lightmap, the media, local lights, the scene's records</td><td>once a pass</td></tr>
  *   <tr><td>{@link #PASS}</td><td>the object records and ids, the text block, bone palettes, the mesh's vertex words, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
  *   <tr><td>{@link #MATERIAL}</td><td>its block, its {@code Buffers { }}, buffers attached to it, its textures where bound</td><td>persistent</td></tr>
  *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>the device's</td></tr>
@@ -62,6 +62,8 @@ public final class CgBindingModel {
     public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
     /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
     public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
+    /** {@code cg_SceneObjects}: the scene's persistent records ({@code CgGpuScene}); an empty buffer where none is. */
+    public static final Slot SCENE_OBJECTS = new Slot(VIEW, 7);
 
     /** A packed slot that names nothing. */
     public static final int NONE = -1;

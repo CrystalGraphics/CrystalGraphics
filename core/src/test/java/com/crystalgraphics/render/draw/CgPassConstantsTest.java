@@ -34,7 +34,9 @@ public class CgPassConstantsTest {
                 .vec4("cg_DepthParams", 1, 1, 0, 1)
                 .vec4("cg_WorldOrigin", 100.5f, 64, -2000.25f, 0)
                 .mat4("cg_PrevViewProj", previous)
-                .vec4("cg_FrameParams", 70000 & 0xFFFF, 1, 0, 1);
+                .vec4("cg_FrameParams", 70000 & 0xFFFF, 1, 0, 1)
+                .vec4("cg_ViewTile", 0, 0, -2, 1024)              // the origin's tile: -2000.25 is in tile -2
+                .vec4("cg_ViewTileOffset", 100.5f, 64, 47.75f, 0);
         CgBufferWriter environmentWriter = new CgBufferWriter(new CgStagingBuffer(CgPassConstants.ENVIRONMENT_FLOATS),
                 CgPassConstants.ENVIRONMENT_FORMAT);
         environmentWriter.reset().beginRecord()

@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.world;
+package com.crystalgraphics.render.scene.sort;
 
 import org.junit.Test;
 

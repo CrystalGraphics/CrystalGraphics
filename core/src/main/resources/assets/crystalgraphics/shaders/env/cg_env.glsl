@@ -47,6 +47,8 @@ CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
     vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
                           // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
+    vec4 cg_ViewTile;       // xyz the tile cg_WorldOrigin is in, w the tile's size: what a scene record is measured from
+    vec4 cg_ViewTileOffset; // xyz cg_WorldOrigin less its tile's corner
 };
 CG_BIND(0, 6) layout(std140) uniform CgEnvironmentBlock {
     vec4 cg_SunDirection; // xyz toward the sun, or the moon while the sun is down; w the daylight, 0 to 1
@@ -56,7 +58,7 @@ CG_BIND(0, 6) layout(std140) uniform CgEnvironmentBlock {
 };
 
 // -- Object records and ids --------------------------------------------------
-// The firing's records, each written once (CgPrimitiveTable, Unreal's GPUScene primitives), or a draw's own; an
+// The firing's records, each written once (CgPrimitiveTable, Unreal's dynamic primitives), or a draw's own; an
 // OBJECT draw's instance carries an id naming one, as Unreal's primitive id streams do, and beside it the slot of its
 // material's values in its shader's arena (CgMaterialArena, CG_MATERIAL_SLOT). A draw of its own records reads them
 // through identity ids, slot 0.
@@ -76,6 +78,57 @@ CG_BIND(1, 0) layout(std430) readonly buffer CgObjectDataBuffer {
 CG_BIND(1, 3) layout(std430) readonly buffer CgObjectIdBuffer {
     uvec2 cg_ObjectIds[];   // (record, material slot)
 };
+
+// The scene's records (CgGpuScene, Unreal's GPUScene primitives), kept across frames: each is placed by a tile and a
+// model relative to that tile's corner (Unreal's large-world PositionHigh and LocalToRelativeWorld), so a record never
+// changes with the camera. An object id with CG_SCENE_RECORD set names one; cg_ObjectData decodes it into this pass's
+// world space, as a frame record reads. Its normal matrix carries the same lanes a frame record's does.
+struct CgSceneObject {
+    vec4 origin;          // xyz the tile
+    mat4 model;           // relative to the tile's corner
+    mat4 previousModel;   // last frame's, relative to the same corner
+    mat4 normalMatrix;
+    vec4 custom0;
+    vec4 custom1;
+    vec4 custom2;
+    vec4 custom3;
+};
+
+CG_BIND(0, 7) layout(std430) readonly buffer CgSceneObjectBuffer {
+    CgSceneObject cg_SceneObjects[];
+};
+
+#define CG_SCENE_RECORD 0x80000000u
+
+// Where a scene record's tile corner is in this pass's world space.
+vec3 cg_SceneTileToWorld(vec3 tile) {
+    return (tile - cg_ViewTile.xyz) * cg_ViewTile.w - cg_ViewTileOffset.xyz;
+}
+
+// The record an object id names, in this pass's world space: a frame record as it is, a scene record decoded.
+CgObjectData cg_ObjectData(uint id) {
+    if ((id & CG_SCENE_RECORD) == 0u) return cg_Objects[id];
+    CgSceneObject s = cg_SceneObjects[id & ~CG_SCENE_RECORD];
+    CgObjectData o;
+    o.modelMatrix = s.model;
+    o.modelMatrix[3].xyz += cg_SceneTileToWorld(s.origin.xyz);
+    o.normalMatrix = s.normalMatrix;
+    o.custom0 = s.custom0;
+    o.custom1 = s.custom1;
+    o.custom2 = s.custom2;
+    o.custom3 = s.custom3;
+    return o;
+}
+
+// Last frame's object-to-world, in this pass's world space (cg_PrevViewProj takes it to last frame's clip): a scene
+// record's previous model, and a frame record's current one, which keeps no history.
+mat4 cg_PreviousObjectToWorld(uint id) {
+    if ((id & CG_SCENE_RECORD) == 0u) return cg_Objects[id].modelMatrix;
+    CgSceneObject s = cg_SceneObjects[id & ~CG_SCENE_RECORD];
+    mat4 m = s.previousModel;
+    m[3].xyz += cg_SceneTileToWorld(s.origin.xyz);
+    return m;
+}
 
 // -- Instance ID bridge -----------------------------------------------------
 // Every draw carries its bases (Unreal's InstanceIdOffset, SceneData.ush): its first instance is where its batch's
@@ -111,10 +164,13 @@ flat in int cg_InstanceId;
 #endif
 
 // -- Object Data Definition-----------------------------------------------------
-#define CG_OBJECT_DATA cg_Objects[cg_ObjectIds[CG_INSTANCE_ID].x]
+#define CG_OBJECT_ID (cg_ObjectIds[CG_INSTANCE_ID].x)
+#define CG_OBJECT_DATA cg_ObjectData(CG_OBJECT_ID)
 
 // -- Data Macros ------------------------------------------------------
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)
+// Last frame's object-to-world, for velocity: a draw of frame records reads its current one.
+#define CG_PREVIOUS_OBJECT_TO_WORLD cg_PreviousObjectToWorld(CG_OBJECT_ID)
 // The drawn object's position, camera-relative, either stage: Unreal's GetObjectWorldPosition. A particle factory
 // redefines it as its system's bounds' centre.
 #define CG_OBJECT_POSITION (CG_OBJECT_TO_WORLD[3].xyz)
