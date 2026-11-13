@@ -63,6 +63,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.stage.CgStageHook;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
@@ -111,7 +112,8 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *
  * <ul>
  *   <li>Render thread. A draw lives for the frame it was submitted in; every world stage that frame fires draws it,
- *       under that stage's view, so a host drawing the world twice (1.7.10's anaglyph) needs nothing more.</li>
+ *       under that stage's camera, so a host drawing the world twice (1.7.10's anaglyph) needs nothing more: each
+ *       eye is a view of its own, with its own histories.</li>
  *   <li>Shaders see camera-relative world space: {@code CG_CAMERA_WORLD_POS} is the origin, and
  *       {@code CG_ABSOLUTE_WORLD_POS(p)} adds the camera back for an effect that must not move with it.</li>
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
@@ -206,10 +208,18 @@ public final class CgWorldRenderer {
 
     /**
      * Our opaque surfaces' normals, Unreal's G-buffer normal, for the world lights and a post material asking
-     * ({@link CgFrameKeys#WORLD_NORMALS_READ}); this firing's, or null; and the opaque firing's, for the transparent one.
+     * ({@link CgFrameKeys#WORLD_NORMALS_READ}): what this firing's opaque pass writes, or null.
      */
-    CgGraphTexture normalTarget, normalsInto, normalsWritten;
+    CgGraphTexture normalsInto;
     private static final CgFormat NORMAL_FORMAT = CgFormat.RGBA16_FLOAT;
+
+    /** A view's normal target, and the host frame its opaque firing wrote it in: its transparent firing reads it. */
+    private static final class Normals {
+        CgGraphTexture target;
+        long written = Long.MIN_VALUE;
+    }
+
+    private static final CgViewState.Key<Normals> NORMALS = new CgViewState.Key<>("world.normals", Normals::new);
 
     /** Whether a foldable glow is drawn in its colour's draw: {@link #mergeEmission(boolean)}, once warm. */
     boolean mergeEmission = MERGE_EMISSION.get();
@@ -447,7 +457,6 @@ public final class CgWorldRenderer {
         volumePass.compositeBound = null;
         volumePass.volumeTarget = null;
         volumeOut = null;
-        Arrays.fill(volumePass.volumeHistories, null);
         distortion.release();
         labels.release();
         sceneTarget.release();
@@ -1586,6 +1595,7 @@ public final class CgWorldRenderer {
                 targetWidth = stage.host().width();
                 targetHeight = stage.host().height();
                 prepare(view);
+                pointLights.normals(normalsWritten(stage));
                 pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
                 pointLights.apply(stage, stage.recording(), false, false);
                 beforeTranslucency(stage);
@@ -1660,7 +1670,7 @@ public final class CgWorldRenderer {
             CgRecording recording = stage.recording();
             CgTrace.Zone step = CgTrace.zone(CgChannels.GL_DETAIL, TOP_NORMALS);
             normalsInto = which == OPAQUE && drawn > 0 ? normalsFor(stage, recording) : null;
-            if (which == OPAQUE) normalsWritten = normalsInto;
+            if (which == OPAQUE && normalsInto == null) stage.view().state().get(NORMALS).written = Long.MIN_VALUE;
             CgPassConstants constants = stage.constants().sceneGlow(sceneEmission);
             // Before the opaque pass: its depth then holds the host's world and none of the draws below.
             Integer subjectKey = which == OPAQUE ? stage.resources().get(CgFrameKeys.SUBJECT_READ) : null;
@@ -1706,13 +1716,12 @@ public final class CgWorldRenderer {
             // Custom depth and normals before the lights, as Unreal's after its base pass: what reads them before
             // translucency needs them published
             if (which == TRANSPARENT) customDepthPass.recordCustomDepth(stage, recording, view);
-            if (which == TRANSPARENT && normalsWritten != null) {
-                stage.resources().put(CgFrameKeys.WORLD_NORMALS, normalsWritten);
-                normalsWritten = null;
-            }
+            CgGraphTexture normals = which == TRANSPARENT ? normalsWritten(stage) : null;
+            if (normals != null) stage.resources().put(CgFrameKeys.WORLD_NORMALS, normals);
             step.close();
             top.close();
             // Lights fall on the opaque scene, so a firing with nothing transparent still lists them.
+            if (which == TRANSPARENT) pointLights.normals(normals);
             lit = which == TRANSPARENT && pointLights.record(stage, view, toWorld, targetWidth, targetHeight);
             if (which == TRANSPARENT) casters();
             // Onto the opaque scene, before any transparent draw blends over it; the sun's shadows run with no light.
@@ -1722,7 +1731,7 @@ public final class CgWorldRenderer {
             // Something transparent reads the air, or a light may glow in it.
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_MEDIA)) {
                 mediaOut = which == TRANSPARENT && (drawn > 0 || media.holdsAny())
-                        ? media.record(recording, stage.constants(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
+                        ? media.record(recording, stage.constants(), stage.view().state(), view, toWorld, targetWidth, targetHeight, pointLights) : null;
                 if (mediaOut != null) media.composite(stage, recording, mediaOut);
                 if (scene) emissivePass.recordSceneGlows(stage, recording, view);
             }
@@ -1864,13 +1873,23 @@ public final class CgWorldRenderer {
             return null;
         }
         int w = Math.max(1, (int) targetWidth), h = Math.max(1, (int) targetHeight);
-        if (normalTarget == null || normalTarget.getWidth() != w || normalTarget.getHeight() != h) {
-            if (normalTarget != null) recording.release(normalTarget);
-            normalTarget = CgGraphTexture.requested("cg_world.normals", new CgTextureDesc(w, h, NORMAL_FORMAT));
+        CgViewState state = stage.view().state();
+        Normals normals = state.get(NORMALS);
+        if (normals.target == null || normals.target.getWidth() != w || normals.target.getHeight() != h) {
+            if (normals.target != null) recording.release(normals.target);
+            normals.target = CgGraphTexture.requested("cg_world.normals", new CgTextureDesc(w, h, NORMAL_FORMAT));
         }
-        recording.raster("worldRenderer.normalTarget").color(normalTarget, CLEAR).constants(stage.constants()).end();
-        pointLights.normals(normalTarget);
-        return normalTarget;
+        recording.raster("worldRenderer.normalTarget").color(normals.target, CLEAR).constants(stage.constants()).end();
+        normals.written = state.frame();
+        return normals.target;
+    }
+
+    /** The normals the view's opaque firing wrote this frame, or null where it wrote none. */
+    @Nullable
+    private static CgGraphTexture normalsWritten(CgStageFrame stage) {
+        CgViewState state = stage.view().state();
+        Normals normals = state.get(NORMALS);
+        return normals.written == state.frame() ? normals.target : null;
     }
 
     /** Whether draw {@code i} draws at half size this firing, added or as a volume. */

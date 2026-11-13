@@ -253,7 +253,8 @@ public final class CgPassConstants {
 
     /**
      * What a temporal effect reprojects by: the matrix taking this pass's camera-relative points to last frame's clip
-     * space ({@code cg_PreviousClip}), the host frame's index ({@code CG_FRAME_INDEX}) and whether the last frame is
+     * space ({@code cg_PreviousClip}), the view's frame index ({@code CG_FRAME_INDEX}, {@code CgViewState.frameIndex})
+     * and whether the last frame is
      * one of this view ({@code CG_HISTORY_VALID}). {@code CgStageFrame.constants} fills it for the host's camera.
      */
     public CgPassConstants history(Matrix4fc previousViewProjection, int frameIndex, boolean valid) {

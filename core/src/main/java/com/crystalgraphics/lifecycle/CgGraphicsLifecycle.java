@@ -32,6 +32,7 @@ import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.world.CgWorldRenderer;
@@ -589,6 +590,7 @@ public final class CgGraphicsLifecycle {
         CgCollisionDebug.release();
         CgWorldRenderer.get().release();
         CgPostStack.get().release();
+        CgView.forgetAll();
 
         // Step 8b: Shader-graph preview targets.
         //

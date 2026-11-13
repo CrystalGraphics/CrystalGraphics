@@ -105,8 +105,6 @@ final class CgGraphDevice {
     ByteBuffer compareFirst, compareSecond;
     /** Whether a rehearsal's pass is running. */
     boolean rehearsing;
-    /** The ring frame {@link CgFrameScope}'s blackboard holds. */
-    long scopeFrame = -1;
     /** The step whose bindings {@link CgGraphCheck} asks about, named in a refusal; null outside one. */
     @Nullable
     CgPass checkedStep;

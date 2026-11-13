@@ -25,6 +25,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -390,11 +391,15 @@ public final class CgWorldLights {
     private boolean warmed;
     /** Its kernels parsed, emitted and stripped on a worker, which {@link #warm} waits for: 85-115 ms on the render thread. */
     @Nullable private CgJob<Void> parse;
-    /** The air lit, this firing's and the last's, swapped each firing: each froxel's light scattered toward the eye. */
-    private final CgGraphTexture[] air = new CgGraphTexture[2];
-    private int airNewest;
-    /** The media's firing that last lit the air: the history holds that firing's alone. */
-    private long airFiring = -2;
+    /** Each view's lit air, this frame's and the last's, swapped each frame: each froxel's light scattered toward the eye. */
+    static final class Air {
+        final CgGraphTexture[] lit = new CgGraphTexture[2];
+        int newest;
+        /** The host frame that last lit it: the history holds that frame's alone. */
+        long frame = Long.MIN_VALUE;
+    }
+
+    private static final CgViewState.Key<Air> AIR_KEPT = new CgViewState.Key<>("world.lights.air", Air::new);
     private final float[] cascades = new float[8];
     /** This firing's entities per tile, and the farthest a shadowed light's ray runs, blocks. */
     private CgGraphTexture entityTiles, tileRanges;
@@ -449,21 +454,28 @@ public final class CgWorldLights {
     };
     private float targetW, targetH;
     private CgGraphTexture samples, shaded, shadedVis, filtered, filteredVis;
-    /** The history's lighting, moments and visibility, the first firing's; the scratch a later firing accumulates into. */
+    /**
+     * This firing's view's history of the lighting, moments and visibility; the scratch a view keeping no history
+     * accumulates into.
+     */
     private final CgGraphTexture[] history = new CgGraphTexture[3], scratchHistory = new CgGraphTexture[3];
     /** What this firing's temporal pass writes and its denoise reads: {@link #history} or {@link #scratchHistory}. */
     private CgGraphTexture[] accumulated = history;
     private CgTexture lightmap = CgFallbackTextures.WHITE_1x1;
     /** Target pixels the shading, history and filter's texels span each way this firing: 1, 2 or 4, {@link #SHADE_SCALE}. */
     private int lightScale = 1;
-    private long historyMade = -1;
     private static final String[] HISTORY_PARTS = {"lighting", "moments", "visibility"};
+    private static final CgViewState.HistoryKey[] HISTORY = {new CgViewState.HistoryKey("cg_world_lights.history-lighting"),
+            new CgViewState.HistoryKey("cg_world_lights.history-moments"),
+            new CgViewState.HistoryKey("cg_world_lights.history-visibility")};
+    /** The shading's description at its last size, which the history shares. */
+    private CgTextureDesc lightingDesc;
     private boolean shadowsOn, freshHistory, binned, sunOn;
     /** Zeros: the light list, cells and entities when none were made this firing. */
     private CgGraphBuffer zeroes;
-    /** Our opaque surfaces' normals this frame (the world renderer's normal target), alpha their eye depth. */
+    /** Our opaque surfaces' normals this firing (its view's normal target), alpha their eye depth; null for none. */
+    @Nullable
     private CgGraphTexture normals;
-    private long normalsFrame = -1;
     private final float[] sunDirection = new float[3];
     private final float[] eyeFrac = new float[3];
     private final int[] eyeBlock = new int[3];
@@ -1258,6 +1270,7 @@ public final class CgWorldLights {
             int lw = (w + lightScale - 1) / lightScale, lh = (h + lightScale - 1) / lightScale;
             if (shaded == null || shaded.getWidth() != lw || shaded.getHeight() != lh) {
                 CgTextureDesc each = new CgTextureDesc(lw, lh, LIGHTING_FORMAT);
+                lightingDesc = each;
                 shaded = CgGraphTexture.transientTexture("cg_world_lights.shaded", each);
                 shadedVis = CgGraphTexture.transientTexture("cg_world_lights.shaded-visibility", each);
                 filtered = CgGraphTexture.transientTexture("cg_world_lights.filtered", each);
@@ -1266,18 +1279,12 @@ public final class CgWorldLights {
                     scratchHistory[i] = CgGraphTexture.transientTexture("cg_world_lights.accumulated-" + HISTORY_PARTS[i], each);
                 }
             }
-            // One history, the first firing's: a later firing of the frame (a second eye) accumulates nothing.
-            if (stage.ordinal() == 0 && !CgRehearsal.active()) {
-                if (history[0] == null || history[0].getWidth() != lw || history[0].getHeight() != lh) {
-                    for (int i = 0; i < 3; i++) {
-                        if (history[i] != null) recording.release(history[i]);
-                        history[i] = CgGraphTexture.history("cg_world_lights.history-" + HISTORY_PARTS[i],
-                                new CgTextureDesc(lw, lh, LIGHTING_FORMAT));
-                    }
-                    historyMade = CgFrameRing.frame();
-                }
+            // The view's own history; a view keeping none accumulates into transients, fresh each frame.
+            CgViewState state = stage.view().state();
+            if (state.keepsHistory()) {
+                for (int i = 0; i < 3; i++) history[i] = state.history(HISTORY[i], lightingDesc, recording);
                 accumulated = history;
-                freshHistory = historyMade == CgFrameRing.frame() || !stage.historyValid();
+                freshHistory = state.fresh(HISTORY[0]) || !stage.historyValid();
             } else {
                 accumulated = scratchHistory;
                 freshHistory = true;
@@ -1745,28 +1752,30 @@ public final class CgWorldLights {
      * froxel volume of the light scattered toward the eye. Null with no light binned this firing.
      */
     @Nullable
-    CgGraphTexture scatter(CgRecording recording, CgComputePass pass, CgWorldMedia media, CgGraphTexture extinction) {
+    CgGraphTexture scatter(CgRecording recording, CgComputePass pass, CgWorldMedia media, CgViewState state,
+                           CgGraphTexture extinction) {
         if (!binned || !AIR.get()) return null;
         if (scatterKernel == null) {
             scatterKernel = CgCompute.load(VOLUME_KERNELS).kernel("Scatter");
             scatterKernel.precache();
         }
-        if (air[0] == null || air[0].getWidth() != media.width() || air[0].getHeight() != media.height()) {
+        Air air = state.get(AIR_KEPT);
+        if (air.lit[0] == null || air.lit[0].getWidth() != media.width() || air.lit[0].getHeight() != media.height()) {
             for (int k = 0; k < 2; k++) {
-                if (air[k] != null) recording.release(air[k]);
-                air[k] = CgGraphTexture.requested("cg_world_lights.air" + k,
+                if (air.lit[k] != null) recording.release(air.lit[k]);
+                air.lit[k] = CgGraphTexture.requested("cg_world_lights.air" + k,
                         CgTextureDesc.volume(media.width(), media.height(), CgWorldMedia.SLICES, VOLUME_FORMAT));
             }
-            airFiring = -2;
+            air.frame = Long.MIN_VALUE;
         }
         // Unreal's VolumetricFogTemporalRandom (VolumetricFog.cpp:270-278): Halton 2, 3 and 5 of the frame, or the middle.
         boolean temporal = AIR_HISTORY.get();
         Matrix4fc reproject = media.reproject();
-        boolean kept = temporal && reproject != null && airFiring == media.firing() - 1;
-        CgGraphTexture into = air[1 - airNewest], last = air[airNewest];
+        boolean kept = temporal && reproject != null && state.continuous() && air.frame == state.frame() - 1;
+        CgGraphTexture into = air.lit[1 - air.newest], last = air.lit[air.newest];
         CgDispatch d = media.rays(pass.dispatch(scatterKernel, media.width(), media.height(), CgWorldMedia.SLICES))
                 .image("MEDIA_SCATTER", into).texture("_Media", extinction).set("_PhaseG", AIR_PHASE)
-                .set("_AirShadowRays", AIR_RAYS.get()).set("_Frame", (int) (media.firing() & 1023))
+                .set("_AirShadowRays", AIR_RAYS.get()).set("_Frame", state.frameIndex() & 1023)
                 .set("_Jittered", temporal ? 1 : 0)
                 .set("_HistoryWeight", kept ? AIR_HISTORY_WEIGHT.get() : 0f).set("_Samples", AIR_SAMPLES.get())
                 .texture("_History", kept ? last : CgFallbackTextures.BLACK_VOLUME);
@@ -1777,8 +1786,8 @@ public final class CgWorldLights {
                     .set("_Reproject3", reproject.m03(), reproject.m13(), reproject.m23(), reproject.m33());
         }
         traceInputs(d, CgFallbackTextures.WHITE_1x1, zeroes(recording));
-        airNewest = 1 - airNewest;
-        airFiring = media.firing();
+        air.newest = 1 - air.newest;
+        air.frame = state.frame();
         return into;
     }
 
@@ -1820,14 +1829,13 @@ public final class CgWorldLights {
         return SHADOWS.get();
     }
 
-    /** This frame's normal target, from the world renderer's opaque firing. */
-    void normals(CgGraphTexture target) {
+    /** Before {@link #record}: the normals the firing's view wrote in its opaque firing this frame, or null. */
+    void normals(@Nullable CgGraphTexture target) {
         normals = target;
-        normalsFrame = CgFrameRing.frame();
     }
 
     private boolean normalsNow() {
-        return normalsFrame == CgFrameRing.frame() && normals != null;
+        return normals != null;
     }
 
 

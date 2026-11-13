@@ -16,6 +16,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.render.view.CgView;
 
 import org.joml.Matrix4f;
 
@@ -57,8 +58,9 @@ import java.util.Map;
  * }</pre>
  *
  * <p>A stage may fire more than once in a host frame: 1.7.10's anaglyph draws the world once per eye, and a portal
- * mod once per portal. A renderer that advances state, a simulation stepping its particles, records on the first
- * firing only, and every later firing and stage reads what it wrote:</p>
+ * mod once per portal. Each firing draws a {@link CgView}, named by the host ({@code host().view(...)}), which keeps
+ * that view's histories apart from another's. A renderer that advances state, a simulation stepping its particles,
+ * records on the first firing only, and every later firing and stage reads what it wrote:</p>
  * <pre>{@code
  * CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
  *     CgComputePass step = frame.recording().compute("sparks.step");

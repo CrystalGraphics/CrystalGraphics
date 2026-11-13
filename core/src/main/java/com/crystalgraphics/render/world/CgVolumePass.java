@@ -5,7 +5,6 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -14,7 +13,7 @@ import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -49,10 +48,13 @@ final class CgVolumePass {
     static final CgFormat VOLUME_FORMAT = CgFormat.RGBA16_FLOAT;
     static final CgFormat VOLUME_DEPTH_FORMAT = CgFormat.R16_FLOAT;
 
-    /** Firings of a host frame with a volume history of their own; a later one composites this frame's alone. */
-    static final int VOLUME_HISTORIES = 4;
-
     static final CgFormat VOLUME_HISTORY_FORMAT = CgFormat.RGBA16_FLOAT;
+
+    /** Each view's volumes, blended over its last frame's. */
+    static final CgViewState.HistoryKey HISTORY = new CgViewState.HistoryKey("cg_world_volume_history");
+
+    /** The history's description at the last size: made again only when it changes. */
+    private CgTextureDesc historyDesc;
 
     CgMaterialInstance composite;
 
@@ -62,14 +64,8 @@ final class CgVolumePass {
     @Nullable
     CgKernel resolve;
 
-    /** One a firing ordinal, and the last a rehearsal's, so its passes never advance the real frame's. */
-    final CgGraphTexture[] volumeHistories = new CgGraphTexture[VOLUME_HISTORIES + 1];
-
-    /** Per ordinal: the ring frame its history was made in, which holds nothing of a frame before. */
-    final long[] volumeMade = new long[VOLUME_HISTORIES + 1];
-
-    // Volumes: half-size premultiplied draws, blended with their last frame per firing ordinal, then laid over the
-    // target in the transparent pass at the farthest one's key.
+    // Volumes: half-size premultiplied draws, blended with their view's last frame, then laid over the target in the
+    // transparent pass at the farthest one's key.
     CgGraphTexture volumeTarget, volumeDepth;
 
     CgVolumePass(CgWorldRenderer world) {
@@ -80,9 +76,9 @@ final class CgVolumePass {
 
     /**
      * The volumes ({@link CgWorldDraws#VOLUME}) into a half-size target, cleared: their light, premultiplied, and the eye depth
-     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into this firing ordinal's history by a kernel: last
-     * frame's, reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
-     * what the transparent pass lays over the target: the history, or this frame's alone past the last ordinal kept.
+     * each marched to ({@code CG_VOLUME_DEPTH}). Then resolved into the view's history by a kernel: last frame's,
+     * reprojected through {@code cg_PrevViewProj} and held to this frame's neighbourhood, blended with this one. Answers
+     * what the transparent pass lays over the target: the history, or this frame's alone until the kernel is built.
      */
     @Nullable
     CgTexture recordVolumes(CgStageFrame stage, CgRecording recording, CgCamera view) {
@@ -115,20 +111,13 @@ final class CgVolumePass {
         pass.add(chunks.end());
         pass.end();
 
-        int ordinal = CgRehearsal.active() ? VOLUME_HISTORIES : stage.ordinal();
-        if (ordinal > VOLUME_HISTORIES || ordinal == VOLUME_HISTORIES && !CgRehearsal.active()) {
-            return volumeTarget;
+        if (historyDesc == null || historyDesc.width() != w || historyDesc.height() != h) {
+            historyDesc = new CgTextureDesc(w, h, VOLUME_HISTORY_FORMAT);
         }
-        CgGraphTexture history = volumeHistories[ordinal];
-        if (history == null || history.getWidth() != w || history.getHeight() != h) {
-            if (history != null) recording.release(history);
-            history = CgGraphTexture.history("cg_world_volume_history" + ordinal,
-                    new CgTextureDesc(w, h, VOLUME_HISTORY_FORMAT));
-            volumeHistories[ordinal] = history;
-            volumeMade[ordinal] = CgFrameRing.frame();
-        }
+        CgViewState state = stage.view().state();
+        CgGraphTexture history = state.history(HISTORY, historyDesc, recording);
         if (!resolveKernel().isReady()) return volumeTarget;
-        boolean fresh = volumeMade[ordinal] == CgFrameRing.frame();
+        boolean fresh = state.fresh(HISTORY);
         CgComputePass resolving = recording.compute("world.volumeResolve", world.halfConstants).readsDepth(stage.depth())
                 .timed(GPU_VOLUME_RESOLVE);
         resolving.dispatch(resolve, w, h, 1).image("RESOLVED", history).texture("_Now", volumeTarget)

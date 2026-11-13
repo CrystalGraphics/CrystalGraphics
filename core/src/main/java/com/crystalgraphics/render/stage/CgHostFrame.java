@@ -4,6 +4,7 @@ import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
+import com.crystalgraphics.render.view.CgView;
 
 import javax.annotation.Nullable;
 
@@ -44,6 +45,21 @@ public final class CgHostFrame {
     @Nullable
     private CgExternalTarget target;
     private float guiScale = 1f;
+    private CgView view = CgView.main();
+
+    /**
+     * The view this stage's firings draw: {@link CgView#main()} unless the host names another. A host drawing the world
+     * twice a frame (an anaglyph's eyes, a portal) names one for each, or the second draws as {@link CgView#unkept()}.
+     */
+    public CgView view() {
+        return view;
+    }
+
+    /** Host side: the view the next firings draw, kept until named again. */
+    public CgHostFrame view(CgView view) {
+        this.view = view;
+        return this;
+    }
 
     /** The frame's interpolation between game ticks, 0 to 1. */
     public float partialTick() {

@@ -20,6 +20,7 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -61,10 +62,13 @@ final class CgEmissivePass {
 
     CgGraphTexture subjectTarget;
 
-    /** An impact frame's subject drawn at the opaque stage ({@link #recordOwnedSubject}), and the ring frame it holds. */
-    CgGraphTexture ownedSubject;
+    /** A view's impact-frame subject drawn at its opaque firing ({@link #recordOwnedSubject}), and the host frame it holds. */
+    private static final class OwnedSubject {
+        CgGraphTexture texture;
+        long frame = Long.MIN_VALUE;
+    }
 
-    long ownedSubjectFrame = -1;
+    private static final CgViewState.Key<OwnedSubject> OWNED_SUBJECT = new CgViewState.Key<>("world.subject", OwnedSubject::new);
 
     /** {@link #markGlows}'s parts: every glow, or those whose colour draws before the transparent pass. */
     static final int EMIT_ALL = 0, EMIT_BEFORE = 1;
@@ -159,7 +163,9 @@ final class CgEmissivePass {
      */
     void recordSubject(CgStageFrame stage, CgRecording recording, CgCamera view, int key) {
         if (key != 0) {
-            if (ownedSubjectFrame == world.frame) stage.resources().put(CgFrameKeys.SUBJECT, ownedSubject);
+            CgViewState state = stage.view().state();
+            OwnedSubject owned = state.get(OWNED_SUBJECT);
+            if (owned.frame == state.frame()) stage.resources().put(CgFrameKeys.SUBJECT, owned.texture);
             return;
         }
         if (markGlows(view, EMIT_ALL) == 0) return;
@@ -188,16 +194,18 @@ final class CgEmissivePass {
             emits[i] = e;
             if (e) marked++;
         }
-        ownedSubjectFrame = marked > 0 ? world.frame : -1;
+        CgViewState state = stage.view().state();
+        OwnedSubject owned = state.get(OWNED_SUBJECT);
+        owned.frame = marked > 0 ? state.frame() : Long.MIN_VALUE;
         if (marked == 0) return;
         int w = Math.max(1, (int) (world.targetWidth * 0.25f)), h = Math.max(1, (int) (world.targetHeight * 0.25f));
-        if (ownedSubject == null || ownedSubject.getWidth() != w || ownedSubject.getHeight() != h) {
-            if (ownedSubject != null) recording.release(ownedSubject);
-            ownedSubject = CgGraphTexture.requested("cg_subject_owned", new CgTextureDesc(w, h, EMISSION_FORMAT));
+        if (owned.texture == null || owned.texture.getWidth() != w || owned.texture.getHeight() != h) {
+            if (owned.texture != null) recording.release(owned.texture);
+            owned.texture = CgGraphTexture.requested("cg_subject_owned", new CgTextureDesc(w, h, EMISSION_FORMAT));
         }
         stage.constants().write(world.constantsBlock, 0);
         emissionConstants.read(world.constantsBlock, 0).resolution(w, h);
-        CgRasterPass glow = recording.raster("emissivePass.ownedSubject").color(ownedSubject, CgWorldRenderer.CLEAR).constants(emissionConstants).state(EMISSIVE_STATE).readsDepth(stage.depth()).timed(GPU_EMISSION);
+        CgRasterPass glow = recording.raster("emissivePass.ownedSubject").color(owned.texture, CgWorldRenderer.CLEAR).constants(emissionConstants).state(EMISSIVE_STATE).readsDepth(stage.depth()).timed(GPU_EMISSION);
         CgChunkBuilder chunks = recording.chunks().begin();
         for (int i = 0; i < draws.count; i++) {
             if (!emits[i]) continue;

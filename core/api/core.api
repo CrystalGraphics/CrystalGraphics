@@ -9689,17 +9689,6 @@ com/crystalgraphics/render/graph/CgFrameGraph
   method public add (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/property/CgPropertyValues;)Lcom/crystalgraphics/render/graph/CgFrameGraph;
   method public clear ()V
   method public recordings ()Ljava/util/List;
-com/crystalgraphics/render/graph/CgFrameScope
-  access public,final
-  extends java/lang/Object
-  method public,static get (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;)Ljava/lang/Object;
-  method public,static put (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;Ljava/lang/Object;)V
-  method public,static texture (Lcom/crystalgraphics/render/graph/CgFrameScope$Key;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-com/crystalgraphics/render/graph/CgFrameScope$Key
-  access public,final
-  extends java/lang/Object
-  method public <init> (Ljava/lang/String;)V
-  method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgGraphBuffer
   access public,final
   extends com/crystalgraphics/render/graph/CgGraphResource
@@ -10943,6 +10932,8 @@ com/crystalgraphics/render/stage/CgHostFrame
   method public set (FIILcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public target ()Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public textures ()Lcom/crystalgraphics/render/stage/CgHostTextures;
+  method public view ()Lcom/crystalgraphics/render/view/CgView;
+  method public view (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public width ()I
 com/crystalgraphics/render/stage/CgHostTextures
   access public,final
@@ -11007,7 +10998,6 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public host ()Lcom/crystalgraphics/render/stage/CgHostFrame;
   method public include (Lcom/crystalgraphics/render/graph/CgFrame;)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public includeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)Lcom/crystalgraphics/render/graph/CgPass$Include;
-  method public ordinal ()I
   method public pass (Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/draw/CgOrder;)Lcom/crystalgraphics/render/graph/CgRasterPass;
   method public projectWorld (DDDLorg/joml/Vector2f;)Z
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
@@ -11015,6 +11005,7 @@ com/crystalgraphics/render/stage/CgStageFrame
   method public retarget (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public stage ()Lcom/crystalgraphics/render/stage/CgRenderStage;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public view ()Lcom/crystalgraphics/render/view/CgView;
 com/crystalgraphics/render/stage/CgStageHook
   access public,abstract,interface
   extends java/lang/Object
@@ -11028,6 +11019,37 @@ com/crystalgraphics/render/stage/CgWorldAtmosphere
   extends java/lang/Object
   field public,static,final SUN_SHARE Lcom/crystalgraphics/variable/CgVar$Num;
   method public,static apply (Lcom/crystalgraphics/render/stage/CgHostEnvironment;Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
+com/crystalgraphics/render/view/CgView
+  access public,final
+  extends java/lang/Object
+  method public name ()Ljava/lang/String;
+  method public state ()Lcom/crystalgraphics/render/view/CgViewState;
+  method public toString ()Ljava/lang/String;
+  method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/render/view/CgView;
+  method public,static forgetAll ()V
+  method public,static main ()Lcom/crystalgraphics/render/view/CgView;
+  method public,static unkept ()Lcom/crystalgraphics/render/view/CgView;
+com/crystalgraphics/render/view/CgViewState
+  access public,final
+  extends java/lang/Object
+  method public begin (J)V
+  method public continuous ()Z
+  method public frame ()J
+  method public frameIndex ()I
+  method public fresh (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;)Z
+  method public get (Lcom/crystalgraphics/render/view/CgViewState$Key;)Ljava/lang/Object;
+  method public history (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public keepsHistory ()Z
+com/crystalgraphics/render/view/CgViewState$HistoryKey
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/String;)V
+  method public toString ()Ljava/lang/String;
+com/crystalgraphics/render/view/CgViewState$Key
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/String;Ljava/util/function/Supplier;)V
+  method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/world/CgGradeLayers
   access public,final
   extends java/lang/Object

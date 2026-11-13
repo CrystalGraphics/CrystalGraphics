@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * <ul>
  *   <li>Declare a key once, in a static field: each takes a slot for the life of the process.</li>
  *   <li>A value lives for one firing. The next firing of the same stage starts empty, so a hand-off across firings
- *       (opaque to transparent, or 1.7.10's second anaglyph firing) needs a resource that outlives the frame.</li>
+ *       (opaque to transparent) is a record in the firing's view state ({@code frame.view().state()}).</li>
  * </ul>
  */
 public final class CgFrameKey<T> {
