@@ -198,9 +198,10 @@ CgMesh mesh = CgMeshShapes.cube(format);
 
 ## The sampler budget
 
-A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order; the
-view's (lightmap, depth, scene colour) are another set's and never collide. A shader declaring more than
-`CgBindingModel.MATERIAL_TEXTURES` fails to load with a `CgShaderError` naming the count.
+A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order, last in
+the set and open-ended; the view's (lightmap, depth, scene colour) are another set's and never collide. The engine
+sets no count: a shader declaring more than the installed GPU binds in one stage, less the view's
+(`Limits.maxTextureUnits - CgBindingModel.VIEW_TEXTURES`), fails to load with a `CgShaderError` naming both numbers.
 
 ## Ownership Rules
 

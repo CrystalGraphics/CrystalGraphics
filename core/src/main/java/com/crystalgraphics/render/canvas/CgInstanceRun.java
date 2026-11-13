@@ -50,9 +50,9 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     @Nullable
     private CgMaterialBindings binding;
     /** The textures laid over the material's own at each unit: the items', winning the unit. */
-    private final CgTexture[] textures = new CgTexture[CgMaterialBindings.MAX_TEXTURES];
+    private CgTexture[] textures = new CgTexture[4];
     /** Each laid-over texture's sampler, null for its spec's. */
-    private final CgSampler[] samplers = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
+    private CgSampler[] samplers = new CgSampler[4];
 
     /** The binding and pipeline of the open draw {@link #records} may still append to; null once anything comes between. */
     @Nullable
@@ -86,6 +86,10 @@ final class CgInstanceRun implements CgCanvas.Drawing {
         material = next;
         materialChanges = next.changes();
         state = override;
+        if (unitCount > textures.length) {
+            textures = new CgTexture[unitCount];
+            samplers = new CgSampler[unitCount];
+        }
         Arrays.fill(textures, null);
         Arrays.fill(samplers, null);
         System.arraycopy(units, 0, textures, 0, unitCount);
@@ -94,6 +98,7 @@ final class CgInstanceRun implements CgCanvas.Drawing {
     }
 
     private boolean sameTextures(CgTexture[] units, CgSampler[] sampled, int unitCount) {
+        if (unitCount > textures.length) return false;
         for (int unit = 0; unit < textures.length; unit++) {
             boolean set = unit < unitCount;
             if (textures[unit] != (set ? units[unit] : null) || samplers[unit] != (set ? sampled[unit] : null)) {

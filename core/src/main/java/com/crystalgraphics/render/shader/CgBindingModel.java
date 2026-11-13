@@ -62,6 +62,8 @@ public final class CgBindingModel {
     public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
     /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
     public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
+    /** The view's textures a stage binds besides a material's: scene depth, scene colour and the lightmap. */
+    public static final int VIEW_TEXTURES = 3;
     /** {@code cg_SceneObjects}: the scene's persistent records ({@code CgGpuScene}); an empty buffer where none is. */
     public static final Slot SCENE_OBJECTS = new Slot(VIEW, 7);
 
@@ -89,22 +91,20 @@ public final class CgBindingModel {
     public static final int MATERIAL_BUFFER_COUNT = 4;
     /** The first buffer attached to a material at runtime; {@code CgMaterial.attach} allows {@link #ATTACHED_COUNT}. */
     public static final int FIRST_ATTACHED = 5, ATTACHED_COUNT = 8;
-    /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
-    public static final int FIRST_TEXTURE = 16;
-    /**
-     * How many textures a material reads at most, as Unreal's 16 samplers a material on SM5: bindings
-     * {@link #FIRST_TEXTURE} on, below the kernel buffers, where a device binds them to units. A host's own unit limits
-     * (Minecraft's {@code RenderSystem} tracks 12) bind only its draws: the device hands every unit back at its section's
-     * end.
-     */
-    public static final int MATERIAL_TEXTURES = 16;
-
     /**
      * A kernel's own resources are in {@link #MATERIAL}'s set, as a material's: its {@code Properties} block at
-     * {@link #MATERIAL_BLOCK}, its samplers from {@link #FIRST_TEXTURE}, its buffers from this (append counts and
-     * checked mode's report after them), images from {@link #FIRST_KERNEL_IMAGE}.
+     * {@link #MATERIAL_BLOCK}, its buffers from this (append counts and checked mode's report after them), images from
+     * {@link #FIRST_KERNEL_IMAGE}, samplers from {@link #FIRST_TEXTURE}.
      */
-    public static final int FIRST_KERNEL_BUFFER = 32, FIRST_KERNEL_IMAGE = 96;
+    public static final int FIRST_KERNEL_BUFFER = 16, FIRST_KERNEL_IMAGE = 80;
+
+    /**
+     * A material's or kernel's textures where they are bound rather than read by index: property {@code i} at this plus
+     * {@code i}. Last in the set and open-ended: the engine sets no count, the GPU's stage does
+     * ({@code CgRHI.Globals.Limits.maxTextureUnits}). A host's own unit tracking (Minecraft's {@code RenderSystem} keeps
+     * 12) binds only its draws: the device hands every unit back at its section's end.
+     */
+    public static final int FIRST_TEXTURE = 96;
 
     private CgBindingModel() {}
 

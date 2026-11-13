@@ -32,14 +32,12 @@ import java.util.Objects;
  *   <li>A texture is held, not its storage: one reallocated before the draw executes binds its new storage, which a
  *       growing glyph atlas needs. Its content is ordered by the frame graph's versions.</li>
  *   <li>{@link #with} is kept per texture, so a draw repeating one allocates nothing.</li>
- *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers and
- *       {@value #MAX_STORAGE} storage buffers.</li>
+ *   <li>Any number of textures (the GPU's stage sets the count, checked as its shader loads); at most
+ *       {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers and {@value #MAX_STORAGE} storage buffers.</li>
  * </ul>
  */
 public final class CgMaterialBindings {
 
-    /** The material set's texture range, which its shader's compile checks: {@link CgBindingModel#MATERIAL_TEXTURES}. */
-    public static final int MAX_TEXTURES = CgBindingModel.MATERIAL_TEXTURES;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
     public static final int MAX_STORAGE = 4;
@@ -186,9 +184,9 @@ public final class CgMaterialBindings {
 
     /** Fills a version by slot; {@link #build} once. */
     public static final class Builder {
-        private final int[] textureSlots = new int[MAX_TEXTURES];
-        private final CgTexture[] textures = new CgTexture[MAX_TEXTURES];
-        private final CgSampler[] samplers = new CgSampler[MAX_TEXTURES];
+        private int[] textureSlots = new int[8];
+        private CgTexture[] textures = new CgTexture[8];
+        private CgSampler[] samplers = new CgSampler[8];
         private int textureCount;
         private final int[] blockSlots = new int[MAX_BLOCKS];
         private final CgBlockVersion[] blocks = new CgBlockVersion[MAX_BLOCKS];
@@ -212,7 +210,11 @@ public final class CgMaterialBindings {
         }
 
         private Builder put(int slot, CgTexture texture, @Nullable CgSampler sampler) {
-            if (textureCount == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures");
+            if (textureCount == textures.length) {
+                textureSlots = Arrays.copyOf(textureSlots, textureCount * 2);
+                textures = Arrays.copyOf(textures, textureCount * 2);
+                samplers = Arrays.copyOf(samplers, textureCount * 2);
+            }
             textureSlots[textureCount] = slot;
             textures[textureCount] = Objects.requireNonNull(texture, "texture");
             samplers[textureCount++] = sampler;

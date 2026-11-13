@@ -1587,6 +1587,7 @@ com/crystalgraphics/api/shader/CgShaderPreprocessor
   method public process (Ljava/lang/String;)Ljava/lang/String;
   method public process (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public toString ()Ljava/lang/String;
+  method public unreadableInclude (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
   method public,static clearCache ()V
   method public,static forget (Ljava/lang/String;)V
 com/crystalgraphics/api/shader/CgShaderStages
@@ -9387,7 +9388,6 @@ com/crystalgraphics/render/draw/CgMaterialBindings
   field public,static,final MAX_BLOCKS I
   field public,static,final MAX_BUFFERS I
   field public,static,final MAX_STORAGE I
-  field public,static,final MAX_TEXTURES I
   field public,static,final NONE Lcom/crystalgraphics/render/draw/CgMaterialBindings;
   method public block (I)Lcom/crystalgraphics/render/draw/CgBlockVersion;
   method public blockSlot (I)I
@@ -10901,7 +10901,6 @@ com/crystalgraphics/render/shader/CgBindingModel
   field public,static,final MATERIAL I
   field public,static,final MATERIAL_BLOCK Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final MATERIAL_BUFFER_COUNT I
-  field public,static,final MATERIAL_TEXTURES I
   field public,static,final MEDIA Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final NONE I
   field public,static,final OBJECTS Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
@@ -10914,6 +10913,7 @@ com/crystalgraphics/render/shader/CgBindingModel
   field public,static,final VERTICES Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final VIEW I
   field public,static,final VIEW_BLOCK Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  field public,static,final VIEW_TEXTURES I
   method public,static attached (Lcom/crystalgraphics/material/CgAttachedBuffer;I)Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   method public,static bindingOf (I)I
   method public,static buffer (I)Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;

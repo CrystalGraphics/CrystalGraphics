@@ -200,12 +200,10 @@ public final class CgKernelEmitter {
             throw new CgShaderError(named + "'s file declares " + appends + " append buffers; a kernel takes "
                     + KERNEL_WORDS);
         }
-        int samplers = 0;
-        for (CgMaterialProperty p : new CgMaterialProperties(source.properties()).all()) if (p.getType().isSampler()) samplers++;
-        if (checkPoint(source) + 1 > CgBindingModel.FIRST_KERNEL_IMAGE - CgBindingModel.FIRST_KERNEL_BUFFER
-                || samplers > CgBindingModel.FIRST_KERNEL_BUFFER - CgBindingModel.FIRST_TEXTURE) {
+        if (checkPoint(source) + 1 > CgBindingModel.FIRST_KERNEL_IMAGE - CgBindingModel.FIRST_KERNEL_BUFFER) {
             throw new CgShaderError(named + "'s file declares " + source.buffers().size() + " buffers ("
-                    + appends + " appending) and " + samplers + " samplers, more than a kernel's set holds");
+                    + appends + " appending), more than a kernel's set holds: "
+                    + (CgBindingModel.FIRST_KERNEL_IMAGE - CgBindingModel.FIRST_KERNEL_BUFFER));
         }
         if (kernel.groupSize() > target.maxInvocations()) {
             throw new CgShaderError(named + " asks for " + kernel.groupSize() + " invocations a group; this "
