@@ -121,20 +121,20 @@ a shipped `.shader`, an `#include` it reads or a `.compute` file orphans that pr
 launch builds its pipelines at their draws. **Refresh the list after changing the engine's shaders, and before a
 release**:
 
-1. Run the `crystalgraphics:pipelines` gauntlet on the NeoForge 26.2 dev client, Minecraft on Vulkan, into an empty
-   cache folder. From CrystalGUI's root:
+1. Record: run the `crystalgraphics:pipelines` gauntlet on the NeoForge 26.2 dev client, Minecraft on Vulkan, into an
+   empty cache folder, with the shipped list off so every pipeline is recorded. From CrystalGUI's root:
 
    ```bash
    ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -PcgGraphics=vulkan \
        -Dcrystalgraphics.gauntlet=crystalgraphics:pipelines -Dcrystalgraphics.gauntlet.out=build/pipelines \
-       -Dcrystalgraphics.cache.dir=build/pipelines-cache        # delete it first: it must start empty
+       -Dcrystalgraphics.cache.dir=build/pipelines-cache -Dcrystalgraphics.pipelines.recorded=false
    ```
 
    It enters a world, shows every `CgRenderDemo` scene in turn, twice round, 5 s each once the scene is built, and
    quits. `build/pipelines/report.txt` says `PASS` or `FAIL`, a line a scene.
-2. If `pipelines.recorded` reads 0 recipes, the shipped list is already complete: stop. Otherwise copy
-   `build/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
-3. Check: rerun it into a new empty cache folder. `pipelines.recorded` should read 0 recipes: the shipped list now
-   builds every pipeline the scenes draw.
+2. Copy `build/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
+3. Check: the same run without `-Dcrystalgraphics.pipelines.recorded=false`, into a new empty cache folder.
+   `pipelines.complete` passes when no draw built a pipeline the list lacks. A check run is also how to find out
+   whether a shader edit staled the list: one that changed no shipped program passes it.
 
 A new draw path the demo scenes never reach (a new renderer, a new pass) needs a scene that reaches it in step 1.

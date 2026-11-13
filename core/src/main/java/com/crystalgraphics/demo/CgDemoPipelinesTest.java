@@ -13,33 +13,35 @@ import com.crystalgraphics.gauntlet.CgGauntlet;
 import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
+import com.crystalgraphics.platform.rhi.pipeline.CgPipelineCache;
 import com.crystalgraphics.platform.rhi.pipeline.CgPipelineRecipes;
 import com.crystalgraphics.variable.CgVar;
 
 /**
- * {@code crystalgraphics:pipelines}: the shipped pipeline list recorded. It enters a world and shows every scene of
- * {@link CgRenderDemo} in turn, twice round, each for a few seconds once it is built and standing on the ground; every
- * pipeline a draw built is appended to the cache folder's {@code recorded.txt}, which it copies into the run's folder.
- * Unreal's PSO gathering run (a {@code -logPSO} run under Gauntlet).
+ * {@code crystalgraphics:pipelines}: the shipped pipeline list, recorded or checked. It enters a world and shows every
+ * scene of {@link CgRenderDemo} in turn, twice round, each for a few seconds once it is built and on the ground. Unreal's
+ * PSO gathering run (a {@code -logPSO} run under Gauntlet).
+ *
+ * <p>Recording: with the shipped list off, every pipeline is built at its draw and written to the cache folder's
+ * {@code recorded.txt}, which it copies into the run's folder, the whole list:</p>
  *
  * <pre>{@code
  * // CrystalGUI's root, Minecraft on Vulkan, into an empty cache folder
  * ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -PcgGraphics=vulkan \
  *     -Dcrystalgraphics.gauntlet=crystalgraphics:pipelines -Dcrystalgraphics.gauntlet.out=build/pipelines \
- *     -Dcrystalgraphics.cache.dir=build/pipelines-cache
- * // build/pipelines/report.txt says PASS; build/pipelines/recorded.txt goes over
- * // CrystalGraphics/core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt
+ *     -Dcrystalgraphics.cache.dir=build/pipelines-cache -Dcrystalgraphics.pipelines.recorded=false
+ * // build/pipelines/recorded.txt goes over core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt
  * }</pre>
  *
+ * <p>Checking: the same run with the shipped list on (no {@code pipelines.recorded} flag) passes only when no draw had
+ * to build a pipeline the list lacks.</p>
+ *
  * <ul>
- *   <li>The cache folder must start empty: the list it copies is the folder's whole file, and a check fails when that
- *       holds lines this run did not write.</li>
+ *   <li>The cache folder must start empty: a check fails when its file holds lines this run did not write.</li>
  *   <li>A scene's seconds ({@code crystalgraphics.gauntlet.pipelines.seconds}, 5) count from when it draws, so a scene
  *       still building loses none of them; one that does not draw within 90 s fails.</li>
  *   <li>Its timeout is its own: the scenes, the laps and their seconds, with room to build each.</li>
  *   <li>The loading watchdog is armed for the run: a switch that holds a frame is logged with what held it.</li>
- *   <li>A run recording nothing passes and copies nothing: the shipped list already builds every pipeline the
- *       scenes draw.</li>
  *   <li>A new draw path no scene reaches records nothing: give it a scene first.</li>
  * </ul>
  */
@@ -157,8 +159,15 @@ public final class CgDemoPipelinesTest extends CgGauntletController {
             endTest();
             return;
         }
+        if (CgPipelineCache.buildsAhead()) {
+            check("pipelines.complete", appended == 0, appended == 0
+                    ? "the shipped list builds every pipeline the scenes draw"
+                    : appended + " pipelines built at their draw: record the list again (pipelines.recorded=false)");
+            endTest();
+            return;
+        }
         if (appended == 0) {
-            check("pipelines.list", true, "nothing to add: the shipped list builds every pipeline the scenes draw");
+            check("pipelines.list", false, "nothing recorded");
             endTest();
             return;
         }

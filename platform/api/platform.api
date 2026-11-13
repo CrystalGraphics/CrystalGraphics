@@ -2550,6 +2550,7 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineCache
   method public misses ()J
   method public orphan (Ljava/util/Collection;)V
   method public startRecorded (JLjava/util/function/Function;)Ljava/util/Map;
+  method public,static buildsAhead ()Z
 com/crystalgraphics/platform/rhi/pipeline/CgPipelineLayout
   access public,final,record
   extends java/lang/Record

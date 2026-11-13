@@ -133,6 +133,14 @@ public final class CgPipelineCache {
         return p;
     }
 
+    /**
+     * Whether a linking program's recorded pipelines are built ahead ({@code crystalgraphics.pipelines.recorded}). Off,
+     * every pipeline is built at its draw and recorded: how a whole list is made.
+     */
+    public static boolean buildsAhead() {
+        return RECORDED.get();
+    }
+
     /** Pipelines a draw had to build this session: what the recorded list and the precache missed. */
     public long misses() {
         return misses;
