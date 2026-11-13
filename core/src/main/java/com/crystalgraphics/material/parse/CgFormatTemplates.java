@@ -7,6 +7,7 @@ import com.github.bsideup.jabel.Desugar;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -76,6 +77,7 @@ public final class CgFormatTemplates {
     private static final Pattern FILL = Pattern.compile("^void\\s+fill\\s*\\(\\s*inout\\s+CgVertex\\s+v\\s*\\)");
     private static final Pattern DEFAULTS = Pattern.compile("^void\\s+defaults\\s*\\(\\s*inout\\s+CgSurface\\s+s\\s*\\)");
     private static final Pattern TAG = Pattern.compile("\"(\\w+)\"\\s*=\\s*\"([^\"]*)\"");
+    private static final Pattern FEATURE = Pattern.compile("^\\s*#pragma\\s+cg_feature\\s+(\\w+)\\s*$");
     private static final Pattern FIELD = Pattern.compile(
             "^((?:flat\\s+|noperspective\\s+)?[A-Za-z_]\\w*)\\s+([A-Za-z_][\\w.]*)\\s*(?:\\[\\s*(\\d+)\\s*])?$");
 
@@ -120,6 +122,8 @@ public final class CgFormatTemplates {
         List<String> names = new ArrayList<>();
         StringBuilder declarations = new StringBuilder(), properties = new StringBuilder();
         CgVertexFactory.Factory parameters = null;
+        // A keyword two factories declare is one: a sequence part is drawn under the mesh particles usage
+        Set<String> features = new HashSet<>();
         for (CgVertexFactory.Factory f : factories) {
             names.add(f.name());
             if (!f.vertexType().equals(base.vertexType()) || f.placesNothing() != base.placesNothing()) {
@@ -137,8 +141,13 @@ public final class CgFormatTemplates {
                 }
                 parameters = f;
             }
-            for (String u : f.usages()) declarations.append("#pragma cg_feature ").append(u).append('\n');
-            declarations.append(f.declarations()).append('\n');
+            for (String u : f.usages()) {
+                if (features.add(u)) declarations.append("#pragma cg_feature ").append(u).append('\n');
+            }
+            for (String line : f.declarations().split("\n", -1)) {
+                Matcher feature = FEATURE.matcher(line);
+                if (!feature.matches() || features.add(feature.group(1))) declarations.append(line).append('\n');
+            }
             properties.append(f.properties()).append('\n');
         }
         // The fade as a macro, so each factory's expression is chosen where the material's code names none
