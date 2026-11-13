@@ -43,22 +43,14 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 /**
- * The material format (P2.5 F1, F2) against the old: each shape hand-converted, its parse meaning what its old form's
- * meant (passes, their render state, queue, lighting, keywords, engine buffers), and every pass and keyword variant of
- * the new form built by shaderc on the null device, as a Vulkan device builds it.
+ * The material format: each shape and every engine shader built by shaderc on the null device, every pass and keyword
+ * variant, as a Vulkan device builds it; and what each shape's parse reads.
  */
 public class MaterialFormatTest {
 
-    /** Each shape: its new file and the old file it stands for, under {@code cgformat:shaders/}. */
-    private static final String[][] PAIRS = {
-            {"opaque", "opaque.old"}, {"masked", "masked.old"}, {"translucent", "translucent.old"},
-            {"glow", "glow.old"}, {"haze", "haze.old"}, {"waves", "waves.old"}, {"sparks", "sparks.old"},
-            {"keywords", "keywords.old"}, {"scene_in", "crystalgraphics:shaders/world_scene_in"},
-            // F3: the VFX factories
-            {"bits", "bits.old"},
-            {"volume", "volume.old"},
-            // F4: post
-            {"post_chain", "post_chain.old"}};
+    /** Each shape, under {@code cgformat:shaders/}. */
+    private static final List<String> SHAPES = List.of("opaque", "masked", "translucent", "glow", "haze", "waves",
+            "sparks", "keywords", "scene_in", "bits", "volume", "post_chain");
 
     private static ShadercGlslCompiler compiler, bare;
 
@@ -78,21 +70,6 @@ public class MaterialFormatTest {
     }
 
     @Test
-    public void eachShapeMeansWhatItsOldFormMeant() {
-        for (String[] pair : PAIRS) {
-            CgParsedShader now = parse(path(pair[0])), was = parse(path(pair[1]));
-            String what = pair[0] + ": ";
-            boolean sameBlend = true;
-            if (pair.length > 2) {
-                was = was.withState(state(pair[2]), pair[1]);
-                now = now.withState(state(pair[3]), pair[0]);
-                sameBlend = pair[2].equals(pair[3]);
-            }
-            assertEquals(what + "differs", List.of(), FormatEquivalence.differences(was, now, sameBlend));
-        }
-    }
-
-    @Test
     public void aFactoryFadesWhatTheMaterialAddsAndStartsItsSurface() {
         CgParsedPass forward = parse(path("faded")).passes().get(0);
         String body = forward.fragmentBody();
@@ -109,13 +86,13 @@ public class MaterialFormatTest {
         // and docs/MATERIAL_FORMAT.md's examples, so the guide compiles as written
         List<String> shapes = new ArrayList<>(List.of("puff", "wobble", "faded","guide/glass", "guide/moss", "guide/haze",
                 "guide/sparks", "guide/shell", "guide/desaturate", "guide/soft_glow", "guide/pill", "guide/shimmer"));
-        for (String[] pair : PAIRS) shapes.add(pair[0]);
+        shapes.addAll(SHAPES);
         for (String shape : shapes) programs += build(path(shape), failures);
         assertTrue(String.join(System.lineSeparator(), failures), failures.isEmpty());
-        assertTrue("built " + programs, programs > PAIRS.length);
+        assertTrue("built " + programs, programs > SHAPES.size());
     }
 
-    /** P2.5 F5's done-when: every engine shader written in the format builds, every pass and keyword variant. */
+    /** Every engine shader builds, every pass and keyword variant: one not in the format fails naming its #domain line. */
     @Test
     public void everyEngineShaderInTheFormatBuilds() throws Exception {
         URL root = MaterialFormatTest.class.getClassLoader().getResource("assets/crystalgraphics/shaders");
@@ -128,7 +105,6 @@ public class MaterialFormatTest {
              Stream<Path> files = Files.walk(jar != null ? jar.provider().getPath(uri) : Paths.get(uri))) {
             Path dir = jar != null ? jar.provider().getPath(uri) : Paths.get(uri);
             for (Path f : (Iterable<Path>) files.filter(p -> p.toString().endsWith(".shader"))::iterator) {
-                if (!inFormat(Files.readString(f))) continue;
                 shaders++;
                 build("crystalgraphics:shaders/" + dir.relativize(f).toString().replace('\\', '/'), failures);
             }
@@ -162,16 +138,6 @@ public class MaterialFormatTest {
             failures.add(path + ": the generated depth pass did not build (see log)");
         }
         return programs;
-    }
-
-    /** Whether a file is in the material format: its first line past comments a {@code #domain}. */
-    private static boolean inFormat(String source) {
-        for (String line : source.split("\n")) {
-            String t = line.strip();
-            if (t.isEmpty() || t.startsWith("//")) continue;
-            return t.startsWith("#domain");
-        }
-        return false;
     }
 
     /** Every combination of up to six keywords; past that each alone, and none. */
@@ -250,10 +216,6 @@ public class MaterialFormatTest {
     public void aPostFileSaysWhereItDraws() {
         assertEquals("BEFORE_TRANSLUCENCY", parse(path("crystalgraphics:shaders/post/height_fog")).postLocation());
         assertEquals(CgMaterialDomain.POST, parse(path("post_chain")).domain());
-    }
-
-    private static CgMaterialState state(String blend) {
-        return CgMaterialState.builder().blend(CgBlendMode.valueOf(blend)).build();
     }
 
     private static List<String> fieldNames(CgParsedPass pass) {

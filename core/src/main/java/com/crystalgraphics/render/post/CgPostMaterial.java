@@ -43,33 +43,20 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
  * }</pre>
  *
  * <pre>{@code
- * #type none
- * #include "crystalgraphics:shaders/lib/post/post_material.glsl"
- * Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.001" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
- * Queue = "Overlay"
- * struct v2f { vec2 uv; };
- * Pass {
- *     RenderState { Blend OFF DepthTest ALWAYS DepthWrite OFF Cull OFF }
- *     void vertex(out v2f o) { o.uv = post_fullscreen_uv(CG_VERTEX_ID); gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0); }
- *     void fragment(in v2f i, out vec4 fragColor) {
- *         vec3 scene = CG_SCENE_COLOR(i.uv).rgb;
- *         fragColor = vec4(mix(scene, thermal(scene), POST_WEIGHT), 1.0);
- *     }
- * }
+ * // mymod:shaders/post/thermal.shader
+ * #domain post
+ * Material { Location AFTER_COMPOSITE }
+ * void surface(in CgScreen i, inout CgPostSurface s) { s.color = mix(s.color, thermal(s.color), POST_WEIGHT); }
  * }</pre>
  *
- * <p>Several passes, as CC2's screen filters draw (a blur at half size, chained, then composited): every pass but
- * the last draws into a texture of its own, a share of the screen, which each pass after it reads through the
- * {@code sampler2D} it names. The last pass draws over the scene.
+ * <p>Several steps, as CC2's screen filters draw (a blur at half size, chained, then composited): every step but the
+ * last draws into a texture of its own, a share of the screen, which each step after it reads by name. The last draws
+ * over the scene.
  *
  * <pre>{@code
- * Properties {
- *     _Half ("The scene at half size", sampler2D) = "black"
- *     _Blur ("Blurred", sampler2D) = "black"
- * }
- * Pass { Tags { "Name" = "Down" "Target" = "_Half" "Scale" = "0.5" } ... fragColor = CG_SCENE_COLOR(i.uv); }
- * Pass { Tags { "Name" = "Blur" "Target" = "_Blur" "Scale" = "0.5" } ... fragColor = blur(_Half, i.uv); }
- * Pass { Tags { "Name" = "Over" } ... fragColor = vec4(texture(_Blur, i.uv).rgb, POST_WEIGHT * _Alpha); }
+ * Step half { Target RGBA16_FLOAT  Scale 0.5  void surface(in CgScreen i, inout CgPostSurface s) { s.color = CG_SCENE_COLOR(i.uv).rgb; } }
+ * Step blur { Target RGBA16_FLOAT  Scale 0.5  void surface(in CgScreen i, inout CgPostSurface s) { s.color = blurred(i.uv); } }   // CG_STEP(half, uv) around uv
+ * Step over { void surface(in CgScreen i, inout CgPostSurface s) { s.color = CG_STEP(blur, i.uv).rgb; s.opacity = POST_WEIGHT; } }
  * }</pre>
  *
  * <ul>
@@ -78,14 +65,11 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
  *       {@code AFTER_WORLD} draws into the scene, before every look: linear HDR.
  *       {@code AFTER_COMPOSITE} draws over the final picture, in the target's encoding. {@code BEFORE_COMPOSITE} is
  *       refused: it feeds the composite.</li>
- *   <li>A shader reading {@code cg_SceneColor} or {@code cg_DepthBuffer} gets the target as it stands; tag it
- *       {@code "ColorSpace" = "Target"} so its colour is written as read, and with the {@code "SceneColorMargin"} it
- *       samples past its own pixel (0.001 for its own alone). A pass into a target reads the scene the same way.</li>
+ *   <li>A material reading the scene ({@code CG_SCENE_COLOR}, {@code CG_SCENE_EYE_DEPTH}) gets the target as it stands;
+ *       {@code Material { SceneColorMargin }} says how far past its own pixel it samples (0.001 for its own alone).</li>
  *   <li>The weight is per draw ({@code POST_WEIGHT}), so animating it leaves the material's properties alone.</li>
- *   <li>A pass's target is its {@code "Format"} (RGBA16F by default), cleared before it draws. {@code CG_RESOLUTION} is still the screen's: a pass
- *       reading its input's texels asks {@code textureSize}.</li>
- *   <li>{@code Tags { "Emission" = "_Mask" }} binds the scene, where glows are added, to the {@code sampler2D} it
- *       names: the mask a glare reads.</li>
+ *   <li>A step's texture is its {@code Target} format, cleared before it draws. {@code CG_RESOLUTION} is still the
+ *       screen's: a step reading its input's texels asks {@code CG_STEP_SIZE}.</li>
  * </ul>
  */
 public final class CgPostMaterial implements CgPostEffect {

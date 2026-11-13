@@ -181,7 +181,7 @@ public final class CgMaterial implements CgMaterialInterface {
      * CgMaterial m = base.keyword("WITH_MASK", rounded).keyword("RADIAL", radial);
      * }</pre>
      *
-     * @throws IllegalArgumentException if {@code on} and its shader declares no {@code #pragma cg_feature name}
+     * @throws IllegalArgumentException if {@code on} and its shader declares no keyword {@code name}
      */
     public CgMaterial keyword(String name, boolean on) {
         return proxy.keyword(name, on);

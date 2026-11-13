@@ -1,6 +1,6 @@
 // Texel antialiasing for pixel art -- nearest everywhere, one screen pixel of blend at a texel
 // boundary. A TECHNIQUE rather than an environment: it reads no instance buffer, so it is
-// #included where it is wanted rather than injected by a cg_use pragma, like sdf.glsl and
+// #included where it is wanted rather than injected for an engine buffer, like sdf.glsl and
 // stroke.glsl beside it. The reconstruction width arrives as an argument for the same reason --
 // a caller with the quad environment passes CG_QUAD_EDGE_FILTER.
 //

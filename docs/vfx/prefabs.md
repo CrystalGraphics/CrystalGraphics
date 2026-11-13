@@ -384,7 +384,7 @@ world.draw(goku);
   what is hidden (`render/world/CLAUDE.md`, *CustomDepth*).
 
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming
-where they start. Any `#type spatial` material skins it with no code of its own: the mesh's format picks the material's skinned
+where they start. Any material on the `Mesh` factory skins it with no code of its own: the mesh's format picks the material's skinned
 variant (Unreal's GPU skin vertex factory), in every pass the material draws.
 
 ```java

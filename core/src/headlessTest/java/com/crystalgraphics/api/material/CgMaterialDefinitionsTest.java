@@ -29,55 +29,47 @@ public class CgMaterialDefinitionsTest {
 
     private static final String FX = "test:shaders/fx.shader";
     private static final String SOURCE = String.join("\n",
-            "#type spatial",
-            "#pragma cg_use rows",
-            "#pragma cg_feature SOFT",
-            "#pragma cg_feature GLOW",
-            "Queue = \"Transparent\"",
+            "#domain surface",
+            "Material { BlendMode Translucent  PerDrawValues On }",
+            "Keywords { SOFT (\"Soft\")  GLOW (\"Glow\") }",
             "Properties {",
             "    _Color (\"Colour\", color) = (1, 1, 1, 1)",
             "    _Bands (\"Bands\", color[3]) = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)",
             "    _Speed (\"Speed\", float) = 1.0",
             "    _MainTex (\"Main\", sampler2D) = \"white\"",
             "}",
-            "struct v2f { vec2 uv; };",
-            "Pass {",
-            "    void vertex(out v2f o) { o.uv = cg_TexCoord0; gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); }",
-            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color * _Bands(1) * _Speed; }",
+            "void surface(in v2f i, inout CgSurface s) {",
+            "    vec4 c = _Color * _Bands(1) * _Speed;",
+            "    s.baseColor = c.rgb;",
+            "    s.opacity = c.a;",
             "}");
 
     private static final String POST = "test:shaders/post.shader", DECAL = "test:shaders/decal.shader";
+    /** A decal's archetype: no renderer draws #domain decal yet, so it is a masked surface this stub calls a decal. */
     private static final String DECAL_SOURCE = String.join("\n",
-            "#type spatial",
-            "#pragma cg_feature CELL_TONE",
-            "Tags { \"Domain\" = \"Decal\" }",
+            "#domain surface",
+            "Material { BlendMode Masked  MaskClip _Clip }",
+            "Keywords { CELL_TONE (\"Cell tone\") }",
             "Properties {",
             "    _Clip (\"Clip\", float) = 0.5",
             "}",
-            "Pass {",
-            "    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); }",
-            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Clip); }",
-            "}");
+            "void surface(in v2f i, inout CgSurface s) { s.opacityMask = _Clip; }");
 
     private static final String MESH_SPECK = "test:shaders/mesh_speck.shader", SPRITE = "test:shaders/sprite.shader";
 
-    /** A particle program with no usage keyword: {@code #type} decides which factory places it. */
-    private static String particle(String type) {
+    /** A particle material naming no usage keyword: its factory decides how it is placed. */
+    private static String particle(String factory) {
         return String.join("\n",
-                "#type " + type,
-                "#pragma cg_use particle",
-                "Queue = \"Transparent\"",
-                "Pass {",
-                "    void vertex(out v2f o) { gl_Position = cg_material_project(cg_material_vertex()); }",
-                "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }",
-                "}");
+                "#domain surface",
+                "Material { BlendMode Translucent  ShadingModel Unlit  VertexFactory " + factory + " }",
+                "void surface(in v2f i, inout CgSurface s) { s.baseColor = cg_Particle.color.rgb; }");
     }
 
     static final CgMaterialArchetypes ARCHETYPES = new CgMaterialArchetypes() {
         @Override
         public CgParsedShader parse(String path) {
-            if (path.equals(MESH_SPECK)) return CgShaderParser.parse(particle("spatial"), path);
-            if (path.equals(SPRITE)) return CgShaderParser.parse(particle("none"), path);
+            if (path.equals(MESH_SPECK)) return CgShaderParser.parse(particle("MeshParticles"), path);
+            if (path.equals(SPRITE)) return CgShaderParser.parse(particle("Sprites"), path);
             if (path.equals(FX) || path.equals(POST)) return CgShaderParser.parse(SOURCE, path);
             if (path.equals(DECAL)) return CgShaderParser.parse(DECAL_SOURCE, path);
             throw new IllegalArgumentException(path + " is not a shader");
@@ -85,8 +77,8 @@ public class CgMaterialDefinitionsTest {
 
         @Override
         public CgMaterialDomain domain(String path) {
-            return path.equals(POST) ? CgMaterialDomain.POST : path.equals(DECAL)
-                    ? CgMaterialDomain.ofSource(DECAL_SOURCE) : CgMaterialDomain.SURFACE;
+            return path.equals(POST) ? CgMaterialDomain.POST
+                    : path.equals(DECAL) ? CgMaterialDomain.DECAL : CgMaterialDomain.SURFACE;
         }
     };
 

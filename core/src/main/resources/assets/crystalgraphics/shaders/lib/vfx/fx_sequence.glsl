@@ -2,7 +2,7 @@
 // from the baked clips (CgVfxClipAtlas). A shader drawing on that kind declares FX_ON_SEQUENCE, includes this, declares
 // the baked clips in its Buffers { } and places its vertices by the node:
 //
-//     #pragma cg_feature FX_ON_SEQUENCE
+//     Material { VertexFactory VfxMesh, Sequence }   // FX_ON_SEQUENCE where Sequence draws it
 //     #include "crystalgraphics:shaders/lib/vfx/fx_sequence.glsl"
 //     Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }
 //     ...

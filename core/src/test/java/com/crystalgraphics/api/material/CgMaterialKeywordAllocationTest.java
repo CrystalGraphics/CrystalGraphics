@@ -14,15 +14,11 @@ import static org.junit.Assert.assertSame;
 public class CgMaterialKeywordAllocationTest {
 
     private static final String SOURCE = String.join(System.lineSeparator(),
-            "#type spatial",
-            "#pragma cg_feature K0", "#pragma cg_feature K1", "#pragma cg_feature K2", "#pragma cg_feature K3",
-            "#pragma cg_feature K4", "#pragma cg_feature K5", "#pragma cg_feature K6", "#pragma cg_feature K7",
-            "#pragma cg_feature K8", "#pragma cg_feature K9", "#pragma cg_feature K10",
+            "#domain surface",
+            "Keywords { K0 (\"K0\")  K1 (\"K1\")  K2 (\"K2\")  K3 (\"K3\")  K4 (\"K4\")  K5 (\"K5\")  K6 (\"K6\")",
+            "           K7 (\"K7\")  K8 (\"K8\")  K9 (\"K9\")  K10 (\"K10\") }",
             "Properties { _Color (\"Color\", color) = (1, 1, 1, 1) }",
-            "Pass {",
-            "    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); }",
-            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color; }",
-            "}");
+            "void surface(in v2f i, inout CgSurface s) { s.baseColor = _Color.rgb; }");
 
     @Test
     public void aVariantPastEightKeywordsResolvesWithoutAllocating() {

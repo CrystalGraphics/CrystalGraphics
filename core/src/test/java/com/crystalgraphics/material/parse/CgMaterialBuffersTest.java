@@ -50,7 +50,7 @@ public class CgMaterialBuffersTest {
 
     @Test
     public void parsesBuffersAndTheStructsTheyName() {
-        CgParsedShader parsed = CgShaderParser.parse(SPARKS, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(SPARKS, "test");
         assertEquals(2, parsed.buffers().size());
         CgBufferDecl sparks = parsed.buffer("SPARKS");
         assertEquals("Spark", sparks.element());
@@ -87,19 +87,19 @@ public class CgMaterialBuffersTest {
     @Test
     public void aVertexPlacedFromABufferKeepsItsBodyInTheDepthPass() throws Exception {
         path(CgCapabilities.ShaderBufferPath.SSBO_GL43);
-        CgParsedShader parsed = CgShaderParser.parse(SPARKS, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(SPARKS, "test");
         CgMaterialShaderCompiler.CompiledSource depth = CgMaterialShaderCompiler.compileDepthAutoGen(parsed,
                 parsed.passes().get(0), Collections.emptyList(), null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
         assertTrue(depth.vertexSource().contains("SPARKS(CG_DRAW_INSTANCE)"));
     }
 
     private static CgMaterialShaderCompiler.CompiledSource compile(String source) {
-        return CgMaterialShaderCompiler.compile(CgShaderParser.parse(source, "test"), Collections.emptyList());
+        return CgMaterialShaderCompiler.compile(CgShaderParser.parseLowered(source, "test"), Collections.emptyList());
     }
 
     private static void refuses(String materialScope, String says) {
         try {
-            CgShaderParser.parse(shader(materialScope), "test");
+            CgShaderParser.parseLowered(shader(materialScope), "test");
             fail("parsed: " + materialScope);
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(says));

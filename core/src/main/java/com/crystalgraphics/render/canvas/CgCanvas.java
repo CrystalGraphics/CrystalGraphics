@@ -75,7 +75,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *
  * <ul>
  *   <li>An item draws under its material as it is when the item is submitted: a value set between two items applies
- *       from the second. {@code #pragma cg_use quad} (or {@code curve}) in the material's shader declares the record.</li>
+ *       from the second. The material's primitive (Quad, Curve or Text) binds the record.</li>
  *   <li>Every state call -- target, constants, view, scissor -- lands what was drawn before it under the old state.</li>
  *   <li>A chunk takes the scissor, the constants and the view set when it lands; nothing is read from GL.</li>
  *   <li>Its passes are {@link CgOrder#LOOKBACK}: a draw moves back past draws it does not overlap, by the bounds each

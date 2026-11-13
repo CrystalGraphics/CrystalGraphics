@@ -121,32 +121,21 @@ CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:glass",
 The material it draws with:
 
 ```glsl
-// A transparent glass material with a tint
-#type spatial                                   // Meshes with an XYZ position, UV and normal per vertex
-Tags { "RenderType" = "Transparent" }           // see-through, so it casts no shadow
-Queue = "Transparent"                           // drawn after solid things, back to front
+// mymod:shaders/glass.shader: a transparent glass material with a tint
+#domain surface                                 // a surface in the world, drawn on any mesh
+Material { BlendMode Translucent }              // see-through: mixed over what is behind by its opacity
 
 Properties {                                    // values the game can set (vec4 above)
     _Tint ("Tint", color) = (0.6, 0.85, 1.0, 0.4)   // pale blue, 40% opaque, unless set otherwise
 }
 
-Pass {
-    RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA     // mix over what is behind by the colour's alpha
-        DepthWrite OFF                          // never hide what is drawn behind it later
-    }
-    struct v2f { vec2 uv; };                    // what the vertex stage hands the fragment stage
-
-    void vertex(out v2f o) {                    // once per vertex
-        o.uv = cg_TexCoord0;                    // pass the mesh's UV along
-        gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);   // place it on screen
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {   // once per pixel
-        fragColor = _Tint;                      // the tint, lit by the world's light after
-    }
+void surface(in v2f i, inout CgSurface s) {     // once per pixel: what the surface looks like
+    s.baseColor = _Tint.rgb;                    // the tint, lit by the world's light after
+    s.opacity = _Tint.a;
 }
 ```
+
+The format, every domain and every output: [`docs/MATERIAL_FORMAT.md`](docs/MATERIAL_FORMAT.md).
 
 Fire a Kamehameha, then flash the screen around where it lands:
 

@@ -45,14 +45,14 @@ public class CgSurfaceLitTest {
     }
 
     private static String fragmentSource(String source) {
-        return CgMaterialShaderCompiler.compile(CgShaderParser.parse(source, "test:surface"), Collections.emptyList())
+        return CgMaterialShaderCompiler.compile(CgShaderParser.parseLowered(source, "test:surface"), Collections.emptyList())
                 .fragmentSource();
     }
 
     @Test
     public void aSurfaceMaterialIsLitByTheNormalItNames() {
         String source = shader("Surface", "Transparent", "CG_SURFACE_NORMAL(normalize(i.n)); fragColor = vec4(1.0, 0.5, 0.2, 0.5);");
-        assertTrue(CgShaderParser.parse(source, "test:surface").surfaceLit());
+        assertTrue(CgShaderParser.parseLowered(source, "test:surface").surfaceLit());
         String fragment = fragmentSource(source);
         assertTrue(fragment, fragment.contains("#define CG_SURFACE_LIT 1"));
         assertTrue(fragment, fragment.contains("cg_LitSurface(_cg_fragColor, _cg_surfaceNormal)"));
@@ -78,9 +78,9 @@ public class CgSurfaceLitTest {
     @Test
     public void aSurfaceMaterialWithoutANormalOrOpaqueFailsNamingWhy() {
         CgShaderParseException e = assertThrows(CgShaderParseException.class,
-                () -> CgShaderParser.parse(shader("Surface", "Transparent", "fragColor = vec4(1.0);"), "test:surface"));
+                () -> CgShaderParser.parseLowered(shader("Surface", "Transparent", "fragColor = vec4(1.0);"), "test:surface"));
         assertTrue(e.getMessage(), e.getMessage().contains("CG_SURFACE_NORMAL"));
-        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(
+        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(
                 shader("Surface", "Geometry", "CG_SURFACE_NORMAL(i.n); fragColor = vec4(1.0);"), "test:surface"));
         assertTrue(e.getMessage(), e.getMessage().contains("transparent"));
     }

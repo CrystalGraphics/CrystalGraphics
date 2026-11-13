@@ -117,7 +117,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *   <li>A mesh with no bounds (a format whose positions are not floats) is never culled.</li>
  *   <li>A material is lit by the host's lightmap at {@code CG_OBJECT_LIGHT} and fogged unless its shader is tagged
  *       {@code "Lighting" = "Unlit"}. The light is the world's at {@link Draw#at}, read at {@link Draw#submit}.</li>
- *   <li>A material with a {@code "LightMode" = "Emissive"} pass glows: its glow is light added into the HDR scene
+ *   <li>A material writing {@code s.emissive} glows: its glow is light added into the HDR scene
  *       ({@code CgFrameKeys.SCENE}), where what draws in front covers it, and bloom takes what passes white.</li>
  *   <li>A transparent draw marked {@link Draw#halfResolution()} draws at half the target's size before the transparent
  *       pass ({@link #halfResolution(boolean)} turns it off): light that adds is added over the target, depth-aware; a

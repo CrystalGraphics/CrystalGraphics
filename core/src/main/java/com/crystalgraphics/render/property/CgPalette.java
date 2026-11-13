@@ -14,7 +14,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * A recording's property trees as a frame executes them: every spatial node's affine into a raster pass's target,
  * with the inverse a clip reads from {@code gl_FragCoord}, and every effect node's opacity — the recorded values as a
  * {@link CgPropertyValues} changes them. The executor prepares it per raster pass ({@link #pass}) and binds it; a
- * shader reads it through {@code #pragma cg_use palette}, which {@code quad}, {@code curve} and {@code clip} bring.
+ * shader reads it through the {@code palette} engine buffer, which {@code quad}, {@code curve} and {@code clip} bring.
  *
  * <pre>{@code
  * Quad q = quads.quad().at(x, y).size(w, h).node(scrollContent, fade);

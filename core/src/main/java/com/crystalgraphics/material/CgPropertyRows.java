@@ -9,7 +9,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
- * Per-draw property values: a frame's rows of vec4s, which a material declaring {@code #pragma cg_use rows} reads its
+ * Per-draw property values: a frame's rows of vec4s, which a material setting {@code PerDrawValues On} reads its
  * numbers from in place of its own, property by property (Godot's instance uniforms, made per binding). A draw names
  * where its row starts in {@code CG_OBJECT_CUSTOM3.x} ({@code CG_PROPERTY_ROW}); the material says where in that row
  * each property is, through the int the parser gives it ({@code _cg_at<name>}, -1 for the material's own value).

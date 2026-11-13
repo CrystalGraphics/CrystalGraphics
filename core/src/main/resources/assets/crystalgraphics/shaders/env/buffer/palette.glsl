@@ -1,7 +1,7 @@
 // CgPalette's shader environment: each spatial node's affine into the bound raster pass's target, and each effect
 // node's opacity.
 //
-// INJECTED BY `#pragma cg_use palette`, which `quad`, `curve` and `clip` require, so their macros can read it -- a material
+// INJECTED for the `palette` engine buffer, which `quad`, `curve` and `clip` require, so their macros can read it -- a material
 // never declares it itself. Compiled into every stage; fragment-only code guards itself against the vertex and compute stages.
 //
 // A record's `node` field packs both of its nodes: spatial + 4096 * effect (CgPalette.pack). Node 0 is the pass's own

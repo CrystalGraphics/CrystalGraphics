@@ -227,7 +227,7 @@ public final class CgTextStyle {
             if (!(deps.definition(CgLookKinds.MATERIAL, material) instanceof CgMaterialDefinition d)) {
                 throw new CgAssetException(at + ": material " + material + " did not compile");
             }
-            d.requireDomain(CgMaterialDomain.TEXT, at);
+            d.requireDomain(CgMaterialDomain.UI, at);
             return CgTextPaint.material(material).resolved(d);
         }
         Map<?, ?> g = (Map<?, ?>) m.get("gradient");

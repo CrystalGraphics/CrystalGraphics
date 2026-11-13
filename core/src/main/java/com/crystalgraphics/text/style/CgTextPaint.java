@@ -21,7 +21,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
  * CgTextPaint white = CgTextPaint.colour(0xFFFFFFFF);
  * CgTextPaint gold = CgTextPaint.gradient(CgTextPaint.Space.GLYPH, 90f,     // top to bottom of each glyph
  *         0f, 0xFFFFF0A0, 1f, 0xFFE09000);                                   // stops: t, then colour
- * CgTextPaint shimmer = CgTextPaint.material(shimmerDefinition);              // a Text-domain material
+ * CgTextPaint shimmer = CgTextPaint.material(shimmerDefinition);              // a UI material on Primitive Text
  * }</pre>
  *
  * <ul>
@@ -108,19 +108,19 @@ public final class CgTextPaint {
                 colours.clone(), null, null);
     }
 
-    /** A Text-domain material by id, as a file names one: the asset loader compiles it with the style. */
+    /** A UI material on Primitive Text by id, as a file names one: the asset loader compiles it with the style. */
     public static CgTextPaint material(String id) {
         return new CgTextPaint(Kind.MATERIAL, 0xFFFFFFFF, Space.RUN, 0f, new float[0], new int[0],
                 Objects.requireNonNull(id, "id"), null);
     }
 
     /**
-     * A Text-domain material already compiled: a style built in Java.
+     * A UI material on Primitive Text already compiled: a style built in Java.
      *
-     * @throws CgAssetException when it is not a Text-domain material
+     * @throws CgAssetException when it is not a UI material
      */
     public static CgTextPaint material(CgMaterialDefinition definition) {
-        definition.requireDomain(CgMaterialDomain.TEXT, "a text paint");
+        definition.requireDomain(CgMaterialDomain.UI, "a text paint");
         return new CgTextPaint(Kind.MATERIAL, 0xFFFFFFFF, Space.RUN, 0f, new float[0], new int[0], definition.id(),
                 definition);
     }

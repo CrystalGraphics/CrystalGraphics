@@ -13,7 +13,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
 /**
  * The boxes a recording's quads are drawn as, by index: a rounded, bordered, flat, textured or nine-slice rectangle, so
  * every one of them is a quad of one pipeline and they batch, where a uniform per box broke the batch at every box.
- * Equal shapes share an entry. A shader reads an entry through {@code #pragma cg_use shape}.
+ * Equal shapes share an entry. A shader reads an entry through the {@code shape} engine buffer, which the Quad primitive binds.
  *
  * <pre>{@code
  * CgShapeTable shapes = recording.shapes();   // one per recording: its quads name its entries
@@ -119,7 +119,7 @@ public final class CgShapeTable {
 
     private final float[] copyScratch = new float[FLOATS];
 
-    /** The table's buffer, for {@code #pragma cg_use shape}. */
+    /** The table's buffer: the {@code shape} engine buffer. */
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()

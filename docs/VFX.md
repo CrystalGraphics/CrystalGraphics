@@ -1024,7 +1024,7 @@ sparkles, ink, rays, rings and skirt, with its own colours (`body`, `hot`, `debr
   component. Past 64 effects playing (`crystalgraphics.vfx.mergeParticlesFrom`) each renderer's material draws as one
   batch for the whole system instead, sorted far to near within itself, so two materials order as wholes. A solid look writes depth (`"Depth" = "Clip"`); soft smoke a depth prepass where it is
   solid (`"Depth" = "Prepass"`); only something soft throughout relies on blending
-  ([`SHADERS.md`](SHADERS.md) § *Depth from a transparent material*).
+  ([`SHADERS.md`](SHADERS.md) § *Depth from a translucent material*).
 - Effects and their emitters' books tick 120 times a second; the GPU steps the particles once a frame, over the
   frame's time, each tick's births at their own moment within it. A particle is drawn where that step left it.
 - A particle always belongs to an effect: one-off particles are a `CgVfxSystemInstance` each. A shared emit call for
@@ -1957,14 +1957,14 @@ hitbox(PART_ARC, CgSphere.of(1.5)).at(originX + x, originY + y, originZ + z).act
 
 ## 20. Writing a material's shader
 
-A VFX material's shader is an ordinary `.shader` material ([`SHADERS.md`](SHADERS.md)) with three additions:
+A VFX material's shader is an ordinary surface material ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md)), drawn by the VFX
+engine's factories (§ 5.2 there):
 
 ```glsl
-#type spatial
-#pragma cg_use rows                                        // its numeric properties readable per draw
-#pragma cg_feature FX_ON_TUBE                              // drawn on a tube slot too, beside a sphere
+#domain surface
 #include "crystalgraphics:shaders/lib/vfx/fx_common.glsl"
-#include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"   // the draw header
+// a sphere (VfxMesh), and a tube slot too (Tube, under FX_ON_TUBE); every number readable per draw
+Material { BlendMode AlphaComposite  ShadingModel Unlit  VertexFactory VfxMesh, Tube  PerDrawValues On }
 
 Properties {
     _Color  ("Its colour; its alpha a strength", color) = (1, 1, 1, 1)      // bound by the renderer
@@ -1973,42 +1973,25 @@ Properties {
     _Reach  ("How far it reaches, in blocks", float) = 1.0
 }
 
-struct v2f { vec3 world; };
-
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthWrite OFF
-    }
-    // void vertex(out v2f o) { ... }: on a tube, FX_ON_TUBE and fx_tube_vertex; on a sphere, CG_OBJECT_TO_WORLD
-    void fragment(in v2f i, out vec4 fragColor) {
-        float strength = _Color.a * FX_PRESENCE;         // every engine shader multiplies its light by its presence
-        fragColor = vec4(_Color.rgb * strength, strength);
-        CG_GLOW(_Color.rgb * strength);                  // what blooms
-    }
-}
-
-// Codeless: its glow, drawn in its own draw
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    RenderState {
-        Blend ONE ONE
-        DepthWrite OFF
-    }
+void surface(in v2f i, inout CgSurface s) {
+    float strength = _Color.a;              // an ending's fade is the factory's (cg_Vfx.presence), applied after
+    s.baseColor = _Color.rgb * strength;    // AlphaComposite: premultiplied
+    s.opacity = strength;
+    s.emissive = _Color.rgb * strength;     // what blooms
 }
 ```
 
-- **`cg_use rows`** makes every numeric property (float, vector, colour, and arrays of vec4 or colour) read either the
-  material's value or the draw's row, whichever the renderer chose. Nothing changes in how the shader reads it.
-- **The header** (`fx_draw.glsl`, `CG_OBJECT_CUSTOM3`): `FX_ROW`, `FX_AGE` (the effect's age), `FX_SEED`,
-  `FX_PRESENCE` (1 unless an ending fades it). The first three customs are the slot kind's (`CgVfxSlot.Kind`).
+- **`PerDrawValues On`** makes every numeric property (float, vector, colour, and arrays of vec4 or colour) read either
+  the material's value or the draw's row, whichever the renderer chose. Nothing changes in how the shader reads it.
+- **The header** (`fx_draw.glsl`, `cg_Vfx`): the effect's age, seed and presence (1 unless an ending fades it); the
+  factory reads the slot kind's customs (`CgVfxSlot.Kind`) and fades what the material adds by the presence.
 - **Name colours for what they are** (`_Core`, `_Shell`, `_Hot`); a renderer binds each to a parameter. Nothing binds
   by name.
-- **One shader on several geometries**: declare `FX_ON_TUBE`, `FX_ON_MESH` and so on as features and branch on them.
-  `banded.shader` (`shaders/vfx/toon/`) and Dragon Forge's `flat.shader` draw on a tube and a sphere.
-- **Colour is authored in sRGB, above 1 allowed**, and a glowing material names its glow (`CG_GLOW`) and ends with a
-  codeless Emissive pass. The glow, depth and distortion rules: `vfx/CLAUDE.md` § *Rules*.
+- **One shader on several geometries**: list the factories (`VertexFactory VfxMesh, Tube`); each after the first
+  compiles under its usage keyword (`FX_ON_TUBE`), which the code branches on. `banded.shader` (`shaders/vfx/toon/`)
+  and Dragon Forge's `sleeves.shader` draw on a tube and a sphere.
+- **Colour is authored in sRGB, above 1 allowed**, and a glowing material writes `s.emissive`, which the engine folds
+  into its colour's draw or draws apart. The glow, depth and distortion rules: `vfx/CLAUDE.md` § *Rules*.
 - **Libraries** in `shaders/lib/vfx/`: `fx_tube` (the path, tube placement), `fx_volume` (tracing the view ray
   through a tube's rings), `fx_bands` (flat bands by distance from an axis), `fx_ribbon`, `fx_lightning`,
   `fx_particle`, `fx_billow`, `fx_ring`, `fx_haze`; each listed in `vfx/CLAUDE.md`.

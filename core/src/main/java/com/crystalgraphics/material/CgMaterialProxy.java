@@ -175,7 +175,7 @@ public final class CgMaterialProxy {
     private CgParsedShader pipelinesParse;
 
     /**
-     * Active feature-flag keywords declared via {@code #pragma cg_feature}.
+     * Its enabled keywords, of those its shader declares ({@code Keywords { }}).
      * Only names present in {@link CgParsedShader#featureNames()} are accepted.
      */
     private final Set<String> enabledKeywords = new LinkedHashSet<>();
@@ -289,7 +289,7 @@ public final class CgMaterialProxy {
      * The material of its family with keyword {@code name} on or off: made at the first ask with this one's values,
      * then the same. Allocates nothing once made.
      *
-     * @throws IllegalArgumentException if {@code on} and its shader declares no {@code #pragma cg_feature name}
+     * @throws IllegalArgumentException if {@code on} and its shader declares no keyword {@code name}
      */
     public CgMaterial keyword(String name, boolean on) {
         checkNotDeleted();
@@ -299,7 +299,7 @@ public final class CgMaterialProxy {
         int bit = declared.indexOf(name);
         if (bit < 0) {
             if (!on) return material;
-            throw new IllegalArgumentException("Keyword '" + name + "' is not declared as #pragma cg_feature in "
+            throw new IllegalArgumentException("Keyword '" + name + "' is not in the Keywords of "
                     + this);
         }
         if (enabledKeywords.contains(name) == on) return material;
@@ -312,9 +312,12 @@ public final class CgMaterialProxy {
     private void refuseSecondValue(String name) {
         CgParsedShader parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
         if (parsed == null || parsed.domain() == null) return;
-        for (List<String> one : parsed.permutations().dimensions()) {
+        List<List<String>> dimensions = parsed.permutations().dimensions();
+        for (int d = 0; d < dimensions.size(); d++) {   // indexed: keyword() allocates nothing once made
+            List<String> one = dimensions.get(d);
             if (one.size() < 2 || !one.contains(name)) continue;
-            for (String other : one) {
+            for (int k = 0; k < one.size(); k++) {
+                String other = one.get(k);
                 if (!other.equals(name) && enabledKeywords.contains(other)) {
                     throw new IllegalArgumentException("Keyword '" + name + "' and '" + other + "' are two values of one"
                             + " one-of in " + this + ": turn '" + other + "' off first");
@@ -533,7 +536,7 @@ public final class CgMaterialProxy {
     // ── Property bindings ─────────────────────────────────────────────────────
 
     /**
-     * The properties its shader declares, and under {@code cg_use rows} the hidden row slots the parser adds, from the
+     * The properties its shader declares, and under {@code PerDrawValues On} the hidden row slots the parser adds, from the
      * parse alone: what a binder checks a name and its kind against. Empty while the source does not parse.
      *
      * <pre>{@code
@@ -546,7 +549,7 @@ public final class CgMaterialProxy {
         return propStore == null ? Collections.emptyList() : propStore.all();
     }
 
-    /** The keywords its shader declares ({@code #pragma cg_feature}), from the parse alone. */
+    /** The keywords its shader declares ({@code Keywords { }}), from the parse alone. */
     public List<String> declaredKeywords() {
         checkNotDeleted();
         if (cgMaterialShader != null) cgMaterialShader.ensureParsed();
@@ -554,7 +557,7 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * The keywords a renderer switches on its shader at runtime ({@code #pragma cg_permutation}), from the parse alone:
+     * The keywords a renderer switches on its shader at runtime (its {@code switched} keywords and one-ofs), from the parse alone:
      * every combination a precache of the shader builds.
      */
     public CgPermutationDomain permutations() {
@@ -580,7 +583,7 @@ public final class CgMaterialProxy {
     // ── Keyword API ───────────────────────────────────────────────────────────
 
     /**
-     * Enables a keyword declared via {@code #pragma cg_feature NAME} on a material being made, before anything draws
+     * Enables a keyword its shader declares ({@code Keywords { NAME }}) on a material being made, before anything draws
      * it or is made of it: the registry's, building a definition's material. Everyone else asks
      * {@link #keyword(String, boolean)}. Parses, compiles nothing.
      *
@@ -598,7 +601,7 @@ public final class CgMaterialProxy {
         List<String> declared = getDeclaredFeatureNames();
         if (!declared.contains(name)) {
             throw new IllegalArgumentException(
-                    "Keyword '" + name + "' is not declared as #pragma cg_feature in this shader");
+                    "Keyword '" + name + "' is not in this shader's Keywords");
         }
         enabledKeywords.add(name);
     }
@@ -1130,8 +1133,8 @@ public final class CgMaterialProxy {
      * Returns the render state for the given pass variant from the last successful compile.
      * Falls back to the per-instance {@code renderState} field for forTest materials.
      *
-     * <p>For FORWARD: resolves via the first Forward-lit pass. For the others: resolves by
-     * LightMode tag name. Returns {@link CgRenderState#DEFAULT} when the pass is not found.</p>
+     * <p>For FORWARD: resolves via the first Forward pass. For the others: by the variant's pass name
+     * ({@link CgRenderPassVariant#lightModeName()}). Returns {@link CgRenderState#DEFAULT} when the pass is not found.</p>
      *
      * @param variant the pass variant whose render state to retrieve; must not be null
      * @return render state for the pass; never {@code null}
@@ -1191,7 +1194,7 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * Whether its light follows the draw's exposure ({@code _cg_Exposure}): a {@code cg_use rows} shader whose Forward
+     * Whether its light follows the draw's exposure ({@code _cg_Exposure}): a {@code PerDrawValues On} shader whose Forward
      * colour is {@code "ColorSpace" = "Linear"}, or that has an Emissive pass. A parse, never a compile.
      *
      * <pre>{@code

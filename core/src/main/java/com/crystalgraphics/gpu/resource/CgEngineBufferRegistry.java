@@ -23,7 +23,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
 import com.crystalgraphics.material.CgPropertyRows;
 
 /**
- * Engine-provided shader buffers a {@code .shader} can opt into with {@code #pragma cg_use <token>}.
+ * Engine-provided shader buffers a factory or ui primitive binds for its draws: {@code EngineBuffers { <token> }}.
  *
  * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
  * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
@@ -31,16 +31,8 @@ import com.crystalgraphics.material.CgPropertyRows;
  * that class — only a small minority of shaders draw through {@code CgQuadBatch} — so declaring it
  * everywhere would bind it for shaders that never read it.</p>
  *
- * <p>The alternative that was in use before this registry — every caller remembering to call
- * {@code CgQuadBatch.attachTo(material)} in Java — put the requirement arbitrarily far from the
- * shader that actually creates it, and failed in a way that pointed at the wrong thing entirely: the
- * buffer is only attached on a material's first draw, so anything that compiled the
- * shader earlier (notably a keyword lookup, which parses on the spot when the
- * shader has not been parsed yet) produced GLSL with {@code QUAD_DATA} undeclared. The resulting
- * compile failure left the parsed feature list empty, and surfaced as
- * {@code "Keyword 'X' is not declared as #pragma cg_feature in this shader"} — naming a pragma that
- * was present and correct. Declaring the dependency in the shader removes the ordering question
- * altogether: the buffer is attached as part of parsing, before anything can compile.</p>
+ * <p>The program declares what it binds, so the buffer is attached as part of parsing, before anything can compile:
+ * attached at a material's first draw instead, a keyword lookup compiling earlier read {@code QUAD_DATA} undeclared.</p>
  *
  * <h3>Built-ins are seeded here, by method reference</h3>
  * <p>Providers hold a {@link Supplier}, not a buffer, and the built-in {@code quad} entry below is
@@ -53,7 +45,7 @@ import com.crystalgraphics.material.CgPropertyRows;
  * <p>That laziness is why the table lives here rather than each provider registering from its own
  * static initializer. Self-registration only takes effect once something has touched the provider
  * class, which nothing guarantees before a shader naming the token is parsed — {@code CgGraphicsLifecycle.init}
- * itself compiles {@code text.shader}, which declares {@code cg_use quad}. Fixing that needs an
+ * itself compiles {@code text.shader}, whose primitive binds {@code quad}. Fixing that needs an
  * explicit "initialize this class now" call at exactly the right point in startup, i.e. correctness
  * coupled to init order. Seeding here has no ordering requirement at all: this class initializes on
  * the parser's first lookup, which is precisely when a token is needed.</p>
@@ -123,7 +115,7 @@ public final class CgEngineBufferRegistry {
     private CgEngineBufferRegistry() {}
 
     /**
-     * Registers an engine buffer under {@code token}, usable as {@code #pragma cg_use <token>}.
+     * Registers an engine buffer under {@code token}, which a factory or primitive names in {@code EngineBuffers { }}.
      *
      * <p>Intended for engine subsystems; a mod adding its own shared buffer can use it too, as long
      * as it registers before any shader referencing the token is parsed.</p>
@@ -158,7 +150,7 @@ public final class CgEngineBufferRegistry {
     /**
      * As {@link #register(String, Supplier, String, String, String...)}, with properties every shader declaring the
      * token takes as its own: a {@code Properties { }} body, each name with the reserved {@code _cg_} prefix. Under
-     * {@code cg_use rows} they are row properties like any other, so whoever draws sets them per draw.
+     * {@code PerDrawValues On} they are row properties like any other, so whoever draws sets them per draw.
      *
      * <pre>{@code
      * CgEngineBufferRegistry.registerWithProperties("myfactory", MyBuffer::buffer, "MY_DATA",
@@ -185,12 +177,12 @@ public final class CgEngineBufferRegistry {
     private static void put(Provider provider) {
         for (String required : provider.requires()) {
             if (!PROVIDERS.containsKey(required)) {
-                throw new IllegalStateException("cg_use token '" + provider.token() + "' requires unregistered '"
+                throw new IllegalStateException("engine buffer '" + provider.token() + "' requires unregistered '"
                         + required + "'");
             }
         }
         if (PROVIDERS.putIfAbsent(provider.token(), provider) != null) {
-            throw new IllegalStateException("cg_use token '" + provider.token() + "' is already registered");
+            throw new IllegalStateException("engine buffer '" + provider.token() + "' is already registered");
         }
     }
 
@@ -247,7 +239,7 @@ public final class CgEngineBufferRegistry {
     /**
      * One engine buffer a shader can request.
      *
-     * @param token     the name used in {@code #pragma cg_use <token>}
+     * @param token     the name an {@code EngineBuffers} block uses
      * @param buffer    resolved lazily — see the class doc for why this is not the buffer itself
      * @param macroName the {@code attach()} macro the shader's GLSL refers to (e.g. {@code QUAD_DATA})
      */

@@ -1,24 +1,39 @@
 # Shaders and kernels — `.shader`, `cg_env.glsl`, engine buffers, `.compute`
 
-Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api/material`, `api/shader`, `material`, `material`, `mc/shader` and `compute`. Nothing under `resources/` loads it, since all of it ships: read it before touching a `.shader`, `.compute` or `.glsl` file.
+Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api/material`, `api/shader`, `material`, `mc/shader` and `compute`. Nothing under `resources/` loads it, since all of it ships: read it before touching a `.shader`, `.compute` or `.glsl` file.
 
 > **A shader you draw must be precached.** Name every material, keyword set, pass and kernel you add to
 > `CgPipelinePrecache`, or its first draw shows late and counts `pipeline.missed`. VFX looks, kits and cues, skinned
 > materials and the engine's own passes are precached for you. **[`PRECACHE.md`](PRECACHE.md)** says which is which.
 > Editing a shipped shader also stales the shipped pipeline list (`PRECACHE.md` § *The shipped pipeline list*).
 
-## CrystalShader Material Pipeline
+## Materials
 
-The primary authoring surface of this repo. Most feature work touches these systems.
+A `.shader` is a material. Its first line names its domain, and it says what the surface is, not how to draw it: the
+engine writes the passes, lights and fogs it, and works out what it needs.
 
-### The material format: `#domain` files
+> **Writing one? Read [`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md)**: the guide to the format, every domain, output,
+> property, factory and primitive, with examples. This half of the document is the engine around a material: the
+> reference files, what every program can read, the buffers the engine binds, and what it does with each output.
 
-> **Writing one? Read [`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md)**: the guide, every domain, output, factory and
-> primitive with examples. This section is the summary.
+### The reference shaders: start here
 
-A file whose first line is `#domain` (`surface`, `post`, `ui` or `global`) is in the material format, which replaces
-the one below as every shader is converted. You say what the surface is, not how to draw it: the engine writes the
-passes.
+One file a domain, shipped with the engine and built in every keyword variant by its tests, so each compiles as
+written. Copy the one for what you are making:
+
+| Domain | File | Shows |
+|---|---|---|
+| `surface` | [`crystalgraphics:shaders/reference/surface.shader`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/surface.shader) | A world material: `Material`, a switch and a one-of in `Keywords`, `Properties`, `v2f`, a helper, `vertex()` moving the vertex, `surface()` writing a colour, a mask and a glow |
+| `post` | [`crystalgraphics:shaders/reference/post.shader`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/post.shader) | A post material in two steps: a half-size texture of its own, then a draw onto the scene |
+| `ui` | [`crystalgraphics:shaders/reference/ui.shader`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/ui.shader) | A canvas brush: the element's image, its position across the element, a per-element value |
+| `global` | [`crystalgraphics:shaders/reference/global.shader`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/global.shader) | A raw vertex and fragment pair: one of the renderer's own passes |
+
+```java
+CgMaterial stone = CgMaterial.load("crystalgraphics:shaders/reference/surface.shader").keyword("GLOW", true);
+CgWorldRenderer.get().draw(mesh, stone).at(x, y, z).submit();
+```
+
+### The format in one screen
 
 ```glsl
 #domain surface
@@ -37,119 +52,50 @@ void surface(in v2f i, inout CgSurface s) {
 ```
 
 - **The outputs it names decide its passes**: `emissive` a glow, `refraction` a bend; a translucent material naming
-  neither `baseColor` nor `opacity` draws no colour.
+  neither `baseColor` nor `opacity` draws no colour ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 4.4).
 - **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
   `gl_Position`. `v.normal` is world-space. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns
   `v.world`.
-- **`VertexFactory` is what draws it**: `Mesh` (default), `Procedural`, and the VFX engine's `Sprites`,
-  `MeshParticles` (a particle renderer: `cg_Particle`, Unreal's particle parameters) and `Tube`, `TubeClosed`,
-  `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex is, and `_FxPath` bound for you). Each is a file,
-  `shaders/factories/<Name>.factory`; `VertexFactory mymod:Ribbons` reads `mymod:shaders/factories/Ribbons.factory`
-  (its shape: `CgFormatTemplates`), and `CgVertexFactory.register` adds one built in Java. A ui `Primitive` is
-  `shaders/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach the fragment
-  field by field, only those named:
+- **`VertexFactory` is what draws it**: `Mesh` (the default), `Procedural`, and the VFX engine's `Sprites`,
+  `MeshParticles` (a particle renderer: `cg_Particle`, Unreal's particle parameters), `VfxMesh`, `Billboard`, `Ribbons`,
+  `PathRibbons`, `Sequence` and `Tube`, `TubeClosed`, `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex
+  is, and `_FxPath` bound for you). Each is a file, `shaders/factories/<Name>.factory`; `VertexFactory mymod:Ribbons`
+  reads `mymod:shaders/factories/Ribbons.factory` (§ 5.3), and `CgVertexFactory.register` adds one built in Java. A ui
+  `Primitive` is `shaders/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach
+  the fragment field by field, only those named:
 
-```glsl
-Material { BlendMode Translucent  VertexFactory Sprites }
-void surface(in v2f i, inout CgSurface s) {
-    s.baseColor = cg_Particle.color.rgb;                     // passes the colour, nothing else
-    s.opacity = cg_Particle.color.a * (1.0 - cg_Particle.relativeTime);
-}
-```
-- **No `#pragma`**: `Keywords { }`, `PerDrawValues On` (per-draw values), and `CG_GLOBAL_*` or the world's lights
-  found by name.
-- **No parameter is special by its name**: `MaskClip` is the opacity mask's threshold, `_EmissionColor` and `_Clip`
-  are ordinary parameters.
+  ```glsl
+  Material { BlendMode Translucent  VertexFactory Sprites }
+  void surface(in v2f i, inout CgSurface s) {
+      s.baseColor = cg_Particle.color.rgb;                     // passes the colour, nothing else
+      s.opacity = cg_Particle.color.a * (1.0 - cg_Particle.relativeTime);
+  }
+  ```
+- **No `#pragma`, `Pass`, `Tags` or `Queue`**: switches are `Keywords { }`, per-draw values `PerDrawValues On`, and
+  `CG_GLOBAL_*` parameters or the world's lights are found by name. A file without its `#domain` line fails to load,
+  saying so.
+- **No parameter is special by its name**: `MaskClip` names the opacity mask's threshold, a number or a float property.
+- `#domain post` writes `surface(in CgScreen i, inout CgPostSurface s)`, or one per `Step`; the engine draws the
+  screen. `CgPostMaterial.of(path)` draws it at its `Material { Location ... }`.
+- `#domain ui` writes `surface(in CgUiInput i, inout CgUiSurface s)` on a canvas `Primitive` (`Quad`, `Curve`, `Text`);
+  clip, opacity, the antialiased edge and premultiplying are the engine's. A text style's paint is a ui material on
+  `Primitive Text`.
 - `#domain global` is a raw `RenderState`, `vertex(out v2f o)` and `fragment(in v2f i, out vec4 c)`: the engine's own
   passes.
-- `#domain post` writes `surface(in CgScreen i, inout CgPostSurface s)`, or one per `Step`; the engine draws the
-  screen. `CgPostMaterial.of(path)` draws it at its `Material { Location ... }`:
 
-```glsl
-#domain post
-Material { Location AFTER_COMPOSITE }
-Step half {
-    Target RGBA16_FLOAT  Scale 0.5                           // a CgFormat; every step but the last has one
-    void surface(in CgScreen i, inout CgPostSurface s) { s.color = CG_SCENE_COLOR(i.uv).rgb; }
-}
-Step over {                                                  // the last draws onto the scene
-    void surface(in CgScreen i, inout CgPostSurface s) {
-        s.color = CG_STEP(half, i.uv).rgb;                   // CG_STEP_SIZE(half): its texels
-        s.opacity = 0.5;                                     // naming opacity mixes over the scene
-    }
-}
-```
+### cg_env.glsl — what every program can read
 
-- `#domain ui` writes `surface(in CgUiInput i, inout CgUiSurface s)` on a canvas `Primitive` (`Quad`, `Curve`,
-  `Text`); clip, opacity, the antialiased edge and premultiplying are the engine's, so its canvas state is
-  `PREMULTIPLIED`. `s.color` is straight alpha unless `s.premultiplied`; `s.coverage` replaces the edge.
-
-The whole format, every property and output: [`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md). The rest of this document
-is the old format, which every shader still in it parses as before.
-
-### The `.shader` File Format
-
-**Reference file**: `src/main/resources/assets/crystalgraphics/shaders/example.shader`
-→ Read this file first. Every feature is documented inline with comments.
-
-Structural skeleton (all sections are optional except `#type` and at least one `Pass`):
-
-**`#type <name>`** selects the vertex format by its registered `key`. The compiler resolves the name against `CgVertexFormat.REGISTRY` at parse time and pulls the format's attributes in the generated vertex GLSL: after the `cg_env.glsl` include, the store's words (`CgVertexWords`, set 1 binding 4) and a global per attribute (`vec3 cg_Position;`), which `cg_FetchVertex()` fills from `gl_VertexID` before the material's vertex code runs. A pipeline has no vertex input. Unknown names throw `CgShaderParseException` at parse time listing all registered types.
-
-Built-in types: `spatial` (`CgVertexFormat.SPATIAL` — position, normal, colour and two UV sets, packed in 32 bytes: every mesh a material draws), `pos3_uv2_col4ub`, `pos2_uv2_col4ub`, and `none` (`CgVertexFormat.NONE`, no attributes: every quad, curve and text shader, drawn on `CgMesh.quads(1)`). Custom formats self-register on `CgVertexFormat.build()` under their `debugName` and become immediately usable as a `#type`. A `#pragma cg_use particle` program compiled with `FX_ON_SPRITES` reads no vertex data whatever its `#type`: the sprite factory places it on `CgMesh.quads`.
-
-```glsl
-#type spatial
-#pragma cg_feature NORMAL_MAP         // compile-time keyword; max 31 per shader
-#pragma cg_feature FOG_ON
-#pragma cg_use quad                   // opt into an engine buffer (see below); omit if unused
-
-Tags { "RenderType" = "Opaque" }      // controls depth auto-generation; "Lighting" = "Unlit", "Fog" = "Off" opt out;
-                                      // "Depth" = "Clip" | "Prepass": a transparent material writing depth (below)
-                                      // "Media" = "Off": a transparent world material not dimmed by smoke (below)
-                                      // "Tube" = "Volume" | "Closed": the tube geometry a VFX slot draws it on
-                                      // (each chunk on a sphere round it, or capped); on any other slot it fails at load
-Queue = "Geometry"                    // Background|Geometry|AlphaTest|Transparent|Overlay
-
-Properties {
-    _MainTex   ("Main Texture", sampler2D) = "white"
-    _Color     ("Tint Color",   color)     = (1, 1, 1, 1)
-    _Roughness ("Roughness",    float)     = 0.5
-    _Bands     ("Band colours", color[3])  = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)   // read as _Bands(i)
-}
-
-struct Spark { vec4 positionLife; vec4 velocitySeed; };
-Buffers { SPARKS ("Sparks", Spark, readonly) }   // a buffer a kernel wrote, read as SPARKS(i) (see below)
-
-struct v2f { vec2 uv; vec3 worldPos; };
-
-Pass {
-    Tags { "LightMode" = "Forward" }  // Forward (default) | Depth | Emissive | Distortion
-    RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA
-        DepthTest LEQUAL
-        DepthWrite ON
-        Cull BACK
-    }
-    float helper(float x) { ... }     // helpers: before vertex() or between the two, emitted ahead of both stages
-    void vertex(out v2f o) { ... }
-    void fragment(in v2f i, out vec4 fragColor) { ... }
-}
-// A Depth pass is auto-generated for Opaque + queue < 3000. There is no shadow pass: the world's
-// shadows are traced from each pixel (CgWorldLights, LIGHTS.md), and "ShadowCaster" fails to parse.
-```
-
-### cg_env.glsl — The Backbone
-
-`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every `.shader` file stands on: the frame block, the per-instance object data with its SSBO dual path, the instance-id bridge, the scene samplers and the convenience macros over them. **A renderer's own macros are not in it** — `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, injected only by `#pragma cg_use`; three quarters of this file used to be those two, paid for by every shader including the ones that draw neither. The material compiler **automatically `#include`s `cg_env.glsl`** into every generated vertex and fragment stage — you never include it manually in `.shader` files. Raw `CgShader` users must `#include "crystalgraphics:shaders/env/cg_env.glsl"` explicitly if they need its symbols.
-
-It provides two distinct layers: per-frame global data and per-instance object data.
+`src/main/resources/assets/crystalgraphics/shaders/env/cg_env.glsl` is the foundation every program stands on: the
+frame block, the per-instance object data, the instance-id bridge, the scene samplers and the convenience macros over
+them. The engine includes it in every stage of every program; a material never includes it. **A renderer's own macros
+are not in it**: `CG_QUAD_*` lives in `env/buffer/quad.glsl` and `CG_CURVE_*` in `env/buffer/curve.glsl`, brought only
+by the primitive that binds their buffer.
 
 #### Frame Data — `CgViewBlock` and `CgEnvironmentBlock`
 
-Two `layout(std140)` blocks wired post-link by the engine, available in every stage, every pass: `CgViewBlock`, the
-pass's view, and `CgEnvironmentBlock` (`cg_SunDirection`, `cg_FogColor`, `cg_FogParams`), the world's, which every
-pass of a frame shares (`CgPassConstants`):
+Two `layout(std140)` blocks the engine binds, available in every stage: `CgViewBlock`, the pass's view, and
+`CgEnvironmentBlock` (`cg_SunDirection`, `cg_FogColor`, `cg_FogParams`), the world's, which every pass of a frame
+shares (`CgPassConstants`):
 
 | GLSL name | Type | Content |
 |---|---|---|
@@ -165,118 +111,92 @@ pass of a frame shares (`CgPassConstants`):
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
 | `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view, `w` 1 when the target is the host's own (`CG_ENCODED_TARGET`). Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
-**Scene samplers** — auto-bound by the engine before every material draw; do not declare or bind these yourself:
+**Scene samplers**, bound by the engine for every draw; never declare or bind them yourself, nor bind a property to
+their units:
 
 | GLSL name | Type | Unit | Content |
 |---|---|---|---|
-| `cg_DepthBuffer` | `uniform sampler2D` | `CgBindingModel.SCENE_DEPTH` | The target's depth as it stands at the draw, in its own depth format: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention** — reversed-Z on 26.2 — so compare depths as eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Valid in both vertex and fragment stages of all passes. **Do not bind user Properties samplers to `CgBindingModel.SCENE_DEPTH`.** |
-| `cg_SceneColor` | `uniform sampler2D` | `CgBindingModel.SCENE_COLOR` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. RGBA8, linearly filtered, for a material that bends what is behind it (heat haze, a shockwave). **Do not bind user Properties samplers to that unit either.** |
-| `cg_Lightmap` | `uniform sampler2D` | `CgBindingModel.LIGHTMAP` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)`. **Do not bind user Properties samplers to that unit.** |
-| `cg_Media` | `uniform sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` (white where unbound). |
-| `cg_LocalLights` | `uniform sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. `cg_Lit` adds it; read by hand through `cg_LocalLightAt(position)`. Fragment and vertex stages only. The lowest unit the engine reserves: user samplers stay below it. |
+| `cg_DepthBuffer` | `sampler2D` | `CgBindingModel.SCENE_DEPTH` | The target's depth as it stands at the draw: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention**, reversed-Z on 26.2, so compare eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Both stages |
+| `cg_SceneColor` | `sampler2D` | `CgBindingModel.SCENE_COLOR` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. Read through `CG_SCENE_COLOR(uv)`; a material reading it sets `SceneColorMargin` |
+| `cg_Lightmap` | `sampler2D` | `CgBindingModel.LIGHTMAP` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)` |
+| `cg_Media` | `sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` |
+| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)`. The lowest unit the engine reserves: properties stay below it |
 
 Convenience macros over the frame block:
 
 | Macro | Expands to | Use |
 |---|---|---|
-| `CG_TIME` | `cg_Time.y` | Raw seconds — the one you want 99% of the time |
+| `CG_TIME` | `cg_Time.y` | Raw seconds: the one you want almost always |
 | `CG_TIME_VEC4` | `cg_Time` | Full 4-component time vector |
 | `CG_RESOLUTION` | `cg_Resolution` | Viewport dimensions in pixels |
 | `CG_SCENE_EYE_DEPTH(uv)` | `cg_LinearEyeDepth(texture(cg_DepthBuffer, uv).r)` | Scene distance from the camera at `uv`, in eye units, under any depth convention |
-| `CG_PIXEL_DEPTH_OFFSET(blocks)` | `cg_PixelDepthOffset(blocks)` | Fragment stage. Unreal's Pixel Depth Offset: writes `gl_FragDepth` as this fragment pushed `blocks` farther in view depth, never nearer, under any depth convention (`cg_WindowDepth(eye)` is `cg_LinearEyeDepth`'s inverse). Call it once on every path, since a shader writing `gl_FragDepth` on some paths leaves the rest undefined |
 | `CG_SCENE_COLOR(uv)` | `texture(cg_SceneColor, uv)` | The scene's colour at `uv` (`gl_FragCoord.xy / CG_RESOLUTION` for the pixel behind) |
-| `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform |
+| `CG_MATRIX_MVP` | `cg_ProjMatrix * cg_ViewMatrix * CG_OBJECT_TO_WORLD` | Standard MVP transform, for a `global` program |
 
 #### Lighting and fog — on by default
 
-A world material is lit by the host's lightmap and fogged as Minecraft's own blocks are, with no code of its own. The compiler's generated fragment `main` sets `cg_Light` (block and sky light, 0 to 15) from the draw, calls `fragment()`, then applies `cg_Lit` and `cg_Fog` to its colour. This covers materials reading the object record, meaning those using neither `#pragma cg_use quad` nor `curve`, in a Forward pass with one output.
+A surface material is lit by the host's lightmap and fogged as Minecraft's own blocks are, with no code of its own:
+after `surface()`, the engine lights `s.baseColor` and fogs the result.
 
 ```glsl
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }   // an emissive effect: fogged, never darkened
-Tags { "Lighting" = "Unlit" "Fog" = "Off" }                   // a sky, or a haze that bends what is already fogged
-
-void fragment(in v2f i, out vec4 fragColor) {
-    cg_Light = i.light;                       // a draw of many lights (particles) sets its own, before anything reads it
-    fragColor = vec4(albedo * max(dot(n, CG_SUN_DIRECTION), 0.2), 1.0);   // lit by the lightmap after
-}
+Material { BlendMode Additive  ShadingModel Unlit }      // an emissive effect: fogged, never darkened
+Material { ShadingModel Unlit  Fog Off }                 // a sky, or a haze that bends what is already fogged
 ```
 
 | Name | Is |
 |---|---|
-| `cg_Light` | fragment only: this fragment's `vec2(block, sky)`, `CG_OBJECT_LIGHT` unless the shader sets it |
+| `s.light` | the `vec2(block, sky)` light it is lit by: the draw's (`CG_OBJECT_LIGHT`) unless `surface()` or its factory sets it (a particle's own) |
 | `CG_OBJECT_LIGHT` | the draw's light, in the normal matrix's unused column: `CgWorldRenderer`'s `.light`, else the world's at its position |
 | `CG_LIGHTMAP(light)` | the lightmap's colour for a `vec2(block, sky)` |
-| `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the generated `main` applies, for a material that opted out and wants them on part of its colour. `cg_Lit` is the lightmap times `1 +` the world's lights at the fragment (`cg_LocalLights`, transparent passes) |
+| `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the engine applies, for an `Unlit` material or a `global` program wanting them on part of its colour. `cg_Lit` is the lightmap times `1 +` the world's lights at the fragment (`cg_LocalLights`, transparent passes) |
 | `cg_LocalLightAt(p)`, `cg_FragmentPosition()` | the world's lights at camera-relative `p`, non-directional; this fragment's camera-relative position |
 | `cg_FogAmount(distance)`, `CG_FOG_AMOUNT(worldPos)` | 0 to 1, vanilla's smoothstep from `cg_FogParams` |
-| `CG_FOG_MODE` | set by the compiler from the pass's blend: 0 mixes toward the fog colour, 1 does so premultiplied, 2 (additive) fades the colour out, 3 (modulate) fades it toward white |
 
-- The tags take `Lit`/`Unlit` and `On`/`Off`; anything else fails to parse.
-- **Colour is authored in sRGB**, as Minecraft's is. Where a pass draws into the HDR scene (`CG_LINEAR_SCENE`), the
-  generated `main` decodes a Forward pass's colour after light and fog (`cg_SceneDecode`): a premultiplied blend
-  (`ONE ONE_MINUS_SRC_ALPHA`) is decoded unpremultiplied, and a value above 1 keeps its excess, unless the material
-  has an Emissive pass: then it is held at white, as the 8-bit target holds it, and its glow carries the light past
-  white rather than adding to an excess that already blooms. A blend over what is
-  behind (`... ONE_MINUS_SRC_ALPHA`) also has its alpha remapped (`cg_SceneCoverage`: `1 - decode(1 - a)`), so smoke
-  hides as much as it did in the encoded picture rather than thinning out in linear light. An Emissive pass is linear
-  always. The `"ColorSpace"` tag says what else a Forward colour is:
+- **Colour is authored in sRGB**, as Minecraft's is (`ColorSpace sRGB`, the default). Where a pass draws into the HDR
+  scene (`CG_LINEAR_SCENE`), the engine decodes the colour after light and fog: a premultiplied one unpremultiplied,
+  and a value above 1 keeps its excess unless the material glows, when it is held at white and its glow carries the
+  light past it. A blend over what is behind also has its alpha remapped (`1 - decode(1 - a)`), so smoke hides as much
+  as it did in the encoded picture. The glow is linear always. `Material { ColorSpace }` says what else a colour is:
 
-  | `"ColorSpace"` | The colour is | Into the HDR scene | Onto the host's own target | Into a texture of ours |
+  | `ColorSpace` | The colour is | Into the HDR scene | Onto the host's own target | Into a texture of ours |
   |---|---|---|---|---|
-  | `"sRGB"` (default) | authored as Minecraft's are | decoded | as written | as written |
-  | `"Linear"` | linear light, as Unreal's material output is: a port | as written | encoded (`CG_ENCODED_TARGET`) | as written |
-  | `"Target"` | already in its target's encoding: a post pass, a copy of the scene | as written | as written | as written |
+  | `sRGB` (surface's default) | authored as Minecraft's are | decoded | as written | as written |
+  | `Linear` (post's default) | linear light, as Unreal's material output is: a port | as written | encoded (`CG_ENCODED_TARGET`) | as written |
+  | `Target` (post and ui) | already in its target's encoding: a picture-space effect | as written | as written | as written |
 
-  ```glsl
-  Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }   // a ported effect: (150, 5, 0.5)
-  Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Target" }   // a post pass reading cg_SceneColor
-  ```
-
-  The host's own target is what a raster pass into `CgGraphTexture.current()` draws onto; every texture of ours holds
-  what is written. A premultiplied `"Linear"` colour is encoded unpremultiplied, its alpha untouched. Any other value
-  fails to parse.
 - **A value tuned per path** is `CG_HDR(off, on)`: `on` under the scene, `off` without it, picked at runtime in one
-  program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds, a light pool's falloff,
-  reads dimmer under the scene:
+  program. The decode shrinks a dim colour (0.3 becomes about 0.07), so faint light that adds reads dimmer under the
+  scene: `s.baseColor = colour * light * CG_HDR(1.6, 3.0);`. The VFX shaders carry their HDR value alone: the scene is
+  their default path.
+- A material setting `s.light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the
+  lightmap's reach.
 
-  ```glsl
-  fragColor = vec4(colour * light * CG_HDR(1.6, 3.0), 1.0);
-  ```
+#### Lit by its normal: `TranslucencyLighting Surface`
 
-  The VFX shaders carry their HDR value alone: the scene is their default path, and a twin per property doubled
-  what a look had to tune.
-- A shader writing `cg_Light` reads `CG_LIGHTMAP` with it too: a smoke billow mixes its fire glow out of the lightmap's reach.
-
-#### Lit by its normal: `"Lighting" = "Surface"`
-
-A transparent material lit by the direction of the world's lights at its normal, not the same from every side: Unreal's
-Surface translucency lighting (`TLM_Surface`). The fragment names its normal; the generated `main` lights the colour by
-it, then adds what the fragment names as emissive, unlit, before fog and the blend.
+A translucent material lit by the direction of the world's lights at its normal, not the same from every side: Unreal's
+Surface translucency lighting (`TLM_Surface`). It writes `s.normal`; the engine lights the colour by it, then adds
+`s.emissive` unlit, before fog and the blend.
 
 ```glsl
-Tags { "RenderType" = "Transparent" "Lighting" = "Surface" }
-Queue = "Transparent"
-void fragment(in v2f i, out vec4 fragColor) {
-    vec3 n = normalize(i.tangentToWorld * normalXy(texture(_Normal, i.uv).xy));
-    CG_SURFACE_NORMAL(n);                        // the normal it is lit by: required in every Forward pass
-    CG_SURFACE_EMISSIVE(i.color.rgb);            // optional: added after the lighting, never to bloom
-    fragColor = vec4(baseColour, opacity);
+Material { BlendMode Translucent  TranslucencyLighting Surface }
+void surface(in v2f i, inout CgSurface s) {
+    s.normal = normalize(i.tangentToWorld * normalXy(texture(_Normal, i.uv0).xy));
+    s.baseColor = baseColour;
+    s.opacity = opacity;
 }
 ```
 
-- **Transparent queues only**: an opaque material is lit by the world's lights already. Either refusal fails to parse,
-  as does a Forward pass that never calls `CG_SURFACE_NORMAL`.
+- **Translucent blend modes only**: an opaque material is lit by the world's lights already. Without `s.normal` it
+  fails to load, naming it.
 - The light is Unreal's `GetVolumeLightingDirectional`: the translucency volume's light (`cg_LocalLightAt`) plus its
-  direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. A firing drawing one fills
-  the volume's direction too, at twice the volume's cost (`LIGHTS.md` §8).
-- **`CG_SURFACE_EMISSIVE`** works in any lit Forward pass (Unreal's `Color += Emissive`). It is not `CG_GLOW`, which
-  feeds bloom.
+  direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. A firing drawing one fills the
+  volume's direction too, at twice the volume's cost (`LIGHTS.md` §8).
 - `CgMaterial.surfaceLit()` says whether a material is one.
 
 #### What a program carrying its own lighting reads
 
-A ported program that keeps its game's lighting formulas reads the lights the engine hands each draw, in world passes,
-in both stages unless said:
+A ported program that keeps its game's lighting formulas (an `Unlit` material, or a `global` program) reads the lights
+the engine hands each draw, in world passes, in both stages unless said:
 
 | Name | Is |
 |---|---|
@@ -292,22 +212,20 @@ in both stages unless said:
   keeps the rest, block light included. By night the directional is black.
 - **The point lights are the world's light grid** (`env/handed_lights.glsl`): a program naming `cg_NearestLights` or
   `CG_DRAW_POINT_LIGHT_*`, itself or in a file it includes, is handed the grid's three buffers after its own
-  `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. The lights reaching a point are
-  its grid cell's, less those that leave transparent surfaces unlit. A transparent firing reads this frame's grid, an
-  opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is its system's.
+  `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. A transparent firing reads this
+  frame's grid, an opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is
+  its system's.
 - **The shadow is the sun's cascaded shadow map of our casters** (`env/handed_sun.glsl`, `LIGHTS.md` §7): a program
-  naming `CG_DIRECTIONAL_SHADOW`, itself or in a file it includes, is handed the map as `_cg_SunMap` (a sampler of its
-  own) and its cascades as `_cg_Sun*` properties, read with the sample pass's PCF, the last cascade fading to lit.
-  Blocks shade it through the lightmap, as Minecraft's own pixels. Only a transparent firing has the map: in an opaque
-  one it reads 1, since the deferred pass shadows our opaque pixels already. `_COLOR` is what a shadow leaves of the
-  draw's light, its sky light over the whole; `_WRAP` is 0: Minecraft's sun lights nothing past the terminator.
+  naming `CG_DIRECTIONAL_SHADOW` is handed the map as `_cg_SunMap` and its cascades as `_cg_Sun*` properties, read
+  with the sample pass's PCF, the last cascade fading to lit. Only a transparent firing has the map: in an opaque one
+  it reads 1, since the deferred pass shadows our opaque pixels already. Minecraft's sun lights nothing past the
+  terminator, so `_WRAP` is 0.
 
 #### Per-Instance Object Data
 
 Every draw uses instancing. Per-object data lives in an engine-managed storage block,
-`layout(std430) readonly buffer CgObjectDataBuffer { CgObjectData cg_Objects[]; }` (GL 4.3 or
-`ARB_shader_storage_buffer_object`, and the Vulkan device). The buffer-texture path below that is unhooked and
-documented for reconnecting in [`TBO_PATH.md`](TBO_PATH.md). The struct:
+`layout(std430) readonly buffer CgObjectDataBuffer { CgObjectData cg_Objects[]; }`. The buffer-texture path below
+GL 4.3 is unhooked and documented for reconnecting in [`TBO_PATH.md`](TBO_PATH.md). The struct:
 
 ```glsl
 struct CgObjectData {
@@ -320,80 +238,65 @@ struct CgObjectData {
 };
 ```
 
-Shaders read it through macros:
-
 | Macro | Expands to | Notes |
 |---|---|---|
 | `CG_OBJECT_TO_WORLD` | `CG_OBJECT_DATA.modelMatrix` | Model → world transform |
-| `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3 — use for transforming normals |
-| `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots — a world draw's `custom(slot, …)` |
-| `CG_INSTANCE_ID` | `CG_DRAW_INSTANCE + gl_BaseInstance` (vertex) / `cg_InstanceId` (fragment) | Instance index; bridged as `flat in int cg_InstanceId` varying so it's accessible in fragment. The draw's first instance is where its batch's instances start in its kind's upload; with `CG_SHARED_RECORD` (bit 30) set, the rest of it names the one record every instance reads: an indirect `INSTANCES` draw's |
+| `CG_NORMAL_MATRIX` | `mat3(CG_OBJECT_DATA.normalMatrix)` | Upper-left 3×3, for transforming normals |
+| `CG_OBJECT_CUSTOM0`–`CG_OBJECT_CUSTOM3` | `CG_OBJECT_DATA.custom0` … `.custom3` | Per-instance `vec4` slots: a world draw's `custom(slot, …)` |
+| `CG_INSTANCE_ID` | `CG_DRAW_INSTANCE + gl_BaseInstance` (vertex) / `cg_InstanceId` (fragment) | Instance index, bridged as a flat varying so the fragment has it. With `CG_SHARED_RECORD` (bit 30) set, the rest of it names the one record every instance reads: an indirect `INSTANCES` draw's |
 | `CG_DRAW_INSTANCE` | `gl_InstanceID` (vertex only) | The instance's index in its own draw: in an indirect `INSTANCES` draw, the element it draws |
-| `CG_VERTEX_ID` | `gl_VertexID - gl_BaseVertex` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from: every draw is by indices, a mesh without them by 0, 1, 2 ... |
-| `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad. What `CG_QUAD_*` and `CG_CURVE_*` place an instance's corners by |
+| `CG_VERTEX_ID` | `gl_VertexID - gl_BaseVertex` (vertex only) | The vertex's index in its own mesh, wherever the mesh sits in the buffer it is drawn from |
+| `CG_VERTEX_CORNER` | `vec2` from `CG_VERTEX_ID` (vertex only) | The corner of a `CgMesh.quads(n)` vertex: (0,0), (1,0), (1,1), (0,1) around each quad |
 
-Every draw carries its bases in the call (GL 4.6's draw parameters, `GL_ARB_shader_draw_parameters` below, which the
-compiler enables), so a run the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) runs the
-program a draw alone runs.
+Every draw carries its bases in the call (GL 4.6's draw parameters, `GL_ARB_shader_draw_parameters` below), so a run
+the executor joins into one multi-draw (`render/graph/CLAUDE.md` § *Multi-draw*) runs the program a draw alone runs.
 
-#### Vertex Attribute Aliases
+#### Vertex attributes
 
-Available in the vertex stage only. Locations are placed by the vertex format at compile — no `layout(location=N)` needed in shader code:
+What a factory's `fill()` and a `global` program's `vertex()` read; a surface material reads them through `CgVertex`
+(`v.position`, `v.normal`, `v.color`, `v.uv0` …). Vertex stage only, placed by the vertex format:
 
-| Alias | Type | Location |
-|---|---|---|
-| `cg_Position` | `vec3` | 0 |
-| `cg_Normal` | `vec3` | 1 |
-| `cg_Color` | `vec4` | 2 |
-| `cg_TexCoord0` | `vec2` | 3 |
-| `cg_TexCoord1` | `vec2` | 4 |
-| `cg_TexCoord2` | `vec2` | 5 |
-| `cg_TexCoord3` | `vec2` | 6 |
+| Name | Type |
+|---|---|
+| `cg_Position` | `vec3` |
+| `cg_Normal` | `vec3` |
+| `cg_Color` | `vec4` |
+| `cg_TexCoord0` … `cg_TexCoord3` | `vec2` |
 
-Unreal's local vertex factory's slots, in its order. A mesh written with no colour reads white, and a UV set it
-was not given repeats the set before: Unreal's null colour stream and its repeated UV channel. A `SECOND_LAYER` material reads
-`cg_TexCoord1` (`CgVertexFormat.SPATIAL`'s javadoc has the storage).
+Unreal's local vertex factory's slots, in its order. A mesh written with no colour reads white, and a UV set it was
+not given repeats the set before: Unreal's null colour stream and its repeated UV channel.
 
-**On a skinned mesh** every `#type spatial` material draws its `CG_SKINNED` variant, the skinned vertex factory: the
-compiler declares `cg_BoneIndices` and `cg_BoneWeights` and the draw's palette (`env/buffer/bones.glsl`), and
+**On a skinned mesh** every material on the `Mesh` factory draws its `CG_SKINNED` variant, the skinned vertex factory:
+the engine declares `cg_BoneIndices`, `cg_BoneWeights` and the draw's palette (`env/buffer/bones.glsl`), and
 `cg_Position` and `cg_Normal` read as the vertex skinned by its bones, so a material needs no code for it. The mesh
-picks the variant (`CgPipelineForm.SKINNED`), in every pass; a shader of another `#type` drawn on one fails to compile.
-
-#### The engine's blocks are declared already
-
-`cg_env.glsl` declares `CgObjectDataBuffer`, `CgViewBlock` and `CgEnvironmentBlock`, and the engine wires them: a
-material never declares them again. A material reads anything else through `Buffers { }` or an engine token
-(`#pragma cg_use`); nothing is injected into a shader at runtime.
+picks the variant (`CgPipelineForm.SKINNED`), in every pass; a material on a factory reading no mesh fails to compile
+on one.
 
 #### A material's values
 
-A material's non-sampler properties are one std140 block, `CgMaterialBlock`, read under their own names. A
-`#type spatial` shader drawn by object records keeps its materials' blocks side by side in its **material arena**
-(`CgMaterialArena`, Bevy's material slab): one storage buffer of slots at the same binding, each draw's instance id
-naming its material's slot, so draws of two instances of the shader that differ only in their values join in one
-multi-draw. The values are then globals, loaded from the draw's slot first thing in the generated `main`:
+A material's non-sampler properties are one std140 block, `CgMaterialBlock`, read under their own names. A material
+drawn by object records keeps its materials' blocks side by side in its **material arena** (`CgMaterialArena`, Bevy's
+material slab): one storage buffer of slots, each draw's instance id naming its material's slot, so draws of two
+instances that differ only in their values join in one multi-draw. The values are globals, loaded from the draw's slot
+first thing:
 
 ```glsl
-fragColor = texture(_MainTex, i.uv) * _Color;   // the same either way
+s.baseColor = texture(_MainTex, i.uv0).rgb * _Color.rgb;   // the same either way
 ```
 
-- A property name is a global: a local of the same name hides it, as it hid the block's member.
-- Textures are still bound per material: instances with different textures do not join until they are read by index.
+- A property name is a global: a local of the same name hides it.
+- Textures are still bound per material: instances with different textures do not join.
 
 #### Stage defines — `CG_VERTEX_STAGE` / `CG_FRAGMENT_STAGE` / `CG_COMPUTE_STAGE`
 
-One `.shader` file becomes **two** GLSL programs, and `partitionGlobalDecls` hoists **every** `#`-line
-from a material or pass preamble — `#include` very much included — into **both** of them. There is no
-stage filtering, by design: a shader author writes one preamble, not two. A kernel is a third stage, and
-includes `cg_env.glsl` and its engine buffers' env files like any material.
+One `.shader` becomes **two** GLSL programs, and every `#` line at file scope, `#include` included, reaches **both**.
+There is no stage filtering, by design: an author writes one file, not two. A kernel is a third stage, and includes
+`cg_env.glsl` and its engine buffers' env files like any material.
 
-The consequence is the rule:
+> **A lib included at file scope is compiled into the vertex stage too, and an env file into every stage. If any of it
+> is fragment-only, it must guard itself.**
 
-> **A lib included at material scope is compiled into the vertex stage too, and an env file into every
-> stage. If any of it is fragment-only, it must guard itself.**
-
-The compiler emits exactly one of these into each generated source, **before** the user directive
-block, so an included lib can see it:
+The compiler emits exactly one of these into each generated source, **before** the includes, so a lib can see it:
 
 | Define | Present in |
 |---|---|
@@ -407,47 +310,38 @@ float sdf_coverage(float dist) { return 1.0 - smoothstep(-fwidth(dist), fwidth(d
 #endif
 ```
 
-**Name the stages that cannot have it, never `#ifdef CG_FRAGMENT_STAGE`.** Raw `.vert`/`.frag` files go
-through `CgShaderPreprocessor` with *no* stage defines at all, so an `#ifdef` silently deletes the
-function from every one of them. A kernel drops every function it does not call, so a lib's guard only
-matters to one that calls it; an env file's guard is what lets a kernel `#pragma cg_use` its buffer.
+**Name the stages that cannot have it, never `#ifdef CG_FRAGMENT_STAGE`**: a file read with no stage define at all
+would lose the function. A kernel drops every function it does not call, so a lib's guard only matters to one that
+calls it; an env file's guard is what lets a kernel use its buffer.
 
-> **Both facts here were learned the expensive way.** `sdf.glsl`'s `fwidth` reached the vertex stage
-> and an AMD tester could not launch the UI gallery at all, while it ran flawlessly on NVIDIA —
-> NVIDIA accepts derivative builtins in a vertex shader, AMD correctly refuses. And the define used
-> to be emitted *after* the user `#include`s, which meant every guard evaluated identically in both
-> stages and did nothing at all. Ordering is what makes the guard mechanism exist.
+> NVIDIA accepts derivative builtins in a vertex shader and AMD correctly refuses: `sdf.glsl`'s unguarded `fwidth`
+> once kept the UI gallery from launching on AMD alone.
 
-Fragment-only, i.e. never legal in a vertex shader or a kernel: `fwidth`/`dFdx`/`dFdy` and their
-`Fine`/`Coarse` variants, `discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`,
-`interpolateAt*`, `gl_SampleID`/`gl_SamplePosition`/`gl_SampleMask`.
+Fragment-only, never legal in a vertex shader or a kernel: `fwidth`/`dFdx`/`dFdy` and their `Fine`/`Coarse` variants,
+`discard`, `gl_FragCoord`, `gl_FrontFacing`, `gl_PointCoord`, `gl_FragDepth`, `interpolateAt*`,
+`gl_SampleID`/`gl_SamplePosition`/`gl_SampleMask`.
 
-Three things enforce this so it cannot regress silently:
-
-- **`ShippedShaderStagePurityTest`** (in both CrystalGraphics and CrystalGUI) compiles every shipped
-  `.shader` and asserts no such identifier is *reachable* in the generated vertex source;
-  **`ShippedKernelStagePurityTest`** does the same for every shipped kernel, against vertex-only names
-  too. Both resolve the stage conditionals through `CgShaderStages`, because `CgShaderPreprocessor`
-  expands `#include` but leaves `#if` to the driver. GL-free, so they catch this on any machine.
-- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader, kernel and keyword
-  variant, collecting failures instead of crashing on the first. Run it on any GPU that disagrees.
+- **`ShippedShaderStagePurityTest`** (in both CrystalGraphics and CrystalGUI) compiles every shipped `.shader` and
+  asserts no such name is *reachable* in the generated vertex source; **`ShippedKernelStagePurityTest`** does the same
+  for every shipped kernel. Both resolve the stage conditionals through `CgShaderStages`. GL-free.
+- **`--mode=shader-compile-audit`** puts the real driver over every shipped shader, kernel and keyword variant,
+  collecting failures instead of stopping at the first. Run it on any GPU that disagrees.
 
 #### Loops — every count has a ceiling
 
 > **A loop runs a number of times a constant bounds: a literal, a constant or macro, or `min(data, CONSTANT)`.**
 
-A loop counted by data — a light list, an entity count, a property — runs as often as that data says, on every
-pixel. One warm frame of the loading screen walked a light-grid cell of thousands of lights at each of 16,000 pixels:
-the GPU ran past Windows' two-second timeout and the driver reset, blanking every monitor. A cap turns that into a
-cost.
+A loop counted by data (a light list, an entity count, a property) runs as often as that data says, on every pixel. A
+light-grid cell of thousands of lights walked at each of 16,000 pixels ran the GPU past Windows' two-second timeout,
+and the driver reset, blanking every monitor. A cap turns that into a cost.
 
 ```glsl
 for (int k = 0; k < min(_Entities, CG_ENTITY_BOXES_MOST); k++) { ... }   // the CPU's cap, mirrored and named
 ```
 
 - **A light list** takes `lights.glsl`'s candidates: at most `CG_LIGHT_CANDIDATES` a walk, evenly strided from a
-  per-pixel offset (`CG_LIGHT_OFFSET`), a sum over them scaled by `CG_LIGHT_STRIDE` — ReSTIR's uniform candidates,
-  so a crowded cell costs 64 lights and stays unbiased:
+  per-pixel offset (`CG_LIGHT_OFFSET`), a sum over them scaled by `CG_LIGHT_STRIDE`: ReSTIR's uniform candidates, so a
+  crowded cell costs 64 lights and stays unbiased.
 
   ```glsl
   int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
@@ -457,188 +351,135 @@ for (int k = 0; k < min(_Entities, CG_ENTITY_BOXES_MOST); k++) { ... }   // the 
   ```
 
 - **A count the CPU caps** is capped again where it is read, the constant named after its Java owner
-  (`CgWorldEntityBoxes.MAX`, `CgWorldLights.MOST_CASTERS`). An authored count (octaves, a blur radius) gets a cap
-  past which more is invisible.
-- **A loop bounded some other way** — a binary search, a work group's stride over a buffer, a compare-and-swap retry
-  — says why on its line: `while (lo < hi) {   // LOOP-BOUND: a binary search`.
+  (`CgWorldEntityBoxes.MAX`, `CgWorldLights.MOST_CASTERS`). An authored count (octaves, a blur radius) gets a cap past
+  which more is invisible.
+- **A loop bounded some other way** (a binary search, a work group's stride over a buffer) says why on its line:
+  `while (lo < hi) {   // LOOP-BOUND: a binary search`.
 
-**`ShippedShaderLoopBoundsTest`** reads every shipped `.shader`, `.glsl` and `.compute` and fails on a loop with
-neither a visible constant bound nor a `LOOP-BOUND` note.
+**`ShippedShaderLoopBoundsTest`** reads every shipped `.shader`, `.glsl` and `.compute` and fails on a loop with neither
+a visible constant bound nor a `LOOP-BOUND` note.
 
 ---
 
-### Keyword Variants
+### Keywords: a program per combination
 
-Each `#pragma cg_feature` declares a compile-time flag. Enabling a keyword at runtime injects `#define NAME 1` into both vertex and fragment. **Every unique combination of enabled keywords is a separately compiled and cached GL program** — zero runtime branch cost.
-
-```glsl
-#pragma cg_feature FOG_ON
-#pragma cg_feature NORMAL_MAP   // max 31 per shader
-```
+`Keywords { }` ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 4.6) declares compile-time switches. Turning one on
+defines it in both stages. **Every combination turned on is its own program**, compiled once and cached: no runtime
+branch.
 
 | Rule | Detail |
 |---|---|
-| Max 31 per shader | Exceeding throws `CgShaderParseException` at parse time; past 8 a material's variants sit in a sparse table |
-| Uppercase only | Names must match `[A-Z][A-Z0-9_]*` |
-| Declared names only | `keyword(name, true)` throws `IllegalArgumentException` for an undeclared name |
-| Lazy compilation | A variant's program is compiled at its first draw (or `precache()`), then cached under a flat `ProgramKey` |
-| OFF by default | No `#define` is injected unless explicitly enabled |
-| Lines stripped | `#pragma cg_feature` lines never appear in generated GLSL output |
+| At most 31 a material | More fails to load; past 8 a material's variants sit in a sparse table |
+| Upper case | Names match `[A-Z][A-Z0-9_]*`; a one-of's values are `NAME_VALUE` |
+| Declared names only | `keyword(name, true)` throws for a name its material does not declare |
+| Compiled lazily | At its first draw (or a precache), then cached under its `ProgramKey` |
+| Off by default | A material turns on only what it asks for |
 
 ```java
 CgMaterial mapped = material.keyword("NORMAL_MAP", true);   // another material, made once; material is unchanged
 boolean on = mapped.isKeywordEnabled("NORMAL_MAP");         // true; material's stays false
 ```
 
-### Keywords a renderer switches: `#pragma cg_permutation`
-
-A keyword your renderer turns on and off at runtime (a tier's cheap filter, the HDR scene, a fade) is part of the
-shader's **permutation domain**, Unreal's `FShaderPermutationDomain`. Declare it beside the shader, and a precache of
-the shader builds every combination, so nothing lists variants by hand:
+**A keyword the renderer switches at each draw** (a tier's cheap filter, the HDR scene, a fade) is marked `switched`,
+and a one-of always is: together they are the material's **permutation domain**, Unreal's `FShaderPermutationDomain`,
+and a precache builds every combination, so nothing lists variants by hand.
 
 ```glsl
-#pragma cg_feature KARIS
-#pragma cg_feature CHEAP
-#pragma cg_feature FADE
-#pragma cg_permutation KARIS|CHEAP   // a one-of: none, KARIS or CHEAP, never both
-#pragma cg_permutation FADE          // a bool: off or on
+Keywords { FILTER ("Filter") = KARIS | CHEAP   FADE ("Fades", switched) }
 ```
 
 ```java
-pipelines.addPass("mymod:shaders/post/blur.shader");             // all six combinations
+pipelines.addPass("mymod:shaders/post/blur.shader");             // every combination
 pipelines.add("mymod:shaders/rune.shader", "GLOW");              // each combination with the material's own GLOW
 ```
 
 - **Only what a renderer switches.** A keyword set once on a material (a look's feature, a VFX slot kind) is the
   material's: precaching the material covers it.
-- Every keyword named is a `cg_feature` of the shader, in one dimension at most; a domain spans at most 256
-  combinations (`CgPermutationDomain.MAX_VARIANTS`). Each is refused at parse.
-- A keyword passed to `add` or `addPass` pins its dimension: `addPass(shader, "CHEAP")` builds only the combinations
-  with `CHEAP`.
-- A draw of a shader with a domain that still misses its pipeline is logged once whatever
-  `crystalgraphics.pipeline.logMisses` says: the shader was never added, or the draw binds two keywords of one one-of.
-- `#pragma cg_permutation` lines never reach GLSL, so declaring a domain changes no program.
+- A domain spans at most 256 combinations (`CgPermutationDomain.MAX_VARIANTS`); more fails to load.
+- A keyword passed to `add` or `addPass` pins its dimension: `addPass(shader, "FILTER_CHEAP")` builds only the
+  combinations with it.
+- A draw of a material with a domain that still misses its pipeline is logged once whatever
+  `crystalgraphics.pipeline.logMisses` says: it was never added, or the draw binds two values of one one-of.
 
 ---
 
-### Engine Buffers — `#pragma cg_use`
+### Engine buffers
 
-`CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` are declared unconditionally in `cg_env.glsl` because
-essentially every shader wants them. Buffers that only a minority of shaders need are **opt-in**:
+`CgViewBlock`, `CgEnvironmentBlock` and `CgObjectDataBuffer` are declared in every program. A buffer only some programs
+need is bound by what draws them: a factory or primitive names it in `EngineBuffers { }` (`MATERIAL_FORMAT.md` § 5.3,
+§ 8.3), and every material on it reads its macros. A surface or ui material names none of these itself.
 
-```glsl
-#type none
-#pragma cg_use quad
-```
-
-| Token | Provides | Needed by |
+| Token | Provides | Bound by |
 |---|---|---|
-| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s per instance, written with `Quad.custom0`/`custom1` — `CG_OBJECT_CUSTOM*`'s contract at quad granularity, and where a per-quad parameter belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | Any shader drawn through `CgQuadBatch` — UI quads, text glyphs, SDF rects |
-| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | Any shader drawn through `CgCurveBatch` — Bézier strokes, graph wires, connectors |
-| `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment` — the raster pass's property trees (`CgPalette`): each spatial node's affine into the target, each effect node's opacity. `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it | Never declared by hand. A material that honours opacity multiplies by `CG_QUAD_OPACITY`/`CG_CURVE_OPACITY`: the item's own (`opacity(f)`, stored as `fade`) times its effect group's |
-| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE` — the coverage of the `CgClipTable` entry the instance names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only; read it before any `discard` | Any quad or curve material a rounded clip must reach: every CrystalGUI UI material, and `text.shader`. A material that does not multiply by it draws past the corners |
-| `rows` | Every numeric property (`float`, `Range`, `vec2`, `vec4`, `color`, and arrays of `vec4` or `color`) read per draw: the material's value, or the draw's row in `CgPropertyRows` (FRAME lifetime, a vec4 a value) where its binder says so. The shader reads `_X` as before; an array is `_X(i)` in every shader. A draw's row starts at `CG_PROPERTY_ROW`, `int(CG_OBJECT_CUSTOM3.x)` unless the shader defines it | The VFX layers, whose properties a look binds to its parameters ([below](#per-draw-properties-cg_use-rows)) |
-| `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `CG_PARTICLE_SIZE` / `CG_PARTICLE_VELOCITY` / `CG_PARTICLE_PROGRESS` / `CG_PARTICLE_SEED` / `CG_PARTICLE_SPIN` / `CG_PARTICLE_HEAT` / `CG_PARTICLE_OPACITY` / `CG_PARTICLE_LIGHT` / `CG_PARTICLE_ID` / `CG_PARTICLE_FLOOR` / `CG_PARTICLE_COLOR` / `CG_PARTICLE_SCALE` / `CG_PARTICLE_AGE` (seconds, what a flipbook loops on) — a GPU pool's drawn parts (`CgParticleBuffer`, `pool.drawn()`, six vec4s each: place, motion, state, light packed as block + 16 sky with its spawn id and its floor, colour, scale), written after each step by the pool's Look stage at each particle's record index, apart from the simulated record (`CgVfxRecord`, a layout per shape); a draw reads its own range `[base, base + count)` of Range's order. It brings `rows`: the renderer sets the factory's `_cg_*` settings per draw | Particle renderers: the vfx engine's quads and arcs (plan `vfx-particles`) |
-| `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`, a `float` or a `vec4`: Unreal's material parameter collections ([below](#global-parameters-cg_use-globals)) | Any material reading values set once for every material: a skill darkening the stage, a tint |
+| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s an element, written with `Quad.custom0`/`custom1`: where a per-element value belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | The `Quad` and `Text` primitives: `CgQuadBatch`, UI quads, text glyphs |
+| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | The `Curve` primitive: `CgCurveBatch`, Bézier strokes, graph wires |
+| `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment`: the raster pass's property trees (`CgPalette`), each spatial node's affine into the target, each effect node's opacity | `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it. The primitive multiplies by the item's opacity |
+| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE`: the coverage of the `CgClipTable` entry the element names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only | Every ui primitive, so every ui material is clipped |
+| `rows` | Every numeric property read per draw: the material's value, or the draw's row in `CgPropertyRows` where its binder says so ([below](#per-draw-values-perdrawvalues-on)) | `Material { PerDrawValues On }` |
+| `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `_SIZE` / `_VELOCITY` / `_PROGRESS` / `_SEED` / `_SPIN` / `_HEAT` / `_OPACITY` / `_LIGHT` / `_ID` / `_FLOOR` / `_COLOR` / `_SCALE` / `_AGE`: a GPU pool's drawn parts (`CgParticleBuffer`), written after each step at each particle's record index; a draw reads its own range of Range's order. It brings `rows` | The particle factories (`Sprites`, `MeshParticles`), which hand it to a material as `cg_Particle` |
+| `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`: Unreal's material parameter collections ([below](#global-parameters-cg_global_)) | Any program naming one |
 
-> **A screen-space quad material antialiases its own edges — without MSAA.** `env/buffer/quad.glsl`
-> (injected by `#pragma cg_use quad`) provides
-> `CG_QUAD_EDGE_PARAM` (the vertex's parameter, grown by half a pixel when the instance is rotated or
-> sheared in device space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad
-> never samples past the rect) and `CG_QUAD_EDGE_COVERAGE(param)` — the exact area a straight edge leaves of
-> the pixel, per edge, combined per opposite pair. Axis-aligned instances are left exactly alone: the
-> rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. **Every edge
-> of a rotated quad is soft**: there was a per-edge opt-out for a quad abutting another, and nothing tiles
-> with separate quads any more — a nine-slice is one draw remapping its regions per pixel, so the seams are
-> inside a fragment shader rather than between quads. `CG_QUAD_EDGE_ROTATED` gates anything else a material wants to do only when
-> rotated: `cg_texel_aa_sample` (the pixel-art filter: nearest everywhere, one screen pixel of blend at a
-> texel boundary, four taps held inside `CG_QUAD_UV_RECT`) — which is not a quad thing at all and lives in `lib/texel.glsl`, `#include`d where wanted, since it reads no instance buffer and `sdf_coverage(dist, rampPx)` with
-> `CG_QUAD_EDGE_FILTER` — the reconstruction width, 1.5 px, the one knob. Adoption is three lines per
-> material; every CrystalGUI quad material has it, `text.shader`'s bitmap path has the texel filter, and a
-> 3D quad material must not use any of it (half a pixel means nothing under a perspective projection).
+> **A screen-space quad material antialiases its own edges, without MSAA.** `env/buffer/quad.glsl` provides
+> `CG_QUAD_EDGE_PARAM` (the vertex's parameter, grown by half a pixel when the element is rotated or sheared in device
+> space), `CG_QUAD_EDGE_WORLD_POS(param)`, `CG_QUAD_EDGE_UV(param)` (clamped, so the pad never samples past the rect)
+> and `CG_QUAD_EDGE_COVERAGE(param)`: the exact area a straight edge leaves of the pixel. Axis-aligned elements are left
+> alone: the rasteriser snaps those, and two abutting quads softened on a fractional boundary would seam. The Quad
+> primitive applies it; a 3D quad must not (half a pixel means nothing under a perspective projection).
+> `cg_texel_aa_sample` (`lib/texel.glsl`) is the pixel-art filter: nearest everywhere, one screen pixel of blend at a
+> texel boundary.
 
 > **A record names a spatial and an effect node** (`Quad.node`, `Curve.node`, `CgTextDraw.node`), recorded in a
 > `CgRecording`'s `spatial()` and `effects()` trees; node 0 is the target's own space, at opacity 1. The executor writes
-> each raster pass's palette from the recorded values and a `CgPropertyValues` (`CgFrameGraph.add(recording, values)`),
-> so a compositor moves or fades what was recorded by writing values and executing the built frame again. A pass into
-> a layer names where it sits (`CgRasterPass.view`), and scissors and clip entries may name a node and move with it.
+> each raster pass's palette from the recorded values and a `CgPropertyValues`, so a compositor moves or fades what was
+> recorded by writing values and executing the built frame again.
 
-> **A rounded clip is an instance field, not a render target.** `CgClipTable.add` records a rounded box in its
-> own space (rect, radii, a border's inner edge), the inverse of the pose that put it in the bound target, and
-> the entry it sits inside; it answers an index. An instance stamped with it multiplies its output by the
-> coverage of every entry up the chain (`MAX_DEPTH`, 4), each antialiased as a canvas box shape's own edge, so any
-> rotation or skew clips exactly. Changing the clip never flushes; the renderers upload and bind the table
-> when they draw. An entry means nothing in another target and nothing next frame. `addPixelRect` is the square
-> case at whole pixels: the pixel-centre test a scissor makes, with no batch break, and a rect nested in another of
-> the same node merges into one entry.
+> **A rounded clip is an element's field, not a render target.** `CgClipTable.add` records a rounded box in its own
+> space, the inverse of the pose that put it in the bound target, and the entry it sits inside; it answers an index.
+> An element stamped with it multiplies its output by the coverage of every entry up the chain (`MAX_DEPTH`, 4), so any
+> rotation or skew clips exactly. Changing the clip never flushes. `addPixelRect` is the square case at whole pixels.
 
-> **`curve` is the one engine buffer read from the fragment stage as well as the vertex stage.** A
-> stroke is an analytic SDF evaluated per pixel, so the fragment needs the control points themselves;
-> it re-reads `CURVE_DATA(CG_INSTANCE_ID)` rather than receiving them as varyings, because the
-> `.shader` v2f DSL has no `flat` qualifier to offer (`cg_InstanceId` is the only compiler-generated
-> flat varying). This needs no compiler change — `appendAttachedBuffers` already runs for the fragment
-> source too.
+**`curve` is read in both stages**: a stroke is an analytic distance evaluated per pixel, so the fragment re-reads
+`CURVE_DATA(CG_INSTANCE_ID)` for its control points.
 
-The buffer's GLSL declaration is injected **during parsing, before anything can compile**, so the
-symbols exist no matter what triggers the first compile. **A token may also carry an env file** —
-GLSL macros written against the buffer, the way `CG_QUAD_*` is written against `QUAD_DATA` — which
-`CgMaterialShaderCompiler` includes immediately after the declaration, so the macros always have the
-struct to read. Convention is `shaders/env/buffer/<token>.glsl`; a mod's own buffer gets the same
-treatment by passing its own path. Register a new token with
-`CgEngineBufferRegistry.register(...)` — providers hold a `Supplier`, so registration never forces
-the provider class's static init (which would make its buffer before a context exists).
-
-**Both directions are hard parse errors:**
+A buffer's GLSL is declared **while the program is parsed, before anything can compile**, so its names exist whatever
+compiles it first. A token may carry an env file of macros written against it (`shaders/env/buffer/<token>.glsl`),
+included right after the declaration. Register a mod's own with `CgEngineBufferRegistry.register(...)`: providers hold
+a `Supplier`, so registering never makes the buffer before a context exists. Never attach a buffer from Java: bound
+from the program's declaration, a compile before the first draw already has it.
 
 | Mistake | Result |
 |---|---|
-| Uses `CG_QUAD_*`/`QUAD_DATA` without `#pragma cg_use quad` | `CgShaderParseException` naming the line to add |
-| Declares an unregistered token | `CgShaderParseException` listing registered tokens |
-| Duplicate or malformed token | `CgShaderParseException` |
+| Reads `CG_QUAD_*`/`QUAD_DATA` that nothing it is drawn by binds | Fails to load, naming the buffer and `EngineBuffers` |
+| An `EngineBuffers` block naming an unregistered token | Fails to load, listing the registered tokens |
 
-> **Do not attach these from Java.** A `CgQuadBatch.attachTo(material)` helper used to exist and
-> was removed. Attaching at first use loses to anything that compiles the shader earlier — notably
-> a keyword lookup, which parses on the spot when the shader has not been parsed yet.
-> The result was GLSL built with `QUAD_DATA` undeclared, and because a failed compile leaves the
-> parsed feature list empty, it surfaced as **"Keyword 'X' is not declared as `#pragma cg_feature`"**
-> — naming a pragma that was present and correct. Declaring the dependency in the shader removes the
-> ordering question entirely.
+#### Per-draw values: `PerDrawValues On`
 
-Like `cg_feature`, `cg_use` lines are stripped and never reach generated GLSL, and are only read
-from the material-level preamble (never from inside a `Pass` body).
-
-#### Per-draw properties: `cg_use rows`
-
-A material's properties are one block for every draw of it. Under `#pragma cg_use rows` each numeric property may
-instead come from the draw: a row of vec4s in `CgPropertyRows` that whoever draws writes once a frame, so draws with
-different values still batch and instance. Godot's `instance uniform` is the same idea; here a row holds only the
-properties bound per draw, and every other one stays the material's, through a branch uniform across the draw.
+A material's properties are one block for every draw of it. Under `PerDrawValues On` each numeric property may come from
+the draw instead: a row of vec4s in `CgPropertyRows` that whoever draws writes once a frame, so draws with different
+values still batch and instance. Godot's `instance uniform` is the same idea; here a row holds only the properties
+bound per draw, and every other one stays the material's.
 
 ```glsl
-#pragma cg_use rows
+Material { BlendMode Additive  PerDrawValues On }
 Properties {
     _Color ("Colour", color) = (1, 1, 1, 1)
     _Bands ("Bands", color[3]) = (1, 1, 1, 1), (0, 1, 1, 1), (0, 0.5, 0.9, 1)
 }
-...
-fragColor = _Color * _Bands(1);    // read as always: the row's value where bound, else the material's
+void surface(in v2f i, inout CgSurface s) { s.baseColor = (_Color * _Bands(1)).rgb; }   // the row's where bound
 ```
 
 - **Java sets a material's value by its declared name**, as for any property. Who binds a property per draw sets its
-  place in the row, `CgMaterialProperty.rowSlotName(name)`, an `int` the compiler adds; -1 is unbound.
-- **An array** is `color[n]` or `vec4[n]`, n at most 256 (past 16 read a chunk of 16 at a time), its default each element's in order; read as `_Name(i)` in
-  every shader, with `rows` or without.
+  place in the row, `CgMaterialProperty.rowSlotName(name)`; -1 is unbound.
+- **An array** is `color[n]` or `vec4[n]`, n at most 256, read as `_Name(i)` with per-draw values or without.
 - The VFX engine is the binder: a renderer's `bind` ([`vfx/effects.md`](vfx/effects.md) § *Constants, binds and keywords*).
-- **`_cg_Exposure`** is every rows shader's, 1 by default: the generated `main` multiplies a `"ColorSpace" = "Linear"`
-  Forward colour (its folded glow with it) and an Emissive pass by it, before the encode; never a
-  modulate blend's colour, a factor rather than light (Unreal's pre-exposure skips it the same way). The VFX engine
-  writes its effect's `exposure(...)` there for a shader that reads it (`CgMaterial.readsExposure()`): a game's effect
-  authored under that game's camera exposure.
+- **`_cg_Exposure`** is every such material's, 1 by default: the engine multiplies a `ColorSpace Linear` colour and its
+  glow by it, never a modulate blend's. The VFX engine writes its effect's `exposure(...)` there for a material that
+  reads it (`CgMaterial.readsExposure()`): a game's effect authored under that game's camera exposure.
 
-#### Global parameters: `cg_use globals`
+#### Global parameters: `CG_GLOBAL_*`
 
-Values set once and read by every material declaring the buffer: Unreal's material parameter collections. A
-collection is declared in Java, its parameters typed handles; the compiler defines each by namespace and name.
+Values set once and read by every material naming them: Unreal's material parameter collections. A collection is
+declared in Java, its parameters typed handles; a material reads each by namespace and name, which binds the buffer.
 
 ```java
 public static final CgParameterCollection SKILL = CgParameterCollection.of("skill");
@@ -648,44 +489,37 @@ DARKEN.set(0.6f);   // every material reading it, from this frame's world draws
 ```
 
 ```glsl
-#pragma cg_use globals
-...
-fragColor.rgb *= (1.0 - CG_GLOBAL_skill_darken) * CG_GLOBAL_skill_tint.rgb;   // a float, a vec4; either stage
+s.baseColor *= (1.0 - CG_GLOBAL_skill_darken) * CG_GLOBAL_skill_tint.rgb;   // a float, a vec4; either stage
 ```
 
 - **Declare a collection's parameters before its first use** (a set, a read, the first frame, a compile against it):
-  it is placed then, scalars packed four to a vec4 and vectors after, as Unreal lays a collection out, and a
-  declaration after throws. A collection defined after a shader compiled recompiles that shader at the next frame.
-- **Uploaded once a frame by the world renderer**, after the client world's schedule: a pass outside the world reads the
-  values of the last frame the world drew.
+  it is laid out then, scalars packed four to a vec4 and vectors after, as Unreal lays a collection out, and a
+  declaration after throws. A collection defined after a material compiled recompiles that material next frame.
+- **Uploaded once a frame by the world renderer**: a pass outside the world reads the values of the last frame the
+  world drew.
 - At most `CgParameterCollection.MAX_VEC4S` (1024) vec4s for every collection together.
 
 ### Reading a kernel's buffers
 
-A material reads buffers a kernel wrote by declaring them in a `Buffers { }` block as a kernel does, every one
-`readonly`, and reads element `i` as `NAME(i)` in either stage:
+A material reads buffers a kernel wrote by declaring them in `Buffers { }` as a kernel does, every one `readonly`, and
+reads element `i` as `NAME(i)` in either stage:
 
 ```glsl
-#type none
-Queue = "Geometry"
-
-struct Spark { vec4 positionLife; vec4 velocitySeed; };   // declared before Buffers { }
-
+#domain surface
+Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Procedural }
+struct Spark { vec4 positionLife; vec4 velocitySeed; };    // declared before Buffers { }
 Buffers {
     SPARKS ("Sparks", Spark, readonly)
     LIVE   ("Live",   uint,  readonly)                     // the live sparks' indices, compacted
 }
-
-Pass {
-    struct v2f { float life; };
-    void vertex(out v2f o) {
-        Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));          // quad n draws the nth live spark
-        vec3 p = s.positionLife.xyz + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
-        o.life = s.positionLife.w;
-        gl_Position = CG_MATRIX_MVP * vec4(p, 1.0);
-    }
-    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0, 0.6, 0.2, 1.0) * clamp(i.life, 0.0, 1.0); }
+struct v2f { float life; };
+void vertex(inout CgVertex v, out v2f o) {
+    Spark p = SPARKS(LIVE(CG_VERTEX_ID >> 2));              // quad n draws the nth live spark
+    vec3 centre = (CG_OBJECT_TO_WORLD * vec4(p.positionLife.xyz, 1.0)).xyz;
+    v.world = centre + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
+    o.life = p.positionLife.w;
 }
+void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0, 0.6, 0.2) * clamp(i.life, 0.0, 1.0); }
 ```
 
 ```java
@@ -693,250 +527,147 @@ sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // graph buffers;
 world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
 ```
 
-A buffer is read as a `readonly` storage block bound at `CgBindingModel.buffer(i)`.
-
-- **The kernel's grammar and element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of
-  `vec4`, `ivec4` and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
-- **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph
-  orders each draw after the pass writing the buffer. A history buffer reads its newest version.
-- **Recorded draws only**: a material's `bindings()` (the world renderer, `pass.draw`, a chunk) binds them; `bind()` binds
-  none. Every declared buffer is bound before the first capture, which throws naming one that is not.
-- **No `NAME_LENGTH()`**: a draw's count says how many elements it reads.
-- A vertex stage reading a buffer keeps its body in the generated depth pass.
+- **The kernel's element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of `vec4`, `ivec4`
+  and `uvec4` only, since every context must read it. Upper-case names not starting `CG_`; at most 4.
+- **Bound as a texture is**: `material.buffer(name, buffer)` holds for the draws captured after it, and the graph orders
+  each draw after the pass writing the buffer. A history buffer reads its newest version.
+- **Recorded draws only**: a material's `bindings()` (the world renderer, `pass.draw`, a chunk) binds them; `bind()`
+  binds none. Every declared buffer is bound before the first capture, which throws naming one that is not.
+- A `vertex()` reading a buffer runs in the depth pass too.
 
 ---
 
-### Passes, LightMode Routing, and MRTs
+### What the engine does with each output
 
-#### LightMode Routing
+`surface()`'s outputs decide which passes a material draws in (`MATERIAL_FORMAT.md` § 4.4). What each of those passes
+does:
 
-Each `Pass { }` carries a `Tags { "LightMode" = "..." }` that routes it to the correct rendering stage:
+#### The glow: `s.emissive`
 
-| LightMode | Stage | Notes |
-|---|---|---|
-| `Forward` | Standard forward-lit draw | Default when `LightMode` is absent |
-| `Depth` | Early depth pre-pass | Auto-generated for opaque materials |
-| `Emissive` | The world's bloom: light the material gives off, blurred over the scene | Never generated; at most one per shader. Below |
-| `Distortion` | How the surface bends what is behind it: an offset, applied to the scene once after the transparent pass | Never generated; at most one per shader. Below |
+The light a material gives off. `CgWorldRenderer` adds it into the HDR scene, where bloom takes what passes white
+(`docs/ENGINE_API.md` § *CgWorldRenderer*): Unity's, Godot's and Unreal's emission, a material output added to an HDR
+scene colour.
 
-There is no `ShadowCaster`, as Unreal has none to author: the world's shadows are rays traced from each pixel against
-the blocks and entities (`CgWorldLights`, [`LIGHTS.md`](LIGHTS.md) §7), so nothing draws from a light's side. A
-`ShadowCaster` pass or a `"CastShadows"` tag fails to parse.
-
-The `"Name"` tag sets the pass key dimension for the `ProgramKey` variant cache. Auto-assigned as `Pass0`, `Pass1`, … when absent.
-
-#### The Emissive pass
-
-What a material draws in its Emissive pass is the light it gives off: `CgWorldRenderer` adds it into the HDR scene,
-where bloom takes what passes white (`docs/ENGINE_API.md` § *CgWorldRenderer*). Unity's, Godot's and Unreal's emission
-is a material output added to an HDR scene colour; here it is a pass of its own, which a codeless one on the Forward
-pass's blend folds into the Forward draw.
-
-```glsl
-// The Forward pass's code and render state again: what it draws, it also blooms
-Pass { Tags { "LightMode" = "Emissive" } }
-
-// Or its own: only the bright part blooms
-Pass {
-    Tags { "LightMode" = "Emissive" }
-    void vertex(out v2f o) { gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); o.uv = cg_TexCoord0; }
-    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_GlowColor.rgb * _GlowStrength, 0.0); }
-}
-```
-
-- **Write HDR colour with an alpha of 0.** It adds into the float scene; the alpha is unused.
-- **Codeless**, it takes the first Forward pass's v2f, code and render state, and fails to parse when no Forward pass
-  comes before it. A `RenderState` of its own replaces the Forward pass's.
-- **Codeless on one blend, it costs no draw of its own.** In a transparent material whose Emissive pass is codeless
-  and blends as the Forward pass does, or adds (`Blend ONE ONE`) under a premultiplied Forward pass
-  (`ONE ONE_MINUS_SRC_ALPHA`), the world renderer draws both in one draw: the Forward pass compiled with
-  `CG_SCENE_FOLD` adds the glow to its colour (`CgMaterialShaderCompiler.emissionMerge`, `sceneFolds`,
-  `CgPipeline.sceneFold`). A body naming `CG_EMISSIVE_PASS` never merges, since one draw cannot be both passes.
-- **With code and no `RenderState`**, it draws ONE ONE with no depth test and back faces culled. An authored state
-  replaces all of it, including the cull, so list everything. ONE ONE is not `CgBlendState.ADDITIVE`, which is
-  SRC_ALPHA ONE and adds nothing at alpha 0.
-- **Hidden by the scene, not by a depth test.** The bloom target has no depth, so the compiler discards a fragment
-  further than the scene's depth at its pixel, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`,
-  `CG_EMISSIVE_DEPTH_BIAS`, in `cg_env.glsl`). `DepthTest ALWAYS` turns that off for a shader that tests depth itself:
-  a volume drawn on its back faces.
-- Unlit and fogged additively whatever the material's tags. `CG_EMISSIVE_PASS` is defined in both stages, so a body
-  it shares with the Forward pass can tell them apart (which keeps the two from merging):
-
-```glsl
-Pass {
-    Tags { "LightMode" = "Forward" }
-    void fragment(in v2f i, out vec4 fragColor) {
-#ifdef CG_EMISSIVE_PASS
-        fragColor = vec4(_GlowColor.rgb * mask(i.uv), 0.0);   // the glow alone
-        return;
-#endif
-        fragColor = shade(i);                                  // the surface
-    }
-}
-Pass { Tags { "LightMode" = "Emissive" } }                    // codeless: the body above, CG_EMISSIVE_PASS defined
-```
-- It takes the material's keywords, as the Forward pass does.
-- **Into the scene**: the pass adds into the HDR scene itself, a transparent draw's right after its colour and an opaque or half-size draw's before the transparent pass, so
-  what is in front covers it; a codeless one that merges is folded into the colour's own draw instead, the glow added
-  to the decoded colour (`CG_SCENE_FOLD`, `CgPipeline.sceneFold`). Either way times `CG_SCENE_GLOW` (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a
-  strength set for a blurred bloom floods a sharp core). Bloom then takes the scene's light past `CgBloom.threshold`
-  (1), so a glow blooms where it takes the scene past white; the composite rolls what passes white toward white,
-  keeping its hue.
-- **`CG_EMISSION` scales the glow**, a `vec3` in every pass: `_EmissionColor.rgb` (a `color` property) times
-  `_EmissionStrength` (a `float`) where the shader declares them, times the draw's `.emission(scale)`
-  (`CG_OBJECT_EMISSION`). The compiler multiplies an Emissive pass's output by it, unless the pass's code names
-  `CG_EMISSION` itself. Declared with defaults of white and 1, a material glows as before; the unit is times the
-  screen's white.
-
-```glsl
-Properties {
-    _EmissionColor    ("Glow colour", color) = (1, 0.6, 0.2, 1)
-    _EmissionStrength ("Glow strength", float) = 2.0
-}
-Pass { Tags { "LightMode" = "Emissive" } }                       // what Forward draws, times CG_EMISSION
-Pass { Tags { "LightMode" = "Emissive" }                         // or authored, applying it where it wants
-    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(CG_EMISSION * mask(i.uv), 0.0); } }
-```
-
-- **A codeless pass glows the whole colour unless the fragment names its glow** with `CG_GLOW(rgb)`, linear as an
-  Emissive pass is. Then that value glows instead, merged, folded into the HDR scene or drawn on its own, and the
-  colour is left as drawn. A saturated layer glowing a copy of itself pales toward white in the HDR scene; glowing only
-  its hot part keeps the colour:
-
-  ```glsl
-  vec3 hot = _White.rgb * core;
-  fragColor = vec4(mix(hot, _Band.rgb, band) * light, _Cover * band);   // premultiplied: the band covers
-  CG_GLOW(hot * (1.0 - band) * light);                                   // only the white glows
-  ```
-
-  Call it in the fragment body, not a helper declared before it. A fragment naming it that never calls it glows nothing.
-- **A glow that draws nothing in the scene** is `crystalgraphics:shaders/emission_only.shader`: its Emissive pass
-  blooms the mesh in `_EmissionColor` × `_EmissionStrength`, and its Forward pass writes no colour or depth.
+- **Linear light, unlit**, fogged additively. Past 1 it blooms: bloom takes the scene's light past `CgBloom.threshold`
+  (1), and the composite rolls what passes white toward white, keeping its hue.
+- **Times `CG_SCENE_GLOW`** (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a strength set for a blurred
+  bloom floods a sharp core).
+- **Folded into the colour's draw where it can**: a translucent material's glow costs no draw of its own when it blends
+  as its colour does (`CgMaterialShaderCompiler.emissionMerge`, `CgPipeline.sceneFold`). Otherwise it draws apart, a
+  transparent draw's right after its colour and an opaque one's before the transparent pass, so what is in front covers
+  it.
+- **Hidden by the scene, not by a depth test**: the glow's target has no depth, so a fragment further than the scene's
+  depth at its pixel is discarded, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`).
+- **A glow that draws nothing in the scene** writes only `emissive`.
 - `-Dcrystalgraphics.post.debug=level<N>` draws one stage of bloom over the frame (`docs/DEBUG_FLAGS.md`).
 
-#### The Distortion pass
+#### The bend: `s.refraction`
 
-What a material draws in its Distortion pass is where each pixel behind it takes its colour from: an offset in UV
-units, a chromatic split, and the eye depth the haze starts at, packed by `CG_DISTORTION(offset, split, eyeDepth)`.
-`CgWorldRenderer` adds every visible transparent draw's Distortion pass into one RGBA16F
-target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's distortion
-vectors). A heat haze or a shockwave writes an offset here instead of sampling `cg_SceneColor` itself.
+Where each pixel behind the material takes its colour from: an offset in screen UV, `s.refractionSplit` a chromatic
+split, `s.refractionDepth` the eye depth the haze starts at. `CgWorldRenderer` adds every visible draw's bend into one
+RGBA16F target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's
+distortion vectors). A heat haze or a shockwave writes a bend instead of sampling the scene itself.
 
 ```glsl
-Pass { Tags { "LightMode" = "Forward" } ... }    // what the surface draws, if anything: a pure haze draws nothing
-
-// No vertex(): the Forward pass's v2f, declarations and vertex function, with this pass's own after them
-Pass {
-    Tags { "LightMode" = "Distortion" }
-    void fragment(in v2f i, out vec4 offset) {
-        vec2 bend = haze(i.uv) * 0.02;            // UV units: 0.02 is 2% of the screen
-        // split 0.3: red bends 1.3x as far, blue 0.7x; a flat surface starts where it is drawn
-        offset = CG_DISTORTION(bend, 0.3, cg_LinearEyeDepth(gl_FragCoord.z));
-    }
-}
-
-// A haze traced in a volume it draws the far wall of: it starts where its ray enters (fx_depth.glsl)
-offset = CG_DISTORTION(bend * fade, 0.3 * fade, FX_EYE_DEPTH(ray, enter));
+s.refraction = haze(i.uv0) * 0.02;                // 0.02 is 2% of the screen
+s.refractionSplit = 0.3;                          // red bends 1.3x as far, blue 0.7x
+s.refractionDepth = FX_EYE_DEPTH(ray, enter);     // a haze traced in a volume starts where its ray enters
 ```
 
-- **Offsets add**: overlapping hazes sum rather than each bending the last, and nothing seams where they meet. Fade one
-  out by scaling its offset, never by alpha.
-- **Splits add too**, held to 0.3; scale a fading haze's split with its offset.
-- **The blend is the engine's**: whatever a Distortion pass's `RenderState` says, offsets and split add and the alpha
-  keeps the nearest haze (`MAX`), so the pass sets no `Blend`.
-- **A pure haze draws nothing in the scene**: give its Forward pass `ColorMask 0` and `DepthWrite OFF`, and the world
-  renderer skips it (`CgRenderState.writesNothing()`), leaving the Distortion pass the whole cost.
-- **A haze bends what sorts before it**, as each haze reading its own copy would. A draw that must not be bent by the
-  hazes sorted before it (`Queue = "AfterDistortion"` for a material, `.afterDistortion()` for one draw) gets an apply of
-  those hazes placed just before it in the transparent pass, cut to their rect; nearer hazes still bend it. Up to four
-  such applies overlap on screen; past that it draws after the final apply, over nearer transparent draws.
-  Blended after the apply, such a draw covers nearer transparent draws of other effects.
-- **Hidden by the scene, not by a depth test**, as an Emissive pass is: a fragment behind the scene's depth is discarded
-  before `fragment()` runs; `DepthTest ALWAYS` turns that off. With no `RenderState` it has no depth test and culls back
-  faces.
-- **The apply** mirrors UVs at the screen's borders and spreads red and blue by the split. It bends in whatever is
-  behind the nearest haze, an opaque thing between it and the sky included, as Unreal's does. A bend whose farthest tap
-  would read anything nearer than that haze is shortened to stop at that edge: the foreground is never pulled in, and
-  the bend fades out at its silhouette. The eye depth a haze gives is what decides this, so give the depth where it
-  starts, not its far wall's. A frame where nothing distorts records neither pass.
-- **The glow bends too**: the emission bloom blurs is bent by the same offsets first, as a bloom taken from the
-  distorted scene would be. Any post effect reading a side input of the scene does the same with `post.distorted(texture)`.
-- `CG_DISTORTION_PASS` is defined in both stages; the pass takes the material's keywords. Unlit, unfogged, one output.
-- `-Dcrystalgraphics.post.debug=distortion` shows the target (|offset| x 50 in red and green, the split in blue);
-  `--mode=distortion` is the gate.
+- **Bends add**: overlapping hazes sum rather than each bending the last, and nothing seams where they meet. Fade one
+  out by scaling its bend, never by opacity.
+- **Splits add too**, held to 0.3; scale a fading haze's split with its bend.
+- **A pure haze is one draw**: writing only `refraction`, it draws the distortion pass alone.
+- **A haze bends what sorts before it.** A material that must not be bent by the hazes sorted before it
+  (`TranslucencyPass AfterDistortion`, `.afterDistortion()` for one draw) gets an apply of those hazes placed just
+  before it, cut to their rect; nearer hazes still bend it. Up to four such applies overlap on screen.
+- **Hidden by the scene, not by a depth test**, as the glow is.
+- **The apply** mirrors UVs at the screen's borders and spreads red and blue by the split. A bend whose farthest tap
+  would read anything nearer than the haze is shortened to stop at that edge: the foreground is never pulled in. The
+  eye depth a haze gives decides this, so give the depth where it starts, not its far wall's.
+- **The glow bends too**: the emission bloom blurs is bent by the same offsets first. Any post effect reading a side
+  input of the scene does the same with `post.distorted(texture)`.
+- `-Dcrystalgraphics.post.debug=distortion` shows the target; `--mode=distortion` is the gate.
 
-#### Depth from a transparent material
+#### Depth from a translucent material: `ClipDepth`, `DepthPrepass`
 
-A transparent material writes no depth, so whatever blends over it later, including its own back faces and the draws
-behind it in one multi-draw, shows through. The `"Depth"` tag makes it write depth where it is solid, and the
-fragment's `cg_Clip(value)` says where that is. The two modes are Godot's Alpha Scissor and Depth Pre-Pass:
+A translucent material writes no depth, so whatever blends over it later, its own back faces included, shows through.
+Two settings make it write depth where `s.opacityMask` passes `MaskClip`, Godot's Alpha Scissor and Depth Pre-Pass:
 
 ```glsl
-// Clip: one pass. Below the threshold the fragment is discarded; above it, drawn and its depth written. Ink, debris.
-Tags { "RenderType" = "Transparent" "Depth" = "Clip" }
-void fragment(in v2f i, out vec4 fragColor) {
+// ClipDepth: one draw. Below the threshold the pixel is cut; above it, drawn and its depth written. Ink, debris.
+Material { BlendMode AlphaComposite  ClipDepth On }
+void surface(in v2f i, inout CgSurface s) {
     float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
-    cg_Clip(cover);                                   // discarded below 0.5
-    fragColor = vec4(colour * cover, cover);
+    s.opacityMask = cover;
+    s.baseColor = colour;
+    s.opacity = cover;
 }
 
-// Prepass: soft throughout, opaque in its middle. The depth of where it is solid first, then the blend over it,
+// DepthPrepass: soft throughout, opaque in its middle. The depth of where it is solid first, then the blend over it,
 // so only its nearest solid surface is shaded and what is behind it is hidden there. Smoke.
-Tags { "RenderType" = "Transparent" "Depth" = "Prepass" }
-Properties { _Clip ("How opaque it must be to hide what is behind it", float) = 0.9 }
-void fragment(in v2f i, out vec4 fragColor) {
-    float alpha = density(i);
-    cg_Clip(alpha);                                   // the prepass ends here; the blend goes on
-    fragColor = vec4(shade(i) * alpha, alpha);
-}
+Material { BlendMode Translucent  DepthPrepass On  MaskClip 0.9 }
 ```
 
-- **The threshold** is `CG_CLIP_THRESHOLD`: the material's `_Clip` (a `float` property) where it declares one, else 0.5.
-- **Clip** discards below it in every pass and writes depth in the Forward pass, whatever its `DepthWrite`.
-- **Only a material that clips cuts**: with no `"Depth"` tag, and no state `clip()`, `cg_Clip` does nothing. Unreal
-  applies the opacity mask to a Masked material alone, so a port calls `cg_Clip(mask)` unguarded and its masked
-  master declares `"Depth" = "Clip"` (or its material asset's blend is `masked`).
-- **Prepass** is for a transparent queue only, and fails to parse on another. The world renderer draws a depth pass
-  of every such draw (`CgPipeline.as(CgPipelineForm.DEPTH)`: the Forward pass compiled with `CG_DEPTH_PREPASS`, no colour, no
-  blend) before the transparent pass, where `cg_Clip` discards below the threshold and returns above it: compute
-  only what decides it before the call. The Forward pass then blends with depth write off, and `cg_Clip` does nothing
-  there. Every vertex stage of the material is `invariant gl_Position`, so the two passes agree on depth exactly.
-- **A Clip material draws first in its group** (`CgSortKey`'s solid bit), before the rest of its effect whatever its
-  `order`: what blends over it then sees its depth. A Prepass material keeps its order: its depth is drawn before every
-  transparent draw already, and drawing its blend first would let what is behind its thin edge blend over it.
-- **A Prepass material should not fade against the scene's depth** (`cg_DepthBuffer`, soft particles): from the
-  transparent pass on, that holds its own prepass, and it would fade into itself. Fade by something else, as
-  `billow.shader` fades by its height over the surface it rests on. Godot's proximity fade makes the same rule.
-- **Clip before a fade into an opaque surface.** Where it thins only to meet the ground, call `cg_Clip` on the density
-  before that fade: the ground, drawn already, shows through it, and what draws later behind it stays hidden. Clipped
-  after it, that band has no depth, and every later draw behind it (a glow, a dome, its own back lobes) paints over it.
+- **ClipDepth** cuts below the threshold and writes depth where it draws.
+- **DepthPrepass** draws a depth pass of every such draw before the transparent pass, cutting below the threshold, then
+  the blend with depth write off. Compute only what decides `opacityMask` before writing it: in the depth pass the
+  material stops there. Every vertex stage is `invariant gl_Position`, so the two passes agree on depth exactly.
+- **A ClipDepth material draws first in its group** (`CgSortKey`'s solid bit), before the rest of its effect whatever
+  its `order`: what blends over it then sees its depth. A DepthPrepass material keeps its order.
+- **A DepthPrepass material should not fade against the scene's depth** (soft particles): from the transparent pass on,
+  that holds its own prepass, and it would fade into itself. Fade by something else, as `billow.shader` fades by its
+  height over the surface it rests on.
+- **Cut before a fade into an opaque surface.** Where it thins only to meet the ground, take `opacityMask` from the
+  density before that fade: the ground shows through, and what draws later behind it stays hidden.
 
-#### Dimmed by the smoke in front
+#### Dimmed by the smoke in front: `Media`
 
-Smoke and gas are drawn as volumes, so a spark inside a cloud would draw over it. Every transparent world material is
-dimmed instead by what gets through between the eye and its fragment, read from the world's media
-(`CgWorldMedia`, a froxel grid the gas and grids fill): the generated `main` multiplies its output by
-`cg_MediaTransmit` after `fragment()`, as its blend takes it.
+Smoke and gas are drawn as volumes, so a spark inside a cloud would draw over it. Every translucent world material is
+dimmed instead by what gets through between the eye and its pixel, read from the world's media (`CgWorldMedia`, a
+froxel grid the gas fills), as its blend takes it:
 
-| Pass and blend | Dimmed |
+| Blend mode | Dimmed |
 |---|---|
-| Emissive, or a Forward pass blending `ONE ...` (added or premultiplied) | the whole colour |
-| A Forward pass blending `SRC_ALPHA ...` | its alpha |
-| Anything else (opaque, a Distortion pass) | nothing |
+| `Additive`, `Subtract`, `AlphaComposite`, and the glow | the whole colour |
+| `Translucent` | its opacity |
+| anything else | nothing |
+
+- `Material { Media Off }` draws over smoke undimmed: a HUD marker in the world.
+  `cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z))` reads it by hand.
+- **A volume writing `s.volumeDepth`** is never dimmed: it draws the smoke itself.
+- The grid is 16 pixels a froxel across, so a dimmed edge is soft at that size.
+
+#### What a post material reads of the scene: Unreal's SceneTextures
+
+An opaque material may write Unreal's custom data (GBufferD) and its shading model beside its colour, and a post
+material reads them back with the stencil and the world normal. There is no G-buffer: in a frame a post material reads
+them, the world renderer draws the writers again (`CG_CUSTOM_DATA_TARGET`) beside the host's depth, so only what shows
+lands.
 
 ```glsl
-Tags { "RenderType" = "Transparent" "Media" = "Off" }    // drawn over smoke undimmed: a HUD marker in the world
-float t = cg_MediaTransmit(gl_FragCoord.xy / CG_RESOLUTION, cg_LinearEyeDepth(gl_FragCoord.z));   // by hand
+// an opaque surface: no-ops in every draw but that one
+s.customData = vec4(outlineColour, outlineId);      // 0..1 each, stored as bytes
+s.shadingModelId = uvec2(13u, outlineType);         // model 0..31, type 0..3
+
+// a post material: naming one hands it all four
+if (CG_CUSTOM_STENCIL(i.uv) != 1) discard;          // CustomStencil, 0..255 (Draw.customDepth)
+vec3 n = CG_SCENE_WORLD_NORMAL(i.uv);               // world space; 0 where no draw of ours wrote one
+vec4 data = CG_CUSTOM_DATA(i.uv);                   // as written
+uvec2 model = CG_SHADING_MODEL_ID(i.uv);            // (model, type)
 ```
 
-- **Which materials**: a transparent queue below Overlay that reads the object record (every world draw's).
-- **A volume naming `CG_VOLUME_DEPTH`** is never dimmed: it draws the smoke itself.
-- The grid is 16 pixels a froxel across, so a dimmed edge is soft at that size.
+- **Post materials only** (`Location BEFORE_TRANSLUCENCY`), which the post stack binds from the firing; a firing that
+  published none reads 0 throughout. Each read is the pixel at `uv`, unfiltered.
+- `CG_CUSTOM_EYE_DEPTH` is not handed yet and fails to compile, naming the read.
+- Host-drawn pixels (terrain, entities, the sky) have no normal or data, and read as DefaultLit (model 1), as a lit
+  world pixel does in Unreal's GBuffer. Rebuild their normal from depth.
+- An `Opaque` or `Masked` material writes the world normal for the world's lights without asking (`docs/LIGHTS.md` §7).
+- `--mode=custom-depth` is the gate.
 
 #### A second look on the same mesh
 
-The `.shader` format routes **pass types** with `LightMode` tags: one `Forward` pass, optionally a `Depth`, an
-`Emissive` and a `Distortion`. A second look on the same mesh (an outline, a glow shell) is a second draw with its own
+A material draws one look. A second look on the same mesh (an outline, a glow shell) is a second draw with its own
 material, as Unreal draws a mesh's overlay material:
 
 ```java
@@ -946,123 +677,61 @@ CgWorldRenderer.get().draw(mesh, outline).at(x, y, z).submit();   // its own mat
 
 A skinned instance names one for every slot: `CgAnimInstance.overlay(material)`.
 
-#### MRT (Multiple Render Targets)
-
-For G-buffer or deferred passes, declare a named output struct instead of `out vec4 fragColor`. Annotate each field with `: RT0`, `: RT1`, etc. to map to color attachment slots. The compiler expands each to `layout(location=N) out vec4`:
-
-```glsl
-Pass {
-    Tags { "LightMode" = "Forward" "Name" = "GBufferFill" }
-    struct v2f { vec2 uv; vec3 normalWs; };
-    // Inside the Pass, after struct v2f: the parser finds it nowhere else
-    struct GBuffer {
-        vec4 albedo  : RT0;   // → layout(location=0) out vec4 → GL_COLOR_ATTACHMENT0
-        vec4 normal  : RT1;   // → layout(location=1) out vec4 → GL_COLOR_ATTACHMENT1
-        vec4 pbr     : RT2;   // → layout(location=2) out vec4 → GL_COLOR_ATTACHMENT2
-    };
-    void vertex(out v2f o) { /* ... */ }
-    void fragment(in v2f i, out GBuffer o) {
-        o.albedo = texture(_MainTex, i.uv) * _Color;
-        o.normal = vec4(normalize(i.normalWs) * 0.5 + 0.5, 1.0);
-        o.pbr    = vec4(_Roughness, _Metallic, 0.0, 1.0);
-    }
-}
-```
-
-An opaque world material with one output gets a G-buffer normal without asking: `CgWorldRenderer` draws it compiled
-with `CG_NORMAL_TARGET`, which writes the vertex normal (`cg_Normal` through `CG_NORMAL_MATRIX`) at location 1 for the
-world lights (`docs/LIGHTS.md` §7). An MRT pass is left alone, so it gives up that normal.
-
-#### What a post material reads of the scene: Unreal's SceneTextures
-
-An opaque program may write Unreal's custom data (GBufferD) and its shading model beside its colour, and a post
-material reads them back with the stencil and the world normal. There is no G-buffer here: in a frame a post material
-reads them, the world renderer draws the writers again (`CG_CUSTOM_DATA_TARGET`) beside the host's depth, so only what
-shows lands.
-
-```glsl
-// an opaque program's Forward fragment: no-ops in every other draw
-CG_CUSTOM_DATA_OUT(vec4(outlineColour, outlineId));   // 0..1 each, stored as bytes
-CG_SHADING_MODEL_OUT(13u, outlineType);                // model 0..31, type 0..3
-
-// a post material (CgPostMaterial): naming one hands it all four
-vec2 uv = gl_FragCoord.xy / CG_RESOLUTION;
-if (CG_CUSTOM_STENCIL(uv) != 1) discard;              // CustomStencil, 0..255 (Draw.customDepth)
-vec3 n = CG_SCENE_WORLD_NORMAL(uv);                   // world space; 0 where no draw of ours wrote one
-vec4 data = CG_CUSTOM_DATA(uv);                       // as written
-uvec2 model = CG_SHADING_MODEL_ID(uv);                // (model, type)
-```
-
-- **Only in a post material** (`CgPostMaterial`), which binds them from the firing; the post stack asks the world for
-  the normals and custom data while one naming them is active. A firing that published none reads 0 throughout.
-- Each read is the pixel at `uv`, unfiltered.
-- `CG_CUSTOM_EYE_DEPTH` is not handed yet and still fails to link, naming the read.
-- Host-drawn pixels (terrain, entities, the sky) have no normal or data, and read as DefaultLit (model 1), as a lit
-  world pixel does in Unreal's GBuffer: a post material skipping Unlit pixels treats the host's world as lit.
-  Rebuild their normal from depth.
-- `--mode=custom-depth` is the gate.
-
 ---
 
-### Loading and Using a Material
+### Loading and using a material
 
 ```java
 CgMaterial mat = CgMaterial.load("mymod:shaders/terrain.shader");  // shared, cached per path: never changed
 
-// Values of your own: an instance (persist across frames until overwritten)
+// Values of your own: an instance (they persist across frames until overwritten)
 CgMaterialInstance mine = mat.instance().set1f("_Roughness", 0.8f).vec4("_Color", 1f, 0f, 0f, 1f);
-// Safe before any compile: values are built from the parse
 
 // Keywords make other materials, cached:
 CgMaterial mapped = mat.keyword("NORMAL_MAP", true);                // throws for an undeclared name
 CgMaterialInstance mappedMine = mapped.instance();                   // values of your own on that variant
 ```
 
+A material asset (a `.yaml` under `materials/`) names its shader and sets the same: [`vfx/materials.md`](vfx/materials.md).
+
 ### A material's state: drawing one shader several ways
 
-A material may draw its shader under another blend, cull, depth write or clip than the shader authors: Unreal's
-material instance overriding its parent's blend mode and two-sidedness. A shader written with no `Blend` of its own
-draws under each as if it had authored it.
+A material may draw its shader under another blend, cull, depth write or clip than the shader's own: Unreal's material
+instance overriding its parent's blend mode and two-sidedness.
 
 ```java
 CgMaterial glow = CgMaterial.load("mymod:shaders/fx/soft.shader",
         CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).twoSided().build());
 CgMaterial ink = CgMaterial.load("mymod:shaders/fx/ink.shader",
-        CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build());   // "Depth" = "Clip", threshold _Clip
+        CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build());   // as ClipDepth, at its MaskClip
 ```
 
 | `CgBlendMode` | Stands for |
 |---|---|
-| `OPAQUE` | `Blend OFF` |
-| `ALPHA` | `Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA` |
-| `PREMULTIPLIED` | `Blend ONE ONE_MINUS_SRC_ALPHA` |
-| `ADDITIVE` | `Blend ONE ONE` |
-| `MODULATE` | `Blend DST_COLOR ZERO`: what is behind times the colour, fogged toward white |
-| `SUBTRACT` | `Blend ONE ONE` with `BlendEquation REV_SUB`: fogged and decoded as `ADDITIVE`, its glow added |
+| `OPAQUE` | `BlendMode Opaque` |
+| `ALPHA` | `BlendMode Translucent` |
+| `PREMULTIPLIED` | `BlendMode AlphaComposite` |
+| `ADDITIVE` | `BlendMode Additive` |
+| `MODULATE` | `BlendMode Modulate`: what is behind times the colour, fogged toward white |
+| `SUBTRACT` | `BlendMode Subtract`: fogged and decoded as `ADDITIVE`, its glow added |
 
-- **A blend or a clip is a shader asset of its own** (`CgMaterialShaderRegistry.getOrCreate(path, state)`): the
-  generated fragment `main` is built from them, so each compiles once, on first use. **Cull and depth write are
-  pipeline state** on the shader's own programs (`CgMaterialState.onPass`).
-- Applied to the parse (`CgParsedShader.withState`): each Forward pass takes the blend; a codeless Emissive pass takes
-  whatever it copied from the Forward pass (blend, depth), a blend of its own kept; a Distortion pass keeps the engine's.
-- **A blend without `clip()` replaces a `"Depth" = "Clip"` shader's whole**, as an instance's `bOverride_BlendMode`
-  replaces its parent's Masked: it no longer clips, and writes depth only when opaque. A translucent instance of a
-  masked master cuts nothing.
-- Refused at parse: `depthWrite` under a `"Depth"` tag (unless a blend without `clip()` dropped it) or with `clip()`;
-  `clip()` on a `"Prepass"` shader.
-- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a file's `depth_test: false`) gives the Forward, Emissive and
-  Distortion passes `DepthTest ALWAYS` with no write, so the draw, its glow and its bend show over what is in front. It compiles, since an
-  Emissive pass's scene test is compiled. Translucent only: refused with an opaque blend, a clip, a depth write, on a
-  `"Prepass"` shader or an opaque-queue shader with no blend of its own.
-- The queue stays the shader's, except under `separateTranslucency()` (Unreal's separate translucency): a translucent
-  draw of it is lifted to `AFTER_DISTORTION` and the `SEPARATE_TRANSLUCENCY` sort layer, so it draws after every other
-  translucent draw, still depth-tested. It compiles nothing. Under the HDR scene it draws apart, into
+- **A blend or a clip is a program of its own** (`CgMaterialShaderRegistry.getOrCreate(path, state)`), compiled once,
+  on first use. **Cull and depth write are pipeline state** on the shader's own programs (`CgMaterialState.onPass`).
+- **A blend without `clip()` replaces a `ClipDepth` shader's whole**, as an instance's `bOverride_BlendMode` replaces its
+  parent's Masked: it no longer cuts, and writes depth only when opaque.
+- Refused at load: `depthWrite` on a `ClipDepth` or `DepthPrepass` shader (unless a blend without `clip()` dropped it)
+  or with `clip()`; `clip()` on a `DepthPrepass` shader.
+- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a file's `depth_test: false`) draws the colour, its glow and
+  its bend over what is in front. Translucent only: refused with an opaque blend, a clip, a depth write, or on a
+  `DepthPrepass` shader.
+- **`separateTranslucency()`** (Unreal's separate translucency, the shader's `TranslucencyPass Separate`) draws a
+  translucent draw after every other translucent draw, still depth-tested. Under the HDR scene it draws apart, into
   `CgSeparateTranslucency`, which the post stack lays over the scene after `BEFORE_SEPARATE_TRANSLUCENCY`.
-- In a look: a material asset's `state` ([`vfx/effects.md`](vfx/effects.md)).
 
 ### GLSL Standard Library
 
-Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files use `#pragma once`.
+Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. Every file guards itself with `#pragma once`, so
+two includes of it are one.
 
 | File | Key functions |
 |---|---|
@@ -1072,18 +741,20 @@ Located at `src/main/resources/assets/crystalgraphics/shaders/lib/`. All files u
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x/y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
 | `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
-| `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)` — pixel-art filtering: nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded.** Takes the reconstruction width as an argument rather than reading a constant, which is what keeps it free of any engine buffer |
-| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)` — the whole shared body of every `CgCurveBatch` consumer: taper, caps, feathered edge |
-| `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage` — Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table; what a text decoration's shadow is. **Fragment-only, guarded** |
-| `occlusion.glsl` | `cg_occluded(pyramid, size, clipX..clipW, eye, lo, hi)`: whether a box hides behind a `CgGpuOps.depthPyramid` pyramid, everything as arguments. What `CgGpuOps.cull` and VFX Range test |
+| `texel.glsl` | `cg_texel_aa_sample(tex, uv, uvRect, filterPx)`: pixel-art filtering, nearest everywhere, one screen pixel of blend at a texel boundary. **Fragment-only, guarded** |
+| `stroke.glsl` | `stroke_coverage(p, p0,p1,p2, widths, feather, cap, out t)`: the whole shared body of every `CgCurveBatch` consumer, taper, caps, feathered edge |
+| `rect_blur.glsl` | `rect_shadow_outer`, `rect_shadow_inset`, `rect_blur_coverage`: Skia Graphite's analytic Gaussian rect blur with `erf` in place of its integral table. **Fragment-only, guarded** |
+| `occlusion.glsl` | `cg_occluded(pyramid, size, clipX..clipW, eye, lo, hi)`: whether a box hides behind a `CgGpuOps.depthPyramid` pyramid |
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
-| `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage` — Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table; what `CgTextGamma` drives in `text.shader` |
+| `text_gamma.glsl` | `text_gamma_terms`, `text_gamma_coverage`: Skia's text gamma and contrast (`SkMaskGamma`), per fragment rather than a table |
 
 > **`stroke.glsl` exists so there is exactly one copy of the cap logic**: `canvas/curve.shader` and CrystalGUI's
-> coverage passes all include it. The cap handling was wrong three times in a row and every version rendered something
-> plausible, which is where a duplicated body gets fixed in one file only.
+> coverage passes all include it.
 
-Use with `#include "crystalgraphics:shaders/lib/color.glsl"` etc. (`#pragma once` prevents double-expansion when multiple files include `math.glsl`.)
+```glsl
+#include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/noise.glsl"
+```
 
 #### Unreal's material expressions: `lib/material/`
 
@@ -1092,22 +763,24 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 
 | File | Function | Unreal |
 |---|---|---|
-| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a material's fragment stage `CG_DEPTH_FADE(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
+| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a fragment, `CG_DEPTH_FADE(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
 | `panner.glsl` | `cg_panner(uv, time, speed, fractional)` | Panner |
 | `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
-| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; with the particle factory, `CG_PARTICLE_SUB_UV(tex, particle, blend)` | ParticleSubUV |
+| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; on a particle factory, `CG_PARTICLE_SUB_UV(tex, cg_Particle, blend)` | ParticleSubUV |
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
 #include "crystalgraphics:shaders/lib/material/panner.glsl"
 
-vec2 uv = cg_panner(i.uv, CG_TIME, vec2(0.0, 1.5), true);
-float a = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
+vec2 uv = cg_panner(i.uv0, CG_TIME, vec2(0.0, 1.5), true);
+s.opacity = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
 ```
 
-- Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset loads; a constant compiled into a port's code is the port's to convert.
-- `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s are placed before the engine's declarations, so a function reading those would not compile.
+- Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset
+  loads; a constant compiled into a port's code is the port's to convert.
+- `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s come before the engine's declarations,
+  so a function reading those would not compile.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
 **Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/parse/CLAUDE.md`
@@ -1116,12 +789,7 @@ float a = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / C
 
 There is no API that compiles GLSL text: a full-screen pass is a post material (`CgPostMaterial`) or a raster pass
 drawing a material, and GPU work that is not drawing is a kernel. Both get `cg_env.glsl`, and either may include the
-standard library, each file guarded by `#pragma once`:
-
-```glsl
-#include "crystalgraphics:shaders/lib/color.glsl"
-#include "crystalgraphics:shaders/lib/noise.glsl"
-```
+standard library.
 
 **Package guides**: `api/shader/CLAUDE.md` · `material/CLAUDE.md` · `mc/shader/CLAUDE.md`
 

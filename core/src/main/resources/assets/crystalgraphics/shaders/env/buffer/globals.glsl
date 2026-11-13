@@ -1,6 +1,6 @@
 // CgParameterCollection's shader environment: every collection's values, a vec4 each.
 //
-// INJECTED BY `#pragma cg_use globals`, after the buffer's declaration. The compiler then defines each parameter of
+// INJECTED for the `globals` engine buffer (a program naming a CG_GLOBAL_ parameter), after the buffer's declaration. The compiler then defines each parameter of
 // every collection by name, a float or a vec4:
 //
 //     #define CG_GLOBAL_skill_darken (CG_GLOBAL_VEC4(3).y)

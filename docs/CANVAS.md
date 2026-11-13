@@ -378,44 +378,30 @@ canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, thumbnail).at(x, y).siz
 
 ### A material of your own
 
-A material the canvas draws quads with declares the quad record, and places each corner from it:
+A material the canvas draws is a `#domain ui` material ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 8): its
+`surface()` colours the element, and its primitive (`Quad` by default, `Curve`, `Text`) places it, clips it, fades it by
+its opacity, antialiases its edge and premultiplies the result.
 
 ```glsl
-#type none
-#pragma cg_use quad
-
+#domain ui
 Properties {
     _MainTex ("Image", sampler2D) = "white"
 }
-
-struct v2f { vec2 uv; vec4 color; };
-
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
-        Cull OFF
-        DepthTest ALWAYS      // a HUD: over whatever the game left in depth
-        DepthWrite OFF
-    }
-    void vertex(out v2f o) {
-        gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
-        o.uv    = CG_QUAD_UV;
-        o.color = CG_QUAD_COLOR;
-    }
-    void fragment(in v2f i, out vec4 fragColor) {
-        fragColor = texture(_MainTex, i.uv) * i.color;
-    }
+void surface(in CgUiInput i, inout CgUiSurface s) {
+    s.color = cg_UiTexture(_MainTex, i) * i.color;    // straight alpha: the primitive premultiplies
 }
 ```
 
-`crystalgraphics:shaders/canvas/image.shader` is the default image's, its blend left to the material state. What
-the vertex stage can read:
-`CG_QUAD_WORLD_POS`, `CG_QUAD_UV`, `CG_QUAD_COLOR`, `CG_QUAD_ATLAS_LAYER`, `CG_QUAD_CUSTOM0`, `CG_QUAD_CUSTOM1`,
-`CG_QUAD_CUSTOM2`, `CG_QUAD_NORMAL`. Antialiased edges off the pixel grid (a rotated quad) use the
-`CG_QUAD_EDGE_*` macros in `shaders/env/buffer/quad.glsl`.
+```java
+CgMaterial mine = CgMaterial.load("mymod:shaders/ui/mine.shader", CgCanvasMaterials.SCREEN.image().state());
+canvas.quad(mine).texture(0, page).at(x, y).size(w, h).submit();
+```
 
-- The `#pragma` is required: a shader reading `CG_QUAD_*` without it is refused at parse.
+`crystalgraphics:shaders/canvas/image.shader` is the default image's, its blend left to the material state, and
+`crystalgraphics:shaders/reference/ui.shader` the reference. What `surface()` reads: `i.uv`, `i.param` (0..1 across the
+element), `i.color`, `i.local` and `i.size`, and a quad's own record (`CG_QUAD_CUSTOM0`, `CG_QUAD_CUSTOM1`, a
+`material_parameters`' four numbers).
+
 - Precache it like any other material ([`PRECACHE.md`](PRECACHE.md)), or its first frame waits for the compile.
 
 ---
@@ -443,7 +429,7 @@ canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3)
 - **Gradients** on triangles and cells: `gradient(start, end, originX, originY, dirX, dirY)`, per pixel.
 - **Cells** are for tessellated fills: mark the edges on the shape's outline `softEdges`, leave the cuts between
   cells hard, and neighbours meet with no seam. A lone shape wants `triangle`.
-- The material declares `#pragma cg_use curve`. `CgCanvasMaterials.SCREEN.curve()` and `WORLD.curve()` are the
+- The material is a ui material on `Primitive Curve`. `CgCanvasMaterials.SCREEN.curve()` and `WORLD.curve()` are the
   shipped ones.
 
 ---
@@ -645,7 +631,7 @@ CgRenderer.executeNow(frame);
 |---|---|---|
 | Holding `canvas.quad(...)`'s builder | The next `quad()` resets it under you | Build and submit in one expression, or `retainedQuad()` |
 | No `size(...)` | `submit()` throws | Always give a size |
-| A shader without `#pragma cg_use quad` / `curve` | Refused at parse | Add the pragma |
+| A canvas material written as `#domain surface` | No primitive places it: it draws nothing where the element is | Write it as `#domain ui` |
 | A `new CgCanvas()` inside a stage renderer | Draws immediately, outside the stage's order and target | `frame.canvas()` |
 | A new canvas every frame | Works, but allocates | Keep one in a field |
 | Moving an immediate canvas's camera between its draws | Text read the camera at each draw, quads at `flush()`: they disagree | `flush()` first, then change the camera |

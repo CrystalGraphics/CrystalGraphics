@@ -129,12 +129,12 @@ public final class CgPipeline {
             int on = 0;
             for (String k : d) if (keywords.contains(k)) on++;
             if (on > 1) {
-                LOGGER.error("pipeline {}: binds {} together, outside its #pragma cg_permutation {}", this, keywords,
+                LOGGER.error("pipeline {}: binds {} together, outside its switched keywords {}", this, keywords,
                         String.join("|", d));
                 return;
             }
         }
-        LOGGER.warn("pipeline {}: missed at its draw; its shader declares #pragma cg_permutation, so add the shader to a "
+        LOGGER.warn("pipeline {}: missed at its draw; its shader switches keywords, so add the shader to a "
                 + "precache collector (CgPipelineList.add or addPass)", this);
     }
 
@@ -167,7 +167,7 @@ public final class CgPipeline {
     /**
      * The pipeline for this variant, state and kind, made on first use.
      *
-     * @param keywords the enabled {@code #pragma cg_feature} names; ignored for any pass but
+     * @param keywords the enabled keywords; ignored for any pass but
      *                 {@link CgRenderPassVariant#FORWARD}, {@link CgRenderPassVariant#EMISSIVE} and
      *                 {@link CgRenderPassVariant#DISTORTION}
      */
@@ -299,7 +299,7 @@ public final class CgPipeline {
     }
 
     /**
-     * Whether its shader reads a recording's tables (palette, clips, shapes) through {@code cg_use quad}, {@code curve},
+     * Whether its shader reads a recording's tables (palette, clips, shapes) through the {@code quad}, {@code curve},
      * {@code clip} or {@code shape}: whatever kind draws it, its pass binds them.
      */
     public boolean readsTables() {

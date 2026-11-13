@@ -52,11 +52,10 @@ public class CgIndirectDrawTest {
     public void setUp() {
         CgMaterialTestSupport.resetShaderRegistry();
         CgMaterial material = CgMaterial.fromSource("""
-                #type none
-                Pass {
-                    void vertex(out v2f o) { }
-                    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }
-                }
+                #domain global
+                Material { Queue Geometry }
+                void vertex(out v2f o) { }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }
                 """);
         pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         quadPipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);

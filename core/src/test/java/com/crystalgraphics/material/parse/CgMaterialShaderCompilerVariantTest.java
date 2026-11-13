@@ -73,7 +73,7 @@ public class CgMaterialShaderCompilerVariantTest {
             + "}\n";
 
     private static CgParsedShader parse(String src) {
-        return CgShaderParser.parse(src, "test");
+        return CgShaderParser.parseLowered(src, "test");
     }
 
     private static CgMaterialShaderCompiler.CompiledSource compile(CgParsedShader parsed,

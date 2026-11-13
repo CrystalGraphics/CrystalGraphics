@@ -23,14 +23,14 @@ This is the top of the CrystalShader material stack.
 | `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgWorldRenderer.add`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.load(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
 | `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
-| `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by `#pragma cg_use`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
+| `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by its factory's or primitive's `EngineBuffers`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. Every material is cached here by its shader asset and state (`of(asset, state)`); `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` are a path's with the shader's state. `reloadAll()` marks every material's shader asset dirty; each material and instance made from it rebuilds its values from the new parse at its next capture, keeping each value whose property kept its name and type. `deleteAll()` deletes every material (each with its keyword variants), then the shader registry frees the programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
 | `CgMaterialDefinition`, `CgMaterialDefinitions` | A `material` asset compiled (`CgMaterialDefinitions.register()` makes it the kind's compiler): its parent chain merged, every `values`/`textures` key and keyword checked against the archetype, its `CgMaterialPermutation` (interned program key: archetype, keywords, blend class, clip, shading; a value-only child shares its parent's), constants, row layout (`CgMaterialRowLayout`), `Draw` state, domain and shading model. `route(p)` and `requireRow(p, who)` (a key refused on a non-row property), `requireDomain(d, who)`, `state()`. `CgMaterialDefinition.of(id, shader)` writes the file's tree (`tree()`) and compiles it (`build()`); `CgMaterialDefinitions.derive(parent, overrides)` is a child made in code, interned per parent generation (a `WeakHashMap` on the definition) by its overrides in canonical form (floats by bits, keywords sorted) |
-| `CgMaterialArchetypes` | Where an archetype is read: `FILES` through `CgIO`, a kit's `<ns>:shaders/<name>.shader` falling back to the engine's `crystalgraphics:shaders/vfx/archetype/<name>.shader` (`resolve`); its domain from `Tags { "Domain" = ... }` |
+| `CgMaterialArchetypes` | Where an archetype is read: `FILES` through `CgIO`, a kit's `<ns>:shaders/<name>.shader` falling back to the engine's `crystalgraphics:shaders/vfx/archetype/<name>.shader` (`resolve`); its domain from its `#domain` line |
 | `CgMaterialManifest` | A move's permutations by slot-kind keyword and half size: what a precache request builds (`CgPipelinePrecache.request(p -> p.add(manifest))`) |
 | `CgMaterialRoute`, `CgMaterialRow` | The three routes a value takes (constant, row, global) and one draw's row of a definition, written by slot |
-| `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, declarations)`, or `registerKit(namespace, folder)` reading the kit's `shading.yaml`, `shading:` name to `index`, `base`, `keyword`); `SURFACE`, `POST`, `DECAL`, `TEXT`, `UI`, `GLOBAL`, read from a file's `#domain` line (`ofDirective`) or its old `"Domain"` tag |
+| `CgShadingModel`, `CgShadingModels`, `CgMaterialDomain` | Shading models by registry (`unlit`, `lit`, `subsurface`, and a kit's `registerKit(namespace, declarations)`, or `registerKit(namespace, folder)` reading the kit's `shading.yaml`, `shading:` name to `index`, `base`, `keyword`); `SURFACE`, `POST`, `DECAL`, `UI` (a text paint is a UI material on `Primitive Text`), `GLOBAL`, read from a file's `#domain` line |
 | `CgVertexFactory` | What draws a `#domain surface` material (Unreal's vertex factory). A factory is a file, `VertexFactory Name` resolving `crystalgraphics:shaders/factories/Name.factory` and `ns:Name` its namespace's, read at first use (`material.parse.CgFormatTemplates`, which has the file's shape); the engine's seven are files (`Mesh`, `Procedural`, `Sprites`, `MeshParticles`, `Tube`, `TubeClosed`, `TubeVolume`). This class registers one built in Java (`register(builder(name).vertexType(..).fill(..)...build())`, `get`, `all`), found before a file. A factory brings its engine buffers, declarations, properties its draws bind, material tags and a parameters variable (`cg_Particle`) whose fields `surface()` names are passed to the fragment, one interpolator each (`_cg_in_` v2f fields). `v.normal` is world-space. A name registered twice throws |
 | `CgRenderQueue` | Final utility class (not an enum). Static `int` constants: `BACKGROUND` (1000), `GEOMETRY` (2000), `ALPHA_TEST` (2450), `TRANSPARENT` (3000), `AFTER_DISTORTION` (3500: transparent, drawn after the distortion apply), `OVERLAY` (4000). Threshold constants: `ALPHA_TEST_THRESHOLD` (2450), `TRANSPARENT_THRESHOLD` (2500), `AFTER_DISTORTION_THRESHOLD` (3500), `OVERLAY_THRESHOLD` (4000). `fromName(String)` maps PascalCase or SCREAMING_SNAKE names to int value; throws for unknown names. |
 | `package-info.java` | Package-level Javadoc describing the material API and lifecycle contract. |
@@ -84,49 +84,21 @@ hot.delete();                                                        // once not
 
 ### Shader Keywords / Variants
 
-Shaders declare optional compile-time feature flags using `#pragma cg_feature` in their preamble.
-Each enabled keyword injects `#define NAME 1` into both vertex and fragment sources.
-Every unique keyword-set combination is compiled into a separate program and cached lazily, at the
-first draw of a pipeline with that combination.
+A shader declares its compile-time switches in `Keywords { }` (`docs/MATERIAL_FORMAT.md` § 4.6). Each enabled
+keyword is defined in both stages, and every combination is its own program, compiled lazily at the first draw of a
+pipeline with that combination.
 
-**Declaring keywords in a `.shader` file:**
 ```glsl
-#type spatial
-
-#pragma cg_feature FOG_ON
-#pragma cg_feature NORMAL_MAP
-```
-
-**Complete example with keyword-gated code:**
-```glsl
-#type spatial
-
-#pragma cg_feature FOG_ON
-
+#domain surface
+Keywords { FOG_ON ("Fogged")  NORMAL_MAP ("Normal map") }
 Properties {
-    _MainTex   ("Main Texture",  sampler2D)  = "white"
-    _FogColor  ("Fog Color",     vec4)       = (0.7, 0.7, 0.7, 1.0)
-    _FogDensity("Fog Density",   Range(0,1)) = 0.05
+    _MainTex  ("Main Texture", sampler2D) = "white"
+    _FogColor ("Fog Color", color) = (0.7, 0.7, 0.7, 1.0)
 }
-
-struct v2f {
-    vec2 uv;
-    vec3 worldPos;
-};
-
-void vertex(out v2f o) {
-    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);
-    o.uv        = cg_TexCoord0;
-    o.worldPos  = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
-}
-
-void fragment(in v2f i, out vec4 fragColor) {
-    fragColor = texture(_MainTex, i.uv);
-
+void surface(in v2f i, inout CgSurface s) {
+    s.baseColor = texture(_MainTex, i.uv0).rgb;
 #ifdef FOG_ON
-    float dist    = length(i.worldPos);
-    float fogFact = exp(-_FogDensity * dist);
-    fragColor.rgb = mix(_FogColor.rgb, fragColor.rgb, clamp(fogFact, 0.0, 1.0));
+    s.baseColor = mix(_FogColor.rgb, s.baseColor, exp(-0.05 * length(i.world)));
 #endif
 }
 ```
@@ -148,10 +120,8 @@ CgMaterialInstance pane = panes.of(panes.material().keyword("WITH_NOISE", noise 
 **Rules and limits:**
 - Maximum **31 keywords** per shader (a game archetype carries its feature mask and its material's static switches); past 8 its variants sit in a sparse table. Exceeding this throws `CgShaderParseException` at parse time.
 - Keyword names must match `[A-Z][A-Z0-9_]*` — all uppercase, start with a letter.
-- Only names declared with `#pragma cg_feature` in that shader are accepted — `keyword(name, true)`
+- Only names in that shader's `Keywords { }` are accepted — `keyword(name, true)`
   throws `IllegalArgumentException` for an undeclared name; `keyword(name, false)` of one not on answers the material.
-- `#pragma cg_feature` lines are **never emitted** in the generated GLSL — they are stripped
-  during parsing. Only the `#define NAME 1` lines (for enabled keywords) appear in compiled output.
 - `keyword()` is safe to call before any compile: it parses, never compiles. A variant starts from its material's values.
 
 ### CgMaterial.load(resourcePath) / load(CgMaterialKey)
@@ -241,7 +211,7 @@ view's (lightmap, depth, scene colour) are another set's and never collide. A sh
 ## Buffers a material reads
 
 A material reads what its source declares: `Buffers { }`, bound by name with `material.buffer(name, buffer)`, and the
-engine tokens it names with `#pragma cg_use <token>` (`CgEngineBufferRegistry`; `text` is `CgTextMaterials`'
+engine tokens its factory or primitive names in `EngineBuffers { }` (`CgEngineBufferRegistry`; `text` is `CgTextMaterials`'
 `TextData`, a uniform block). Nothing is injected into a shader at runtime, so a program's reads are fixed by its
 source (rhi SH6, Unreal's shader parameters). A renderer giving each of its materials its own contents for an engine
 uniform block uses `overrideBlock(block, contents)`, which a capture keeps by value.

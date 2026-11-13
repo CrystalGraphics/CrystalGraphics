@@ -1,9 +1,6 @@
-package com.crystalgraphics.material;
+package com.crystalgraphics.material.parse;
 
-import com.crystalgraphics.material.parse.CgParsedPass;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParseException;
-import com.crystalgraphics.material.parse.CgShaderParser;
+import com.crystalgraphics.material.CgMaterialProperty;
 import org.junit.Test;
 
 import java.util.List;
@@ -68,7 +65,7 @@ public class CgShaderParserTest {
 
     @Test
     public void testParseMinimalShader() {
-        CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(MINIMAL_SHADER);
         assertNotNull(parsed);
         assertEquals("spatial", parsed.shaderType());
         assertTrue(parsed.properties().isEmpty());
@@ -79,13 +76,13 @@ public class CgShaderParserTest {
 
     @Test
     public void testShaderTypeSpatial() {
-        CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(MINIMAL_SHADER);
         assertEquals("spatial", parsed.shaderType());
     }
 
     @Test
     public void testPropertiesParsed() {
-        CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(FULL_SHADER);
         List<CgMaterialProperty> props = parsed.properties();
         assertEquals(3, props.size());
         assertEquals("_MainTex", props.get(0).getName());
@@ -103,7 +100,7 @@ public class CgShaderParserTest {
 
     @Test
     public void testV2fFieldsParsed() {
-        CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(FULL_SHADER);
         List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(pass0(parsed));
         assertEquals(3, fields.size());
         assertEquals("vec3", fields.get(0).type());
@@ -123,7 +120,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(pass0(CgShaderParser.parse(src)));
+        List<CgShaderParser.V2fField> fields = CgShaderParser.parseV2fFields(pass0(CgShaderParser.parseLowered(src)));
         assertEquals(3, fields.size());
         assertEquals("normalWs", fields.get(1).name());
         assertEquals("uv", fields.get(2).name());
@@ -131,20 +128,20 @@ public class CgShaderParserTest {
 
     @Test
     public void testGlobalDeclsExtracted() {
-        CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(FULL_SHADER);
         String globals = pass0(parsed).globalDecls();
         assertTrue("Expected helper function in globalDecls", globals.contains("computeAttenuation"));
     }
 
     @Test
     public void testVertexBodyExtracted() {
-        CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(MINIMAL_SHADER);
         assertTrue(pass0(parsed).vertexBody().contains("gl_Position"));
     }
 
     @Test
     public void testFragmentBodyExtracted() {
-        CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(MINIMAL_SHADER);
         assertTrue(pass0(parsed).fragmentBody().contains("fragColor"));
     }
 
@@ -162,7 +159,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for int in v2f");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().toLowerCase().contains("integer"));
@@ -180,7 +177,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for missing #type");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().toLowerCase().contains("#type"));
@@ -197,7 +194,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertTrue("Properties block is optional; absence must yield empty list",
                 parsed.properties().isEmpty());
     }
@@ -216,7 +213,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for uvec2 in v2f");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().toLowerCase().contains("integer"));
@@ -238,7 +235,7 @@ public class CgShaderParserTest {
             "        if (true) { fragColor = vec4(1.0); }\n" +
             "    }\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertTrue(pass0(parsed).vertexBody().contains("if"));
         assertTrue(pass0(parsed).fragmentBody().contains("if"));
     }
@@ -257,7 +254,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for unknown #type");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention unknown type",
@@ -278,7 +275,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for unknown #type canvas");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().toLowerCase().contains("canvas") ||
@@ -300,7 +297,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for cg_ prefix in property");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention reserved prefix",
@@ -322,7 +319,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for CG_ prefix in property");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention reserved prefix",
@@ -344,7 +341,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for _v2f_ prefix in property");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention reserved prefix",
@@ -366,7 +363,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for cg_ prefix in v2f field name");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention reserved prefix",
@@ -387,7 +384,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for #version directive");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention #version",
@@ -408,7 +405,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for #version in file body");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().toLowerCase().contains("version"));
@@ -429,7 +426,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for main() in vertex body");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention main()",
@@ -451,7 +448,7 @@ public class CgShaderParserTest {
             "    }\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for main() in fragment body");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention main()",
@@ -473,7 +470,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals(2, parsed.properties().size());
         assertEquals("_MainTex", parsed.properties().get(0).getName());
     }
@@ -492,7 +489,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for unknown property type");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention the bad type",
@@ -515,7 +512,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for mat4 property type (not in valid set)");
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage().contains("mat4") || e.getMessage().toLowerCase().contains("type"));
@@ -538,13 +535,13 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals(4, parsed.properties().size());
     }
 
     @Test
     public void testEmptyGlobalDecls() {
-        CgParsedShader parsed = CgShaderParser.parse(MINIMAL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(MINIMAL_SHADER);
         String globals = pass0(parsed).globalDecls();
         assertNotNull("globalDecls must never be null", globals);
         assertEquals("Expected empty globalDecls for minimal shader", "", globals.trim());
@@ -552,7 +549,7 @@ public class CgShaderParserTest {
 
     @Test
     public void testPropertyWithDefault() {
-        CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(FULL_SHADER);
         CgMaterialProperty color = parsed.properties().get(1);
         assertEquals("_Color", color.getName());
         assertNotNull("Default value must be non-null when specified", color.getRawDefault());
@@ -561,7 +558,7 @@ public class CgShaderParserTest {
 
     @Test
     public void testPropertyWithoutDefault() {
-        CgParsedShader parsed = CgShaderParser.parse(FULL_SHADER);
+        CgParsedShader parsed = CgShaderParser.parseLowered(FULL_SHADER);
         CgMaterialProperty mainTex = parsed.properties().get(0);
         assertEquals("_MainTex", mainTex.getName());
         assertNull("Default value must be null when not specified", mainTex.getRawDefault());
@@ -582,7 +579,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals(1, parsed.properties().size());
         assertEquals("_N", parsed.properties().get(0).getName());
         assertEquals(CgMaterialProperty.Type.INT, parsed.properties().get(0).getType());
@@ -601,7 +598,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals(CgMaterialProperty.Type.SAMPLER_CUBE, parsed.properties().get(0).getType());
     }
 
@@ -618,7 +615,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals(CgMaterialProperty.Type.SAMPLER2D_ARRAY, parsed.properties().get(0).getType());
     }
 
@@ -634,7 +631,7 @@ public class CgShaderParserTest {
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
         try {
-            CgShaderParser.parse(src);
+            CgShaderParser.parseLowered(src);
             fail("Expected CgShaderParseException for unknown RenderState key");
         } catch (CgShaderParseException e) {
             assertTrue("Error should mention the unknown key",
@@ -658,7 +655,7 @@ public class CgShaderParserTest {
             "    void vertex(out v2f o) {}\n" +
             "    void fragment(in v2f i, out vec4 fragColor) {}\n" +
             "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src);
+        CgParsedShader parsed = CgShaderParser.parseLowered(src);
         assertEquals("Comment line must not produce a property", 1, parsed.properties().size());
         assertEquals("_Alpha", parsed.properties().get(0).getName());
     }

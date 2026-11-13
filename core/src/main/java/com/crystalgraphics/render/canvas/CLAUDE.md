@@ -13,8 +13,8 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | File | Role |
 |------|------|
 | `CgCanvas.java` | The canvas: draw builders, `text()`, set-target/scissor/constants/view, its camera (`camera()`, set with `camera(CgCamera)`) and `visible(...)` cull, replay's tape. Its javadoc has the examples |
-| `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (`#pragma cg_use quad`) |
-| `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (`#pragma cg_use curve`) |
+| `CgQuadBatch.java` | Quad items: the `Quad` builder and the class-wide instance buffer (the `quad` engine buffer) |
+| `CgCurveBatch.java` | Curve, triangle and cell items over the curve record (the `curve` engine buffer) |
 | `CgInstanceRun.java` | One batcher's open run: breaks on material, its `changes()`, state or textures; seals into the recording or `CgRenderer.drawNow` |
 | `CgCanvasMaterials.java` | The default materials, `SCREEN` and `WORLD`: image, mask, their 2D-array forms, curve, box, and screen coverage rasters; one shared instance per kind and blend, `newBox`/`newCurve` for a caller's own; the blend the material state's. Their shaders are `shaders/canvas/` (with `text.shader`), and `lib/canvas.glsl` |
 | `CgCanvasGradient.java`, `CgCanvasGrid.java`, `CgCanvasGlass.java` | A gradient (CSS's line or a radial, eight stops a draw), a grid and a pane of glass (its `Look` presets): each owns its material and packs its properties for the next quad. A thumbnail is no canvas draw: `CgGpuOps.shrink` |
@@ -22,8 +22,8 @@ firing's camera. **Using it: [`docs/CANVAS.md`](../../../../../../../../docs/CAN
 | `CgCanvasRetainer.java` | UMG's Retainer Box: items painted through a canvas of its own into a requested texture, cleared transparent, then drawn from it as quads, under the premultiplied image (fades as one picture) or the additive mask (its silhouette glows); `blur` a region by a sigma, `CgGpuOps.blurScaled` into a texture per reduction, drawn from with `quad(..., reduce)`. The one sanctioned canvas of your own inside a firing: it draws into its texture alone |
 | `CgCanvasLabels.java` | Text kept on the GPU across frames, each piece placed by a matrix of its own (`CgWorldRenderer.labels()`, which `world.text` queues on): a queue of `Label`s, each a point, height, anchor and turn over a queued `CgTextDraw`, placed per firing under the host view (`prepare`). Label i keeps a copy of its draw and its `CgTextCapture`, captured again only when the draw differs (`CgTextDraw.sameAs`), the capture was incomplete or the atlas evicted. Records live in one persistent buffer per (rank, batch), label i's in ranges whose `node` is i; a changed label rewrites its ranges in place where it fits, else appends and leaves holes (zeroed records), compacted past 4,096 and half; a label gone keeps its ranges hidden for 300 frames. `prepare` uploads the dirty spans and every label's matrix (an OBJECT record); `drawDepth` draws ranks 0 to 3 into depth alone (`drawCapturedDepth`, alpha 0.5 and up), `draw` every batch (`drawCaptured`), linear where the canvas's target is float |
 | `CgQuadRecord.java` | The quad record's float offsets, for code that bakes records itself (`CgTextBatch`, `CgCanvasLabels`) |
-| `CgClipTable.java` | A recording's rounded clips (`#pragma cg_use clip`) |
-| `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (`#pragma cg_use shape`); `canvas.shapes()`, drawn by `CgCanvasMaterials.box()` |
+| `CgClipTable.java` | A recording's rounded clips (the `clip` engine buffer) |
+| `CgShapeTable.java` | A recording's box shapes, so every box is a quad of one pipeline (the `shape` engine buffer); `canvas.shapes()`, drawn by `CgCanvasMaterials.box()` |
 | `CgCurveSplitter.java` | Cubic to quadratic splitting, GPU-free |
 
 ## Rules

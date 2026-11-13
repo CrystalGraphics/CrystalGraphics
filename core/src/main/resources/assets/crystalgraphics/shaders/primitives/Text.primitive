@@ -4,10 +4,9 @@
 Primitive { Queue Overlay }
 EngineBuffers { quad clip text }
 
-Declarations {
-    #pragma cg_feature MSDF_MODE
-    #pragma cg_feature WORLD_LABEL
-    #pragma cg_permutation MSDF_MODE WORLD_LABEL
+Keywords {
+    MSDF_MODE ("Distance-field glyphs", switched)
+    WORLD_LABEL ("A label placed in the world", switched)
 }
 
 Properties {

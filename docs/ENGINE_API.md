@@ -163,7 +163,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
 - `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
   `WORLD_TRANSPARENT` a prepass of the transparent materials marked `"Depth" = "Prepass"`, then the transparent pass.
   A transparent draw writing depth in its own draw (`"Depth" = "Clip"`) sorts first in its group
-  (`docs/SHADERS.md` § *Depth from a transparent material*). Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
+  (`docs/SHADERS.md` § *Depth from a translucent material*). Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
   for a reader only where one draws.
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
@@ -171,7 +171,7 @@ world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family)
   position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
   it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
   (`CgWorldAtmosphere`, from `CgHostEnvironment`).
-- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The Emissive pass*) glows: its glow is light
+- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The glow*) glows: its glow is light
   added into the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post stack
   blooms the scene's light past white (§ *The post stack*). A draw's `.emission(scale)` scales its glow (0 leaves it
   out), and a material's `_EmissionColor`/`_EmissionStrength` its material's, both through `CG_EMISSION`. A transparent
@@ -227,7 +227,7 @@ lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30
 lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                    // a glowing ball on the ground
 lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                       // casts no shadow
 ```
-- **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The Distortion pass*)
+- **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The bend*)
   adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the
   transparent pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets
   bilinearly and a copy of the scene. A haze bends what sorts before it; a draw marked `.afterDistortion()` (or a material in `Queue = "AfterDistortion"`) is not bent by the hazes sorted before it:
@@ -390,10 +390,9 @@ if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit)
 - **An effect that is only a material** is a `CgPostMaterial` (Unreal's post-process material): its `.shader` drawn over
   the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, at a weight its shader reads as `POST_WEIGHT`
   (`lib/post/post_material.glsl`); 0 draws nothing.
-- **A post material of several passes** draws them in order: each pass but the last tagged `"Target" = "_Name"
-  "Scale" = "0.5"` draws into an RGBA16F texture that share of the screen, bound to its `sampler2D` property `_Name` for
-  every pass after; the last draws over the scene. A material-level `"Emission" = "_Mask"` binds what glows (the
-  emission bent with the scene, or under the HDR scene the scene). `CgPostMaterial`'s javadoc has the example.
+- **A post material of several steps** draws them in order: each `Step` but the last (`Target RGBA16_FLOAT  Scale 0.5`)
+  draws into a texture of its own, that share of the screen, which every step after reads as `CG_STEP(name, uv)`; the
+  last draws over the scene. `MATERIAL_FORMAT.md` § 7.1 and `CgPostMaterial`'s javadoc have the example.
 - **A cut's crossfade**: `CgPostStack.get().crossfade(seconds)` on the old shot's last frame holds what that firing
   draws, and the frames after it show it over theirs, fading out linearly on the frame clock, before the HUD.
 
@@ -632,7 +631,7 @@ CgMesh trail = CgMesh.build(CgVertexFormat.SPATIAL, CgMesh.Usage.FRAME, m -> {})
 trail.reserve(2 * maxPoints, 0);
 trail.edit(points, Trail::write);                        // each frame, before it draws
 
-// No vertex data: the shader (#type none) places each vertex from CG_VERTEX_ID
+// No vertex data: a material's vertex() (VertexFactory Procedural) places each vertex from CG_VERTEX_ID
 CgMesh sparks = CgMesh.quads(1024);                      // corner CG_VERTEX_ID & 3, quad CG_VERTEX_ID >> 2
 CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
 
@@ -659,7 +658,7 @@ CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
 - Read its bytes through `CgVertexAttribute.read`, never `getFloat`: the normal and UVs are packed.
 - **A skinned mesh** is `CgVertexFormat.SKINNED`: `SPATIAL`, then four bone indices and four weights a vertex, written
   with `CgMeshWriter.bone(index, weight)`; `SKINNED_WIDE` past 256 bones. Drawn with `.bones(base)` from a palette
-  `CgBonePalettes.write` answered this frame, by any `#type spatial` material's skinned variant. Loading, building
+  `CgBonePalettes.write` answered this frame, by any material on the `Mesh` factory, in its skinned variant. Loading, building
   and drawing one: [`vfx/prefabs.md`](vfx/prefabs.md) § *Skinned meshes*.
 - UVs are halves: steps of 1/2048 below 1, 1/16 at 64.
 
@@ -670,7 +669,8 @@ CgMesh plain = CgMesh.build(CgVertexFormat.SPATIAL, m ->
 ### Shader Buffers
 
 A material reads buffers it declares: `Buffers { }` in its source, bound by name with `material.buffer(name, buffer)`
-(`SHADERS.md` § *Buffers*), or an engine token, `#pragma cg_use <token>` (`CgEngineBufferRegistry`). Nothing is
+(`SHADERS.md` § *Reading a kernel's buffers*), or an engine buffer its factory or primitive binds
+(`EngineBuffers { <token> }`, `CgEngineBufferRegistry`). Nothing is
 injected into a shader at runtime: what a program reads is in its source, so it is compiled and reflected once.
 
 ```java

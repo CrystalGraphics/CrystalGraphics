@@ -49,7 +49,7 @@ public class CgHandedLightsTest {
     @Test
     public void aProgramNamingTheDrawsLightsIsHandedTheGrid() {
         String source = shader("", "fragColor = vec4(CG_DRAW_POINT_LIGHT_COLOR(0), CG_DRAW_POINT_LIGHT_PARAMS(0).x);");
-        CgParsedShader parsed = CgShaderParser.parse(source, "test:handed");
+        CgParsedShader parsed = CgShaderParser.parseLowered(source, "test:handed");
         assertTrue(parsed.handedLights());
         assertNotNull(parsed.buffer("WORLD_LIGHTS"));
         assertNotNull(parsed.buffer("WORLD_LIGHT_CELLS"));
@@ -63,7 +63,7 @@ public class CgHandedLightsTest {
     @Test
     public void theGridFollowsAProgramsOwnBuffers() {
         String own = "struct Clip { vec4 a; };\nBuffers {\n    CLIPS (\"Clips\", Clip, readonly)\n}\n";
-        CgParsedShader parsed = CgShaderParser.parse(shader(own, "int idx[4]; fragColor = vec4(cg_NearestLights(vec3(0.0), idx));"),
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader(own, "int idx[4]; fragColor = vec4(cg_NearestLights(vec3(0.0), idx));"),
                 "test:handed");
         assertEquals(0, parsed.buffer("CLIPS").index());
         assertEquals(1, parsed.buffer("WORLD_LIGHTS").index());
@@ -72,7 +72,7 @@ public class CgHandedLightsTest {
 
     @Test
     public void aProgramNamingNoneIsHandedNothing() {
-        CgParsedShader parsed = CgShaderParser.parse(shader("", "fragColor = vec4(1.0);"), "test:plain");
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("", "fragColor = vec4(1.0);"), "test:plain");
         assertFalse(parsed.handedLights());
         assertTrue(parsed.buffers().isEmpty());
     }
@@ -80,7 +80,7 @@ public class CgHandedLightsTest {
     @Test
     public void aProgramNamingTheSunsShadowIsHandedItsMap() {
         String source = shader("", "fragColor = vec4(vec3(CG_DIRECTIONAL_SHADOW(i.n)), 1.0);");
-        CgParsedShader parsed = CgShaderParser.parse(source, "test:sun");
+        CgParsedShader parsed = CgShaderParser.parseLowered(source, "test:sun");
         assertTrue(parsed.handedSun());
         assertFalse(parsed.handedLights());
         assertTrue(parsed.properties().stream().anyMatch(p -> p.getName().equals("_cg_SunMap")));
@@ -93,7 +93,7 @@ public class CgHandedLightsTest {
     public void tooManyBuffersFailNamingTheLights() {
         String own = "Buffers {\n    A (\"A\", vec4, readonly)\n    B (\"B\", vec4, readonly)\n}\n";
         CgShaderParseException e = assertThrows(CgShaderParseException.class,
-                () -> CgShaderParser.parse(shader(own, "fragColor = vec4(CG_DRAW_POINT_LIGHT_POSITION(0), 1.0);"), "test:full"));
+                () -> CgShaderParser.parseLowered(shader(own, "fragColor = vec4(CG_DRAW_POINT_LIGHT_POSITION(0), 1.0);"), "test:full"));
         assertTrue(e.getMessage(), e.getMessage().contains("the world's lights it reads take 3 more"));
     }
 }

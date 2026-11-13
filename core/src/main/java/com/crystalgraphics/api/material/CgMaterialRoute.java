@@ -13,7 +13,7 @@ package com.crystalgraphics.api.material;
 public enum CgMaterialRoute {
     /** {@code values} on the material or an ancestor: in its snapshot, nothing per draw. */
     CONSTANT,
-    /** A {@code bind} of a renderer, a track or a user parameter: a vec4 slot in the draw's row ({@code cg_use rows}). */
+    /** A {@code bind} of a renderer, a track or a user parameter: a vec4 slot in the draw's row ({@code PerDrawValues On}). */
     ROW,
     /** A parameter collection, {@code global.<namespace>.<name>}: {@code CgParameterCollection}'s buffer. */
     GLOBAL;

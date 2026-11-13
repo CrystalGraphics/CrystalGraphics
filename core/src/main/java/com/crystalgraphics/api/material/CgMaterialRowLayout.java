@@ -10,7 +10,7 @@ import com.crystalgraphics.material.CgMaterialProperty;
 import com.github.bsideup.jabel.Desugar;
 
 /**
- * Where each row property of an archetype sits in a draw's row: its numeric properties under {@code cg_use rows}, in
+ * Where each row property of an archetype sits in a draw's row: its numeric properties under {@code PerDrawValues On}, in
  * declaration order, a vec4 each and an array one an element. What a renderer's or a track's {@code bind} writes.
  *
  * <pre>{@code

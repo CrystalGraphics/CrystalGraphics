@@ -59,19 +59,19 @@ public class CgShaderParserFeatureTest {
 
     @Test
     public void noFeatures_returnsEmptyList() {
-        CgParsedShader parsed = CgShaderParser.parse(shader(), "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader(), "test");
         assertTrue("Expected empty feature list", parsed.featureNames().isEmpty());
     }
 
     @Test
     public void singleFeature_returnsSingleEntry() {
-        CgParsedShader parsed = CgShaderParser.parse(shader("#pragma cg_feature SHADOWS_ON"), "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("#pragma cg_feature SHADOWS_ON"), "test");
         assertEquals(Collections.singletonList("SHADOWS_ON"), parsed.featureNames());
     }
 
     @Test
     public void twoFeatures_returnsInDeclarationOrder() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_feature SHADOWS_ON", "#pragma cg_feature FOG"), "test");
         List<String> names = parsed.featureNames();
         assertEquals(2, names.size());
@@ -81,14 +81,14 @@ public class CgShaderParserFeatureTest {
 
     @Test
     public void pragmaOnceIgnored_featuresStillParsed() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma once", "#pragma cg_feature FEATURE_A"), "test");
         assertEquals(Collections.singletonList("FEATURE_A"), parsed.featureNames());
     }
 
     @Test
     public void underscorePrefix_validIdentifier() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_feature _MY_FLAG"), "test");
         assertEquals("_MY_FLAG", parsed.featureNames().get(0));
     }
@@ -106,13 +106,13 @@ public class CgShaderParserFeatureTest {
                 + "    }\n"
                 + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n"
                 + "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(src, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(src, "test");
         assertTrue("Feature inside Pass body must not be parsed", parsed.featureNames().isEmpty());
     }
 
     @Test
     public void featureNamesImmutable() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_feature FOO"), "test");
         try {
             parsed.featureNames().add("BAR");
@@ -133,7 +133,7 @@ public class CgShaderParserFeatureTest {
                 "#pragma cg_feature F",
                 "#pragma cg_feature G",
                 "#pragma cg_feature H");
-        CgParsedShader parsed = CgShaderParser.parse(src, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(src, "test");
         assertEquals(8, parsed.featureNames().size());
     }
 
@@ -141,34 +141,34 @@ public class CgShaderParserFeatureTest {
 
     @Test(expected = CgShaderParseException.class)
     public void invalidIdentifier_startsWithDigit_throws() {
-        CgShaderParser.parse(shader("#pragma cg_feature 123BAD"), "test");
+        CgShaderParser.parseLowered(shader("#pragma cg_feature 123BAD"), "test");
     }
 
     @Test(expected = CgShaderParseException.class)
     public void invalidIdentifier_hasSpace_throws() {
-        CgShaderParser.parse(shader("#pragma cg_feature MY FLAG"), "test");
+        CgShaderParser.parseLowered(shader("#pragma cg_feature MY FLAG"), "test");
     }
 
     @Test(expected = CgShaderParseException.class)
     public void missingName_throws() {
-        CgShaderParser.parse(shader("#pragma cg_feature"), "test");
+        CgShaderParser.parseLowered(shader("#pragma cg_feature"), "test");
     }
 
     @Test(expected = CgShaderParseException.class)
     public void duplicateName_throws() {
-        CgShaderParser.parse(
+        CgShaderParser.parseLowered(
                 shader("#pragma cg_feature SHADOWS_ON", "#pragma cg_feature SHADOWS_ON"), "test");
     }
 
     @Test
     public void seventeenFeatures_parse() {
         // Kakarot's CellShade_Tone port: its feature mask and a static switch.
-        assertEquals(17, CgShaderParser.parse(shader(features(17)), "test").featureNames().size());
+        assertEquals(17, CgShaderParser.parseLowered(shader(features(17)), "test").featureNames().size());
     }
 
     @Test(expected = CgShaderParseException.class)
     public void thirtyTwoFeaturesExceedsMax_throws() {
-        CgShaderParser.parse(shader(features(32)), "test");
+        CgShaderParser.parseLowered(shader(features(32)), "test");
     }
 
     private static String[] features(int n) {
@@ -181,7 +181,7 @@ public class CgShaderParserFeatureTest {
 
     @Test
     public void pragmaStrippedFromGeneratedVertexGlsl() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_feature SHADOWS_ON"), "test");
         CgMaterialShaderCompiler.CompiledSource src =
                 CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS, null,
@@ -192,7 +192,7 @@ public class CgShaderParserFeatureTest {
 
     @Test
     public void pragmaStrippedFromGeneratedFragmentGlsl() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_feature SHADOWS_ON"), "test");
         CgMaterialShaderCompiler.CompiledSource src =
                 CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS, null,

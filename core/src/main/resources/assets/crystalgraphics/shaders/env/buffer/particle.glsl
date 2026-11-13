@@ -1,6 +1,6 @@
 // CgParticleBuffer's shader environment: the frame's particle records, read by index.
 //
-// INJECTED BY `#pragma cg_use particle`, immediately after the buffer's own declaration -- see CgEngineBufferRegistry,
+// INJECTED for the `particle` engine buffer, immediately after the buffer's own declaration -- see CgEngineBufferRegistry,
 // which holds the path. A shader that does not declare the pragma never sees any of this.
 //
 // A GPU pool's records, written by its Step once a frame, read through PARTICLE_ORDER: a draw's particle n is the

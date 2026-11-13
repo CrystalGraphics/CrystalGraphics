@@ -4,8 +4,9 @@
 Primitive { Queue Transparent }
 EngineBuffers { curve clip }
 
+Keywords { SCREEN ("A 2D camera: each fragment's point from gl_FragCoord") }
+
 Declarations {
-    #pragma cg_feature SCREEN
     #include "crystalgraphics:shaders/lib/stroke.glsl"
 }
 

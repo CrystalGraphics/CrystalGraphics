@@ -1,6 +1,6 @@
 // CgQuadBatch's shader environment.
 //
-// INJECTED BY `#pragma cg_use quad`, immediately after the instance buffer's own
+// INJECTED for the `quad` engine buffer, immediately after the instance buffer's own
 // declaration -- see CgEngineBufferRegistry, which holds the path, and
 // CgMaterialShaderCompiler.appendEngineBufferEnv, which emits the include. A shader that does
 // not declare the pragma never sees any of this, which is the point: only a minority of
@@ -22,11 +22,11 @@
 // pattern the old TBO struct getter codegen relied on being driver-CSE'd (see
 // gl/material/parse/CgGlslEmitter.java's own comment on appendTboFieldFetch). Vertex stage
 // only; each instance is drawn on CgMesh.quads(1), so the corner is CG_VERTEX_CORNER and the
-// material declares #type none.
+// program reads no vertex data (VertexType none).
 //
 // These are DEFINED unconditionally, here, but only RESOLVE in a shader that declares:
 //
-//     #pragma cg_use quad
+//     EngineBuffers { quad clip shape }   // Quad.primitive
 //
 // which is what attaches the buffer QUAD_DATA refers to. Defining them unconditionally costs
 // nothing -- an unexpanded macro is not a declaration, so it burns no binding point and no

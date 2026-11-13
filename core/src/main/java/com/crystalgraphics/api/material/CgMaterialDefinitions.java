@@ -218,8 +218,8 @@ public final class CgMaterialDefinitions {
         else serves.addAll(EnumSet.of(CgMaterialUsage.STATIC_MESH, CgMaterialUsage.SKELETAL_MESH));
         for (CgMaterialUsage u : usage) {
             if (!serves.contains(u)) {
-                String why = u.keyword() == null ? "it is a particle program (#pragma cg_use particle)"
-                        : "it declares no #pragma cg_feature " + u.keyword();
+                String why = u.keyword() == null ? "it is drawn by a particle factory"
+                        : "it declares no keyword " + u.keyword();
                 throw new CgAssetException(id + " is used with " + u.fileName() + ", which " + shader + " is not compiled for: " + why);
             }
         }

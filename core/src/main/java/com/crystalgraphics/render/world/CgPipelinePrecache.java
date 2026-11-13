@@ -68,7 +68,7 @@ import com.github.bsideup.jabel.Desugar;
  * collector registered there is a late one. Registering on a dedicated server is harmless: nothing collects there.
  *
  * <ul>
- *   <li>Keywords a renderer switches at runtime are the shader's permutation domain ({@code #pragma cg_permutation},
+ *   <li>Keywords a renderer switches at runtime are the shader's permutation domain (its {@code switched} keywords and one-ofs,
  *       Unreal's {@code FShaderPermutationDomain}): {@code add(shader)} then builds every combination, never a list typed
  *       here. A set nothing covers compiles at its first draw, counted as {@code pipeline.missed} and logged under
  *       {@code crystalgraphics.pipeline.logMisses}.</li>

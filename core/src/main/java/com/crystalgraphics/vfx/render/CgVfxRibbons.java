@@ -9,7 +9,7 @@ import com.crystalgraphics.api.mesh.CgMeshTopology;
  * the effect's age. Nothing is simulated and nothing is uploaded per frame.
  *
  * <p>The mesh is the shared {@link CgMesh#vertices vertex-only} triangle list: no vertex data and no indices
- * ({@code #type none}). {@code fx_common.glsl} reads where a vertex lies from {@code CG_VERTEX_ID}:</p>
+ * ({@code VertexType none}). {@code fx_common.glsl} reads where a vertex lies from {@code CG_VERTEX_ID}:</p>
  *
  * <pre>{@code
  * float index = FX_RIBBON_INDEX;   // its ribbon, 0 to COUNT - 1

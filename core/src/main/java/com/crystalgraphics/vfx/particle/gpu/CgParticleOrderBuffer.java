@@ -10,7 +10,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * The order particles are drawn in: each drawn particle's record in its pool, culled and sorted by Range
- * ({@code CgVfxRange.order()}), read at {@link #SLOT}. {@code #pragma cg_use particle} brings it,
+ * ({@code CgVfxRange.order()}), read at {@link #SLOT}. The {@code particle} engine buffer brings it,
  * and the {@code CG_PARTICLE_*} macros read through it.
  *
  * <pre>{@code

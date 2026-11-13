@@ -38,14 +38,11 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * int list = clips.addPixelRect(panel, 0, 10, 40, 210, 340, targetHeight);
  * }</pre>
  *
- * <p>In a material:</p>
+ * <p>A ui material is clipped by its primitive, which binds the table ({@code EngineBuffers { quad clip }}); a primitive
+ * of one's own reads it:</p>
  *
  * <pre>{@code
- * #pragma cg_use quad
- * #pragma cg_use clip
- * ...
- * fragColor.a *= CG_CLIP_QUAD_COVERAGE;     // straight alpha
- * fragColor   *= CG_CLIP_QUAD_COVERAGE;     // premultiplied
+ * float clip = CG_CLIP_QUAD_COVERAGE;       // 0 outside the item's clip, 1 inside
  * }</pre>
  *
  * <p>Easy to get wrong:</p>
@@ -65,7 +62,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  */
 public final class CgClipTable {
 
-    /** The macro a shader's GLSL reads an entry through; {@code #pragma cg_use clip} declares it. */
+    /** The macro a shader's GLSL reads an entry through; the {@code clip} engine buffer declares it. */
     public static final String MACRO_NAME = "CLIP_DATA";
     /** Where its shaders read it, and where a draw names one of its own. */
     public static final CgBindingModel.Slot SLOT = CgBindingModel.token("clip");
@@ -102,7 +99,7 @@ public final class CgClipTable {
 
     private final float[] innerRx = new float[4], innerRy = new float[4];
 
-    /** The table's buffer, for {@code #pragma cg_use clip}. */
+    /** The table's buffer: the {@code clip} engine buffer. */
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()

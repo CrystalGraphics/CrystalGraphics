@@ -56,7 +56,7 @@ public interface CgMaterialInterface {
     }
 
     /**
-     * The properties its shader declares with its values, and under {@code cg_use rows} the hidden row slots the parser
+     * The properties its shader declares with its values, and under {@code PerDrawValues On} the hidden row slots the parser
      * adds, from the parse alone. Empty while the source does not parse.
      *
      * <pre>{@code
@@ -67,7 +67,7 @@ public interface CgMaterialInterface {
         return material().properties();
     }
 
-    /** The keywords its shader declares ({@code #pragma cg_feature}), from the parse alone. */
+    /** The keywords its shader declares ({@code Keywords { }}), from the parse alone. */
     default List<String> declaredKeywords() {
         return material().declaredKeywords();
     }
@@ -78,7 +78,7 @@ public interface CgMaterialInterface {
     }
 
     /**
-     * The keywords a renderer switches on its shader at runtime ({@code #pragma cg_permutation}), from the parse alone:
+     * The keywords a renderer switches on its shader at runtime (its {@code switched} keywords and one-ofs), from the parse alone:
      * every combination a precache of the shader builds.
      */
     default CgPermutationDomain permutations() {

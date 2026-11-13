@@ -52,7 +52,7 @@ public class CgMediaDimTest {
                 + "    void vertex(out v2f o) { o.uv = cg_TexCoord0; gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0); }\n"
                 + "    void fragment(in v2f i, out vec4 fragColor) { " + body + " fragColor = vec4(i.uv.x); }\n"
                 + "}\n";
-        CgParsedShader parsed = CgShaderParser.parse(source, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(source, "test");
         return CgMaterialShaderCompiler.compile(parsed, parsed.passes().get(0), NO_BUFFERS, null,
                 new CgMaterialShaderCompiler.CompileConfig(Collections.emptySet())).fragmentSource();
     }

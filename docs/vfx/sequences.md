@@ -750,30 +750,31 @@ static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").life(0.5f, 0.8
 
 `crystalgraphics:shaders/vfx/sequence/part.shader` is CC2's basic part: its texture through its first UV window,
 tinted, faded by its node's opacity, alpha-tested by `_Clip`, `_Glare` of it glowing, premultiplied. A material of your
-own draws on clip particles by declaring the `SEQUENCE` kind and placing its vertices by the node:
+own draws on clip particles by listing the `Sequence` factory, which places each vertex by the node:
 
 ```glsl
-#pragma cg_feature FX_ON_MESH                      // drawn by a prefab instance too
-#pragma cg_feature FX_ON_SEQUENCE
-#include "crystalgraphics:shaders/lib/vfx/fx_sequence.glsl"
+#domain surface
+// a prefab instance places it (VfxMesh); a clip particle, by its node at its age (Sequence, under FX_ON_SEQUENCE)
+Material { BlendMode AlphaComposite  ShadingModel Unlit  VertexFactory VfxMesh, Sequence }
 
 Properties { _U0_LocX ("Where its UV window starts", float) = 0.0 }   // named as CC2 names them
 Buffers { FX_CLIPS ("Baked clips", vec4, readonly) }
 
-void vertex(out v2f o) {
+struct v2f { vec2 uv0; float opacity; float u; };
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv0 = v.uv0;
 #ifdef FX_ON_SEQUENCE
-    vec4 world = FX_SEQUENCE_TO_WORLD * vec4(cg_Position, 1.0);     // the particle, then the node at its age
     o.opacity = FX_SEQUENCE_OPACITY;                                 // the node's own
     o.u = FX_SEQ_SCALAR(0, _U0_LocX);                                // the clip's, else the material's
 #else
-    vec4 world = CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0);
+    o.opacity = 1.0;
+    o.u = _U0_LocX;
 #endif
-    ...
 }
 ```
 
-- **Declare `FX_ON_SEQUENCE`**: a material drawn on a clip particle without it throws at its first draw, since its part
-  would sit at the particle whatever the clip said.
+- **List the `Sequence` factory**: a material drawn on a clip particle without it throws at its first draw, since its
+  part would sit at the particle whatever the clip said.
 - **Declare `FX_CLIPS` in its `Buffers { }`**: the engine binds the baked clips to every material that does.
 - `FX_SEQ_SCALAR(i, own)` takes the scalar's index in `MATERIAL_SCALARS` and the material's own value.
 - `CG_OBJECT_CUSTOM1` is the particle's (life 0 to 1, seed, opacity, heat), as for a `MESHES` particle.

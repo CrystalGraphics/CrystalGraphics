@@ -4,13 +4,13 @@ import com.crystalgraphics.api.mesh.CgMesh;
 
 /**
  * How a {@code QUADS} particle slot draws: on a shared {@link CgMesh#quads quads} mesh of at least {@link #COUNT} quads,
- * one per particle, which a shader places from the slot's particle records ({@code #pragma cg_use particle}): quad
+ * one per particle, which a shader places from the slot's particle records: quad
  * {@code i} reads record {@code base + i}. The draw is indirect, its count the particles Range kept for the view.
  *
- * <p>The mesh carries no vertex data ({@code #type none}): {@code fx_common.glsl} gives a vertex its quad and corner.</p>
+ * <p>The mesh carries no vertex data (the Sprites factory's {@code VertexType none}): {@code fx_common.glsl} gives a vertex its quad and corner.</p>
  *
  * <pre>{@code
- * // in the vertex shader of a particle material (#pragma cg_use particle)
+ * // in a particle factory's fill()
  * int n = fx_particle_index(FX_QUAD_INDEX, CG_OBJECT_CUSTOM0.x, CG_OBJECT_CUSTOM0.y);   // -1 past the count
  * vec3 centre = origin + CG_PARTICLE_POSITION(max(n, 0));
  * vec3 world = fx_particle_corner(centre, FX_QUAD_CORNER, vec2(size), angle, right, up);

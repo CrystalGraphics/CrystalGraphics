@@ -13,8 +13,8 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
  * int floats = CgInstanceKind.QUAD.floats();               // one record's size, for a writer
  * }</pre>
  *
- * <p>A shader reads the record through its engine buffer: {@code #pragma cg_use quad} for {@link #QUAD},
- * {@code cg_use curve} for {@link #CURVE}; {@link #OBJECT} through {@code cg_env.glsl}'s {@code CG_OBJECT_DATA}, which
+ * <p>A shader reads the record through its engine buffer, which its ui primitive binds: {@code quad} for {@link #QUAD},
+ * {@code curve} for {@link #CURVE}; {@link #OBJECT} through {@code cg_env.glsl}'s {@code CG_OBJECT_DATA}, which
  * reads its id and then the table's record.
  * The formats live here, not in the renderers, so a frame builder off the render thread can read them without
  * touching a class that allocates GL buffers.</p>

@@ -531,7 +531,7 @@ public final class CgVfxFrame {
      *       records ({@link CgVfxSlot.Kind#SEQUENCE}), through the layers on the part's slot: the look holds the
      *       prefab's {@code kit()}. Each record is the particle's place, turned with its effect and sized by its size;
      *       the part's node moves it from there at the particle's age.</li>
-     *   <li>{@code QUADS} and {@code ARCS}: the slot's particle records ({@code #pragma cg_use particle}), as many as
+     *   <li>{@code QUADS} and {@code ARCS}: the slot's particle records (the particle factories' {@code particle} buffer), as many as
      *       Range kept. {@code CG_OBJECT_CUSTOM0}: the first record, the slot's capacity, the layer's size and 0;
      *       {@code CG_OBJECT_CUSTOM1}: the draw's centre minus the instance's origin, and the effect's age, so
      *       {@code CG_OBJECT_TO_WORLD[3].xyz - CG_OBJECT_CUSTOM1.xyz} is the origin the records are relative to. An

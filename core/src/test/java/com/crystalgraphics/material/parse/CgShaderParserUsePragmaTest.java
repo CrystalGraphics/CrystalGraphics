@@ -35,7 +35,7 @@ public class CgShaderParserUsePragmaTest {
 
     @Test
     public void declaredTokenIsParsed() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("#pragma cg_use quad",
                         "        gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);"),
                 "test:declared.shader");
@@ -46,7 +46,7 @@ public class CgShaderParserUsePragmaTest {
     /** A shader that uses none of the macros needs no pragma — the common case must stay free. */
     @Test
     public void shaderNotUsingEngineBuffersNeedsNoPragma() {
-        CgParsedShader parsed = CgShaderParser.parse(
+        CgParsedShader parsed = CgShaderParser.parseLowered(
                 shader("", "        gl_Position = cg_ProjMatrix * vec4(cg_Position, 0.0, 1.0);"),
                 "test:plain.shader");
         assertTrue(parsed.engineBuffers().isEmpty());
@@ -56,18 +56,18 @@ public class CgShaderParserUsePragmaTest {
     @Test
     public void usingQuadMacrosWithoutPragmaIsARejectedAtParseTime() {
         CgShaderParseException e = assertThrows(CgShaderParseException.class, () ->
-                CgShaderParser.parse(
+                CgShaderParser.parseLowered(
                         shader("", "        gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);"),
                         "test:undeclared.shader"));
         assertTrue("message should name the fix, was: " + e.getMessage(),
-                e.getMessage().contains("#pragma cg_use quad"));
+                e.getMessage().contains("'quad' in its EngineBuffers"));
     }
 
     /** Indexing the buffer directly must be caught too, not just the convenience macros. */
     @Test
     public void usingRawMacroNameWithoutPragmaIsRejected() {
         assertThrows(CgShaderParseException.class, () ->
-                CgShaderParser.parse(
+                CgShaderParser.parseLowered(
                         shader("", "        vec3 p = QUAD_DATA(CG_INSTANCE_ID).origin;"),
                         "test:raw.shader"));
     }
@@ -75,7 +75,7 @@ public class CgShaderParserUsePragmaTest {
     @Test
     public void unknownTokenIsRejected() {
         CgShaderParseException e = assertThrows(CgShaderParseException.class, () ->
-                CgShaderParser.parse(shader("#pragma cg_use nonsense", "        gl_Position = vec4(0.0);"),
+                CgShaderParser.parseLowered(shader("#pragma cg_use nonsense", "        gl_Position = vec4(0.0);"),
                         "test:unknown.shader"));
         assertTrue(e.getMessage().contains("unknown buffer token"));
     }
@@ -83,7 +83,7 @@ public class CgShaderParserUsePragmaTest {
     @Test
     public void duplicateTokenIsRejected() {
         assertThrows(CgShaderParseException.class, () ->
-                CgShaderParser.parse(
+                CgShaderParser.parseLowered(
                         shader("#pragma cg_use quad\n#pragma cg_use quad",
                                 "        gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);"),
                         "test:dupe.shader"));
@@ -92,7 +92,7 @@ public class CgShaderParserUsePragmaTest {
     @Test
     public void missingTokenIsRejected() {
         assertThrows(CgShaderParseException.class, () ->
-                CgShaderParser.parse(shader("#pragma cg_use", "        gl_Position = vec4(0.0);"),
+                CgShaderParser.parseLowered(shader("#pragma cg_use", "        gl_Position = vec4(0.0);"),
                         "test:blank.shader"));
     }
 
@@ -111,7 +111,7 @@ public class CgShaderParserUsePragmaTest {
     @Test
     public void aTokensPropertiesBecomeTheShadersOwn() {
         registerPropsToken();
-        CgParsedShader parsed = CgShaderParser.parse(shader("#pragma cg_use " + PROPS_TOKEN + """
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("#pragma cg_use " + PROPS_TOKEN + """
 
                 Properties {
                     _Mine ("Authored", float) = 1
@@ -124,7 +124,7 @@ public class CgShaderParserUsePragmaTest {
     /** _cg_ is the engine's: a shader declaring one itself is refused, so no port can shadow a factory setting. */
     @Test
     public void anAuthoredCgUnderscorePropertyIsRefused() {
-        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(shader("""
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(shader("""
                 Properties {
                     _cg_Spin ("Mine", float) = 1
                 }

@@ -1,15 +1,13 @@
-package com.crystalgraphics.material;
+package com.crystalgraphics.material.parse;
 
 
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
-import com.crystalgraphics.material.parse.CgParsedShader;
-import com.crystalgraphics.material.parse.CgShaderParseException;
-import com.crystalgraphics.material.parse.CgShaderParser;
 import java.util.List;
 import org.junit.Test;
 import static org.junit.Assert.*;
@@ -45,12 +43,12 @@ public class CgShaderParserRenderStateTest {
                 "    void vertex(out v2f o) { o.uv = vec2(0.0); }\n" +
                 "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n" +
                 "}\n";
-        return CgShaderParser.parse(src, "test");
+        return CgShaderParser.parseLowered(src, "test");
     }
 
     /** Parses a full shader source string. */
     private static CgParsedShader parseFull(String source) {
-        return CgShaderParser.parse(source, "test");
+        return CgShaderParser.parseLowered(source, "test");
     }
 
     /** Asserts that parsing throws {@link CgShaderParseException} and logs the message. */
@@ -798,13 +796,13 @@ public class CgShaderParserRenderStateTest {
     @Test
     public void emptySource_throws() {
         assertThrows("emptySource_throws",
-                () -> CgShaderParser.parse("", "test"));
+                () -> CgShaderParser.parseLowered("", "test"));
     }
 
     @Test
     public void nullSource_throws() {
         assertThrows("nullSource_throws",
-                () -> CgShaderParser.parse(null, "test"));
+                () -> CgShaderParser.parseLowered(null, "test"));
     }
 
     // ── Group 12 — Combined / edge cases ─────────────────────────────────────

@@ -1,6 +1,6 @@
 // CgPropertyRows' shader environment: a frame's per-draw property rows, a vec4 each.
 //
-// INJECTED BY `#pragma cg_use rows`, after the buffer's declaration. The compiler reads every number of such a shader
+// INJECTED for the `rows` engine buffer (`PerDrawValues On`), after the buffer's declaration. The compiler reads every number of such a shader
 // through a macro of its own name, choosing the draw's row where the material says it holds one:
 //
 //     #define _Radius (_cg_at_Radius < 0 ? _cgm_Radius : CG_ROW(CG_PROPERTY_ROW + _cg_at_Radius).x)

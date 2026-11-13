@@ -21,25 +21,22 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 public class CgFrameGraphAllocationTest {
 
     private static final String SOURCE = """
-            #type none
+            #domain global
+            Material { Queue Geometry }
             Properties {
                 _Alpha ("Alpha", float) = 1
             }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Alpha); }
-            }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Alpha); }
             """;
     private static final String GLOW = """
-            #type none
-            Tags { "RenderType" = "Transparent" }
+            #domain global
+            Material { Queue Transparent }
             Properties {
                 _Gain ("Gain", float) = 2
             }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Gain); }
-            }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Gain); }
             """;
     private static final CgTextureDesc DESC = CgTextureDesc.of(256, 256, CgFormat.RGBA8_UNORM);
 

@@ -20,15 +20,12 @@ import static org.junit.Assert.assertTrue;
 public class CgPropertyTableTest {
 
     private static final String SOURCE = String.join(System.lineSeparator(),
-            "#type spatial",
+            "#domain surface",
             "Properties {",
             "    _Ramp (\"Ramp\", vec4[64]) = (0, 0, 0, 1)",
             "    _After (\"After\", float) = 1.0",
             "}",
-            "Pass {",
-            "    void vertex(out v2f o) { }",
-            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Ramp(40) * _After; }",
-            "}");
+            "void surface(in v2f i, inout CgSurface s) { s.baseColor = (_Ramp(40) * _After).rgb; }");
 
     private static CgMaterialProperty ramp() {
         List<CgMaterialProperty> props = CgShaderParser.parse(SOURCE, "test:table").properties();

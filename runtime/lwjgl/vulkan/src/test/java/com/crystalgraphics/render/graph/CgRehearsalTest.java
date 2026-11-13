@@ -28,16 +28,11 @@ import static org.junit.Assert.assertTrue;
 public class CgRehearsalTest {
 
     private static final String SOURCE = """
-            #type none
-            #pragma cg_use quad
-            Tags { "RenderType" = "Transparent" }
+            #domain ui
             Properties {
                 _Alpha ("Alpha", float) = 1
             }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Alpha); }
-            }
+            void surface(in CgUiInput i, inout CgUiSurface s) { s.color = vec4(_Alpha); }
             """;
 
     private static ShadercGlslCompiler compiler;

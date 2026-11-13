@@ -919,7 +919,6 @@ com/crystalgraphics/api/material/CgMaterialDomain
   field public,static,final GLOBAL Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final POST Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final SURFACE Lcom/crystalgraphics/api/material/CgMaterialDomain;
-  field public,static,final TEXT Lcom/crystalgraphics/api/material/CgMaterialDomain;
   field public,static,final UI Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static ofDirective (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public,static ofSource (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDomain;

@@ -89,7 +89,7 @@ Two-sided applies to every pass of the material, its glow and its haze included.
 
 `masked(threshold)` is Unreal's Masked: a fragment below the threshold is discarded, the rest writes depth, so what
 draws later behind it stays hidden. The shader says where it is solid with `cg_Clip(value)`
-([`../SHADERS.md`](../SHADERS.md) § *Depth from a transparent material*).
+([`../SHADERS.md`](../SHADERS.md) § *Depth from a translucent material*).
 
 ```java
 static final CgMaterialDefinition INK = CgMaterialDefinition.of("mymod:materials/ink",
@@ -121,9 +121,9 @@ CgVfxSlotRenderer.of("streak", STREAK).material(TRAIL)
   unrelated until bound.
 - **A bind names a parameter the look declares**, `user.<name>`; one it does not declare fails at load, naming the
   parameters it has. A `particles.*` bind fails at load too: a particle's own attributes are read in its material.
-- **A value bound per draw is a row** ([`../SHADERS.md`](../SHADERS.md) § *Per-draw properties*), so two effects
+- **A value bound per draw is a row** ([`../SHADERS.md`](../SHADERS.md) § *Per-draw values*), so two effects
   playing different values still share one material and batch.
-- `keyword(name)` on a material enables a `#pragma cg_feature`. The keyword of its usage is enabled for it
+- `keyword(name)` on a material turns on one of its shader's `Keywords`. The keyword of its usage is enabled for it
   (`FX_ON_SPRITES` on a sprite renderer's, `FX_ON_MESH_PARTICLES` on a mesh renderer's), and a slot's kind where the
   shader declares it (`FX_ON_TUBE` on a tube slot).
 
@@ -198,16 +198,16 @@ compression: none       # bc7 (default) | none: no .cgtex, load the PNG
 
 A mesh a renderer draws (a mesh slot's `mesh`, a mesh renderer's `meshes`) is `SPATIAL`: position, normal, vertex
 colour and two UV sets, as Unreal's static meshes are. A glTF's `COLOR_0` and `TEXCOORD_1` load into it; where a file
-has none, colour is white and the second UV the first. A shader reads them as `cg_Color` and `cg_TexCoord1`:
+has none, colour is white and the second UV the first. A material reads them as `v.color` and `v.uv1`:
 
 ```glsl
-#pragma cg_feature SECOND_LAYER
+Keywords { SECOND_LAYER ("A second texture") }
 
-void vertex(out v2f o) {
+void vertex(inout CgVertex v, out v2f o) {
 #ifdef SECOND_LAYER
-    o.detailUv = cg_TexCoord1;          // a second texture laid out on its own UVs: CC2's two-texture layers
+    o.detailUv = v.uv1;                 // a second texture laid out on its own UVs: CC2's two-texture layers
 #endif
-    o.tint = cg_Color.rgb;
+    o.tint = v.color.rgb;
     ...
 }
 ```
@@ -288,14 +288,12 @@ DARKEN.set(0.6f);                    // from an effect's tick: every material re
 ```
 
 ```glsl
-#pragma cg_use globals
-...
-fragColor.rgb *= 1.0 - CG_GLOBAL_skill_darken;
+s.baseColor *= 1.0 - CG_GLOBAL_skill_darken;   // naming it binds the collections
 ```
 
 - A value is the same for every effect and every material, unlike a renderer's `bind`, which is per effect.
 - Declare the parameters before the first set. The shader side is [`../SHADERS.md`](../SHADERS.md)
-  § *Global parameters*.
+  § *Global parameters: `CG_GLOBAL_*`*.
 
 ## Where a draw goes: its hint and its sort layer
 
@@ -399,7 +397,7 @@ kit.slot(CgVfxSlotRenderer.of("ball", CgVfxCharge.BALL).material(PLASMA).bind("_
 | `shader(path)` | parent: the shader it is made from |
 | `value(name, v...)`, `color(name, argb[, intensity])` | constants |
 | `texture(name, path)`, `texture(name, CgTexture)`, `texture(name, supplier)` | textures: a file, one made in code, one made at its first bind |
-| `keyword(name)` | a `#pragma cg_feature` turned on |
+| `keyword(name)` | one of its shader's `Keywords` turned on |
 | `order(n)` | order, in place of the one its shader implies |
 | `material(b -> b.blend(...).twoSided())` | anything else of the material's |
 

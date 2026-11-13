@@ -1,6 +1,6 @@
 // CgShapeTable's shader environment: the boxes a recording's quads are drawn as, read through SHAPE_DATA(n).
 //
-// INJECTED BY `#pragma cg_use shape`, immediately after the table's own declaration. An entry's fields, as vec4s:
+// INJECTED for the `shape` engine buffer, immediately after the table's own declaration. An entry's fields, as vec4s:
 // meta (kind, flags, box width, box height), radiiX and radiiY (top-left, top-right, bottom-right, bottom-left),
 // borderWidths (left, top, right, bottom), fillColor, borderColor, borderTop, borderBottom, and for a nine-slice
 // sliceBorder, sliceOuterUv (u0 v0 u3 v3), sliceInnerUv (u1 v1 u2 v2), sliceTiles (x, y, source width, height) and

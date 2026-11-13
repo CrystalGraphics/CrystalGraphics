@@ -109,7 +109,7 @@ public class CgMaterialStateTest {
     }
 
     private static CgParsedShader stated(CgMaterialState state) {
-        return CgShaderParser.parse(STATELESS, "test:stateless.shader").withState(state, "test:stateless.shader");
+        return CgShaderParser.parseLowered(STATELESS, "test:stateless.shader").withState(state, "test:stateless.shader");
     }
 
     @Test
@@ -125,7 +125,7 @@ public class CgMaterialStateTest {
         };
         for (String[] line : lines) {
             CgBlendMode mode = CgBlendMode.valueOf(line[0]);
-            CgParsedShader authored = CgShaderParser.parse(shader("", line[1] + " DepthWrite OFF", line[2]), "test:" + mode);
+            CgParsedShader authored = CgShaderParser.parseLowered(shader("", line[1] + " DepthWrite OFF", line[2]), "test:" + mode);
             assertSameShader(authored, stated(CgMaterialState.builder().blend(mode).build()));
         }
     }
@@ -149,7 +149,7 @@ public class CgMaterialStateTest {
     /** Emissive and opacity are composed as Unreal's base pass does: added as emissive times opacity, else as written. */
     @Test
     public void emissiveOpacityIsComposedForTheBlend() {
-        CgParsedShader source = CgShaderParser.parse(shader("\"Output\" = \"EmissiveOpacity\"", "DepthWrite OFF", ""), "test");
+        CgParsedShader source = CgShaderParser.parseLowered(shader("\"Output\" = \"EmissiveOpacity\"", "DepthWrite OFF", ""), "test");
         String compose = "_cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);";
         for (CgBlendMode mode : CgBlendMode.values()) {
             CgParsedShader stated = source.withState(CgMaterialState.builder().blend(mode).build(), "test");
@@ -161,13 +161,13 @@ public class CgMaterialStateTest {
         assertFalse(CgMaterialShaderCompiler.compile(stated(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build()),
                 NO_BUFFERS).fragmentSource().contains(compose));
         assertThrows(CgShaderParseException.class,
-                () -> CgShaderParser.parse(shader("\"Output\" = \"Emissive\"", "DepthWrite OFF", ""), "test"));
+                () -> CgShaderParser.parseLowered(shader("\"Output\" = \"Emissive\"", "DepthWrite OFF", ""), "test"));
     }
 
     @Test
     public void anEmissivePassWithABlendOfItsOwnKeepsIt() {
         String source = shader("", "DepthWrite OFF", "Blend ONE ONE");
-        CgParsedShader stated = CgShaderParser.parse(source, "test").withState(
+        CgParsedShader stated = CgShaderParser.parseLowered(source, "test").withState(
                 CgMaterialState.builder().blend(CgBlendMode.ALPHA).build(), "test");
         assertEquals(CgBlendMode.ADDITIVE.state(), stated.getPassByLightMode("Emissive").renderState().getBlend());
         assertEquals(CgBlendMode.ALPHA.state(), stated.getPassByLightMode("Forward").renderState().getBlend());
@@ -175,7 +175,7 @@ public class CgMaterialStateTest {
 
     @Test
     public void clipIsTheClipTag() {
-        CgParsedShader authored = CgShaderParser.parse(shader("\"Depth\" = \"Clip\"", "Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA DepthWrite OFF", ""),
+        CgParsedShader authored = CgShaderParser.parseLowered(shader("\"Depth\" = \"Clip\"", "Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA DepthWrite OFF", ""),
                 "test:clip");
         CgParsedShader stated = stated(CgMaterialState.builder().blend(CgBlendMode.ALPHA).clip().build());
         assertSameShader(authored, stated);
@@ -188,7 +188,7 @@ public class CgMaterialStateTest {
     /** Unreal: an instance overriding a masked parent's blend takes it whole, and only a masked material clips. */
     @Test
     public void aBlendWithoutClipUnmasksAMaskedShader() {
-        CgParsedShader masked = CgShaderParser.parse(shader("\"Depth\" = \"Clip\"", "DepthWrite OFF", ""), "test:masked");
+        CgParsedShader masked = CgShaderParser.parseLowered(shader("\"Depth\" = \"Clip\"", "DepthWrite OFF", ""), "test:masked");
         CgParsedShader translucent = masked.withState(CgMaterialState.builder().blend(CgBlendMode.ALPHA).depthWrite(false)
                 .build(), "test:masked");
         assertEquals(CgParsedShader.DepthMode.NONE, translucent.depthMode());
@@ -204,7 +204,7 @@ public class CgMaterialStateTest {
 
     @Test
     public void cgClipCutsNothingWhereTheMaterialDoesNotClip() {
-        String fragment = CgMaterialShaderCompiler.compile(CgShaderParser.parse(STATELESS, "test"), NO_BUFFERS).fragmentSource();
+        String fragment = CgMaterialShaderCompiler.compile(CgShaderParser.parseLowered(STATELESS, "test"), NO_BUFFERS).fragmentSource();
         assertTrue(fragment.contains("#define cg_Clip(v)\n"));
         assertFalse(fragment.contains("discard"));
     }
@@ -213,7 +213,7 @@ public class CgMaterialStateTest {
     public void cullAndDepthWriteArePipelineStateAlone() {
         CgMaterialState twoSided = CgMaterialState.builder().twoSided().depthWrite(true).build();
         assertFalse(twoSided.changesProgram());
-        CgParsedShader parsed = CgShaderParser.parse(STATELESS, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(STATELESS, "test");
         assertSame("the parse is untouched", parsed, parsed.withState(twoSided, "test"));
         CgRenderState forward = parsed.getPassByLightMode("Forward").renderState();
         CgRenderState drawn = twoSided.onPass(forward, true);
@@ -227,10 +227,10 @@ public class CgMaterialStateTest {
 
     @Test
     public void aStateTheShaderOwnsIsRefused() {
-        CgParsedShader clipped = CgShaderParser.parse(shader("\"Depth\" = \"Clip\"", "DepthWrite OFF", ""), "test");
+        CgParsedShader clipped = CgShaderParser.parseLowered(shader("\"Depth\" = \"Clip\"", "DepthWrite OFF", ""), "test");
         assertThrows(CgShaderParseException.class,
                 () -> clipped.withState(CgMaterialState.builder().depthWrite(false).build(), "test"));
-        CgParsedShader prepass = CgShaderParser.parse(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
+        CgParsedShader prepass = CgShaderParser.parseLowered(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
         assertThrows(CgShaderParseException.class, () -> prepass.withState(CgMaterialState.builder().clip().build(), "test"));
         assertThrows(IllegalStateException.class, () -> CgMaterialState.builder().clip().depthWrite(true).build());
     }
@@ -240,7 +240,7 @@ public class CgMaterialStateTest {
         CgMaterialState spark = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).disableDepthTest().build();
         assertTrue(spark.changesProgram());
         assertEquals("blend=ADDITIVE;nodepth", spark.programKey());
-        CgParsedShader authored = CgShaderParser.parse(STATELESS, "test");
+        CgParsedShader authored = CgShaderParser.parseLowered(STATELESS, "test");
         CgParsedShader stated = authored.withState(spark, "test");
         CgRenderState forward = stated.getPassByLightMode("Forward").renderState();
         assertTrue(forward.getDepth().test());
@@ -255,7 +255,7 @@ public class CgMaterialStateTest {
         assertFalse(glow.contains("CG_EMISSIVE_DEPTH_SLACK"));
         String hazy = STATELESS + "Pass { Tags { \"LightMode\" = \"Distortion\" }\n"
                 + "    void fragment(in v2f i, out vec4 offset) { offset = CG_DISTORTION(i.uv * 0.01, 0.0, 1.0); }\n}\n";
-        CgParsedShader bending = CgShaderParser.parse(hazy, "test").withState(spark, "test");
+        CgParsedShader bending = CgShaderParser.parseLowered(hazy, "test").withState(spark, "test");
         String bend = CgMaterialShaderCompiler.compile(bending, bending.getPassByLightMode("Distortion"), NO_BUFFERS, null,
                 CgMaterialShaderCompiler.CompileConfig.DEFAULT).fragmentSource();
         assertFalse("its bend is not hidden by the scene either", bend.contains("CG_EMISSIVE_DEPTH_SLACK"));
@@ -263,10 +263,10 @@ public class CgMaterialStateTest {
 
     @Test
     public void noDepthTestIsTranslucentOnly() {
-        CgParsedShader prepass = CgShaderParser.parse(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
+        CgParsedShader prepass = CgShaderParser.parseLowered(shader("\"Depth\" = \"Prepass\"", "DepthWrite OFF", ""), "test");
         CgMaterialState untested = CgMaterialState.builder().disableDepthTest().build();
         assertThrows(CgShaderParseException.class, () -> prepass.withState(untested, "test"));
-        CgParsedShader opaque = CgShaderParser.parse(shader("", "DepthWrite OFF", "").replace("Queue = \"Transparent\"",
+        CgParsedShader opaque = CgShaderParser.parseLowered(shader("", "DepthWrite OFF", "").replace("Queue = \"Transparent\"",
                 "Queue = \"Geometry\""), "test");
         assertThrows(CgShaderParseException.class, () -> opaque.withState(untested, "test"));
         assertThrows(IllegalStateException.class,

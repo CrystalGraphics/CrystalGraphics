@@ -293,7 +293,7 @@ CgShaderBuffer  (abstract — base for all shader buffer types)
 └── CgUniformBuffer         (UBO: per-frame uniform data, GL_UNIFORM_BUFFER)
 
 CgShaderBufferRegistry      (singleton registry — user-created buffers only)
-CgEngineBufferRegistry      (engine buffers a shader opts into via `#pragma cg_use`)
+CgEngineBufferRegistry      (engine buffers a factory or primitive binds: `EngineBuffers { }`)
 ```
 
 All three types are `public`. The TBO path (`CgTextureBuffer`) is unhooked: `docs/TBO_PATH.md`. Callers may hold concrete types for type-specific APIs
@@ -370,17 +370,17 @@ floats 44–47 : vec4 custom3
 
 The engine object buffer is named `"CgObjectDataBuffer"` (the SSBO block in `cg_env.glsl`).
 
-### `CgEngineBufferRegistry` — `#pragma cg_use`
+### `CgEngineBufferRegistry` — `EngineBuffers { }`
 
-Engine-provided buffers a `.shader` opts into by name:
+Engine-provided buffers a factory or ui primitive binds for its draws, by name:
 
 ```glsl
-##pragma cg_use quad     // → CgQuadBatch's per-instance buffer, macro QUAD_DATA
+EngineBuffers { quad clip shape }   // Quad.primitive: CgQuadBatch's per-instance buffer (QUAD_DATA), the clips, the shapes
 ```
 
 `CgMaterialShader.recompile()` resolves the token here and attaches the buffer **after parse, before
 compile** — so the GLSL declaration exists no matter what triggers the first compile. The parser
-hard-fails a shader that uses `QUAD_DATA`/`CG_QUAD_*` without declaring it.
+hard-fails a program that reads `QUAD_DATA`/`CG_QUAD_*` that nothing binds.
 
 **Why a registry rather than `cg_env.glsl`:** `CgViewBlock`/`CgEnvironmentBlock`/`CgObjectDataBuffer` are declared
 unconditionally because nearly every shader wants them. A quad buffer is wanted by a small minority,
@@ -404,15 +404,13 @@ first compile has no attached buffers yet, so a buffer nothing else binds would 
 **Built-ins are seeded in this class's own static block**, not by the provider registering itself.
 That was tried: self-registration only takes effect once something touches the provider class, which
 nothing guarantees before a shader naming the token is parsed — `CgGraphicsLifecycle.init` itself compiles
-`text.shader`, which declares `cg_use quad`. Making it work needs an explicit "initialize this class
+`text.shader`, whose primitive binds `quad`. Making it work needs an explicit "initialize this class
 now" call at exactly the right point in startup, which couples correctness to init order and broke
 the headless parser tests. Seeding here has no ordering requirement: the registry initializes on the
 parser's first lookup, which is exactly when a token is needed.
 
-> **Do not add a Java-side attach helper for these.** One existed
-> (`CgQuadBatch.attachTo(material)`) and was removed: attaching at first use loses to anything
-> that compiles the shader earlier, and the resulting undeclared-symbol failure surfaced as an
-> unrelated `#pragma cg_feature` complaint. The pragma is the wiring.
+> **Do not add a Java-side attach helper for these.** Attaching at first use loses to anything that
+> compiles the shader earlier, a keyword lookup included. The program's declaration is the wiring.
 
 ### Lifecycle
 

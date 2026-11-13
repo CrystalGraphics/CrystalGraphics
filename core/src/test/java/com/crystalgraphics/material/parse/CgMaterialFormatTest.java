@@ -80,15 +80,15 @@ public class CgMaterialFormatTest {
         CgParsedShader separate = CgShaderParser.parse("#domain surface\nMaterial { BlendMode Additive  TranslucencyPass Separate }\n"
                 + SURFACE.substring(SURFACE.indexOf('\n') + 1) + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }");
         assertTrue(separate.separateTranslucency());
-        assertNull(CgShaderParser.parse(SURFACE.replace("#domain surface\n", "#type spatial\n")
-                + "Pass { void vertex(out v2f o) { gl_Position = vec4(0.0); o.uv0 = vec2(0.0); }"
-                + " void fragment(in v2f i, out vec4 c) { c = vec4(1.0); } }").domain());
     }
 
     @Test
     public void refusals() {
+        refused(SURFACE.replace("#domain surface\n", "#type spatial\n")
+                + "Pass { void vertex(out v2f o) { gl_Position = vec4(0.0); o.uv0 = vec2(0.0); }"
+                + " void fragment(in v2f i, out vec4 c) { c = vec4(1.0); } }", "#domain line");
         refused("#domain surface\n#pragma cg_feature X\nstruct v2f { vec2 uv0; };\nvoid surface(in v2f i, inout CgSurface s) { }", "#pragma");
-        refused(SURFACE + "Pass { }", "old format");
+        refused(SURFACE + "Pass { }", "has no passes");
         refused(SURFACE + "void surface(in v2f i, inout CgSurface s) { s.opacity = 0.5; }", "translucent");
         refused("#domain surface\nMaterial { BlendMode Opaque  DepthPrepass On }\n" + SURFACE.substring(16)
                 + "void surface(in v2f i, inout CgSurface s) { }", "translucent");

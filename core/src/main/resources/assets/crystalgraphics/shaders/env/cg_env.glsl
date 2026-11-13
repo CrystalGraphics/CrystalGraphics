@@ -523,5 +523,5 @@ vec4 cg_Fog(vec4 color) {
 // -- Per-renderer environments ----------------------------------------------
 // Everything above is universal. A renderer's own macros are NOT: they live beside the buffer
 // they read, in env/buffer/<token>.glsl, and arrive only when a shader declares
-// `#pragma cg_use <token>`. Three quarters of this file used to be CgQuadBatch's and
+// a factory's or primitive's `EngineBuffers { <token> }`. Three quarters of this file used to be CgQuadBatch's and
 // CgCurveBatch's, paid for by every shader including the ones that draw neither.

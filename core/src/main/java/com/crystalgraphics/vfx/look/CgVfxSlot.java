@@ -23,7 +23,7 @@ import java.util.Objects;
  * <ul>
  *   <li>A slot is its kind and its name: two declarations of the same are the same slot. An emitter's particles are
  *       the slot {@code particles(emitter.name())} ({@code CgVfxEmitter.slot()}).</li>
- *   <li>A shader drawing on several kinds declares {@code #pragma cg_feature FX_ON_TUBE} and the like: the kind's
+ *   <li>A shader drawing on several kinds lists their factories ({@code VertexFactory VfxMesh, Tube}): the kind's
  *       keyword is set on each material ({@link Kind#keyword()}).</li>
  * </ul>
  */
@@ -55,7 +55,7 @@ public final class CgVfxSlot {
         PATH_RIBBONS,
         /** One camera-facing quad: the customs of {@link #MESH}, the four numbers the particle's own. */
         BILLBOARD,
-        /** An emitter's particles ({@code #pragma cg_use particle}): {@code CgVfxFrame.particles} has the customs. */
+        /** An emitter's particles (a particle factory's): {@code CgVfxFrame.particles} has the customs. */
         PARTICLES,
         /**
          * A prefab part on each particle of a {@code SEQUENCE} emitter, its node where the particle's clip has it

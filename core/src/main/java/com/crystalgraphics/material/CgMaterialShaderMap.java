@@ -83,7 +83,7 @@ final class CgMaterialShaderMap {
     /** The properties block the GLSL is generated against; null for a shader with no non-sampler property. */
     @Nullable
     final CgUniformBuffer block;
-    /** The engine tokens the parse names ({@code #pragma cg_use}), declared for every program in it. */
+    /** The engine tokens the parse names (its factory's or primitive's {@code EngineBuffers}), declared for every program in it. */
     final List<CgAttachedBuffer> buffers;
 
     /** Every program kept, by pass and keywords. */

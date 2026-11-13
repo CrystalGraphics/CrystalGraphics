@@ -123,7 +123,7 @@ import java.util.Objects;
  *     (the strips, and the sprites' where it declares no usage keyword), as Unreal compiles a material once per factory
  *     it is used with. What it serves is judged by the rest.
  * @param format
- *     What a file in the material format ({@code #domain surface}) says beyond its passes; null for the old format.
+ *     What a file in the material format ({@code #domain surface}) says beyond its passes; null for passes parsed directly (a test's).
  */
 @Desugar
 public record CgParsedShader(String shaderType, List<CgMaterialProperty> properties,
@@ -154,15 +154,15 @@ public record CgParsedShader(String shaderType, List<CgMaterialProperty> propert
                          @Nullable String postLocation) {
     }
 
-    /** What a material-format file is; null for the old format. */
+    /** What a material-format file is; null for passes parsed directly (a test's). */
     @Nullable
     public CgMaterialDomain domain() {
         return format == null ? null : format.domain();
     }
 
     /**
-     * What {@code opacityMask} is cut at, a number or a float parameter's name; null for 0.5, or in the old format the
-     * {@code _Clip} parameter where it declares one.
+     * What {@code opacityMask} is cut at, a number or a float parameter's name; null for 0.5, or for passes parsed directly the
+     * {@code _Clip} parameter where they declare one.
      */
     @Nullable
     public String maskClip() {

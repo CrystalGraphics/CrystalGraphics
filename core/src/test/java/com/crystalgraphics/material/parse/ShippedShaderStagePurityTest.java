@@ -66,15 +66,6 @@ public class ShippedShaderStagePurityTest {
 
     private static final String NAMESPACE = "crystalgraphics";
 
-    /**
-     * Documentation, not shaders. {@code example.shader} is the annotated reference file AGENTS.md
-     * points authors at; it carries commented-out {@code Pass} blocks and illustrative fragments, no
-     * code loads it, and the parser is not comment-aware, so it does not parse. Excluded by name
-     * rather than by swallowing parse errors — a real shader that stops parsing must still fail.
-     */
-    private static final List<String> DOCUMENTATION_ONLY =
-            Collections.singletonList("crystalgraphics:shaders/example.shader");
-
     private static final List<CgAttachedBuffer> NO_BUFFERS = Collections.emptyList();
 
     @After
@@ -98,7 +89,6 @@ public class ShippedShaderStagePurityTest {
         installCapabilities(path);
 
         List<String> shaders = shippedShaderPaths(NAMESPACE);
-        shaders.removeAll(DOCUMENTATION_ONLY);
         assertFalse("Found no shipped .shader files under assets/" + NAMESPACE + "/shaders/ — "
                 + "this test would pass vacuously", shaders.isEmpty());
 
@@ -172,7 +162,7 @@ public class ShippedShaderStagePurityTest {
                 "test"));
     }
 
-    /** Prose must not false-positive — {@code example.shader} discusses {@code discard} in comments. */
+    /** Prose must not false-positive: a comment naming {@code discard} is no use of it. */
     @Test
     public void detector_ignores_builtinNamesInComments() {
         assertNull(firstFragmentOnlyBuiltinInVertexStage(

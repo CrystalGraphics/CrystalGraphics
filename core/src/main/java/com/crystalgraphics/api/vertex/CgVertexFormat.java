@@ -75,7 +75,7 @@ public final class CgVertexFormat {
 
     /**
      * The vertex of every mesh a material draws: position, normal, colour and four UV sets in 40 bytes, Unreal's local
-     * vertex factory's streams at its default precision. {@code #type spatial}.
+     * vertex factory's streams at its default precision: what a {@code VertexType spatial} factory reads.
      *
      * <pre>{@code
      * CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
@@ -187,7 +187,7 @@ public final class CgVertexFormat {
      * POSITION(vec2) + UV(vec2) + COLOR(ubyte4) = 20 bytes stride.
      *
      <p>Registered under the {@code #type} key {@code "UI"} so that any
-     * {@code .shader} file declaring {@code #type spatial} uses this format.</p>
+     * factory of {@code VertexType spatial} reads this format.</p>
      */
     public static final CgVertexFormat UI = builder("UI")
             .add(CgVertexSemantic.POSITION, "cg_Position",  2, CgAttribType.FLOAT)
@@ -198,7 +198,7 @@ public final class CgVertexFormat {
 
     /**
      * No attributes and a stride of 0: a mesh whose shader places every vertex itself from {@code CG_VERTEX_ID}
-     * ({@code CgMesh.quads}, {@code CgMesh.vertices}). Registered as {@code #type none}.
+     * ({@code CgMesh.quads}, {@code CgMesh.vertices}). Registered as {@code VertexType none}.
      */
     public static final CgVertexFormat NONE = new CgVertexFormat(new CgVertexAttribute[0], 0, "none");
 

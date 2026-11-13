@@ -22,6 +22,7 @@ import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.material.parse.CgMaterialShaderCompiler;
 import com.crystalgraphics.material.parse.CgParsedPass;
 import com.crystalgraphics.material.parse.CgParsedShader;
+import com.crystalgraphics.material.parse.CgShaderParseException;
 import org.junit.AfterClass;
 import org.junit.Assume;
 import org.junit.BeforeClass;
@@ -60,17 +61,13 @@ public class KitProgramsLinkTest {
 
     /** A sprite port reading the whole contract: the factory's vertex and particle, the library, a dynamic parameter. */
     private static final String SPRITE_PORT = """
-            #type none
-            #pragma cg_use particle
-            #pragma cg_use rows
+            #domain surface
             #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
             #include "crystalgraphics:shaders/lib/material/panner.glsl"
             #include "crystalgraphics:shaders/lib/material/rotator.glsl"
             #include "crystalgraphics:shaders/lib/material/rotate_about_axis.glsl"
             #include "crystalgraphics:shaders/lib/material/particle_sub_uv.glsl"
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-            Queue = "Transparent"
+            Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
             Properties {
                 _Mask ("Mask", sampler2D) = "white"
@@ -79,47 +76,30 @@ public class KitProgramsLinkTest {
 
             struct v2f { vec2 uv0; vec2 uv1; float frames; vec4 colour; vec4 dynamic; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                RenderState {
-                    Blend ONE ONE_MINUS_SRC_ALPHA
-                    DepthTest LEQUAL
-                    DepthWrite OFF
-                    Cull OFF
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                v.world += cg_rotate_about_axis(vec4(cg_SpriteAxes[2], cg_Particle.spriteRotation),
+                        cg_Particle.positionAndSize.xyz, v.world) * 0.0;
+                o.uv0 = cg_panner(v.uv0, CG_TIME, vec2(0.0, 0.1), true);
+                o.uv1 = cg_rotator(v.uv1, vec2(0.5), CG_TIME, 1.0);
+                o.frames = cg_Particle.subUVLerp;
+                o.colour = CG_PARTICLE_SUB_UV(_Mask, cg_Particle, true) * cg_Particle.color * v.color;
+                o.dynamic = cg_dynamic_parameter(cg_Particle, 0, vec4(1.0));
+            }
 
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    CgMaterialParticle p = cg_material_particle();
-                    v.worldPosition += cg_rotate_about_axis(vec4(v.tangentToWorld[2], p.spriteRotation),
-                            p.positionAndSize.xyz, v.worldPosition) * 0.0;
-                    o.uv0 = cg_panner(v.texCoords[0], CG_TIME, vec2(0.0, 0.1), true);
-                    o.uv1 = cg_rotator(v.texCoords[1], vec2(0.5), CG_TIME, 1.0);
-                    o.frames = p.subUVLerp;
-                    o.colour = CG_PARTICLE_SUB_UV(_Mask, p, true);
-                    o.colour *= p.color * v.vertexColor;
-                    o.dynamic = cg_dynamic_parameter(p, 0, vec4(1.0));
-                    gl_Position = cg_material_project(v);
-                }
-
-                void fragment(in v2f i, out vec4 fragColor) {
-                    float a = cg_particle_sub_uv(_Mask, i.uv0, i.uv1, i.frames, true).r * i.colour.a * i.dynamic.x;
-                    a = CG_DEPTH_FADE(a, _Fade, gl_FragCoord.xy / CG_RESOLUTION);
-                    fragColor = vec4(i.colour.rgb * a, a);
-                }
+            void surface(in v2f i, inout CgSurface s) {
+                float a = cg_particle_sub_uv(_Mask, i.uv0, i.uv1, i.frames, true).r * i.colour.a * i.dynamic.x;
+                s.baseColor = i.colour.rgb;
+                s.opacity = CG_DEPTH_FADE(a, _Fade, gl_FragCoord.xy / CG_RESOLUTION);
             }
             """;
 
     /**
-     * A sprite port declaring the contract's outputs: emissive and opacity composed by the engine, fog off, a clipped
-     * depth, a Distortion pass beside its Forward pass; and the particle fields the sprite port leaves out.
+     * A sprite port writing the contract's outputs: emissive, a clipped depth, a bend beside its colour, fog off; and
+     * the particle fields the sprite port leaves out.
      */
     private static final String DECLARING_PORT = """
-            #type none
-            #pragma cg_use particle
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "Depth" = "Clip" "Output" = "EmissiveOpacity" }
-            Queue = "Transparent"
+            #domain surface
+            Material { BlendMode Additive  ClipDepth On  ShadingModel Unlit  Fog Off  Faces Both  VertexFactory Sprites }
 
             Properties {
                 _Mask ("Mask", sampler2D) = "white"
@@ -127,48 +107,30 @@ public class KitProgramsLinkTest {
 
             struct v2f { vec2 uv; vec4 colour; vec3 heading; float speed; vec2 size; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                RenderState {
-                    Blend ONE ONE
-                    DepthWrite OFF
-                    Cull OFF
-                }
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    CgMaterialParticle p = cg_material_particle();
-                    o.uv = mix(p.subUVCoords0, p.subUVCoords1, p.subUVLerp);
-                    o.colour = p.color;
-                    o.heading = p.velocity.xyz;
-                    o.speed = p.velocity.w;
-                    o.size = p.size;
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    float mask = texture(_Mask, i.uv).r;
-                    cg_Clip(mask);
-                    float behind = CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION) - cg_LinearEyeDepth(gl_FragCoord.z);
-                    fragColor = vec4(i.colour.rgb * (1.0 + i.speed * length(i.heading)) * min(i.size.x, 1.0), mask * clamp(behind, 0.0, 1.0));
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                o.uv = mix(cg_Particle.subUVCoords0, cg_Particle.subUVCoords1, cg_Particle.subUVLerp);
+                o.colour = cg_Particle.color;
+                o.heading = cg_Particle.velocity.xyz;
+                o.speed = cg_Particle.velocity.w;
+                o.size = cg_Particle.size;
             }
 
-            Pass {
-                Tags { "LightMode" = "Distortion" }
-                void fragment(in v2f i, out vec4 distortion) {
-                    distortion = CG_DISTORTION(i.heading.xy * 0.01, 0.0, cg_LinearEyeDepth(gl_FragCoord.z));
-                }
+            void surface(in v2f i, inout CgSurface s) {
+                float behind = CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / CG_RESOLUTION) - cg_LinearEyeDepth(gl_FragCoord.z);
+                float mask = texture(_Mask, i.uv).r;
+                s.opacityMask = mask;
+                s.emissive = i.colour.rgb * (1.0 + i.speed * length(i.heading)) * min(i.size.x, 1.0)
+                        * mask * clamp(behind, 0.0, 1.0);
+                s.refraction = i.heading.xy * 0.01;
             }
             """;
 
     /** A mesh port on the mesh factory: the mesh's own colour and UVs, the particle's colour, time and record. */
     private static final String MESH_PORT = """
-            #type spatial
-            #pragma cg_use particle
+            #domain surface
             #include "crystalgraphics:shaders/lib/material/panner.glsl"
             #include "crystalgraphics:shaders/lib/material/rotate_about_axis.glsl"
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-            Queue = "Transparent"
+            Material { BlendMode Additive  ShadingModel Unlit  VertexFactory MeshParticles }
 
             Properties {
                 _Mask ("Mask", sampler2D) = "white"
@@ -176,60 +138,42 @@ public class KitProgramsLinkTest {
 
             struct v2f { vec2 uv; vec4 colour; float heat; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                RenderState {
-                    Blend ONE ONE
-                    DepthWrite OFF
-                }
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    CgMaterialParticle p = cg_material_particle();
-                    v.worldPosition += v.tangentToWorld[2] * 0.1 * p.relativeTime
-                            + cg_rotate_about_axis(vec4(0.0, 1.0, 0.0, p.random), p.positionAndSize.xyz, v.worldPosition);
-                    o.uv = cg_panner(v.texCoords[0], CG_TIME, vec2(0.5, 0.0), true);
-                    o.colour = p.color * v.vertexColor * cg_dynamic_parameter(p, 0, vec4(1.0));
-                    o.heat = CG_PARTICLE_HEAT(p.record);
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    fragColor = vec4(i.colour.rgb * texture(_Mask, i.uv).r * (1.0 + i.heat), 0.0);
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                v.world += v.normal * 0.1 * cg_Particle.relativeTime
+                        + cg_rotate_about_axis(vec4(0.0, 1.0, 0.0, cg_Particle.random), cg_Particle.positionAndSize.xyz, v.world);
+                o.uv = cg_panner(v.uv0, CG_TIME, vec2(0.5, 0.0), true);
+                o.colour = cg_Particle.color * v.color * cg_dynamic_parameter(cg_Particle, 0, vec4(1.0));
+                o.heat = CG_PARTICLE_HEAT(cg_Particle.record);
+            }
+
+            void surface(in v2f i, inout CgSurface s) {
+                s.baseColor = i.colour.rgb * texture(_Mask, i.uv).r * (1.0 + i.heat);
             }
             """;
 
     /** A masked mesh particle pushing its depth back, as an aura's inner shell does. */
     private static final String DEPTH_OFFSET_PORT = """
-            #type spatial
-            #pragma cg_use particle
-
-            Tags { "RenderType" = "TransparentCutout" "Lighting" = "Unlit" }
-            Queue = "AlphaTest"
+            #domain surface
+            Material { BlendMode Masked  ShadingModel Unlit  VertexFactory MeshParticles }
 
             struct v2f { vec4 colour; };
 
-            Pass {
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    o.colour = cg_material_particle().color;
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    cg_Clip(i.colour.a - 0.5);
-                    CG_PIXEL_DEPTH_OFFSET(i.colour.a * 0.25);
-                    fragColor = vec4(i.colour.rgb, 1.0);
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                o.colour = cg_Particle.color;
+            }
+
+            void surface(in v2f i, inout CgSurface s) {
+                s.opacityMask = i.colour.a;
+                s.pixelDepthOffset = i.colour.a * 0.25;
+                s.baseColor = i.colour.rgb;
             }
             """;
 
     /** A solid mesh particle lit as Unreal's Default Lit, as a stage's debris is: drawn in the transparent firing. */
     private static final String DEFAULT_LIT_PORT = """
-            #type spatial
-            #pragma cg_use particle
+            #domain surface
             #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
-            Queue = "Transparent"
+            Material { BlendMode AlphaComposite  DepthWrite On  ShadingModel Unlit  ColorSpace Linear  VertexFactory MeshParticles }
 
             Properties {
                 _Color ("Base colour", sampler2D) = "white"
@@ -238,35 +182,24 @@ public class KitProgramsLinkTest {
 
             struct v2f { vec2 uv; vec3 normal; vec3 position; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                RenderState {
-                    Blend OFF
-                    DepthWrite ON
-                }
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    o.uv = v.texCoords[0];
-                    o.normal = v.tangentToWorld[2];
-                    v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * (o.normal * 0.01);
-                    o.position = v.worldPosition;
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    vec3 orm = texture(_ORM, i.uv).rgb, lit;
-                    CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
-                    fragColor = vec4(CG_DEFAULT_LIT_OUTPUT(lit), 1.0);
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                o.uv = v.uv0;
+                o.normal = v.normal;
+                v.world += CG_PARTICLE_LOCAL_TO_WORLD * (v.normal * 0.01);
+                o.position = v.world;
+            }
+
+            void surface(in v2f i, inout CgSurface s) {
+                vec3 orm = texture(_ORM, i.uv).rgb, lit;
+                CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
+                s.baseColor = CG_DEFAULT_LIT_OUTPUT(lit);
             }
             """;
 
     /** A sprite whose texture is laid over its system on screen, as an aura's inner glow is (ParticleMacroUV). */
     private static final String MACRO_UV_PORT = """
-            #type none
-            #pragma cg_use particle
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-            Queue = "Transparent"
+            #domain surface
+            Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Sprites }
 
             Properties {
                 _Mask ("Mask", sampler2D) = "white"
@@ -274,45 +207,24 @@ public class KitProgramsLinkTest {
 
             struct v2f { vec4 colour; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                RenderState {
-                    Blend ONE ONE
-                    DepthWrite OFF
-                }
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * vec3(0.0, 0.01, 0.0);
-                    o.colour = cg_material_particle().color;
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    vec4 macro = CG_PARTICLE_MACRO_UV;
-                    vec2 uv = (gl_FragCoord.xy / CG_RESOLUTION * 2.0 - 1.0 - macro.xy) * macro.zw + 0.5;
-                    fragColor = vec4(i.colour.rgb * texture(_Mask, uv).r, 0.0);
-                }
+            void vertex(inout CgVertex v, out v2f o) {
+                v.world += CG_PARTICLE_LOCAL_TO_WORLD * vec3(0.0, 0.01, 0.0);
+                o.colour = cg_Particle.color;
+            }
+
+            void surface(in v2f i, inout CgSurface s) {
+                vec4 macro = CG_PARTICLE_MACRO_UV;
+                vec2 uv = (gl_FragCoord.xy / CG_RESOLUTION * 2.0 - 1.0 - macro.xy) * macro.zw + 0.5;
+                s.baseColor = i.colour.rgb * texture(_Mask, uv).r;
             }
             """;
 
-    /** A type with no factory: it must fail naming that, not draw something else. */
+    /** A factory nobody registered: it must fail naming it, not draw something else. */
     private static final String UNFACTORED_PORT = """
-            #type pos3_uv2_col4ub
-            #pragma cg_use particle
+            #domain surface
+            Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Nowhere }
 
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-            Queue = "Transparent"
-
-            struct v2f { vec4 colour; };
-
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                void vertex(out v2f o) {
-                    CgMaterialVertex v = cg_material_vertex();
-                    o.colour = v.vertexColor;
-                    gl_Position = cg_material_project(v);
-                }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = i.colour; }
-            }
+            void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }
             """;
 
     /** Whether failure {@code f} is a particle usage's variant, with or without other keywords, stopped by the port's own {@code #error}. */
@@ -328,21 +240,17 @@ public class KitProgramsLinkTest {
 
     /** A screen material reading custom depth, which no pass writes yet (the stencil and shading model are). */
     private static final String UNWRITTEN_PORT = """
-            #type none
-
-            Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-            Queue = "Transparent"
+            #domain global
+            RenderState { Blend OFF  DepthTest ALWAYS  DepthWrite OFF  Cull OFF }
 
             struct v2f { vec2 uv; };
 
-            Pass {
-                Tags { "LightMode" = "Forward" }
-                void vertex(out v2f o) {
-                    o.uv = vec2(CG_VERTEX_ID & 1, CG_VERTEX_ID >> 1);
-                    gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);
-                }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(CG_CUSTOM_EYE_DEPTH(i.uv)); }
+            void vertex(out v2f o) {
+                o.uv = vec2(CG_VERTEX_ID & 1, CG_VERTEX_ID >> 1);
+                gl_Position = vec4(o.uv * 2.0 - 1.0, 0.0, 1.0);
             }
+
+            void fragment(in v2f i, out vec4 color) { color = vec4(CG_CUSTOM_EYE_DEPTH(i.uv)); }
             """;
 
     private static ShadercGlslCompiler compiler, explicit;
@@ -423,11 +331,13 @@ public class KitProgramsLinkTest {
     }
 
     @Test
-    public void aPortOnATypeWithNoFactoryFailsNamingIt() {
-        CgMaterialShader shader = CgMaterialShaderRegistry.get().getOrCreateGenerated(UNFACTORED_PORT);
-        shader.recompile();
-        assertTrue("a port compiled against a factory that does not exist", shader.hasCompileFailed());
-        assertTrue(shader.lastCompileError(), shader.lastCompileError().contains("has_no_factory_for_this_type"));
+    public void aPortOnAFactoryNobodyRegisteredFailsNamingIt() {
+        try {
+            CgMaterialShaderRegistry.get().getOrCreateGenerated(UNFACTORED_PORT).recompile();
+            fail("a port loaded against a factory that does not exist");
+        } catch (CgShaderParseException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("'VertexFactory Nowhere' is no factory"));
+        }
     }
 
     @Test

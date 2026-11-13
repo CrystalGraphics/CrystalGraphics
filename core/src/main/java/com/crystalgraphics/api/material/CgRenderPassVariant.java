@@ -1,57 +1,44 @@
 package com.crystalgraphics.api.material;
 
 /**
- * Orchestrator-facing bridge enum that maps a high-level render variant concept to the
- * {@code "LightMode"} tag value written inside a {@code Pass { Tags { } }} block in a
- * CrystalShader {@code .shader} file.
+ * Which of a material's passes a renderer draws: the passes the material format lowers a {@code .shader} onto, from
+ * the outputs its {@code surface()} names ({@code docs/MATERIAL_FORMAT.md} § 4.4).
  *
- * <p>It lets a renderer ask {@code material.pipeline(CgRenderPassVariant.DEPTH, kind)} without knowing the
- * shader's internal pass structure. There is no shadow-caster variant: the world's shadows are ray-traced from
- * each pixel (Unreal's MegaLights, {@code CgWorldLights}), so nothing is drawn from a light's side.</p>
+ * <pre>{@code
+ * CgPipeline depth = material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
+ * boolean glows = material.hasEmissivePass();          // it writes s.emissive
+ * }</pre>
  *
- * <h3>Keyword policy</h3>
+ * <p>There is no shadow-caster variant: the world's shadows are ray-traced from each pixel (Unreal's MegaLights,
+ * {@code CgWorldLights}), so nothing is drawn from a light's side.</p>
+ *
  * <ul>
- *   <li>{@link #FORWARD} — passes the material's full enabled keyword set to the Forward pass.</li>
- *   <li>{@link #DEPTH} — always passes {@code Collections.emptySet()} for keywords.</li>
+ *   <li>{@link #FORWARD} takes the material's enabled keywords; {@link #DEPTH} none.</li>
+ *   <li>Forward resolves through {@code getOrCompileForwardPass(keywords)}, by the first Forward pass's own name, not
+ *       {@link #lightModeName()}.</li>
  * </ul>
- *
- * <h3>FORWARD routing</h3>
- * <p>Forward always routes via
- * {@code CgMaterial.pipeline(variant, kind)} →
- * {@code cgMaterialShader.getOrCompileForwardPass(keywords)}, which resolves the
- * authored {@code "Name"} tag of the first Forward pass internally. The
- * {@link #lightModeName()} value ({@code "Forward"}) is <em>not</em> used as the
- * {@code ProgramKey} passName for FORWARD — doing so would break shaders that name
- * their pass {@code "BaseColor"} or similar.</p>
  */
 public enum CgRenderPassVariant {
 
-    /**
-     * Standard forward-lit pass.
-     * <p>Routing: resolved through {@code getOrCompileForwardPass(keywords)} using the
-     * authored {@code "Name"} tag of the first Forward pass, not the LightMode string.</p>
-     */
+    /** The colour pass. */
     FORWARD("Forward"),
 
     /**
-     * Depth-only pre-pass: authored, or generated for an opaque material ({@link CgMaterial#hasCompiledDepthPass()}).
-     * <p>Keywords are always {@code emptySet()}.</p>
+     * Depth only: a solid material's, or a translucent one's under {@code DepthPrepass}
+     * ({@link CgMaterial#hasCompiledDepthPass()}). Keywords are always {@code emptySet()}.
      */
     DEPTH("Depth"),
 
     /**
-     * The light a surface emits, drawn into the world's bloom target and spread over the scene by it. Never
-     * auto-generated: a material blooms only where it authors a {@code Pass { Tags { "LightMode" = "Emissive" } }}.
-     * <p>Takes the material's keywords, like {@link #FORWARD}. Unlit and faded by fog; a fragment behind the
-     * scene's depth is discarded before its fragment function runs.</p>
+     * The light a surface emits ({@code s.emissive}), added into the HDR scene and spread by bloom. Takes the
+     * material's keywords. Unlit and faded by fog; a fragment behind the scene's depth is discarded.
      */
     EMISSIVE("Emissive"),
 
     /**
-     * How a surface bends what is behind it: an offset in UV units and a chromatic split, added into the world's
-     * distortion target and applied to the scene once, after the transparent pass. Never auto-generated.
-     * <p>Takes the material's keywords, like {@link #FORWARD}. Unlit and unfogged; a fragment behind the scene's depth
-     * is discarded before its fragment function runs.</p>
+     * How a surface bends what is behind it ({@code s.refraction}): an offset in UV units and a chromatic split,
+     * added into the world's distortion target and applied to the scene once, after the transparent pass. Takes the
+     * material's keywords. Unlit and unfogged; a fragment behind the scene's depth is discarded.
      */
     DISTORTION("Distortion");
 
@@ -61,14 +48,7 @@ public enum CgRenderPassVariant {
         this.lightModeName = lightModeName;
     }
 
-    /**
-     * Returns the {@code "LightMode"} tag value this variant maps to, as written in
-     * {@code Pass { Tags { "LightMode" = "..." } }}.
-     *
-     * <p>Examples: {@code "Forward"}, {@code "Depth"}, {@code "Emissive"}.</p>
-     *
-     * @return the LightMode tag string; never {@code null}
-     */
+    /** The pass's name in the lowered form the engine compiles: {@code "Forward"}, {@code "Depth"}, ... */
     public String lightModeName() {
         return lightModeName;
     }

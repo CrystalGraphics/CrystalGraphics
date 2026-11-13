@@ -52,7 +52,7 @@ import java.util.regex.Pattern;
  * <ul>
  *   <li>{@code fill} is inlined into the generated vertex, after {@code CgVertex v} is declared; it sets every field,
  *       {@code world} last, and the parameters variable.</li>
- *   <li>{@code #pragma} lines in {@code Declarations} go to the program's preamble, the rest into each pass.</li>
+ *   <li>Its own switches are a {@code Keywords { }} block, as a material's; {@code Declarations} holds GLSL alone.</li>
  *   <li>A factory registered in Java ({@link CgVertexFactory#register}) is found before a file.</li>
  *   <li>{@link #forget()} drops what was read, so the next parse reads the files again: a shader reload.</li>
  * </ul>
@@ -68,9 +68,9 @@ public final class CgFormatTemplates {
     /** Where a primitive's fragment runs the material. */
     static final String SURFACE_CALL = "CG_SURFACE";
 
-    private static final Set<String> FACTORY_BLOCKS = Set.of("Factory", "EngineBuffers", "Tags", "Properties",
+    private static final Set<String> FACTORY_BLOCKS = Set.of("Factory", "EngineBuffers", "Tags", "Keywords", "Properties",
             "Declarations", "Parameters");
-    private static final Set<String> PRIMITIVE_BLOCKS = Set.of("Primitive", "EngineBuffers", "Properties",
+    private static final Set<String> PRIMITIVE_BLOCKS = Set.of("Primitive", "EngineBuffers", "Keywords", "Properties",
             "Declarations", "RenderState");
     private static final Pattern FILL = Pattern.compile("^void\\s+fill\\s*\\(\\s*inout\\s+CgVertex\\s+v\\s*\\)");
     private static final Pattern DEFAULTS = Pattern.compile("^void\\s+defaults\\s*\\(\\s*inout\\s+CgSurface\\s+s\\s*\\)");
@@ -210,7 +210,8 @@ public final class CgFormatTemplates {
         if (fill == null) throw CgMaterialFormat.fail(path, "'void fill(inout CgVertex v)' is missing");
         CgVertexFactory.Builder b = CgVertexFactory.builder(name).vertexType(type).fill(fill.body())
                 .buffers(tokens(items, "EngineBuffers").toArray(new String[0]))
-                .declarations(body(items, "Declarations")).properties(body(items, "Properties"));
+                .declarations(CgMaterialFormat.keywordLines(items, path) + declarations(items, path))
+                .properties(body(items, "Properties"));
         if ("On".equals(settings.get("PlacesNothing"))) b.placesNothing();
         if (defaults != null) b.defaults(defaults.body());
         if (settings.containsKey("Fade")) b.fade(settings.get("Fade"));
@@ -243,10 +244,19 @@ public final class CgFormatTemplates {
             throw CgMaterialFormat.fail(path, "fragment() runs the material at " + SURFACE_CALL + "(input, s)");
         }
         CgMaterialFormat.Item state = CgMaterialFormat.block(items, "RenderState");
-        String declarations = body(items, "Declarations");
-        return new Primitive(name, tokens(items, "EngineBuffers"), pragmas(declarations, true), pragmas(declarations, false),
+        return new Primitive(name, tokens(items, "EngineBuffers"), CgMaterialFormat.keywordLines(items, path),
+                pragmas(declarations(items, path), false),
                 body(items, "Properties"), settings.getOrDefault("Queue", "Transparent"),
                 state == null ? "" : state.text(), v2f.body(), vertex.text(), fragment.text());
+    }
+
+    /** A file's {@code Declarations}: GLSL alone, a switch being a {@code Keywords { }} entry. */
+    private static String declarations(List<CgMaterialFormat.Item> items, String path) {
+        String declarations = body(items, "Declarations");
+        if (!pragmas(declarations, true).isEmpty()) {
+            throw CgMaterialFormat.fail(path, "'#pragma' in Declarations: a switch is a 'Keywords { }' entry, as in a material");
+        }
+        return declarations;
     }
 
     /** {@code declarations}' {@code #pragma} lines ({@code pragma}), or every other line, each stripped. */

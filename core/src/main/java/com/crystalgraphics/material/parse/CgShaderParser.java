@@ -26,49 +26,19 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Public facade for parsing CrystalShader {@code .shader} source files.
+ * Parses a {@code .shader} in the material format ({@code docs/MATERIAL_FORMAT.md}) into the {@link CgParsedShader} the
+ * compiler builds programs from. No GL call is made.
  *
- * <p>Splits a {@code .shader} source string into its {@link CgParsedShader} representation —
- * including one {@link CgParsedPass} per {@code Pass { }} block — without parsing GLSL
- * expressions inside function bodies. Zero GL calls at parse time (all GL constants come
- * from LWJGL's static final int fields, not from GL calls). All format validation described
- * in {@code docs/CRYSTALSHADER_FORMAT.md} is enforced here, with
- * {@link CgShaderParseException} thrown on any violation.</p>
+ * <pre>{@code
+ * CgParsedShader parsed = CgShaderParser.parse(CgIO.loadSource(path), path);
+ * List<String> keywords = parsed.featureNames();      // its Keywords { }
+ * }</pre>
  *
- * <p>Delegates structural concerns to {@link CgStructureParser}, render-state parsing to
- * {@link CgRenderStateParser}, property parsing to {@link CgPropertiesParser}, and queue
- * keyword parsing to {@link CgQueueParser}.</p>
- *
- * <p>Brace matching for block extraction uses a counter-based scan (not regex).</p>
- *
- * <h3>Pass parsing contract</h3>
  * <ul>
- *   <li>At least one {@code Pass { }} block is required; the parser throws when none are found.</li>
- *   <li>Each pass may declare {@code Tags { "LightMode" = "..." "Name" = "..." }}.</li>
- *   <li>Unknown or absent {@code LightMode} values default to {@code "Forward"} with a warning.</li>
- *   <li>{@code "LightMode" = "ShadowCaster"} and a material-level {@code "CastShadows"} tag throw: no material
- *       draws from a light's side, since the world's shadows are traced from each pixel.</li>
- *   <li>Duplicate {@code Depth}, {@code Emissive} or {@code Distortion} passes: first is kept, subsequent
- *       are dropped with a warning.</li>
- *   <li>Pass names are auto-assigned when absent: Forward passes → {@code "Pass0"}, {@code "Pass1"}, …;
- *       Depth → {@code "Depth"}.</li>
- * </ul>
- *
- * <h3>Enforcement summary</h3>
- * <ul>
- *   <li>{@code #type} must be present as the first non-blank, non-comment line and
- *       its value must be {@code "spatial"} (the only valid type in MVP).</li>
- *   <li>Unknown {@code #type} values throw {@link CgShaderParseException}.</li>
- *   <li>Property names may not begin with engine-reserved prefixes
- *       ({@code cg_}, {@code CG_}, {@code _v2f_}).</li>
- *   <li>v2f field names may not begin with engine-reserved prefixes.</li>
- *   <li>Integer types ({@code int}, {@code uint}, {@code ivec*}, {@code uvec*}) are
- *       forbidden in {@code struct v2f}.</li>
- *   <li>{@code #version} directives are forbidden anywhere in the file.</li>
- *   <li>{@code main()} declarations are forbidden in vertex and fragment bodies.</li>
- *   <li>Old keywords ({@code ZTest}, {@code ZWrite}, {@code BlendOp}) inside {@code RenderState}
- *       throw with a migration hint. {@code RenderQueue} at top level throws with a hint.</li>
- *   <li>Sampler property defaults must be quoted strings (e.g. {@code = "white"}).</li>
+ *   <li>A source must open with its {@code #domain} line; any other fails naming it.</li>
+ *   <li>The format lowers onto passes ({@link CgMaterialFormat}): the passes the engine draws a material in, which no
+ *       file is written in. The passes' own checks then run, so a format error and a GLSL-shape error both fail here,
+ *       placed on the line they name ({@link CgShaderParseException}).</li>
  * </ul>
  */
 public final class CgShaderParser {
@@ -177,6 +147,23 @@ public final class CgShaderParser {
      * @throws CgShaderParseException on any format violation
      */
     public static CgParsedShader parse(String source, String resourcePath) {
+        if (source == null || !CgMaterialFormat.isDomainFile(source)) {
+            throw new CgShaderParseException("[" + resourcePath + "] a .shader opens with its #domain line (surface,"
+                    + " post, ui or global): docs/MATERIAL_FORMAT.md");
+        }
+        return parseLowered(source, resourcePath);
+    }
+
+    /**
+     * Parses the passes the material format lowers onto: the format's own route, and what a test of the passes'
+     * mechanics writes directly. No file is read in this form.
+     */
+    static CgParsedShader parseLowered(String source) {
+        return parseLowered(source, "<unknown>");
+    }
+
+    /** {@link #parseLowered(String)}, naming where the source came from in its errors. */
+    static CgParsedShader parseLowered(String source, String resourcePath) {
         try {
             return parseLocating(source, resourcePath);
         } catch (CgShaderParseException failed) {
@@ -231,7 +218,7 @@ public final class CgShaderParser {
             throw new CgShaderParseException("[" + resourcePath + "] #type declaration missing: source is empty");
         }
         if (CgMaterialFormat.isDomainFile(source)) {
-            // Lowered onto the passes the old format writes, then parsed as one.
+            // Lowered onto passes, then parsed as them.
             CgMaterialFormat.Lowered lowered = CgMaterialFormat.lower(source, resourcePath);
             CgParsedShader parsed = parseLocating(lowered.source(), resourcePath);
             requireMaskClip(parsed.properties(), lowered.format().maskClip(), resourcePath);
@@ -689,23 +676,6 @@ public final class CgShaderParser {
         return margin;
     }
 
-    /**
-     * Enforces that {@code #pragma cg_use} and actual symbol usage agree, in both directions.
-     *
-     * <p>The forward check — a declared token must be registered — is ordinary validation. The
-     * reverse check is the important one: a shader that reads an engine buffer's symbols
-     * <em>without</em> declaring it used to compile anyway, right up until the exact moment the
-     * buffer happened not to be attached yet, and then failed with a GLSL error about an undefined
-     * variable, several layers below anything the author wrote. Catching it here turns a
-     * runtime-ordering bug into a parse-time message naming the missing line.</p>
-     *
-     * <p>Detection is textual: the macro family ({@code CG_QUAD_}) and the raw macro name
-     * ({@code QUAD_DATA}) are both looked for, so it fires whether the author used the convenience
-     * macros or indexed the buffer directly. It runs against a comment-stripped copy of the source —
-     * a shader that merely <em>documents</em> these symbols is not using them, and scanning raw text
-     * made {@code example.shader}, the reference file this project tells authors to read first,
-     * unparseable by the very feature it describes.</p>
-     */
     /** {@code authored} and after them every declared engine buffer's own properties, in declaration order. */
     private static List<CgMaterialProperty> withEngineProperties(List<CgMaterialProperty> authored, List<String> declared) {
         List<CgMaterialProperty> out = null;
@@ -726,11 +696,17 @@ public final class CgShaderParser {
         }
     }
 
+    /**
+     * The engine buffers a program binds (its factory's or primitive's {@code EngineBuffers}) and the ones its code reads
+     * agree, both ways: a read of a buffer nothing binds fails here, naming it, rather than as an undefined GLSL symbol
+     * the frame it is first drawn unbound. Textual, on the comment-stripped source: the macro family
+     * ({@code CG_QUAD_}) and the raw macro ({@code QUAD_DATA}) both count.
+     */
     private static void validateEngineBufferUsage(String source, List<String> declared, String resourcePath) {
         for (String token : declared) {
             if (CgEngineBufferRegistry.get(token) == null) {
                 throw new CgShaderParseException(
-                        "[" + resourcePath + "] #pragma cg_use: unknown buffer token '" + token
+                        "[" + resourcePath + "] EngineBuffers: unknown buffer token '" + token
                         + "' — registered tokens: " + CgEngineBufferRegistry.tokens());
             }
         }
@@ -743,7 +719,8 @@ public final class CgShaderParser {
             if (code.contains(macro) || code.contains(family)) {
                 throw new CgShaderParseException(
                         "[" + resourcePath + "] uses '" + macro + "'/'" + family
-                        + "*' but does not declare it — add '#pragma cg_use " + token + "'");
+                        + "*', which nothing it is drawn by binds: a factory or primitive naming '" + token
+                        + "' in its EngineBuffers does");
             }
         }
     }

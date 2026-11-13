@@ -123,7 +123,7 @@ public final class CgPipelineList {
 
     /**
      * Keeps {@code shader} built in every form the world draws it, for every combination of its permutation domain
-     * ({@code #pragma cg_permutation}: the keywords its renderer switches), each with {@code keywords} added. A program is
+     * (its {@code switched} keywords and one-ofs: the keywords its renderer switches), each with {@code keywords} added. A program is
      * the shader's and its keywords', so a probe material builds each.
      *
      * <pre>{@code

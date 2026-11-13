@@ -28,18 +28,15 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
 public class CgMaterialRecordingTest {
 
     private static final String SOURCE = """
-            #type spatial
-            #pragma cg_feature WITH_MASK
+            #domain ui
+            Keywords { WITH_MASK ("With mask") }
             Properties {
                 _Color    ("Color", color)    = (1, 1, 1, 1)
                 _Alpha    ("Alpha", float)    = 1
                 _MainTex  ("Main", sampler2D)  = "white"
                 _SharpTex ("Sharp", sampler2D) = "white"
             }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color * _Alpha; }
-            }
+            void surface(in CgUiInput i, inout CgUiSurface s) { s.color = _Color * _Alpha; }
             """;
 
     @Before

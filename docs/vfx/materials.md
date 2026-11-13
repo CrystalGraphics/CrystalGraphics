@@ -64,67 +64,48 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 
 ## A particle's material: the vertex factory
 
-A material on particles never places its own vertices. The engine does, for the kind of draw it is, and hands the
-material what it placed: Unreal's vertex factories, and its material parameters (`FMaterialVertexParameters`,
-`FMaterialParticleParameters`). The material reads them through two calls and changes what it wants before projecting.
+A material on particles never places its own vertices. Its vertex factory does, for the kind of draw it is, and hands
+the material what it placed: Unreal's vertex factories, and its material parameters (`FMaterialVertexParameters`,
+`FMaterialParticleParameters`). The material reads the vertex as `v` and the particle as `cg_Particle`, and changes
+what it wants; the engine projects `v.world` after.
 
 ```glsl
-#type none                         // a sprite: a quad a particle, placed by the engine
-#pragma cg_use particle
-#pragma cg_use rows
-
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" }
-Queue = "Transparent"
+#domain surface
+// a sprite: a quad a particle, placed by the engine; every number readable per draw
+Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Mask ("Mask", sampler2D) = "white"
 }
 
-struct v2f { vec2 uv; vec4 colour; };
+struct v2f { vec2 uv0; };                         // filled from the placed vertex by name
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE
-        DepthWrite OFF
-    }
-    void vertex(out v2f o) {
-        CgMaterialVertex v = cg_material_vertex();       // where the engine put this corner
-        CgMaterialParticle p = cg_material_particle();   // the particle it belongs to
-        o.uv = v.texCoords[0];
-        o.colour = p.color;
-        gl_Position = cg_material_project(v);
-    }
-    void fragment(in v2f i, out vec4 fragColor) {
-        float a = texture(_Mask, i.uv).r * i.colour.a;
-        fragColor = vec4(i.colour.rgb * a, 0.0);
-    }
+void surface(in v2f i, inout CgSurface s) {
+    float a = texture(_Mask, i.uv0).r * cg_Particle.color.a;   // naming a field passes it to the pixel
+    s.baseColor = cg_Particle.color.rgb * a;
 }
 ```
 
-The same material on a mesh drawn for every particle is `#type spatial`: the calls are the same, and what they answer
-is the mesh's.
+The same material on a mesh drawn for every particle is on `MeshParticles`: the fields are the same, and what they
+answer is the mesh's.
 
 ```glsl
-#type spatial                      // a mesh a particle: the emitter's renderer is MESHES
-#pragma cg_use particle
-
-void vertex(out v2f o) {
-    CgMaterialVertex v = cg_material_vertex();
-    CgMaterialParticle p = cg_material_particle();
-    v.worldPosition += v.tangentToWorld[2] * 0.05 * p.relativeTime;   // a world position offset: it swells as it ages
-    o.uv = v.texCoords[0];
-    o.colour = p.color * v.vertexColor;                               // the particle's colour times the mesh's
-    gl_Position = cg_material_project(v);
+Material { BlendMode Additive  ShadingModel Unlit  VertexFactory MeshParticles }
+struct v2f { vec2 uv0; vec4 colour; };
+void vertex(inout CgVertex v, out v2f o) {
+    v.world += v.normal * 0.05 * cg_Particle.relativeTime;   // a world position offset: it swells as it ages
+    o.uv0 = v.uv0;
+    o.colour = cg_Particle.color * v.color;                   // the particle's colour times the mesh's
 }
 ```
 
-| `CgMaterialVertex` | Sprite (`#type none`) | Mesh (`#type spatial`) |
+| `CgVertex` | `Sprites` | `MeshParticles` |
 |---|---|---|
-| `worldPosition` | the corner, camera-relative, in blocks | the mesh's vertex through the particle's place, turn and size |
-| `texCoords[4]` | frame a's and frame b's of its flipbook, then both again | the mesh's two UV sets, then zero |
-| `tangentToWorld` | right, up, and the normal facing the eye | a frame about the mesh's normal |
-| `vertexColor` | the particle's colour | the mesh's own vertex colour |
+| `world` | the corner, camera-relative, in blocks | the mesh's vertex through the particle's place, turn and size |
+| `position` | the corner's offset from the particle's centre | the mesh's own vertex |
+| `uv0` … `uv3` | frame a's and frame b's of its flipbook, then both again | the mesh's two UV sets, then zero |
+| `normal` | the normal facing the eye (`cg_SpriteAxes`: right, up and normal) | the mesh's normal (`cg_TangentToWorld`: the whole frame) |
+| `color` | the particle's colour | the mesh's own vertex colour |
 
 | `CgMaterialParticle` | Is |
 |---|---|
@@ -134,13 +115,12 @@ void vertex(out v2f o) {
 | `positionAndSize` | its centre, camera-relative; w its radius on a sprite, 1 on a mesh |
 | `size`, `spriteRotation` | a sprite's width and height and its turn in radians; 0 on a mesh |
 | `subUVCoords0`, `subUVCoords1`, `subUVLerp` | its flipbook's two frames and the blend between them |
-| `record` | its record: `CG_PARTICLE_HEAT(p.record)` and the rest of `cg_use particle`'s macros read what these fields do not |
+| `record` | its record: `CG_PARTICLE_HEAT(cg_Particle.record)` and the rest of the `particle` buffer's macros read what these fields do not |
 
-- `cg_material_project(v)` is the clip position of `v.worldPosition`: call it last, after any offset.
-- `cg_dynamic_parameter(p, i, fallback)` is the particle's dynamic parameter `i` (0 to 3), set by its emitter's
+- `cg_dynamic_parameter(cg_Particle, i, fallback)` is the particle's dynamic parameter `i` (0 to 3), set by its emitter's
   `dynamic_material_parameters` ([particles](particles.md) § *Values a particle carries for its material*), and
-  `fallback` where its emitter sets none: Unreal's DynamicParameter node and its defaults. It reads `p`, so a fragment
-  stage gets it from what its vertex stage passes on. A renderer with `dynamic_parameter_index: first` (Cascade's
+  `fallback` where its emitter sets none: Unreal's DynamicParameter node and its defaults. Named in `surface()`, the fields
+  it reads are passed to the pixel for it. A renderer with `dynamic_parameter_index: first` (Cascade's
   factories; `dynamicParameterIndex(CgVfxDynamicParameterIndex.FIRST)` in Java) reads parameter 0 at every index, and
   (1, 1, 1, 1) where its emitter sets none, whatever the fallback; on a sprite renderer of a `spawning: cascade_gpu`
   emitter every index reads (0, 0, 0, 0), as Cascade's GPU sprites carry none:
@@ -172,7 +152,7 @@ void vertex(out v2f o) {
   alone.
 
   ```glsl
-  v.worldPosition += CG_PARTICLE_LOCAL_TO_WORLD * (offset.xzy * 0.01);   // an Unreal local offset, in centimetres
+  v.world += CG_PARTICLE_LOCAL_TO_WORLD * (offset.xzy * 0.01);   // an Unreal local offset, in centimetres
   ```
 - **Macro UVs**: `CG_PARTICLE_MACRO_UV`, Unreal's ParticleMacroUV parameters for this view, in either stage: the
   system's macro UV centre in NDC (y up) and the scales taking its radius on screen to one UV, worked out as Cascade does
@@ -187,24 +167,19 @@ void vertex(out v2f o) {
   Its scales are 0 where the radius is not positive or its extent on screen is 0 or not finite: every pixel then reads
   the centre.
 
-### Emissive and opacity: `"Output" = "EmissiveOpacity"`
+### Emissive and opacity
 
-A material ported from Unreal writes what Unreal's material outputs: its emissive colour and its opacity. Tagged
-`"Output" = "EmissiveOpacity"`, it writes them as they are, and the engine composes them for the blend the material
-draws with, as Unreal's base pass does. The same program then draws under any of a kit's blends.
+A material ported from Unreal writes what Unreal's material outputs, its emissive colour and its opacity, and the
+engine composes them for the blend the material draws with, as Unreal's base pass does. The same program then draws
+under any of a kit's blends.
 
 ```glsl
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Output" = "EmissiveOpacity" }
-
-void fragment(in v2f i, out vec4 fragColor) {
-    fragColor = vec4(i.colour.rgb * _Glow, texture(_Mask, i.uv).r * i.colour.a);   // emissive, opacity
+Material { BlendMode Translucent  ShadingModel Unlit  VertexFactory Sprites }
+void surface(in v2f i, inout CgSurface s) {
+    s.emissive = cg_Particle.color.rgb * _Glow;
+    s.opacity = texture(_Mask, i.uv0).r * cg_Particle.color.a;
 }
 ```
-
-| Blend | Drawn as |
-|---|---|
-| `ADDITIVE`, `SUBTRACT` | emissive times opacity, added |
-| `ALPHA`, `PREMULTIPLIED`, `MODULATE`, `OPAQUE` | as written: the blend and the fog take the rest |
 
 ### Unreal's expressions
 
@@ -215,9 +190,9 @@ ParticleSubUV and RotateAboutAxis ([`../SHADERS.md`](../SHADERS.md) § *Unreal's
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
 #include "crystalgraphics:shaders/lib/material/particle_sub_uv.glsl"
 
-// in the vertex function: the flipbook's two frames, read where the particle is
-o.colour = CG_PARTICLE_SUB_UV(_Sheet, p, true);
-// in the fragment function: faded where it meets the scene, over half a block
+// in vertex(): the flipbook's two frames, read where the particle is
+o.colour = CG_PARTICLE_SUB_UV(_Sheet, cg_Particle, true);
+// in surface(): faded where it meets the scene, over half a block
 float a = CG_DEPTH_FADE(i.colour.a, 0.5, gl_FragCoord.xy / CG_RESOLUTION);
 ```
 
@@ -225,28 +200,22 @@ float a = CG_DEPTH_FADE(i.colour.a, 0.5, gl_FragCoord.xy / CG_RESOLUTION);
 
 A solid lit as Unreal's Default Lit shading model does, Lambert and the GGX lobe under the sun, the four nearest point
 lights and the sky, for a ported material whose game lit it so (stage debris). It is drawn in the **transparent**
-firing as a solid, Blend off and depth written: there the deferred apply has run and leaves it alone, the light grid is
-this frame's and the sun's shadow map is bound. In the opaque firing it would be lit twice.
+firing as a solid, writing depth: there the deferred apply has run and leaves it alone, the light grid is this
+frame's and the sun's shadow map is bound. In the opaque firing it would be lit twice.
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
-Queue = "Transparent"
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState { Blend OFF DepthWrite ON }
-    ...
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec3 orm = texture(_ORM, i.uv).rgb, lit;   // occlusion, roughness, metallic
-        CG_DEFAULT_LIT(lit, texture(_Color, i.uv).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.position);
-        fragColor = vec4(CG_DEFAULT_LIT_OUTPUT(lit), 1.0);
-    }
+Material { BlendMode AlphaComposite  DepthWrite On  ShadingModel Unlit  ColorSpace Linear  VertexFactory MeshParticles }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 orm = texture(_ORM, i.uv0).rgb, lit;   // occlusion, roughness, metallic
+    CG_DEFAULT_LIT(lit, texture(_Color, i.uv0).rgb, orm.b, 0.5, orm.g, orm.r, i.normal, i.world);
+    s.baseColor = CG_DEFAULT_LIT_OUTPUT(lit);
 }
 ```
 
 - `CG_DEFAULT_LIT(out, baseColor, metallic, specular, roughness, occlusion, n, p)`: linear base colour, Unreal's
   specular (0.5 its default), occlusion of the sky's light alone, world normal and camera-relative position.
-- **Tag it `"ColorSpace" = "Linear"`** and write `CG_DEFAULT_LIT_OUTPUT`: linear light, which the engine writes as it
+- **Set `ColorSpace Linear`** and write `CG_DEFAULT_LIT_OUTPUT`: linear light, which the engine writes as it
   is into the HDR scene and encodes onto the host's own target.
 - It does not cast shadows yet: only opaque draws are casters.
 
@@ -254,8 +223,8 @@ Pass {
 
 - **Include what you call**: `CG_DEPTH_FADE` with no `depth_fade.glsl` included fails as "no matching overloaded
   function".
-- **Every function is declared in a Pass**, before its `vertex()`. Code between `struct v2f` and the first `Pass` is
-  refused, naming it. A Distortion pass, or a codeless Emissive pass, takes the first Forward pass's declarations, so
-  a helper both share is declared there.
-- **A mesh's `vertexColor` is the mesh's**: the particle's colour is `p.color`, as in Unreal's mesh particles.
-- **Another `#type`** has no factory: `cg_material_vertex()` there fails to compile, naming itself.
+- **A helper is plain GLSL at file scope**: `vertex()` and `surface()` both reach it, and each stage keeps only what
+  it calls.
+- **On `MeshParticles`, `v.color` is the mesh's**: the particle's colour is `cg_Particle.color`, as in Unreal's mesh
+  particles.
+- **A `VertexFactory` nothing registers** fails to load, naming the file it looked for.

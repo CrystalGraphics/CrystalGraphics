@@ -30,7 +30,7 @@ public class CgPostTargetsParseTest {
 
     @Test
     public void eachPassButTheLastDrawsIntoItsTargetInOrder() {
-        CgParsedShader parsed = CgShaderParser.parse(post(" \"Emission\" = \"_Mask\"", SAMPLERS,
+        CgParsedShader parsed = CgShaderParser.parseLowered(post(" \"Emission\" = \"_Mask\"", SAMPLERS,
                 "\"Name\" = \"Down\" \"Target\" = \"_Half\" \"Scale\" = \"0.5\"",
                 "\"Name\" = \"Blur\" \"Target\" = \"_Blur\" \"Scale\" = \"0.25\" \"Format\" = \"RG11B10_UFLOAT\"",
                 "\"Name\" = \"Over\""), "test:post");
@@ -43,27 +43,27 @@ public class CgPostTargetsParseTest {
 
     @Test
     public void aOnePassMaterialHasNoTargets() {
-        CgParsedShader parsed = CgShaderParser.parse(post("", SAMPLERS, "\"Name\" = \"Over\""), "test:post");
+        CgParsedShader parsed = CgShaderParser.parseLowered(post("", SAMPLERS, "\"Name\" = \"Over\""), "test:post");
         assertTrue(parsed.postTargets().isEmpty());
         assertNull(parsed.emissionInput());
     }
 
     @Test
     public void aTargetWithoutItsSamplerFailsNamingIt() {
-        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                 "\"Name\" = \"Down\" \"Target\" = \"_Missing\"", "\"Name\" = \"Over\""), "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("_Missing") && e.getMessage().contains("sampler2D"));
-        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                 "\"Name\" = \"Down\" \"Target\" = \"_Amount\"", "\"Name\" = \"Over\""), "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("_Amount"));
     }
 
     @Test
     public void theLastPassDrawsOverTheSceneAndEveryOtherIntoATarget() {
-        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                 "\"Name\" = \"Down\" \"Target\" = \"_Half\"", "\"Name\" = \"Over\" \"Target\" = \"_Blur\""), "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("Over"));
-        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+        e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                 "\"Name\" = \"Down\"", "\"Name\" = \"Blur\" \"Target\" = \"_Blur\"", "\"Name\" = \"Over\""), "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("Down"));
     }
@@ -71,7 +71,7 @@ public class CgPostTargetsParseTest {
     @Test
     public void aScaleIsAShareOfTheScreen() {
         for (String scale : new String[]{"0", "1.5", "half"}) {
-            CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+            CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                     "\"Name\" = \"Down\" \"Target\" = \"_Half\" \"Scale\" = \"" + scale + "\"", "\"Name\" = \"Over\""), "test:post"));
             assertTrue(e.getMessage(), e.getMessage().contains("Scale"));
         }
@@ -79,7 +79,7 @@ public class CgPostTargetsParseTest {
 
     @Test
     public void twoPassesIntoOneTargetFail() {
-        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(post("", SAMPLERS,
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(post("", SAMPLERS,
                 "\"Name\" = \"A\" \"Target\" = \"_Half\"", "\"Name\" = \"B\" \"Target\" = \"_Half\"", "\"Name\" = \"Over\""),
                 "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("_Half"));
@@ -87,7 +87,7 @@ public class CgPostTargetsParseTest {
 
     @Test
     public void theEmissionTagNamesASampler() {
-        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(
+        CgShaderParseException e = assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(
                 post(" \"Emission\" = \"_Glare\"", SAMPLERS, "\"Name\" = \"Over\""), "test:post"));
         assertTrue(e.getMessage(), e.getMessage().contains("_Glare"));
     }

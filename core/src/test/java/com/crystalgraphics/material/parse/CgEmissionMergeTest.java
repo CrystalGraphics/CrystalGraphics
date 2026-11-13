@@ -23,7 +23,7 @@ public class CgEmissionMergeTest {
                 + "struct v2f { vec2 uv; };\n"
                 + "Pass {\n Tags { \"LightMode\" = \"Forward\" }\n RenderState { " + forwardState + " }\n" + BODY + "}\n"
                 + emissivePass;
-        return CgShaderParser.parse(source, "test:merge.shader");
+        return CgShaderParser.parseLowered(source, "test:merge.shader");
     }
 
     private static EmissionMerge merge(String forwardState, String emissivePass) {
@@ -72,6 +72,6 @@ public class CgEmissionMergeTest {
         String branching = BODY.replace("c = vec4", "\n#ifdef CG_EMISSIVE_PASS\nc = vec4(2.0);\n#endif\nc += vec4");
         String source = "#type spatial\nstruct v2f { vec2 uv; };\nPass {\n Tags { \"LightMode\" = \"Forward\" }\n"
                 + " RenderState { Blend ONE ONE DepthWrite OFF }\n" + branching + "}\nPass { Tags { \"LightMode\" = \"Emissive\" } }\n";
-        assertEquals(EmissionMerge.NONE, CgMaterialShaderCompiler.emissionMerge(CgShaderParser.parse(source, "test:branch.shader")));
+        assertEquals(EmissionMerge.NONE, CgMaterialShaderCompiler.emissionMerge(CgShaderParser.parseLowered(source, "test:branch.shader")));
     }
 }

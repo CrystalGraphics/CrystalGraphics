@@ -12,23 +12,20 @@ import java.util.Locale;
  * // A material drawn on meshes and as sprites
  * usage: [static_mesh, sprites]
  *
- * // Its archetype: the static mesh body is the base program, each other usage a keyword
- * #pragma cg_use particle
- * #pragma cg_feature FX_ON_SPRITES
- * void vertex(out v2f o) {
- * #ifdef FX_ON_SPRITES
- *     ... CG_PARTICLE_POSITION ...
- * #else
- *     ... cg_Position ...
+ * // Its archetype: the first factory draws the base usage, each other's usage keyword picks it
+ * Material { VertexFactory VfxMesh, Tube }
+ * void vertex(inout CgVertex v, out v2f o) {
+ * #ifdef FX_ON_TUBE
+ *     ... cg_Tube ...
  * #endif
  * }
  * }</pre>
  *
  * <ul>
  *   <li>An archetype declaring no usage keyword is drawn by one kind alone: by particles (sprites, mesh particles,
- *       ribbons) when it declares {@code #pragma cg_use particle}, else by meshes. Such a particle program takes
- *       {@code FX_ON_SPRITES} undeclared, as it takes the strips', so its sprites are placed by the sprite factory
- *       whatever its {@code #type}.</li>
+ *       ribbons) when its factory reads them ({@code Sprites}, {@code MeshParticles}), else by meshes. Such a particle
+ *       program takes {@code FX_ON_SPRITES} undeclared, as it takes the strips', so its sprites are placed as sprites
+ *       whatever its factory.</li>
  *   <li>A usage its archetype cannot serve fails the material at load; a draw outside its usages fails the drawer at
  *       load ({@link CgMaterialDefinition#requireUsage}).</li>
  * </ul>
@@ -46,7 +43,7 @@ public enum CgMaterialUsage {
         return this == STATIC_MESH ? null : "FX_ON_" + name();
     }
 
-    /** Whether particles draw it: their records, through {@code #pragma cg_use particle}. */
+    /** Whether particles draw it: their records, through a particle factory. */
     public boolean particles() {
         return this == SPRITES || this == MESH_PARTICLES || this == RIBBONS;
     }

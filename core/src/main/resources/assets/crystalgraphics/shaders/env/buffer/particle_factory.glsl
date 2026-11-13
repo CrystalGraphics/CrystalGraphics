@@ -1,5 +1,5 @@
 // The vertex factory a kit's material program reads (Unreal's FMaterialVertexParameters and
-// FMaterialParticleParameters, MaterialTemplate.ush): what cg_use particle gives a port beside the records.
+// FMaterialParticleParameters, MaterialTemplate.ush): what the particle buffer gives a factory beside the records.
 //
 //     void vertex(out v2f o) {
 //         CgMaterialVertex v = cg_material_vertex();        // placed by the factory, under the renderer's settings

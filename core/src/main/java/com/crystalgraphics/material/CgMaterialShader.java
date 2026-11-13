@@ -267,7 +267,7 @@ public final class CgMaterialShader implements CgReloadable {
     // ── Compile pipeline ──────────────────────────────────────────────────────
 
     /**
-     * Whether the shader declares {@code #pragma cg_use token}, so reads the fields that engine buffer gives a record
+     * Whether the shader binds the engine buffer {@code token}, so reads the fields that engine buffer gives a record
      * meaning: a quad's {@code custom2} is a shape index only to a shader that uses {@code shape}. False for a shader
      * that cannot be parsed.
      */
@@ -836,7 +836,7 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * The buffers of the engine tokens the committed parse names ({@code #pragma cg_use}): what a capture binds beside
+     * The buffers of the engine tokens the committed parse names (its factory's or primitive's {@code EngineBuffers}): what a capture binds beside
      * the material's own. Empty until a compile has succeeded.
      */
     public List<CgAttachedBuffer> engineBuffers() {

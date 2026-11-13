@@ -32,14 +32,13 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
 public class CgFrameBuilderTest {
 
     private static final String SOURCE = """
-            #type none
+            #domain global
+            Material { Queue Geometry }
             Properties {
                 _Alpha ("Alpha", float) = 1
             }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Alpha); }
-            }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(_Alpha); }
             """;
 
     private static final CgTextureDesc DESC = CgTextureDesc.of(64, 64, CgFormat.RGBA8_UNORM);
@@ -82,12 +81,10 @@ public class CgFrameBuilderTest {
     }
 
     private static final String READER = """
-            #type none
-            Tags { "RenderType" = "Transparent" "SceneColorMargin" = "0.05" }
-            Pass {
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(cg_SceneColor, vec2(0.5)); }
-            }
+            #domain global
+            Material { Queue Transparent  SceneColorMargin 0.05 }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) { fragColor = texture(cg_SceneColor, vec2(0.5)); }
             """;
 
     /** One draw of {@code pipeline} at sort key {@code key}. */
@@ -181,26 +178,22 @@ public class CgFrameBuilderTest {
     }
 
     private static final String DEPTH_WRITING_READER = """
-            #type none
-            Tags { "RenderType" = "Transparent" }
-            Pass {
-                RenderState { DepthTest ALWAYS DepthWrite ON }
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) {
-                    fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r);
-                    gl_FragDepth = 0.5;
-                }
+            #domain global
+            Material { Queue Transparent }
+            RenderState { DepthTest ALWAYS DepthWrite ON }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) {
+                fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r);
+                gl_FragDepth = 0.5;
             }
             """;
 
     private static final String DEPTH_READER = """
-            #type none
-            Tags { "RenderType" = "Transparent" }
-            Pass {
-                RenderState { DepthTest ALWAYS DepthWrite OFF }
-                void vertex(out v2f o) { }
-                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r); }
-            }
+            #domain global
+            Material { Queue Transparent }
+            RenderState { DepthTest ALWAYS DepthWrite OFF }
+            void vertex(out v2f o) { }
+            void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(texture(cg_DepthBuffer, vec2(0.5)).r); }
             """;
 
     /**

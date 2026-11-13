@@ -180,7 +180,7 @@ Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));   // quad n draws the nth live spark
 - **Bounds are yours**: the count is unknown when the draw is culled, so state a box every element stays inside
   (authored, or a `CgGpuOps.bounds` read back frames late and grown by the fastest speed times the delay). A count a
   GPU cull wrote holds only what that cull kept: mark the draw `.gpuCulled()` and state none.
-- **A shader that already reads an engine buffer** (`#pragma cg_use particle` and `CG_PARTICLE_*`) reads a kernel's
+- **A material that already reads an engine buffer** (a particle factory's `cg_Particle`, `CG_PARTICLE_*`) reads a kernel's
   records in that buffer's layout unchanged: `.buffer(CgParticleBuffer.SLOT, records)`, as Unity's property block
   overrides a global. The draw batches alone, and the frame's buffer is bound again after it.
 
@@ -282,7 +282,7 @@ draw has:
 | Same | So |
 |---|---|
 | **pipeline** | one material shader and keyword set; a different material ends the run |
-| **bindings** | the same textures and buffers, and the same property values or one material arena: instances of one `#type spatial` shader that differ in their values join, each draw naming its material's slot (`CgMaterialArena`, `docs/SHADERS.md` § *A material's values*). Instances with different textures do not (`graph.multi-draw.binding-breaks` counts these): share one material and vary per instance through `CG_OBJECT_CUSTOM*` and atlases or texture arrays |
+| **bindings** | the same textures and buffers, and the same property values or one material arena: instances of one shader drawn by object records that differ in their values join, each draw naming its material's slot (`CgMaterialArena`, `docs/SHADERS.md` § *A material's values*). Instances with different textures do not (`graph.multi-draw.binding-breaks` counts these): share one material and vary per instance through `CG_OBJECT_CUSTOM*` and atlases or texture arrays |
 | **scissor**, and no target copy between | a `sceneColor`/`sceneDepth` reader between two draws splits them |
 | **vertex format** | every mesh of a format is in its one pool, so any two join; `FRAME` meshes join within one ring page |
 | **indexing** | meshes with indices and meshes without never share a call |
@@ -302,8 +302,8 @@ draw has:
 ## 9. Writing the material
 
 ```glsl
-#type none                                         // no vertex data: the shader places every vertex
-Queue = "Geometry"
+#domain surface
+Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Procedural }   // no vertex data: vertex() places each
 
 struct Spark { vec4 positionLife; vec4 velocitySeed; };
 Buffers {
@@ -311,17 +311,15 @@ Buffers {
     LIVE   ("Live",   uint,  readonly)
 }
 
-Pass {
-    struct v2f { float life; vec4 tint; };
-    void vertex(out v2f o) {
-        Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));
-        vec3 p = s.positionLife.xyz + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
-        o.life = s.positionLife.w;
-        o.tint = CG_OBJECT_CUSTOM0;                // this draw's own parameters
-        gl_Position = CG_MATRIX_MVP * vec4(p, 1.0);
-    }
-    void fragment(in v2f i, out vec4 fragColor) { fragColor = i.tint * clamp(i.life, 0.0, 1.0); }
+struct v2f { float life; vec4 tint; };
+void vertex(inout CgVertex v, out v2f o) {
+    Spark p = SPARKS(LIVE(CG_VERTEX_ID >> 2));
+    vec3 centre = (CG_OBJECT_TO_WORLD * vec4(p.positionLife.xyz, 1.0)).xyz;
+    v.world = centre + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
+    o.life = p.positionLife.w;
+    o.tint = CG_OBJECT_CUSTOM0;                    // this draw's own parameters
 }
+void surface(in v2f i, inout CgSurface s) { s.baseColor = i.tint.rgb * clamp(i.life, 0.0, 1.0); }
 ```
 
 | Use | Never | Why |
@@ -359,7 +357,7 @@ What production engines do, and what follows here. Research: `plan/crystalgraphi
 6. **Meshes go through object records**: a kernel writes each element's record, and `.instances()` culls and levels
    them (§3). Haar and Aaltonen (SIGGRAPH 2015) and Wihlidal (GDC 2016) are the model.
 7. **Join by design.** One material per look with per-instance variation in customs and atlases; meshes of one vertex
-   format, which share its pool; vertex pulling (`#type none`) where a mesh is only a quad or a strip.
+   format, which share its pool; vertex pulling (`VertexFactory Procedural`) where a mesh is only a quad or a strip.
 8. **Bounds**: authored for a definition (Niagara's fixed bounds), or a GPU reduce read back late and grown by the
    speed limit times the delay. A draw with no bounds cannot be culled on the CPU.
 9. **Transparency**: sort what blends (the (slot, depth) key); additive needs no order.

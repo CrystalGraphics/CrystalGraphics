@@ -1,6 +1,6 @@
 // CgClipTable's shader environment: the frame's rounded clips, read in the fragment stage.
 //
-// INJECTED BY `#pragma cg_use clip`, immediately after the table's own declaration. A material that also
+// INJECTED for the `clip` engine buffer, immediately after the table's own declaration. A material that also
 // declares `quad` or `curve` multiplies what it draws by CG_CLIP_QUAD_COVERAGE or CG_CLIP_CURVE_COVERAGE:
 // its alpha when it outputs straight alpha, its whole colour when it outputs premultiplied.
 //

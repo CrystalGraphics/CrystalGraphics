@@ -33,11 +33,12 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  * canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3).softEdges(CELL_LEFT | CELL_RIGHT).color(argb).submit();
  * }</pre>
  *
- * <p>A material it draws declares the record; {@code crystalgraphics:shaders/canvas/curve.shader} is the reference:</p>
+ * <p>A material it draws is a {@code #domain ui} material on the Curve primitive, which binds the record
+ * ({@code CG_CURVE_*}); {@code crystalgraphics:shaders/canvas/curve.shader} is the reference:</p>
  *
  * <pre>{@code
- * #type none
- * #pragma cg_use curve      // CG_CURVE_WORLD_POS, CG_CURVE_P0..P2, _COLOR0/1, _WIDTHS, _FEATHER, _FLAGS
+ * #domain ui
+ * Material { Primitive Curve }
  * }</pre>
  *
  * <ul>

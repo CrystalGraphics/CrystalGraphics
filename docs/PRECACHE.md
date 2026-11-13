@@ -30,7 +30,7 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 |---|---|
 | A material of your own, drawn through `CgWorldRenderer` or at a render stage | `pipelines.add(material, half)`: every pass the world draws it with |
 | A material on a skinned mesh you draw yourself | `pipelines.add(material, half, true)` |
-| A shader whose keywords your renderer switches at runtime | declare them in the shader as `#pragma cg_permutation` ([`SHADERS.md`](SHADERS.md) § *Keywords a renderer switches*), then `pipelines.add(shader)`: every combination, none typed by hand |
+| A shader whose keywords your renderer switches at runtime | mark them `switched` in the shader's `Keywords { }` ([`SHADERS.md`](SHADERS.md) § *Keywords: a program per combination*), then `pipelines.add(shader)`: every combination, none typed by hand |
 | A full-screen pass of your own renderer | `pipelines.addPass(shader)`, its permutation domain included |
 | A screen-space quad or curve material (a UI's, through `CgQuadBatch` or `CgCurveBatch`) | `pipelines.addPass(shader, CgInstanceKind.QUAD)` or `CURVE`, its permutation domain included |
 | A `.compute` kernel | `pipelines.add(kernel)`, or `pipelines.kernels(MyOps::precache)` for a set |
@@ -82,8 +82,8 @@ Textures, meshes, fonts and sounds are not pipelines: read them ahead with `CgPr
   worker from the graphics start, and the collect finds them parsed:
   `CgPipelinePrecache.parseAhead("mymod:shaders/a.shader", ...)` from `onContextInit` (CrystalGUI's took 93 ms of a
   loading frame without it). A kernel's sources the same way: `CgKernel.ahead(MyOps::precache)` on a worker.
-- **Never list keyword combinations by hand.** A keyword a renderer switches goes in the shader's
-  `#pragma cg_permutation`, and a combination outside it compiles at its first draw. A shader with a domain that still
+- **Never list keyword combinations by hand.** A keyword a renderer switches is marked `switched` in the
+  shader's `Keywords { }`, and a combination outside them compiles at its first draw. A shader with a domain that still
   misses is logged, whatever `logMisses` says.
 
 ## Checking that nothing was missed

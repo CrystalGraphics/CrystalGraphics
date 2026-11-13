@@ -10,7 +10,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
  * A beam draw's noise points: its pool's beam runs ({@code CgVfxParticlePool.beamRuns()}), bound at
- * {@link #SLOT}. {@code #pragma cg_use particle} brings it, so a ported material draws a beam
+ * {@link #SLOT}. The {@code particle} engine buffer brings it, so a ported material draws a beam
  * as Unreal's beam-and-trail vertex factory places one; {@code CG_PARTICLE_BEAM(i)} reads vec4 {@code i}.
  *
  * <pre>{@code

@@ -7,7 +7,7 @@
 //   fx_value_noise / _fbm / _ridged             value noise, 0..1: blotchier; surfaces and patterns
 #pragma once
 
-// Where a vertex of a mesh with no vertex data sits (#type none), from CG_VERTEX_ID; vertex() only.
+// Where a vertex of a mesh with no vertex data sits (VertexType none), from CG_VERTEX_ID; vertex() only.
 // CgVfxQuads (CgMesh.quads): the vertex's quad, and its corner -1..1 on each axis.
 #define FX_QUAD_INDEX float(CG_VERTEX_ID >> 2)
 #define FX_QUAD_CORNER (CG_VERTEX_CORNER * 2.0 - 1.0)

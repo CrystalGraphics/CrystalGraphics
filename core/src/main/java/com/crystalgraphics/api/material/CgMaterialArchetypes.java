@@ -76,7 +76,7 @@ public interface CgMaterialArchetypes {
      */
     CgParsedShader parse(String shader);
 
-    /** The domain {@code shader}'s tags name ({@link CgMaterialDomain#ofSource}); {@code SURFACE} unless overridden. */
+    /** The domain {@code shader}'s {@code #domain} line names ({@link CgMaterialDomain#ofSource}); {@code SURFACE} unless overridden. */
     default CgMaterialDomain domain(String shader) {
         return CgMaterialDomain.SURFACE;
     }

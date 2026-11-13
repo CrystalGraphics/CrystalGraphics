@@ -71,7 +71,7 @@ import java.util.function.Supplier;
  *   <li>Its slot is found by name among the slots the engine's and a mod's behaviours declare; an unknown one fails.</li>
  *   <li>A tube slot draws the geometry its material's archetype names ({@code Tags { "Tube" = "Volume" | "Closed" }});
  *       a Tube-tagged archetype on another slot fails at load, unless it draws tubes as a variant
- *       ({@code #pragma cg_feature FX_ON_TUBE}) beside its own kind.</li>
+ *       ({@code VertexFactory VfxMesh, Tube}: the Tube factory's {@code FX_ON_TUBE}) beside its own kind.</li>
  *   <li>Binds read user parameters alone, as a particle renderer's do; {@code size} is times the slot's own.</li>
  *   <li>Drawn in the look's order of its slot renderers, then its material's {@code order}; after its effect's
  *       distortion unless its material has a Distortion pass.</li>

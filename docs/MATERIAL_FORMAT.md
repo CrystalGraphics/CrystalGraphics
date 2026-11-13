@@ -430,7 +430,8 @@ void fill(inout CgVertex v) {                               // fills every field
 | `Factory { }` | `VertexType` (required: `spatial` reads a mesh, `none` reads nothing); `PlacesNothing On` if a material must place each vertex itself; `Parameters <name>` |
 | `EngineBuffers { }` | engine buffer tokens its draws bind (`CgEngineBufferRegistry`) |
 | `Tags { }`, `Properties { }` | added to every material it draws |
-| `Declarations { }` | GLSL at file scope in both stages: includes, the parameters' variable; a `#pragma` here goes to the program's head |
+| `Keywords { }` | its own switches, as a material's, declared for every material drawn by it (`Sequence`'s `FX_ON_MESH_PARTICLES`, so they serve the mesh particles usage) |
+| `Declarations { }` | GLSL at file scope in both stages: includes, the parameters' variable |
 | `Parameters { }` | each field a fragment may read: `type name;`, arrays as `vec4 d[4];` |
 | `fill(inout CgVertex v)` | runs in the vertex stage with the vertex format's attributes (`cg_Position`, …) in scope |
 | `defaults(inout CgSurface s)` | optional, runs in the pixel stage before the material's `surface()`: what it starts from (a particle's own light) |
@@ -711,7 +712,8 @@ and a `CgUiSurface`, runs the material at **`CG_SURFACE(input, s)`**, then write
 // assets/mymod/shaders/primitives/Ring.primitive
 Primitive { Queue Transparent }
 EngineBuffers { quad clip }                         // what its elements are recorded into
-Declarations { #include "mymod:shaders/ring.glsl" }   // a #pragma here goes to the program's head
+Keywords { THICK ("A wider band") }                 // its own switches, as a material's (optional)
+Declarations { #include "mymod:shaders/ring.glsl" }   // GLSL every material on it gets
 Properties { }                                      // values every material on it gets (optional)
 
 RenderState {

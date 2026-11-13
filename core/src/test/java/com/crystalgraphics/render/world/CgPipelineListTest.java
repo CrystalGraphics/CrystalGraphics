@@ -25,10 +25,10 @@ import static org.junit.Assert.assertTrue;
 /** The pipeline list: a request ready once its entries are built, re-warmed before a toggle applies, never held for ever. */
 public class CgPipelineListTest {
 
-    private static final String SOURCE = String.join(System.lineSeparator(), "#type spatial", "#pragma cg_feature FOG_ON",
-            "#pragma cg_feature NORMAL_MAP", "Properties { _Color (\"Color\", color) = (1, 1, 1, 1) }",
-            "Pass {", "    void vertex(out v2f o) { }",
-            "    void fragment(in v2f i, out vec4 fragColor) { fragColor = _Color; }", "}");
+    private static final String SOURCE = String.join(System.lineSeparator(), "#domain surface",
+            "Keywords { FOG_ON (\"Fog\")  NORMAL_MAP (\"Normal map\") }",
+            "Properties { _Color (\"Color\", color) = (1, 1, 1, 1) }",
+            "void surface(in v2f i, inout CgSurface s) { s.baseColor = _Color.rgb; }");
     private static String shader;
     private static final CgPipelineList.Settings HALF = new CgPipelineList.Settings(true, true);
     private static final CgPipelineList.Settings FULL = new CgPipelineList.Settings(true, false);

@@ -96,7 +96,7 @@ public class CgMaterialShaderCompilerDepthTest {
 
     @Test
     public void depthAutoGen_simpleVertex_minimalPositionTransform() {
-        CgParsedShader parsed = CgShaderParser.parse(SIMPLE_SHADER, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(SIMPLE_SHADER, "test");
         CgParsedPass forward = parsed.passes().get(0);
         CgMaterialShaderCompiler.CompiledSource cs = CgMaterialShaderCompiler.compileDepthAutoGen(
                 parsed, forward, NO_BUFFERS, null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
@@ -114,7 +114,7 @@ public class CgMaterialShaderCompilerDepthTest {
 
     @Test
     public void depthAutoGen_complexVertex_forwardBodyPreserved() {
-        CgParsedShader parsed = CgShaderParser.parse(ANIM_SHADER, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(ANIM_SHADER, "test");
         CgParsedPass forward = parsed.passes().get(0);
         CgMaterialShaderCompiler.CompiledSource cs = CgMaterialShaderCompiler.compileDepthAutoGen(
                 parsed, forward, NO_BUFFERS, null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
@@ -131,7 +131,7 @@ public class CgMaterialShaderCompilerDepthTest {
 
     @Test
     public void depthAutoGen_alphaClip_fragmentBodyIncluded() {
-        CgParsedShader parsed = CgShaderParser.parse(ALPHA_CLIP_SHADER, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(ALPHA_CLIP_SHADER, "test");
         CgParsedPass forward = parsed.passes().get(0);
         CgMaterialShaderCompiler.CompiledSource cs = CgMaterialShaderCompiler.compileDepthAutoGen(
                 parsed, forward, NO_BUFFERS, null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);
@@ -148,7 +148,7 @@ public class CgMaterialShaderCompilerDepthTest {
 
     @Test
     public void depthAutoGen_cgTimeVertex_isNotSimple() {
-        CgParsedShader parsed = CgShaderParser.parse(CG_TIME_SHADER, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(CG_TIME_SHADER, "test");
         CgParsedPass forward = parsed.passes().get(0);
         CgMaterialShaderCompiler.CompiledSource cs = CgMaterialShaderCompiler.compileDepthAutoGen(
                 parsed, forward, NO_BUFFERS, null, CgMaterialShaderCompiler.CompileConfig.DEFAULT);

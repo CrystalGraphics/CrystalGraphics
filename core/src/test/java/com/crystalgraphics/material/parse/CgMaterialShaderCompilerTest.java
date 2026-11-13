@@ -52,7 +52,7 @@ public class CgMaterialShaderCompilerTest {
             "}\n";
 
     private static CgParsedShader parse(String src) {
-        return CgShaderParser.parse(src, "test");
+        return CgShaderParser.parseLowered(src, "test");
     }
 
     // ── Declarations ──────────────────────────────────────────────────────────

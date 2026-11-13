@@ -112,8 +112,8 @@ public class CgShadingModelsTest {
         decal.requireDomain(CgMaterialDomain.DECAL, "a decal spawnable");
         fails("decal", () -> decal.requireDomain(CgMaterialDomain.SURFACE, "renderer sprite"));
         fails("post", () -> compile("test:not_post", "shader", FX, "post", map("priority", 1)));
-        assertEquals(CgMaterialDomain.SURFACE, CgMaterialDomain.ofSource("Tags { \"RenderType\" = \"Opaque\" }"));
-        assertEquals(CgMaterialDomain.POST, CgMaterialDomain.ofSource("Tags { \"Domain\" = \"Post\" }"));
+        assertEquals(CgMaterialDomain.SURFACE, CgMaterialDomain.ofSource("// a glass\n#domain surface\n"));
+        assertEquals(CgMaterialDomain.POST, CgMaterialDomain.ofSource("#domain post"));
     }
 
     private static void fails(String naming, Runnable r) {

@@ -2,7 +2,7 @@
 // and what a Text-domain material calls with its own paint, as Slate applies a font material's colour under the
 // glyph's coverage (SlateElementPixelShader.usf GetSdfTextElementColor).
 //
-// A quad's slots (cg_use quad), as CgTextBatch writes them:
+// A quad's slots (the quad buffer), as CgTextBatch writes them:
 //   CG_QUAD_COLOR   the layer's colour: the paint's (or white under a gradient or material) times the draw's tint
 //                   and the layer's opacity
 //   CG_QUAD_CUSTOM0 a fill or outline: (a, b, c, row) with row > 0, the gradient t = a + b*u + c*v over the quad's
@@ -24,7 +24,7 @@
 //   -5    either  (offsetU, offsetV, invSixSigmaU)   (invSixSigmaV, spreadU, spreadV, 0)          the rect
 // -4 and -5 sample nothing and are tested first. @see CgTextShadowPlan
 //
-// The text token's env file (cg_use text, which brings quad and clip): included after their declarations, which a
+// The text token's env file (the text buffer, which brings quad and clip): included after their declarations, which a
 // material's own #include is not. MSDF_MODE is the shader's own feature.
 
 #include "crystalgraphics:shaders/lib/texel.glsl"

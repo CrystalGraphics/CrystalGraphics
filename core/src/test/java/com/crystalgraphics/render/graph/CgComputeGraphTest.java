@@ -59,11 +59,10 @@ public class CgComputeGraphTest {
     public void setUp() {
         CgMaterialTestSupport.resetShaderRegistry();
         material = CgMaterial.fromSource("""
-                #type none
-                Pass {
-                    void vertex(out v2f o) { }
-                    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }
-                }
+                #domain global
+                Material { Queue Geometry }
+                void vertex(out v2f o) { }
+                void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }
                 """);
     }
 

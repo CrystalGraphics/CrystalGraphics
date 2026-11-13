@@ -34,19 +34,16 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  * canvas.quad(spark).world(x, y, z).pose(facingCamera).at(-0.1f, -0.1f).size(0.2f, 0.2f).submit();
  * }</pre>
  *
- * <p>A material it draws declares the record, which {@code cg_env.glsl}'s macros read:</p>
+ * <p>A material it draws is a {@code #domain ui} material; its Quad primitive
+ * ({@code crystalgraphics:shaders/primitives/Quad.primitive}) binds the record and reads it through {@code cg_env.glsl}'s
+ * {@code CG_QUAD_*} macros:</p>
  *
  * <pre>{@code
- * #type none
- * #pragma cg_use quad
- * ...
- * gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
- * o.uv = CG_QUAD_UV;
- * o.color = CG_QUAD_COLOR;
+ * #domain ui
+ * void surface(in CgUiInput i, inout CgUiSurface s) { s.color *= vec4(1.0, 0.5, 0.25, 1.0); }
  * }</pre>
  *
- * <p>The pragma attaches the record during parsing, and the parser rejects a shader that uses {@code CG_QUAD_*} or
- * {@code QUAD_DATA} without it.</p>
+ * <p>A program reading {@code CG_QUAD_*} or {@code QUAD_DATA} that nothing binds the record for fails to parse.</p>
  */
 public final class CgQuadBatch {
 

@@ -144,7 +144,7 @@ Label: { kind: text_block, style: mymod:hud/counter, text: mymod:text/combo.hits
 
 ### Brushes and colours
 
-- **A brush** is a `texture` or a `material` (of the UI domain: its shader tagged `"Domain" = "UI"`), its `image_size`
+- **A brush** is a `texture` or a `material` (of the UI domain: its shader opens `#domain ui`), its `image_size`
   (`[32, 32]` by default), `tint` and `draw_as: image | none`. With neither texture nor material it still draws, a box
   of its tint, as Slate's does: a border's background is that until set, so `background: { draw_as: none }` hides it.
 - **Colours are linear**, `[r, g, b, a]`, as Unreal's `FLinearColor`: they multiply down the tree in linear and are
@@ -194,12 +194,14 @@ An `effect` is a material asset of the UI domain whose shader samples the retain
 (`Texture` unless set):
 
 ```glsl
-// assets/mymod/shaders/hud/silhouette.shader
-Tags { "RenderType" = "Transparent" "Domain" = "UI" }
+// assets/mymod/shaders/hud/silhouette.shader: the image's shape in the quad's colour (its material's state additive)
+#domain ui
 Properties { Texture ("The retained image", sampler2D) = "white" }
-// ...in the fragment: the image's shape in the quad's colour, added
-fragColor = vec4(i.color.rgb * i.color.a * texture(Texture, i.uv).a, 0.0);
+void surface(in CgUiInput i, inout CgUiSurface s) { s.color.a *= texture(Texture, i.uv).a; }
 ```
+
+The engine's canvas `image.shader` under `MASK` is that shader already: a material of it, `state: { blend: additive }`,
+needs no file of its own, the retainer naming `texture_parameter: _MainTex`.
 
 - A retainer box has no colour of its own: what fades it is above it, a border's content colour or a render opacity.
 - Its image is padded by how far its text draws past its box (`CgTextStyle.reach()`: the widest outline, the shadows'

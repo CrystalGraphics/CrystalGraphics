@@ -163,7 +163,7 @@ final class CgMaterialFormat {
         return t.startsWith("#domain", i);
     }
 
-    /** {@code source}, a {@code #domain} file, as the old format's source. */
+    /** {@code source}, a {@code #domain} file, as the passes it lowers onto. */
     static Lowered lower(String source, String path) {
         String t = blankComments(source);
         int start = skipWs(t, 0);
@@ -189,7 +189,6 @@ final class CgMaterialFormat {
             case GLOBAL -> lowerGlobal(items, path);
             case POST -> lowerPost(items, path);
             case UI -> lowerUi(items, path);
-            case TEXT -> throw fail(path, "'#domain text' is no domain: text is #domain ui with Primitive Text");
             case DECAL -> throw fail(path, "'#domain decal' has no renderer until R11");
         };
     }
@@ -733,7 +732,7 @@ final class CgMaterialFormat {
                             + " per-draw values PerDrawValues On, globals and the world's lights are found by name");
                 }
                 if (line.startsWith("#domain")) throw fail(path, "'#domain' is the first line, once");
-                if (line.startsWith("#type")) throw fail(path, "'#type' is the old format's: a #domain file names its VertexFactory");
+                if (line.startsWith("#type")) throw fail(path, "'#type' is not written in a .shader: a #domain file names its VertexFactory");
                 if (line.startsWith("#version")) throw fail(path, "'#version' is the compiler's");
                 items.add(new Item(Kind.DIRECTIVE, null, line, ""));
                 i = eol;
@@ -766,7 +765,7 @@ final class CgMaterialFormat {
                 continue;
             }
             if (OLD.contains(word)) {
-                throw fail(path, "'" + word + "' is the old format's: a #domain file has no passes, tags or queue;"
+                throw fail(path, "'" + word + "' is not written in a .shader: a #domain file has no passes, tags or queue;"
                         + " Material { } says how it draws");
             }
             int depth = 0, end = -1;
@@ -905,7 +904,7 @@ final class CgMaterialFormat {
     /**
      * A {@code #domain} file reaches an engine buffer through what draws it (its {@code VertexFactory},
      * {@code PerDrawValues On}, a {@code ui} {@code Primitive}), never by naming it: one it names and does not reach is
-     * refused here, where the old format's check would ask for a {@code #pragma}.
+     * refused here, naming what would reach it.
      */
     private static void refuseNamedBuffers(List<Item> code, Set<String> reached, String path) {
         List<String> with = CgEngineBufferRegistry.withRequirements(new ArrayList<>(reached));
@@ -1082,6 +1081,13 @@ final class CgMaterialFormat {
             if (k.values().isEmpty() && !k.switched()) continue;
             out.append("#pragma cg_permutation ").append(String.join("|", withValues(k.name(), k.values()))).append('\n');
         }
+    }
+
+    /** A factory's or primitive's {@code Keywords { }}, lowered as a material's. */
+    static String keywordLines(List<Item> items, String path) {
+        StringBuilder out = new StringBuilder();
+        keywordPragmas(out, keywords(block(items, "Keywords"), path));
+        return out.toString();
     }
 
     /** {@code source} with every comment blanked to spaces, newlines kept: offsets unchanged. */

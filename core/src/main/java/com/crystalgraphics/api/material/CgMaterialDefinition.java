@@ -208,14 +208,14 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      * int at = definition.requireRow("_Glow", "track glow of sequence kakarot_kit:moves/kamehameha");   // at load
      * }</pre>
      *
-     * @throws CgAssetException naming both when its archetype cannot read it per draw (no {@code cg_use rows}, a
+     * @throws CgAssetException naming both when its archetype cannot read it per draw (no {@code PerDrawValues On}, a
      *                          sampler, an int): a track keying it would move nothing
      */
     public int requireRow(String property, String who) {
         int slot = rows.slot(property);
         if (slot < 0) {
             throw new CgAssetException(who + " keys " + property + " of " + id + ", which " + permutation.shader()
-                    + " cannot read per draw: only a number, vector or colour of a shader declaring #pragma cg_use rows"
+                    + " cannot read per draw: only a number, vector or colour of a shader setting PerDrawValues On"
                     + " is a row property; its row properties are " + rows.properties());
         }
         return slot;
@@ -318,7 +318,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             return this;
         }
 
-        /** A keyword its shader declares ({@code #pragma cg_feature}). */
+        /** A keyword its shader declares ({@code Keywords { }}). */
         public Builder keyword(String keyword) {
             keywords.add(keyword);
             return this;

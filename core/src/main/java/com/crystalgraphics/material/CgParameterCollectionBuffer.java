@@ -9,7 +9,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
 /**
- * Every parameter collection's values, a vec4 each, read by a material declaring {@code #pragma cg_use globals}:
+ * Every parameter collection's values, a vec4 each, read by a material naming a {@code CG_GLOBAL_} parameter:
  * {@code CgParameterCollection}'s storage. Uploaded once a frame by the world renderer; nothing else writes it.
  *
  * <ul>

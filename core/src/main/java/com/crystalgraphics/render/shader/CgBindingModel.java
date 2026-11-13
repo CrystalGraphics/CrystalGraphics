@@ -16,7 +16,7 @@ import com.github.bsideup.jabel.Desugar;
  * // CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
  *
  * pass.texture(CgBindingModel.LIGHTMAP, host.lightmapTexture());          // a view texture, by its slot
- * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn());    // a cg_use token's buffer, for one draw
+ * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn());    // an engine buffer's, for one draw
  * }</pre>
  *
  * <table>
@@ -27,7 +27,7 @@ import com.github.bsideup.jabel.Desugar;
  *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>the device's</td></tr>
  * </table>
  *
- * <p>A slot's numbers never depend on the device: a cg_use token's is its place in {@link CgEngineBufferRegistry}'s
+ * <p>A slot's numbers never depend on the device: an engine buffer's is its place in {@link CgEngineBufferRegistry}'s
  * order.</p>
  */
 public final class CgBindingModel {
@@ -76,7 +76,7 @@ public final class CgBindingModel {
     public static final Slot OBJECT_IDS = new Slot(PASS, 3);
     /** {@code CgVertexWords}, the words the vertex stage pulls the drawn mesh from ({@code CgMeshStore}). */
     public static final Slot VERTICES = new Slot(PASS, 4);
-    /** The first cg_use token's binding; token {@code i} in the registry's order is at this plus {@code i}. */
+    /** The first engine buffer's binding; token {@code i} in the registry's order is at this plus {@code i}. */
     public static final int FIRST_TOKEN = 5;
 
     /** {@code CgMaterialBlock}, the material's parameters, or its shader's arena of them ({@code CgMaterialArena}). */
@@ -130,17 +130,17 @@ public final class CgBindingModel {
     }
 
     /**
-     * The pass slot of cg_use token {@code token}: where its buffer binds, and where a draw names one of its own.
+     * The pass slot of engine buffer {@code token}: where its buffer binds, and where a draw names one of its own.
      *
      * @throws IllegalArgumentException for a token no one registered
      */
     public static Slot token(String token) {
         int i = CgEngineBufferRegistry.indexOf(token);
-        if (i < 0) throw new IllegalArgumentException("no cg_use token '" + token + "' is registered");
+        if (i < 0) throw new IllegalArgumentException("no engine buffer '" + token + "' is registered");
         return new Slot(PASS, FIRST_TOKEN + i);
     }
 
-    /** The pass slot of the cg_use token whose macro is {@code macro}; null for a macro no token has. */
+    /** The pass slot of the engine buffer whose macro is {@code macro}; null for a macro no token has. */
     public static Slot tokenOfMacro(String macro) {
         int token = CgEngineBufferRegistry.indexOfMacro(macro);
         return token >= 0 ? new Slot(PASS, FIRST_TOKEN + token) : null;

@@ -29,7 +29,7 @@ public class CgStructureParserTest {
                 "    vec4 normal : RT1;\n" +
                 "};",
                 "    void fragment(in v2f i, out GBuffer o) {}\n");
-        CgParsedShader parsed = CgShaderParser.parse(src, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(src, "test");
         assertFalse("globalDecls must not contain ': RT' after parse",
                 pass0(parsed).globalDecls().contains(": RT"));
     }
@@ -42,7 +42,7 @@ public class CgStructureParserTest {
                 "    vec4 normal : RT1;\n" +
                 "};",
                 "    void fragment(in v2f i, out GBuffer o) {}\n");
-        CgParsedShader parsed = CgShaderParser.parse(src, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(src, "test");
         assertNotNull(pass0(parsed).fragOutput().mrtStructBody());
         assertFalse("mrtStructBody must not contain ': RT'",
                 pass0(parsed).fragOutput().mrtStructBody().contains(": RT"));
@@ -55,7 +55,7 @@ public class CgStructureParserTest {
         String src = minimalShader("",
                 "    float glow(float x) { return x * 2.0; }\n"
                 + "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(glow(i.uv.x)); }\n");
-        String decls = pass0(CgShaderParser.parse(src, "test")).globalDecls();
+        String decls = pass0(CgShaderParser.parseLowered(src, "test")).globalDecls();
         assertTrue("a helper after vertex() reaches the fragment stage: " + decls,
                 decls.contains("float glow(float x) { return x * 2.0; }"));
     }
@@ -64,7 +64,7 @@ public class CgStructureParserTest {
     public void parse_wave1Shader_singleOutputDefaults_correctFields() {
         String src = minimalShader("",
                 "    void fragment(in v2f i, out vec4 fragColor) { fragColor = vec4(1.0); }\n");
-        CgParsedShader parsed = CgShaderParser.parse(src, "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(src, "test");
         assertFalse("isMrt must be false for single-output", pass0(parsed).fragOutput().isMrt());
         assertNull("mrtStructName must be null for single-output", pass0(parsed).fragOutput().mrtStructName());
         assertEquals("fragColor", pass0(parsed).fragOutput().outParamName());

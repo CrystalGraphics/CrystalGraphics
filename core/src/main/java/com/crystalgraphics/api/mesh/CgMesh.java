@@ -159,7 +159,7 @@ public final class CgMesh {
      * world.draw(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
      * }</pre>
      *
-     * <p>Its shader declares {@code #type none}: there are no attributes to read.</p>
+     * <p>What draws it reads no vertex data ({@code VertexType none}): there are no attributes to read.</p>
      */
     public static CgMesh quads(int count) {
         if (count <= 0) throw new IllegalArgumentException("quads(" + count + ")");

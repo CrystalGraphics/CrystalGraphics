@@ -32,7 +32,7 @@ public class CgPermutationDomainTest {
 
     @Test
     public void boolsAndOneOfSpanTheirProduct() {
-        CgParsedShader parsed = CgShaderParser.parse(shader(
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader(
                 "#pragma cg_feature KARIS\n#pragma cg_feature CHEAP\n#pragma cg_feature FADE\n#pragma cg_feature LOOK\n"
                         + "#pragma cg_permutation KARIS|CHEAP   // the tier picks one\n#pragma cg_permutation FADE"),
                 "test:domain.shader");
@@ -47,7 +47,7 @@ public class CgPermutationDomainTest {
 
     @Test
     public void noPragmaIsTheEmptyDomain() {
-        CgParsedShader parsed = CgShaderParser.parse(shader("#pragma cg_feature GLOW"), "test:none.shader");
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("#pragma cg_feature GLOW"), "test:none.shader");
         assertEquals(CgPermutationDomain.EMPTY, parsed.permutations());
         assertEquals(Set.of(Set.of("GLOW")), combinations(parsed.permutations(), List.of("GLOW")));
     }
@@ -72,7 +72,7 @@ public class CgPermutationDomainTest {
 
     private static void expectFailure(String source, String why) {
         try {
-            CgShaderParser.parse(source, "test:bad.shader");
+            CgShaderParser.parseLowered(source, "test:bad.shader");
             fail("expected a parse failure: " + why);
         } catch (CgShaderParseException e) {
             assertTrue(e.getMessage(), e.getMessage().contains(why));

@@ -28,7 +28,7 @@ import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 
 /**
- * The emissive passes ({@code "LightMode" = "Emissive"}): a draw's glow, light added into a target of its own that
+ * The emissive passes (a material's {@code s.emissive}): a draw's glow, light added into a target of its own that
  * bloom takes, into the HDR scene where it merges, and an impact frame's subject drawn apart. Unreal's emissive light is
  * part of the base pass; ours is a pass of its own wherever it cannot fold into the colour's draw.
  *

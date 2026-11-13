@@ -28,8 +28,6 @@ import java.util.stream.Stream;
  */
 public final class ShippedPrograms {
 
-    private static final String DOCUMENTATION_ONLY = "example.shader";
-
     private ShippedPrograms() {}
 
     /** One program of a shipped material: its pass by name and the keywords it is compiled with. */
@@ -98,7 +96,7 @@ public final class ShippedPrograms {
              Stream<Path> files = Files.walk(Path.of(dir))) {
             Path root = Path.of(dir);
             return files.map(f -> root.relativize(f).toString().replace('\\', '/'))
-                    .filter(n -> n.endsWith(".shader") && !n.equals(DOCUMENTATION_ONLY))
+                    .filter(n -> n.endsWith(".shader"))
                     .sorted().map(n -> "crystalgraphics:shaders/" + n).toList();
         }
     }

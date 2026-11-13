@@ -70,7 +70,7 @@ public class CgVertexAttributeInjectionTest {
         return "#type " + type + "\n" + minimalPassBlock();
     }
     private static CgParsedShader parse(String src) {
-        return CgShaderParser.parse(src, "test");
+        return CgShaderParser.parseLowered(src, "test");
     }
     private static CgMaterialShaderCompiler.CompiledSource compile(String src) {
         return CgMaterialShaderCompiler.compile(parse(src), NO_BUFFERS);
@@ -279,7 +279,7 @@ public class CgVertexAttributeInjectionTest {
     public void unknownShaderType_atParseTime_throwsCgShaderParseException() {
         String src = "#type unknown_format_xyz\n" + minimalPassBlock();
         try {
-            CgShaderParser.parse(src, "test");
+            CgShaderParser.parseLowered(src, "test");
             fail("Expected CgShaderParseException for unknown #type");
         } catch (CgShaderParseException e) {
             String msg = e.getMessage();

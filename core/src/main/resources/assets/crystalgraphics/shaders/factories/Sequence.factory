@@ -5,8 +5,9 @@
 // also draws as a prefab instance places it. cg_Vfx is the draw's header; an ending's fade is applied for the material.
 Factory { VertexType spatial  Fade cg_Vfx.presence  Usage FX_ON_SEQUENCE }
 
+Keywords { FX_ON_MESH_PARTICLES ("Drawn under the mesh particles usage") }
+
 Declarations {
-    #pragma cg_feature FX_ON_MESH_PARTICLES
     #include "crystalgraphics:shaders/lib/vfx/fx_draw.glsl"
     #include "crystalgraphics:shaders/lib/vfx/fx_sequence.glsl"
 }

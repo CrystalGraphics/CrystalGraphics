@@ -25,13 +25,13 @@ import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
  * TINT.set(0xFFFF8040, 1.5f);             // 0xAARRGGBB, its rgb times 1.5
  * }</pre>
  *
- * <p>A shader reads them by namespace and name, declaring the buffer:</p>
+ * <p>A shader reads them by namespace and name; naming one binds the buffer:</p>
  *
  * <pre>{@code
- * #pragma cg_use globals
- * ...
- * fragColor.rgb *= 1.0 - CG_GLOBAL_skill_darken;     // a float
- * fragColor.rgb *= CG_GLOBAL_skill_tint.rgb;         // a vec4
+ * void surface(in v2f i, inout CgSurface s) {
+ *     s.baseColor *= 1.0 - CG_GLOBAL_skill_darken;   // a float
+ *     s.baseColor *= CG_GLOBAL_skill_tint.rgb;       // a vec4
+ * }
  * }</pre>
  *
  * <ul>
@@ -140,7 +140,7 @@ public final class CgParameterCollection {
     }
 
     /**
-     * Each parameter's {@code #define}, for {@code #pragma cg_use globals}: what the material compiler appends after
+     * Each parameter's {@code #define}, for a material naming a {@code CG_GLOBAL_} parameter: what the material compiler appends after
      * the buffer's env file. Places every collection defined so far.
      */
     public static synchronized String glsl() {

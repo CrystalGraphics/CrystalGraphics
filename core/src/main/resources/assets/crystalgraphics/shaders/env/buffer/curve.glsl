@@ -1,6 +1,6 @@
 // CgCurveBatch's shader environment.
 //
-// INJECTED BY `#pragma cg_use curve`, immediately after the instance buffer's own
+// INJECTED for the `curve` engine buffer, immediately after the instance buffer's own
 // declaration -- see CgEngineBufferRegistry, which holds the path, and
 // CgMaterialShaderCompiler.appendEngineBufferEnv, which emits the include. A shader that does
 // not declare the pragma never sees any of this, which is the point: only a minority of
@@ -35,7 +35,7 @@
 //
 // These are DEFINED unconditionally but only RESOLVE in a shader that declares:
 //
-//     #pragma cg_use curve
+//     EngineBuffers { curve clip }   // Curve.primitive
 //
 // Using one without the pragma is rejected at parse time naming the missing line -- and needs no
 // parser change to do it, because CgShaderParser derives the "CG_CURVE_" family textually from

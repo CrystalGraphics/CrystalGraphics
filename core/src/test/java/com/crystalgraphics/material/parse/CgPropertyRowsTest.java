@@ -58,7 +58,7 @@ public class CgPropertyRowsTest {
 
     @Test
     public void everyNumberGetsAHiddenRowSlot() {
-        CgParsedShader parsed = CgShaderParser.parse(ROWS, "test:rows.shader");
+        CgParsedShader parsed = CgShaderParser.parseLowered(ROWS, "test:rows.shader");
         CgMaterialProperties props = new CgMaterialProperties(parsed.properties());
         assertTrue(props.property("_Radius").isRows());
         assertTrue(props.property("_Bands").isRows());
@@ -73,7 +73,7 @@ public class CgPropertyRowsTest {
 
     @Test
     public void anArrayParsesEachTuple() {
-        CgMaterialProperty bands = new CgMaterialProperties(CgShaderParser.parse(ROWS, "test:rows.shader").properties())
+        CgMaterialProperty bands = new CgMaterialProperties(CgShaderParser.parseLowered(ROWS, "test:rows.shader").properties())
                 .property("_Bands");
         assertTrue(bands.isArray());
         assertEquals(3, bands.getCount());
@@ -85,7 +85,7 @@ public class CgPropertyRowsTest {
 
     @Test
     public void theBlockHoldsRenamedFields() {
-        CgParsedShader parsed = CgShaderParser.parse(ROWS, "test:rows.shader");
+        CgParsedShader parsed = CgShaderParser.parseLowered(ROWS, "test:rows.shader");
         CgBufferLayout block = new CgMaterialProperties(parsed.properties()).buildUboFormat();
         assertTrue(block.toString().contains("_cgm_Radius"));
         assertTrue(block.toString().contains("_cgm_Bands_2"));
@@ -95,7 +95,7 @@ public class CgPropertyRowsTest {
 
     @Test
     public void eachNumberIsReadThroughItsAccessor() {
-        CgParsedShader parsed = CgShaderParser.parse(ROWS, "test:rows.shader");
+        CgParsedShader parsed = CgShaderParser.parseLowered(ROWS, "test:rows.shader");
         CgMaterialShaderCompiler.CompiledSource source = CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS);
         for (String stage : new String[] {source.vertexSource(), source.fragmentSource()}) {
             assertTrue(stage.contains("#include \"crystalgraphics:shaders/env/buffer/rows.glsl\""));
@@ -113,7 +113,7 @@ public class CgPropertyRowsTest {
     @Test
     public void anArrayWithoutRowsReadsTheMaterialAlone() {
         String plain = ROWS.replace("#pragma cg_use rows\n", "");
-        CgParsedShader parsed = CgShaderParser.parse(plain, "test:plain.shader");
+        CgParsedShader parsed = CgShaderParser.parseLowered(plain, "test:plain.shader");
         String frag = CgMaterialShaderCompiler.compile(parsed, NO_BUFFERS).fragmentSource();
         assertTrue(frag.contains("#define _Bands(i) _cg_arr_Bands(i)"));
         assertFalse(frag.contains("CG_ROW"));
@@ -123,7 +123,7 @@ public class CgPropertyRowsTest {
 
     @Test
     public void anArrayOfAnotherTypeIsRefused() {
-        assertThrows(CgShaderParseException.class, () -> CgShaderParser.parse(
+        assertThrows(CgShaderParseException.class, () -> CgShaderParser.parseLowered(
                 ROWS.replace("color[3]", "float[3]"), "test:bad.shader"));
     }
 }

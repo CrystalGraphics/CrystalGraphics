@@ -66,7 +66,7 @@ public class CgDepthModeTest {
 
     @Test
     public void clipDiscardsAndWritesDepthInOnePass() {
-        CgParsedShader parsed = CgShaderParser.parse(shader("Clip", "Transparent", ""), "test");
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("Clip", "Transparent", ""), "test");
         assertEquals(CgParsedShader.DepthMode.CLIP, parsed.depthMode());
         assertTrue("its DepthWrite OFF is overridden", parsed.passes().get(0).renderState().getDepth().write());
         CgMaterialShaderCompiler.CompiledSource cs = forward(parsed, Collections.emptySet());
@@ -77,7 +77,7 @@ public class CgDepthModeTest {
 
     @Test
     public void prepassClipsOnlyInItsDepthVariant() {
-        CgParsedShader parsed = CgShaderParser.parse(shader("Prepass", "Transparent",
+        CgParsedShader parsed = CgShaderParser.parseLowered(shader("Prepass", "Transparent",
                 "Properties { _Clip (\"Clip\", float) = 0.9 }\n"), "test");
         assertEquals(CgParsedShader.DepthMode.PREPASS, parsed.depthMode());
         assertFalse("the blend writes no depth", parsed.passes().get(0).renderState().getDepth().write());
@@ -95,12 +95,12 @@ public class CgDepthModeTest {
     @Test
     public void prepassNeedsATransparentQueue() {
         assertThrows(CgShaderParseException.class,
-                () -> CgShaderParser.parse(shader("Prepass", "AlphaTest", ""), "test"));
+                () -> CgShaderParser.parseLowered(shader("Prepass", "AlphaTest", ""), "test"));
     }
 
     @Test
     public void anUnknownModeFailsToParse() {
         assertThrows(CgShaderParseException.class,
-                () -> CgShaderParser.parse(shader("Always", "Transparent", ""), "test"));
+                () -> CgShaderParser.parseLowered(shader("Always", "Transparent", ""), "test"));
     }
 }
