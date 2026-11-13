@@ -132,7 +132,8 @@ release**:
 
    It enters a world, shows every `CgRenderDemo` scene in turn, twice round, 5 s each once the scene is built, and
    quits. `build/pipelines/report.txt` says `PASS` or `FAIL`, a line a scene.
-2. Copy `build/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
+2. If `pipelines.recorded` reads 0 recipes, the shipped list is already complete: stop. Otherwise copy
+   `build/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
 3. Check: rerun it into a new empty cache folder. `pipelines.recorded` should read 0 recipes: the shipped list now
    builds every pipeline the scenes draw.
 

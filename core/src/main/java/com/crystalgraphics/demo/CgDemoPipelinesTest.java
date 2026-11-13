@@ -38,6 +38,8 @@ import com.crystalgraphics.variable.CgVar;
  *       still building loses none of them; one that does not draw within 90 s fails.</li>
  *   <li>Its timeout is its own: the scenes, the laps and their seconds, with room to build each.</li>
  *   <li>The loading watchdog is armed for the run: a switch that holds a frame is logged with what held it.</li>
+ *   <li>A run recording nothing passes and copies nothing: the shipped list already builds every pipeline the
+ *       scenes draw.</li>
  *   <li>A new draw path no scene reaches records nothing: give it a scene first.</li>
  * </ul>
  */
@@ -150,8 +152,13 @@ public final class CgDemoPipelinesTest extends CgGauntletController {
         Path file = recipes.file();
         int appended = recipes.appended();
         info("pipelines.recorded", appended + " recipes this run");
-        if (file == null || !Files.isRegularFile(file)) {
-            check("pipelines.list", false, file == null ? "no cache folder to record into" : "nothing recorded at " + file);
+        if (file == null) {
+            check("pipelines.list", false, "no cache folder to record into");
+            endTest();
+            return;
+        }
+        if (appended == 0) {
+            check("pipelines.list", true, "nothing to add: the shipped list builds every pipeline the scenes draw");
             endTest();
             return;
         }
@@ -162,7 +169,7 @@ public final class CgDemoPipelinesTest extends CgGauntletController {
             Path out = CgGauntlet.out().resolve("recorded.txt");
             Files.createDirectories(out.getParent());
             Files.copy(file, out, StandardCopyOption.REPLACE_EXISTING);
-            check("pipelines.list", appended > 0, out.toAbsolutePath().toString());
+            check("pipelines.list", true, out.toAbsolutePath().toString());
         } catch (IOException e) {
             check("pipelines.list", false, "copying " + file + ": " + e);
         }
