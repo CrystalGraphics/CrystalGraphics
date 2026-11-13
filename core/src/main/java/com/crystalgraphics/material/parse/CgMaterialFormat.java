@@ -665,7 +665,9 @@ final class CgMaterialFormat {
     // ── ui ──────────────────────────────────────────────────────────────────────
 
     private static Lowered lowerUi(List<Item> items, String path) {
-        Map<String, String> m = properties(block(items, "Material"), List.of("Primitive"), path);
+        Map<String, String> m = properties(block(items, "Material"), List.of("Primitive", "ColorSpace"), path);
+        // sRGB, decoded into a linear scene, by default; Target where the material converts itself (glass over a backdrop)
+        String colorSpace = choice(m, "ColorSpace", "sRGB", path, "sRGB", "Target");
         String kind = m.getOrDefault("Primitive", "Quad");
         CgFormatTemplates.Primitive primitive = CgFormatTemplates.primitive(kind);
         if (primitive == null) {
@@ -695,7 +697,9 @@ final class CgMaterialFormat {
         if (namesGlobals(code)) uses.add("globals");
         refuseNamedBuffers(code, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
-        out.append("Tags { \"RenderType\" = \"Transparent\" }\nQueue = \"").append(primitive.queue()).append("\"\n");
+        out.append("Tags { \"RenderType\" = \"Transparent\"")
+           .append(colorSpace.equals("Target") ? " \"ColorSpace\" = \"Target\"" : "")
+           .append(" }\nQueue = \"").append(primitive.queue()).append("\"\n");
         appendData(out, items, primitive.properties(), "Primitive " + kind, path);
         out.append("struct v2f {").append(primitive.v2f()).append("};\n");
         out.append("Pass {\n    Tags { \"LightMode\" = \"Forward\" }\n").append(primitive.renderState()).append('\n')

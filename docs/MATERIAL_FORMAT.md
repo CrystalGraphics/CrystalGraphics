@@ -677,6 +677,9 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
 that blend wants, as Unreal's simple element shader does: straight alpha under `ALPHA`, weighed by its alpha under
 `ADDITIVE` and `SUBTRACT`, toward white where it is transparent under `MODULATE`. Your `surface()` is the same for all.
 
+**Its colour is sRGB**, as the canvas's is: drawn into a linear scene the engine decodes it. `Material { ColorSpace
+Target }` says the material converts itself, as glass does over a backdrop already in the target's encoding.
+
 **`cg_UiTexture(tex, i)`** samples a texture at `i.uv` on a `Quad`, filtered across texels while the quad is rotated, as
 an image must be or its texels shimmer; `cg_UiTexture(tex, i, layer)` reads a 2D array's layer.
 

@@ -10,7 +10,7 @@
 #include "crystalgraphics:shaders/lib/sdf.glsl"
 #include "crystalgraphics:shaders/lib/noise.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
-Material { Primitive Quad }
+Material { Primitive Quad  ColorSpace Target }
 
 Properties {
     _MainTex   ("Blurred backdrop", sampler2D) = "white"
