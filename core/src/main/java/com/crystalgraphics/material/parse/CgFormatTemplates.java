@@ -42,7 +42,8 @@ import java.util.regex.Pattern;
  *
  * <p>{@code Factory { Fade cg_Vfx.presence }} fades all the material adds by that expression after {@code surface()},
  * by its blend mode, so no material applies it itself. {@code Factory { Usage FX_ON_TUBE }} is the keyword its draws
- * compile a material under, declared for it: what a material listing several factories branches on.</p>
+ * compile a material under, declared for it: what a material listing several factories branches on. A factory drawn
+ * several ways names each ({@code Usage FX_ON_MESH_PARTICLES, FX_ON_SPRITES, FX_ON_RIBBONS}).</p>
  *
  * <p>A primitive file: {@code Primitive { Queue Transparent }}, {@code EngineBuffers}, {@code Declarations},
  * {@code Properties}, a {@code RenderState}, {@code struct v2f}, {@code vertex(out v2f o)} and
@@ -125,7 +126,7 @@ public final class CgFormatTemplates {
                 throw CgMaterialFormat.fail(path, "'VertexFactory " + base.name() + ", " + f.name()
                         + "': factories listed together share a vertex type and whether they place anything");
             }
-            if (f != base && f.usage() == null) {
+            if (f != base && f.usages().isEmpty()) {
                 throw CgMaterialFormat.fail(path, "'VertexFactory " + f.name() + "' has no 'Usage' keyword to compile under"
                         + " beside " + base.name());
             }
@@ -136,7 +137,7 @@ public final class CgFormatTemplates {
                 }
                 parameters = f;
             }
-            if (f.usage() != null) declarations.append("#pragma cg_feature ").append(f.usage()).append('\n');
+            for (String u : f.usages()) declarations.append("#pragma cg_feature ").append(u).append('\n');
             declarations.append(f.declarations()).append('\n');
             properties.append(f.properties()).append('\n');
         }
@@ -164,7 +165,9 @@ public final class CgFormatTemplates {
     private static String branches(List<CgVertexFactory.Factory> factories, Function<CgVertexFactory.Factory, String> part) {
         StringBuilder out = new StringBuilder();
         for (int i = 1; i < factories.size(); i++) {
-            out.append(i == 1 ? "#if" : "#elif").append(" defined(").append(factories.get(i).usage()).append(")\n")
+            List<String> defined = new ArrayList<>();
+            for (String u : factories.get(i).usages()) defined.add("defined(" + u + ")");
+            out.append(i == 1 ? "#if " : "#elif ").append(String.join(" || ", defined)).append('\n')
                .append(part.apply(factories.get(i)).strip()).append('\n');
         }
         return out.append("#else\n").append(part.apply(factories.get(0)).strip()).append("\n#endif\n").toString();
@@ -215,7 +218,7 @@ public final class CgFormatTemplates {
         if ("On".equals(settings.get("PlacesNothing"))) b.placesNothing();
         if (defaults != null) b.defaults(defaults.body());
         if (settings.containsKey("Fade")) b.fade(settings.get("Fade"));
-        if (settings.containsKey("Usage")) b.usage(settings.get("Usage"));
+        if (settings.containsKey("Usage")) b.usage(settings.get("Usage").split(","));
         Matcher tag = TAG.matcher(body(items, "Tags"));
         while (tag.find()) b.tag(tag.group(1), tag.group(2));
         String variable = settings.get("Parameters");

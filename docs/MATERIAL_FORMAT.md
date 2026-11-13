@@ -436,7 +436,7 @@ void fill(inout CgVertex v) {                               // fills every field
 | `fill(inout CgVertex v)` | runs in the vertex stage with the vertex format's attributes (`cg_Position`, …) in scope |
 | `defaults(inout CgSurface s)` | optional, runs in the pixel stage before the material's `surface()`: what it starts from (a particle's own light) |
 | `Factory { Fade <expression> }` | optional: fades all the material adds by that value after `surface()`, by its blend mode (an ending's fade: `cg_Vfx.presence`), so no material applies it |
-| `Factory { Usage <KEYWORD> }` | optional: the keyword its draws compile a material under (`FX_ON_TUBE`), what a material listing it beside another branches on |
+| `Factory { Usage <KEYWORD>, … }` | optional: the keywords its draws compile a material under (`FX_ON_TUBE`), what a material listing it beside another branches on; one a draw kind it serves (`MeshParticles`: `FX_ON_MESH_PARTICLES, FX_ON_SPRITES, FX_ON_RIBBONS`) |
 
 A factory has a pixel side as Unreal's does: `defaults` and `Fade` are where a draw kind's convention lives once, rather
 than in every material drawn by it.
@@ -460,7 +460,25 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 ```
 
-Factories listed together share a vertex type, and at most one has parameters: read them only under its keyword.
+Factories listed together share a vertex type, and at most one has parameters: read them only under its keywords.
+
+**Meshes and particles both** (a game's material marked for static meshes, mesh particles and sprites): list `Mesh`
+then `MeshParticles`. Static and skeletal meshes take `Mesh`; every particle draw (a mesh, a sprite, a strip) takes
+`MeshParticles` and reads `cg_Particle`:
+
+```glsl
+Material { BlendMode Translucent  VertexFactory Mesh, MeshParticles }
+void surface(in v2f i, inout CgSurface s) {
+    vec4 tint = vec4(1.0);
+#if defined(FX_ON_MESH_PARTICLES) || defined(FX_ON_SPRITES) || defined(FX_ON_RIBBONS)
+    tint = cg_Particle.color;   // the particle's colour tints the texture
+#endif
+    s.baseColor = texture(_MainTex, i.uv0).rgb * tint.rgb;
+}
+```
+
+`Sprites` cannot stand beside `Mesh`: it reads no vertex data (`VertexType none`). `MeshParticles` draws sprites too,
+placing each corner itself.
 
 A factory built at run time can be registered instead of written as a file
 (`CgVertexFactory.register(CgVertexFactory.builder("Ribbons")...build())`); a registration is found before a file.

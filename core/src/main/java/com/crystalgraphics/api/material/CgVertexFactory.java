@@ -49,7 +49,8 @@ import java.util.Map;
  * }</pre>
  *
  * <p>A material drawn by several factories lists them, the first the base; each other is compiled under its usage
- * keyword, which the material's {@code vertex()} and {@code surface()} branch on:</p>
+ * keywords, which the material's {@code vertex()} and {@code surface()} branch on (Unreal's usage flags, one material
+ * compiled for each vertex factory that draws it):</p>
  *
  * <pre>{@code
  * Material { VertexFactory Mesh, Tube }            // Tube's file: Factory { ... Usage FX_ON_TUBE }
@@ -59,6 +60,20 @@ import java.util.Map;
  * #else
  *     o.along = v.uv0.x;
  * #endif
+ * }
+ * }</pre>
+ *
+ * <p>Meshes and particles both, as a game's material marked for static meshes, mesh particles and sprites is: its
+ * particle draws (meshes, sprites, strips) take {@code MeshParticles} and read {@code cg_Particle}.</p>
+ *
+ * <pre>{@code
+ * Material { VertexFactory Mesh, MeshParticles }   // Usage FX_ON_MESH_PARTICLES, FX_ON_SPRITES, FX_ON_RIBBONS
+ * void surface(in v2f i, inout CgSurface s) {
+ *     vec4 tint = vec4(1.0);
+ * #if defined(FX_ON_MESH_PARTICLES) || defined(FX_ON_SPRITES) || defined(FX_ON_RIBBONS)
+ *     tint = cg_Particle.color;
+ * #endif
+ *     s.baseColor = texture(_MainTex, i.uv0).rgb * tint.rgb;
  * }
  * }</pre>
  *
@@ -96,27 +111,29 @@ public final class CgVertexFactory {
      *                        {@code surface()}: what it starts from under this factory (a particle's light)
      * @param fade            an expression fading all the material adds, applied after {@code surface()} by its blend
      *                        mode ({@code cg_Vfx.presence}); null for none
-     * @param usage           the keyword its draws compile the material under ({@code FX_ON_TUBE}): what a material on
-     *                        several factories branches on with {@code #ifdef}; null for none
+     * @param usages          the keywords its draws compile the material under ({@code FX_ON_TUBE}): what a material on
+     *                        several factories branches on with {@code #ifdef}; a factory serving several draws (mesh
+     *                        particles, sprites, strips) names each; empty for none
      */
     @Desugar
     public record Factory(String name, String vertexType, String fill, boolean placesNothing,
                           List<String> engineBuffers, String declarations, String properties, Map<String, String> tags,
                           @Nullable String parameters, Map<String, String> parameterFields, String defaults,
-                          @Nullable String fade, @Nullable String usage) {
+                          @Nullable String fade, List<String> usages) {
         public Factory {
             engineBuffers = Collections.unmodifiableList(new ArrayList<>(engineBuffers));
             tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
             parameterFields = Collections.unmodifiableMap(new LinkedHashMap<>(parameterFields));
+            usages = Collections.unmodifiableList(new ArrayList<>(usages));
         }
     }
 
     /** Builds a {@link Factory}: {@code vertexType} and {@code fill} are required. */
     public static final class Builder {
         private final String name;
-        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade, usage;
+        private String vertexType, fill, declarations = "", properties = "", parameters, defaults = "", fade;
         private boolean placesNothing;
-        private final List<String> buffers = new ArrayList<>();
+        private final List<String> buffers = new ArrayList<>(), usages = new ArrayList<>();
         private final Map<String, String> tags = new LinkedHashMap<>(), fields = new LinkedHashMap<>();
 
         private Builder(String name) {
@@ -184,16 +201,16 @@ public final class CgVertexFactory {
             return this;
         }
 
-        /** The keyword its draws compile the material under: {@code FX_ON_TUBE}. */
-        public Builder usage(String keyword) {
-            this.usage = keyword;
+        /** The keywords its draws compile the material under: {@code FX_ON_TUBE}; several for a factory serving several. */
+        public Builder usage(String... keywords) {
+            usages.addAll(List.of(keywords));
             return this;
         }
 
         public Factory build() {
             if (vertexType == null || fill == null) throw new IllegalStateException(name + ": vertexType and fill are required");
             return new Factory(name, vertexType, fill, placesNothing, buffers, declarations, properties, tags, parameters,
-                    fields, defaults, fade, usage);
+                    fields, defaults, fade, usages);
         }
     }
 

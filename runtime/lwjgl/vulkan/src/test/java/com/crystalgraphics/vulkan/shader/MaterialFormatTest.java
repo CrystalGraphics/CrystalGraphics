@@ -50,7 +50,7 @@ public class MaterialFormatTest {
 
     /** Each shape, under {@code cgformat:shaders/}. */
     private static final List<String> SHAPES = List.of("opaque", "masked", "translucent", "glow", "haze", "waves",
-            "sparks", "keywords", "scene_in", "bits", "volume", "post_chain");
+            "sparks", "keywords", "scene_in", "bits", "volume", "post_chain", "both");
 
     private static ShadercGlslCompiler compiler, bare;
 
@@ -190,6 +190,17 @@ public class MaterialFormatTest {
         // light: the factory's defaults() reads it.
         assertEquals(List.of("uv0", "_cg_in_Particle_color", "_cg_in_Particle_relativeTime", "_cg_in_Particle_light"),
                 fieldNames(parse(path("puff")).passes().get(0)));
+    }
+
+    @Test
+    public void meshesAndParticlesTakeTheirOwnFactory() {
+        CgParsedShader both = parse(path("both"));
+        for (String usage : List.of("FX_ON_MESH_PARTICLES", "FX_ON_SPRITES", "FX_ON_RIBBONS")) {
+            assertTrue(usage + " declared", both.featureNames().contains(usage));
+            assertFalse(usage + " served, not taken undeclared", both.implicitFeatures().contains(usage));
+        }
+        String vertex = both.passes().get(0).vertexBody();
+        assertTrue(vertex, vertex.contains("defined(FX_ON_MESH_PARTICLES) || defined(FX_ON_SPRITES) || defined(FX_ON_RIBBONS)"));
     }
 
     @Test

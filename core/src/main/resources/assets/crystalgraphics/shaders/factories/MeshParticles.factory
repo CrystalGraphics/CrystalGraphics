@@ -5,7 +5,9 @@
 // the placed vertex's tangent, bitangent and normal in the world, for a vertex() that needs the whole frame (v.normal
 // is its third). cg_Vfx is the draw's header; an ending's fade is applied for the material, and a lit particle is lit
 // by its own light.
-Factory { VertexType spatial  Parameters cg_Particle  Fade cg_Vfx.presence }
+// Beside Mesh (VertexFactory Mesh, MeshParticles) it serves every particle draw: its usages.
+Factory { VertexType spatial  Parameters cg_Particle  Fade cg_Vfx.presence
+          Usage FX_ON_MESH_PARTICLES, FX_ON_SPRITES, FX_ON_RIBBONS }
 EngineBuffers { particle }
 
 Declarations {
