@@ -8,6 +8,7 @@ import java.util.Map;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -104,7 +105,7 @@ public class CgMaterialDefinitionsTest {
     }
 
     private static CgAssetData root() {
-        return asset("test:glow", tree("shader", FX, "state", map("blend", "additive"), "keywords", Arrays.asList("SOFT"),
+        return asset("test:glow", tree("shader", FX, "state", map("BlendMode", "Additive"), "keywords", Arrays.asList("SOFT"),
                 "values", map("_Speed", 2.0, "_Color", Arrays.asList(1.0, 0.5, 0.25, 1.0)),
                 "textures", map("_MainTex", map("texture", "test:noise"))), null);
     }
@@ -123,7 +124,7 @@ public class CgMaterialDefinitionsTest {
         CgMaterialDefinition d = CgMaterialDefinitions.compile(root(), ARCHETYPES);
         assertEquals(FX, d.permutation().shader());
         assertEquals(Arrays.asList("SOFT"), d.permutation().keywords());
-        assertEquals("additive", d.permutation().blend());
+        assertEquals(CgBlendMode.ADDITIVE, d.permutation().blend());
         assertArrayEquals(new float[] {2f}, d.constants().get("_Speed"), 0f);
         assertArrayEquals(new float[] {1f, 0.5f, 0.25f, 1f}, d.constants().get("_Color"), 0f);
         assertEquals("test:noise", d.textures().get("_MainTex").texture());
@@ -144,7 +145,7 @@ public class CgMaterialDefinitionsTest {
                 "values", map("_Speed", 3.0)), asset("test:own", tree("shader", FX), null)), ARCHETYPES);
         assertSame(own.permutation(), child.permutation());
         CgMaterialDefinition opaque = CgMaterialDefinitions.compile(asset("test:opaque", tree("shader", FX,
-                "state", map("blend", "opaque")), null), ARCHETYPES);
+                "state", map("BlendMode", "Opaque")), null), ARCHETYPES);
         assertEquals(CgBlendMode.OPAQUE, opaque.state().blend());
     }
 
@@ -164,10 +165,10 @@ public class CgMaterialDefinitionsTest {
                 "keywords", Arrays.asList("GLOW", "SOFT")), parent), ARCHETYPES);
         assertNotSame(p.permutation(), k.permutation());
         CgMaterialDefinition b = CgMaterialDefinitions.compile(asset("test:glow_blend", tree("parent", "test:glow",
-                "state", map("blend", "translucent")), parent), ARCHETYPES);
+                "state", map("BlendMode", "Translucent")), parent), ARCHETYPES);
         assertNotSame(p.permutation(), b.permutation());
         CgMaterialDefinition s = CgMaterialDefinitions.compile(asset("test:glow_sided", tree("parent", "test:glow",
-                "state", map("two_sided", true)), parent), ARCHETYPES);
+                "state", map("Faces", "Both")), parent), ARCHETYPES);
         assertSame("two-sided is pipeline state, not a program", p.permutation(), s.permutation());
     }
 
@@ -184,14 +185,32 @@ public class CgMaterialDefinitionsTest {
     @Test
     public void depthTestOffIsATranslucentMaterialsOwnPermutation() {
         CgMaterialDefinition spark = CgMaterialDefinitions.compile(asset("test:spark", tree("shader", FX,
-                "state", map("blend", "additive", "depth_test", false)), null), ARCHETYPES);
+                "state", map("BlendMode", "Additive", "DepthTest", false)), null), ARCHETYPES);
         assertFalse(spark.permutation().depthTest());
         assertFalse(spark.state().depthTested());
         CgMaterialDefinition tested = CgMaterialDefinitions.compile(asset("test:tested", tree("shader", FX,
-                "state", map("blend", "additive")), null), ARCHETYPES);
+                "state", map("BlendMode", "Additive")), null), ARCHETYPES);
         assertNotSame("its programs are its own", tested.permutation(), spark.permutation());
-        fails("depth_test", asset("test:solid", tree("shader", FX, "state", map("blend", "opaque", "depth_test", false)), null));
-        fails("depth_test", asset("test:masked", tree("shader", FX, "state", map("blend", "masked", "depth_test", false)), null));
+        fails("DepthTest", asset("test:solid", tree("shader", FX, "state", map("BlendMode", "Opaque", "DepthTest", false)), null));
+        fails("DepthTest", asset("test:masked", tree("shader", FX, "state", map("BlendMode", "Masked", "DepthTest", false)), null));
+    }
+
+    @Test
+    public void stateTakesTheMaterialBlocksNamesAndRefusesTheRest() {
+        CgMaterialDefinition d = CgMaterialDefinitions.compile(asset("test:state", tree("shader", FX, "state",
+                map("BlendMode", "AlphaComposite", "ShadingModel", "Unlit", "Faces", "Back", "DepthWrite", true,
+                        "TranslucencyPass", "Separate")), null), ARCHETYPES);
+        assertEquals(CgBlendMode.PREMULTIPLIED, d.permutation().blend());
+        assertEquals("unlit", d.permutation().shading());
+        assertEquals(CgCullState.FRONT, d.state().cull());
+        assertEquals(Boolean.TRUE, d.state().depthWrite());
+        assertTrue(d.state().separateTranslucency());
+        fails("two_sided", asset("test:old", tree("shader", FX, "state", map("two_sided", true)), null));
+        fails("Fog", asset("test:fog", tree("shader", FX, "state", map("Fog", false)), null));
+        fails("Strict", asset("test:strict", tree("shader", FX, "state", map("DepthTest", "Strict")), null));
+        fails("Overlay", asset("test:overlay", tree("shader", FX, "state", map("TranslucencyPass", "Overlay")), null));
+        fails("lit", asset("test:lit", tree("shader", FX, "state", map("ShadingModel", "lit")), null));
+        fails("additive", asset("test:lower", tree("shader", FX, "state", map("BlendMode", "additive")), null));
     }
 
     private static void fails(String naming, CgAssetData asset) {
@@ -258,7 +277,7 @@ public class CgMaterialDefinitionsTest {
             assertEquals(loaded.draw(), built.draw());
             assertArrayEquals(new float[] {2f, 0x80 / 255f * 2f, 0x40 / 255f * 2f, 0x80 / 255f},
                     built.constants().get("_Color"), 1e-6f);
-            assertEquals("additive", built.permutation().blend());
+            assertEquals(CgBlendMode.ADDITIVE, built.permutation().blend());
             assertEquals(Arrays.asList("_v", "shader", "state", "keywords", "values", "textures"),
                     new ArrayList<>(b.tree().keySet()));
             try {
@@ -300,7 +319,7 @@ public class CgMaterialDefinitionsTest {
 
     @Test
     public void permutationsIntern() {
-        assertSame(CgMaterialPermutation.of(FX, Arrays.asList("B", "A"), "opaque", false, true, null),
-                CgMaterialPermutation.of(FX, Arrays.asList("A", "B"), "opaque", false, true, null));
+        assertSame(CgMaterialPermutation.of(FX, Arrays.asList("B", "A"), CgBlendMode.OPAQUE, false, true, null),
+                CgMaterialPermutation.of(FX, Arrays.asList("A", "B"), CgBlendMode.OPAQUE, false, true, null));
     }
 }

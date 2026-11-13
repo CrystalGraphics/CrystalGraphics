@@ -57,7 +57,7 @@ public class CgShadingModelsTest {
         CgShadingModel cell = CgShadingModels.get("kakarot:cell_tone");
         assertEquals("CELL_TONE", cell.keyword());
         CgMaterialDefinition d = compile("test:crack", "shader", DECAL,
-                "state", map("blend", "translucent", "shading", "kakarot:cell_tone"));
+                "state", map("BlendMode", "Translucent", "ShadingModel", "kakarot:cell_tone"));
         assertSame(cell, d.shading());
         assertEquals(Collections.singletonList("CELL_TONE"), d.permutation().keywords());
         assertEquals("kakarot:cell_tone", d.permutation().shading());
@@ -66,7 +66,7 @@ public class CgShadingModelsTest {
 
     @Test
     public void anUnknownShadingModelFailsAtLoad() {
-        fails("kakarot:cel_tone", () -> compile("test:typo", "shader", DECAL, "state", map("shading", "kakarot:cel_tone")));
+        fails("kakarot:cel_tone", () -> compile("test:typo", "shader", DECAL, "state", map("ShadingModel", "kakarot:cel_tone")));
     }
 
     @Test
@@ -96,13 +96,13 @@ public class CgShadingModelsTest {
 
     @Test
     public void maskClipIsTheMaskedThreshold() {
-        CgMaterialDefinition d = compile("test:masked", "shader", DECAL, "state", map("blend", "masked", "mask_clip", 0.33));
+        CgMaterialDefinition d = compile("test:masked", "shader", DECAL, "state", map("BlendMode", "Masked", "MaskClip", 0.33));
         assertTrue(d.permutation().clip());
         assertArrayEquals(new float[] {0.33f}, d.constants().get("_Clip"), 1e-6f);
         CgMaterialDefinition set = compile("test:masked_set", "shader", DECAL,
-                "state", map("blend", "masked", "mask_clip", 0.33), "values", map("_Clip", 0.7));
+                "state", map("BlendMode", "Masked", "MaskClip", 0.33), "values", map("_Clip", 0.7));
         assertArrayEquals("an explicit value wins", new float[] {0.7f}, set.constants().get("_Clip"), 1e-6f);
-        fails("_Clip", () -> compile("test:no_clip", "shader", FX, "state", map("blend", "masked", "mask_clip", 0.5)));
+        fails("_Clip", () -> compile("test:no_clip", "shader", FX, "state", map("BlendMode", "Masked", "MaskClip", 0.5)));
     }
 
     @Test

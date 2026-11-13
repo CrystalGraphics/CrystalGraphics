@@ -13,7 +13,7 @@ faces, its keywords (static switches), its values and its textures. A child name
 # assets/mymod/materials/fx/sparks.yaml
 _v: 1
 shader: crystalgraphics:shaders/vfx/particle/sprite.shader
-state: { blend: additive, two_sided: true }
+state: { BlendMode: Additive, Faces: Both }
 values: { _Color: [2.0, 1.0, 0.5, 1.0], _SoftDistance: 0.25 }
 textures:
   _Sheet: { texture: mymod:textures/fx/sparks.png, sampler: { filter: bilinear, wrap: clamp } }
@@ -46,21 +46,50 @@ CgMaterialDefinition slow = CgMaterialDefinitions.derive(sparks, Map.of("values"
 
 - A name the shader does not declare fails at `build()`, or at load for a file, naming the material and the property.
 - A texture is a 2D image, its path the image's (`<namespace>:textures/....png`).
-- `depth_test: false` (Unreal's `bDisableDepthTest`, `.depthTest(false)`) draws it over whatever is in front: a hit
-  spark the floor would otherwise cut. Its glow is not hidden by the scene either. Translucent blends only: on
-  `opaque` or `masked` it fails at load. It then shows through walls too, so give its particles
-  `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers them. **Give it no
-  depth fade** (`CG_DEPTH_FADE`, soft particles): behind the floor the scene is nearer than the fragment, so the fade is 0
-  there at any distance, 0 included, and cuts the draw on the very line the depth test would have.
 
-  ```yaml
-  state: { blend: additive, depth_test: false }
-  ```
-- `separate_translucency: true` (Unreal's `bEnableSeparateTranslucency`, `.separateTranslucency()`) draws a translucent
-  material after every other translucent draw, unbent by their distortion and still tested against the scene's depth:
-  it sorts in `CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer. Under
-  the HDR scene it draws into a target of its own, laid over the scene after the colour regions, as Unreal composites
-  it after its `PrePostProcessPass`: a `colour_region` never grades it. A blend that multiplies stays in the scene.
+### `state`: how it draws, over its shader's
+
+`state` sets some of its shader's `Material { }` properties ([`../SHADERS.md`](../SHADERS.md)), by the same names and
+values, over what the shader says. Leave one out and the shader's own holds, as an Unreal instance keeps its parent's
+blend mode unless it overrides it. A child's `state` merges over its parent's.
+
+| Property | Values | In Java | What it does |
+|---|---|---|---|
+| `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | `.blend(CgBlendMode)`, `.masked(clip)` | How it covers what is behind it; `AlphaComposite` is premultiplied |
+| `MaskClip` | a number, 0.5 by default | `.masked(clip)` | Where a `Masked` material's `opacityMask` stops being a hole; the shader's `_Clip` receives it |
+| `ShadingModel` | `WorldLit`, `Unlit`, `Subsurface`, or a kit's model by id (`kakarot:cell_tone`) | `.shading(CgShadingModel)` | How light reaches it |
+| `Faces` | `Front`, `Back`, `Both` | `.twoSided()`, `.cull(CgCullState)` | Which faces draw: `Both` is two-sided, `Back` only a volume's far wall |
+| `DepthTest` | `true`, `false` | `.depthTest(false)` | `false` draws it over whatever is in front (below) |
+| `DepthWrite` | `true`, `false` | `.depthWrite(true)` | Whether it writes depth, over its blend's own |
+| `TranslucencyPass` | `Separate` | `.separateTranslucency()` | Drawn after every other translucent thing (below) |
+
+- **The rest of `Material { }` is the shader's**: `Fog`, `Media`, `DepthPrepass`, `ClipDepth`, `VertexFactory` and the
+  others change what the program is, so a different look is a different shader. Naming one in `state` fails at load,
+  naming the material.
+- **A state the shader forbids fails at load**, naming the material: `DepthTest: false` on an opaque or masked blend, a
+  `DepthWrite` where the shader's `DepthPrepass` or `ClipDepth` owns depth.
+- **`DepthTest` and `DepthWrite` are `true` or `false`**, where a shader writes `On` or `Off`: a file holds the
+  spelling its writer writes. `DepthTest Strict` and the other translucency passes are the shader's only.
+- **Its programs are shared where its state allows**: `BlendMode`, `ShadingModel` and `DepthTest` make a material
+  programs of its own; `Faces`, `MaskClip`, `DepthWrite` and `TranslucencyPass` are pipeline state, so an instance
+  changing only those draws with its parent's programs.
+
+**`DepthTest: false`** (Unreal's `bDisableDepthTest`) draws it over whatever is in front: a hit spark the floor would
+otherwise cut. Its glow is not hidden by the scene either. Translucent blends only. It then shows through walls too, so
+give its particles `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers
+them. **Give it no depth fade** (`CG_DEPTH_FADE`, soft particles): behind the floor the scene is nearer than the
+fragment, so the fade is 0 there at any distance, 0 included, and cuts the draw on the very line the depth test would
+have.
+
+```yaml
+state: { BlendMode: Additive, DepthTest: false }
+```
+
+**`TranslucencyPass: Separate`** (Unreal's `bEnableSeparateTranslucency`) draws a translucent material after every
+other translucent draw, unbent by their distortion and still tested against the scene's depth: it sorts in
+`CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer. Under the HDR scene
+it draws into a target of its own, laid over the scene after the colour regions, as Unreal composites it after its
+`PrePostProcessPass`: a `colour_region` never grades it. A blend that multiplies stays in the scene.
 
 ## A particle's material: the vertex factory
 

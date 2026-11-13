@@ -30,16 +30,17 @@ public final class CgLookKinds {
 
     // ── Material ─────────────────────────────────────────────────────────────────────────
 
+    /** A material asset's {@code state}: the {@code Material { }} properties it sets over its shader's, by their names. */
     static final CgType STATE = CgTypes.struct("crystalgraphics:material.state")
-            .property("blend", CgValueType.enumOf("opaque", "masked", "translucent", "additive", "modulate", "premultiplied", "subtract"))
+            .property("BlendMode", CgValueType.enumOf("Opaque", "Masked", "Translucent", "AlphaComposite", "Additive",
+                    "Modulate", "Subtract")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("ShadingModel", CgValueType.oneOf(CgValueType.enumOf("WorldLit", "Unlit", "Subsurface"), STRING))
                     .flags(CgPropertyFlag.STRUCTURAL)
-            .property("mask_clip", FLOAT)
-            .property("two_sided", BOOL).flags(CgPropertyFlag.STRUCTURAL)
-            .property("cull", CgValueType.enumOf("back", "front")).flags(CgPropertyFlag.STRUCTURAL)
-            .property("shading", CgValueType.oneOf(CgValueType.enumOf("unlit", "lit", "subsurface"), STRING)).flags(CgPropertyFlag.STRUCTURAL)
-            .property("depth_test", BOOL).flags(CgPropertyFlag.STRUCTURAL)
-            .property("separate_translucency", BOOL)
-            .property("depth_write", BOOL).flags(CgPropertyFlag.STRUCTURAL)
+            .property("Faces", CgValueType.enumOf("Front", "Back", "Both")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("MaskClip", FLOAT)
+            .property("DepthTest", BOOL).flags(CgPropertyFlag.STRUCTURAL)
+            .property("DepthWrite", BOOL).flags(CgPropertyFlag.STRUCTURAL)
+            .property("TranslucencyPass", CgValueType.enumOf("Separate"))
             .register();
 
     static final CgType STENCIL = CgTypes.struct("crystalgraphics:material.post.stencil")

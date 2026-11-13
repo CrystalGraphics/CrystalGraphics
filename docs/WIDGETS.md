@@ -200,7 +200,7 @@ Properties { Texture ("The retained image", sampler2D) = "white" }
 void surface(in CgUiInput i, inout CgUiSurface s) { s.color.a *= texture(Texture, i.uv).a; }
 ```
 
-The engine's canvas `image.shader` under `MASK` is that shader already: a material of it, `state: { blend: additive }`,
+The engine's canvas `image.shader` under `MASK` is that shader already: a material of it, `state: { BlendMode: Additive }`,
 needs no file of its own, the retainer naming `texture_parameter: _MainTex`.
 
 - A retainer box has no colour of its own: what fades it is above it, a border's content colour or a render opacity.

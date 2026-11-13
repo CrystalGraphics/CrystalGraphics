@@ -1933,7 +1933,7 @@ public sealed interface CgVfxModule extends CgVfxGpuModule {
      * Fades a particle by how much of it the scene covers, Niagara's Occlusion data interface
      * ({@code NiagaraDataInterfaceOcclusion}'s {@code QueryOcclusionFactorWithCircle} and {@code WithRectangle}): the
      * scene's depth sampled in a window round it, each sample against its own depth, and its drawn alpha times the
-     * share of the samples on screen nothing covers. With a material whose {@code depth_test} is off, a hit spark draws
+     * share of the samples on screen nothing covers. With a material whose {@code DepthTest} is false, a hit spark draws
      * whole over the floor it bursts on and fades out behind a wall or a character. Runs after the solver.
      *
      * <pre>{@code

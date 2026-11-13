@@ -746,7 +746,7 @@ CgMaterial ink = CgMaterial.load("mymod:shaders/fx/ink.shader",
   parent's Masked: it no longer cuts, and writes depth only when opaque.
 - Refused at load: `depthWrite` on a `ClipDepth` or `DepthPrepass` shader (unless a blend without `clip()` dropped it)
   or with `clip()`; `clip()` on a `DepthPrepass` shader.
-- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a file's `depth_test: false`) draws the colour, its glow and
+- **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a material asset's `DepthTest: false`) draws the colour, its glow and
   its bend over what is in front. Translucent only: refused with an opaque blend, a clip, a depth write, or on a
   `DepthPrepass` shader.
 - **`separateTranslucency()`** (Unreal's separate translucency, the shader's `TranslucencyPass Separate`) draws a

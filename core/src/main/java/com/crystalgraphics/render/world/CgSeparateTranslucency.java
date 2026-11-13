@@ -7,7 +7,7 @@ import com.crystalgraphics.render.stage.CgFrameKey;
 
 /**
  * A firing's separate translucency: Unreal's {@code PostDOFTranslucency}. Under the HDR scene a translucent draw whose
- * material says {@code separate_translucency} draws here instead of into the scene, and the post stack composites it
+ * material says {@code TranslucencyPass Separate} draws here instead of into the scene, and the post stack composites it
  * after its {@code BEFORE_SEPARATE_TRANSLUCENCY} effects ({@code CgTranslucencyComposition}), so a colour region grades
  * the scene behind it and never the effect, as Unreal's {@code PrePostProcessPass} runs before
  * {@code FTranslucencyComposition}.

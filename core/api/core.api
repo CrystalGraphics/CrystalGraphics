@@ -865,7 +865,7 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
   method public masked (F)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public order (I)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public separateTranslucency ()Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
-  method public shading (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
+  method public shading (Lcom/crystalgraphics/api/material/CgShadingModel;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public sortLayer (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler$Filter;Lcom/crystalgraphics/api/texture/CgSampler$Address;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
@@ -879,13 +879,11 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
 com/crystalgraphics/api/material/CgMaterialDefinition$Draw
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/Boolean;Ljava/lang/String;Ljava/lang/Boolean;Ljava/lang/Boolean;Ljava/lang/Float;Ljava/lang/Boolean;)V
-  method public cull ()Ljava/lang/String;
-  method public depthTest ()Ljava/lang/Boolean;
+  method public <init> (Lcom/crystalgraphics/api/state/CgCullState;Ljava/lang/Boolean;Ljava/lang/Float;Z)V
+  method public cull ()Lcom/crystalgraphics/api/state/CgCullState;
   method public depthWrite ()Ljava/lang/Boolean;
   method public maskClip ()Ljava/lang/Float;
-  method public separateTranslucency ()Ljava/lang/Boolean;
-  method public twoSided ()Ljava/lang/Boolean;
+  method public separateTranslucency ()Z
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -1007,8 +1005,8 @@ com/crystalgraphics/api/material/CgMaterialManifest$Use
 com/crystalgraphics/api/material/CgMaterialPermutation
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/lang/String;ZZLjava/lang/String;)V
-  method public blend ()Ljava/lang/String;
+  method public <init> (Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/material/CgBlendMode;ZZLjava/lang/String;)V
+  method public blend ()Lcom/crystalgraphics/api/material/CgBlendMode;
   method public clip ()Z
   method public depthTest ()Z
   method public keywords ()Ljava/util/List;
@@ -1018,7 +1016,7 @@ com/crystalgraphics/api/material/CgMaterialPermutation
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-  method public,static of (Ljava/lang/String;Ljava/util/Collection;Ljava/lang/String;ZZLjava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialPermutation;
+  method public,static of (Ljava/lang/String;Ljava/util/Collection;Lcom/crystalgraphics/api/material/CgBlendMode;ZZLjava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialPermutation;
 com/crystalgraphics/api/material/CgMaterialPreparer
   access public,final
   extends java/lang/Object

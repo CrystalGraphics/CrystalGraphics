@@ -20,7 +20,7 @@ public enum CgPostPoint {
     BEFORE_TRANSLUCENCY,
     /**
      * Onto the scene before separate translucency is laid over it (Unreal's {@code PrePostProcessPass}, where its colour
-     * correct regions grade): what draws here never touches an effect whose material says {@code separate_translucency}.
+     * correct regions grade): what draws here never touches an effect whose material says {@code TranslucencyPass Separate}.
      * Without the HDR scene that translucency is in the scene already.
      */
     BEFORE_SEPARATE_TRANSLUCENCY,

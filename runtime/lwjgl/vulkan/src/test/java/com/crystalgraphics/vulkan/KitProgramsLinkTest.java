@@ -430,7 +430,7 @@ public class KitProgramsLinkTest {
                         .replaceFirst("[.]yaml$", "");
                 CgAssetData asset = material(id, materials, kit, assets);
                 Object state = asset.resolved().get("state");
-                Object shading = state instanceof Map<?, ?> s ? s.get("shading") : null;
+                Object shading = state instanceof Map<?, ?> s ? s.get("ShadingModel") : null;
                 if (!(shading instanceof String model) || !model.startsWith(namespace + ":")) continue;
                 String shader = String.valueOf(asset.resolved().get("shader"));
                 Path port = Paths.get(portsRoot, "assets", shader.substring(0, shader.indexOf(':')),

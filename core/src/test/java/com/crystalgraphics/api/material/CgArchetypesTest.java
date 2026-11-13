@@ -31,7 +31,7 @@ public class CgArchetypesTest {
         Map<String, Object> tree = new LinkedHashMap<>();
         tree.put("_v", 1);
         tree.put("shader", "cgtest:shaders/kit_effect.shader");
-        tree.put("state", map("blend", "additive", "two_sided", true));
+        tree.put("state", map("BlendMode", "Additive", "Faces", "Both"));
         tree.put("keywords", Arrays.asList("SECOND_LAYER", "RIM_FALLOFF"));
         tree.put("values", map("_Glare", 0.5));
         tree.put("textures", map("_Tex0", map("texture", "cgtest:textures/a.png")));

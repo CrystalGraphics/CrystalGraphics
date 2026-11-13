@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
+import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialManifest;
 import com.crystalgraphics.api.material.CgMaterialPermutation;
@@ -55,7 +56,7 @@ public class CgPipelineListTest {
     }
 
     private static CgMaterialManifest manifest() {
-        CgMaterialPermutation p = CgMaterialPermutation.of(shader, Arrays.asList("FOG_ON"), "opaque", false, true, null);
+        CgMaterialPermutation p = CgMaterialPermutation.of(shader, Arrays.asList("FOG_ON"), CgBlendMode.OPAQUE, false, true, null);
         return CgMaterialManifest.builder().add(p, null, false).add(p, null, false).add(p, "NORMAL_MAP", true).build();
     }
 

@@ -50,7 +50,7 @@ static final CgMaterialDefinition SMOKE = CgMaterialDefinition.of("mymod:materia
 # assets/mymod/vfx/materials/fire.yaml
 shader: mymod:shaders/vfx/soft.shader
 usage: [sprites]
-state: { blend: additive, two_sided: true }
+state: { BlendMode: Additive, Faces: Both }
 ```
 
 The same state on a material of your own, outside a look:

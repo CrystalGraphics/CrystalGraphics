@@ -1,7 +1,6 @@
 package com.crystalgraphics.api.material;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -104,10 +103,8 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         if (p.clip()) b.clip();
         else if (draw.depthWrite() != null) b.depthWrite(draw.depthWrite());
         else if (p.depthWrite() != null) b.depthWrite(p.depthWrite());
-        if (Boolean.TRUE.equals(draw.twoSided())) b.twoSided();
-        else if ("front".equals(draw.cull())) b.cull(CgCullState.FRONT);
-        else if ("back".equals(draw.cull())) b.cull(CgCullState.BACK);
-        if (Boolean.TRUE.equals(draw.separateTranslucency())) b.separateTranslucency();
+        if (draw.cull() != null) b.cull(draw.cull());
+        if (draw.separateTranslucency()) b.separateTranslucency();
         return b.build();
     }
 
@@ -175,16 +172,15 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      * The state fields that never change a program: applied per pass ({@link CgMaterialState#onPass}). Null is the
      * archetype's own.
      *
-     * @param twoSided   both faces drawn
-     * @param cull       {@code back} or {@code front}
-     * @param depthTest  whether it tests depth
-     * @param depthWrite whether it writes depth
-     * @param maskClip   a {@code masked} material's threshold
-     * @param separateTranslucency drawn after every other translucent draw, Unreal's separate translucency
+     * @param cull       the faces it culls, from {@code Faces}: {@code Front} culls {@link CgCullState#BACK},
+     *                   {@code Back} culls {@link CgCullState#FRONT}, {@code Both} is {@link CgCullState#NONE}
+     * @param depthWrite {@code DepthWrite}
+     * @param maskClip   {@code MaskClip}: a masked material's threshold
+     * @param separateTranslucency {@code TranslucencyPass Separate}: after every other translucent draw
      */
     @Desugar
-    public record Draw(@Nullable Boolean twoSided, @Nullable String cull, @Nullable Boolean depthTest,
-                       @Nullable Boolean depthWrite, @Nullable Float maskClip, @Nullable Boolean separateTranslucency) {
+    public record Draw(@Nullable CgCullState cull, @Nullable Boolean depthWrite, @Nullable Float maskClip,
+                       boolean separateTranslucency) {
     }
 
     /** Whether it draws with {@code other}'s programs: the same permutation. */
@@ -262,53 +258,51 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             this.shader = shader;
         }
 
-        /** How it blends: Unreal's blend mode. */
+        /** {@code BlendMode}: how it blends, Unreal's blend mode. */
         public Builder blend(CgBlendMode blend) {
-            state.put("blend", BLEND_CLASS.get(blend));
+            state.put("BlendMode", CgMaterialDefinitions.BLEND_MODES.get(blend));
             return this;
         }
 
-        /** Opaque where its opacity reaches {@code clip}, discarded below: Unreal's masked blend and its clip value. */
+        /** {@code BlendMode Masked} and its {@code MaskClip}: opaque where its opacity mask reaches {@code clip}. */
         public Builder masked(float clip) {
-            state.put("blend", "masked");
-            state.put("mask_clip", clip);
+            state.put("BlendMode", "Masked");
+            state.put("MaskClip", clip);
             return this;
         }
 
-        /** Both faces drawn. */
+        /** {@code Faces Both}: Unreal's two-sided. */
         public Builder twoSided() {
-            state.put("two_sided", true);
-            return this;
+            return cull(CgCullState.NONE);
         }
 
-        /** Which faces it culls: {@link CgCullState#BACK} or {@link CgCullState#FRONT}. */
+        /** {@code Faces}, as the faces it culls: {@link CgCullState#BACK}, {@link CgCullState#FRONT} or none. */
         public Builder cull(CgCullState cull) {
-            if (cull == CgCullState.NONE) return twoSided();
-            state.put("cull", cull == CgCullState.FRONT ? "front" : "back");
+            state.put("Faces", cull == CgCullState.NONE ? "Both" : cull == CgCullState.FRONT ? "Back" : "Front");
             return this;
         }
 
-        /** Whether it tests depth. */
+        /** {@code DepthTest}: off draws it over everything, a translucent blend's only. */
         public Builder depthTest(boolean test) {
-            state.put("depth_test", test);
+            state.put("DepthTest", test);
             return this;
         }
 
-        /** Whether it writes depth, over its blend's own. */
+        /** {@code DepthWrite}, over its blend's own. */
         public Builder depthWrite(boolean write) {
-            state.put("depth_write", write);
+            state.put("DepthWrite", write);
             return this;
         }
 
-        /** Drawn after every other translucent draw, still depth-tested: Unreal's separate translucency. */
+        /** {@code TranslucencyPass Separate}: after every other translucent draw, still depth-tested. */
         public Builder separateTranslucency() {
-            state.put("separate_translucency", true);
+            state.put("TranslucencyPass", "Separate");
             return this;
         }
 
-        /** The shading model it names: {@code unlit}, {@code lit}, {@code subsurface}, or a kit's id. */
-        public Builder shading(String model) {
-            state.put("shading", model);
+        /** {@code ShadingModel}: one of {@link CgShadingModels}' models, the engine's or a kit's. */
+        public Builder shading(CgShadingModel model) {
+            state.put("ShadingModel", CgMaterialDefinitions.shadingName(model));
             return this;
         }
 
@@ -432,17 +426,6 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             CgValidation v = asset.validate(CgValidation.Usecase.LOAD);
             if (!v.valid()) throw new CgAssetException(id + ": " + v.issues());
             return CgMaterialDefinitions.compile(asset);
-        }
-
-        private static final Map<CgBlendMode, String> BLEND_CLASS = new EnumMap<>(CgBlendMode.class);
-
-        static {
-            BLEND_CLASS.put(CgBlendMode.OPAQUE, "opaque");
-            BLEND_CLASS.put(CgBlendMode.ALPHA, "translucent");
-            BLEND_CLASS.put(CgBlendMode.PREMULTIPLIED, "premultiplied");
-            BLEND_CLASS.put(CgBlendMode.ADDITIVE, "additive");
-            BLEND_CLASS.put(CgBlendMode.MODULATE, "modulate");
-            BLEND_CLASS.put(CgBlendMode.SUBTRACT, "subtract");
         }
     }
 }

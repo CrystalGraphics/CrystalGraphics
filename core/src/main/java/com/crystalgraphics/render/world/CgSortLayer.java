@@ -35,7 +35,7 @@ public final class CgSortLayer {
     /** VFX effects, each one group (CgVfxEffect). */
     public static final CgSortLayer EFFECTS = append("crystalgraphics:effects");
     /**
-     * Unreal's separate translucency: a material saying {@code separate_translucency} draws here, after every other
+     * Unreal's separate translucency: a material saying {@code TranslucencyPass Separate} draws here, after every other
      * translucent draw, still tested against the scene's depth (CgMaterialState.separateTranslucency).
      */
     public static final CgSortLayer SEPARATE_TRANSLUCENCY = append("crystalgraphics:separate_translucency");

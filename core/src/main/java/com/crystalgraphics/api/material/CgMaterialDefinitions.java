@@ -1,7 +1,9 @@
 package com.crystalgraphics.api.material;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -15,6 +17,7 @@ import java.util.WeakHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.state.CgCullState;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
@@ -24,6 +27,7 @@ import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.material.shader.CgShaderSpec;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
+import com.github.bsideup.jabel.Desugar;
 
 /**
  * The {@code material} kind's compiler: a resolved asset to a {@link CgMaterialDefinition}, every name checked against
@@ -46,7 +50,7 @@ public final class CgMaterialDefinitions {
     private static volatile CgMaterialArchetypes archetypes = CgMaterialArchetypes.FILES;
     /** Each parent's derived children, dropped with it: a definition's equality is its arrays', so its identity. */
     private static final Map<CgMaterialDefinition, Map<Object, CgMaterialDefinition>> DERIVED = new WeakHashMap<>();
-    /** The threshold a {@code masked} material's {@code mask_clip} sets: what {@code CG_CLIP_THRESHOLD} reads. */
+    /** The threshold a masked material's {@code MaskClip} sets: what {@code CG_CLIP_THRESHOLD} reads. */
     static final String CLIP = "_Clip";
 
     private CgMaterialDefinitions() {
@@ -98,16 +102,14 @@ public final class CgMaterialDefinitions {
                         + "declares " + parsed.features());
             }
         }
-        Map<Object, Object> state = map(m.get("state"));
-        // No blend keeps the archetype's own, as an instance without bOverride_BlendMode keeps its parent's.
-        String blend = state != null && state.get("blend") instanceof String ? (String) state.get("blend") : null;
-        String shading = state != null && state.get("shading") instanceof String ? (String) state.get("shading") : null;
+        // No BlendMode keeps the archetype's own, as an instance without bOverride_BlendMode keeps its parent's.
+        AssetState state = assetState(id, map(m.get("state")));
         CgShadingModel model = null;
-        if (shading != null) {
-            model = CgShadingModels.get(shading);
+        if (state.shading() != null) {
+            model = CgShadingModels.get(state.shading());
             if (model == null) {
-                throw new CgAssetException(id + " names shading model " + shading + ", which nothing registered: a kit "
-                        + "registers its own (CgShadingModels.registerKit)");
+                throw new CgAssetException(id + " names ShadingModel " + state.shading() + ", which nothing registered:"
+                        + " a kit registers its own (CgShadingModels.registerKit)");
             }
             String k = model.keyword();
             if (k != null && parsed.features().contains(k) && !keywords.contains(k)) {
@@ -120,13 +122,12 @@ public final class CgMaterialDefinitions {
             throw new CgAssetException(id + " has a post block, but " + shader + " is a "
                     + domain.name().toLowerCase(Locale.ROOT) + " archetype: a post material's is tagged \"Domain\" = \"Post\"");
         }
-        boolean depthTest = state == null || !Boolean.FALSE.equals(state.get("depth_test"));
-        if (!depthTest && ("opaque".equals(blend) || "masked".equals(blend))) {
-            throw new CgAssetException(id + " turns depth_test off on a " + blend + " blend: only a translucent blend may"
-                    + " (Unreal's bDisableDepthTest)");
+        if (!state.depthTest() && state.blend() == CgBlendMode.OPAQUE) {
+            throw new CgAssetException(id + " turns DepthTest off on BlendMode " + (state.clip() ? "Masked" : "Opaque")
+                    + ": only a translucent blend may (Unreal's bDisableDepthTest)");
         }
-        CgMaterialPermutation permutation = CgMaterialPermutation.of(shader,
-                new TreeSet<>(keywords), blend, "masked".equals(blend), depthTest, shading);
+        CgMaterialPermutation permutation = CgMaterialPermutation.of(shader, new TreeSet<>(keywords), state.blend(),
+                state.clip(), state.depthTest(), model == null ? null : model.id());
 
         Map<String, float[]> constants = new LinkedHashMap<>();
         Map<String, Object> forms = new LinkedHashMap<>();
@@ -170,15 +171,12 @@ public final class CgMaterialDefinitions {
                 }
             }
         }
-        CgMaterialDefinition.Draw draw = new CgMaterialDefinition.Draw(bool(state, "two_sided"),
-                state != null && state.get("cull") instanceof String ? (String) state.get("cull") : null,
-                bool(state, "depth_test"), bool(state, "depth_write"),
-                state != null && state.get("mask_clip") instanceof Number ? ((Number) state.get("mask_clip")).floatValue()
-                        : null, bool(state, "separate_translucency"));
+        CgMaterialDefinition.Draw draw = new CgMaterialDefinition.Draw(state.cull(), state.depthWrite(),
+                state.maskClip(), state.separateTranslucency());
         if (permutation.clip() && draw.maskClip() != null && !constants.containsKey(CLIP)) {
             CgMaterialProperty clip = props.get(CLIP);
             if (clip == null) {
-                throw new CgAssetException(id + " sets mask_clip, but " + shader + " declares no " + CLIP
+                throw new CgAssetException(id + " sets MaskClip, but " + shader + " declares no " + CLIP
                         + " for the threshold to reach");
             }
             constants.put(CLIP, floats(id, CLIP, clip, draw.maskClip()));
@@ -359,8 +357,104 @@ public final class CgMaterialDefinitions {
         return out;
     }
 
+    // ── state ─────────────────────────────────────────────────────────────────────────
+
+    /** The {@code Material { }} properties an asset's {@code state} may set over its shader's; the rest are the shader's. */
+    private static final List<String> STATE = Collections.unmodifiableList(Arrays.asList("BlendMode", "ShadingModel", "Faces",
+            "MaskClip", "DepthTest", "DepthWrite", "TranslucencyPass"));
+    /** {@code BlendMode}'s values but {@code Masked}, which is {@link CgBlendMode#OPAQUE} with a clip. */
+    static final Map<CgBlendMode, String> BLEND_MODES = new EnumMap<>(CgBlendMode.class);
+    /** {@code ShadingModel}'s engine values by model; a kit's model is written by its id. */
+    private static final Map<CgShadingModel, String> SHADING = new HashMap<>();
+
+    static {
+        BLEND_MODES.put(CgBlendMode.OPAQUE, "Opaque");
+        BLEND_MODES.put(CgBlendMode.ALPHA, "Translucent");
+        BLEND_MODES.put(CgBlendMode.PREMULTIPLIED, "AlphaComposite");
+        BLEND_MODES.put(CgBlendMode.ADDITIVE, "Additive");
+        BLEND_MODES.put(CgBlendMode.MODULATE, "Modulate");
+        BLEND_MODES.put(CgBlendMode.SUBTRACT, "Subtract");
+        SHADING.put(CgShadingModels.UNLIT, "Unlit");
+        SHADING.put(CgShadingModels.LIT, "WorldLit");
+        SHADING.put(CgShadingModels.SUBSURFACE, "Subsurface");
+    }
+
+    /** {@code model} as an asset's {@code ShadingModel} names it. */
+    static String shadingName(CgShadingModel model) {
+        String name = SHADING.get(model);
+        return name != null ? name : model.id();
+    }
+
+    /**
+     * An asset's {@code state}, read: each null where the asset leaves its shader's own.
+     *
+     * @param blend   {@code BlendMode}, {@code Masked} as {@link CgBlendMode#OPAQUE} with {@code clip}
+     * @param shading the id of the {@code ShadingModel}'s model
+     */
+    @Desugar
+    private record AssetState(@Nullable CgBlendMode blend, boolean clip, @Nullable String shading,
+                              @Nullable CgCullState cull, @Nullable Float maskClip, boolean depthTest,
+                              @Nullable Boolean depthWrite, boolean separateTranslucency) {
+    }
+
+    /** {@code state} by {@code Material { }}'s names and values, each refused naming the asset. */
+    private static AssetState assetState(String id, @Nullable Map<Object, Object> state) {
+        if (state == null) state = Collections.emptyMap();
+        for (Object key : state.keySet()) {
+            if (!STATE.contains(String.valueOf(key))) {
+                throw new CgAssetException(id + " sets state " + key + ": an asset sets " + STATE + " over its shader's"
+                        + " Material { }, and the rest is the shader's");
+            }
+        }
+        CgBlendMode blend = null;
+        boolean clip = false;
+        Object b = state.get("BlendMode");
+        if ("Masked".equals(b)) {
+            blend = CgBlendMode.OPAQUE;
+            clip = true;
+        } else if (b != null) {
+            for (Map.Entry<CgBlendMode, String> e : BLEND_MODES.entrySet()) if (e.getValue().equals(b)) blend = e.getKey();
+            if (blend == null) {
+                throw new CgAssetException(id + " sets BlendMode " + b + "; it is Masked or one of " + BLEND_MODES.values());
+            }
+        }
+        String shading = null;
+        Object s = state.get("ShadingModel");
+        if (s != null) {
+            for (Map.Entry<CgShadingModel, String> e : SHADING.entrySet()) if (e.getValue().equals(s)) shading = e.getKey().id();
+            if (shading == null && String.valueOf(s).indexOf(':') > 0) shading = String.valueOf(s);
+            if (shading == null) {
+                throw new CgAssetException(id + " sets ShadingModel " + s + "; it is one of " + SHADING.values()
+                        + " or a kit's model by its id (kakarot:cell_tone)");
+            }
+        }
+        CgCullState cull = null;
+        Object f = state.get("Faces");
+        if (f != null) {
+            cull = "Front".equals(f) ? CgCullState.BACK : "Back".equals(f) ? CgCullState.FRONT
+                    : "Both".equals(f) ? CgCullState.NONE : null;
+            if (cull == null) throw new CgAssetException(id + " sets Faces " + f + "; it is Front, Back or Both");
+        }
+        Object clipAt = state.get("MaskClip");
+        if (clipAt != null && !(clipAt instanceof Number)) {
+            throw new CgAssetException(id + " sets MaskClip " + clipAt + ", which is not a number");
+        }
+        Object pass = state.get("TranslucencyPass");
+        if (pass != null && !"Separate".equals(pass)) {
+            throw new CgAssetException(id + " sets TranslucencyPass " + pass + ": an asset may move its material to"
+                    + " Separate only; Standard, AfterDistortion and Overlay are its shader's");
+        }
+        Boolean depthTest = toggle(id, state, "DepthTest");
+        return new AssetState(blend, clip, shading, cull, clipAt == null ? null : ((Number) clipAt).floatValue(),
+                depthTest == null || depthTest, toggle(id, state, "DepthWrite"), pass != null);
+    }
+
+    /** {@code key}'s {@code On} or {@code Off}, which YAML reads as true and false; null where it is not set. */
     @Nullable
-    private static Boolean bool(@Nullable Map<Object, Object> state, String key) {
-        return state != null && state.get(key) instanceof Boolean ? (Boolean) state.get(key) : null;
+    private static Boolean toggle(String id, Map<Object, Object> state, String key) {
+        Object v = state.get(key);
+        if (v == null || v instanceof Boolean) return (Boolean) v;
+        throw new CgAssetException(id + " sets " + key + " " + v + "; an asset's " + key + " is On or Off"
+                + ("Strict".equals(v) ? " (Strict is its shader's)" : ""));
     }
 }

@@ -783,7 +783,7 @@ collisions and what the last one does.
 ## Over the floor, hidden behind walls: occlusion
 
 A hit spark bursting at a fighter's chest reaches the floor, and the floor's depth cuts it on a hard line. Unreal's
-answer is two parts: its material drawn with no depth test (`state: { depth_test: false }`, [materials](materials.md)),
+answer is two parts: its material drawn with no depth test (`state: { DepthTest: false }`, [materials](materials.md)),
 so the floor no longer cuts it, and `crystalgraphics:occlusion`, Niagara's Occlusion data interface, so it still fades
 out behind a wall or a character. Each step the module samples the scene's depth in a window round each particle,
 compares every sample with the particle's own depth, and multiplies its drawn alpha by the share of the samples on
