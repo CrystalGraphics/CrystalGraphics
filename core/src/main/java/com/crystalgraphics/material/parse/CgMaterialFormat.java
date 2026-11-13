@@ -462,7 +462,10 @@ final class CgMaterialFormat {
     // ── global ──────────────────────────────────────────────────────────────────
 
     private static Lowered lowerGlobal(List<Item> items, String path) {
-        Map<String, String> m = properties(block(items, "Material"), List.of("SceneColorMargin"), path);
+        Map<String, String> m = properties(block(items, "Material"), List.of("SceneColorMargin", "ColorSpace"), path);
+        // What its colour is: Target, written as it means, by default; sRGB decoded into a linear scene, Linear encoded
+        // onto an encoded target
+        String colorSpace = choice(m, "ColorSpace", "Target", path, "Target", "sRGB", "Linear");
         Item state = block(items, "RenderState");
         List<Item> code = code(items, path);
         Map<String, List<Item>> functions = functions(code);
@@ -491,7 +494,7 @@ final class CgMaterialFormat {
         refuseNamedBuffers(code, uses, path);
         for (String u : uses) out.append("#pragma cg_use ").append(u).append('\n');
         out.append("Tags { \"RenderType\" = \"Opaque\" \"Lighting\" = \"Unlit\" \"Fog\" = \"Off\" \"Media\" = \"Off\"")
-           .append(" \"ColorSpace\" = \"Target\"");
+           .append(" \"ColorSpace\" = \"").append(colorSpace).append('"');
         if (m.containsKey("SceneColorMargin")) {
             out.append(" \"SceneColorMargin\" = \"").append(m.get("SceneColorMargin")).append('"');
         }
@@ -632,11 +635,14 @@ final class CgMaterialFormat {
                .append("    void fragment(in v2f i, out vec4 fragColor) {\n")
                .append("        CgScreen _cg_screen;\n        _cg_screen.uv = i.uv;\n        _cg_screen.pixel = gl_FragCoord.xy;\n")
                .append("        CgPostSurface s;\n")
-               .append("        s.color = ").append(readsColor ? "CG_SCENE_COLOR(i.uv).rgb" : "vec3(0.0)").append(";\n")
+               .append("        s.color = ").append(readsColor ? "cg_PostDecode(CG_SCENE_COLOR(i.uv).rgb)" : "vec3(0.0)").append(";\n")
                .append("        s.opacity = 1.0;\n")
-               .append("        ").append(MATERIAL_SURFACE).append("(_cg_screen, s);\n")
-               .append("        fragColor = vec4(").append(namesOpacity ? "mix(CG_SCENE_COLOR(i.uv).rgb, s.color, s.opacity)" : "s.color")
-               .append(", 1.0);\n    }\n}\n");
+               .append("        ").append(MATERIAL_SURFACE).append("(_cg_screen, s);\n");
+            // Linear light in and out: the step writing the scene encodes it where the scene is stored sRGB; a step
+            // into its own target keeps linear
+            String result = namesOpacity ? "mix(cg_PostDecode(CG_SCENE_COLOR(i.uv).rgb), s.color, s.opacity)" : "s.color";
+            if (!set.containsKey("Target")) result = "cg_PostEncode(" + result + ")";
+            out.append("        fragColor = vec4(").append(result).append(", 1.0);\n    }\n}\n");
         }
         return new Lowered(out.toString(), new CgParsedShader.Format(CgMaterialDomain.POST, null, false, location));
     }

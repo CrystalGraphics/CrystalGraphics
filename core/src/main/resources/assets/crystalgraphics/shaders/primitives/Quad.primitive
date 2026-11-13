@@ -1,8 +1,23 @@
 // Quad: CgQuadBatch's quads (the box, images, gradients), grown half a pixel when rotated so the edge ramp fits
-// (CG_QUAD_EDGE_*). A #domain ui material's surface() runs at CG_SURFACE; around it the clip, the item's opacity and
-// premultiplying, clamped as a blend unit clamps. A layer at screen resolution is premultiplied already.
+// (CG_QUAD_EDGE_*). A #domain ui material's surface() runs at CG_SURFACE; around it the clip, the item's opacity, and
+// the write its blend wants (cg_UiWrite), clamped as a blend unit clamps. A layer at screen resolution is premultiplied
+// already. cg_UiTexture(tex, i) samples a texture at i.uv, filtered across texels when the quad is rotated, as an image
+// must be or its texels shimmer.
 Primitive { Queue Transparent }
 EngineBuffers { quad clip shape }
+
+Declarations {
+    #include "crystalgraphics:shaders/lib/texel.glsl"
+    #if !defined(CG_VERTEX_STAGE)
+    vec4 cg_UiTexture(sampler2D tex, CgUiInput i) {
+        return CG_QUAD_EDGE_ROTATED ? cg_texel_aa_sample(tex, i.uv, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER) : texture(tex, i.uv);
+    }
+    vec4 cg_UiTexture(sampler2DArray tex, CgUiInput i, float layer) {
+        vec3 uvw = vec3(i.uv, layer);
+        return CG_QUAD_EDGE_ROTATED ? cg_texel_aa_sample(tex, uvw, CG_QUAD_UV_RECT, CG_QUAD_EDGE_FILTER) : texture(tex, uvw);
+    }
+    #endif
+}
 
 RenderState {
     Blend ONE ONE_MINUS_SRC_ALPHA
@@ -35,10 +50,5 @@ void fragment(in v2f i, out vec4 fragColor) {
     s.premultiplied = false;
     CG_SURFACE(_cg_ui, s);
     float _cg_k = s.coverage * _cg_clip * CG_QUAD_OPACITY;
-    if (s.premultiplied) {
-        fragColor = s.color * _cg_k;
-    } else {
-        float _cg_a = clamp(s.color.a * _cg_k, 0.0, 1.0);
-        fragColor = vec4(clamp(s.color.rgb, 0.0, 1.0) * _cg_a, _cg_a);
-    }
+    fragColor = cg_UiWrite(s, _cg_k);
 }

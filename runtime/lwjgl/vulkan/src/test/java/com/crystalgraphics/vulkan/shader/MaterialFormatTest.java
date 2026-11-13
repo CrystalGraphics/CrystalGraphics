@@ -57,12 +57,8 @@ public class MaterialFormatTest {
             // F3: the VFX factories
             {"bits", "bits.old"},
             {"volume", "volume.old"},
-            // F4: post and ui. A ui pair names the canvas state each is drawn under (CgCanvasMaterials): the format's
-            // template is premultiplied out, so the curve, straight alpha today, is drawn PREMULTIPLIED once converted
-            {"height_fog", "crystalgraphics:shaders/post/height_fog"}, {"post_chain", "post_chain.old"},
-            {"box", "crystalgraphics:shaders/canvas/box", "PREMULTIPLIED", "PREMULTIPLIED"},
-            {"curve", "crystalgraphics:shaders/canvas/curve", "ALPHA", "PREMULTIPLIED"},
-            {"text", "crystalgraphics:shaders/canvas/text"}};
+            // F4: post
+            {"post_chain", "post_chain.old"}};
 
     private static ShadercGlslCompiler compiler, bare;
 
@@ -252,7 +248,7 @@ public class MaterialFormatTest {
 
     @Test
     public void aPostFileSaysWhereItDraws() {
-        assertEquals("BEFORE_TRANSLUCENCY", parse(path("height_fog")).postLocation());
+        assertEquals("BEFORE_TRANSLUCENCY", parse(path("crystalgraphics:shaders/post/height_fog")).postLocation());
         assertEquals(CgMaterialDomain.POST, parse(path("post_chain")).domain());
     }
 

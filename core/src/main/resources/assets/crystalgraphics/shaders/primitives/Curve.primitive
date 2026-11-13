@@ -53,10 +53,5 @@ void fragment(in v2f i, out vec4 fragColor) {
     CG_SURFACE(_cg_ui, s);
     if ((s.premultiplied ? s.color.a : s.color.a * s.coverage * CG_CURVE_OPACITY) <= (1.0 / 255.0)) discard;
     float _cg_k = s.coverage * _cg_clip * CG_CURVE_OPACITY;
-    if (s.premultiplied) {
-        fragColor = s.color * _cg_k;
-    } else {
-        float _cg_a = clamp(s.color.a * _cg_k, 0.0, 1.0);
-        fragColor = vec4(clamp(s.color.rgb, 0.0, 1.0) * _cg_a, _cg_a);
-    }
+    fragColor = cg_UiWrite(s, _cg_k);
 }

@@ -48,8 +48,8 @@ import java.util.List;
  *   <li>Each is one shared instance: never set a property on it. A caller that does (a texture it keeps) makes its
  *       own with {@link #newBox()} or {@link #newCurve()}. A fade is per item, never a property: {@code opacity(f)}
  *       on the quad or curve, which every material here but the coverage rasters reads.</li>
- *   <li>On the screen every item antialiases its own edges when rotated, and an image filters its texels; in the
- *       world the scene's own antialiasing does. A screen curve takes each fragment's point from the window position,
+ *   <li>Every quad antialiases its own edges when rotated, and an image filters its texels (the Quad primitive). A
+ *       screen curve takes each fragment's point from the window position,
  *       exact for a 2D camera, so a fill tessellated into cells partitions its pixels.</li>
  *   <li>Edges antialias over one unit of the canvas's space: a window pixel on {@code frame.canvas()}, softer by the
  *       scale on {@code guiScaledCanvas()}.</li>
@@ -192,7 +192,7 @@ public final class CgCanvasMaterials {
         if (m == null) {
             boolean array = kind == IMAGE_ARRAY || kind == MASK_ARRAY;
             m = CgMaterial.load(array ? IMAGE_ARRAY_SHADER : IMAGE_SHADER, state(blend))
-                    .keyword("MASK", kind == MASK || kind == MASK_ARRAY).keyword("SCREEN", screen);
+                    .keyword("MASK", kind == MASK || kind == MASK_ARRAY);
             m.precache();
             made[at] = m;
         }

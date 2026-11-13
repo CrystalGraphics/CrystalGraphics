@@ -5,14 +5,20 @@
 //
 //   BLOOM  the bloom chain's level 0 (every level already summed into it), tinted, added; or mixed in, energy-conserving
 //   FADE   _Fade.a of the way to _Fade.rgb, last: dst * (1 - a) + rgb with the fade's share in both
-#type none
-#pragma cg_feature BLOOM
-#pragma cg_feature FADE
-#pragma cg_permutation BLOOM FADE
+#domain global
 #include "crystalgraphics:shaders/lib/post/composite.glsl"
 
-Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "Fog" = "Off" "ColorSpace" = "Target" }
-Queue = "Overlay"
+Keywords {
+    BLOOM ("BLOOM", switched)
+    FADE ("FADE", switched)
+}
+
+RenderState {
+    Blend ONE ONE_MINUS_SRC_ALPHA
+    DepthTest ALWAYS
+    DepthWrite OFF
+    Cull OFF
+}
 
 Properties {
     _Bloom     ("The bloom chain", sampler2D) = "black"
@@ -24,35 +30,25 @@ Properties {
 
 struct v2f { vec2 uv; };
 
-Pass {
-    Tags { "LightMode" = "Forward" }
-    RenderState {
-        Blend ONE ONE_MINUS_SRC_ALPHA
-        DepthTest ALWAYS
-        DepthWrite OFF
-        Cull OFF
-    }
+void vertex(out v2f o) {
+    // A triangle covering the screen: (-1,-1), (3,-1), (-1,3).
+    vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
+    o.uv = p * 0.5 + 0.5;
+    gl_Position = vec4(p, 0.0, 1.0);
+}
 
-    void vertex(out v2f o) {
-        // A triangle covering the screen: (-1,-1), (3,-1), (-1,3).
-        vec2 p = vec2(float((CG_VERTEX_ID & 1) << 2) - 1.0, float((CG_VERTEX_ID & 2) << 1) - 1.0);
-        o.uv = p * 0.5 + 0.5;
-        gl_Position = vec4(p, 0.0, 1.0);
-    }
-
-    void fragment(in v2f i, out vec4 fragColor) {
-        vec3 added = vec3(0.0);
-        float lost = 0.0;
+void fragment(in v2f i, out vec4 fragColor) {
+    vec3 added = vec3(0.0);
+    float lost = 0.0;
 #ifdef BLOOM
-        vec3 bloom = textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb;
-        float share = mix(_Intensity, clamp(_Intensity, 0.0, 1.0), _Conserve);
-        added += bloom * share;
-        lost = _Conserve * share;
+    vec3 bloom = textureLod(_Bloom, i.uv, 0.0).rgb * _Tint.rgb;
+    float share = mix(_Intensity, clamp(_Intensity, 0.0, 1.0), _Conserve);
+    added += bloom * share;
+    lost = _Conserve * share;
 #endif
 #ifdef FADE
-        added = added * (1.0 - _Fade.a) + _Fade.rgb * _Fade.a;
-        lost = 1.0 - (1.0 - lost) * (1.0 - _Fade.a);
+    added = added * (1.0 - _Fade.a) + _Fade.rgb * _Fade.a;
+    lost = 1.0 - (1.0 - lost) * (1.0 - _Fade.a);
 #endif
-        fragColor = vec4(post_round8(added, gl_FragCoord.xy, floor(CG_TIME * 60.0)), lost);
-    }
+    fragColor = vec4(post_round8(added, gl_FragCoord.xy, floor(CG_TIME * 60.0)), lost);
 }

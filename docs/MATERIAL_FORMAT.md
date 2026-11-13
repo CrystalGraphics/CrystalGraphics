@@ -520,7 +520,7 @@ the engine draws the screen-covering triangle, holds depth off and blends nothin
 Material { Location AFTER_WORLD }
 Properties { _Amount ("How grey", float, range(0, 1)) = 1 }
 void surface(in CgScreen i, inout CgPostSurface s) {
-    vec3 c = CG_SCENE_COLOR(i.uv).rgb;
+    vec3 c = s.color;
     s.color = mix(c, vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), _Amount * POST_WEIGHT);
 }
 ```
@@ -553,8 +553,11 @@ on.close();                              // removes it
 
 `Material { }` takes `Location` and `SceneColorMargin`: how far past its own pixel it samples the scene, 0.001 (its
 own pixel) by default; a blur reading its neighbours sets more. It reads the scene by naming it: `CG_SCENE_COLOR(uv)`, `CG_SCENE_EYE_DEPTH(uv)`, `CG_CUSTOM_STENCIL`,
-`CG_CUSTOM_DATA`, `CG_SCENE_WORLD_NORMAL`. Its colour is in its target's encoding (linear before the composite, the
-screen's after): `CG_LINEAR_SCENE` says which.
+`CG_CUSTOM_DATA`, `CG_SCENE_WORLD_NORMAL`.
+
+**It works in linear light**, as Unreal's do: `s.color` starts as the scene decoded, and what it writes is encoded back
+where the screen is stored sRGB. Reading the scene anywhere but its own pixel, decode it the same way:
+`cg_PostDecode(CG_SCENE_COLOR(uv).rgb)`. A step into its own `Target` keeps linear.
 
 ### 7.1 Several steps
 
@@ -570,7 +573,7 @@ Properties { _Threshold ("Brightness that glows", float) = 1  _Strength ("Glow",
 Step bright {
     Target RGBA16_FLOAT  Scale 0.5                   // its own texture: the format, half the screen's size
     void surface(in CgScreen i, inout CgPostSurface s) {
-        s.color = max(CG_SCENE_COLOR(i.uv).rgb - _Threshold, 0.0);
+        s.color = max(s.color - _Threshold, 0.0);
     }
 }
 
@@ -584,7 +587,7 @@ Step blur {
 
 Step final {                                         // the last: onto the screen
     void surface(in CgScreen i, inout CgPostSurface s) {
-        s.color = CG_SCENE_COLOR(i.uv).rgb + CG_STEP(blur, i.uv).rgb * _Strength;
+        s.color += CG_STEP(blur, i.uv).rgb * _Strength;
     }
 }
 ```
@@ -656,8 +659,8 @@ Material { Primitive Text }          // Quad (default) | Curve | Text | mymod:Ri
 
 | `Primitive` | Drawn with | Before `surface()` | After it |
 |---|---|---|---|
-| `Quad` (default) | `canvas.quad(material)`: boxes, images, bars | `uv`, `param`, `size`, `color`, the custom values; `coverage` the quad's antialiased edge | clip, opacity, premultiply |
-| `Curve` | `canvas.curve(...)`, `triangle`, `cell`: lines, Bézier strokes, fills | `color` along the stroke, `uv.x` = `t` along it, `local` the point; `coverage` the stroke's | drops what is invisible, then clip, opacity, premultiply |
+| `Quad` (default) | `canvas.quad(material)`: boxes, images, bars | `uv`, `param`, `size`, `color`, the custom values; `coverage` the quad's antialiased edge; `cg_UiTexture(tex, i)` | clip, opacity, the blend's write |
+| `Curve` | `canvas.curve(...)`, `triangle`, `cell`: lines, Bézier strokes, fills | `color` along the stroke, `uv.x` = `t` along it, `local` the point; `coverage` the stroke's | drops what is invisible, then clip, opacity, the blend's write |
 | `Text` | a text style's layer (`CgTextMaterials`) | `color` the paint, its gradient applied | the glyph's coverage (bitmap or MSDF), its gamma, premultiply |
 
 ```glsl
@@ -669,8 +672,20 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
 }
 ```
 
-A ui material is always premultiplied out, so the canvas draws it with its `PREMULTIPLIED` blend; a material loaded
-plainly (`CgMaterial.load(path)`) already draws so.
+**Drawn under any blend.** A ui material draws `PREMULTIPLIED` as loaded (`CgMaterial.load(path)`); drawn under another
+(`CgMaterial.load(path, CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build())`), the primitive writes what
+that blend wants, as Unreal's simple element shader does: straight alpha under `ALPHA`, weighed by its alpha under
+`ADDITIVE` and `SUBTRACT`, toward white where it is transparent under `MODULATE`. Your `surface()` is the same for all.
+
+**`cg_UiTexture(tex, i)`** samples a texture at `i.uv` on a `Quad`, filtered across texels while the quad is rotated, as
+an image must be or its texels shimmer; `cg_UiTexture(tex, i, layer)` reads a 2D array's layer.
+
+```glsl
+// An image tinted by the quad's colour, under whichever blend it is drawn
+#domain ui
+Properties { _MainTex ("Image", sampler2D) = "white" }
+void surface(in CgUiInput i, inout CgUiSurface s) { s.color = cg_UiTexture(_MainTex, i) * i.color; }
+```
 
 ### 8.3 Writing your own primitive
 
@@ -687,7 +702,7 @@ Declarations { #include "mymod:shaders/ring.glsl" }   // a #pragma here goes to 
 Properties { }                                      // values every material on it gets (optional)
 
 RenderState {
-    Blend ONE ONE_MINUS_SRC_ALPHA                   // premultiplied, as every ui material
+    Blend ONE ONE_MINUS_SRC_ALPHA                   // premultiplied, as a ui material is loaded
     Cull OFF
     DepthTest LEQUAL
     DepthWrite OFF
@@ -715,9 +730,7 @@ void fragment(in v2f i, out vec4 fragColor) {
     s.coverage = ring_coverage(ui.param);           // what makes it a ring
     s.premultiplied = false;
     CG_SURFACE(ui, s);                              // the material runs here
-    float a = clamp(s.color.a * s.coverage * clip * CG_QUAD_OPACITY, 0.0, 1.0);
-    fragColor = s.premultiplied ? s.color * s.coverage * clip * CG_QUAD_OPACITY
-                                : vec4(clamp(s.color.rgb, 0.0, 1.0) * a, a);
+    fragColor = cg_UiWrite(s, s.coverage * clip * CG_QUAD_OPACITY);   // as the draw's blend wants it
 }
 ```
 
@@ -731,6 +744,9 @@ Java. A primitive over the canvas's own quads, like this ring, needs none: `canv
 For the renderer's own passes and a consumer's own mesh pass: a raw vertex and fragment pair, no outputs, nothing
 applied for you. The one domain that writes `gl_Position` and a `RenderState`, and names the engine buffers it reads
 (`EngineBuffers { curve clip }`), since nothing else draws it.
+
+Its colour is written as it means it (`ColorSpace Target`); `Material { ColorSpace sRGB }` has the engine decode it into
+a linear scene, `ColorSpace Linear` encode it onto an encoded target, as a surface material's.
 
 ```glsl
 #domain global

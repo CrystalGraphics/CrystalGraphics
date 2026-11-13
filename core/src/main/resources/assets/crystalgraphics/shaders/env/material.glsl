@@ -61,5 +61,29 @@ struct CgUiInput {
 struct CgUiSurface {
     vec4 color;              // the element's colour, straight alpha
     float coverage;          // the element's antialiased edge: how much of the pixel it covers
-    bool premultiplied;      // false: color is already premultiplied (a layer drawn at screen resolution)
+    bool premultiplied;      // true: color is already premultiplied (a layer drawn at screen resolution)
 };
+
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// What a ui element writes, k its alpha's scale (coverage, clip, opacity), as its pass's blend wants it (CG_FOG_MODE),
+// one form per blend mode as Unreal's SimpleElementPixelShader: premultiplied over what is behind, straight alpha,
+// added weighed by its alpha, or multiplied toward white where it is transparent. What a primitive ends with.
+vec4 cg_UiWrite(CgUiSurface s, float k) {
+    vec4 p;
+    if (s.premultiplied) {
+        p = s.color * k;
+    } else {
+        float a = clamp(s.color.a * k, 0.0, 1.0);
+        p = vec4(clamp(s.color.rgb, 0.0, 1.0) * a, a);
+    }
+#if CG_FOG_MODE == 1
+    return p;
+#elif CG_FOG_MODE == 2
+    return vec4(p.rgb, 0.0);
+#elif CG_FOG_MODE == 3
+    return vec4(vec3(1.0 - p.a) + p.rgb, 1.0);
+#else
+    return p.a > 0.0 ? vec4(p.rgb / p.a, p.a) : vec4(0.0);
+#endif
+}
+#endif

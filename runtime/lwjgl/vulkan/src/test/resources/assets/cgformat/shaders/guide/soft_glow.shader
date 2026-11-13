@@ -6,7 +6,7 @@ Properties { _Threshold ("Brightness that glows", float) = 1  _Strength ("Glow",
 Step bright {
     Target RGBA16_FLOAT  Scale 0.5
     void surface(in CgScreen i, inout CgPostSurface s) {
-        s.color = max(CG_SCENE_COLOR(i.uv).rgb - _Threshold, 0.0);
+        s.color = max(s.color - _Threshold, 0.0);
     }
 }
 
@@ -20,6 +20,6 @@ Step blur {
 
 Step final {
     void surface(in CgScreen i, inout CgPostSurface s) {
-        s.color = CG_SCENE_COLOR(i.uv).rgb + CG_STEP(blur, i.uv).rgb * _Strength;
+        s.color += CG_STEP(blur, i.uv).rgb * _Strength;
     }
 }
