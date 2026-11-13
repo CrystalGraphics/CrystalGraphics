@@ -1,6 +1,8 @@
 package com.crystalgraphics.audio;
 
 import java.util.Arrays;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.LockSupport;
@@ -11,6 +13,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.frame.CgTickFunction;
@@ -63,6 +66,8 @@ import com.crystalgraphics.util.trace.CgChannels;
 public final class CgAudioEngine extends CgWorldSubsystem {
 
     private static final Logger LOGGER = LogManager.getLogger("CgAudio");
+    /** Sounds that could not be read, each warned of once. */
+    private final Set<String> unreadable = ConcurrentHashMap.newKeySet();
     private static final int LOAD_ZONE = CgTrace.name("audio.load"), START_ZONE = CgTrace.name("audio.start");
 
     /**
@@ -294,7 +299,7 @@ public final class CgAudioEngine extends CgWorldSubsystem {
     /**
      * Plays {@code ref} at a point (or unplaced, where {@code x} is NaN) at {@code gain} and {@code pitch}, looping or
      * not, from audio time {@code at} (NaN: at once); a pick rolled from {@code seed}. Its id, 0 where every slot is
-     * taken.
+     * taken or the sound cannot be read (logged once per sound).
      */
     public long play(CgSoundRef ref, CgSoundClass soundClass, double x, double y, double z, float gain, float pitch,
             boolean loop, double at, long seed) {
@@ -317,6 +322,10 @@ public final class CgAudioEngine extends CgWorldSubsystem {
                 case CUE -> sound = sounds.load(r.id(), r.file(), r.stream());
                 default -> sound = sounds.load(r.id(), r.stream());
             }
+        } catch (CgAssetException e) {
+            // What plays it (a sequence, a cue) plays on without it, as Unreal's audio device skips a missing wave
+            if (unreadable.add(r.id())) LOGGER.warn("{}; it plays nothing", e.getMessage());
+            return 0L;
         }
         long id;
         try (CgTrace.Zone starting = CgTrace.zone(CgChannels.MISC, START_ZONE)) {
