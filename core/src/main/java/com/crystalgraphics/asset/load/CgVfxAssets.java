@@ -154,9 +154,22 @@ public final class CgVfxAssets {
         }
     };
 
-    /** Replaces the process's assets: a host with a registry of its own, or a test. */
+    /**
+     * Replaces the process's assets: a host with a registry of its own, or a test. The assets it replaces are
+     * {@linkplain #close closed}, so their loads stop and no longer keep the loading screen up. On the asset loop's
+     * thread when it replaces any.
+     *
+     * <pre>{@code
+     * CgAssetRegistry registry = new CgAssetRegistry();
+     * registry.registerEngine();
+     * registry.scan("mymod", kitFolder, CgAssetSource.DEV);
+     * CgVfxAssets.install(new CgVfxAssets(registry));   // what the engine mounted and loaded ahead is dropped
+     * }</pre>
+     */
     public static synchronized void install(CgVfxAssets assets) {
+        CgVfxAssets replaced = instance;
         instance = assets;
+        if (replaced != null && replaced != assets) replaced.close();
         if (!listening) {
             listening = true;
             CgAssetReloader.addListener(SAVES);
@@ -299,6 +312,18 @@ public final class CgVfxAssets {
             else t.span().close();
             it.remove();
         }
+    }
+
+    /**
+     * Stops these assets: the pipeline's jobs cancelled, and each namespace's load task ended, since nothing drains them
+     * again. What {@link #install} does to the assets it replaces. The asset loop's thread.
+     */
+    public void close() {
+        loop.close();
+        if (tracked.isEmpty()) return;
+        LOGGER.info("assets replaced: {} loads dropped unfinished", tracked.keySet());
+        for (Tracked t : tracked.values()) t.span().close();
+        tracked.clear();
     }
 
     private static List<String> failuresOf(List<CgLoadHandle> handles) {

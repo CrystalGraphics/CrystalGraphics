@@ -2642,6 +2642,7 @@ com/crystalgraphics/asset/load/CgVfxAssets
   method public <init> (Lcom/crystalgraphics/asset/registry/CgAssetRegistry;Lcom/crystalgraphics/job/CgJobLoop;)V
   method public budget ()Lcom/crystalgraphics/asset/load/CgPrepareBudget;
   method public bundle (Ljava/util/List;)Ljava/util/List;
+  method public close ()V
   method public declare (Lcom/crystalgraphics/object/CgType;Ljava/lang/String;)Lcom/crystalgraphics/asset/load/CgAssetRef;
   method public drain ()V
   method public edit (Lcom/crystalgraphics/asset/load/CgAssetRef;Ljava/util/List;)Ljava/util/List;
