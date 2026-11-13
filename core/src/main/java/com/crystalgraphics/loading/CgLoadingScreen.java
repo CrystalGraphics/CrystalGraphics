@@ -297,6 +297,14 @@ public final class CgLoadingScreen {
     }
 
     /**
+     * Whether it still holds the host's first screen ({@link #holdUntilHidden}): hidden, but fading out, or not yet past
+     * the frame that opens it. Anything that acts on the host's menu waits for this to end, or the menu opens over it.
+     */
+    public static boolean holding() {
+        return held != null;
+    }
+
+    /**
      * The host's window, as it last drew the screen; 0 before. A world stage the screen fires draws into a 256-pixel
      * target, so anything sized from the window (a HUD's text) reads it here to warm at its real size.
      *

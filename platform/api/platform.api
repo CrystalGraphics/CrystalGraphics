@@ -2566,8 +2566,11 @@ com/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes
   access public,final
   extends java/lang/Object
   field public,static,final SHIPPED Ljava/lang/String;
+  method public appended ()I
+  method public file ()Ljava/nio/file/Path;
   method public of (J)Ljava/util/List;
   method public record (JLcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes$Recipe;)V
+  method public written ()Ljava/util/concurrent/CompletableFuture;
   method public,static load (Ljava/nio/file/Path;Ljava/util/concurrent/Executor;)Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes;
   method public,static programKey (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)J
   method public,static shared ()Lcom/crystalgraphics/platform/rhi/pipeline/CgPipelineRecipes;

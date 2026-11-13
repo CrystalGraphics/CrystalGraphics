@@ -121,17 +121,19 @@ a shipped `.shader`, an `#include` it reads or a `.compute` file orphans that pr
 launch builds its pipelines at their draws. **Refresh the list after changing the engine's shaders, and before a
 release**:
 
-1. Run each of `CgRenderDemo`'s scenes (`blasts`, `beams`, `modules`, `fluid`, `blast`, `collision`, `lights`,
-   `shadows`) on the NeoForge 26.2 dev client, with Minecraft running on Vulkan, all into one empty cache. From
-   CrystalGUI's root, once a scene, letting each play for a minute:
+1. Run the `crystalgraphics:pipelines` gauntlet on the NeoForge 26.2 dev client, Minecraft on Vulkan, into an empty
+   cache folder. From CrystalGUI's root:
 
    ```bash
-   ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -Dcrystalgraphics.gauntlet=crystalgraphics:play \
-       -Dcrystalgraphics.gauntlet.play.seconds=60 \
-       -Dcrystalgraphics.demo=<scene> -Dcrystalgraphics.cache.dir=<one empty folder>
+   ./gradlew :runtime:mc:modern:neoforge:26.2:runClient -PcgAcceptEula -PcgGraphics=vulkan \
+       -Dcrystalgraphics.gauntlet=crystalgraphics:pipelines -Dcrystalgraphics.gauntlet.out=build/pipelines \
+       -Dcrystalgraphics.cache.dir=build/pipelines-cache        # delete it first: it must start empty
    ```
-2. Copy `<that folder>/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
-3. Check: a cold rerun of one scene (a new empty cache) builds no pipeline at a draw: `pipelines.built` stays
-   0, and the new cache's `recorded.txt` gains no line.
+
+   It enters a world, shows every `CgRenderDemo` scene in turn, twice round, 5 s each once the scene is built, and
+   quits. `build/pipelines/report.txt` says `PASS` or `FAIL`, a line a scene.
+2. Copy `build/pipelines/recorded.txt` over `core/src/main/resources/assets/crystalgraphics/pipelines/recorded.txt`.
+3. Check: rerun it into a new empty cache folder. `pipelines.recorded` should read 0 recipes: the shipped list now
+   builds every pipeline the scenes draw.
 
 A new draw path the demo scenes never reach (a new renderer, a new pass) needs a scene that reaches it in step 1.

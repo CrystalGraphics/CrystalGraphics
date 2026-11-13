@@ -4,7 +4,7 @@ import com.crystalgraphics.variable.CgVar;
 
 /**
  * {@code crystalgraphics:play}: a world entered and played unattended for a while, then photographed. The run behind
- * a profile, a pipeline-list refresh or a look at a frame, with nothing of a test's own in the way.
+ * a profile or a look at a frame, with nothing of a test's own in the way.
  *
  * <pre>{@code
  * -Dcrystalgraphics.gauntlet=crystalgraphics:play -Dcrystalgraphics.gauntlet.play.seconds=90

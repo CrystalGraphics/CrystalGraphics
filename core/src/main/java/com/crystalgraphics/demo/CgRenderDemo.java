@@ -16,8 +16,6 @@ import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.loading.task.CgLoadPlan;
-import com.crystalgraphics.loading.watchdog.CgLoadWatchdog;
-import com.crystalgraphics.platform.service.CgProcessExit;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgInput;
@@ -36,7 +34,6 @@ import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.trace.CgTraceReport;
-import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
@@ -57,7 +54,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.function.Supplier;
 
@@ -130,9 +129,6 @@ public final class CgRenderDemo {
     private static final int PROFILE = CgVar.integer("crystalgraphics.demo.profile", 0, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Frames of the demo's scene to profile, written to"
                     + " crystalgraphics/profile-<scene>-<n>f/ in the game directory; 0 for none.").get();
-    private static final int CYCLE = CgVar.integer("crystalgraphics.demo.cycle", 0, 0, 3600, CgVar.DEV | CgVar.RESTART,
-            "Seconds a scene before the demo moves to the next, twice round every scene, with the loading watchdog armed"
-                    + " to name what holds a frame (crystalgraphics.loading.stallMs), then exits the process; 0 stays on one.").get();
     private static final int PROFILE_WARMUP =CgVar.integer("crystalgraphics.demo.profile.warmup", 600, 0, Integer.MAX_VALUE,
             CgVar.DEV | CgVar.RESTART, "Frames on the ground before the demo's profile starts.").get();
     private static final int BLASTS = CgVar.integer("crystalgraphics.demo.blasts", 120, 1, 100_000, CgVar.DEV | CgVar.RESTART,
@@ -256,6 +252,46 @@ public final class CgRenderDemo {
         for (int i = 0; i < kinds.length; i++) {
             if (kinds[i].name().equals(MODE)) wanted = i;
         }
+    }
+
+    /** The scenes' names, in N's order: what {@link #show} takes. */
+    public List<String> scenes() {
+        List<String> names = new ArrayList<>(kinds.length);
+        for (Kind kind : kinds) names.add(kind.name());
+        return names;
+    }
+
+    /**
+     * Switches to the scene named {@code name} at the next frame, as N would; it draws once it is built
+     * ({@link #showing}).
+     *
+     * <pre>{@code
+     * CgRenderDemo.INSTANCE.show("lights");
+     * // frames later:
+     * if (CgRenderDemo.INSTANCE.showing("lights")) ...
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a name no scene has
+     */
+    public void show(String name) {
+        for (int i = 0; i < kinds.length; i++) {
+            if (kinds[i].name().equals(name)) {
+                wanted = i;
+                return;
+            }
+        }
+        throw new IllegalArgumentException("no demo scene '" + name + "' (" + scenes() + ")");
+    }
+
+    /** Whether the scene named {@code name} is the one drawing: switched to, its programs built, on the ground. */
+    public boolean showing(String name) {
+        return current >= 0 && kinds[current].name().equals(name) && wanted == current && grounded
+                && warmFrom[current] < 0;
+    }
+
+    /** Whether the demo draws at all: false under {@code -Dcrystalgraphics.demo=false}. */
+    public static boolean enabled() {
+        return ENABLED;
     }
 
     /** Submits the demo every frame, once, unless {@code -Dcrystalgraphics.demo=false}. */
@@ -664,7 +700,6 @@ public final class CgRenderDemo {
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgCamera view) {
-        if (CYCLE > 0 && grounded) cycle();
         // Here, before the pools record: a key is read mid-frame, after they have.
         if (wanted != current) {
             if (current >= 0) scenes[current].clear();
@@ -697,69 +732,6 @@ public final class CgRenderDemo {
         quietFrames = work == lastWork ? quietFrames + 1 : 0;
         lastWork = work;
     }
-
-    /**
-     * Under {@code crystalgraphics.demo.cycle}: every scene in turn, {@link #CYCLE} seconds each, twice round, with the
-     * watchdog armed, so a switch that hitches is logged with what held the frame; then the process exits.
-     */
-    private void cycle() {
-        long now = System.nanoTime();
-        if (cycleFrom == 0L) {
-            cycleFrom = now;
-            firstSwitch[current] = CgTrace.currentFrameIndex();
-            CgLoadWatchdog.arm(true);
-            LOGGER.info("[CgRenderDemo] cycle: {} s a scene, twice round", CYCLE);
-            return;
-        }
-        if (cycled < 0) return;
-        // Frame times: the first 2 s after a switch against the scene's last 2 s, its steady state
-        if (lastCycleFrame != 0L) {
-            float ms = (now - lastCycleFrame) / 1.0e6f;
-            long into = now - cycleFrom;
-            if (into < 2_000_000_000L) {
-                earlyMax = Math.max(earlyMax, ms);
-                earlySum += ms;
-                earlyFrames++;
-                if (ms > 2f * Math.max(lateMean, 4f)) earlySlow++;
-            } else if (into > (CYCLE - 2) * 1_000_000_000L) {
-                lateSum += ms;
-                lateFrames++;
-            }
-        }
-        lastCycleFrame = now;
-        if (now - cycleFrom < CYCLE * 1_000_000_000L) return;
-        lateMean = lateFrames > 0 ? lateSum / lateFrames : 0f;
-        LOGGER.info(String.format(Locale.ROOT, "[CgRenderDemo] cycle %s: first 2 s %d frames, mean %.1f ms, worst %.1f ms, %d over twice"
-                        + " steady; steady %.1f ms", kinds[current].name(), earlyFrames, earlyFrames > 0 ? earlySum / earlyFrames : 0f,
-                earlyMax, earlySlow, lateMean));
-        earlyMax = earlySum = lateSum = 0f;
-        earlyFrames = earlySlow = lateFrames = 0;
-        cycleFrom = now;
-        if (++cycled > 2 * kinds.length) {
-            cycled = -1;
-            CgLoadWatchdog.arm(false);
-            LOGGER.info("[CgRenderDemo] cycle done");
-            // Each first switch's frames, from the trace's ring once nothing is measured: written during the cycle,
-            // a dump's reports took the frames they were meant to show
-            for (int i = 0; i < kinds.length; i++) {
-                if (firstSwitch[i] > 0) CgTraceRun.dump("switch-" + kinds[i].name(), firstSwitch[i], firstSwitch[i] + 300);
-            }
-            // A diagnostic run: it ends itself, so nothing has to find and stop the client
-            CgProcessExit.halt(0);
-            return;
-        }
-        wanted = (current + 1) % kinds.length;
-        if (cycled <= kinds.length && firstSwitch[wanted] == 0L) firstSwitch[wanted] = CgTrace.currentFrameIndex();
-    }
-
-    /** The trace frame each scene was first switched to by the cycle, 0 for none. */
-    private final long[] firstSwitch = new long[kinds.length];
-    private long cycleFrom, lastCycleFrame;
-    /** Switches the cycle made; -1 once done. */
-    private int cycled;
-    /** The current scene's frame times: its first 2 s and its last; the last scene's steady mean, what counts as slow. */
-    private float earlyMax, earlySum, lateSum, lateMean;
-    private int earlyFrames, earlySlow, lateFrames;
 
     /** Whether scene {@code i}'s programs are built, polling them. */
     private boolean warm(int i) {

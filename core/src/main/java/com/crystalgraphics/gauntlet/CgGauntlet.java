@@ -16,6 +16,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.demo.CgDemoPipelinesTest;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.loading.CgLoadingScreen;
@@ -58,7 +59,8 @@ import com.crystalgraphics.variable.CgVar;
  *       tests share one game, and one kills the player (the net probe), so they take turns.</li>
  *   <li>A name nothing registered fails the run when its turn comes, by name: a client listener may register its
  *       tests after the run starts.</li>
- *   <li>Each test has {@code crystalgraphics.gauntlet.timeout} seconds (300): one that has not ended by then fails.</li>
+ *   <li>Each test has {@code crystalgraphics.gauntlet.timeout} seconds (300), or what it says it needs
+ *       ({@code timeoutSeconds()}): one that has not ended by then fails.</li>
  *   <li>On a dedicated server the run ticks on the server's ticks and stops the server at its end.</li>
  * </ul>
  */
@@ -94,6 +96,8 @@ public final class CgGauntlet {
     private static final List<String> refused = new ArrayList<>();
     @Nullable private static CgGauntletController current;
     private static int next;
+    /** Seconds the current test has: its own, or the run's. */
+    private static int timeout;
     private static boolean heartbeatActive;
     private static String heartbeatStatus = "";
     /** A test asked for a world, and whether the host has taken the request. */
@@ -106,6 +110,7 @@ public final class CgGauntlet {
         register("crystalgraphics:collision", CgCollisionProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:server", CgServerSmoke::new);
+        register("crystalgraphics:pipelines", CgDemoPipelinesTest::new);
     }
 
     private CgGauntlet() {
@@ -245,8 +250,8 @@ public final class CgGauntlet {
         if (worldWanted && !worldAsked && state.equals(CgGauntletState.TITLE)) safely(current, c -> enterWorld());
         CgGauntletController test = current;
         safely(test, c -> c.onTick(seconds));
-        if (!test.ended() && (now - testNanos) / 1.0e9 > TIMEOUT.get()) {
-            test.fail("gauntlet.timeout", "not ended after " + TIMEOUT.get() + " s, in state " + state);
+        if (!test.ended() && (now - testNanos) / 1.0e9 > timeout) {
+            test.fail("gauntlet.timeout", "not ended after " + timeout + " s, in state " + state);
         }
         if (test.ended()) endCurrent();
     }
@@ -259,7 +264,8 @@ public final class CgGauntlet {
             return asked;
         }
         if (CgServers.dedicated()) return CgGauntletState.SERVER;
-        if (CgLoadingScreen.shown() || !CgGameSession.ready()) return CgGauntletState.LOADING;
+        // Until the host's first screen opens: a world asked for during the fade loads under the menu that opens after
+        if (CgLoadingScreen.shown() || CgLoadingScreen.holding() || !CgGameSession.ready()) return CgGauntletState.LOADING;
         return CgGameSession.inWorld() ? CgGauntletState.IN_WORLD : CgGauntletState.TITLE;
     }
 
@@ -289,6 +295,8 @@ public final class CgGauntlet {
             testNanos = now;
             LOGGER.info("gauntlet: {} starts in state {}", id, state);
             safely(test, CgGauntletController::onInit);
+            int own = test.timeoutSeconds();
+            timeout = own > 0 ? own : TIMEOUT.get();
             safely(test, c -> c.onStateChange(CgGauntletState.INITIALIZED, state));
             return true;
         }

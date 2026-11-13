@@ -5194,6 +5194,10 @@ com/crystalgraphics/cue/CgCuePlaying$Provider
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract write (D[F)V
+com/crystalgraphics/demo/CgDemoPipelinesTest
+  access public,final
+  extends com/crystalgraphics/gauntlet/CgGauntletController
+  method public <init> ()V
 com/crystalgraphics/demo/CgDemoStyles
   access public,final
   extends java/lang/Object
@@ -5222,6 +5226,10 @@ com/crystalgraphics/demo/CgRenderDemo
   field public,static,final INSTANCE Lcom/crystalgraphics/demo/CgRenderDemo;
   method public dispose ()V
   method public install ()V
+  method public scenes ()Ljava/util/List;
+  method public show (Ljava/lang/String;)V
+  method public showing (Ljava/lang/String;)Z
+  method public,static enabled ()Z
 com/crystalgraphics/demo/CgShadowsDemo
   access public,final
   extends java/lang/Object
@@ -5601,6 +5609,7 @@ com/crystalgraphics/gauntlet/CgGauntletController
   method protected onInit ()V
   method protected onStateChange (Lcom/crystalgraphics/gauntlet/CgGauntletState;Lcom/crystalgraphics/gauntlet/CgGauntletState;)V
   method protected onTick (F)V
+  method protected timeoutSeconds ()I
   method protected,final capture (Ljava/lang/String;)Lcom/crystalgraphics/gauntlet/CgGauntletCapture$Shot;
   method protected,final check (Ljava/lang/String;ZLjava/lang/String;)V
   method protected,final endTest ()V
@@ -6569,6 +6578,7 @@ com/crystalgraphics/loading/CgLoadingScreen
   method public,static frame ()V
   method public,static hideNow (Ljava/lang/String;)V
   method public,static holdUntilHidden (Ljava/lang/Runnable;)Z
+  method public,static holding ()Z
   method public,static hostDraws ()Z
   method public,static hostWorld (Lcom/crystalgraphics/platform/rhi/format/CgFormat;Z)V
   method public,static install (II)V
@@ -16828,6 +16838,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Attract
   method public clamped (FFFFFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Attract;
   method public directed (FFFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Attract;
   method public directionality ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public highX ()F
   method public highY ()F
@@ -16856,6 +16867,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$BeamModifier
   method public <init> (ZFFFZZFFFZZZFZZ)V
   method public absoluteTangent ()Z
   method public afterSolve ()Z
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public modifyPosition ()Z
   method public modifyStrength ()Z
@@ -16884,6 +16896,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$BeamNoise
   method public frequency ()I
   method public frequencyDistance ()F
   method public frequencyLow ()I
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public lockRadius ()F
   method public lockTime ()F
@@ -16923,6 +16936,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$BeamSource
   method public actor ()Ljava/lang/String;
   method public afterSolve ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public lock ()Z
@@ -16958,6 +16972,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$BeamTarget
   method public actor ()Ljava/lang/String;
   method public afterSolve ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public lock ()Z
@@ -16983,6 +16998,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Buoyancy
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FF)V
   method public cooling ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public lift ()F
   method public pull (F)F
@@ -17001,6 +17017,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Collide
   method public bounce ()F
   method public container ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$Collide;
   method public friction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public keepsInside ()Z
@@ -17028,6 +17045,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$CollideDepth
   method public bounce ()F
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public friction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public killing ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$CollideDepth;
@@ -17051,6 +17069,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$CollideEntities
   method public bounce ()F
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public friction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public keepingCount ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$CollideEntities;
@@ -17077,6 +17096,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$CollideWorld
   method public bounce ()F
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public friction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public killing ()Lcom/crystalgraphics/vfx/particle/CgVfxModule$CollideWorld;
@@ -17144,6 +17164,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Conform
   method public <init> (Lcom/crystalgraphics/shape/primitive/CgSphere;FFFFFFFF)V
   method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Conform;
   method public attraction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public influence ()F
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
@@ -17167,6 +17188,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Current
   method public afterSolve ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public depth ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public loft ()F
   method public pull (F)F
@@ -17181,6 +17203,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Damping
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public rate ()F
   method public,final equals (Ljava/lang/Object;)Z
@@ -17191,6 +17214,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Drag
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FF)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public linear ()F
   method public quadratic ()F
@@ -17206,6 +17230,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Feed
   method public <init> (FFF)V
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public density ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public heat ()F
   method public push ()F
@@ -17222,6 +17247,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Flock
   method public apart ()F
   method public cohesion ()F
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public most ()I
   method public neighbourRadius ()F
@@ -17239,6 +17265,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Flow
   method public <init> (F)V
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public follow ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public pull (F)F
   method public,final equals (Ljava/lang/Object;)Z
@@ -17267,6 +17294,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Force
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FFF)V
   method public <init> (FFFZ)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public ownerScale ()Z
   method public pull (F)F
@@ -17295,6 +17323,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Gravity
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
   method public <init> (FFF)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public pull (F)F
   method public scaled (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule;
@@ -17313,6 +17342,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Ground
   method public afterSolve ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public friction ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public radius ()F
   method public radius (F)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Ground;
@@ -17330,6 +17360,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Kill
   method public <init> (Lcom/crystalgraphics/shape/CgShape;Z)V
   method public afterSolve ()Z
   method public at (FFF)Lcom/crystalgraphics/vfx/particle/CgVfxModule$Kill;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public inside ()Z
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
@@ -17347,6 +17378,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$LimitSpeed
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
   method public afterSolve ()Z
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public most ()F
   method public,final equals (Ljava/lang/Object;)Z
@@ -17362,6 +17394,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Occlusion
   method public centerSample ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
   method public diameter ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public height ()F
   method public rings ()I
@@ -17399,6 +17432,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Orbit
   method public axisX ()F
   method public axisY ()F
   method public axisZ ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public turns ()F
@@ -17417,6 +17451,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$PhysicsField
   method public <init> (ILcom/crystalgraphics/vfx/field/CgFieldDefinition$Target;F)V
   method public afterSolve ()Z
   method public dataInterfaces ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxDataInterface;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public group ()I
   method public scale ()F
@@ -17432,6 +17467,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$ScaleVelocity
   method public <init> (FFFZ)V
   method public <init> (FFFZZ)V
   method public absolute ()Z
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public ownerScale ()Z
   method public x ()F
@@ -17445,6 +17481,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$SetPosition
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FFFFFFF)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public ox ()F
   method public oy ()F
@@ -17462,6 +17499,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$SourceMovement
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FFF)V
   method public afterSolve ()Z
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public writeInstance (Lcom/crystalgraphics/vfx/particle/gpu/CgVfxInstanceView;Lcom/crystalgraphics/vfx/particle/gpu/CgVfxWords;)V
@@ -17477,6 +17515,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Spin
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
   method public drag ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
@@ -17502,6 +17541,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$SpriteRotation
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FZ)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public radians ()F
   method public scales ()Z
@@ -17515,6 +17555,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Turbulence
   method public <init> (FFF)V
   method public evolve ()F
   method public frequency ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public pull (F)F
@@ -17530,6 +17571,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Updraft
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (FFFF)V
   method public duration ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public height ()F
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
@@ -17552,6 +17594,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$VectorField
   method public attenuation ()F
   method public box ()Lcom/crystalgraphics/shape/primitive/CgBox;
   method public field ()Lcom/crystalgraphics/vfx/particle/CgVfxField;
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public pull (F)F
@@ -17574,6 +17617,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Vortex
   method public axisX ()F
   method public axisY ()F
   method public axisZ ()F
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public instanceLanes ()[Lcom/crystalgraphics/vfx/particle/gpu/CgVfxLane;
   method public pull (F)F
@@ -17591,6 +17635,7 @@ com/crystalgraphics/vfx/particle/CgVfxModule$Wind
   extends java/lang/Record
   implements com/crystalgraphics/vfx/particle/CgVfxModule
   method public <init> (F)V
+  method public gpuFile ()Ljava/lang/String;
   method public gpuKind ()Ljava/lang/String;
   method public resistance ()F
   method public,final equals (Ljava/lang/Object;)Z

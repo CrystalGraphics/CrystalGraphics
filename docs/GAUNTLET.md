@@ -59,7 +59,8 @@ crystalgraphics:world: PASS (31 passed, 0 failed, 4 skipped)
 | Id | Where | Proves |
 |---|---|---|
 | `crystalgraphics:boot` | client, server | The game started, the engine with it, and the title screen drew; photographed |
-| `crystalgraphics:play` | client | A world entered and played for `crystalgraphics.gauntlet.play.seconds` (60; 0 until closed), then photographed: a profile's or a pipeline-list refresh's run |
+| `crystalgraphics:play` | client | A world entered and played for `crystalgraphics.gauntlet.play.seconds` (60; 0 until closed), then photographed: a profile's run |
+| `crystalgraphics:pipelines` | client | The shipped pipeline list recorded: every demo scene drawn in turn, twice round, `crystalgraphics.gauntlet.pipelines.seconds` (5) each once built; the cache's `recorded.txt` copied into the run's folder (`demo.CgDemoPipelinesTest`, `PRECACHE.md` § *The shipped pipeline list*) |
 | `crystalgraphics:world` | client | Every world seam the host answers, against the others (`probe.CgWorldProbe`) |
 | `crystalgraphics:collision` | client | Collision against real entities: a ring on stands, a dragon's parts, a painting (`docs/COLLISION.md`) |
 | `crystalgraphics:net` | client, server | Networked objects across a player's death, and how late a change arrives (`docs/NETWORKING.md`) |

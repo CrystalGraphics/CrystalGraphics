@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -66,6 +67,7 @@ public final class CgPipelineRecipes {
     private final Map<Long, Set<Recipe>> byProgram = new HashMap<>();
     private final Path file;
     private final Executor writer;
+    private int appended;
 
     private CgPipelineRecipes(Path folder, Executor writer) {
         this.file = folder == null ? null : folder.resolve(FILE);
@@ -160,7 +162,30 @@ public final class CgPipelineRecipes {
     public synchronized void record(long key, Recipe recipe) {
         if (!byProgram.computeIfAbsent(key, k -> new LinkedHashSet<>()).add(recipe) || file == null) return;
         String line = Long.toHexString(key) + " " + recipe.encode() + "\n";
+        appended++;
         writer.execute(() -> append(line));
+    }
+
+    /** The user's list, {@code recorded.txt} in the cache folder; null where nothing is written. */
+    public Path file() {
+        return file;
+    }
+
+    /** Recipes this process has given the user's list: each pipeline a draw built that no list named. */
+    public synchronized int appended() {
+        return appended;
+    }
+
+    /**
+     * Done once every recipe recorded so far is in {@link #file()}: the lines are written on a thread of their own.
+     *
+     * <pre>{@code
+     * CompletableFuture<Void> written = CgPipelineRecipes.shared().written();
+     * // later, once written.isDone(): copy recipes.file()
+     * }</pre>
+     */
+    public CompletableFuture<Void> written() {
+        return CompletableFuture.runAsync(() -> { }, writer);
     }
 
     /** One line at a time, whichever builder runs it. */

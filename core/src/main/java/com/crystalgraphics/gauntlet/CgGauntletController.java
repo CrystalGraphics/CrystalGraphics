@@ -74,6 +74,14 @@ public abstract class CgGauntletController {
     protected void onEnd() {
     }
 
+    /**
+     * Seconds it has to end before it fails; 0, the default, for the run's ({@code crystalgraphics.gauntlet.timeout}).
+     * A test whose length it knows itself answers it, so its run needs no flag. Asked once, after {@link #onInit}.
+     */
+    protected int timeoutSeconds() {
+        return 0;
+    }
+
     /** Its id, as the run named it: {@code crystalgraphics:world}. */
     public final String id() {
         return id;
