@@ -84,14 +84,14 @@ public class KitProgramsLinkTest {
                 o.uv0 = cg_panner(v.uv0, CG_TIME, vec2(0.0, 0.1), true);
                 o.uv1 = cg_rotator(v.uv1, vec2(0.5), CG_TIME, 1.0);
                 o.frames = cg_Particle.subUVLerp;
-                o.colour = CG_PARTICLE_SUB_UV(_Mask, cg_Particle, true) * cg_Particle.color * v.color;
+                o.colour = cg_particle_sub_uv(_Mask, cg_Particle, true) * cg_Particle.color * v.color;
                 o.dynamic = cg_dynamic_parameter(cg_Particle, 0, vec4(1.0));
             }
 
             void surface(in v2f i, inout CgSurface s) {
                 float a = cg_particle_sub_uv(_Mask, i.uv0, i.uv1, i.frames, true).r * i.colour.a * i.dynamic.x;
                 s.baseColor = i.colour.rgb;
-                s.opacity = CG_DEPTH_FADE(a, _Fade, gl_FragCoord.xy / CG_RESOLUTION);
+                s.opacity = cg_depth_fade(a, _Fade);
             }
             """;
 

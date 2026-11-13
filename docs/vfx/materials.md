@@ -77,7 +77,7 @@ blend mode unless it overrides it. A child's `state` merges over its parent's.
 **`DepthTest: false`** (Unreal's `bDisableDepthTest`) draws it over whatever is in front: a hit spark the floor would
 otherwise cut. Its glow is not hidden by the scene either. Translucent blends only. It then shows through walls too, so
 give its particles `crystalgraphics:occlusion` ([particles](particles.md)) to fade them out where something covers
-them. **Give it no depth fade** (`CG_DEPTH_FADE`, soft particles): behind the floor the scene is nearer than the
+them. **Give it no depth fade** (`cg_depth_fade`, soft particles): behind the floor the scene is nearer than the
 fragment, so the fade is 0 there at any distance, 0 included, and cuts the draw on the very line the depth test would
 have.
 
@@ -220,9 +220,9 @@ ParticleSubUV and RotateAboutAxis ([`../SHADERS.md`](../SHADERS.md) § *Unreal's
 #include "crystalgraphics:shaders/lib/material/particle_sub_uv.glsl"
 
 // in vertex(): the flipbook's two frames, read where the particle is
-o.colour = CG_PARTICLE_SUB_UV(_Sheet, cg_Particle, true);
+o.colour = cg_particle_sub_uv(_Sheet, cg_Particle, true);
 // in surface(): faded where it meets the scene, over half a block
-float a = CG_DEPTH_FADE(i.colour.a, 0.5, gl_FragCoord.xy / CG_RESOLUTION);
+float a = cg_depth_fade(i.colour.a, 0.5);
 ```
 
 ### Unreal's Default Lit: `default_lit.glsl`
@@ -250,7 +250,7 @@ void surface(in v2f i, inout CgSurface s) {
 
 ### Easy to get wrong
 
-- **Include what you call**: `CG_DEPTH_FADE` with no `depth_fade.glsl` included fails as "no matching overloaded
+- **Include what you call**: `cg_depth_fade` with no `depth_fade.glsl` included fails as "no matching overloaded
   function".
 - **A helper is plain GLSL at file scope**: `vertex()` and `surface()` both reach it, and each stage keeps only what
   it calls.

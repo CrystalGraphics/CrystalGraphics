@@ -784,10 +784,10 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 
 | File | Function | Unreal |
 |---|---|---|
-| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a fragment, `CG_DEPTH_FADE(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
+| `depth_fade.glsl` | In a fragment, `cg_depth_fade(opacity, fadeDistance)` reads the pixel's depth and the scene's under it; `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)` takes both | DepthFade |
 | `panner.glsl` | `cg_panner(uv, time, speed, fractional)` | Panner |
 | `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
-| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; on a particle factory, `CG_PARTICLE_SUB_UV(tex, cg_Particle, blend)` | ParticleSubUV |
+| `particle_sub_uv.glsl` | On a particle factory, `cg_particle_sub_uv(tex, cg_Particle, blend)`; anywhere, `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)` | ParticleSubUV |
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
 
 ```glsl
@@ -795,13 +795,17 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 #include "crystalgraphics:shaders/lib/material/panner.glsl"
 
 vec2 uv = cg_panner(i.uv0, CG_TIME, vec2(0.0, 1.5), true);
-s.opacity = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
+s.opacity = cg_depth_fade(texture(_Mask, uv).r, _FadeDistance);
 ```
 
 - Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset
   loads; a constant compiled into a port's code is the port's to convert.
-- `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s come before the engine's declarations,
-  so a function reading those would not compile.
+- A material's `#include` lines are compiled where they stand, after the engine's environment and its vertex factory's
+  declarations, so a library function reads anything a material reads (`CG_TIME`, the camera, the scene's depth,
+  `cg_Particle`), as Unreal's material functions do. Its `#define` and `#extension` lines go first, before the
+  environment, so a library can test a `#define` the material sets.
+- A function using a fragment-only built-in (`gl_FragCoord`, derivatives) is wrapped in
+  `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)`: a material's includes compile into both stages.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
 #### Adding to the library

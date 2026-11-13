@@ -143,11 +143,10 @@ void _cg_dynamics(int n, int drawn, inout CgMaterialParticle p) {
 //   CUSTOM1  the slot's first run, its runs (its capacity), vec4s a run, noise points a run
 //   CUSTOM2  interpolation points, flags (1 noise on the target, 2 one up for the whole beam, 4 tiles by distance), its
 //            tiles or the blocks a tile, the noise's frequency
-// An include is resolved once whatever #if it sits in, so what both factories read is included ahead of either.
-#if defined(CG_VERTEX_STAGE) && (defined(FX_ON_RIBBONS) || defined(CG_TYPE_NONE) || defined(FX_ON_SPRITES) || defined(CG_TYPE_SPATIAL))
+// An include is resolved once whatever #if it sits in, so a library a material may include too stands outside every
+// #if: inside a vertex-only block, the material's own include of it would come out empty in the fragment stage.
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/particle.glsl"
-#endif
 #if defined(CG_VERTEX_STAGE) && defined(FX_ON_RIBBONS)
 // One strip kind a program: a beam renderer's material compiles with FX_STRIP_BEAM, an anim trail's with
 // FX_STRIP_ANIM, any other ribbon's with neither, as Unreal compiles its beam/trail and ribbon vertex factories apart.
