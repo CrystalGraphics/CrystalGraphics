@@ -841,6 +841,7 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
 | `blend_material_attributes.glsl` | `cg_blend_material_attributes(a, b, alpha)`: two `CgSurface`s, every output lerped, the shading model a's | BlendMaterialAttributes |
 | `default_lit.glsl` | In a fragment, `cg_default_lit(s, p, subsurface)`: the light `s` gives off at camera-relative `p`, which `ShadingModel DefaultLit` and `Subsurface` call for you | Default Lit, Subsurface |
+| `refraction.glsl` | In a fragment, `cg_refraction(worldNormal, refraction, refractionBias, unitsPerBlock)`: Unreal's distortion offset for `s.refraction`, 1 bending nothing, the bias in Unreal's units (centimetres: 100 a block) | Refraction (the distortion pass) |
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
