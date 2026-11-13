@@ -804,6 +804,33 @@ s.opacity = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy /
   so a function reading those would not compile.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
+#### Adding to the library
+
+The library is where a technique lives once, for every material. A helper that any material could use belongs here,
+not in the mod or content pack that first needed it: only what is one product's own look stays with that product.
+
+1. **Look first.** Search `shaders/lib/` and the tables above for the technique under each of its names. Use what is
+   there. The same name with other maths is not the same function: `fresnel()` in `vector.glsl` is not Unreal's Fresnel
+   node, and a material matching Unreal takes the node's from `lib/material/`.
+2. **Put it by what it is.**
+
+   | It is | File | Name |
+   |---|---|---|
+   | An Unreal material expression | `lib/material/<node>.glsl` | `cg_<node>` |
+   | An Unreal engine material function (`/Engine/Functions`) | `lib/material/functions/<name>.glsl` | `cg_<name>` |
+   | A general technique | the library of its subject (`uv.glsl`, `color.glsl`, ...) or a file of its own in `lib/` | for the technique |
+
+3. **Write it to these rules.**
+   - `lib/material/` is exact: Unreal's clamps, thresholds and input names, read from its implementation, and the
+     header comment names the class it matches. Unreal's code is read, never copied.
+   - It names no product: no game, mod or studio in a name or a comment, and none of its constants inside. They arrive
+     as arguments.
+   - It is pure in what a material declares: a property, a factory's parameters (`cg_Particle`) and a collection value
+     are arguments, since the file is compiled into materials that declare none of them.
+   - Distances are blocks and angles radians. `#pragma once` first. Derivatives sit under
+     `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)`.
+4. **Prove and document it**: its check in `--mode=material-library`, and its row in the table above.
+
 **Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/parse/CLAUDE.md`
 
 ### No raw shaders
