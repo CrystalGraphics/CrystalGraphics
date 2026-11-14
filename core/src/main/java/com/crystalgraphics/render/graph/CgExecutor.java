@@ -116,7 +116,7 @@ public final class CgExecutor {
     private CgExecutor(CgGraphDevice device, int depth) {
         this.device = device;
         // A region of 1 MB: a ring outgrowing its region is new storage, which waits for a threaded driver to drain.
-        ring = CgStreamBuffer.frameLocalUniforms(1 << 20);
+        ring = CgStreamBuffer.frameLocalBlocks(1 << 20);
         transitions = new CgTransitions(this, device);
         scene = new CgSceneCopies(this, device);
         raster = new CgRasterEncoder(this, device, depth);

@@ -253,7 +253,7 @@ public final class CgDeviceSets {
             case UNIFORM_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
-                    if (version != null && version.arena != null) continue;   // a storage block
+                    if (version != null && (version.arena != null || version.storageBytes > 0)) continue;   // a storage block
                     if (table.blockBinding(id, k) != packed) continue;
                     boolean kept = version != null && !version.perFrame;
                     CgGpuBuffer buffer = kept ? version.buffer : table.uploadedBuffer();
@@ -270,8 +270,14 @@ public final class CgDeviceSets {
             case STORAGE_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
-                    if (version == null || version.arena == null) continue;
-                    if (table.blockBinding(id, k) != packed) continue;
+                    if (version == null || table.blockBinding(id, k) != packed) continue;
+                    if (version.storageBytes > 0) {   // its copy in the frame's ring, one slot
+                        CgGpuBuffer frameRing = table.uploadedBuffer();
+                        if (frameRing == null) return false;
+                        contents.buffer(slot.binding(), slot.type(), frameRing, table.ringOffset(id, k), version.storageBytes);
+                        return true;
+                    }
+                    if (version.arena == null) continue;
                     CgMaterialArena arena = version.arena;
                     if (arena.buffer == null) return false;
                     long at = wholeArena ? 0 : (long) version.slot * arena.stride();

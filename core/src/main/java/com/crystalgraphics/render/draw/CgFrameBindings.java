@@ -498,7 +498,7 @@ public final class CgFrameBindings {
                 CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
                 if (version != null && version.perFrame) {
                     ringOffsets[id * MAX_BLOCKS + b] = bytes;
-                    bytes += align(version.floats.length * 4);
+                    bytes += align(Math.max(version.floats.length * 4, version.storageBytes));
                     continue;
                 }
                 if (version != null) {

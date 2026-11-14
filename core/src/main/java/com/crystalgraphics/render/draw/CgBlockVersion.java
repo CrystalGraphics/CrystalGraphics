@@ -44,9 +44,17 @@ public final class CgBlockVersion {
     final Members members;
     /** It names a frame graph texture: placed in each frame's ring with that frame's indices, never kept. */
     final boolean perFrame;
-    /** The arena whose slot it takes ({@link #in}); null for a range of a page. */
+    /** The arena whose slot it takes ({@link #in}); null for a range of a page, and for a per-frame one. */
     @Nullable
     final CgMaterialArena arena;
+    /**
+     * Made for an arena and per frame: the arena's slot size, its copy in each frame's ring bound alone as a storage
+     * block of one slot, which its shader reads as slot 0. 0 otherwise.
+     */
+    final int storageBytes;
+    /** The arena it was made for, whether it takes a slot of it or not. */
+    @Nullable
+    private final CgMaterialArena madeFor;
     /** Where it was written: a page's buffer, its range's node and its byte offset; buffer null until written. */
     CgGpuBuffer buffer;
     int node = -1, offset;
@@ -61,13 +69,12 @@ public final class CgBlockVersion {
 
     private CgBlockVersion(float[] floats, @Nullable CgMaterialArena arena, @Nullable Members members) {
         this.floats = floats;
-        this.arena = arena;
         this.members = members;
         this.perFrame = members != null && members.perFrame();
-        if (perFrame && arena != null) {
-            throw new IllegalArgumentException("a material whose values are in an arena reads a frame graph texture: a "
-                    + "graph texture's index changes every frame, and an arena slot is written once");
-        }
+        // A graph texture's index changes every frame and an arena slot is written once: such a version draws alone
+        this.arena = perFrame ? null : arena;
+        this.storageBytes = perFrame && arena != null ? arena.stride() : 0;
+        this.madeFor = arena;
     }
 
     /**
@@ -148,16 +155,19 @@ public final class CgBlockVersion {
         return in(arena, data, count, null);
     }
 
-    /** {@link #in(CgMaterialArena, float[], int)} with texture {@code members}, indexed as it is placed. */
+    /**
+     * {@link #in(CgMaterialArena, float[], int)} with texture {@code members}, indexed as it is placed. One naming a
+     * frame graph texture takes no slot: it is copied into each frame's ring and its draws do not join others'.
+     */
     public static CgBlockVersion in(CgMaterialArena arena, float[] data, int count, @Nullable Members members) {
         if (count * 4 > arena.stride()) throw new IllegalArgumentException("a block of " + count + " floats in " + arena);
         return new CgBlockVersion(Arrays.copyOf(data, count), arena, members);
     }
 
-    /** The arena it takes a slot of; null for a version of its own. */
+    /** The arena it was made for ({@link #in}), whether or not it takes a slot of it; null for a version of its own. */
     @Nullable
     public CgMaterialArena arena() {
-        return arena;
+        return madeFor;
     }
 
     /** Its floats' count. */

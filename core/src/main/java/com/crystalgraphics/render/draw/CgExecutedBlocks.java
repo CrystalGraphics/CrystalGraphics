@@ -30,7 +30,7 @@ import java.util.Arrays;
  */
 public final class CgExecutedBlocks {
 
-    private final CgStreamBuffer ring = CgStreamBuffer.frameLocalUniforms(1 << 16);
+    private final CgStreamBuffer ring = CgStreamBuffer.frameLocalBlocks(1 << 16);
     private float[] scratch = new float[64];
 
     /**
@@ -42,17 +42,21 @@ public final class CgExecutedBlocks {
         for (int k = 0; k < table.blocks(id); k++) {
             CgBlockVersion v = table.blockVersion(id, k);
             if (v == null || !v.perFrame) continue;
-            int floats = v.floats.length;
-            FloatBuffer into = ring.mapFloats(floats * 4);
+            int floats = v.floats.length, bytes = Math.max(floats * 4, v.storageBytes);
+            FloatBuffer into = ring.mapFloats(bytes);
             int at = into.position();
             into.put(v.floats);
             CgBlockVersion.Members m = v.members;
             for (int i = 0; i < m.count(); i++) {
                 if (m.textures[i] != null) into.put(at + m.offsets[i], Float.intBitsToFloat(CgBindlessTextures.index(m.textures[i], m.samplers[i])));
             }
-            int offset = ring.commit(floats * 4);
-            out.buffer(CgBindingModel.bindingOf(table.blockBinding(id, k)), CgBindingLayout.Type.UNIFORM_BUFFER,
-                    ring.gpuBuffer(), offset, std140(floats));
+            int offset = ring.commit(bytes);
+            int binding = CgBindingModel.bindingOf(table.blockBinding(id, k));
+            if (v.storageBytes > 0) {   // an arena material's: one slot, read as slot 0
+                out.buffer(binding, CgBindingLayout.Type.STORAGE_BUFFER, ring.gpuBuffer(), offset, v.storageBytes);
+            } else {
+                out.buffer(binding, CgBindingLayout.Type.UNIFORM_BUFFER, ring.gpuBuffer(), offset, std140(floats));
+            }
             any = true;
         }
         return any;

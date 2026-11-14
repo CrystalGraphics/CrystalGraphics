@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
@@ -13,6 +14,8 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 
 public class CgBindlessTexturesTest {
 
@@ -48,6 +51,17 @@ public class CgBindlessTexturesTest {
     private CgTextureView storage(String label) {
         return CgTextureView.whole(rhi.createTexture(new CgGpuTexture.Desc(label, CgGpuTexture.Kind.D2, CgFormat.RGBA8_UNORM,
                 4, 4, 1, 1, 1, CgGpuTexture.Usage.SAMPLED_UPLOADED)));
+    }
+
+    @Test
+    public void anArenaMaterialNamingAGraphTextureDrawsAloneFromTheFrame() {
+        CgMaterialArena arena = new CgMaterialArena("graph_read_test", 4);
+        CgBlockVersion.Members members = new CgBlockVersion.Members(new int[]{3}, new CgTexture[]{new Moving(false)},
+                new CgSampler[]{null});
+        CgBlockVersion version = CgBlockVersion.in(arena, new float[4], 4, members);
+        assertNull("no slot of the arena: its index changes every frame", version.arena);
+        assertEquals("its frame copy is one slot of the arena", arena.stride(), version.storageBytes);
+        assertSame("still made for the arena", arena, version.arena());
     }
 
     @Test

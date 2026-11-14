@@ -5883,12 +5883,14 @@ com/crystalgraphics/gpu/resource/CgStreamBuffer
   method public,static create (Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
   method public,static createForShaderBuffer (Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
   method public,static createFrameLocal (Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
+  method public,static frameLocalBlocks (I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
   method public,static frameLocalStorage (I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
   method public,static frameLocalUniforms (I)Lcom/crystalgraphics/gpu/resource/CgStreamBuffer;
   method public,static releaseShared ()V
 com/crystalgraphics/gpu/resource/CgStreamBuffer$Use
   access public,final,enum
   extends java/lang/Enum
+  field public,static,final BLOCKS Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;
   field public,static,final INDEX Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;
   field public,static,final INDIRECT Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;
   field public,static,final MESH Lcom/crystalgraphics/gpu/resource/CgStreamBuffer$Use;
