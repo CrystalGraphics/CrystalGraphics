@@ -116,19 +116,6 @@ public final class CgBodyKinds {
             .property("render_custom_depth", BOOL)
             .property("custom_depth_stencil_value", INT).range(0, 255)
             .property("overlay", hard("material"))
-            .property("post", hard("material"))
-            .property("colour", CgValueType.COLOUR)
-            .property("strength", FLOAT)
-            // the scalar a role's materials take its colour slot in, and the post's colour for slot n at n - 1
-            .property("slot_parameter", STRING)
-            .property("slot_colours", CgValueType.listOf(STRING))
-            .register();
-
-    /** The material parameters a role's contract {@code rim_strength}, {@code rim_power} and {@code rim} write. */
-    static final CgType RIM = CgTypes.struct("crystalgraphics:rig.rim")
-            .property("strength", STRING)
-            .property("power", STRING)
-            .property("colour", STRING)
             .register();
 
     /** {@code rigs/}: a skeleton read for retargeting ({@code UIKRigDefinition}). */
@@ -141,7 +128,6 @@ public final class CgBodyKinds {
             .property("carried", CgValueType.listOf(STRING))
             .property("on_missing", CgValueType.enumOf("keep_host", "refuse"))
             .property("outline", CgValueType.struct(OUTLINE))
-            .property("rim", CgValueType.struct(RIM))
             .register();
 
     static final CgType POSES = CgTypes.struct("crystalgraphics:retargeter.poses")
