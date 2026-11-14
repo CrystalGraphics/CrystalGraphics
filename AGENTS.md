@@ -64,7 +64,7 @@ submodule (`gl-debug-harness/`, Java 25) and runs from CrystalGUI's root; author
 
 ```bash
 ./gradlew :gl-debug-harness:runHarness --args="--list"
-./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # CgWorldRenderer through both world stages
+./gradlew :gl-debug-harness:runHarness --args="--mode=forward-renderer"       # the scene renderer through both world callbacks
 ./gradlew :gl-debug-harness:runHarness --args="--mode=cgui-desktop --rhi=vulkan"  # any scene on the Vulkan device
 # Every scene: gl-debug-harness/AGENTS.md § Quick Start. Outputs land in gl-debug-harness/harness-output/{scene}/
 ```
@@ -156,11 +156,11 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 |---|---|---|
 | Write or load a `.shader` material, a vertex factory or a ui primitive | **[`docs/MATERIAL_FORMAT.md`](docs/MATERIAL_FORMAT.md)** (the `#domain` format), [`docs/SHADERS.md`](docs/SHADERS.md) for the engine side and the older `Pass { }` format, then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `api/material/CLAUDE.md` |
 | Write or run a kernel (`.compute`) | [`docs/SHADERS.md`](docs/SHADERS.md) § *Compute*, then **[`docs/PRECACHE.md`](docs/PRECACHE.md)** | `compute/CLAUDE.md` |
-| Draw anything new: a material, a keyword set, a renderer pass, a kernel, a look | **[`docs/PRECACHE.md`](docs/PRECACHE.md)**: what is precached for you, and what you must precache | `render/world/CLAUDE.md` |
+| Draw anything new: a material, a keyword set, a renderer pass, a kernel, a look | **[`docs/PRECACHE.md`](docs/PRECACHE.md)**: what is precached for you, and what you must precache | `render/precache/CLAUDE.md` |
 | Write an effect, a particle emitter or a particle module | [`docs/VFX.md`](docs/VFX.md) | `vfx/CLAUDE.md` |
 | Work on the VFX rewrite toward Unreal parity (`vfx-aaa`) | `plan/crystalgraphics/vfx-aaa/aaa-rules.md` first: binding | `vfx/CLAUDE.md` § *AAA parity* |
 | Build a GPU-driven pipeline: kernels writing what draws, indirect and multi-draw draws, GPU culling | **[`docs/GPU_DRIVEN_RENDERING.md`](docs/GPU_DRIVEN_RENDERING.md)** | `compute/CLAUDE.md`, `render/graph/CLAUDE.md` |
-| Draw at a host's render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *CgWorldRenderer* | `render/world/CLAUDE.md` |
+| Draw at a render stage, or meshes into the world | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Render stages*, § *The scene and its views* | `render/scene/renderer/CLAUDE.md` |
 | Create a texture, a target of yours, a mesh or a buffer | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) | `api/texture`, `api/buffer`, `api/mesh`, `gpu/resource` |
 | Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gpu/resource`, `render/graph` |
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
@@ -199,7 +199,7 @@ These rules apply everywhere. All agents must internalize them.
 **Precache every pipeline** — every shader variant and kernel a frame uses is named to `CgPipelinePrecache` before
 it draws. VFX looks behind a cue, the registry or a kit, skinned materials and the engine's passes are already. A new
 material, keyword set, renderer pass or kernel is not until you add it to a collector (the renderer's own, as
-`CgWorldRenderer`'s `crystalgraphics:world` and `CgPostStack`'s `crystalgraphics:post` do) or a request. Unprecached, it
+`CgScenePipelines`' `crystalgraphics:world` and `CgPostStack`'s `crystalgraphics:post` do) or a request. Unprecached, it
 draws late and counts `pipeline.missed`; check new content with `-Dcrystalgraphics.pipeline.logMisses=true`.
 **[`docs/PRECACHE.md`](docs/PRECACHE.md)** has both lists.
 

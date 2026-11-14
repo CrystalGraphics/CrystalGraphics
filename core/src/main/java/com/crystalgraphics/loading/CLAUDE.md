@@ -38,7 +38,7 @@ parallel mod loading with its `enqueueWork`, Unreal's slow-task progress and its
   one before, so one cold or busy load moves the next one's bar halfway.
 - **The engine's processes (pipelines, assets, effects warming) and plan tasks keep a showing screen up but never raise
   a hidden one.** A look precached at runtime spreads under the warm budget instead. Only `add`/`task` raise it.
-- **Warming advances only where a world stage fires** (`CgWorldRenderer.settle`, the world schedule's effects), so
+- **Warming advances only where a world stage fires** (`CgScenePipelines.settle`, the world schedule's effects: a view of the client scene drawing), so
   `draw` fires the world stages itself, into a 256-pixel offscreen target under a fixed camera, on a frame where the
   host fired none. A host draws nothing of its own world while loading and calls `draw` inside its frame, never from
   the frame tick: a world firing from `tickFrame` lands between the effects' steps.

@@ -33,7 +33,7 @@ CgMaterialDefinition sparks = CgMaterialDefinition.of("mymod:materials/fx/sparks
 
 ```java
 CgMaterial m = CgMaterial.of(sparks);
-CgWorldRenderer.get().draw(mesh, m).at(x, y, z).submit();
+CgScene.client().mesh(mesh, m).at(x, y, z).spawn();
 ```
 
 **A variant without a file.** `derive` is a child made in code: the same overrides on the same parent answer the same

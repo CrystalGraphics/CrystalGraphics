@@ -66,9 +66,9 @@ Bringing it back means restoring the pieces above and reconnecting each of these
      `CgGpuOps.scanLevel` over the digit cells below it (`CgGpuOps.radixSort`'s `grouped` branch, `precacheSort`).
    - `compute/ops/histogram.compute`: `HistogramGroups` on compute for ≤1024 bins, else `Histogram` (still used above 1024).
    - `world/lights/grid.compute`: `Coarse` + `Cell` (two-level) on compute; `Count`, a `CgGpuOps.scan` into `starts`, then
-     `Write` below it, with `counts`/`starts` buffers (`CgWorldLights.bin`, `precacheBin`, `kernelsBuilt`).
+     `Write` below it, with `counts`/`starts` buffers (`CgSceneLights.bin`, `precacheBin`, `kernelsBuilt`).
    - `media.compute`: `IntegrateColumns` (a thread a column) on compute; `Integrate` (a thread a froxel, dispatched
-     `SLICES` deep) below it (`CgWorldMedia`'s `byColumn`).
+     `SLICES` deep) below it (`CgSceneMedia`'s `byColumn`).
    - `self_test.compute`: `BinLowered`, `DoubledLowered`, and `Stuck`/`Only` to check the refusals.
 5. **The parser** refused buffer elements a lowered kernel's texels cannot hold (`CgBufferDecl.lowerable`, for any
    non-`general` kernel) and checked fallback pairs (`checkFallbacks`).

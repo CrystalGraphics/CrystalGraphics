@@ -266,7 +266,7 @@ anything there. All on the GL thread:
 
 **`tickFrame()` is the only sanctioned per-frame tick** for engine singletons (`CgFontRegistry.tickFrame()`);
 feature code never calls it. The hosts fire the world's render stages from their own hooks
-(`CgRenderStage.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is what they pass `tickFrame`'s context, read back
+(`CgStageHost.WORLD_OPAQUE`, `WORLD_TRANSPARENT`); the window's size is what they pass `tickFrame`'s context, read back
 with `CgGraphicsLifecycle.getCurrentWidth()`/`getCurrentHeight()`.
 
 ---

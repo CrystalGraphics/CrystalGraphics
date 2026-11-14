@@ -1,6 +1,6 @@
 # Lights — the world's lights, and how they light Minecraft
 
-`CgWorldLights` (`world.lights()`) adds Unreal's local lights to the world: points, spots and tubes, from the CPU or
+`CgSceneLights` (`world.lights()`) adds Unreal's local lights to the world: points, spots and tubes, from the CPU or
 appended by a kernel. They light everything on screen: Minecraft's blocks and entities, and the engine's own draws.
 Tens of thousands a frame are affordable.
 
@@ -29,7 +29,7 @@ Add every light every frame it shines, before the world records (a tick function
 same place a draw is submitted):
 
 ```java
-CgWorldLights lights = CgWorldRenderer.get().lights();
+CgSceneLights lights = CgScene.client().lights();
 lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                 // a point
 lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);     // a spot, pointing down
 lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
@@ -57,7 +57,7 @@ lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                 
   works out its colour adds.
 - Past `CAPACITY` (65,536, `-Dcrystalgraphics.world.lights`) lights a frame, the rest are dropped and counted.
 - A kernel's lights: an `Appender` (`world.lights().add(appender)`), its positions from the firing's eye
-  (`cameraX()`, `_LightEye`); `CgWorldLights`' javadoc has the example.
+  (`cameraX()`, `_LightEye`); `CgSceneLights`' javadoc has the example.
 
 ## 2. How they light Minecraft: deferred, from what Minecraft drew
 
@@ -169,7 +169,7 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
 | Pass | Unreal (MegaLights) | Here |
 |---|---|---|
 | Sample | `GenerateLightSamplesCS`: 4 samples a half-resolution pixel, a weighted reservoir over its tile's lights, weight `log2(luminance + 1)`; a sample of the same light merged into the next one's ray | `world/lights/sample.compute`, over the light grid's cell, the shadowed lights alone; every pixel by default (below) |
-| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgWorldVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgWorldEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `world/lights/tiles.compute`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
+| Trace | screen trace (hierarchical, 1 m, a hit within 0.005 of the depth), then the global distance field | screen trace (24 steps over 1 block, `crystalgraphics.world.lightsScreenTrace`, the same thickness), then `CgVoxelWindow`'s distance field (blocks, 128x96x128 round the camera), then `CgEntityBoxes`' entities as capsules, only those its 16x16 tile can meet (Unreal's capsule shadow tiles, `world/lights/tiles.compute`; `crystalgraphics.world.lightsEntityTiles=false` keeps all), then our meshes' distance fields |
 | Shade | `ShadeLightSamplesCS`: each pixel picks a nearby half-resolution pixel by bilinear, depth and normal weight; each visible light lit exactly, times its samples' weights | `world/lights/shade.compute` |
 | Temporal | `DenoiserTemporalCS`: history clamped in YCoCg to the neighbourhood, 4 to 12 frames by confidence, moments kept | `world/lights/temporal.compute`, one history for the first firing (`crystalgraphics.world.lightsShadowFrames`); the sun's and block light's visibility clamped and accumulated the same way, with their moments |
 | Spatial | `DenoiserSpatialCS`: where still noisy, a disk of 4 (8 after a disocclusion) samples by depth, normal and luminance | `world/lights/denoise.compute` (`crystalgraphics.world.lightsShadowSpatial`, pixels); the visibility by the same rule from its own moments, its difference standing for luminance |
@@ -209,7 +209,7 @@ lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   //
   few degrees toward it, so a face edge-on to the sun holds still.
 - **What does not**: a particle's light (Unreal's simple lights cast none), a slot light with `cast_shadows: false`,
   any light under `-Dcrystalgraphics.world.lightsShadows=false`.
-- **Downsampled shading** (`crystalgraphics.world.lightsShadeScale`, `CgWorldLights.SHADE_SCALE`, 2; R in the render
+- **Downsampled shading** (`crystalgraphics.world.lightsShadeScale`, `CgSceneLights.SHADE_SCALE`, 2; R in the render
   demo cycles 1, 2 and 4): the shade, temporal and denoise passes at the target's size over it each way, each texel
   standing for the first pixel of its 2x2 (4x4 at quarter), and the apply upsampling their lighting and visibility as `world_half_upsample` does (bilinear weights times
   depth agreement, the nearest in depth where none agrees). A departure from Unreal, which shades MegaLights at full
@@ -284,16 +284,16 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
 
 - **Handed to a program carrying its own lighting** (`SHADERS.md` § *What a program carrying its own lighting
   reads*): the four lights nearest a draw, or a point, read from the grid cell it falls in (`env/handed/lights.glsl`),
-  the grid bound to its draws by `CgWorldLights.hand`. `--mode=lights-volume` checks a pane handed the light.
+  the grid bound to its draws by `CgSceneLights.hand`. `--mode=lights-volume` checks a pane handed the light.
 
 ## 9. In the air
 
-Smoke, gas and haze in the world's media (`CgWorldMedia`'s froxels: whatever an injector puts there) glow round the
+Smoke, gas and haze in the world's media (`CgSceneMedia`'s froxels: whatever an injector puts there) glow round the
 lights, with shafts where the lights' shadows cut them: Unreal's volumetric fog lighting its froxels.
 
 ```java
-CgWorldHaze haze = new CgWorldHaze().box(x - 24, y, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
-CgWorldRenderer.get().media().add(haze);      // a haze to see the lights in; VFX smoke lights the same way
+CgSceneHaze haze = new CgSceneHaze().box(x - 24, y, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
+CgScene.client().media().add(haze);           // a haze to see the lights in; VFX smoke lights the same way
 ```
 
 - **Scattering** (`world/lights/volume.compute`'s `Scatter`, between the injectors and the integration): each froxel holding
@@ -355,7 +355,7 @@ lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).sca
 
 `CgGraphicsSettings.QUALITY` (the player's effects quality, Z in the render demo) sets the world lights' part of
 Unreal's scalability groups (`BaseScalability.ini`'s ShadowQuality and EffectsQuality): Ultra is the look tuned in game,
-each lower tier Unreal's step down from it. `CgWorldLights.quality` sets each as code's, so a `-D` flag or the console
+each lower tier Unreal's step down from it. `CgSceneLights.quality` sets each as code's, so a `-D` flag or the console
 still wins.
 
 | Setting | Low | Medium | High | Ultra | Unreal |

@@ -26,7 +26,7 @@ and the draw names the material, a mesh and a target; nothing round it:
 
 ```java
 CgMaterial glow = CgMaterial.load("mymod:shaders/glow.shader");
-CgWorldRenderer.get().draw(CgMeshShapes.cube(), glow).at(x, y, z).submit();
+CgScene.client().mesh(CgMeshShapes.cube(), glow).at(x, y, z).spawn();
 ```
 
 - No scope, no `glEnable`, no "put it back" after: two draws in a row with different materials each get their own.

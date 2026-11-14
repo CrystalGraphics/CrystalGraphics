@@ -185,25 +185,30 @@ found and mounted with no registration.
 
 ## Drawing from your mod
 
-Your renderer draws at a **render stage**: a point in Minecraft's frame that a host fires, where every registered
-renderer records into one frame on the game's target, executed there and then.
-
-| Stage | Fired | Seen from |
-|---|---|---|
-| `CgRenderStage.WORLD_OPAQUE` | the opaque world drawn, translucent terrain not yet | the world's camera |
-| `CgRenderStage.WORLD_TRANSPARENT` | translucent terrain and particles drawn | the world's camera |
-| `UiStages.SCREEN`, `UiStages.HUD` | over a screen, over the HUD -- **CrystalGUI's**, fired only where it is installed | CrystalGUI's logical pixels |
-| your own, `CgRenderStage.define("mymod:after_sky")` | from a hook of yours, by `stage.fire()` | what you set in `stage.host()` |
+**Meshes in the world go into the client's scene**, which the engine draws through every view of it, sorted, culled
+and instanced: kept until you remove them, or for this frame only.
 
 ```java
-// Meshes in the world: CgWorldRenderer sorts, culls and instances them at both world stages
-CgWorldRenderer world = CgWorldRenderer.get();
-CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:rune", dt -> world.draw(mesh, material).at(x, y, z).submit());
+CgMeshComponent rune = CgScene.client().mesh(mesh, material).at(x, y, z).spawn();   // kept; rune.remove() ends it
+CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:marker",
+        dt -> CgScene.client().once().mesh(marker, material).at(x, y, z).add());     // this frame only
+```
 
-// Anything else at a stage: record into its frame
-CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {
-    CgRasterPass pass = frame.pass(frame.constants(), CgOrder.SORTED);   // the host's camera
-    // ... chunks ...
+**Anything else draws at a render stage**: a point in the frame where every registered renderer records into one
+frame on the view's target.
+
+| Stage | Runs | Seen from |
+|---|---|---|
+| `CgRenderStage.PREPARE` | per view, before anything of the engine's draws: compute | the view's camera |
+| `CgRenderStage.OPAQUE`, `SURFACES`, `TRANSLUCENT`, `OVERLAY` | per view, after the opaque scene, on the lit opaque scene, after the translucent passes, after post | the view's camera |
+| `CgRenderStage.HUD`, `CgRenderStage.SCREEN` | once a frame, over the HUD, over a screen | the window's pixels; `frame.scaled()` the GUI's |
+| your own, `CgStageHost.define("mymod:after_sky")` | from a hook of yours, by `CgStageHost.fire(stage)` | what you set in `CgStageHost.frame(stage)` |
+
+```java
+CgRenderStage.Registration drawing = CgRenderStage.OVERLAY.register(frame -> {
+    CgRasterPass pass = frame.recording().raster("mymod.gizmos").color(frame.target(), CgLoad.load())
+            .depth(frame.depth(), CgLoad.load(), CgDepthAccess.READ).camera(frame.camera());
+    pass.draw(gizmo, gizmoMaterial).transform(model);
     pass.end();
 });
 drawing.close();   // stops it
@@ -216,9 +221,8 @@ drawing.close();   // stops it
   ```java
   CgPipelinePrecache.register("mymod:runes", pipelines -> pipelines.add(RUNE_MATERIAL, false));
   ```
-- Every host fires the world stages, on every version; a stage whose renderers record nothing costs one empty frame.
+- Every host fires the world's callbacks, on every version; a world stage runs once per view of the scenes its
+  registration reaches (the client's by default), so a simulation keeps its own frame stamp.
 - Register from any thread; a renderer runs on the render thread, in ascending `order`, ties in registration order.
-- `frame.callback(name, body)` runs `body` at its place in the stage with GL state restored after, for drawing not
-  yet written as recorded chunks.
-- `CgRenderStage` and `CgWorldRenderer`'s javadoc carry the rest; CrystalGUI's stages are its
-  [`docs/CGUI_BUILDING_UIS.md`](../../docs/CGUI_BUILDING_UIS.md) § *Drawing under or over the UI*.
+- [`ENGINE_API.md`](ENGINE_API.md) § *Render stages* and § *The scene and its views* carry the rest; CrystalGUI's UI
+  is its [`docs/CGUI_BUILDING_UIS.md`](../../docs/CGUI_BUILDING_UIS.md) § *Drawing under or over the UI*.

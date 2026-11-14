@@ -61,7 +61,7 @@ written. Copy the one for what you are making:
 
 ```java
 CgMaterial stone = CgMaterial.load("crystalgraphics:shaders/reference/surface.shader").keyword("GLOW", true);
-CgWorldRenderer.get().draw(mesh, stone).at(x, y, z).submit();
+CgMeshComponent rock = CgScene.client().mesh(mesh, stone).at(x, y, z).spawn();
 ```
 
 A kernel's reference is [`reference/kernel.compute`](../core/src/main/resources/assets/crystalgraphics/shaders/reference/kernel.compute)
@@ -174,8 +174,8 @@ never declare or bind them yourself:
 | `cg_DepthBuffer` | `sampler2D` | `CgBindingModel.SCENE_DEPTH` | The target's depth as it stands at the draw: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention**, reversed-Z on 26.2, so compare eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Both stages |
 | `cg_SceneColor` | `sampler2D` | `CgBindingModel.SCENE_COLOR` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. Read through `CG_SCENE_COLOR(uv)`; a material reading it sets `SceneColorMargin` |
 | `cg_Lightmap` | `sampler2D` | `CgBindingModel.LIGHTMAP` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)` |
-| `cg_Media` | `sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` |
-| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)` |
+| `cg_Media` | `sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgSceneMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` |
+| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgSceneLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)` |
 
 Convenience macros over the frame block:
 
@@ -201,7 +201,7 @@ Material { ShadingModel Unlit  Fog Off }                 // a sky, or a haze tha
 | Name | Is |
 |---|---|
 | `s.light` | the `vec2(block, sky)` light it is lit by: the draw's (`CG_OBJECT_LIGHT`) unless `surface()` or its factory sets it (a particle's own) |
-| `CG_OBJECT_LIGHT` | the draw's light, in the normal matrix's unused column: `CgWorldRenderer`'s `.light`, else the world's at its position |
+| `CG_OBJECT_LIGHT` | the draw's light, in the normal matrix's unused column: a scene row's `.light`, else the world's at its position |
 | `CG_LIGHTMAP(light)` | the lightmap's colour for a `vec2(block, sky)` |
 | `cg_Lit(color)`, `cg_Fog(color)` | fragment only: what the engine applies, for an `Unlit` material or a `global` program wanting them on part of its colour. `cg_Lit` is the lightmap times `1 +` the world's lights at the fragment (`cg_LocalLights`, transparent passes) |
 | `cg_LocalLightAt(p)`, `cg_FragmentPosition()` | the world's lights at camera-relative `p`, non-directional; this fragment's camera-relative position |
@@ -456,7 +456,7 @@ for (int k = 0; k < min(_Entities, CG_ENTITY_BOXES_MOST); k++) { ... }   // the 
   ```
 
 - **A count the CPU caps** is capped again where it is read, the constant named after its Java owner
-  (`CgWorldEntityBoxes.MAX`, `CgWorldLights.MOST_CASTERS`). An authored count (octaves, a blur radius) gets a cap past
+  (`CgEntityBoxes.MAX`, `CgSceneLights.MOST_CASTERS`). An authored count (octaves, a blur radius) gets a cap past
   which more is invisible.
 - **A loop bounded some other way** (a binary search, a work group's stride over a buffer) says why on its line:
   `while (lo < hi) {   // LOOP-BOUND: a binary search`.
@@ -629,7 +629,7 @@ void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0, 0.6, 0.2) * c
 
 ```java
 sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // graph buffers; any thread
-world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
+CgScene.client().once().indirect(CgMesh.quads(CAPACITY), sparkMaterial).count(count, 0, CgIndirect.INDICES, 6).at(x, y, z).add();
 ```
 
 - **The kernel's element rule**: a `float`, `int` or `uint`, their 2- and 4-vectors, or a struct of `vec4`, `ivec4`
@@ -652,13 +652,13 @@ does:
 **Under `ShadingModel Unlit` it is the material's colour**, drawn as a colour is, with no glow apart: Unreal's unlit
 draws its emissive alone, and `s.baseColor` is refused. The rest of this section is a lit surface's emissive.
 
-The light a material gives off. `CgWorldRenderer` adds it into the HDR scene, where bloom takes what passes white
-(`docs/ENGINE_API.md` § *CgWorldRenderer*): Unity's, Godot's and Unreal's emission, a material output added to an HDR
+The light a material gives off. The scene renderer adds it into the HDR scene, where bloom takes what passes white
+(`docs/ENGINE_API.md` § *How a view is drawn*): Unity's, Godot's and Unreal's emission, a material output added to an HDR
 scene colour.
 
 - **Linear light, unlit**, fogged additively. Past 1 it blooms: bloom takes the scene's light past `CgBloom.threshold`
   (1), and the composite rolls what passes white toward white, keeping its hue.
-- **Times `CG_SCENE_GLOW`** (`CgWorldRenderer.sceneEmission`, 0.5: a stop down, since a strength set for a blurred
+- **Times `CG_SCENE_GLOW`** (the view's `CgSceneRenderer.SCENE_EMISSION`, 0.5: a stop down, since a strength set for a blurred
   bloom floods a sharp core).
 - **Folded into the colour's draw where it can**: a translucent material's glow costs no draw of its own when it blends
   as its colour does (`CgShaderSpec.emissionMerge`, `CgPipeline.sceneFold`). Otherwise it draws apart, a
@@ -672,7 +672,7 @@ scene colour.
 #### The bend: `s.refraction`
 
 Where each pixel behind the material takes its colour from: an offset in screen UV, `s.refractionSplit` a chromatic
-split, `s.refractionDepth` the eye depth the haze starts at. `CgWorldRenderer` adds every visible draw's bend into one
+split, `s.refractionDepth` the eye depth the haze starts at. The scene renderer adds every visible row's bend into one
 RGBA16F target after the transparent pass, then applies it to the scene once (Unreal's distortion pass, HDRP's
 distortion vectors). A heat haze or a shockwave writes a bend instead of sampling the scene itself.
 
@@ -732,7 +732,7 @@ Material { BlendMode Translucent  DepthPrepass On  MaskClip 0.9 }
 #### Dimmed by the smoke in front: `Media`
 
 Smoke and gas are drawn as volumes, so a spark inside a cloud would draw over it. Every translucent world material is
-dimmed instead by what gets through between the eye and its pixel, read from the world's media (`CgWorldMedia`, a
+dimmed instead by what gets through between the eye and its pixel, read from the world's media (`CgSceneMedia`, a
 froxel grid the gas fills), as its blend takes it:
 
 | Blend mode | Dimmed |
@@ -779,8 +779,8 @@ A material draws one look. A second look on the same mesh (an outline, a glow sh
 material, as Unreal draws a mesh's overlay material:
 
 ```java
-CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
-CgWorldRenderer.get().draw(mesh, outline).at(x, y, z).submit();   // its own material, the same mesh
+CgScene.client().mesh(mesh, base).at(x, y, z).spawn();
+CgScene.client().mesh(mesh, outline).at(x, y, z).spawn();   // its own material, the same mesh
 ```
 
 A skeletal mesh component names one for every slot: `CgSkeletalMeshComponent.overlay(material)`.
@@ -924,7 +924,7 @@ not in the mod or content pack that first needed it: only what is one product's 
      `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)`.
 4. **Prove and document it**: its check in `--mode=material-library`, and its row in the table above.
 
-**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/world/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/shader/CLAUDE.md`
+**Package guides for this layer**: `api/material/CLAUDE.md` · `render/CLAUDE.md` · `render/scene/renderer/CLAUDE.md` · `render/stage` (its classes' javadoc) · `material/CLAUDE.md` · `material/shader/CLAUDE.md`
 
 ### No raw shaders
 
@@ -982,8 +982,11 @@ CgGraphBuffer alive = CgGraphBuffer.transientBuffer("sparks.alive", CgBufferDesc
 CgGraphBuffer live = CgGraphBuffer.persistent("sparks.live", CgBufferDesc.elements(CAPACITY, 4, CgBufferUsage.STORAGE));
 CgGraphBuffer count = CgGraphBuffer.persistent("sparks.count", CgBufferDesc.of(16, CgBufferUsage.STORAGE));
 
-// Stepped once a frame, in the opaque stage's first firing, ahead of the world renderer, whose draws read the list.
-CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
+// Stepped once a frame, in the first view's PREPARE, ahead of every draw that reads the list.
+long[] stepped = {Long.MIN_VALUE};
+CgRenderStage.PREPARE.register(frame -> {
+    if (stepped[0] == CgFrameRing.frame() || CgRehearsal.active()) return;   // once a frame, whatever the views
+    stepped[0] = CgFrameRing.frame();
     CgComputePass pass = frame.recording().compute("sparks.step");
     pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks).bind("ALIVE", alive).set("_Step", dt);
     CgGpuOps.compact(pass, alive, null, CgGpuCount.of(CAPACITY), live, count, 0);   // live indices, and how many
@@ -991,20 +994,20 @@ CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame
 });
 
 sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);   // what the material's Buffers { } reads
-world.draw(CgMesh.quads(CAPACITY), sparkMaterial)
-     .indirect(count, 0, CgIndirect.INDICES, 6)              // six indices per spark the GPU counted
-     .at(x, y, z).bounds(box).submit();
+CgScene.client().once().indirect(CgMesh.quads(CAPACITY), sparkMaterial)   // each frame, from a SUBMIT tick function
+     .count(count, 0, CgIndirect.INDICES, 6)                  // six indices per spark the GPU counted
+     .at(x, y, z).add();
 ```
 
 - **Nothing above names a device.** On GL and the Vulkan device alike `Step` and the compaction run as compute
   shaders, and the draw takes the count the GPU wrote.
 - **A history buffer is the simulation's state**: `IN` reads the newest version and `OUT` writes the next, so one
   buffer is both without a race. `sparks.previous()` is the version before.
-- **The live list and its count are persistent**: the draw may execute in another stage's frame (a transparent
-  material draws in `WORLD_TRANSPARENT`) or in a later firing of this one, and a transient lasts one firing.
-- **Stepped once a frame**: `registerOncePerFrame` records on the stage's first firing of each host frame, so a second
-  firing (1.7.10's anaglyph, a portal mod drawing the world again) draws the same sparks rather than stepping them
-  twice. Work that depends on the view, culling or sorting by depth, registers per firing with `register`.
+- **The live list and its count are persistent**: the row draws in another recording than `PREPARE`'s (a translucent
+  material in the transparent callback) and in every later view of the frame, and a transient lasts one recording.
+- **Stepped once a frame**: the stamp steps the sparks in the frame's first view alone, so a second view (1.7.10's
+  anaglyph, a portal, a capture) draws the same sparks rather than stepping them twice. Work that depends on the view,
+  culling or sorting by depth, runs per view, with no stamp.
 - **The material reads the sparks** through its own `Buffers { }`, quad n placed at spark `SPARKS(LIVE(n))`: the
   material is [Reading a kernel's buffers](#reading-a-kernels-buffers)'s example.
 
@@ -1195,8 +1198,8 @@ sim.end();
 
 - **What a binding is read or written as comes from the kernel's accessors**: `STATE(i)` reads, `STATE_WRITE` writes.
   The graph orders passes and places every barrier from that; **every buffer and image a kernel uses must be bound**.
-- **Record a kernel ahead of the draw that reads what it writes.** In a world stage that is a renderer registered
-  below `CgWorldRenderer.ORDER`; one that advances state registers with `registerOncePerFrame`.
+- **Record a kernel ahead of the draw that reads what it writes.** In a view that is `PREPARE`, which runs before the
+  scene renderer's passes; one that advances state keeps its own frame stamp, as it runs once per view.
 - `dispatchGroups(kernel, x, y, z)` dispatches whole groups: `CG_DISPATCH_COUNT` is every invocation they hold. A
   count past the device's group limit runs as several dispatches, each from its own base.
 - A pass is culled when nothing reads what it writes, unless it writes a persistent, history or imported buffer, or a
@@ -1308,12 +1311,12 @@ The whole workflow, from a kernel to culled draws joined into one call, with rec
 | a count | `.indirect(count, offset, mode, factor)` on a world or chunk draw |
 | an image | the graph texture, sampled by a material; a volume as a `sampler3D` |
 | a buffer of records | `NAME(i)` in a material declaring it in `Buffers { }`, bound with `material.buffer(name, buffer)` |
-| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material; or `.instances(records, count)` on a world draw, culled on the GPU (below) |
+| object records, `CgInstanceKind.OBJECT`'s 48 floats each | `.objects(records, first, n)` on a chunk draw: instance i reads record `first + i` through `CG_OBJECT_DATA`, in any material; or a scene row's `.records(mesh, material).from(records, count)`, culled on the GPU with `.culled(scale, pad)` (below) |
 
 ```java
 // A count: a quad per live spark, or a mesh instanced once per element
-world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
-world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
+CgScene.client().once().indirect(CgMesh.quads(capacity), sparks).count(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).add();
+CgScene.client().once().indirect(billow, smoke).count(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).add();
 
 // Object records: a rock per record a cull kept, as many as it counted
 chunks.draw(rocks.pipeline(CgInstanceKind.OBJECT), bindings, rock).objects(visible, 0, capacity)
@@ -1362,8 +1365,11 @@ CgGpuOps.readRows(recording, landings, 0, 16, CgGpuCount.at(counts, 2, MAX_LANDI
 ### Beside the drawing: `async()`
 
 ```java
-// A simulation stepped at the opaque stage and drawn at the transparent one: the world draws beside it.
-CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(order, frame -> {
+// A simulation stepped at PREPARE and drawn in the translucent passes: the scene draws beside it.
+long[] stepped = {Long.MIN_VALUE};
+CgRenderStage.PREPARE.register(frame -> {
+    if (stepped[0] == CgFrameRing.frame()) return;            // once a frame, whatever the views
+    stepped[0] = CgFrameRing.frame();
     CgComputePass step = frame.recording().compute("sparks.step").async();
     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
     step.end();
@@ -1454,7 +1460,7 @@ pass.end();
 | `shrink(pass, source, x, y, w, h, target, tx, ty, tw, th)` | a region, fractional, shrunk into a smaller rect: each target texel the average of the source area it covers (an area resample: Pillow's `BOX`, OpenCV's `INTER_AREA`). A thumbnail |
 | `blurScaled(pass, source, x, y, w, h, target, sigma, edge)` | Skia's scale-then-blur: the region box-reduced by 1, 2 or 4 (the target's size says which; `blurScale(sigma)` picks it), then blurred there |
 | `depthPyramid(recording, depth, constants, pyramid)` | a depth texture (or a target lending one) as eye depth, each level the farthest it covers: what a cull tests against |
-| `cull(pass, cull, instances, [first,] count, out, counts, word)` | instances of one mesh culled as `CgWorldRenderer` culls a draw (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many; from record `first` for one range of a shared buffer |
+| `cull(pass, cull, instances, [first,] count, out, counts, word)` | instances of one mesh culled as the scene renderer culls a row (frustum, level by screen height, the pyramid's depth): each level's kept object records, and how many; from record `first` for one range of a shared buffer |
 | `cull(pass, view, sets, out, counts)` | every set of a `CgCullSets` culled at once, each as the op above with order kept: two dispatches per instance buffer and one sort, however many sets |
 
 - **A count is fixed or a word on the GPU** (`CgGpuCount.of(n)`, `CgGpuCount.at(buffer, word, capacity)`). A GPU count
@@ -1476,12 +1482,14 @@ CgGpuOps.downsample(pass, depth, Filter.MAX);                // a depth pyramid:
 ```
 
 **Culling a set of instances** (`CgCull`): records in `CgInstanceKind.OBJECT`'s layout, in the set's own space, culled
-against the view and drawn level by level from what the GPU kept, with no count on the CPU. In the world, a set is one
-draw: `CgWorldRenderer` builds the pyramid from the stage's depth ahead of its own passes (in Minecraft, the terrain),
-culls every set in every stage that draws it, all at once, and draws each level kept.
+against the view and drawn level by level from what the GPU kept, with no count on the CPU. In a scene, the records a
+kernel wrote are one row: the scene renderer builds each view's pyramid from its depth ahead of its own passes (in
+Minecraft, the terrain), culls every such row of the view at once, and draws what it kept. Instances placed from the
+CPU are a `CgInstancedMeshComponent`, culled the same way.
 
 ```java
-world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
+out.records(rock, stone).from(rocks, CgGpuCount.of(n)).culled(size, reach).at(x, y, z).add();   // a dynamic primitive's rows
+CgInstancedMeshComponent field = scene.instanced(rock, stone).spawn();                         // instances of the CPU's
 ```
 
 By hand, into a recording:

@@ -3,13 +3,14 @@
 > Root guide: [`CrystalGraphics/docs/ENGINE_API.md`](../../../../../../../../docs/ENGINE_API.md) § *The post stack*.
 > Plan: `plan/crystalgraphics/render-post-process.md`.
 
-What runs after the world renderer has drawn the scene, on the same `WORLD_TRANSPARENT` firing: effects at named
-points, and one composite pass laying every screen-wide look over the target, as Unreal's tonemapper, URP's UberPost
-and Godot's tonemap pass compose bloom.
+What the scene renderer runs after a view's translucent passes and `TRANSLUCENT`, in the same callback: effects at
+named points, and one composite pass laying every screen-wide look over the target, as Unreal's tonemapper, URP's
+UberPost and Godot's tonemap pass compose bloom. Per view: a view's volumes are blended at its camera into its own
+settings, and a view of a scene of its own blends none of the client's.
 
 ```
-CgWorldRenderer (ORDER 1000)  draws the scene, glows added into it ──► frame.resources(): SCENE
-CgPostStack     (ORDER 2000)
+CgSceneRenderer.translucent   draws the scene, glows added into it ──► view.textures().sceneColor()
+CgPostStack.record
   BEFORE_SEPARATE_TRANSLUCENCY  colour regions: the scene before separate translucency
   translucency      CgTranslucencyComposition: CgSeparateTranslucency over the scene and its graded layers
   AFTER_WORLD       effects that read the scene
@@ -21,19 +22,19 @@ CgPostStack     (ORDER 2000)
 | Package | Holds |
 |---|---|
 | (root) | `CgPostStack` (the singleton: registration, the effect list, recording, `crossfade`), `CgPostEffect` (the SPI the engine's and a mod's effects implement), `CgPostPoint`, `CgPostContext` (what an effect records with), `CgPostMaterial` (an effect that is a `.shader` over the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, its weight in the draw's `custom0.x`, `POST_WEIGHT`; drawn unblended where its shader declares no blend, and then, discarding nothing, over the scene it reads with no copy of it (`CgRasterPass.replaces`); `of(path)` takes a `#domain post` file's `Location`; a pass tagged `"Target"` (a format file's `Step`) draws into a transient of its `"Format"` (RGBA16F by default) and `"Scale"`, bound to that sampler for the passes after, through `CgMaterial.pipeline(pass, kind)`, and the `"Emission"` tag binds the emission or the HDR scene), `CgPostCrossfade` (built in, last at `AFTER_COMPOSITE`: `hold.shader` copies the target into a requested RGBA8 texture of the host's size through `readsColor(target, unit)`, `crossfade.shader` lays it over the frames after at a falling alpha on `CgFrameClock`) |
-| `bloom` | `CgBloom`: the built-in bloom, Unreal's Gaussian layers (`BloomMethod` Standard), and its settings. Its source (`bloom.compute`'s `Source`) is the half-size scene: each channel's excess past `threshold` (1), held toward `_Highlight`, or where a volume asks for Unreal's look (`CgPostSettings.gaussianBloom`, a post block's `bloom1`-`bloom6`) Unreal's setup (`UNREAL_SETUP`) at its `BloomThreshold`. Its passes (`Chain`, one compute pass, Unreal's `FFilterCS`/`FDownsampleCS` form, R11G11B10F): the 4x4-box chain to a 64th (`Down`, a dispatch a level), then from the 64th in a separable Gaussian a layer (`Across`, `Layer`, Unreal's taps; from a 7-texel radius the horizontal pass at half width, `r.FastBlurThreshold`), each adding the one before. Unless a volume asks, the layers are the engine's own (`ENGINE_SIZES`/`ENGINE_TINTS`, at a size scale of 1): fitted to the CoD-style chain they replaced (rhi, 2026-11-04) by a model of both round one hot texel, within 3% at every radius, its glow matching on `vfx-blasts` to 0.87 of 255. A texture a stage, never levels of one, and no clears. **Graded layers** (`render/world`'s `CgGradeLayers`): each layer's light blooms by its own look (Unreal's where it asks, else the engine's layers), and the engine's bloom reads the scene less every layer's light, so none blooms twice. Every bloom of a firing runs in the same dispatches, one a z with its own targets and rows (`BLOOMS`, 3): one chain however many looks |
+| `bloom` | `CgBloom`: the built-in bloom, Unreal's Gaussian layers (`BloomMethod` Standard), and its settings. Its source (`bloom.compute`'s `Source`) is the half-size scene: each channel's excess past `threshold` (1), held toward `_Highlight`, or where a volume asks for Unreal's look (`CgPostSettings.gaussianBloom`, a post block's `bloom1`-`bloom6`) Unreal's setup (`UNREAL_SETUP`) at its `BloomThreshold`. Its passes (`Chain`, one compute pass, Unreal's `FFilterCS`/`FDownsampleCS` form, R11G11B10F): the 4x4-box chain to a 64th (`Down`, a dispatch a level), then from the 64th in a separable Gaussian a layer (`Across`, `Layer`, Unreal's taps; from a 7-texel radius the horizontal pass at half width, `r.FastBlurThreshold`), each adding the one before. Unless a volume asks, the layers are the engine's own (`ENGINE_SIZES`/`ENGINE_TINTS`, at a size scale of 1): fitted to the CoD-style chain they replaced (rhi, 2026-11-04) by a model of both round one hot texel, within 3% at every radius, its glow matching on `vfx-blasts` to 0.87 of 255. A texture a stage, never levels of one, and no clears. **Graded layers** (`scene/renderer/feature/translucency/CgGradeLayers`): each layer's light blooms by its own look (Unreal's where it asks, else the engine's layers), and the engine's bloom reads the scene less every layer's light, so none blooms twice. Every bloom of a firing runs in the same dispatches, one a z with its own targets and rows (`BLOOMS`, 3): one chain however many looks |
 | `composite` | `CgPostComposite` (the one pass), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, no copy, adding in the target's encoding, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads `cg_SceneColor`, composites in linear light, triangular dither), chosen each firing from what its inputs ask. `FADE` is last in both: the blend form fades its added term and its alpha, the copy form mixes the encoded colour, so a fade looks the same in either. `LAYERS` (copy form, with the scene): each graded layer adds what it contributes toned by its look's table (`CgPostLooks`' per-slot `CgFilmLut`), less the frame's own tone of the same (`frame_tone`), with the background behind it taken back from its coverage; a pixel no layer reaches is unchanged |
 | `volume` | `CgPostSettings` (looks a volume overrides: bloom scale, flash in stops, Unreal's vignette and colour fringe, the tonemapper and its film settings (Unreal's, at its defaults, blended by weight), Unreal's colour grading (a `Region` and `Control` each its own field) and scene tint, impact with its `CgImpactFrame` and seed, focus), `CgPostVolume` (everywhere, or a radius and blend distance round a point; priority; a weight an effect animates), `CgImpactFrame` (an impact frame's look as data: a picture-only kind, or drawn with paper, subject, focus lines, hatching, star, cross and jitter), `CgImpact` (its presets), `CgImpactSequence` (beats at 24 a second, a seed each), `CgPostBlendable` (a post block's `materials` entry compiled: Unreal's weighted blendable, its `values` and `textures` a derived material, drawn at its material's `post.stage`; a sequence's post spawnable and a stage's volumes both draw them). The stack blends every volume at the camera each firing into `CgPostContext.settings()`, a placed one's focus where it is on screen |
 | `fog` | `CgHeightFog`: Unreal's exponential height fog (`HeightFogCommon.ush`'s one layer, the observer held as `FogRendering.cpp` holds it), in blocks, drawn at `BEFORE_TRANSLUCENCY` by `height_fog.shader`, decoding and encoding the host's target without the HDR scene |
 | `stage` | `CgStageDefinition` (the `stage` kind compiled: a level's post volumes and fog in the host's blocks round its anchor; its Java `Builder`), `CgStage` (one placed over the world until closed, a weight for all of it), `CgStagePreparer` (its materials, looks and fog built ahead) |
-| `look` | `CgPostLooks`: the built-in effect at `BEFORE_COMPOSITE` turning the blended settings into composite inputs, flash and impact scaled by `CgGraphicsSettings.FLASHES`. `CgColorGrade`: Unreal's `ColorCorrectAll` in ACEScg with the white balance, packed for the composite's `GRADE` (before the roll, its tint after) or baked into the table; `CgColorGradeTest` checks it against a NumPy port of 4.21's shader, and a neutral grade turns `GRADE` off. `CgFilmLut`: Unreal's tonemapper table (its combined LUT, 4.21's legacy film curve or 5.1's, 32³), built on the GPU by `post/film_lut.compute` when the film settings or grade move (Unreal's `PostProcessCombineLUTs`), kept as a 3D graph texture and read by the composite's `TONEMAP` through Unreal's log shaper, times 1.05. Its CPU `bake` is the reference: `CgFilmLutTest` checks it against a Kakarot frame's table and pixels (`-PgameLut`), and `post-looks` holds the GPU's table to it cell by cell. A drawn impact frame puts `CgFrameKeys.SUBJECT_READ` in `demand()` and reads the world's `SUBJECT`, bent; its GLSL is `post/impact.glsl`. Every look but bloom draws in the copy form until dual-source blending lands |
-| `distortion` | `CgPostDistortion`: a side input bent by the firing's `CgFrameKeys.DISTORTION` field (`distortion_bend.shader`, GPU zone `post.distortionBend`), each input once a firing; reached through `CgPostContext.distorted`. The bend sums the field's layers in use through one `sampler2DArray`, so it binds two units however many hazes' slots there were |
-| `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>\|overdraw\|distortion`, the emission, a bloom stage (`CgBloom.LEVELS`), the world renderer's overdraw count (`CgFrameKeys.OVERDRAW`, through a heat ramp) or its distortion offsets summed (`CgFrameKeys.DISTORTION`, `debug_distortion.shader`) drawn over the frame, last |
+| `look` | `CgPostLooks`: the built-in effect at `BEFORE_COMPOSITE` turning the blended settings into composite inputs, flash and impact scaled by `CgGraphicsSettings.FLASHES`. `CgColorGrade`: Unreal's `ColorCorrectAll` in ACEScg with the white balance, packed for the composite's `GRADE` (before the roll, its tint after) or baked into the table; `CgColorGradeTest` checks it against a NumPy port of 4.21's shader, and a neutral grade turns `GRADE` off. `CgFilmLut`: Unreal's tonemapper table (its combined LUT, 4.21's legacy film curve or 5.1's, 32³), built on the GPU by `post/film_lut.compute` when the film settings or grade move (Unreal's `PostProcessCombineLUTs`), kept as a 3D graph texture and read by the composite's `TONEMAP` through Unreal's log shaper, times 1.05. Its CPU `bake` is the reference: `CgFilmLutTest` checks it against a Kakarot frame's table and pixels (`-PgameLut`), and `post-looks` holds the GPU's table to it cell by cell. A drawn impact frame asks for the view's subject at `prepare` (`textures().requestSubject`) and reads it, bent; its GLSL is `post/impact.glsl`. Every look but bloom draws in the copy form until dual-source blending lands |
+| `distortion` | `CgPostDistortion`: a side input bent by the view's `CgDistortionField.KEY` field (`distortion_bend.shader`, GPU zone `post.distortionBend`), each input once a firing; reached through `CgPostContext.distorted`. The bend sums the field's layers in use through one `sampler2DArray`, so it binds two units however many hazes' slots there were |
+| `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>\|overdraw\|distortion`, the emission, a bloom stage (`CgBloom.LEVELS`), the scene renderer's overdraw count (`textures().overdraw()`, through a heat ramp) or its distortion offsets summed (`textures().distortion()`, `debug_distortion.shader`) drawn over the frame, last |
 
 Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`, the crossfade's `hold.shader`
 and `crossfade.shader`; bloom's kernels in `shaders/post/bloom.compute`; a post material's triangle and weight in `shaders/env/material/post.glsl`.
 
-**The HDR scene**: when the firing carries `CgFrameKeys.SCENE`, the stack hands the
+**The HDR scene**: when the view has one (`textures().sceneColor()`, linear), the stack hands the
 composite the scene (`composite.scene`) and the stage its host target back (`retarget(null, null)`) before the composite
 records. The composite then always draws, in the copy form with `SCENE`: it reads the scene rather than a copy of the
 target, rolls a colour past white toward white keeping its hue (`c / peak` mixed toward white by
@@ -47,19 +48,19 @@ compiler neither decodes it into the scene nor encodes it onto the host.
 
 ## Rules
 
-- **The world renderer produces, the post stack consumes.** No post pass is recorded from `render/world`, and no
-  scene draw from `render/post`. What one hands the other goes through `CgStageFrame.resources()`
-  (`CgFrameKeys`), never a field read across classes. The one crossing is `BEFORE_TRANSLUCENCY` (Unreal's
-  `BL_BeforeTranslucency`, 4.27 `PostProcessing.cpp:476`): the stack puts a `CgStageHook` on the blackboard at
-  `DEMAND_ORDER`, and the world renderer runs it onto the lit opaque scene before its transparent passes, custom
-  depth, normals and custom data published. A firing without the scene (its programs unbuilt) records them with
-  `AFTER_WORLD`.
+- **The scene renderer produces, the post stack consumes.** No post pass is recorded from `render/scene`, and no
+  scene draw from `render/post`. What one hands the other goes through the view (`view.textures()`,
+  `view.publish/read`), never a field read across classes. The renderer calls the stack at three points, in Unreal's
+  order: `prepare(view)` at the opaque callback (volumes blended, textures asked for), `recordBeforeTranslucency`
+  onto the lit opaque scene before its translucent passes (Unreal's `BL_BeforeTranslucency`, 4.27
+  `PostProcessing.cpp:476`; custom depth, normals and custom data ready), and `record` after `TRANSLUCENT`. A view
+  without the scene (its programs unbuilt) records the before-translucency effects with `AFTER_WORLD`.
 - **One composite pass a firing.** A new screen-wide look is a `CgCompositeFeature`, or an effect at a point; never a
   second full-screen add.
 - **A mod's effect cannot join the composite** (Unreal's blendables run as their own passes too): it records at a point.
-- **What the stack asks of the world renderer goes through the blackboard too**: at `DEMAND_ORDER`, before the world
-  records, it blends the volumes and puts `CgFrameKeys.SUBJECT_READ` while a drawn impact frame shows, which is what
-  lets the world draw its subject's glows apart.
+- **What the stack asks of the scene renderer goes through the view too**: at `prepare`, before anything records, it
+  blends the volumes into the view's settings and asks for its subject while a drawn impact frame shows, which is what
+  lets the renderer draw its subject's glows apart.
 - **Dither the blend form by stochastic rounding, never by +-1 noise** (`post_round8`): an 8-bit attachment clamps a
   fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **An effect's look is a volume, never a write to the global settings**: it closes its volume when it ends, and the
@@ -95,6 +96,6 @@ final class Tint implements CgPostEffect {
   sit under bloom.
 - `order()` sorts effects within a point, ties in the order added. `active` is asked every firing; record nothing
   when inactive, and allocate nothing in either.
-- Read the firing's blackboard (`post.resources()`) and blended looks (`post.settings()`); never hold either.
+- Read the view's textures and values (`post.textures()`, `post.view().read(key)`) and blended looks (`post.settings()`); never hold any.
 - **A side input of the scene (emission, a mask) goes through `post.distorted(texture)`**, or it sits unbent over
   every haze; the target is bent already.

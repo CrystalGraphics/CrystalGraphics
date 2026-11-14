@@ -187,7 +187,7 @@ rec.readback(voxels, 0, 0, 0, 40, 128, 96, 2, data -> check(data));         // s
 beside a target it may not own, the current one included, so a fragment's `: RT1` output lands there. A description is
 one texture, so this is how a pass draws two colours. Both take one load; where it loads, `texture` keeps what it
 holds. Beside the current target the device's
-pass attaches the host's colour and depth as imported textures, so the host's own framebuffer is never changed. The world's normal target is the user (`render/world/CLAUDE.md`).
+pass attaches the host's colour and depth as imported textures, so the host's own framebuffer is never changed. The scene renderer's normal target is the user (`render/scene/renderer/CLAUDE.md`).
 
 ```java
 recording.raster("world.normalsClear").color(normals, CgLoad.CLEAR).constants(constants).end();
@@ -207,7 +207,7 @@ chunks.draw(CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT).as(CgPi
 
 **A colour drawn with another texture's depth**: a description is one texture, so a pass drawing colour and depth
 names both, `color(colour, load)` and `depth(depth, load, access)`. The depth is the host's (an external target, as
-the world's HDR scene is drawn over the host's: `render/world/CLAUDE.md`) or a depth texture of the graph's. A pass
+the scene renderer's HDR scene is drawn over the host's: `render/scene/renderer/CLAUDE.md`) or a depth texture of the graph's. A pass
 attaches a depth only where it declares one: one into an external target that tests depth declares that target's
 (`depth(CgGraphTexture.current(), ...)`). It is ordered as a read and write of that depth too. A stage's renderers draw
 into `stage.target()` with `stage.depth()`, which the HDR scene sets with `retarget(scene, depth)`.
@@ -323,12 +323,12 @@ CgRasterPass pass = recording.raster("world.haze").color(target, CgLoad.load()).
   discards.
 - The copy has the target's formats (a float target keeps its range); the current target's colour is RGBA8 and its
   depth in its own format, the viewport's size.
-- Sort order decides what a reader sees: it bends what sorted before it. The world renderer's groups and orders
-  place a haze after what it should bend (`render/world/AGENTS.md`).
+- Sort order decides what a reader sees: it bends what sorted before it. A scene row's sort point and priority
+  place a haze after what it should bend (`render/scene/renderer/CLAUDE.md`).
 
 **Another target's depth** (`readsDepth(from, unit)`): a pass into a target of its own (a bloom target, any size)
 reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
-Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The world's bloom is the user (`render/world/CLAUDE.md`).
+Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The post stack's bloom is the user (`render/post/CLAUDE.md`).
 
 **One depth copy, shared.** The compile resolves a framebuffer's depth once per execution (`CgSceneCopies`' resolved
 half, the one `RESOLVE_DEPTH` copies and every `REUSE_DEPTH` reads), and every pass after it
@@ -350,7 +350,7 @@ recording.raster("world.glow").color(glow, CgLoad.CLEAR).constants(constants)
 - Give the pass the host's depth convention (`CgStageFrame.defaults`), or the eye depths disagree.
 
 **Indirect draws** (gpu-compute C4): a mesh draw takes how much it draws from a `uint` a kernel wrote, through
-`CgChunkBuilder.indirect(count, offset, mode, factor)` or `CgWorldRenderer`'s `.indirect`. The raster pass reads the
+`CgChunkBuilder.indirect(count, offset, mode, factor)` or a scene row's `.count`. The raster pass reads the
 count as a kernel would, so the pass that writes it runs first; before the pass begins the executor writes each indirect
 draw's command with an engine kernel (`compute/ops/args.compute`, `CgIndirectArgs`) from the count and the range the
 mesh store placed, then draws it with `glDrawElementsIndirect`/`glDrawArraysIndirect`. A pass's commands are one
@@ -400,7 +400,7 @@ consecutive slots, by indices (`CgMeshStore.range`) with each batch's first inst
 `drawIndirectJoined` at the slots' stride. A culled set's levels (`CgGpuOps.cull`) are such a run: one call however many
 levels. An `INSTANCES` draw of the frame's records joins too: its shared record rides in its own command.
 
-**A command a record** (`CgChunkBuilder.indirectEach`, `CgWorldRenderer.Draw.indirectEach`): one draw whose every
+**A command a record** (`CgChunkBuilder.indirectEach`; a scene's `perRecord` rows are a command each): one draw whose every
 record is its own command, its count at the offset `countAt` gave it: one batch, the frame's `eachOffsets` holding
 its records' counts. The executor writes a row a record, each with its record as its first instance, and draws them as
 one multi-draw where its mesh joins, else a draw a record under `instanceBase`. What many particle slots of one

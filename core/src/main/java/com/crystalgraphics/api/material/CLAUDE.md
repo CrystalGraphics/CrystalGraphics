@@ -20,9 +20,9 @@ This is the top of the CrystalShader material stack.
 | `CgMaterialInstances` | An instance per keyword variant of one material, made at first ask and kept: for a drawer whose keywords follow its values (canvas glass, a colour region, the post composite) |
 | `CgParameterCollection` | Values every material reads, set once (Unreal's material parameter collection): `of(namespace)`, `scalar(name, default)` and `vector(name, argb)` answer typed handles, `set`/`get` on the render thread without allocating. Each collection is placed in the `globals` engine buffer (`CgParameterCollectionBuffer`) at its first use, scalars packed by four then vectors, in definition order; `glsl()` is the `#define CG_GLOBAL_<ns>_<name>` lines the compiler appends after `env/globals.glsl`, and `upload()` the world renderer's once a frame. A collection placed after a shader compiled against it recompiles that shader (`CgAssetReloader.changed` on the provider's `generatedPath()`). `docs/SHADERS.md` § *Global parameters* |
 | `CgParameterCollections` | The `parameters` kind's compiler (`CgBuiltInCompilers`): an asset declares its collection, `base` and `overrides` applied; compiled again with the same layout it answers the same collection, a changed layout throws |
-| `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgWorldRenderer.add`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.load(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
+| `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgSortLayer.SEPARATE_TRANSLUCENCY`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.load(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
-| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgWorldLights`), so no material draws from a light's side. |
+| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgSceneLights`), so no material draws from a light's side. |
 | `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by its factory's or primitive's `EngineBuffers`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. Every material is cached here by its shader asset and state (`of(asset, state)`); `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` are a path's with the shader's state. `reloadAll()` marks every material's shader asset dirty; each material and instance made from it rebuilds its values from the new parse at its next capture, keeping each value whose property kept its name and type. `deleteAll()` deletes every material (each with its keyword variants), then the shader registry frees the programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
@@ -42,11 +42,12 @@ This is the top of the CrystalShader material stack.
 ### Drawing a material in the world
 
 A material does not own the frame block or the object buffer: a recorded pass carries its constants, and
-the executor binds both. Into Minecraft's world, submit to `CgWorldRenderer` (see
-[`render/world/CLAUDE.md`](../../render/world/CLAUDE.md)); anywhere else, draw it in a raster pass of your own (`pass.draw(mesh, material)`, `CgRenderer.executeNow`).
+the executor binds both. Into Minecraft's world, put it in the client scene (see
+[`render/scene/renderer/CLAUDE.md`](../../render/scene/renderer/CLAUDE.md)); anywhere else, draw it in a raster pass of your own (`pass.draw(mesh, material)`, `CgRenderer.executeNow`).
 
 ```java
-CgWorldRenderer.get().draw(mesh, material).at(x, y, z).custom(0, r, g, b, 1f).submit();
+CgMeshComponent rock = CgScene.client().mesh(mesh, material).at(x, y, z).customData(0, r, g, b, 1f).spawn();  // kept
+CgScene.client().once().mesh(mesh, material).at(x, y, z).customData(0, r, g, b, 1f).add();                   // this frame
 ```
 
 ### Passes
@@ -68,12 +69,12 @@ CgMaterial glow = CgMaterial.load("mymod:shaders/glow.shader");     // shared: d
 CgMaterialInstance hot = glow.instance()                             // yours: its programs, values of its own
         .set1f("_Strength", 2f).colorARGB("_Tint", 0xFFFF8020);
 hot.set1f("_Strength", 3f);                                          // when it changes
-world.draw(mesh, hot).submit();                                      // a draw takes either (CgMaterialInterface)
+scene.mesh(mesh, hot).spawn();                                       // a primitive takes either (CgMaterialInterface)
 hot.delete();                                                        // once nothing draws it
 ```
 
 - Values one method writes into several targets take a `CgMaterialValues`: an instance, or a kernel's
-  `dispatch.values()` (`CgWorldLights`' grid values reach both).
+  `dispatch.values()` (`CgSceneLights`' grid values reach both).
 - Values are stored on the instance's properties and kept until overwritten; the next capture repacks its block only
   if a value moved, so writing the same value again costs a comparison. Unknown names are ignored.
 - **Safe before any compile, and compiles nothing**: values are built from the shader's *parse*. Only a source that
@@ -144,7 +145,7 @@ old material until the new one is ready:
 CgMaterial next = CgMaterial.fromSource(source);   // shared by content: the same source answers the same material
 // each frame:
 if (next.precache()) current = next;                // compiled, or failed: next.lastCompileError() says which
-world.draw(mesh, current).submit();                 // the old picture until the new one is ready
+rock.material(0, current);                          // the old picture until the new one is ready
 ```
 
 - `precache()` submits every program of the material (`CgMaterialShader.submitRecompile`) and answers false
@@ -243,7 +244,7 @@ their bindings: never declare them again.
 | `api/shader/` | `CgShaderPreprocessor`, the source pipeline every shader goes through |
 | `material/` | `CgShader`, what each pass and keyword set compiles into |
 | `api/vertex/` | `CgVertexFormat.SPATIAL` — canonical spatial format for this pipeline; also `CgVertexSemantic`, `CgAttribType` |
-| `render/world/`, `render/graph/` | `CgWorldRenderer` and the graph draw a `CgMesh` under a material, through the mesh store |
+| `render/scene/`, `render/graph/` | The scene renderer and the graph draw a `CgMesh` under a material, through the mesh store |
 
 ---
 

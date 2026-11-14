@@ -186,10 +186,10 @@ runs on the splash screen's shared context (§ *GL objects during mod loading* b
 
 `CgRenderHook` is a Mixin on `EntityRenderer` with three injections:
 
-- **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgRenderStage.WORLD_OPAQUE.fire(...)`, with the
-  opaque world already in Minecraft's main FBO and its depth.
-- **Before `ForgeHooksClient.dispatchRenderLast`** — `CgRenderStage.WORLD_TRANSPARENT.fire(...)`, after
-  translucent terrain.
+- **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgStageHost.fire(CgStageHost.WORLD_OPAQUE)`, with the
+  opaque world already in Minecraft's main FBO and its depth: the host frame filled, the client scene's opaque passes.
+- **Before `ForgeHooksClient.dispatchRenderLast`** — `CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT)`, after
+  translucent terrain: the rest of the view, its post stack included.
 - **`updateCameraAndRender` TAIL** — the frame tick, on every frame including a GUI with no world.
 
 `MixinMinecraft` covers resize, fullscreen, resource reload and shutdown. Package guide:
@@ -281,7 +281,7 @@ which also covers 26.1's own main-target framebuffer and 26.2 under Vulkan.
 
 **Iris/Oculus**: with a shader pack active, CrystalGraphics geometry renders into the main FBO **outside**
 Iris's deferred GBuffer chain and appears unlit under deferred pipelines; `cg_DepthBuffer` stays valid.
-`CgShaderPacks.packInUse()` (`platform.service`, provided from Iris's public API by the modern hosts for Iris and Oculus and by 1.7.10's for Angelica; legacy Forge has none) detects it, and `CgWorldRenderer` warns once.
+`CgShaderPacks.packInUse()` (`platform.service`, provided from Iris's public API by the modern hosts for Iris and Oculus and by 1.7.10's for Angelica; legacy Forge has none) detects it, and the scene renderer warns once.
 
 **Mixin policy**: prefer a native loader event, or a GLFW callback for input; a mixin only where neither
 exists.

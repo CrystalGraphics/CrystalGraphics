@@ -57,7 +57,7 @@ The same state on a material of your own, outside a look:
 
 ```java
 CgMaterial glow = CgMaterial.load(SOFT, CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build());
-CgWorldRenderer.get().draw(mesh, glow).at(x, y, z).submit();
+CgScene.client().mesh(mesh, glow).at(x, y, z).spawn();
 ```
 
 ### The blend modes

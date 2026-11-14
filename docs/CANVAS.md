@@ -299,7 +299,7 @@ quad.submit();
 blocks: a look's lengths are pixels, and `scaled(f)` makes a block `1 / f` of them.
 
 ```java
-CgRenderStage.WORLD_TRANSPARENT.register(100, frame -> {
+CgRenderStage.TRANSLUCENT.register(100, frame -> {
     CgCanvas canvas = frame.canvas();
     CgCanvasGlass.Look look = CgCanvasGlass.FROSTED.scaled(1 / 32f);
     CgQuadBatch.Quad quad = canvas.quad(pane.material()).world(x, y, z).pose(facing).at(-1f, -0.5f).size(2f, 1f);
@@ -489,27 +489,27 @@ Pick your layer with the order you register at:
 Something that follows a point in the world projects it with the world's camera:
 
 ```java
+Vector2f at = new Vector2f();
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
-    // project (x, y, z) - view's position through view and projection into the window's pixels, then:
-    frame.canvas().quad(DIGIT).texture(0, DIGITS).at(sx - w / 2, sy - h / 2).size(w, h).submit();
+    if (!frame.project(x, y, z, at)) return;                       // behind the camera: nothing to draw
+    frame.canvas().quad(DIGIT).texture(0, DIGITS).at(at.x - w / 2, at.y - h / 2).size(w, h).submit();
 });
 ```
 
-**World stages (`WORLD_OPAQUE`, `WORLD_TRANSPARENT`)**: the canvas is in the world, camera-relative, under the
-firing's camera, so what you draw is depth-tested against the world (by your material's `RenderState`).
+**World stages (`OPAQUE`, `SURFACES`, `TRANSLUCENT`, `OVERLAY`)**: the canvas is in the world, camera-relative, under
+the view's camera, so what you draw is depth-tested against the world (by your material's `RenderState`).
 `world(x, y, z)` places an item at an absolute position in doubles, exact far from the origin; `at` and `pose`
 then place it from there:
 
 ```java
-CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->
+CgRenderStage.TRANSLUCENT.register(0, frame ->
         frame.canvas().quad(GLOW).world(x, y + 2, z).pose(facingCamera)
              .at(-0.5f, -0.5f).size(1f, 1f).color(0x80FFFFFF).submit());
 ```
 
 A shape in the world is drawn by its distance in the canvas's XY plane: give it a pose that turns that plane
-to face where you want. For meshes, lights and anything with volume, use `CgWorldRenderer`
-([`ENGINE_API.md`](ENGINE_API.md) § *CgWorldRenderer*).
+to face where you want. For meshes, lights and anything with volume, use the scene
+([`ENGINE_API.md`](ENGINE_API.md) § *The scene and its views*).
 
 ---
 
@@ -541,7 +541,7 @@ float height = fps.measure().totalHeight();                        // without dr
 - `canvas.text()` is a scratch like `quad()`: build and submit in one expression.
 - **Text that persists and moves is kept on the GPU**: `CgCanvasLabels` captures each label's glyphs once and
   draws every label from them, a matrix a label a frame (10,000 outlined, shadowed labels in 3 draws). In the world,
-  `CgWorldRenderer.get().text(...)` draws through one, billboarded or turned and depth-tested
+  `scene.label(...)` draws through one, billboarded or turned and depth-tested
   ([`ENGINE_API.md`](ENGINE_API.md)); its javadoc has the example for labels of your own.
 - Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
 - **A draw's colour fades each layer on its own**: half faded, an outlined, shadowed word shows its outline through

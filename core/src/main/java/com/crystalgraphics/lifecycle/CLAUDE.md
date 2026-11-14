@@ -37,7 +37,7 @@ are not public. `stopped()` writes the trace run's exit files (`trace.CgTraceRun
   client host calls at its install; else at the start itself), joined before the first install that may reach the same
   classes, since two threads initializing classes that name each other deadlock. A texture made ahead defers its device work
   (`CgDeferral`) to the render thread: `CgRHI.onDeviceThread()` is false everywhere until the device starts. The engine's programs build
-  behind the screen as the task `crystalgraphics:programs` (`CgWorldRenderer.beginBoot`/`bootStep`), and the screen
+  behind the screen as the task `crystalgraphics:programs` (`CgScenePipelines.beginBoot`/`bootStep`), and the screen
   fires no world stage until they have.
 - `CgGraphicsLifecycle` holds no listeners: it signals each context moment to `CgEngineLifecycle` (package-private
   `contextInitialized`, `frame`, `contextDestroying`, `stopped`) at the point it belongs in its work, and the engine

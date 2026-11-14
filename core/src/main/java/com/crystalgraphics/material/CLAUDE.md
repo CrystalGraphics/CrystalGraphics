@@ -35,7 +35,7 @@ that bypasses the reader.
   `getOrCompile(passName, keywords)` or `precacheVariant`.
 - The generated depth pass is kept under `ProgramKey("Depth", emptySet)`.
 
-**No shadow pass**: the world's shadows are ray-traced from each pixel (`CgWorldLights`, Unreal's MegaLights), so
+**No shadow pass**: the world's shadows are ray-traced from each pixel (`CgSceneLights`, Unreal's MegaLights), so
 nothing draws from a light's side.
 
 **Depth auto-generation (`CgMaterialShaderMap.autoGenDepth`, from `recompile()`):**

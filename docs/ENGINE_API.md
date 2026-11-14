@@ -1,80 +1,75 @@
-# The engine's API — stages, the world, resources, state, lifecycle
+# The engine's API — stages, scenes and views, resources, state, lifecycle
 
 Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session needs. Loads itself, imported by the `CLAUDE.md` of the packages it describes: `api`, `gl`, `render`, `gpu` and `util`.
 
-### Render stages — drawing into a host's frame
+### Render stages — drawing into a frame
 
-`CgRenderStage` is a point in a host's frame. A renderer registers on one and records into the stage's frame
-each time it fires; the frame executes on the host's target at once. CrystalGraphics defines
-`WORLD_OPAQUE` and `WORLD_TRANSPARENT`, and the GUI stages `HUD` (over the in-game HUD) and `SCREEN` (over a screen,
-once it has drawn), and every host fires them; a mod defines its own.
+`CgRenderStage` is a point in a frame where a renderer records, named for the phase it joins (Unreal's scene view
+extension hooks). The world stages run **once per view** of the scenes a registration reaches, at their place in the
+scene renderer's order; the GUI stages once a frame, over the host's interface.
 
-```java
-// Over the HUD: the frame's camera is orthographic over the window's pixels, origin top left
-CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", () -> drawBadge(frame.constants())));
-```
-
-- A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
-  and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
-- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
-  windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
-  name plate), drawn under it as Unreal's screen-space widget components are. Project the point with
-  `frame.projectWorld(x, y, z, out)`, onto the canvas's pixels by the world's camera.
-- `fireOverlay(width, height, scale, mainFramebuffer)` is what a host calls: it fills the camera and fires. The
-  camera is the window's device pixels, as Unreal's canvas is; `frame.guiScaledCanvas()` draws in the host GUI's pixels
-  instead (`CANVAS.md` § 6), and `frame.host().guiScale()` is the scale itself.
-- `fireInto(target)` fires into a target of the caller's rather than the host's (a framebuffer's `external()`), with
-  the host frame filled for it first (`host().set(tick, w, h, target)`): a second view of the world, as an editor's
-  viewport draws one.
+| Stage | Runs | What belongs there |
+|---|---|---|
+| `PREPARE` | per view, before anything of ours draws | compute the view's draws read (a simulation step, counts a kernel writes) |
+| `OPAQUE` | per view, after the opaque scene | opaque passes of your own |
+| `SURFACES` | per view, on the lit opaque scene, before anything translucent | what reads custom depth, normals or the scene (an outline) |
+| `TRANSLUCENT` | per view, after the translucent passes, before post | translucent passes of your own |
+| `OVERLAY` | per view, after post | gizmos, debug views, what must not be graded |
+| `HUD`, `SCREEN` | once a frame | over the in-game HUD; over a screen once it has drawn |
 
 ```java
-// Drawing at a stage
-CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {
-    CgPassConstants camera = frame.defaults(new CgPassConstants());   // time, size, depth convention
-    camera.view.set(view);
-    camera.projection.set(projection);
-    CgRasterPass pass = frame.pass(camera, CgOrder.SORTED);
-    // ... chunks into pass ...
+// Compute what the frame's draws read, before anything of ours draws
+CgRenderStage.Registration sim = CgRenderStage.PREPARE.register(frame -> {
+    CgComputePass step = frame.recording().compute("mymod.sparks.step");
+    step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
+    step.end();
+});
+
+// On the lit opaque scene, before anything translucent: an outline from custom depth
+static final CgMesh FULL_SCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);   // one triangle over the target
+CgRenderStage.SURFACES.register(frame -> {
+    CgRasterPass pass = frame.recording().raster("mymod.outline")
+            .color(frame.target(), CgLoad.load())
+            .reads(frame.view().textures().customDepth())
+            .camera(frame.camera());
+    pass.draw(FULL_SCREEN, outlineMaterial);
     pass.end();
 });
-drawing.close();                                                      // stops it
 
-// A stage of your own: fill its frame, then fire it from your hook on the render thread
-public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
-AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
-        .camera().set(camX, camY, camZ, viewRotation, projection);
-AFTER_SKY.fire();
-
-// Anywhere on the render thread: the world's camera as of its latest frame
-CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
+sim.close();                                                       // unregisters
 ```
 
-- Each stage owns its `CgHostFrame`, refilled by the host before every `fire` (nothing is allocated). Its
-  `camera()` is the host's own camera, a `CgCamera`: the absolute position in doubles, and the view and projection the
-  host draws with. Minecraft draws its world camera-relative, so the view maps a point minus that position.
-- **Draw in a stage through the camera it hands out**, never one of your own: `frame.camera()` is the host's with the
-  frame's time and size, and a pass given it (`pass.camera(frame.camera())`) takes the world's sun and fog and the last
-  frame's view too; `frame.guiCamera()` is a GUI stage's in GUI-scaled pixels. A `CgCamera` of your own is for a picture
-  of your own (a preview, a thumbnail), outside the stages.
-- Every host captures Minecraft's camera where that version computes it; the per-era sources are
-  `HostCamera1710`, `HostCameraLegacy` and `HostCameraModern`: each era's one camera class, reading the
-  camera Minecraft drew with (`capture`) and applying `CgCameraManager`'s offsets and holds.
-- Beside the camera each frame carries the world's facts: `CgHostEnvironment` (`frame.environment()`) — the sun,
-  moon, stars and daylight, weather and lightning, the dimension's sky, fog where the host keeps it on the CPU (1.17.1 to
-  1.21.1), the fluid the camera is in, perspective, FOV and render distance, whether a screen is up, the player's sight effects, their particles,
-  graphics and accessibility settings (an effect spawns `particleShare()` of its particles), and the game clock, paused
-  and `/tick` state. Absent is NaN, -1 and false, never a default. Questions about a *position* — collision and its
-  boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation — are the
-  `CgWorldQuery` slot's, composed into ground scans by `com.crystalgraphics.world.CgWorldQueries` and into rays, casts and hitboxes by `collision.CgCollisionWorld`. A GUI stage carries the GUI's projection in its own frame,
-  so the world's camera stays readable while the host draws its GUI.
-- Every era answers the environment, the host textures and the world slots (`CgWorldQuery`, `CgEntityQuery`,
-  `CgCameraManager`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and
-  `*Modern`. What a version cannot answer stays absent, and each class's javadoc says what.
-- `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the stage
-  (trace zone and GPU timer, named by the id's path) and does nothing after a teardown.
-- An id is defined once (`define` throws on a second); renderers record in ascending order, ties in
-  registration order; any thread may register.
-- `frame.callback(name, body)` draws immediately at its place in the stage, for work not yet recorded.
+```java
+// A lab's pass for its own scene, and a debug view in every scene
+CgRenderStage.OVERLAY.register(frame -> drawGizmos(frame)).scene(lab);
+CgRenderStage.OVERLAY.register(frame -> drawBounds(frame)).allScenes();
+
+// Over the HUD: a damage number following a point in the world
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    if (frame.project(x, y, z, at)) frame.canvas().text(damage).at(at.x, at.y).submit();
+});
+```
+
+- **A world stage reaches the client's scene** unless its registration names others (`.scene(s)`, `.allScenes()`): a
+  mod's pass reaches the game's views and captures, never an editor's scene unasked. A GUI stage has no scene.
+- **Once per view**: a stage registered for the game runs again for an anaglyph's second eye, a portal and a
+  capture. Work that must happen once a frame whatever the views (a simulation's step) keeps its own frame stamp
+  (`CgFrameRing.frame()`), and skips a rehearsal's passes (`CgRehearsal.active()`).
+- Within a stage, ascending `order` (0 by default), ties in registration order. The engine's own work sits between
+  stages, never at a number inside one. Any thread may register; renderers run on the render thread.
+- **Draw through what the frame hands out**: `frame.camera()` is the view's camera with the frame's time and size, and
+  a pass given it (`pass.camera(frame.camera())`) takes the world's sun and fog and the last frame's view too;
+  `frame.constants()` is the firing's own, `frame.defaults(new CgPassConstants())` a fresh set filled the same way.
+  On a GUI stage the camera is the window's device pixels, origin top left, as Unreal's canvas is;
+  `frame.scaled()` draws in the host GUI's pixels instead (`CANVAS.md` § 6). A `CgCamera` of your own is for a
+  picture of your own (a preview, a thumbnail), outside the stages.
+- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
+  windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
+  name plate), drawn under it as Unreal's screen-space widget components are. `frame.project(x, y, z, out)` puts the
+  point on the canvas's pixels by the world's camera.
+- A GUI stage fires once a frame from a hook that fires once, never per HUD element; not while the HUD is hidden (F1),
+  and never on a server. Fabric below 1.16 has no `SCREEN`. From 26.1 both fire at the frame's end, after the GUI.
+- `frame.meshPass(type)` draws a mesh pass of your own over the view's scene (`render/meshpass/CLAUDE.md`).
 - **`frame.include(built)` executes a `CgFrame` recorded and built elsewhere** (a UI recording on its own thread) at
   its place in the firing: a step of the firing's one frame (`CgRecording.include`, `CgPass.Include`), ordered by
   what the built frame touches that outlives it (the target, requested and imported textures), and executed there on
@@ -88,171 +83,256 @@ CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
     frame.canvas().quad(COMPOSITE).texture(0, ui.picture()).at(0, 0).size(w, h).submit();   // then what reads them
 });
 ```
-- **`frame.resources()` is the firing's blackboard**: a renderer publishes a resource under a static `CgFrameKey`
-  and one recording later in the same firing reads it, as Filament's blackboard does. It empties when the firing
-  executes, so a hand-off across firings (opaque to transparent, 1.7.10's second anaglyph firing) needs a resource
-  that outlives the frame. The engine's keys are `CgFrameKeys`:
-  `DISTORTION`, its distortion field once applied (`CgDistortionField`: an array and how many layers hold offsets); `OVERDRAW`, its overdraw count while that view is on; `SCENE`, the HDR scene; `CUSTOM_DEPTH`, Unreal's
-  CustomDepth and CustomStencil of the draws marked `customDepth` (`render/world/CLAUDE.md`); `WORLD_NORMALS`, our
-  opaque surfaces' world normals, written in a frame whose opaque firing carries `WORLD_NORMALS_READ`; `CUSTOM_DATA`,
-  their custom data and shading model, where `CUSTOM_DATA_READ` was put (`docs/SHADERS.md` § *What a post material
-  reads of the scene*).
+
+### The host's side — `CgStageHost`
+
+A host fires two world callbacks, which nothing registers on: `CgStageHost.WORLD_OPAQUE` (after its opaque world)
+and `WORLD_TRANSPARENT` (after its translucent world). The scene renderer runs inside them, the world stages at their
+places. Both share one host frame, filled before the opaque one fires; `fireOverlay` fires a GUI stage.
 
 ```java
-public static final CgFrameKey<CgGraphTexture> MASK = CgFrameKey.of("mymod:mask", CgGraphTexture.class);
-frame.resources().put(MASK, mask);                    // the producer, at a lower order
-CgGraphTexture mask = frame.resources().get(MASK);    // a later renderer of the same firing; null if none
+// A host's world hooks, on the render thread
+CgStageHost.frame(CgStageHost.WORLD_OPAQUE).set(partialTick, width, height, mainFramebufferId)
+        .camera().set(camX, camY, camZ, viewRotation, projection);
+CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
+// ... the host's translucent world ...
+CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT);
+CgStageHost.fireOverlay(CgRenderStage.HUD, width, height, guiScale, mainFramebufferId);
+
+// A stage of your own: fill its frame, then fire it from your hook
+public static final CgRenderStage AFTER_SKY = CgStageHost.define("mymod:after_sky");
+CgStageHost.frame(AFTER_SKY).set(partialTick, width, height, mainFramebufferId);
+CgStageHost.fire(AFTER_SKY);
 ```
 
-### CgWorldRenderer — drawing into the world
+- `fire` is the whole entry: it opens the host section, starts the engine if nothing has, times the firing (trace
+  zone and GPU timer, named by the id's path) and does nothing after a teardown.
+- The host frame carries the host's camera (`CgCamera`: the absolute position in doubles, and the view and projection
+  the host draws with; Minecraft draws its world camera-relative, so the view maps a point minus that position), its
+  `CgHostEnvironment` and its `CgHostTextures`. Each era captures Minecraft's camera where that version computes it:
+  `HostCamera1710`, `HostCameraLegacy` and `HostCameraModern`, applying `CgCameraManager`'s offsets and holds.
+- **The world's facts**: `CgHostEnvironment` (`view.environment()`) — the sun, moon, stars and daylight, weather and
+  lightning, the dimension's sky, fog where the host keeps it on the CPU (1.17.1 to 1.21.1), the fluid the camera is
+  in, perspective, FOV and render distance, whether a screen is up, the player's sight effects, their particles,
+  graphics and accessibility settings (an effect spawns `particleShare()` of its particles), and the game clock, paused
+  and `/tick` state. Absent is NaN, -1 and false, never a default. Questions about a *position* — collision and its
+  boxes, fluid, light, what a block is made of, tint and biome colours, heightmaps, precipitation — are the
+  `CgWorldQuery` slot's, composed into ground scans by `com.crystalgraphics.world.CgWorldQueries` and into rays, casts
+  and hitboxes by `collision.CgCollisionWorld`.
+- Every era answers the environment, the host textures and the world slots (`CgWorldQuery`, `CgEntityQuery`,
+  `CgCameraManager`, `CgWorldEvents`), each in its host's `platform.world` package: `*1710`, `*Legacy` and
+  `*Modern`. What a version cannot answer stays absent, and each class's javadoc says what.
+- A host drawing the world twice a frame (1.7.10's anaglyph) names a view for the second eye
+  (`frame(WORLD_OPAQUE).view(eye)`); a second firing in one frame for the same view draws as `CgView.unkept()`,
+  which keeps no history.
 
-`CgWorldRenderer` draws meshes at both world stages under the host's camera. A draw is submitted at an absolute
-position in doubles and made camera-relative at record time, as Minecraft draws; it lives for the frame it was
-submitted in.
+### The scene and its views
+
+`CgScene` is a world of primitives kept until removed, Unreal's `FScene`: meshes, instanced and skeletal meshes,
+decals and dynamic primitives, each a component made, set up and spawned. `CgView` is one camera's picture of one
+scene, frame after frame, Unreal's `FSceneView` with its `FSceneViewState`. The scene renderer (`CgSceneRenderer`,
+one per scene) draws a scene through each of its views. Nothing is submitted: each frame, every view takes what it
+sees of its scene once.
 
 ```java
-CgWorldRenderer world = CgWorldRenderer.get();
-CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:rune", dt -> {   // once a frame, before the world records
-    world.draw(mesh, material)                         // scratch: build and submit in one expression
-         .at(x, y, z)                                  // absolute, in doubles
-         .transform(rotationScale)                     // optional, about that position
-         .custom(0, r, g, b, a)                        // CG_OBJECT_CUSTOM0
-         .light(15f, sky)                              // optional: the world's light at its position otherwise
-         .submit();
+CgScene scene = CgScene.client();                    // the client world's; cleared with the level
+
+CgMeshComponent rock = scene.mesh(rockMesh, stone).at(x, y, z).spawn();        // kept until removed
+rock.at(x, y + 1, z);                                                         // moved
+rock.remove();
+
+CgSkeletalMeshComponent goku = scene.skeletal(gokuMesh).materials(skins::get).at(x, y, z).spawn();
+CgInstancedMeshComponent grass = scene.instanced(blade, grassMaterial).spawn();
+CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();
+
+// This frame only, Unreal's debug draw: rows added before the frame's views draw
+scene.once().mesh(marker, debugMaterial).at(x, y, z).customData(0, r, g, b, a).add();
+scene.label("Spawn").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();   // a CgTextStyle
+```
+
+```java
+// A primitive whose rows each view asks for each frame
+CgDynamicComponent trail = scene.dynamic((view, rows) -> {
+    rows.mesh(ribbon, trailMaterial).at(x, y, z).add();
+    rows.mesh(sphereLods, smoke).at(x, y, z).transform(scale).add();        // a level per screen height
 });
-world.draw(pane, glass).at(x, y, z).queue(CgRenderQueue.TRANSPARENT).submit();   // overrides the material's queue
-
-// Part of a mesh, geometry with no vertex data, and bounds the draw states itself:
-world.draw(CgMesh.quads(capacity), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
-world.draw(model, brass).submesh(1).at(x, y, z).submit();
-world.draw(billow, smoke).at(x, y, z).transform(scale).pad(0.4f).submit();   // grown for a displacing shader
-
-// How much draws comes from a count a kernel wrote: a quad per live spark, a billow per live puff
-world.draw(CgMesh.quads(capacity), sparks).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
-world.draw(billow, smoke).indirect(alive, 0, CgIndirect.INSTANCES, 1).at(x, y, z).bounds(box).submit();
-
-// A set of instances in a GPU buffer of object records, culled on the GPU: a count the CPU knows, or one a kernel wrote
-world.draw(rockLods, stone).instances(rocks, CgGpuCount.of(n)).at(x, y, z).bounds(field).submit();
-world.draw(shard, crystal).instances(shards, CgGpuCount.at(alive, 0, capacity)).at(x, y, z).submit();
-
-// A level per screen height (CgMeshLods, Unity's LODGroup): picked per draw at record time
-world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();
-
-// A label: a CgTextDraw at a point, facing the camera or turned as a sign; depth-tested
-world.text("Spawn").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();     // a CgTextStyle
-world.text(sign).at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).submit();
+trail.remove();                                                              // when it is done
 ```
 
-- **Drawing what kernels wrote** (`.indirect`, `.instances`) is its own workflow:
-  [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md).
-- A draw of `CgMeshLods` takes the level for the screen height its bounds cover, and none below the last level's.
-- **Labels** (`world.text`) draw after every transparent draw of the firing, unsorted among them: a glow in front
-  of a label does not cover it. A label is a queued `CgTextDraw` (strokes, shadows, families, paragraphs),
-  drawn under each firing's camera; `height` is a line's height in blocks. Labels are retained: a label's glyphs are
-  captured when what it draws changes and kept on the GPU, and a frame otherwise writes one matrix a label. 10,000
-  outlined, shadowed labels are 3 draws and about 230 ns a label (`--mode=world-labels`). Their text writes depth
-  where it is half covered or more, in a pass before the firing's transparent draws and glows: a nearer label's text
-  hides a farther one's, and a glow behind a label is hidden from bloom too. A farther label's text may still show
-  over a nearer one's shadow.
-- **Culled** against the view by the draw's stated bounds, else its mesh's, either grown by `pad`, and **sorted**
-  (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`, `OVERLAY`, and any
-  defined `before`/`after` one), then opaque by material, front to back, then mesh; transparent back to front, a
-  `.group(x, y, z)` sorting as one at its position (Niagara's system; every VFX effect is one) and its draws by their
-  `.order(0..255)` within it, then by `.batchKey(0..4095)` before distance: draws of one material given one key run
-  together and join into one multi-draw (the VFX's GPU particles, a group per system). Equal neighbours instance.
-- `WORLD_OPAQUE` records a prepass (materials with a depth pass, and alpha-tested ones) and the opaque pass;
-  `WORLD_TRANSPARENT` a prepass of the transparent materials marked `"Depth" = "Prepass"`, then the transparent pass.
-  A transparent draw writing depth in its own draw (`"Depth" = "Clip"`) sorts first in its group
-  (`docs/SHADERS.md` § *Depth from a translucent material*). Each declares `sceneDepth`/`sceneColor`, so the graph copies the target
-  for a reader only where one draws.
+**A row's options** (`CgMeshCollector`: `once()`'s rows and a dynamic primitive's):
+
+```java
+rows.mesh(model, brass).submesh(1).at(x, y, z).add();                                   // one submesh
+rows.mesh(CgMesh.quads(capacity), sparks).indices(0, live * 6).bounds(CgAABBc.UNIT).add(); // part of a mesh
+rows.mesh(billow, smoke).transform(scale).pad(0.4f).add();                              // grown for a displacing shader
+rows.mesh(pane, glass).layer(CgSortLayer.EFFECTS).sortAt(x, y, z).sortPriority(2).add(); // its place in the sort
+rows.mesh(rune, glow).light(15f, sky).emission(2f).halfResolution().add();
+
+// How much draws comes from a count a kernel wrote, or a set of instances in GPU records
+rows.mesh(CgMesh.quads(capacity), sparks).count(alive, 0, CgIndirect.INDICES, 6).bounds(box).add();
+rows.perRecord(shard, crystal).counts(alive, CgIndirect.INDICES, 6).countAt(4L * band).add();
+```
+
+- **Drawing what kernels wrote** (`.count`, `.perRecord`, instanced components' GPU instances) is its own workflow:
+  [`GPU_DRIVEN_RENDERING.md`](GPU_DRIVEN_RENDERING.md). A row placed on the GPU is never culled on the CPU.
+- **Culled per view** against the row's stated bounds, else its mesh's, either grown by `pad`; a `CgMeshLods` row
+  takes the level for the screen height it covers in that view, and none below the last level's.
+- **Sorted** (`CgSortKey`): first by `CgSortLayer` (Unity's sorting layers: `BACKGROUND`, `DEFAULT`, `EFFECTS`,
+  `OVERLAY`, and any defined `before`/`after` one), then opaque by material, front to back, then mesh; translucent back
+  to front, rows given one `.sortAt(x, y, z)` sorting as one at that point (Niagara's system; every VFX effect is one)
+  and by their `.sortPriority(0..255)` within it, then by `.batchKey(0..4095)` before distance: rows of one material
+  given one key run together and join into one multi-draw. Equal neighbours instance.
+- **`indices(first, count)` is a range within a submesh**, as Unreal's mesh element's is: on a mesh of one submesh
+  it is that one; on a mesh of several, name it with `.submesh(i)` first, or `add()` refuses.
+- **Only `#domain surface` and `#domain decal` materials draw in a scene** (Unreal's material domains): a
+  `#domain global` pair is a renderer's own pass or a mesh pass of your own, never a row's material.
+- **Labels** (`scene.label`) draw after every translucent row of the view, unsorted among them: a glow in front of a
+  label does not cover it. A label is a queued `CgTextDraw` (strokes, shadows, families, paragraphs), drawn under each
+  view's camera; `height` is a line's height in blocks. Labels are retained: a label's glyphs are captured when what
+  it draws changes and kept on the GPU, and a frame otherwise writes one matrix a label. 10,000 outlined, shadowed
+  labels are 3 draws and about 230 ns a label (`--mode=world-labels`). Their text writes depth where it is half
+  covered or more, in a pass before the view's translucent rows and glows: a nearer label's text hides a farther
+  one's, and a glow behind a label is hidden from bloom too.
+- The frame thread's: components are made, changed and gathered there. A component is a handle: keep it to change or
+  remove what it made.
+
+#### Views
+
+The game's view is `CgView.main()`. A view of your own draws a scene through a camera of its own, into a target of
+its own, whole, with `renderInto`: the world stages, the scene renderer and the post stack, in one call.
+
+```java
+// An editor's viewport: its own scene, its own view, kept for its histories
+CgScene lab = new CgScene();
+CgView viewport = CgView.of(lab);
+viewport.size(w, h).camera().set(x, y, z, rotation, projection);
+viewport.renderInto(target);                              // each frame, on the render thread
+
+// A second view of the client's world: a portal, a security camera, a capture
+static final CgView PORTAL = CgView.create("mymod.portal");
+PORTAL.size(256, 256).camera().set(px, py, pz, rotation, projection);
+PORTAL.renderInto(portalTarget);
+```
+
+```java
+// Per view: the renderer's switches, what this frame's stages hand on, and what it keeps across frames
+CgView.main().override(CgSceneRenderer.SKIP_UNREADY, false);     // this view alone; flag(var) reads it
+viewport.showFlags().post(false).labels(false);                  // Unreal's show flags
+CgGraphTexture depth = frame.view().textures().depth();          // CgSceneTextures, this draw's
+frame.view().publish(MASK, mask);                                // a stage hands a later stage of the same view a value
+CgGraphTexture mask = frame.view().read(MASK);                   // null if none this draw
+Kept kept = frame.view().state().get(KEPT);                      // a renderer's record, kept across frames
+```
+
+- **Make a view once and keep it**: each holds its own histories (temporal effects, the last frame's camera), and
+  one made per frame keeps none.
+- `CgView.of(scene)` draws a scene of your own; `CgView.create(name)` another view of the client's. A view of a scene
+  of its own blends none of the client's post volumes and runs none of the client world's schedule: evaluate its
+  skeletal meshes' `anim()` and call `scene.update()` yourself.
+- The main view's camera, size and environment are its host's, refilled each frame: read them, never set them.
+- `textures()` and `publish`/`read` (`CgViewKey`) reset when the view's draw begins: they hand values within one
+  draw, from one stage to a later one. A hand-off across frames goes in `state()` (`CgViewState`).
+- **Renderer switches are per view** (`CgVar` defaults, overridden per view): `SKIP_UNREADY`, `HALF_RESOLUTION`,
+  `MERGE_EMISSION`, `DISTORTION_SCALE`, `SCENE_EMISSION`, `GRADE_DRAWS` on `CgSceneRenderer`. The engine's
+  `CgVar` sets the default every view starts from (`-Dcrystalgraphics.world.halfResolution=false`).
+
+#### How a view is drawn
+
+- The opaque callback draws the opaque scene: `PREPARE`, a prepass (materials with a depth pass, and alpha-tested
+  ones), the base pass, `OPAQUE`. The transparent callback draws the rest: the lights, the media, decals, the
+  before-translucency post effects, `SURFACES`, late solids, half size and volumes, the bends, the translucent pass,
+  separate translucency, `TRANSLUCENT`, the post stack, `OVERLAY`. A translucent row writing depth in its own draw
+  (`"Depth" = "Clip"`) sorts first in its group (`docs/SHADERS.md` § *Depth from a translucent material*).
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
-- **Lit by the world** (`docs/SHADERS.md` § *Lighting and fog*): each draw carries the block and sky light at its
-  position, read once a frame per block (`CgWorldLight`); `.light(block, sky)` states it and `.fullBright()` lights
-  it fully. Every world pass binds the host's lightmap, and its constants carry the sun and the fog
-  (`CgWorldAtmosphere`, from `CgHostEnvironment`).
-- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The glow*) glows: its glow is light
-  added into the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post stack
-  blooms the scene's light past white (§ *The post stack*). A draw's `.emission(scale)` scales its glow (0 leaves it
-  out), and a material's `_EmissionColor`/`_EmissionStrength` its material's, both through `CG_EMISSION`. A transparent
-  draw whose Emissive pass is codeless on its Forward pass's blend folds its glow into the same draw
-  (`CgPipeline.sceneFold`); `world.mergeEmission(false)` draws every Emissive pass on its own.
-- **The HDR scene** (render-hdr-scene): `WORLD_TRANSPARENT` draws into a linear RGBA16F scene beside the host's depth instead of the host's colour. Its first
-  pass decodes the host's colour into it and makes it the stage's target (`CgStageFrame.retarget`, `CgFrameKeys.SCENE`);
-  the post stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL
-  into the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Materials' sRGB colour is decoded as
-  it is written (`docs/SHADERS.md` § *Lighting and fog*). Our opaque draws go into a linear scene too, as Unreal's
-  base pass writes SceneColor: encoded back into the host's colour after the opaque stage, so what the host draws
-  before the transparent stage blends over them as before, and kept wherever the host drew nothing over them, so an
-  unlit colour past white reaches bloom. Glows add into the scene itself, and bloom takes the scene's light past
-  `CgPostStack.get().bloom().threshold(t)` (1). Until its programs are built, a firing has no scene and draws no glow.
-- **Half resolution**: a transparent draw marked `.halfResolution()` draws into a half-size target before the
-  transparent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
+- **Lit by the world** (`docs/SHADERS.md` § *Lighting and fog*): each row carries the block and sky light at its
+  position, read once a frame per block (`CgSceneLight`); `.light(block, sky)` states it, `.light(15f, 15f)` lights
+  it fully. Every pass binds the host's lightmap, and its constants carry the sun and the fog (`CgWorldAtmosphere`,
+  from `CgHostEnvironment`).
+- **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The glow*) glows: its glow is light added into
+  the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post stack blooms
+  the scene's light past white (§ *The post stack*). A row's `.emission(scale)` scales its glow (0 leaves it out),
+  and a material's `_EmissionColor`/`_EmissionStrength` its material's, both through `CG_EMISSION`. A translucent row
+  whose Emissive pass is codeless on its Forward pass's blend folds its glow into the same draw
+  (`CgPipeline.sceneFold`); `MERGE_EMISSION` off draws every Emissive pass on its own.
+- **The HDR scene**: the translucent callback draws into a linear RGBA16F scene beside the host's depth instead of
+  the host's colour (`view.textures().sceneColor()`). Its first pass decodes the host's colour into it; the post
+  stack's composite encodes it back, a pixel nothing changed returning byte for byte. Between the two, raw GL into
+  the host's framebuffer is overwritten and `cg_SceneColor` reads linear HDR. Materials' sRGB colour is decoded as it
+  is written (`docs/SHADERS.md` § *Lighting and fog*). The opaque scene is linear too, as Unreal's base pass writes
+  SceneColor: encoded back into the host's colour after the opaque callback, so what the host draws before the
+  transparent one blends over it as before, and kept wherever the host drew nothing over it, so an unlit colour past
+  white reaches bloom. Bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Until its
+  programs are built, a view has no scene and draws no glow.
+- **Half resolution**: a translucent row marked `.halfResolution()` draws into a half-size target before the
+  translucent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
   by a depth-aware upsample. A volume that covers (`Blend ONE ONE_MINUS_SRC_ALPHA`: smoke) is blended with its last
   frame, reprojected by the depth its fragment names (`CG_VOLUME_DEPTH(eye)`) and held to this frame's neighbourhood,
-  then laid over the target first in the transparent pass, under every other transparent draw: a march can then take
-  fewer steps, starting each frame elsewhere (`CG_FRAME_INDEX`), and the frames average out its grain. Its shader hides itself behind the scene from `cg_DepthBuffer`
-  with `DepthTest ALWAYS`, since that target has no depth. `world.halfResolution(false)` draws them at full size.
+  then laid over the target first in the translucent pass, under every other translucent row: a march can then take
+  fewer steps, starting each frame elsewhere (`CG_FRAME_INDEX`), and the frames average out its grain. Its shader
+  hides itself behind the scene from `cg_DepthBuffer` with `DepthTest ALWAYS`, since that target has no depth.
+  `HALF_RESOLUTION` off draws them at full size.
 - **Media: smoke dims what is inside it.** What is drawn over the volumes is dimmed by the smoke in front of it instead
-  (`docs/SHADERS.md` § *Dimmed by the smoke in front*): at the top of each transparent firing every injector
-  (`world.media().add(injector)`) adds its extinction into a froxel grid over the view (`CgWorldMedia`: 16 pixels
-  across, 128 slices to 256 blocks spaced as Unreal's volumetric fog spaces them), which is summed from the eye
-  out into what gets through, bound as `cg_Media` to every transparent pass. The fluids and lit grids inject themselves.
-  The world's lights glow in what is there (`CgWorldHaze` is a box of haze to see them in; `LIGHTS.md` § *In the
-  air*). GPU zones `world.mediaInject`, `world.mediaScatter` and `world.mediaIntegrate`; a firing with nothing in the
-  air records nothing.
+  (`docs/SHADERS.md` § *Dimmed by the smoke in front*): every injector (`scene.media().add(injector)`) adds its
+  extinction into a froxel grid over the view (`CgSceneMedia`: 16 pixels across, 128 slices to 256 blocks spaced as
+  Unreal's volumetric fog spaces them), which is summed from the eye out into what gets through, bound as `cg_Media`
+  to every translucent pass. The fluids and lit grids inject themselves. The world's lights glow in what is there
+  (`CgSceneHaze` is a box of haze to see them in; `LIGHTS.md` § *In the air*). GPU zones `world.mediaInject`,
+  `world.mediaScatter` and `world.mediaIntegrate`; a view with nothing in the air records nothing.
 
 ```java
-CgWorldRenderer.get().media().add((pass, media) -> {             // a volume of your own hiding what is behind it
+CgScene.client().media().add((pass, media) -> {                 // a volume of your own hiding what is behind it
     if (clouds.isEmpty()) return false;
-    media.dispatch(pass, inject).texture("_Clouds", clouds);      // a kernel declaring CgWorldMedia.PROPERTIES
+    media.dispatch(pass, inject).texture("_Clouds", clouds);      // a kernel declaring CgSceneMedia.PROPERTIES
     return true;
 });
 ```
 
-  An injector with rows of its own placed from the firing's eye (camera-relative corners, as the fluids') uploads them
-  in `Injector.upload(recording, media)`, which runs before the firing's pass opens, and binds them in `inject`.
-- **Lights** (`world.lights()`, `CgWorldLights`): **[`LIGHTS.md`](LIGHTS.md)**. Unreal's local lights (points, spots
+  An injector with rows of its own placed from the view's eye (camera-relative corners, as the fluids') uploads them
+  in `Injector.upload(recording, media)`, which runs before the view's pass opens, and binds them in `inject`.
+- **Lights** (`scene.lights()`, `CgSceneLights`): **[`LIGHTS.md`](LIGHTS.md)**. Unreal's local lights (points, spots
   and tubes, with a source radius) from the CPU or appended by kernels, binned into Unreal 5's light grid and lit
   **deferred**: one full-screen pass after the level, its G-buffer rebuilt from Minecraft's depth and colour, so no
   draw of Minecraft's changes. They only add light, inverse-squared by default; 30,000 cost 0.43 ms. Blocks and
-  entities shadow them (MegaLights' rays, through `CgWorldVoxelWindow` and `CgWorldEntityBoxes`); `.shadowed(false)`
+  entities shadow them (MegaLights' rays, through `CgVoxelWindow` and `CgEntityBoxes`); `.shadowed(false)`
   opts a light out.
 
 ```java
-CgWorldLights lights = CgWorldRenderer.get().lights();                             // each frame, before the world records
+CgSceneLights lights = CgScene.client().lights();                                    // each frame, before the views draw
 lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                // a point
 lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);    // a spot, pointing down
 lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
 lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                    // a glowing ball on the ground
 lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                       // casts no shadow
 ```
-- **Distortion**: a transparent draw whose material has a Distortion pass (`docs/SHADERS.md` § *The bend*)
-  adds an offset into a layer of an RGBA16F array half the world's size (`world.distortionScale(scale)`) after the
-  transparent pass, hidden by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets
-  bilinearly and a copy of the scene. A haze bends what sorts before it; a draw marked `.afterDistortion()` (or a material in `Queue = "AfterDistortion"`) is not bent by the hazes sorted before it:
-  their apply is placed just before it in the transparent pass, and nearer hazes bend it after. GPU zones
-  `world.distortion` and `world.distortionApply`; a frame with no distortion records neither. The field is published
-  as `CgFrameKeys.DISTORTION`, and a post effect bends a side input by it with `post.distorted(texture)`: bloom
-  bends the emission so the glow moves with the scene beneath it.
-- **A draw whose programs are not built is held** (`world.skipUnready`, on; Unreal's proxy delay): skipped and counted
+- **Distortion**: a translucent row whose material has a Distortion pass (`docs/SHADERS.md` § *The bend*) adds an
+  offset into a layer of an RGBA16F array, `DISTORTION_SCALE` of the view's size, after the translucent pass, hidden
+  by the scene's depth; an apply over the hazes' rect then bends the target by it, reading the offsets bilinearly and
+  a copy of the scene. A haze bends what sorts before it; a row marked `.afterDistortion()` (or a material in
+  `Queue = "AfterDistortion"`) is not bent by the hazes sorted before it: their apply is placed just before it in the
+  translucent pass, and nearer hazes bend it after. GPU zones `world.distortion` and `world.distortionApply`; a view
+  with no distortion records neither. The field is the view's (`textures().distortion()`, `CgDistortionField.KEY`),
+  and a post effect bends a side input by it with `post.distorted(texture)`: bloom bends the emission so the glow
+  moves with the scene beneath it.
+- **A row whose programs are not built is held** (`SKIP_UNREADY`, on; Unreal's proxy delay): skipped and counted
   (`world.unready-draws`), its programs started, drawn in the frame they finish. A `CgPostMaterial` is held the same
-  way, until every pass is built. A gate that checks pixels from its first frames turns it off:
+  way, by its view's switch, until every pass is built. A gate that checks pixels from its first frames turns it off
+  on its view:
 
   ```java
-  CgWorldRenderer.get().skipUnready(false);   // compile at the draw; the frame waits, but draws what it was given
+  CgView.main().override(CgSceneRenderer.SKIP_UNREADY, false);   // compile at the draw; the frame waits
   ```
 - **Built ahead of use: `CgPipelinePrecache`** (Unreal's PSO precaching), the one way to warm pipelines.
   **[`PRECACHE.md`](PRECACHE.md) first**: what the engine precaches for you, what you must, and how to check. What is always
   known registers a collector at load (its global collectors), built at the graphics start, in parallel, inside the
   host's loading screen. What is known later (a scene, a look, an asset bundle) requests at runtime (a component's
   `PrecachePSOs`): started at once and built over frames inside `CgWarmBudget` (`crystalgraphics.warmBudget`, a few
-  milliseconds a frame), polled with `ready()`. Both land in one list (`CgPipelineList`) the world renderer keeps built
-  under every setting: a toggle of the HDR scene, merging or half size rebuilds it before it applies.
+  milliseconds a frame), polled with `ready()`. Both land in one list (`CgPipelineList`) the scene renderer keeps built
+  under the switches' defaults: a toggle of the HDR scene, merging or half size rebuilds it before it applies.
 
   ```java
   CgPipelinePrecache.register("mymod:runes", pipelines -> {             // a mod's constructor
-      pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass the world draws it with
+      pipelines.add(RUNE_MATERIAL, false);                              // a material, every pass a scene draws it with
       pipelines.add("mymod:shaders/rune.shader", "GLOW");               // a keyword set a setting switches to
       pipelines.add(CgCompute.load("mymod:shaders/runes.compute").kernel("Step"));
       pipelines.kernels(MyOps::precache);                                // every kernel it precaches
@@ -278,25 +358,24 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
   - A set nothing names compiles at its first draw, counted as `pipeline.missed`
     (`-Dcrystalgraphics.pipeline.logMisses=true` names it), and `material.compile-waits` if the frame waited.
 - **GPU time by group**: under `crystalgraphics.gpu.groups` a pass's GPU time lands per material
-  (`gpu:world.transparent/<shader path>`); `.gpuGroup(label)` charges a draw to a label of its own instead
-  (`docs/PROFILING.md`).
-- A host drawing the world twice in a frame (1.7.10's anaglyph) fires both stages twice; each draw is drawn under
-  each firing's view.
+  (`gpu:world.transparent/<shader path>`), or to the debug label its component carries (`docs/PROFILING.md`).
 
 ### Effects — the VFX engine
 
 A mod plays effects through its owner on the client world's system, which the engine updates and draws each world
 frame and clears with the level: `CgVfx.owner("mymod").play(effect)`. A system of the caller's own
-(`new CgVfxSystem()`, a preview or a test) is driven by its caller: `vfx.update(seconds)` then `vfx.submit(world)` each
-frame, from tick functions of the client world's schedule ([below](#the-world-and-its-schedule)). Particles simulate on the GPU at every compute tier. Writing effects, emitters,
+(`new CgVfxSystem()`, a preview or a test) is driven by its caller: `vfx.update(seconds)` then `vfx.submit()` each
+frame, from tick functions of the client world's schedule ([below](#the-world-and-its-schedule)), and drawn in the
+scene it names (`vfx.scene(lab)`; the client's by default) by every view of it. Particles simulate on the GPU at every compute tier. Writing effects, emitters,
 events and modules: [`VFX.md`](VFX.md).
 
 ### The post stack — what runs after the world
 
-`CgPostStack` (`render/post`, its own guide) records on `WORLD_TRANSPARENT` after the world renderer: every active
+`CgPostStack` (`render/post`, its own guide) records for each view whose show flags keep post, after its translucent
+passes and `TRANSLUCENT`, its volumes blended at that view's camera into its own settings: every active
 `CgPostEffect` at its `CgPostPoint` (`BEFORE_SEPARATE_TRANSLUCENCY`, `AFTER_WORLD`, `BEFORE_COMPOSITE`,
 `AFTER_COMPOSITE`), separate translucency laid over the scene after the first, and between the last two one composite
-pass laying the firing's looks over the target. Bloom is its built-in effect.
+pass laying the view's looks over the target. Bloom is its built-in effect.
 
 ```java
 CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none
@@ -360,7 +439,7 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   post: { shadows: { gain: [0.8, 0.9, 1.2, 1] }, colour: { saturation: [1, 1, 1, 0.7], tint: [1, 0.94, 0.88] } }
   ```
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
-  it) or a drawn one: two-tone paper, the subject (what the effect glows with, `CgFrameKeys.SUBJECT`) filled in ink,
+  it) or a drawn one: two-tone paper, the subject (what the effect glows with, the view's `textures().subject()`) filled in ink,
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
   names the presets (`SUBJECT`, `HATCHED`, `FOCUS_LINES`, `WHITE`, ...).
 - **It plays as beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts, and
@@ -407,7 +486,7 @@ CgPostStack.get().crossfade(0.5f);
 
 **Object record** (`CgInstanceKind.OBJECT`, STD430, 48 floats): `modelMatrix` 0–15, `normalMatrix` 16–31 (the
 shader reads its 3×3; 28–29 the light, `CG_OBJECT_LIGHT`; 30 the emission scale less 1, `CG_OBJECT_EMISSION`;
-19, 23, 27 and 31 free for a record's writer, `CG_OBJECT_SPARE`, `(0, 0, 0, 1)` from `CgWorldRenderer`),
+19, 23, 27 and 31 free for a record's writer, `CG_OBJECT_SPARE`, `(0, 0, 0, 1)` from the scene renderer),
 `custom0`–`custom3` 32–47. An OBJECT instance carries `(record, material slot)` (`cg_ObjectIds`, `uvec2`): the record
 in the firing's table and its material's slot in its shader's arena (`CgMaterialArena`), which the frame builder writes;
 a draw of its own records reads identity ids, `(i, 0)`.
@@ -430,13 +509,13 @@ CgRenderer.executeNow(rec);
 ## The world and its schedule
 
 Everything that runs once a frame, in order, is a **tick function** in a **group** of a `CgWorld`'s schedule
-(`com.crystalgraphics.frame`). The client's world is `CgWorld.client()`; `CgWorldRenderer` runs it once a frame, in
-two parts:
+(`com.crystalgraphics.frame`). The client's world is `CgWorld.client()`; the client scene's renderer runs it once a
+frame, in two parts:
 
 | Part | Where | Groups |
 |---|---|---|
 | `WORLD_BEGIN` | the host's camera setup (`CgWorldBegin.fire`), before it takes this frame's camera and FOV | `BEGIN` through `SHAKE` |
-| the first `WORLD_OPAQUE` firing | before any renderer records | `LATE_ATTACH`, `SUBMIT` |
+| the first view's opaque callback of the frame | before any stage records | `LATE_ATTACH`, `SUBMIT` |
 
 So a shake an effect starts this frame moves this frame's camera, terrain included, and a kick lands on its beat. The
 first part sees last frame's camera with this frame's partial tick, since the host has not taken this one yet.
@@ -622,7 +701,7 @@ CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
     m.triangle(a, b, c);
 });
 CgMesh ball = CgMeshShapes.sphere(24, 32);              // shared: one per format and size
-world.draw(ball, material).at(x, y, z).submit();
+CgScene.client().once().mesh(ball, material).at(x, y, z).add();
 ball.release();                                          // own meshes only; the GPU copy goes once frames retire
 
 // Rewritten every frame: on the frame ring, nothing to release; reserve() keeps its edits from allocating.
@@ -637,9 +716,9 @@ CgMesh bolt = CgMesh.vertices(64, CgMeshTopology.TRIANGLE_STRIP);
 
 // From a file: every OBJ material group and glTF primitive is a submesh, with the material it names
 CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb", CgVertexFormat.SPATIAL);
-for (int i = 0; i < ship.mesh().submeshCount(); i++) {
-    world.draw(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).submit();
-}
+CgMeshComponent drawn = CgScene.client().mesh(ship.mesh(), materialNamed(ship.material(0)))
+        .materials(i -> materialNamed(ship.material(i)))          // a material per submesh
+        .at(x, y, z).spawn();
 ```
 
 **Package guides**: `api/mesh/CLAUDE.md` · `render/CLAUDE.md` (`mesh/`)
@@ -919,7 +998,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
     frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
     frame.canvas().text().style(DAMAGE).text(damage).font(font).at(x, y - 12).color(argb).submit();
 });
-CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->                       // camera-relative; world() is absolute
+CgRenderStage.TRANSLUCENT.register(0, frame ->                             // camera-relative; world() is absolute
     frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());
 
 CgCanvas now = new CgCanvas();                                             // outside any stage: drawn at flush()
@@ -1132,7 +1211,7 @@ called here. **Call these and nothing else** — do not free individual registri
 // At each frame's end, and before drawing outside a world pass — a menu, a title screen, any GUI (GL thread):
 // the graphics start once, then the engine's post-init; a resize if the viewport moved; nothing after shutdown()
 CgEngineLifecycle.ensureGraphicsContext(viewportWidth, viewportHeight);
-// Initialises: CgFallbackTextures, and installs CgWorldRenderer
+// Initialises: CgFallbackTextures, and installs the scene renderer
 
 // On window resize (GL thread):
 CgGraphicsLifecycle.onResize(newWidth, newHeight);
@@ -1166,7 +1245,7 @@ CgEngineLifecycle.shutdown();
 | 6c | `CgStreamBuffer.releaseShared()` | The staging ring retained shader buffers are uploaded through |
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/UBO resources |
-| 8 | `CgWorldRenderer.get().release()` | Its draws, and the depth snapshot's reference |
+| 8 | `CgSceneRenderer.releaseAll()` | Every scene renderer's targets and depth snapshots; then `CgView.forgetAll()`, every view's kept state, and the client scene's GPU records |
 | 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Its targets' textures go with it |
 

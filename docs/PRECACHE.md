@@ -28,7 +28,7 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 
 | You draw | Precache it with |
 |---|---|
-| A material of your own, drawn through `CgWorldRenderer` or at a render stage | `pipelines.add(material, half)`: every pass the world draws it with |
+| A material of your own, drawn in a scene or at a render stage | `pipelines.add(material, half)`: every pass a scene draws it with |
 | A material on a skinned mesh you draw yourself | `pipelines.add(material, half, true)` |
 | A shader whose keywords your renderer switches at runtime | mark them `switched` in the shader's `Keywords { }` ([`SHADERS.md`](SHADERS.md) § *Keywords: a program per combination*), then `pipelines.add(shader)`: every combination, none typed by hand |
 | A full-screen pass of your own renderer | `pipelines.addPass(shader)`, its permutation domain included |
@@ -70,7 +70,7 @@ CgPipelinePrecache.Request move = CgPipelinePrecache.steps("mymod:move")
 
 Textures, meshes, fonts and sounds are not pipelines: read them ahead with `CgPreload`
 (`CgPreload.request(l -> l.texture(t).mesh(path))`), beside a pipeline request. The full API is
-[`ENGINE_API.md`](ENGINE_API.md) § *CgWorldRenderer* and `CgPipelinePrecache`'s javadoc.
+[`ENGINE_API.md`](ENGINE_API.md) § *How a view is drawn* and `CgPipelinePrecache`'s javadoc.
 
 **Easy to get wrong:**
 

@@ -110,12 +110,11 @@ one jar for several loaders are all in [Setup](docs/SETUP.md).
 Draw a glass sphere into the world:
 
 ```java
-CgWorldRenderer world = CgWorldRenderer.get();
 CgMaterialInstance glass = CgMaterial.load("mymod:shaders/glass.shader").instance()
         .vec4("_Tint", 1.0f, 0.5f, 0.8f, 0.4f);                       // pink glass instead of blue
 
-CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:glass",
-        dt -> world.draw(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).submit());
+CgMeshComponent sphere = CgScene.client().mesh(CgMeshShapes.sphere(24, 32), glass).at(x, y, z).spawn();
+sphere.remove();                                                       // when it goes
 ```
 
 The material it draws with:

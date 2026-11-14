@@ -201,7 +201,7 @@ The same draws, on a canvas under a perspective camera: a world stage's `frame.c
 distance fields, their tier picked from their size on screen; the line breaks never change with distance.
 
 ```java
-CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->
+CgRenderStage.TRANSLUCENT.register(0, frame ->
         frame.canvas().text().layout(signText).at(0, 0).pose(placement).submit());   // camera-relative placement
 ```
 
@@ -209,7 +209,7 @@ CgRenderStage.WORLD_TRANSPARENT.register(0, frame ->
   the camera moves or the window resizes.
 - A canvas of your own draws world text through its `camera(...)`, a perspective `CgCamera`, its
   view there or in each pose.
-- Many labels that persist and move: `CgWorldRenderer.get().text(...)`, which keeps their glyphs on the GPU
+- Many labels that persist and move: `scene.label(...)`, which keeps their glyphs on the GPU
   ([`../ENGINE_API.md`](../ENGINE_API.md)).
 
 ---

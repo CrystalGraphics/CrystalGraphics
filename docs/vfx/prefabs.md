@@ -397,12 +397,12 @@ An overlay and CustomDepth, Unreal's `OverlayMaterial` and `bRenderCustomDepth`:
 ```java
 goku.overlay(outline);                  // every slot again in it; overlay(slot, m) for one slot's own
 goku.overlayMaxDistance(40f);           // beyond 40 blocks the overlay is not drawn (0: as far as the mesh)
-goku.customDepth(1, 0xFF);              // into CgFrameKeys.CUSTOM_DEPTH with stencil 1, even behind a wall
+goku.customDepth(1, 0xFF);              // into the view's custom depth with stencil 1, even behind a wall
 ```
 
 - A slot's overlay replaces the mesh's for that slot; a slot with neither draws none.
 - CustomDepth is tested against itself, not the scene: a post material compares it with the scene's depth to outline
-  what is hidden (`render/world/CLAUDE.md`, *CustomDepth*).
+  what is hidden (`render/scene/renderer/CLAUDE.md`, *CustomDepth*).
 
 **The engine's outline** (`CgOutline`) is a toon outline round what writes one stencil value: depth, normal and
 material-ID edges, widths and thresholds by distance (the technique of Dragon Ball Z: Kakarot's battle outline):
@@ -492,7 +492,7 @@ variant (Unreal's GPU skin vertex factory), in every pass the material draws.
 ```java
 Matrix4f[] skinning = ...;                                    // pose(bone) * inverseBind(bone), every bone
 int base = CgBonePalettes.write(skinning, kurama.skeleton().boneCount());
-world.draw(kurama.mesh(), skin).bones(base).at(x, y, z).submit();
+CgScene.client().once().mesh(kurama.mesh(), skin).bones(base).at(x, y, z).add();
 
 CgMesh posed = CgSkinning.skin(kurama.mesh(), skinning);      // the same pose on the CPU, as a static mesh
 ```
@@ -520,8 +520,7 @@ static final CgMaterialDefinition EYES = CgMaterialDefinition.of("mymod:material
         "crystalgraphics:shaders/materials/entity_emissive.shader")
         .texture("_MainTex", "mymod:hero_eyes", CgSampler.Filter.NEAREST, CgSampler.Address.CLAMP).build();
 
-hero.material(0, BODY).material(1, EYES);
-world.draw(hero);
+hero.material(0, BODY).material(1, EYES);    // hero: a CgSkeletalMeshComponent, spawned; it draws itself
 ```
 
 - **`materials/entity.shader`**: Minecraft's two fixed lights on the normal (`CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1`, the
@@ -548,6 +547,7 @@ any mob, in both passes.
 
 ```java
 // MyHeroRenderer.render(entity, yaw, partialTick, poseStack, buffers, light), 1.20.1
+hero.visible(!CgShaderPacks.packInUse());     // the engine's own skinned draw only without a pack
 if (CgShaderPacks.packInUse()) {
     PoseStack.Pose pose = poseStack.last();
     int overlay = LivingEntityRenderer.getOverlayCoords(entity, 0f);          // the hurt flash, as vanilla's
@@ -556,8 +556,6 @@ if (CgShaderPacks.packInUse()) {
         hero.cpuSkin(s, false, (x, y, z, u, v, argb, nx, ny, nz) -> out.vertex(pose.pose(), x, y, z)
                 .color(argb).uv(u, v).overlayCoords(overlay).uv2(light).normal(pose.normal(), nx, ny, nz).endVertex());
     }
-} else {
-    world.draw(hero);                                // no pack: the engine's own skinned draw, in SUBMIT
 }
 ```
 

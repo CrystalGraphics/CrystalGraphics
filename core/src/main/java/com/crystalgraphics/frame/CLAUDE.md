@@ -6,7 +6,7 @@ What runs once a frame, in order. Usage and examples: `docs/ENGINE_API.md` § *T
 
 | Type | Role |
 |---|---|
-| `CgWorld` | One level's schedule and subsystems; `client()` is the client's, run by `CgWorldRenderer` (`begin` at the camera hook, `frame` at the first opaque firing) |
+| `CgWorld` | One level's schedule and subsystems; `client()` is the client's, run by the client scene's renderer (`begin` at the camera hook, `frame` at its first view's opaque callback) |
 | `CgTickGroup` | The ordered phases: four each game tick (`NET_IN` to `NET_OUT`, `CgWorld.tick`), eleven each frame; each is a trace zone `frame.<group>` |
 | `CgTickFunction` | One named body in a group, with prerequisites, interval, pause and server flags |
 | `CgTickSchedule` | Plans (effective group, then Kahn's per group, ties by name) and runs; disables a throwing function |

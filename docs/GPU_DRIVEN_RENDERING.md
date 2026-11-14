@@ -7,8 +7,8 @@ element, and records the same few draws every frame however many elements there 
 
 It is written for a person or an agent building a consumer (particles, foliage, debris, crowds, procedural geometry,
 a renderer of your own) and runs on every context the engine supports, with the same picture. The kernel language
-itself is [`SHADERS.md` § *Compute*](SHADERS.md#compute--compute-kernels); the world renderer is
-[`ENGINE_API.md` § *CgWorldRenderer*](ENGINE_API.md#cgworldrenderer--drawing-into-the-world).
+itself is [`SHADERS.md` § *Compute*](SHADERS.md#compute--compute-kernels); the scene and its rows are
+[`ENGINE_API.md` § *The scene and its views*](ENGINE_API.md#the-scene-and-its-views).
 
 **The one rule**: work that grows with the number of **elements** (particles, instances, vertices) runs on the GPU;
 work that grows with the number of **effects or draws** (tens) stays on the CPU. An effect's life, look, transform and
@@ -58,9 +58,9 @@ CPU, per frame: O(draws)                          GPU, per frame: O(elements)
 
 | You have | Use | The engine does |
 |---|---|---|
-| A buffer of object records (transforms and customs) for one mesh or `CgMeshLods` | `world.draw(lods, material).instances(records, count)`, or `instances(records, first, count)` for one range of a buffer several sets share | per stage: a depth pyramid, a GPU cull against view and pyramid, a level per instance, a draw per level, the levels one call |
-| A count a kernel wrote, and a material that pulls its own vertices from your buffers | `world.draw(mesh, material).indirect(count, offset, mode, factor)` | a draw command from the count, joined with its neighbours |
-| Many such counts for one mesh and material, each with its own position and customs (particle slots) | `world.draw(mesh, material).indirectEach(count, mode, factor)`, then `.each(x, y, z, offset)` per record | one recorded draw, a command a record, one multi-draw call |
+| A buffer of object records (transforms and customs) for one mesh | a scene row `records(mesh, material).from(records, count).culled(scale, pad)`, or `from(records, first, count)` for one range of a buffer several sets share | per view: a depth pyramid, a GPU cull against view and pyramid, the kept records drawn as one indirect draw |
+| A count a kernel wrote, and a material that pulls its own vertices from your buffers | a scene row `indirect(mesh, material).count(count, offset, mode, factor)` | a draw command from the count, joined with its neighbours |
+| Many such counts for one mesh and material, each with its own position and customs (particle slots) | a scene row per slot, `perRecord(mesh, material).counts(count, mode, factor).countAt(offset)` | a command a row, one multi-draw call |
 | A renderer of your own recording chunks | `chunks.draw(...).objects(records, first, n).indirect(...)`, `CgGpuOps.cull`, `CgGpuOps.depthPyramid` | commands, joining, barriers; the cull and pyramid are yours to record |
 | Work whose size only the GPU knows | `CgGpuOps.dispatchArgs` + `pass.dispatchIndirect` | group counts written on the GPU |
 
@@ -116,8 +116,8 @@ CgGraphBuffer trees = CgGraphBuffer.persistent("forest.trees",
         CgBufferDesc.elements(N, CgGpuOps.cullRecordBytes(), CgBufferUsage.STORAGE));
 CgMeshLods treeLods = CgMeshLods.builder().level(treeHigh, 0.30f).level(treeMid, 0.12f).level(treeLow, 0.04f).build();
 
-// Once, ahead of the first draw: a renderer below the world renderer records into the stage's frame
-CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
+// Once, ahead of the first draw: PREPARE records before any of the view's passes
+CgRenderStage.PREPARE.register(frame -> {
     if (placed) return;
     CgComputePass pass = frame.recording().compute("forest.place");
     pass.dispatch(place, N).bind("TREES", trees).set("_Spacing", 6f);
@@ -125,22 +125,26 @@ CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> {
     placed = true;
 });
 
-// Every frame: one draw, whatever N is, culled by the forest's box (a CgAABB made once: CgAABB.of(0, 0, 0, w, 40, d))
-world.draw(treeLods, bark).instances(trees, CgGpuCount.of(N)).at(x, y, z).bounds(forest).submit();
+// Every frame, every view: one row, whatever N is, culled by the forest's box (a CgAABB made once: CgAABB.of(0, 0, 0, w, 40, d))
+CgDynamicComponent forest = CgScene.client().dynamic((view, out) ->
+        out.records(tree, bark).from(trees, CgGpuCount.of(N)).culled(1f, 0f).at(x, y, z).bounds(forestBox).add());
 ```
 
-- **Each stage that draws the set** builds a depth pyramid of what was drawn before the world renderer (in Minecraft,
-  the terrain), culls every tree against the view and the pyramid, picks its level by screen height, and draws each
-  level kept as one indirect draw; the levels are one multi-draw call where draws join (§8).
-- **The pyramid is the stage's** (`CgStageFrame.depthPyramid()`), built once a firing at the first ask: a renderer of
-  your own culling below `CgWorldRenderer.ORDER` asks for the same one, and `compute/ops/occlusion.glsl`'s `cg_occluded` is
-  the test `cull.compute` makes against it.
-- **Records are in the draw's own space**: `.at()` places the set, a record places a tree within it. `.bounds()` is the
-  whole set's box, culled once on the CPU; each tree is culled by its mesh's box, grown by `.pad()`.
+- **Each view that draws the set** builds a depth pyramid of what was drawn before the scene renderer's passes (in
+  Minecraft, the terrain), culls every tree against the view and the pyramid, and draws what it kept as one indirect
+  draw, joined with its neighbours where draws join (§8).
+- **The pyramid is the view's** (`CgStageFrame.depthPyramid()`), built once a draw at the first ask: a cull of your own
+  at `PREPARE` asks for the same one, and `compute/ops/occlusion.glsl`'s `cg_occluded` is the test `cull.compute`
+  makes against it.
+- **Records are in the row's own space**: `.at()` places the set, a record places a tree within it. `.bounds()` is the
+  whole set's box, culled once per view on the CPU; each tree is culled by its mesh's box scaled by `culled`'s scale
+  and widened by its `pad`.
 - A count only the GPU knows works the same way: `CgGpuCount.at(alive, 0, capacity)`.
-- **One set of records, several draws**: a custom the draw states (`.custom(k, …)`) replaces custom k of every kept
-  record, and `.instanceScale(s)` scales each instance about its own origin, as Unity's property block does over
+- **One set of records, several rows**: custom data the row states (`.customData(k, …)`) replaces custom k of every
+  kept record, and `culled`'s scale scales each instance about its own origin, as Unity's property block does over
   `DrawMeshInstancedIndirect`. A particle mesh drawn by each of its layers at that layer's size and colours is one.
+- Instances the CPU places are a `CgInstancedMeshComponent` (`scene.instanced(mesh, material)`), culled on the GPU the
+  same way, a level per screen height where its mesh has levels.
 - **Every set of a stage is culled at once** (`CgCullSets`): a key and a gather dispatch per instance buffer the sets
   read, one sort, histogram and scan over them all, however many draws. Each level keeps its records in the order
   the set holds them, so records sorted for blending draw in that order. By hand, `CgGpuOps.cull(pass, view, sets,
@@ -155,7 +159,10 @@ from the buffers by the material. [`SHADERS.md` § *Start to finish*](SHADERS.md
 full; the core:
 
 ```java
-CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {   // stepped once a frame
+long[] stepped = {Long.MIN_VALUE};
+CgRenderStage.PREPARE.register(frame -> {                                         // stepped once a frame
+    if (stepped[0] == CgFrameRing.frame() || CgRehearsal.active()) return;
+    stepped[0] = CgFrameRing.frame();
     CgComputePass pass = frame.recording().compute("sparks.step");
     pass.dispatch(step, CAPACITY).bind("IN", sparks).bind("OUT", sparks).bind("ALIVE", alive).set("_Step", dt);
     CgGpuOps.compact(pass, alive, null, CgGpuCount.of(CAPACITY), live, count, 0);   // live indices, and how many
@@ -163,30 +170,32 @@ CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame
 });
 
 sparkMaterial.buffer("SPARKS", sparks).buffer("LIVE", live);
-world.draw(CgMesh.quads(CAPACITY), sparkMaterial).indirect(count, 0, CgIndirect.INDICES, 6).at(x, y, z).bounds(box).submit();
+CgScene.client().once().indirect(CgMesh.quads(CAPACITY), sparkMaterial).count(count, 0, CgIndirect.INDICES, 6)
+        .at(x, y, z).bounds(box).add();                                          // each frame, from a SUBMIT tick function
 ```
 
 ```glsl
 Spark s = SPARKS(LIVE(CG_VERTEX_ID >> 2));   // quad n draws the nth live spark
 ```
 
-- **`live` and `count` are persistent**: a transparent material draws in `WORLD_TRANSPARENT`, another stage's frame,
-  and every firing after the first draws them too; a transient lasts one firing.
-- **Once a frame**: a stage may fire twice in a host frame (1.7.10's anaglyph, a portal mod), and
-  `registerOncePerFrame` steps the simulation in the first only. Culling and sorting by the view stay per firing.
+- **`live` and `count` are persistent**: a translucent material draws in the transparent callback, another recording
+  than `PREPARE`'s, and every view after the first draws them too; a transient lasts one recording.
+- **Once a frame**: the world stages run once per view (1.7.10's anaglyph, a portal, a capture), so the stamp steps
+  the simulation in the first only, and skips a rehearsal's. Culling and sorting by the view stay per view.
 - **`INDICES` × 6** draws six indices per live spark from `CgMesh.quads(CAPACITY)`, never more than the mesh holds.
   `INSTANCES` instead draws the mesh once per element, each instance finding its element as `CG_DRAW_INSTANCE`: a
   billow mesh per live puff.
-- **Bounds are yours**: the count is unknown when the draw is culled, so state a box every element stays inside
-  (authored, or a `CgGpuOps.bounds` read back frames late and grown by the fastest speed times the delay). A count a
-  GPU cull wrote holds only what that cull kept: mark the draw `.gpuCulled()` and state none.
+- **Bounds are yours**: the count is unknown when the row is culled, so state a box every element stays inside
+  (authored, or a `CgGpuOps.bounds` read back frames late and grown by the fastest speed times the delay), as
+  Niagara's GPU sims state fixed bounds. A row placed on the GPU without stated bounds is never culled on the CPU: a
+  count a GPU cull wrote, which holds only what that cull kept, states none.
 - **A material that already reads an engine buffer** (a particle factory's `cg_Particle`, `CG_PARTICLE_*`) reads a kernel's
   records in that buffer's layout unchanged: `.buffer(CgParticleBuffer.SLOT, records)`, as Unity's property block
   overrides a global. The draw batches alone, and the frame's buffer is bound again after it.
 
 ```java
-world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, range.drawn())
-     .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6).at(x, y, z).gpuCulled().submit();
+out.indirect(quads, spark).buffer(CgParticleBuffer.SLOT, range.drawn())
+   .count(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6).at(x, y, z).add();
 ```
 
 ## 5. Recipe: many draws from one pool, ordered on the GPU
@@ -210,8 +219,8 @@ lists.end();
 
 sparkMaterial.buffer("SPARKS", pool).buffer("INDEX", index).buffer("FIRST", slotFirst);
 for (int s = 0; s < slots; s++) {
-    world.draw(CgMesh.quads(capacity), sparkMaterial).indirect(slotCounts, s * 4L, CgIndirect.INDICES, 6)
-         .custom(0, s, 0, 0, 0).at(effectX[s], effectY[s], effectZ[s]).bounds(effectBox[s]).submit();
+    CgScene.client().once().indirect(CgMesh.quads(capacity), sparkMaterial).count(slotCounts, s * 4L, CgIndirect.INDICES, 6)
+         .customData(0, s, 0, 0, 0).at(effectX[s], effectY[s], effectZ[s]).bounds(effectBox[s]).add();
 }
 ```
 
@@ -290,12 +299,12 @@ draw has:
 
 - **`INSTANCES` draws of the frame's records never join**: every instance reads one record, and the joined variant has
   no shared record. `INDICES` and `VERTICES` draws do.
-- **Ordering decides adjacency.** The world renderer sorts opaque draws by sort layer, material, distance, mesh, so
-  draws of one material and format tend to sit together; transparent draws sort back to front, a `.group()` as one.
+- **Ordering decides adjacency.** The scene renderer sorts opaque rows by sort layer, material, distance, mesh, so
+  rows of one material and format tend to sit together; translucent rows sort back to front, rows of one `.sortAt()` as one.
   Within a group, `.batchKey(k)` sorts before distance, so draws of one material given one key sit together and join;
   without it, effects of mixed materials alternate pipelines and nothing joins.
-- **`indirectEach` is one draw of many commands**: each `.each()` record is its own command and object record, and
-  they join as one multi-draw where the mesh joins, or else draw one call per record.
+- **Per-record rows are one command each** (`perRecord(...).countAt(...)`, or a chunk's `indirectEach` and `.each()`):
+  each its own command and object record, joined as one multi-draw where the mesh joins, or else one call per record.
 - **The picture never changes**: joining is a pure call reduction, and `-Dcrystalgraphics.mesh.multiDraw=false` proves
   it (§14).
 
@@ -455,7 +464,9 @@ the controller.
 ```java
 static final CgGpuBudget SPARKS = CgGpuBudget.define("sparks", 1.5f);   // 1.5 ms of GPU a frame; once per consumer
 
-CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
+CgRenderStage.PREPARE.register(frame -> {
+    if (stepped[0] == CgFrameRing.frame()) return;                       // once a frame, whatever the views
+    stepped[0] = CgFrameRing.frame();
     int spawned = Math.round(wantedThisFrame * SPARKS.scale());          // the scale thins the spawns
     CgComputePass pass = frame.recording().compute("sparks.step").timed(SPARKS);   // charged to it
     pass.dispatch(spawn, Math.max(spawned, 1)).bind("STATE", sparks).set("_Count", spawned);
@@ -499,8 +510,8 @@ Never storage: capacity is sized by the tier, which a budget does not change
 `spent()` is the median it judged, NaN before any frame came back. A pass charged to a budget is timed whatever the
 trace; with the `gpu` channel on it keeps its own zone, and one without a zone shows as `gpu:budget.<name>`.
 
-- **Charge every pass of the consumer**, or the scale holds the wrong time. Draws through `CgWorldRenderer` are in the
-  world's passes and are not charged: give the budget headroom for them, or draw a heavy pool in a pass of your own.
+- **Charge every pass of the consumer**, or the scale holds the wrong time. Scene rows draw in the scene renderer's
+  passes and are not charged: give the budget headroom for them, or draw a heavy pool in a pass of your own.
 - **An `async()` pass on a device with a compute queue** runs beside the timer and is not counted.
 - **A large fixed cost may never fit**: a lowered tier's dispatches cost something whatever their size, and a budget
   below that stops at the floor. Budget at least what the consumer costs doing nothing useful.
@@ -526,20 +537,19 @@ against 0.221 on Vulkan, inside the 5% it allows over.
 
 ## 15. Easy to get wrong
 
-- **A kernel recorded after the draw reading it** draws last frame's data or nothing: in a world stage, register the
-  renderer recording it below `CgWorldRenderer.ORDER`.
-- **A transient count read in another stage**: a count a transparent draw reads must be persistent.
-- **A simulation registered with `register`** steps again in every firing of the frame: twice under 1.7.10's anaglyph,
-  once per portal under a portal mod. Register it with `registerOncePerFrame`.
+- **A kernel recorded after the draw reading it** draws last frame's data or nothing: record it at `PREPARE`.
+- **A transient count read in another stage**: a count a translucent row reads must be persistent.
+- **A simulation with no frame stamp** steps again in every view of the frame: twice under 1.7.10's anaglyph, once
+  per portal or capture. Stamp it with `CgFrameRing.frame()`.
 - **New buffer storage is not zeroed**: fill a count before an append, write every element before a draw reads it.
 - **`gl_VertexID` or `gl_InstanceID` in a material** draws garbage once draws join; use the `CG_` macros (§9).
 - **A transparent `.instances()` set** draws its instances in no order among themselves: sort them yourself (§5) or
   keep the set opaque or additive.
 - **Different textures per draw** break joining: share one material, use customs and atlases.
-- **`INSTANCES` draws of the frame's records never join**: a mesh per element wants `objects()` or `.instances()`.
-- **No bounds** on an indirect draw: the count is unknown when it is culled, so it is culled by its mesh's box alone.
-- **A recorded draw per slot or per effect** where they share a mesh and material: thousands of draw builders a frame.
-  Use one `indirectEach` draw with a record each (§2), and a `.batchKey()` so transparent ones join (§8).
+- **`INSTANCES` draws of the frame's records never join**: a mesh per element wants `objects()` or a `records(...)` row.
+- **No bounds** on an indirect row: the count is unknown on the CPU, so it is never culled there and draws in every view.
+- **A different material per slot or per effect** where they could share one: nothing joins. Share the material, give
+  each slot a `perRecord` row (§2) and one `.batchKey()` so translucent ones join (§8).
 - **`CgKernelProgram`** orders nothing after it and does not run below compute; a graph's dispatch does both.
 - **Work sized for the author's GPU**: on a weak one it takes the frame rate. Charge the passes to a `CgGpuBudget` and
   scale the spawns by it (§13).
@@ -557,12 +567,12 @@ What a pipeline here cannot do today, so a design does not assume it:
 ## 17. Checklist for an agent
 
 1. Decide what is per element (GPU) and per effect or draw (CPU), by the rule at the top.
-2. Pick the entry point (§2); prefer the world renderer's `.instances()` or `.indirect()`.
+2. Pick the entry point (§2); prefer a scene row's `records(...)` or `indirect(...)`.
 3. Write kernels in lowerable shapes with `vec4` records; library ops for sort, scan, compact, expand, histogram, bounds.
-4. Record the compute pass ahead of its draws, a simulation once per frame (`registerOncePerFrame`); make every
-   buffer a later stage or firing reads persistent.
+4. Record the compute pass at `PREPARE`, a simulation once per frame (its own `CgFrameRing.frame()` stamp); make every
+   buffer a later stage or view reads persistent.
 5. Write the material with the `CG_` macros and `Buffers { }`; one material per look.
-6. Bounds on every indirect draw; every pass charged to a `CgGpuBudget` and the spawns scaled by it (§13).
+6. Bounds on every indirect row; every pass charged to a `CgGpuBudget` and the spawns scaled by it (§13).
 7. Check: `multiDraw=false` gives the same picture, the counters show the calls you expect, checked mode is quiet,
    synchronization validation is clean, and it passes forced to G40, G33 and CPU.
 8. Measure before and after with the profiler, warm.
