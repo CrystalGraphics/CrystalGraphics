@@ -18,6 +18,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -50,6 +51,19 @@ public class CgSceneTest {
         scene.primitives().gather(view, camera, out);
         assertEquals(0, out.size());
         assertEquals(0, scene.gpu().size());
+    }
+
+    @Test
+    public void aPixel_picksTheNearestBoxUnderIt_hiddenOnesSkipped() {
+        CgScene scene = new CgScene();
+        CgMeshComponent near = scene.mesh(CUBE, STONE).at(0, 0, -3).spawn();
+        CgMeshComponent far = scene.mesh(CUBE, STONE).at(0, 0, -8).spawn();
+        CgView eye = CgView.of(scene).size(100, 100);
+        eye.camera().set(camera);
+        assertSame(near, eye.pick(50, 50));
+        near.visible(false);
+        assertSame(far, eye.pick(50, 50));
+        assertNull("a corner's ray passes beside both", eye.pick(0, 0));
     }
 
     @Test

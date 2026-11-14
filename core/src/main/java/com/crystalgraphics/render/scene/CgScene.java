@@ -18,6 +18,7 @@ import com.crystalgraphics.render.scene.component.CgMeshCollector;
 import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
+import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgScenePrimitives;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
@@ -26,6 +27,8 @@ import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.canvas.CgCanvasLabels;
+import com.crystalgraphics.render.host.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
@@ -59,7 +62,9 @@ import javax.annotation.Nullable;
  *   <li>A component is a handle: keep it to change or remove what it made.</li>
  *   <li>The client's scene poses its skeletal meshes with the client world's {@link CgAnimation} and places what rides
  *       another in {@code ATTACH}. A scene of your own does neither by itself: evaluate each skeletal mesh's
- *       {@code anim()} and call {@link #update()} each frame.</li>
+ *       {@code anim()} and call {@link #tick(double)} each frame.</li>
+ *   <li>A scene has its own time and sky, as an Unreal world does: the client's are the game's; one of your own runs
+ *       on {@link #clock()} and is lit under {@link #environment()}, both its owner's to set.</li>
  * </ul>
  */
 public final class CgScene {
@@ -85,6 +90,8 @@ public final class CgScene {
     private final CgGpuScene gpu;
     private final CgScenePrimitives primitives;
     private final CgSceneRenderer renderer;
+    private final CgSceneClock clock;
+    private final CgHostEnvironment environment = new CgHostEnvironment();
 
     public CgScene() {
         this("crystalgraphics.scene", null);
@@ -94,6 +101,21 @@ public final class CgScene {
         gpu = new CgGpuScene(name);
         primitives = new CgScenePrimitives(gpu, driver);
         renderer = new CgSceneRenderer(this);
+        clock = new CgSceneClock(driver != null);
+    }
+
+    /** Its time: what its views' {@code CG_TIME} reads. The client scene's is the game's. */
+    public CgSceneClock clock() {
+        return clock;
+    }
+
+    /**
+     * The sky, sun, fog and settings its views draw under: the client scene's is its host's, refilled each frame; one of
+     * your own starts absent (no sun, no fog) and is its owner's to fill, from the game's or a sky of its own:
+     * {@code lab.environment().set(CgView.main().environment())}.
+     */
+    public CgHostEnvironment environment() {
+        return this == CLIENT ? CgStageHost.frame(CgStageHost.WORLD_OPAQUE).environment() : environment;
     }
 
     /** What draws it through a view: engine side. */
@@ -220,11 +242,32 @@ public final class CgScene {
         return primitives.once();
     }
 
-    /** This frame's placement: what rides another, then the skeletal meshes' palettes. The client's runs in {@code ATTACH}. */
+    /**
+     * A scene of your own's frame: its clock advances by {@code seconds} (scaled, or held while paused), then
+     * {@link #update()}. The client scene's clock is the game's: it refuses this.
+     */
+    public void tick(double seconds) {
+        clock.advance(seconds);
+        primitives.update();
+    }
+
+    /**
+     * Places what rides another and writes the skeletal meshes' palettes now, its time unmoved: the client scene's runs
+     * in {@code ATTACH} on its world; a tool driving the client scene without a world calls it by hand.
+     */
     public void update() {
         primitives.update();
     }
 
+
+    /**
+     * The nearest visible primitive whose world box the ray from {@code (ox, oy, oz)} along {@code (dx, dy, dz)} meets,
+     * absolute; null for none. {@code CgView.pick(x, y)} casts it through a pixel.
+     */
+    @Nullable
+    public CgPrimitiveComponent<?> pick(double ox, double oy, double oz, double dx, double dy, double dz) {
+        return primitives.pick(ox, oy, oz, dx, dy, dz);
+    }
 
     /** Removes every primitive: the level ended. */
     public void clear() {
@@ -265,7 +308,7 @@ public final class CgScene {
                 CLIENT.clear();
             }
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, UPDATE)) {
-                CLIENT.update();
+                CLIENT.primitives.update();
             }
         }
     }

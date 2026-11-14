@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -132,6 +133,20 @@ public final class CgCanvas {
      */
     public CgQuadBatch.Quad quad(CgMaterialInterface material) {
         return quads.quad(material);
+    }
+
+    /**
+     * A quad showing {@code view}'s picture, drawn now at {@code width} x {@code height} pixels
+     * ({@link CgView#renderPicture}), its rows the right way up: place it and submit it. On the screen's image
+     * material; a picture in the world is {@code quad(CgCanvasMaterials.WORLD.image()).texture(0, view.renderPicture(...))}.
+     *
+     * <pre>{@code
+     * frame.canvas().view(minimap, 256, 256).at(16, 16).size(256, 256).submit();
+     * }</pre>
+     */
+    public CgQuadBatch.Quad view(CgView view, int width, int height) {
+        return quads.quad(CgCanvasMaterials.SCREEN.image()).texture(0, view.renderPicture(width, height, 0xFF000000))
+                .uv(0f, 1f, 1f, 0f);
     }
 
     /** A quad builder of the caller's own, held across frames: {@link CgQuadBatch.Quad#material} before each submit. */

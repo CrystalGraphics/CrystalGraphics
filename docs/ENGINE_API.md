@@ -205,8 +205,14 @@ its own, whole, with `renderInto`: the world stages, the scene renderer and the 
 // An editor's viewport: its own scene, its own view, kept for its histories
 CgScene lab = new CgScene();
 CgView viewport = CgView.of(lab);
-viewport.size(w, h).camera().set(x, y, z, rotation, projection);
-viewport.renderInto(target);                              // each frame, on the render thread
+lab.environment().set(CgView.main().environment());       // its sky and settings: the game's, or its own
+lab.tick(dt);                                             // each frame: its clock advances, its primitives are placed
+viewport.camera().set(x, y, z, rotation, projection);
+CgTexture picture = viewport.renderPicture(w, h, 0xFF3D3D3D);   // drawn now into a picture of its own; v flipped
+viewport.renderInto(target);                              // or into a target of yours
+frame.canvas().view(viewport, w, h).at(x0, y0).size(w, h).submit();   // or as a canvas item
+
+CgPrimitiveComponent<?> clicked = viewport.pick(mouseX, mouseY);       // what is under a pixel: an editor's click
 
 // A second view of the client's world: a portal, a security camera, a capture
 static final CgView PORTAL = CgView.create("mymod.portal");
@@ -228,7 +234,14 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   one made per frame keeps none.
 - `CgView.of(scene)` draws a scene of your own; `CgView.create(name)` another view of the client's. A view of a scene
   of its own blends none of the client's post volumes and runs none of the client world's schedule: evaluate its
-  skeletal meshes' `anim()` and call `scene.update()` yourself.
+  skeletal meshes' `anim()` and call `scene.tick(seconds)` yourself.
+- **A scene has its own time and sky**, as an Unreal world does: `scene.clock()` (`CgSceneClock`: seconds, pause, a
+  time scale) is what its views' `CG_TIME` reads, and `scene.environment()` what they are lit and fogged under. The
+  client scene's are the game's; one of your own starts with no sun and no fog, at time 0, until its owner sets them.
+- **`renderPicture(w, h, argb)`** is Unreal's scene capture: the view drawn now into colour and depth of its own, kept
+  and remade only on a new size; read the texture each frame, and `releasePicture()` when the view goes.
+- **`pick(x, y)`** is the nearest visible primitive whose world box the ray through that pixel meets (Godot's editor
+  selection ray): a box, not a triangle.
 - The main view's camera, size and environment are its host's, refilled each frame: read them, never set them.
 - `textures()` and `publish`/`read` (`CgViewKey`) reset when the view's draw begins: they hand values within one
   draw, from one stage to a later one. A hand-off across frames goes in `state()` (`CgViewState`).

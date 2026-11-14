@@ -1,16 +1,19 @@
 package com.crystalgraphics.render.view;
 
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.host.CgStageHost;
-import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.render.host.CgHostTextures;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
 import com.crystalgraphics.variable.CgVar;
+import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.Collections;
@@ -55,6 +58,12 @@ public final class CgView {
     private static final Set<CgView> ALL = Collections.newSetFromMap(new WeakHashMap<>());
     private static final CgView MAIN = new CgView("main", null, true);
     private static final CgView UNKEPT = new CgView("unkept", null, false);
+    /** How far behind an orthographic eye a pick starts, in blocks. */
+    private static final float PICK_REACH = 10_000f;
+    @Nullable
+    private CgViewPicture picture;
+    private final Matrix4f pickInverse = new Matrix4f();
+    private final Vector3f pickPoint = new Vector3f();
 
     /** How far the camera may move in a frame, and turn (as the cosine), and still be the last frame's view. */
     private static final double TELEPORT = 8.0;
@@ -283,6 +292,81 @@ public final class CgView {
         CgStageHost.renderView(this, target);
     }
 
+    /**
+     * Draws the view whole into a picture of its own, {@code width} x {@code height} pixels cleared to {@code argb}
+     * first, and answers its colour: Unreal's scene capture into its render target. The picture is kept from frame to
+     * frame and remade only when the size changes.
+     *
+     * <pre>{@code
+     * CgTexture picture = viewport.renderPicture(w, h, 0xFF3D3D3D);   // each frame, on the render thread
+     * ui.drawImage(picture, x, y, w, h, 0f, 1f, 1f, 0f);              // its origin is bottom left: v flipped
+     * frame.canvas().view(viewport, w, h).at(x, y).size(w, h).submit();   // or as a canvas item, flipped for you
+     * viewport.releasePicture();                                        // when the viewport goes
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Not the main view: its host draws it.</li>
+     *   <li>The texture answered is replaced when the size changes; read it again each frame.</li>
+     * </ul>
+     */
+    public CgTexture2D renderPicture(int width, int height, int argb) {
+        if (picture == null) picture = new CgViewPicture("cg_view." + name);
+        renderInto(picture.begin(width, height, argb));
+        return picture.colour();
+    }
+
+    /** Frees {@link #renderPicture}'s picture. Render thread; the next call makes it again. */
+    public void releasePicture() {
+        if (picture != null) picture.release();
+        picture = null;
+    }
+
+    /**
+     * What of its scene is under pixel {@code (x, y)} of its picture (top left the origin, in its size's pixels): the
+     * nearest visible primitive whose world box the ray through that pixel meets, through its camera as last set; null
+     * for none. An editor's click selection, as Godot's editor casts it.
+     *
+     * <pre>{@code
+     * CgPrimitiveComponent<?> clicked = viewport.pick(mouseX, mouseY);
+     * if (clicked == rock) select(rock);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A box hit, not a triangle: a primitive's box can hide one behind it inside the box.</li>
+     *   <li>Render thread, as its scene. A view never drawn has no size: it picks nothing.</li>
+     * </ul>
+     */
+    @Nullable
+    public CgPrimitiveComponent<?> pick(float x, float y) {
+        if (width <= 0 || height <= 0) return null;
+        float nx = 2f * (x + 0.5f) / width - 1f, ny = 1f - 2f * (y + 0.5f) / height;
+        Matrix4fc projection = camera.projection();
+        pickInverse.set(projection).mul(camera.view()).invert();   // camera-relative clip space to camera-relative world
+        Matrix4fc view = camera.view();
+        float fx = -view.m02(), fy = -view.m12(), fz = -view.m22();   // the camera's forward
+        pickInverse.transformProject(nx, ny, 0.5f, pickPoint);       // mid-depth in either depth convention
+        double ox, oy, oz, dx, dy, dz;
+        if (projection.m23() != 0f) {                                // perspective: from the eye through the pixel
+            ox = oy = oz = 0.0;
+            dx = pickPoint.x;
+            dy = pickPoint.y;
+            dz = pickPoint.z;
+            if (dx * fx + dy * fy + dz * fz < 0.0) {
+                dx = -dx;
+                dy = -dy;
+                dz = -dz;
+            }
+        } else {                                                    // orthographic: along the forward, from behind the eye
+            dx = fx;
+            dy = fy;
+            dz = fz;
+            ox = pickPoint.x - fx * PICK_REACH;
+            oy = pickPoint.y - fy * PICK_REACH;
+            oz = pickPoint.z - fz * PICK_REACH;
+        }
+        return scene().pick(ox + camera.x(), oy + camera.y(), oz + camera.z(), dx, dy, dz);
+    }
+
     // ── Engine side ───────────────────────────────────────────────────────────────────────────────
 
     /** Engine side, the hosts': its size this frame. */
@@ -315,7 +399,7 @@ public final class CgView {
     }
 
     public void beginFrame(long hostFrame, @Nullable Object target) {
-        camera.time(CgFrameClock.seconds()).resolution(width, height);
+        camera.time(scene().clock().seconds()).resolution(width, height);
         if (hostFrame == frame) return;
         frame = hostFrame;
         state.begin(hostFrame);

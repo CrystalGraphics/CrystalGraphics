@@ -10,6 +10,9 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.shape.bounds.CgAABBc;
+import org.joml.Intersectiond;
+import org.joml.Vector2d;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -53,6 +56,7 @@ public final class CgScenePrimitives {
     private final List<CgDecalComponent> decals = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
+    private final Vector2d hit = new Vector2d();
 
     /** {@link #once}'s rows, and the ring frame they were added in: no view of a later frame draws them. */
     private final CgMeshBatches onceRows = new CgMeshBatches();
@@ -164,6 +168,29 @@ public final class CgScenePrimitives {
             }
         }
         if (onceFrame == CgFrameRing.frame() && onceRows.size() > 0) oneFrame.gather(view, camera, out, gathering);
+    }
+
+    /**
+     * The nearest visible primitive whose world box the ray from {@code (ox, oy, oz)} along {@code (dx, dy, dz)} meets
+     * ahead of its origin, absolute; null for none. Godot's editor selection ray: a box hit, not a triangle. A primitive
+     * with no bounds is never picked.
+     */
+    @Nullable
+    public CgPrimitiveComponent<?> pick(double ox, double oy, double oz, double dx, double dy, double dz) {
+        CgPrimitiveComponent<?> nearest = null;
+        double best = Double.MAX_VALUE;
+        for (int i = 0, n = primitives.size(); i < n; i++) {
+            CgPrimitiveComponent<?> p = primitives.get(i);
+            CgAABBc box = p.visible ? p.worldBounds() : null;
+            if (box == null || !Intersectiond.intersectRayAab(ox, oy, oz, dx, dy, dz, box.minX(), box.minY(), box.minZ(),
+                    box.maxX(), box.maxY(), box.maxZ(), hit)) continue;
+            double at = Math.max(hit.x, 0.0);   // the eye inside a box picks it at 0
+            if (hit.y >= 0.0 && at < best) {
+                best = at;
+                nearest = p;
+            }
+        }
+        return nearest;
     }
 
     /** Primitives the last {@link #gather} tested against its view's frustum. */

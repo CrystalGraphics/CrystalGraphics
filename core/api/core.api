@@ -8845,6 +8845,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public textDegradedDraws ()J
   method public triangle (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public view (IFF)V
+  method public view (Lcom/crystalgraphics/render/view/CgView;II)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
   method public visible (Lorg/joml/Matrix4fc;FFFF)Z
 com/crystalgraphics/render/canvas/CgCanvas$Source
   access public,abstract,interface
@@ -11103,9 +11104,11 @@ com/crystalgraphics/render/scene/CgScene
   extends java/lang/Object
   method public <init> ()V
   method public clear ()V
+  method public clock ()Lcom/crystalgraphics/render/scene/CgSceneClock;
   method public decal (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgDecalComponent;
   method public drawOnce (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;DDD)V
   method public dynamic (Lcom/crystalgraphics/render/scene/component/CgDynamicPrimitive;)Lcom/crystalgraphics/render/scene/component/CgDynamicComponent;
+  method public environment ()Lcom/crystalgraphics/render/host/CgHostEnvironment;
   method public gpu ()Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;
   method public instanced (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgInstancedMeshComponent;
   method public label (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/render/canvas/CgCanvasLabels$Label;
@@ -11117,12 +11120,23 @@ com/crystalgraphics/render/scene/CgScene
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public once ()Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
+  method public pick (DDDDDD)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public primitives ()Lcom/crystalgraphics/render/scene/component/CgScenePrimitives;
   method public renderer ()Lcom/crystalgraphics/render/scene/renderer/CgSceneRenderer;
   method public root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
   method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public tick (D)V
   method public update ()V
   method public,static client ()Lcom/crystalgraphics/render/scene/CgScene;
+com/crystalgraphics/render/scene/CgSceneClock
+  access public,final
+  extends java/lang/Object
+  method public delta ()D
+  method public paused ()Z
+  method public paused (Z)Lcom/crystalgraphics/render/scene/CgSceneClock;
+  method public seconds ()D
+  method public timeScale ()F
+  method public timeScale (F)Lcom/crystalgraphics/render/scene/CgSceneClock;
 com/crystalgraphics/render/scene/batch/CgCachedCommands
   access public,final
   extends java/lang/Object
@@ -11392,6 +11406,7 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public once ()Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
+  method public pick (DDDDDD)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
   method public size ()I
   method public skeletal ()Ljava/util/List;
@@ -12081,10 +12096,13 @@ com/crystalgraphics/render/view/CgView
   method public override (Lcom/crystalgraphics/variable/CgVar$Bool;Z)Lcom/crystalgraphics/render/view/CgView;
   method public override (Lcom/crystalgraphics/variable/CgVar$Int;I)Lcom/crystalgraphics/render/view/CgView;
   method public override (Lcom/crystalgraphics/variable/CgVar$Num;F)Lcom/crystalgraphics/render/view/CgView;
+  method public pick (FF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public previousViewProjection ()Lorg/joml/Matrix4f;
   method public publish (Lcom/crystalgraphics/render/view/CgViewKey;Ljava/lang/Object;)V
   method public read (Lcom/crystalgraphics/render/view/CgViewKey;)Ljava/lang/Object;
+  method public releasePicture ()V
   method public renderInto (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
+  method public renderPicture (III)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public scene ()Lcom/crystalgraphics/render/scene/CgScene;
   method public showFlags ()Lcom/crystalgraphics/render/view/CgShowFlags;
   method public size (II)Lcom/crystalgraphics/render/view/CgView;

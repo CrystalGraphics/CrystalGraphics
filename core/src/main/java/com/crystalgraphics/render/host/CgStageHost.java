@@ -170,7 +170,8 @@ public final class CgStageHost {
     /**
      * Engine side, {@code CgView.renderInto}'s: {@code view}'s whole frame now, both world callbacks and post, into
      * {@code target} at its size, through the view's own camera. A view of the client scene takes the game's sky and
-     * host textures. Render thread; inside a firing too (a viewport drawn from the HUD), the target its own.
+     * host textures; a view of a scene of its own, that scene's environment. Render thread; inside a firing too (a
+     * viewport drawn from the HUD), the target its own.
      */
     public static void renderView(CgView view, CgExternalTarget target) {
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
@@ -180,6 +181,8 @@ public final class CgStageHost {
         if (view.scene() == CgScene.client()) {
             view.environment().set(game.environment());
             view.hostTextures().set(game.textures());
+        } else {
+            view.environment().set(view.scene().environment());
         }
         CgDeviceSection.begin();
         try {
