@@ -37,7 +37,7 @@ starts, and every shader compiles for that choice:
 | Running on | Path |
 |---|---|
 | Vulkan with descriptor indexing (nearly every desktop GPU, and Minecraft 26.x's Vulkan) | bindless |
-| OpenGL 4.6 with `ARB_bindless_texture` (NVIDIA, AMD) | bindless for your materials' and kernels' textures; the engine's own view textures stay on units (below) |
+| OpenGL 4.6 with `ARB_bindless_texture` (NVIDIA, AMD) | bindless, except the two view textures that may be Minecraft's own (below) |
 | OpenGL without it (Intel's Windows driver) | units |
 
 What it means for you:
@@ -52,7 +52,8 @@ What it means for you:
   resource reload) keeps its number in the heap; nothing that reads it is rewritten.
 - **Minecraft's own textures stay on units on OpenGL.** OpenGL freezes a texture once it is in the heap: it can never
   be resized or change its sampling again. Minecraft resizes and reconfigures its own textures (its lightmap, its depth
-  target) whenever it likes, so the engine never puts them in the heap there. Vulkan has no such rule.
+  target) whenever it likes, so the engine never puts them in the heap there: `cg_Lightmap` and `cg_DepthBuffer` stay
+  on units on OpenGL, and every other texture, the engine's and yours, is bindless. Vulkan has no such rule.
 
 To run on units on a GPU that has bindless, to test that path, start the game with
 `-Dcrystalgraphics.bindless=false`. It takes effect on the next start. From code, `CgBindless.active()` says which path

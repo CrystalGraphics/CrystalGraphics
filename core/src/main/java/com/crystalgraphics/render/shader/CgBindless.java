@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 public final class CgBindless {
 
     /** Decided for the installed device on the first ask; asked again for the next, as one closes. */
-    private static boolean decided, active, viewTexturesBound;
+    private static boolean decided, active, hostTexturesBound;
 
     private CgBindless() {}
 
@@ -32,19 +32,20 @@ public final class CgBindless {
             CgRHI rhi = CgRHI.get();
             decided = true;
             active = rhi.globals().bindless() && CgRHI.BINDLESS.get();
-            viewTexturesBound = active && rhi.bindlessFreezesTextures();
+            hostTexturesBound = active && rhi.bindlessFreezesTextures();
             rhi.onClose(CgBindless::closed);
         }
         return active;
     }
 
     /**
-     * Whether the view's textures stay bound to units on the bindless path: they may be the host's own (its lightmap,
-     * its depth sampled in place), which a handle would freeze ({@link CgRHI#bindlessFreezesTextures}). A material's and
-     * a kernel's textures, the engine's, are read by index all the same.
+     * Whether the two view slots that may hold the host's own textures stay bound to units on the bindless path:
+     * {@link CgBindingModel#SCENE_DEPTH} (its depth, sampled in place) and {@link CgBindingModel#LIGHTMAP}, which a
+     * handle would freeze ({@link CgRHI#bindlessFreezesTextures}: GL). Every other texture, the view's scene colour,
+     * media and local lights included, is read by index all the same.
      */
-    public static synchronized boolean viewTexturesBound() {
-        return active() && viewTexturesBound;
+    public static synchronized boolean hostTexturesBound() {
+        return active() && hostTexturesBound;
     }
 
     private static synchronized void closed() {
@@ -53,10 +54,10 @@ public final class CgBindless {
 
     /**
      * The defines a program takes right after {@code #version}: {@code CG_BINDLESS} on the bindless path, and
-     * {@code CG_VIEW_TEXTURES_BOUND} where the view's textures stay bound. Empty on the bound path.
+     * {@code CG_HOST_TEXTURES_BOUND} where the host's textures stay bound. Empty on the bound path.
      */
     public static String header() {
         if (!active()) return "";
-        return viewTexturesBound() ? "#define CG_BINDLESS 1\n#define CG_VIEW_TEXTURES_BOUND 1\n" : "#define CG_BINDLESS 1\n";
+        return hostTexturesBound() ? "#define CG_BINDLESS 1\n#define CG_HOST_TEXTURES_BOUND 1\n" : "#define CG_BINDLESS 1\n";
     }
 }

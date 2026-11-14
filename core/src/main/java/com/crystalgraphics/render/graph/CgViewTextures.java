@@ -31,7 +31,7 @@ final class CgViewTextures {
     private int version, built = -1, builtConstants = -1;
     /**
      * The bindless path's index block: the view's textures at bindings 1 to 5 (scene depth, scene colour, lightmap,
-     * media, local lights), one uint each.
+     * media, local lights), one uint each; a slot left bound reads none.
      */
     private static final int FIRST = CgBindingModel.SCENE_DEPTH.binding(), COUNT = 5;
     private static final int[] INDEX_OFFSETS = {0, 1, 2, 3, 4};
@@ -57,29 +57,40 @@ final class CgViewTextures {
 
     /**
      * The textures as the view set's bindings, each resolved to its storage now: bound, or on the bindless path their
-     * indices in a block written now into {@code executed}'s ring, those the pass did not state read from its {@code constants} entry of
-     * {@code table}. Bound wherever a handle would freeze the host's textures ({@link CgBindless#viewTexturesBound}).
+     * indices in a block written now into {@code executed}'s ring, those the pass did not state read from its
+     * {@code constants} entry of {@code table}. Scene depth and the lightmap stay bound wherever a handle would freeze
+     * the host's own ({@link CgBindless#hostTexturesBound}); those the pass did not state, the set takes from the table.
      */
     CgBindings bindings(CgRHI rhi, CgFrameBindings table, int constants, CgExecutedBlocks executed) {
         if (built == version && builtConstants == constants) return bindings;
         bindings.clear();
-        if (CgBindless.active() && !CgBindless.viewTexturesBound()) {
+        boolean indexing = CgBindless.active(), hostBound = !indexing || CgBindless.hostTexturesBound();
+        for (int b = 0; b < textures.length; b++) {
+            if (indexing && !(hostBound && mayBeHosts(b))) continue;
+            CgTexture texture = textures[b];
+            CgTextureView view = texture == null ? null : texture.rhiView();
+            if (view != null) bindings.texture(b, view, CgDeviceSamplers.of(rhi, null, texture));
+        }
+        if (indexing) {
             for (int i = 0; i < COUNT; i++) {
                 int binding = FIRST + i;
+                if (hostBound && mayBeHosts(binding)) {
+                    indexed[i] = null;   // bound above; its index is never read
+                    continue;
+                }
                 CgTexture t = textures[binding] != null ? textures[binding] : stated(table, constants, binding);
                 indexed[i] = t != null ? t : empty(binding);
             }
             executed.values(null, 8, INDEX_OFFSETS, indexed, null, CgBindingModel.VIEW_TEXTURE_INDICES.binding(), bindings);
-        } else {
-            for (int b = 0; b < textures.length; b++) {
-                CgTexture texture = textures[b];
-                CgTextureView view = texture == null ? null : texture.rhiView();
-                if (view != null) bindings.texture(b, view, CgDeviceSamplers.of(rhi, null, texture));
-            }
         }
         built = version;
         builtConstants = constants;
         return bindings;
+    }
+
+    /** Whether view {@code binding} may hold the host's own texture: its depth sampled in place, its lightmap. */
+    private static boolean mayBeHosts(int binding) {
+        return binding == CgBindingModel.SCENE_DEPTH.binding() || binding == CgBindingModel.LIGHTMAP.binding();
     }
 
     /** What view {@code binding} reads in a pass that names none: cg_env's empties, local lights black, media white. */

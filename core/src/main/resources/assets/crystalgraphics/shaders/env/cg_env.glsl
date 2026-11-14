@@ -197,10 +197,13 @@ flat in int cg_InstanceId;
 
 // -- The view's textures (the engine's; never declare or bind them) ------------------------------------------------
 // Bound at view bindings 1 to 5, or read by index where the engine compiles bindless: their indices in
-// CgViewTextureBlock, written as the pass executes (CgViewTextures). They stay bound where a handle would freeze the
-// host's own (CG_VIEW_TEXTURES_BOUND, GL: Minecraft's lightmap, its depth sampled in place).
-#if defined(CG_BINDLESS) && !defined(CG_VIEW_TEXTURES_BOUND)
+// CgViewTextureBlock, written as the pass executes (CgViewTextures). The two that may be the host's own, scene depth
+// sampled in place and the lightmap, stay bound where a handle would freeze it (CG_HOST_TEXTURES_BOUND, GL).
+#ifdef CG_BINDLESS
 #define CG_VIEW_TEXTURES_INDEXED 1
+#ifndef CG_HOST_TEXTURES_BOUND
+#define CG_HOST_TEXTURES_INDEXED 1
+#endif
 CG_BIND(0, 8) layout(std140) uniform CgViewTextureBlock {
     uvec4 cg_ViewTextures;    // x scene depth, y scene colour, z lightmap, w media
     uvec4 cg_ViewTextures2;   // x local lights
@@ -209,7 +212,7 @@ CG_BIND(0, 8) layout(std140) uniform CgViewTextureBlock {
 
 // cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that
 // reads it: in an opaque pass the host's world, in a transparent pass with the world renderer's opaque draws too.
-#ifdef CG_VIEW_TEXTURES_INDEXED
+#ifdef CG_HOST_TEXTURES_INDEXED
 #define cg_DepthBuffer CG_TEXTURE_sampler2D(cg_ViewTextures.x)
 #else
 CG_BIND(0, 1) uniform sampler2D cg_DepthBuffer;
@@ -226,7 +229,7 @@ CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
 #define CG_SCENE_COLOR(uv) textureLod(cg_SceneColor, (uv), 0.0)
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
-#ifdef CG_VIEW_TEXTURES_INDEXED
+#ifdef CG_HOST_TEXTURES_INDEXED
 #define cg_Lightmap CG_TEXTURE_sampler2D(cg_ViewTextures.z)
 #else
 CG_BIND(0, 3) uniform sampler2D cg_Lightmap;

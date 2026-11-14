@@ -201,8 +201,8 @@ CgMesh mesh = CgMeshShapes.cube(format);
 Where the device has a bindless heap the engine compiles every program with `CG_BINDLESS` (`CgBindless`, decided once
 per device; `crystalgraphics.bindless=false` forces units): a texture property is then a `uint` member `_cgt<name>` of
 the material block, written as the block version is placed (`CgBlockVersion`, `CgBindlessTextures`), and the GLSL name a
-macro reading the heap. The block's layout holds those members on both paths. On GL the view's textures stay bound
-(`CgBindless.viewTexturesBound`): a handle would freeze Minecraft's own. User-facing: `docs/TEXTURES.md` and
+macro reading the heap. The block's layout holds those members on both paths. On GL scene depth and the lightmap stay
+bound (`CgBindless.hostTexturesBound`): they may be Minecraft's own, which a handle would freeze. User-facing: `docs/TEXTURES.md` and
 `docs/SHADERS.md`, each § *bindless*.
 
 ### The sampler budget

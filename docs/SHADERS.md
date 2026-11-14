@@ -35,7 +35,8 @@ used, in plain terms, and how to force units with `-Dcrystalgraphics.bindless=fa
 - **No engine limit on how many textures a material reads.** On units, more than the GPU's stage binds, less the view's
   five, fails to load naming both numbers.
 - The view's textures (`cg_DepthBuffer`, `cg_SceneColor`, `cg_Lightmap`, `cg_Media`, `cg_LocalLights`, below) keep their
-  names on both paths. On OpenGL they stay on units even where the rest is bindless, since they may be Minecraft's own.
+  names on both paths. On OpenGL `cg_DepthBuffer` and `cg_Lightmap` stay on units even where the rest is bindless,
+  since they may be Minecraft's own.
 
 ## Materials
 
