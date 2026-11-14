@@ -107,6 +107,23 @@ public interface CgEntityQuery {
     int kind(int id);
 
     /**
+     * Entity {@code id}'s type, its entry in the host's entity registry: what {@code CgEntityActors.register} names.
+     *
+     * <pre>{@code
+     * if ("minecraft:zombie".equals(entities.type(id))) shamble(id);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Null where there is no such entity, or where the host does not say (a test's fake level).</li>
+     *   <li>Below 1.11 an entity's registry name is Forge's string: a vanilla {@code Zombie} reads
+     *       {@code minecraft:Zombie}, a mod's {@code mymod.wyvern} reads {@code mymod:wyvern}.</li>
+     * </ul>
+     */
+    default String type(int id) {
+        return null;
+    }
+
+    /**
      * Entity {@code id}'s bounding box at {@code partialTick}, into {@code out}: the real box, which is not always
      * square about the feet (a painting, an item frame, a shulker opening). False, with {@code out} untouched, when
      * there is no such entity.

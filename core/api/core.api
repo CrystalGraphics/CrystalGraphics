@@ -8682,6 +8682,10 @@ com/crystalgraphics/object/value/CgValueForm
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/object/value/CgValueForm;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/object/value/CgValueForm;
   method public,static values ()[Lcom/crystalgraphics/object/value/CgValueForm;
+com/crystalgraphics/probe/CgActorProbe
+  access public,final
+  extends java/lang/Object
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgCollisionProbe
   access public,final
   extends java/lang/Object
@@ -21114,6 +21118,7 @@ com/crystalgraphics/world/actor/CgEntity
   method public flag (I)Z
   method public flags ()I
   method public headYaw ()F
+  method public hostFrame ()J
   method public id ()I
   method public pitch ()F
   method public pose (I)D

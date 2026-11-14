@@ -114,6 +114,23 @@ public class CgEntityActorsTest {
     }
 
     @Test
+    public void anEntityTheHostNoLongerAnswersTakesItsActorWithItAndTheHostsDrawsAreStamped() {
+        Counting actor = new Counting();
+        registration = CgEntityActors.register("test:walker", () -> actor);
+        CgEntityActors.entered(7, "test:walker");
+        assertEquals("never drawn by the host yet", -1, actor.entity().hostFrame());
+        CgWorld.client().frame(null);
+        CgEntityActors.replacesModel(7);
+        assertEquals("the host's draw, stamped", CgWorld.client().frames(), actor.entity().hostFrame());
+
+        walker.here = false;                                           // gone with no leave event (Forge before 1.13)
+        CgWorld.client().frame(null);
+        assertEquals(1, actor.removed);
+        assertNull(CgEntityActors.actor(7));
+        assertTrue(actor.root().removed());
+    }
+
+    @Test
     public void aTypeTakesOneActorAndKeepingTheVanillaModelIsAsked() {
         registration = CgEntityActors.register("test:walker", Counting::new).keepVanillaModel();
         try {

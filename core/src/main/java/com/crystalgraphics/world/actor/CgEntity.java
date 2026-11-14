@@ -25,6 +25,7 @@ public final class CgEntity {
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     int flags;
     boolean present;
+    long hostFrame = -1;
 
     CgEntity(int id, String type) {
         this.id = id;
@@ -81,9 +82,22 @@ public final class CgEntity {
         return (flags & bit) != 0;
     }
 
-    /** Whether the host answered its pose this frame; false while it is gone and its actor not yet removed. */
+    /**
+     * Whether the host answered its pose this frame. False only in {@code onSpawn} where the host announces an entity
+     * before adding it to its level (Forge's join event), its pose zero until the first frame; a frame it is missing
+     * from removes its actor.
+     */
     public boolean present() {
         return present;
+    }
+
+    /**
+     * The client world frame ({@code CgWorld.frames()}) in which the host's renderer last reached this entity and left
+     * its model to the actor; -1 before the first. Behind the current frame while the host culls it (out of view, too
+     * far): what an actor reads to do as the host does.
+     */
+    public long hostFrame() {
+        return hostFrame;
     }
 
     @Override

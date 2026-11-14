@@ -10,6 +10,7 @@ import com.crystalgraphics.lwjgl2.InputLwjgl2;
 import com.crystalgraphics.platform.input.CgClipboard;
 import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.mc.v1710.CrystalGraphicsVersion;
+import com.crystalgraphics.mc.v1710.platform.actor.Actors1710;
 import com.crystalgraphics.mc.v1710.platform.gl.GLDevice1710;
 import com.crystalgraphics.mc.v1710.platform.service.*;
 import net.minecraftforge.common.MinecraftForge;
@@ -143,6 +144,7 @@ public final class PlatformService1710 implements CgPlatformService {
             FMLCommonHandler.instance().bus().register(new HostCamera1710.Ticks());
             MinecraftForge.EVENT_BUS.register(new HostCamera1710.Renders());
             MinecraftForge.EVENT_BUS.register(new OverlayStages1710());
+            MinecraftForge.EVENT_BUS.register(new Actors1710.Joins());
             // The render tick is on FML's bus; the mixin hook (MixinGuiScreen) takes the tick-time drain.
             FMLCommonHandler.instance().bus().register(new ScreenInput1710());
             MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());

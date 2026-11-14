@@ -17,7 +17,7 @@ import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,15 +39,20 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * CgEntityActors.entered(entity.getId(), "mymod:dragon");    // joined the client's level
- * if (CgEntityActors.replacesModel(entity.getId())) return;  // the entity renderer: its actor draws it
- * CgEntityActors.left(entity.getId());                       // left the level, unloaded or killed
+ * if (CgEntityActors.replacesModel(entity.getId())) ...      // the entity renderer: its actor draws it
+ * CgEntityActors.left(entity.getId());                       // left the level, where the host has the event
  * }</pre>
  *
  * <ul>
  *   <li>Each frame in {@code PLAYS}: every actor's root placed at its entity's pose (interpolated to the frame's
  *       partial tick, read from {@link CgEntityQueries#client()}), then its {@code tick}. Before {@code POSE}, so its
  *       animation reads this frame's changes and everything riding the root follows in {@code ATTACH}.</li>
- *   <li>An entity of a type no actor is registered for is left to its host.</li>
+ *   <li>An actor whose entity the query no longer finds is removed in that tick: a host without a leave event (Forge
+ *       before 1.13) loses none, and {@link #left} only removes it a frame sooner.</li>
+ *   <li>An entity of a type no actor is registered for is left to its host, as are entities that entered before
+ *       their type was registered.</li>
+ *   <li>The host's model is suppressed only where its renderer reaches the entity: an inventory's player preview
+ *       draws through the same renderer, so an actor's player shows there as its name tag alone.</li>
  *   <li>A new level removes every actor; an actor that throws is removed, logged, and its entity left to its host.</li>
  *   <li>The client world's thread; {@link #register} from any thread.</li>
  * </ul>
@@ -57,6 +62,11 @@ public final class CgEntityActors extends CgWorldSubsystem {
     private static final Logger LOGGER = LogManager.getLogger(CgEntityActors.class);
     private static final int TICK = CgTrace.name("actors.tick");
     private static final Map<String, Registration> TYPES = new ConcurrentHashMap<>();
+    private static final Live[] NONE = new Live[0];
+
+    /** The client world's, while it has one: what the host's per-entity questions read without a lookup. */
+    @Nullable
+    private static CgEntityActors client;
 
     /** An entity type's actor, as registered; closing it unregisters the type (a reload, a scene leaving). */
     public static final class Registration implements AutoCloseable {
@@ -99,8 +109,11 @@ public final class CgEntityActors extends CgWorldSubsystem {
         }
     }
 
-    private final Map<Integer, Live> live = new HashMap<>();
+    /** In spawn order, as they tick. */
     private final List<Live> order = new ArrayList<>();
+    /** The same, by entity id ascending: the host asks once an entity a frame, so a lookup allocates nothing. */
+    private int[] ids = new int[0];
+    private Live[] byId = NONE;
     private final Quaternionf turn = new Quaternionf();
     private CgTickFunction tick;
     private int levelEpoch;
@@ -121,62 +134,75 @@ public final class CgEntityActors extends CgWorldSubsystem {
         return TYPES.containsKey(type);
     }
 
-    /** The host's: entity {@code id} of {@code type} joined the client's level. Nothing where its type has no actor. */
-    public static void entered(int id, String type) {
-        Registration r = TYPES.get(type);
+    /**
+     * The host's: entity {@code id} of {@code type} joined the client's level. Nothing where its type has no actor, or
+     * is null (an entity class the host's registry does not hold).
+     */
+    public static void entered(int id, @Nullable String type) {
+        Registration r = type == null ? null : TYPES.get(type);
         if (r == null) return;
-        client().spawn(id, type, r);
+        CgEntityActors actors = client;
+        if (actors == null) actors = CgWorld.client().add(new CgEntityActors());
+        actors.spawn(id, type, r);
     }
 
     /** The host's: entity {@code id} left the client's level. */
     public static void left(int id) {
-        CgEntityActors actors = CgWorld.client().subsystem(CgEntityActors.class);
+        CgEntityActors actors = client;
         if (actors != null) actors.despawn(id);
     }
 
-    /** Whether entity {@code id}'s actor draws it in place of its vanilla model: what the host's renderer asks. */
+    /**
+     * Whether entity {@code id}'s actor draws it in place of its vanilla model: what the host's renderer asks, once for
+     * each entity it draws a frame. Stamps {@link CgEntity#hostFrame}.
+     */
     public static boolean replacesModel(int id) {
-        CgEntityActors actors = CgWorld.client().subsystem(CgEntityActors.class);
+        CgEntityActors actors = client;
         if (actors == null) return false;
-        Live l = actors.live.get(id);
-        return l != null && l.replacesModel;
+        Live l = actors.find(id);
+        if (l == null) return false;
+        l.entity.hostFrame = actors.world().frames();
+        return l.replacesModel;
     }
 
     /** Entity {@code id}'s actor, or null. */
     @Nullable
     public static CgEntityActor actor(int id) {
-        CgEntityActors actors = CgWorld.client().subsystem(CgEntityActors.class);
-        if (actors == null) return null;
-        Live l = actors.live.get(id);
+        CgEntityActors actors = client;
+        Live l = actors == null ? null : actors.find(id);
         return l == null ? null : l.actor;
     }
 
     /** How many actors live on this client. */
     public static int size() {
-        CgEntityActors actors = CgWorld.client().subsystem(CgEntityActors.class);
+        CgEntityActors actors = client;
         return actors == null ? 0 : actors.order.size();
-    }
-
-    private static CgEntityActors client() {
-        CgWorld world = CgWorld.client();
-        CgEntityActors existing = world.subsystem(CgEntityActors.class);
-        return existing != null ? existing : world.add(new CgEntityActors());
     }
 
     @Override
     protected void initialize() {
         levelEpoch = CgWorldQueries.client().levelEpoch();
         tick = world().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:actors", this::tick).whilePaused(true);
+        if (world() == CgWorld.client()) client = this;
     }
 
     @Override
     protected void deinitialize() {
         tick.close();
         clear();
+        if (client == this) client = null;
+    }
+
+    @Nullable
+    private Live find(int id) {
+        int i = Arrays.binarySearch(ids, id);
+        return i < 0 ? null : byId[i];
     }
 
     private void spawn(int id, String type, Registration r) {
-        if (live.containsKey(id)) despawn(id);
+        // a level's entities join before its first frame: the last level's actors go now, not over the new ones
+        syncLevel();
+        despawn(id);
         CgEntity entity = new CgEntity(id, type);
         CgEntityActor actor = r.factory.get();
         actor.entity = entity;
@@ -190,15 +216,27 @@ public final class CgEntityActors extends CgWorldSubsystem {
             actor.removeAll();
             return;
         }
-        live.put(id, l);
         order.add(l);
+        index();
     }
 
     private void despawn(int id) {
-        Live l = live.remove(id);
+        Live l = find(id);
         if (l == null) return;
         order.remove(l);
+        index();
         end(l);
+    }
+
+    /** Rebuilds the id index from {@link #order}: on a spawn or a removal, never a frame. */
+    private void index() {
+        int n = order.size();
+        Live[] sorted = order.toArray(new Live[n]);
+        Arrays.sort(sorted, (a, b) -> Integer.compare(a.entity.id(), b.entity.id()));
+        int[] keys = new int[n];
+        for (int i = 0; i < n; i++) keys[i] = sorted[i].entity.id();
+        ids = keys;
+        byId = sorted;
     }
 
     private static void end(Live l) {
@@ -213,29 +251,40 @@ public final class CgEntityActors extends CgWorldSubsystem {
     private void clear() {
         for (Live l : order) end(l);
         order.clear();
-        live.clear();
+        index();
+    }
+
+    private void syncLevel() {
+        int now = CgWorldQueries.client().levelEpoch();
+        if (now == levelEpoch) return;
+        levelEpoch = now;
+        clear();
     }
 
     private void tick(float dt) {
-        int now = CgWorldQueries.client().levelEpoch();
-        if (now != levelEpoch) {
-            levelEpoch = now;
-            clear();
-        }
+        syncLevel();
         if (order.isEmpty()) return;
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, TICK)) {
+            boolean removed = false;
             for (int i = 0; i < order.size(); i++) {
                 Live l = order.get(i);
                 refresh(l);
+                if (!l.entity.present) {
+                    order.remove(i--);
+                    end(l);
+                    removed = true;
+                    continue;
+                }
                 try {
                     l.actor.tick(l.entity, dt);
                 } catch (RuntimeException e) {
                     LOGGER.error("the actor of {} failed: removed, its entity left to its host", l.entity, e);
-                    live.remove(l.entity.id());
                     order.remove(i--);
                     end(l);
+                    removed = true;
                 }
             }
+            if (removed) index();
         }
     }
 

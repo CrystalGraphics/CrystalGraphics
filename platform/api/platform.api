@@ -3037,6 +3037,7 @@ com/crystalgraphics/platform/service/CgGameSession
   field public,static,final MADE_SAVE Ljava/lang/String;
   method public,static enterWorld (Ljava/lang/String;)Z
   method public,static inWorld ()Z
+  method public,static makeSave (Ljava/nio/file/Path;)Ljava/lang/String;
   method public,static quit ()V
   method public,static ready ()Z
   method public,static saveToEnter (Ljava/nio/file/Path;Ljava/lang/String;)Ljava/lang/String;
@@ -3316,6 +3317,7 @@ com/crystalgraphics/platform/world/CgEntityQuery
   method public entity (I)Ljava/lang/Object;
   method public entity (Ljava/util/UUID;)Ljava/lang/Object;
   method public row (IF[ILcom/crystalgraphics/platform/world/CgBoxSink;[D)I
+  method public type (I)Ljava/lang/String;
   method public,abstract box (IFLcom/crystalgraphics/platform/world/CgBoxSink;)Z
   method public,abstract cameraEntity ()I
   method public,abstract flags (I)I

@@ -6,6 +6,7 @@ import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
 import com.crystalgraphics.lwjgl2.Lwjgl2CursorService;
 import com.crystalgraphics.lwjgl2.ClipboardLwjgl2;
 import com.crystalgraphics.lwjgl2.InputLwjgl2;
+import com.crystalgraphics.mc.legacy.platform.actor.ActorsLegacy;
 import com.crystalgraphics.mc.legacy.platform.service.HostResourcesLegacy;
 import com.crystalgraphics.platform.input.CgClipboard;
 import com.crystalgraphics.platform.input.CgInput;
@@ -129,6 +130,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         FMLCommonHandler.instance().bus().register(new WorldEventsLegacy.Ticks());
         FMLCommonHandler.instance().bus().register(new HostCameraLegacy.Ticks());
         MinecraftForge.EVENT_BUS.register(new OverlayStagesLegacy());
+        MinecraftForge.EVENT_BUS.register(new ActorsLegacy.Joins());
         // Forge's bus for the screen's input events, FML's for the render tick; on 1.12 they are one, which ignores the second.
         ScreenInputLegacy screenInput = new ScreenInputLegacy();
         MinecraftForge.EVENT_BUS.register(screenInput);

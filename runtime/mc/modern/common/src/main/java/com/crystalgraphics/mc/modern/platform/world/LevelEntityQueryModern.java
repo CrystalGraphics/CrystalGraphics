@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.modern.platform.world;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -338,6 +339,17 @@ public class LevelEntityQueryModern implements CgEntityQuery {
     @Override
     public int kind(int id) {
         return kindOf(find(id));
+    }
+
+    @Override
+    public String type(int id) {
+        Entity e = find(id);
+        return e == null ? null : typeOf(e);
+    }
+
+    /** An entity's type id, {@code minecraft:zombie}: its key in the entity type registry. */
+    public static String typeOf(Entity e) {
+        return String.valueOf(EntityType.getKey(e.getType()));
     }
 
     private static int kindOf(Entity e) {

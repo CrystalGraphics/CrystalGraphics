@@ -464,9 +464,24 @@ CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // 
   component relative to it with `at`.
 - **`tick`** runs in `PLAYS`, before `POSE`: change components, draw nothing. An actor that throws is removed and its
   entity left to the host.
+- **The type** is the entity's registry key, `CgEntityQuery.type(id)`: `minecraft:zombie`, `mymod:wyvern`. Below 1.11
+  it is Forge's string with the namespace split off (`minecraft:Zombie`, a mod's `mymod.wyvern` as `mymod:wyvern`); a
+  player is `minecraft:player` on every era.
+- **Only entities that enter after `register`** get an actor: register at load.
+- **In Minecraft** the entity's own renderer is swapped, inside the dispatcher's draw of that entity, for one that
+  draws everything but the model: the name tag (its renderer's own, a player's score line included) and leash, the
+  shadow at its renderer's radius, the fire and the hitbox. Every era from 1.7.10 to 26.3 and every loader, except
+  Forge 1.13.2 and 1.14.3, which load no mixins: there the actor draws beside the vanilla model.
+- **An inventory's player preview** draws through the same dispatcher, so a player with an actor shows there as its
+  name tag alone.
+- **An actor leaves with its entity**: the frame the client's entity query no longer finds it, or sooner where the
+  host has a leave event. `CgEntity.hostFrame()` is the frame the host's renderer last reached it: behind while the host
+  culls it.
 - **What a host does**: `CgEntityActors.entered(id, type)` when an entity joins the client's level, `left(id)` when it
-  leaves, and `replacesModel(id)` in its entity renderer. A harness scene does the same for fake entities, served by a
-  `CgEntityQuery` it installs with `CgLevels.single(...)`.
+  leaves, and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
+  entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
+- **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
+  target, following it, its model left to the actor, and gone with it.
 
 ## Drawing a palette yourself
 
