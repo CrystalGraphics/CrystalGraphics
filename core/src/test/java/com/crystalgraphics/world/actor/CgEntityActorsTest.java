@@ -131,6 +131,34 @@ public class CgEntityActorsTest {
     }
 
     @Test
+    public void anEntityBindingBeatsItsTypeAndClosingItGivesTheEntityBack() {
+        Counting byType = new Counting(), bound = new Counting();
+        registration = CgEntityActors.register("test:walker", () -> byType);
+        CgEntityActors.entered(7, "test:walker");
+        assertSame(byType, CgEntityActors.actor(7));
+
+        CgEntityActors.Registration binding = CgEntityActors.bind(7, () -> bound);
+        try {
+            CgEntityActors.bind(7, Counting::new);
+            throw new AssertionError("a second binding of one entity was taken");
+        } catch (IllegalStateException expected) {
+            // one actor per entity
+        }
+        CgWorld.client().frame(null);
+        assertSame("the binding replaced the type's actor", bound, CgEntityActors.actor(7));
+        assertEquals(1, byType.removed);
+        assertTrue(CgEntityActors.replacesModel(7));
+
+        CgEntityActors.entered(7, "test:walker");                      // the host announces it again: still the binding's
+        assertSame(bound, CgEntityActors.actor(7));
+
+        binding.close();
+        assertEquals(1, bound.removed);
+        assertNull(CgEntityActors.actor(7));
+        assertFalse("the host's model again", CgEntityActors.replacesModel(7));
+    }
+
+    @Test
     public void aTypeTakesOneActorAndKeepingTheVanillaModelIsAsked() {
         registration = CgEntityActors.register("test:walker", Counting::new).keepVanillaModel();
         try {

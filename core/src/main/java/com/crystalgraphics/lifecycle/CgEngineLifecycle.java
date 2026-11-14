@@ -1,5 +1,6 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.command.CgActorCommands;
 import com.crystalgraphics.command.CgCoreCommands;
 import com.crystalgraphics.platform.command.CgBrigadier;
 import com.crystalgraphics.platform.command.CgCommands;
@@ -134,6 +135,7 @@ public final class CgEngineLifecycle {
             if (!CgCommands.supports(CgCommands.Side.SERVER)) return;
             CgCommands.server(new CgCoreCommands("cg"));
             CgCommands.client(new CgCoreCommands("cgc"));
+            CgCommands.client(new CgActorCommands());
         }
     }
 
