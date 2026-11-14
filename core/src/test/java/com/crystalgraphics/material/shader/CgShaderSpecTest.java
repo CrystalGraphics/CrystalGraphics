@@ -70,6 +70,35 @@ public class CgShaderSpecTest {
     }
 
     @Test
+    public void aSolidSurfaceHasAVelocityPass_madeWhereAsked_andWhatBlendsHasNone() {
+        CgShaderSpec solid = surface("", "s.baseColor = vec3(1.0);");
+        assertEquals(1, solid.passes().size());   // never compiled with the material
+        CgShaderPass velocity = solid.pass(CgRenderPassVariant.VELOCITY);
+        assertNotNull(velocity);
+        assertFalse(velocity.state().getDepth().write());
+        assertFalse(velocity.state().getBlend() != null && velocity.state().getBlend().enabled());
+        assertSame(velocity, solid.pass(CgRenderPassVariant.VELOCITY));
+
+        assertNull(surface("BlendMode Translucent", "s.opacity = 0.5;").pass(CgRenderPassVariant.VELOCITY));
+    }
+
+    static final String DECAL = "#domain decal\nMaterial { DecalBlendMode %s }\nstruct v2f { vec2 uv0; };\n"
+            + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(i.uv0, 0.0); s.opacity = 1.0; }\n";
+
+    @Test
+    public void aDecalDrawsOverTheSceneInItsMode_andRefusesWhatReshadesIt() {
+        CgShaderSpec decal = CgShaderSpec.read(String.format(DECAL, "Translucent"), "test:d.shader");
+        assertEquals(CgMaterialDomain.DECAL, decal.domain());
+        CgShaderPass forward = decal.pass(CgRenderPassVariant.FORWARD);
+        assertFalse(forward.state().getDepth().write());
+        assertTrue(forward.state().getBlend().enabled());
+        assertNull(decal.pass(CgRenderPassVariant.VELOCITY));
+
+        refused(String.format(DECAL, "DBufferNormal"), "G-buffer");
+        refused(String.format(DECAL, "Sideways"), "is none of");
+    }
+
+    @Test
     public void settingsReachTheSpec() {
         assertTrue(surface("BlendMode Additive  TranslucencyPass Separate", "s.baseColor = vec3(1.0);").separateTranslucency());
         assertTrue(surface("ShadingModel Unlit", "s.emissive = vec3(1.0);").unlit());
@@ -170,7 +199,7 @@ public class CgShaderSpecTest {
         refused("#domain surface\nKeywords { SHAPE (\"Shape\") = BOX }\n" + V2F + body, "one value");
         refused("#domain surface\n" + V2F + "void surface(in v2f i, inout CgSurface s) { s.baseColor = CG_QUAD_COLOR.rgb; }\n",
                 "never by naming it");
-        refused("#domain decal" + body, "decal");
+        refused("#domain decal\nRenderState { DepthWrite OFF }" + body, "DecalBlendMode");
     }
 
     @Test

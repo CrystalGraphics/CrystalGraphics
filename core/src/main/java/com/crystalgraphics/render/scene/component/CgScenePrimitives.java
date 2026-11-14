@@ -51,6 +51,7 @@ public final class CgScenePrimitives {
     /** Every live primitive riding another, spawned or not, parents first after each {@link #update}. */
     private final List<CgPrimitiveComponent<?>> attached = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletal = new ArrayList<>();
+    private final List<CgDecalComponent> decals = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
 
@@ -86,6 +87,11 @@ public final class CgScenePrimitives {
         return new CgSkeletalMeshComponent(this, Objects.requireNonNull(mesh, "mesh"));
     }
 
+    /** A material projected onto what is inside a box: a {@code #domain decal} one. */
+    public CgDecalComponent decal(CgMaterialInterface material) {
+        return new CgDecalComponent(this, material);
+    }
+
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return new CgDynamicComponent(this, Objects.requireNonNull(primitive, "primitive"));
     }
@@ -106,7 +112,8 @@ public final class CgScenePrimitives {
 
     /**
      * This frame's placement, in {@code ATTACH} after {@code POSE}: every attached primitive from its parent's socket,
-     * parents first (Unreal's attachment update after animation), then each skeletal mesh's palettes.
+     * parents first (Unreal's attachment update after animation), then each skeletal mesh's palettes, then each decal's
+     * fade, removing the decals faded out that asked.
      */
     public void update() {
         if (!attached.isEmpty()) {
@@ -114,6 +121,7 @@ public final class CgScenePrimitives {
             for (int i = 0, n = attached.size(); i < n; i++) attached.get(i).resolveAttachment();
         }
         for (int i = 0, n = skeletal.size(); i < n; i++) skeletal.get(i).writePalettes();
+        for (int i = decals.size() - 1; i >= 0; i--) decals.get(i).tick();
     }
 
     /** Removes every primitive and what {@link #drawOnce} queued. */
@@ -170,6 +178,10 @@ public final class CgScenePrimitives {
         p.index = primitives.size();
         primitives.add(p);
         if (p instanceof CgSkeletalMeshComponent s) skeletal.add(s);
+        if (p instanceof CgDecalComponent d) {
+            decals.add(d);
+            if (driver != null) driver.started();   // its fades run in the frame's update
+        }
     }
 
     void attached(CgPrimitiveComponent<?> p) {
@@ -203,6 +215,7 @@ public final class CgScenePrimitives {
         }
         p.index = -1;
         if (p instanceof CgSkeletalMeshComponent s) skeletal.remove(s);
+        if (p instanceof CgDecalComponent d) decals.remove(d);
     }
 
     /** {@code p}'s transform and values into {@code slot}'s record. */

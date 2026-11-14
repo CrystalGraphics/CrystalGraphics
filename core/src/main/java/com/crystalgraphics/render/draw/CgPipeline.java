@@ -222,7 +222,7 @@ public final class CgPipeline {
     /** The passes a material's keywords reach: the ones a material authors for the frame it draws into. */
     private static boolean takesKeywords(CgRenderPassVariant pass) {
         return pass == CgRenderPassVariant.FORWARD || pass == CgRenderPassVariant.EMISSIVE
-                || pass == CgRenderPassVariant.DISTORTION;
+                || pass == CgRenderPassVariant.DISTORTION || pass == CgRenderPassVariant.VELOCITY;
     }
 
     /**

@@ -67,7 +67,7 @@ final class SpecReader {
             case GLOBAL -> GlobalDomain.read(file);
             case POST -> PostDomain.read(file);
             case UI -> UiDomain.read(file);
-            case DECAL -> throw t.error(file.domainToken(), "'#domain decal' has no renderer until R11");
+            case DECAL -> DecalDomain.read(file);
         };
     }
 

@@ -12,9 +12,11 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.view.CgView;
 import org.joml.Quaternionf;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
@@ -40,8 +42,8 @@ public class CgSceneTest {
         assertEquals(rock.objectId(), out.objectId(0));
         assertTrue((out.objectId(0) & CgGpuScene.SCENE_RECORD) != 0);
         assertSame(CgSortLayer.OVERLAY, out.layer(0));
-        assertEquals(CgMeshBatches.CUSTOM_DEPTH, out.flags(0) & CgMeshBatches.CUSTOM_DEPTH);
-        assertEquals(3, out.stencil(0));
+        assertSame(rock, out.primitive(0));
+        assertEquals(3, rock.customDepth().value());
         assertEquals(1, scene.gpu().size());
 
         rock.remove();
@@ -143,6 +145,20 @@ public class CgSceneTest {
         int slot = rock.objectId() & ~CgGpuScene.SCENE_RECORD;
         assertEquals(101.0, scene.gpu().position(slot, 0), 0.0);
         assertEquals(100.0, scene.gpu().previousPosition(slot, 0), 0.0);
+    }
+
+    @Test
+    public void velocity_isWrittenTheFrameAMeshMoves_orAlwaysWhereAsked() {
+        CgScene scene = new CgScene();
+        CgMeshComponent rock = scene.mesh(CUBE, STONE).at(0, 0, -5).spawn();
+        CgFrameRing.endFrame();
+        assertFalse(rock.hasVelocity());
+        rock.at(1, 0, -5);
+        assertTrue(rock.hasVelocity());
+        CgFrameRing.endFrame();
+        assertFalse(rock.hasVelocity());
+        rock.writesVelocity(true);
+        assertTrue(rock.hasVelocity());
     }
 
     @Test

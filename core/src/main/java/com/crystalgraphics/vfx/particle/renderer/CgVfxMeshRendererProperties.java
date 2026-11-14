@@ -31,6 +31,8 @@ import java.util.Map;
  * @param cameraDistance    the camera distances it draws between, null for any
  * @param castShadows       whether it casts shadows
  * @param softDepth         the depth it fades into what is behind it over, blocks; NaN for its material's
+ * @param writesVelocity    whether its meshes draw in the velocity pass, so motion blur and temporal AA follow them
+ *                          (Cascade's mesh {@code bEnableMotionBlur}, Niagara's motion vector setting)
  */
 public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tree, List<Map<String, Object>> meshes,
                                           @Nullable String prefab, @Nullable String meshBinding,
@@ -40,7 +42,7 @@ public record CgVfxMeshRendererProperties(Common common, Map<String, Object> tre
                                           @Nullable RollAbout rollAbout, @Nullable Object preRotation,
                                           CgVfxSpriteRendererProperties.Sort sort, @Nullable CgVfxFlipbook subImage,
                                           @Nullable float[] cameraDistance, boolean castShadows,
-                                          float softDepth)
+                                          float softDepth, boolean writesVelocity)
         implements CgVfxRendererProperties {
 
     /** {@code ENiagaraMeshFacingMode}. */

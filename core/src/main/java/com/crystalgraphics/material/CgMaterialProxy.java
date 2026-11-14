@@ -31,6 +31,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgMaterialArena;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -1255,6 +1256,14 @@ public final class CgMaterialProxy {
      */
     public int getMaterialId() {
         return materialId;
+    }
+
+    /** Where its material is drawn ({@code #domain}); null while its shader does not parse. A parse, never a compile. */
+    @Nullable
+    public CgMaterialDomain domain() {
+        if (cgMaterialShader == null) return null;
+        CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+        return parsed == null ? null : parsed.domain();
     }
 
     /**

@@ -12,6 +12,7 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 
+import com.crystalgraphics.render.scene.component.CgDecalComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
@@ -43,6 +44,7 @@ import java.util.List;
  * CgSkeletalMeshComponent goku = scene.skeletal(gokuMesh).materials(skins::get).at(x, y, z).spawn();
  * CgInstancedMeshComponent grass = scene.instanced(blade, grassMaterial).spawn();
  * CgDynamicComponent trail = scene.dynamic(new Trail()).spawn();
+ * CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();   // projected onto the ground
  * scene.drawOnce(marker, debugMaterial, x, y, z);    // this frame only: Unreal's debug draw
  * }</pre>
  *
@@ -119,6 +121,11 @@ public final class CgScene {
     /** Many of one mesh, each instance its own record. */
     public CgInstancedMeshComponent instanced(CgMesh mesh, CgMaterialInterface material) {
         return primitives.instanced(mesh, material);
+    }
+
+    /** A {@code #domain decal} material projected onto what is inside a box, faded over its life. */
+    public CgDecalComponent decal(CgMaterialInterface material) {
+        return primitives.decal(material);
     }
 
     /** Geometry asked for per view each frame. */

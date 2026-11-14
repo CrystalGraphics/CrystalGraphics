@@ -112,13 +112,19 @@ vec3 cg_SceneTileToWorld(vec3 tile) {
     return (tile - cg_ViewTile.xyz) * cg_ViewTile.w - cg_ViewTileOffset.xyz;
 }
 
+// A model relative to its tile's corner, rebased into this pass's world space. The translation column is written whole:
+// NVIDIA's GL compiler drops a swizzled `m[3].xyz +=` on a matrix read from a storage block, in the vertex stage.
+mat4 cg_SceneModelToWorld(mat4 model, vec3 tile) {
+    model[3] = vec4(model[3].xyz + cg_SceneTileToWorld(tile), model[3].w);
+    return model;
+}
+
 // The record an object id names, in this pass's world space: a frame record as it is, a scene record decoded.
 CgObjectData cg_ObjectData(uint id) {
     if ((id & CG_SCENE_RECORD) == 0u) return cg_Objects[id];
     CgSceneObject s = cg_SceneObjects[id & ~CG_SCENE_RECORD];
     CgObjectData o;
-    o.modelMatrix = s.model;
-    o.modelMatrix[3].xyz += cg_SceneTileToWorld(s.origin.xyz);
+    o.modelMatrix = cg_SceneModelToWorld(s.model, s.origin.xyz);
     o.normalMatrix = s.normalMatrix;
     o.custom0 = s.custom0;
     o.custom1 = s.custom1;
@@ -132,9 +138,7 @@ CgObjectData cg_ObjectData(uint id) {
 mat4 cg_PreviousObjectToWorld(uint id) {
     if ((id & CG_SCENE_RECORD) == 0u) return cg_Objects[id].modelMatrix;
     CgSceneObject s = cg_SceneObjects[id & ~CG_SCENE_RECORD];
-    mat4 m = s.previousModel;
-    m[3].xyz += cg_SceneTileToWorld(s.origin.xyz);
-    return m;
+    return cg_SceneModelToWorld(s.previousModel, s.origin.xyz);
 }
 
 // -- Instance ID bridge -----------------------------------------------------
@@ -517,6 +521,17 @@ float cg_FragmentDistance() {
 vec3 cg_FragmentPosition() {
     vec2 ndc = gl_FragCoord.xy / cg_Resolution * 2.0 - 1.0;
     float eye = cg_ProjMatrix[2][3] == 0.0 ? cg_LinearEyeDepth(gl_FragCoord.z) : 1.0 / gl_FragCoord.w;
+    vec3 v = vec3((ndc.x + cg_ProjMatrix[2][0]) * eye / cg_ProjMatrix[0][0],
+            (ndc.y + cg_ProjMatrix[2][1]) * eye / cg_ProjMatrix[1][1], -eye);
+    return transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz);
+}
+
+// What stands at uv (0 to 1, bottom left) at window depth windowDepth, in the pass's camera-relative world: a depth
+// read back into the world (Unreal's SvPositionToTranslatedWorld over a scene depth), what a decal projects onto and the
+// camera's motion is measured at. A perspective view's.
+vec3 cg_DepthToWorld(vec2 uv, float windowDepth) {
+    vec2 ndc = uv * 2.0 - 1.0;
+    float eye = cg_LinearEyeDepth(windowDepth);
     vec3 v = vec3((ndc.x + cg_ProjMatrix[2][0]) * eye / cg_ProjMatrix[0][0],
             (ndc.y + cg_ProjMatrix[2][1]) * eye / cg_ProjMatrix[1][1], -eye);
     return transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz);

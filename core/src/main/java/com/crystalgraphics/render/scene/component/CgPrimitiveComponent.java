@@ -2,6 +2,11 @@ package com.crystalgraphics.render.scene.component;
 
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.render.meshpass.CgCustomDepth;
+import com.crystalgraphics.render.meshpass.CgPrimitiveFlag;
+import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
+import com.crystalgraphics.render.scene.batch.CgCachedCommands;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.camera.CgCamera;
@@ -26,7 +31,8 @@ import java.util.Objects;
  * <pre>{@code
  * CgMeshComponent rock = scene.mesh(rockMesh, stone)
  *         .at(x, y, z).rotation(facing).scale(2f)
- *         .customDepth(3)                       // in custom depth with stencil 3
+ *         .customDepth(OUTLINE)                 // in custom depth with a stencil value (CgCustomDepth.stencil)
+ *         .flag(HEAT_SOURCE)                    // a mark a mesh pass of a consumer's reads
  *         .spawn();
  * rock.at(x, y + 1, z);                         // moved: its GPU record is rewritten, nothing else
  * rock.customData(0, 1f, 0.5f, 0f, 1f);         // CG_OBJECT_CUSTOM0
@@ -51,7 +57,7 @@ import java.util.Objects;
  *
  * @param <T> the component's own type, so setters chain
  */
-public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
+public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> implements CgPrimitiveInfo {
 
     final CgScenePrimitives scene;
     /** Its place in its scene's list while spawned, else -1. */
@@ -79,8 +85,16 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
 
     CgSortLayer layer = CgSortLayer.DEFAULT;
     int sortPriority;
-    int stencil = -1, stencilMask = 0xFF;
-    private boolean halfResolution, afterDistortion, castsShadow = true;
+    @Nullable
+    private CgCustomDepth customDepth;
+    private int primitiveFlags;
+    private boolean halfResolution, afterDistortion, castsShadow = true, writesVelocity;
+    /** Bumped by every setting a mesh pass processor reads: its kept commands are built again. */
+    private int passSettings;
+    /** The host frame it last moved in: it has velocity in that frame. */
+    private long movedFrame = Long.MIN_VALUE;
+    /** Its mesh pass commands, kept across frames; a dynamic primitive's rows keep none. */
+    final CgCachedCommands commands = new CgCachedCommands();
 
     final float[] customData = new float[16];
     float emission = 1f, blockLight = 15f, skyLight = 15f;
@@ -127,6 +141,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
             onRemove();
             scene.removed(this);
         }
+        commands.clear();
         scene.parentRemoved(this);
     }
 
@@ -282,6 +297,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
         if (parentScratch.equals(world)) return;
         world.set(parentScratch);
         worldBoundsState = STALE;
+        movedFrame = CgFrameRing.frame();
         if (spawned()) onMoved();
     }
 
@@ -343,33 +359,81 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
 
     // -- Passes -------------------------------------------------------------
 
-    /** Draws into custom depth, writing {@code stencil} (0 to 255). */
-    public T customDepth(int stencil) {
-        return customDepth(stencil, 0xFF);
+    /**
+     * Draws into custom depth with {@code mark}'s stencil value: an allocated one ({@code CgCustomDepth.stencil(id)}),
+     * a raw one, or {@link CgCustomDepth#DEPTH} for depth alone; null takes it out.
+     */
+    public T customDepth(@Nullable CgCustomDepth mark) {
+        requireLive();
+        if (mark == customDepth) return self();
+        customDepth = mark;
+        return passesChanged();
     }
 
+    /** Draws into custom depth writing stencil value {@code stencil} (0 to 255): a kit's raw value. */
+    public T customDepth(int stencil) {
+        return customDepth(CgCustomDepth.stencil(stencil));
+    }
+
+    /** As {@link #customDepth(int)}, writing only the bits of {@code mask}. */
     public T customDepth(int stencil, int mask) {
-        requireLive();
-        if (stencil < 0 || stencil > 255) throw new IllegalArgumentException("stencil " + stencil + " is not 0 to 255");
-        this.stencil = stencil;
-        this.stencilMask = mask;
-        return self();
+        return customDepth(CgCustomDepth.stencil(stencil, mask));
     }
 
     /** Out of custom depth. */
     public T noCustomDepth() {
+        return customDepth((CgCustomDepth) null);
+    }
+
+    /** The custom depth it is drawn into, or null for none. */
+    @Override
+    @Nullable
+    public CgCustomDepth customDepth() {
+        return customDepth;
+    }
+
+    /** Carries {@code flag}, which a mesh pass processor reads ({@code primitive.has(flag)}). */
+    public T flag(CgPrimitiveFlag flag) {
+        return flag(flag, true);
+    }
+
+    public T flag(CgPrimitiveFlag flag, boolean on) {
         requireLive();
-        this.stencil = -1;
+        int next = on ? primitiveFlags | flag.bit() : primitiveFlags & ~flag.bit();
+        if (next == primitiveFlags) return self();
+        primitiveFlags = next;
+        return passesChanged();
+    }
+
+    @Override
+    public boolean has(CgPrimitiveFlag flag) {
+        return (primitiveFlags & flag.bit()) != 0;
+    }
+
+    /**
+     * Draws in the velocity pass every frame, moved or not: what changes shape on its own without moving (a material
+     * moving its vertices). Moved primitives and skinned meshes draw there anyway.
+     */
+    public T writesVelocity(boolean writes) {
+        requireLive();
+        writesVelocity = writes;
         return self();
     }
 
-    /** Its custom depth stencil value, or -1 where it is not drawn there. */
-    public int customDepthStencil() {
-        return stencil;
+    @Override
+    public boolean hasVelocity() {
+        return writesVelocity || movedFrame == CgFrameRing.frame();
     }
 
-    public int customDepthMask() {
-        return stencilMask;
+    /** A setting a processor reads changed: its kept commands are built again at the next view that draws it. */
+    private T passesChanged() {
+        passSettings++;
+        return self();
+    }
+
+    /** What its kept commands were built under: changes with every setting a processor reads. */
+    public final int passSettings() {
+        return passSettings;
     }
 
     public T halfResolution(boolean half) {
@@ -500,12 +564,17 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
 
     /** A row of its settings in {@code out}, answering its index: what each kind adds per mesh it draws. */
     final int batch(CgMeshBatches out, CgMesh mesh, CgMaterialInterface material, int submesh) {
-        return out.add(mesh, material, submesh, layer, passFlags(), sortPriority, stencil, stencilMask);
+        return out.add(mesh, material, submesh, layer, passFlags(), sortPriority, this, keepsCommands() ? commands : null);
+    }
+
+    /** Whether its rows' commands are kept across frames: a persistent primitive's are, a dynamic one's are not. */
+    boolean keepsCommands() {
+        return true;
     }
 
     int passFlags() {
         return (halfResolution ? CgMeshBatches.HALF_RESOLUTION : 0) | (afterDistortion ? CgMeshBatches.AFTER_DISTORTION : 0)
-                | (castsShadow ? CgMeshBatches.CASTS_SHADOW : 0) | (stencil >= 0 ? CgMeshBatches.CUSTOM_DEPTH : 0);
+                | (castsShadow ? CgMeshBatches.CASTS_SHADOW : 0);
     }
 
     /** Whether {@code camera} (absolute) is near enough to see it. */
@@ -550,6 +619,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
         }
         relative(world);
         worldBoundsState = STALE;
+        movedFrame = CgFrameRing.frame();
         if (spawned()) onMoved();
         return self();
     }

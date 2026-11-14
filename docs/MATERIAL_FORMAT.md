@@ -82,6 +82,7 @@ The first line says what kind of thing the file draws, and so which function you
 | `post` | Over the whole screen, at a point in the frame | `surface(in CgScreen i, inout CgPostSurface s)` | [§ 7](#7-post-materials) |
 | `ui` | An element on a canvas: a box, a stroke, text | `surface(in CgUiInput i, inout CgUiSurface s)` | [§ 8](#8-ui-materials) |
 | `global` | One of the engine's own passes: raw GLSL | `vertex(out v2f o)` and `fragment(in v2f i, out vec4 c)` | [§ 9](#9-global-the-engines-own) |
+| `decal` | Projected onto whatever is behind a box: cracks, scorch marks, blood | `surface(in v2f i, inout CgSurface s)` | [§ 11](#11-decal-materials) |
 
 ---
 
@@ -208,6 +209,7 @@ Worked out once, when the material loads, from what `surface()` names:
 | writes `refraction` | the distortion pass |
 | is lit and writes only `emissive` | the glow alone, no colour draw |
 | writes only `refraction` | the distortion pass alone: a pure heat haze is one draw |
+| is `Opaque` or `Masked`, and moved this frame, is skinned, or asks for it | the velocity pass (motion blur and temporal AA read it), made from its Forward pass the first time it draws there |
 
 An `Unlit` material's `emissive` is its colour, not a glow: it draws where a colour does, with no glow of its own.
 
@@ -926,6 +928,57 @@ Write a `surface`, `post` or `ui` material instead wherever one fits.
 
 ---
 
+## 11. Decal materials
+
+A decal is a material projected onto what is already drawn, Unreal's deferred decal: a box in the world, and each
+pixel of the scene inside it is painted by `surface()`. You write the same `surface()` a surface material does; the
+`v2f` is filled for you from the projection.
+
+```glsl
+#domain decal
+Material { DecalBlendMode Translucent }
+Properties { _Crack ("Crack", sampler2D) = "white" }
+struct v2f { vec2 uv0; };                     // uv0 across the box, world the point, normal the decal's facing
+void surface(in v2f i, inout CgSurface s) {
+    vec4 c = texture(_Crack, i.uv0);
+    s.baseColor = c.rgb;
+    s.opacity = c.a;
+}
+```
+
+```java
+CgDecalComponent crack = CgScene.client().decal(crackMaterial)
+        .at(x, y, z).rotation(new Quaternionf().rotateZ((float) -Math.PI / 2))   // project along -X: here, down
+        .size(0.5f, 2f, 2f)                    // half extents: depth 0.5, a 4 x 4 square
+        .sortOrder(1)                          // drawn over decals of a lower order
+        .fadeOut(5f, 1f, true)                 // after 5 s, fade for 1 s, then remove itself
+        .spawn();
+```
+
+`Material { }` takes:
+
+| Setting | Means |
+|---|---|
+| `DecalBlendMode` | `Translucent` (default): lit colour over the scene by `opacity`. `Stain`: multiplies the scene by `baseColor`. `Emissive`: adds `emissive`. `AlphaComposite`: premultiplied colour. `DBufferColor`, `DBufferColorNormal`, `DBufferColorRoughness`, `DBufferColorNormalRoughness`: Unreal's names, accepted so an Unreal decal reads unchanged, and drawn as `Translucent` with the outputs each names |
+| `ShadingModel` | `DefaultLit` (default): lit by the scene's lights where it lands. `Unlit`: `emissive` is its colour |
+| `Fog` | `On` (default) or `Off` |
+
+- **Each mode writes only some outputs**: `Stain` takes `baseColor` and `opacity`, `Emissive` takes `emissive` and
+  `opacity`. Naming another is an error that lists the outputs the mode takes.
+- **Modes that would change the lighting of the surface underneath are refused**: `Normal`, `DBufferNormal`,
+  `DBufferRoughness`, `DBufferNormalRoughness`, `AmbientOcclusion`, `Volumetric`. They need a deferred renderer's
+  G-buffer, which this renderer does not have.
+- **No `RenderState`, no `vertex()`**: how a decal blends is its `DecalBlendMode`, and its box is drawn by the engine.
+- **The projection runs along the box's -X**: Unreal's convention. `size(x, y, z)` gives half extents, so `x` is how far
+  the decal reaches into a surface and `y`, `z` are its half width and half height.
+- **Its fade multiplies `opacity`**: `fadeIn`, `fadeOut` (and `removeAfter`), and `fadeScreenSize` to fade a decal
+  that has become a few pixels.
+- **Where it draws**: in the engine's decal pass, after the opaque scene and before translucency, reading the scene's
+  depth. Run it from a render stage with `frame.meshPass(CgEnginePasses.DECAL)`; the world stages do not run it for
+  you yet.
+
+---
+
 ## Reference
 
 ### Things that fail, and why
@@ -949,5 +1002,5 @@ Write a `surface`, `post` or `ui` material instead wherever one fits.
 | The engine's factories | `crystalgraphics:shaders/factories/*.factory` |
 | The engine's ui primitives | `crystalgraphics:shaders/canvas/primitives/*.primitive` |
 | The structs `vertex()` and `surface()` take | `crystalgraphics:shaders/env/material/surface.glsl` |
-| How a format file becomes passes (engine side) | `material/shader/`: `SurfaceDomain`, `GlobalDomain`, `PostDomain`, `UiDomain`, `CgShaderTemplates`; its `CLAUDE.md` |
+| How a format file becomes passes (engine side) | `material/shader/`: `SurfaceDomain`, `GlobalDomain`, `PostDomain`, `UiDomain`, `DecalDomain`, `VelocityPass`, `CgShaderTemplates`; its `CLAUDE.md` |
 | Precaching a material you draw | [`PRECACHE.md`](PRECACHE.md) |

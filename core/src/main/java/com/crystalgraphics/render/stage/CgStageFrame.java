@@ -22,6 +22,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.meshpass.CgMeshPassType;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.visibility.CgViewVisibility;
 import com.crystalgraphics.render.view.CgView;
@@ -74,6 +75,7 @@ public final class CgStageFrame {
     private CgTextureDesc pyramidDesc;
     /** Whether this firing is a rehearsal's, which builds its own pyramid and takes none of the frame's. */
     private boolean rehearsing;
+    private final CgStageMeshPass meshPass = new CgStageMeshPass(this);
 
     /** A view's pyramid, the host frame it was built in and the host target it was built from: one a view a frame. */
     private static final class Pyramid {
@@ -256,6 +258,21 @@ public final class CgStageFrame {
      */
     public CgView view() {
         return view;
+    }
+
+    /**
+     * A mesh pass of {@code type} over the client scene for this firing's view: declare its attachments, then draw it
+     * ({@link CgStageMeshPass}). A consumer's own pass type runs here.
+     *
+     * <pre>{@code
+     * frame.meshPass(THERMAL).color(heat, CgLoad.clear(0f, 0f, 0f, 0f))
+     *         .depth(frame.depth(), CgLoad.load(), CgDepthAccess.READ).draw();
+     * }</pre>
+     *
+     * <p>One object, begun again by each call: finish one pass before asking for the next.</p>
+     */
+    public CgStageMeshPass meshPass(CgMeshPassType type) {
+        return meshPass.begin(type);
     }
 
     /** A raster pass onto the host's target under {@code constants}, loading what is there. */

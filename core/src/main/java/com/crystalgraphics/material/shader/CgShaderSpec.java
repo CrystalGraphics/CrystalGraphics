@@ -119,6 +119,10 @@ public final class CgShaderSpec {
     final String bufferStructs;
     final List<PostTarget> postTargets;
     final List<CgShaderPass> passes;
+    /** Its Velocity pass, generated from its Forward pass at the first ask ({@link VelocityPass}); never compiled with it. */
+    @Nullable
+    private volatile CgShaderPass velocity;
+    private volatile boolean velocityMade;
     private final EmissionMerge emissionMerge;
     private final boolean sceneFolds;
     private Set<String> identifiers;
@@ -368,14 +372,27 @@ public final class CgShaderSpec {
     public CgShaderPass pass(String name) {
         // Indexed: asked per bind, and an immutable list's iterator was a measured allocation there.
         for (int i = 0; i < passes.size(); i++) if (passes.get(i).name().equals(name)) return passes.get(i);
-        return null;
+        return name.equals(VelocityPass.NAME) ? velocity() : null;
     }
 
     /** The first pass of {@code variant}, or null. */
     @Nullable
     public CgShaderPass pass(CgRenderPassVariant variant) {
         for (int i = 0; i < passes.size(); i++) if (passes.get(i).variant() == variant) return passes.get(i);
-        return null;
+        return variant == CgRenderPassVariant.VELOCITY ? velocity() : null;
+    }
+
+    /**
+     * A solid surface's Velocity pass, made from its Forward pass at the first ask and kept: not among {@link #passes()},
+     * so a material's compile never builds it; the velocity pass compiles it as a variant where it first draws one.
+     */
+    @Nullable
+    private CgShaderPass velocity() {
+        if (!velocityMade) {
+            velocity = VelocityPass.of(this);
+            velocityMade = true;
+        }
+        return velocity;
     }
 
     /** How its Emissive pass folds into its first Forward pass. */

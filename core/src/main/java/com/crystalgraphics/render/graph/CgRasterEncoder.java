@@ -217,7 +217,7 @@ final class CgRasterEncoder {
 
     /** Whether batch {@code b}'s instances name records by ids the frame builder wrote, each with its material's slot. */
     private static boolean slotsInIds(CgFrame.Raster packed, int b) {
-        return packed.kind[b] == OBJECT && packed.objects[b] == null;
+        return packed.kind[b] == OBJECT && packed.objects[b] == null && !packed.ownIds[b];
     }
 
     private static CgMesh mesh(CgFrame.Raster packed, int b) {
@@ -244,7 +244,8 @@ final class CgRasterEncoder {
      * one record every instance reads, an INSTANCES draw of the frame's.
      */
     private static int firstInstance(CgFrame.Raster packed, int b) {
-        boolean shared = packed.objects[b] == null && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
+        boolean shared = packed.objects[b] == null && !packed.ownIds[b]
+                && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
         return shared ? packed.first[b] | CgMeshStore.SHARED_RECORD : packed.first[b];
     }
 
@@ -823,7 +824,7 @@ final class CgRasterEncoder {
             return n;
         }
         commands.write(slot, countId, packed.countOffsets[b], mode, factor, range, packed.instances[b],
-                packed.objects[b] != null ? packed.instances[b] : -1, firstInstance(packed, b));
+                packed.objects[b] != null || packed.ownIds[b] ? packed.instances[b] : -1, firstInstance(packed, b));
         return 1;
     }
 

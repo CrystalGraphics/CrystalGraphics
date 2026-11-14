@@ -8,6 +8,8 @@ import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.render.property.CgPropertyValues;
 import com.crystalgraphics.render.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
+import com.crystalgraphics.render.draw.CgDrawCommands;
+import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -443,6 +445,122 @@ public final class CgFrameBuilder {
     }
 
     private void pack(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
+        commandsPacked = !pass.commandLists().isEmpty();
+        if (commandsPacked) {
+            try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COMMANDS)) {
+                packCommands(pass, frame, packed);
+            }
+        } else {
+            packChunks(pass, frame, packed);
+        }
+        CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
+        boolean writesDepth = pass.load.clearsDepth();
+        for (int b = 0; b < packed.count && !writesDepth; b++) {
+            writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgSceneCopies.DEPTH) != 0;
+        }
+        packed.writesDepth = writesDepth;
+        placeCopies(pass, packed);
+        frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
+        part.close();
+        packTail(pass, frame, packed);
+    }
+
+    /** Whether the pass packing now drew commands, which have no screen bounds: their copies are whole. */
+    private boolean commandsPacked;
+
+    /**
+     * A pass's mesh draw commands, straight into batches in their order: a command a batch, but where the next merges
+     * with it ({@link CgDrawCommands#merges}), adding its ids to the batch's instances. Unreal's dynamic instancing.
+     */
+    private void packCommands(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
+        List<CgDrawCommands> lists = pass.commandLists();
+        int most = 0;
+        for (int l = 0; l < lists.size(); l++) most += lists.get(l).size();
+        packed.size(most);
+        packed.draws = 0;
+        boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS);
+        int b = -1;
+        for (int l = 0; l < lists.size(); l++) {
+            CgDrawCommands list = lists.get(l);
+            CgPrimitiveTable table = list.table();
+            int base = table != null && table.count() > 0 ? frame.primitivesOf(table) : 0;
+            int last = -1;
+            for (int i = 0; i < list.size(); i++) {
+                int c = list.at(i);
+                if (last >= 0 && list.merges(last, c)) {
+                    packIds(frame, packed, b, list, c, base);
+                    continue;
+                }
+                b++;
+                last = c;
+                packed.pipeline[b] = list.pipeline(c);
+                packed.binding[b] = frame.bindings.add(list.binding(c));
+                packed.kind[b] = OBJECT;
+                if (!packed.tables && CgPipeline.byId(packed.pipeline[b]).readsTables()) packed.tables = true;
+                packed.mesh[b] = list.mesh(c);
+                packed.submesh[b] = list.rangeSubmesh(c);
+                packed.rangeFirst[b] = list.rangeFirst(c);
+                packed.rangeCount[b] = list.rangeCount(c);
+                packed.scissor[b] = CgRasterPass.INHERIT;
+                packed.group[b] = groups ? list.group(c) : -1;
+                int slot = 0;
+                for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
+                    if (list.buffer(c, s) == null) continue;
+                    packed.buffers[b * CgDrawChunk.BUFFERS + slot] = list.buffer(c, s);
+                    packed.bufferAt[b * CgDrawChunk.BUFFERS + slot++] = list.bufferAt(c, s);
+                }
+                switch (list.objectKind(c)) {
+                    case CgDrawCommands.SCENE, CgDrawCommands.FRAME -> {
+                        packed.first[b] = frame.instanceFloats[OBJECT] / 2;
+                        packIds(frame, packed, b, list, c, base);
+                    }
+                    case CgDrawCommands.GPU_IDS -> {
+                        if (slot == CgDrawChunk.BUFFERS) throw new IllegalStateException(pass + ": a command of ids binds no more buffers");
+                        packed.buffers[b * CgDrawChunk.BUFFERS + slot] = list.objectBuffer(c);
+                        packed.bufferAt[b * CgDrawChunk.BUFFERS + slot] = CgBindingModel.OBJECT_IDS;
+                        packed.ownIds[b] = true;
+                        packed.first[b] = list.objectFirst(c);
+                        packed.instances[b] = list.objectCount(c);
+                    }
+                    case CgDrawCommands.RECORDS -> {
+                        packed.objects[b] = list.objectBuffer(c);
+                        packed.first[b] = list.objectFirst(c);
+                        packed.instances[b] = list.objectCount(c);
+                        frame.identityIds = Math.max(frame.identityIds, list.objectFirst(c) + list.objectCount(c));
+                    }
+                    default -> throw new IllegalStateException(pass + ": a command names no object to draw");
+                }
+                if (list.indirectCount(c) != null) {
+                    packed.counts[b] = list.indirectCount(c);
+                    packed.countOffsets[b] = list.indirectOffset(c);
+                    packed.countModes[b] = list.indirectMode(c).ordinal() | list.indirectFactor(c) << 2;
+                    packed.indirects++;
+                }
+            }
+            packed.draws += list.size();
+        }
+        packed.count = b + 1;
+    }
+
+    /** Command {@code c}'s ids into the frame's id stream as batch {@code b}'s next instances, each with its material's slot. */
+    private static void packIds(CgFrame frame, CgFrame.Raster packed, int b, CgDrawCommands list, int c, int base) {
+        int n = list.objectCount(c), from = list.objectFirst(c);
+        int add = list.objectKind(c) == CgDrawCommands.FRAME ? base : 0;
+        float material = Float.intBitsToFloat(frame.bindings.slotOf(packed.binding[b]));
+        frame.reserve(OBJECT, n * 2);
+        float[] to = frame.instances[OBJECT];
+        int[] ids = list.ids();
+        for (int k = 0, at = frame.instanceFloats[OBJECT]; k < n; k++, at += 2) {
+            to[at] = Float.intBitsToFloat(ids[from + k] + add);
+            to[at + 1] = material;
+        }
+        frame.instanceFloats[OBJECT] += n * 2;
+        packed.instances[b] += n;
+        packed.kinds |= 1 << OBJECT;
+    }
+
+    /** A pass's chunks: batched by the batcher, their instances and records copied into the frame's. */
+    private void packChunks(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
         CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_BATCH);
         batcher.reset(pass.order);
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS);   // only then may a group split a batch
@@ -549,16 +667,11 @@ public final class CgFrameBuilder {
         }
         Arrays.fill(refChunk, 0, refs, null);
         part.close();
-        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_COPIES);
-        boolean writesDepth = pass.load.clearsDepth();
-        for (int b = 0; b < packed.count && !writesDepth; b++) {
-            writesDepth = (writesOf(CgPipeline.byId(packed.pipeline[b]), pass.state) & CgSceneCopies.DEPTH) != 0;
-        }
-        packed.writesDepth = writesDepth;
-        placeCopies(pass, packed);
-        frame.kernels |= packed.indirects > 0;   // an indirect draw's command is a kernel's
-        part.close();
-        part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_TABLES);
+    }
+
+    /** What every pass packs after its batches: its recording's tables and its constants' snapshot. */
+    private void packTail(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
+        CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_TABLES);
         packed.clips = frame.clipsOf(pass.recording.clips());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
@@ -600,6 +713,7 @@ public final class CgFrameBuilder {
         part.close();
     }
 
+    private static final int PACK_COMMANDS = CgTrace.name("graph.pack.commands");
     private static final int PACK_BATCH = CgTrace.name("graph.pack.batch"), PACK_INSTANCES = CgTrace.name("graph.pack.instances"),
             PACK_COPIES = CgTrace.name("graph.pack.copies"), PACK_TABLES = CgTrace.name("graph.pack.tables"),
             PACK_CONSTANTS = CgTrace.name("graph.pack.constants");
@@ -670,6 +784,11 @@ public final class CgFrameBuilder {
      * target; the whole target ({@link #isWhole}) where they are infinite or not in the target's pixels.
      */
     private void screenRect(int b, boolean regions, float width, float height, float margin, int[] out) {
+        if (commandsPacked) {
+            out[0] = out[1] = 0;
+            out[2] = out[3] = -1;
+            return;
+        }
         int domain = batcher.batchBounds(b, batchBounds);
         float x0 = batchBounds[0], y0 = batchBounds[1], x1 = batchBounds[2], y1 = batchBounds[3];
         if (!regions || domain != 0 || x0 == Float.NEGATIVE_INFINITY || y0 == Float.NEGATIVE_INFINITY

@@ -47,12 +47,17 @@ final class SurfaceDomain {
             "refractionSplit", "refractionDepth", "pixelDepthOffset", "customData", "shadingModelId", "light",
             "volumeDepth", "depth");
 
+    /** Whether {@code name} is one of a surface's outputs, a member of {@code CgSurface}. */
+    static boolean isOutput(String name) {
+        return OUTPUTS.contains(name);
+    }
+
     /** What DefaultLit and Subsurface light by, and nothing else reads. */
     private static final List<String> LIT_OUTPUTS = List.of("metallic", "specular", "roughness", "ambientOcclusion",
             "subsurfaceColor");
 
     /** What lights a DefaultLit or Subsurface surface, after surface(): Unreal's BxDFs, forward. */
-    private static final String DEFAULT_LIT_INCLUDE = "#include \"crystalgraphics:shaders/lib/material/default_lit.glsl\"";
+    static final String DEFAULT_LIT_INCLUDE = "#include \"crystalgraphics:shaders/lib/material/default_lit.glsl\"";
 
     /** The v2f fields a material with no {@code vertex()} has filled, their type and what fills them. */
     private static final Map<String, String[]> AUTO_FIELDS = new LinkedHashMap<>();
@@ -69,7 +74,7 @@ final class SurfaceDomain {
     }
 
     /** What every surface starts from, before its factory's defaults and its own {@code surface()}. */
-    private static final String SURFACE_DEFAULTS = """
+    static final String SURFACE_DEFAULTS = """
             CgSurface cg_SurfaceDefaults() {
                 CgSurface s;
                 s.baseColor = vec3(1.0);

@@ -478,6 +478,11 @@ public final class CgFrame {
         /** Per batch, the buffer a batch of {@code objects()} reads its records from, else null. Such a batch is one draw. */
         CgBufferHandle[] objects = new CgBufferHandle[16];
         /**
+         * Per batch, whether its instances read their ids from a buffer of its own at {@code OBJECT_IDS}, a kernel's
+         * (a mesh draw command's {@code ids}): each its record and slot 0, its material bound at its own slot.
+         */
+        boolean[] ownIds = new boolean[16];
+        /**
          * Per batch, {@code CgDrawChunk.BUFFERS} slots: the buffers a batch of {@code buffer()} reads in place of engine
          * buffers, and where; else null.
          */
@@ -527,6 +532,7 @@ public final class CgFrame {
                 countModes = new int[n];
                 eachFrom = new int[n];
                 objects = new CgBufferHandle[n];
+                ownIds = new boolean[n];
                 buffers = new CgBufferHandle[n * CgDrawChunk.BUFFERS];
                 bufferAt = new CgBindingModel.Slot[n * CgDrawChunk.BUFFERS];
                 copyBefore = new int[n];
@@ -547,6 +553,7 @@ public final class CgFrame {
             Arrays.fill(eachFrom, 0, batches, -1);
             Arrays.fill(instances, 0, batches, 0);
             Arrays.fill(copyBefore, 0, batches, 0);
+            Arrays.fill(ownIds, 0, batches, false);
         }
     }
 }

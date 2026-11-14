@@ -8,6 +8,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgGpuBudget;
 import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 
@@ -22,10 +23,10 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
- * Chunks drawn into textures a pass declares before any draw: its colours and depth with their loads, what it reads,
- * its pass constants, the render state its pipelines' unset slots take, and how its draws may be batched. Unreal's
- * render-graph pass with its parameters. Made with {@link CgRecording#raster(String)}; ended before the recording is
- * sealed.
+ * Chunks, or mesh draw commands, drawn into textures a pass declares before any draw: its colours and depth with their
+ * loads, what it reads, its pass constants, the render state its pipelines' unset slots take, and how its draws may be
+ * batched. Unreal's render-graph pass with its parameters. Made with {@link CgRecording#raster(String)}; ended before
+ * the recording is sealed.
  *
  * <pre>{@code
  * CgRasterPass pass = rec.raster("ui.layer")
@@ -42,6 +43,9 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  *         .reads(noise)                                                   // a graph texture its draws sample
  *         .readsDepth(sceneDepth)     // cg_DepthBuffer
  *         .constants(constants);
+ *
+ * rec.raster("scene.base").color(scene, CgLoad.load()).depth(depth, CgLoad.load(), CgDepthAccess.WRITE)
+ *         .add(commands);            // a mesh pass's commands for one view: CgDrawCommands
  * }</pre>
  *
  * <ul>
@@ -70,6 +74,7 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  *       target. Of another texture, it is copied once, whole, when the pass begins.</li>
  *   <li>{@link #damage} limits the pass to what changed in a target that keeps its contents: its clear and every
  *       draw are cut to the rect, and an empty rect executes nothing at all.</li>
+ *   <li>A pass draws chunks (the canvas's) or command lists (the mesh passes'), never both.</li>
  * </ul>
  */
 public final class CgRasterPass extends CgPass {
@@ -94,6 +99,7 @@ public final class CgRasterPass extends CgPass {
     CgRenderState state;
     CgOrder order;
     private final List<CgDrawChunk> chunks = new ArrayList<>();
+    private final List<CgDrawCommands> commandLists = new ArrayList<>();
     private boolean ended;
     /** What changed in the target, in its bottom-left pixels -- x, y, width, height -- or null for all of it. */
     @Nullable
@@ -165,6 +171,7 @@ public final class CgRasterPass extends CgPass {
         gpuZone = -1;
         budget = null;
         chunks.clear();
+        commandLists.clear();
         ended = false;
         damage = null;
         scissorCount = 0;
@@ -192,6 +199,7 @@ public final class CgRasterPass extends CgPass {
     void clearReferences() {
         if (drawer != null) drawer.reset();
         chunks.clear();
+        commandLists.clear();
         target = null;
         depth = null;
         state = null;
@@ -262,10 +270,55 @@ public final class CgRasterPass extends CgPass {
         return addDrawn(chunk);
     }
 
+    /**
+     * Draws {@code commands} after what it holds: a mesh pass's commands for one view, in their sorted order. What they
+     * read is the pass's from here, as a chunk's is.
+     *
+     * <pre>{@code
+     * CgDrawCommands base = passes.commands(CgMeshPassType.BASE);
+     * rec.raster("scene.base").color(scene, CgLoad.load()).depth(depth, CgLoad.load(), CgDepthAccess.WRITE).add(base);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read when the recording is built: the list is the caller's until then, and must not change.</li>
+     *   <li>Throws in a pass that holds chunks.</li>
+     * </ul>
+     */
+    public CgRasterPass add(CgDrawCommands commands) {
+        declaring();
+        requireTarget();
+        if (!chunks.isEmpty() || drawer != null) throw new IllegalStateException(this + " draws chunks: commands go in a pass of their own");
+        commandLists.add(commands);
+        for (int c = 0; c < commands.size(); c++) {
+            if (commands.indirectCount(c) instanceof CgGraphBuffer count) named(count, CgAccess.COMPUTE_READ);
+            if (commands.objectBuffer(c) instanceof CgGraphBuffer objects) named(objects, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+            for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
+                if (commands.buffer(c, k) instanceof CgGraphBuffer read) named(read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+            }
+            namedBindings(commands.binding(c));
+        }
+        return this;
+    }
+
+    /** What a draw's material bindings read: the graph textures they sample and the graph buffers they bind. */
+    private void namedBindings(CgMaterialBindings bindings) {
+        for (int t = 0; t < bindings.textures(); t++) {
+            CgGraphTexture graph = CgGraphTexture.sampled(bindings.texture(t));
+            if (graph != null) {
+                requireNotOwnArray(graph);
+                named(graph, CgAccess.SAMPLED_READ);
+            }
+        }
+        for (int s = 0; s < bindings.storages(); s++) {
+            if (bindings.storage(s) instanceof CgGraphBuffer buffer) named(buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
+        }
+    }
+
     /** {@link #add}, for what {@link #draw} drew. */
     CgRasterPass addDrawn(CgDrawChunk chunk) {
         declaring();
         requireTarget();
+        if (!commandLists.isEmpty()) throw new IllegalStateException(this + " draws commands: chunks go in a pass of their own");
         if (chunks.size() == chunkScissor.length) chunkScissor = Arrays.copyOf(chunkScissor, chunkScissor.length * 2);
         chunkScissor[chunks.size()] = scissor;
         chunks.add(chunk);
@@ -277,19 +330,7 @@ public final class CgRasterPass extends CgPass {
             for (int k = 0; k < CgDrawChunk.BUFFERS; k++) {
                 if (chunk.buffer(d, k) instanceof CgGraphBuffer read) named(read, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
             }
-            CgMaterialBindings bindings = chunk.binding(d);
-            for (int t = 0; t < bindings.textures(); t++) {
-                CgGraphTexture graph = CgGraphTexture.sampled(bindings.texture(t));
-                if (graph != null) {
-                    requireNotOwnArray(graph);
-                    named(graph, CgAccess.SAMPLED_READ);
-                }
-            }
-            for (int s = 0; s < bindings.storages(); s++) {
-                if (bindings.storage(s) instanceof CgGraphBuffer buffer) {
-                    named(buffer, CgAccess.VERTEX_READ | CgAccess.FRAGMENT_READ);
-                }
-            }
+            namedBindings(chunk.binding(d));
         }
         return this;
     }
@@ -868,6 +909,11 @@ public final class CgRasterPass extends CgPass {
 
     List<CgDrawChunk> chunkList() {
         return chunks;
+    }
+
+    /** The command lists it draws, in order; empty for a pass of chunks. */
+    List<CgDrawCommands> commandLists() {
+        return commandLists;
     }
 
     /** Chunk {@code i}'s scissor. @see #NO_SCISSOR */

@@ -5,6 +5,11 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.render.draw.CgBufferHandle;
+import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.draw.CgIndirect;
+import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
+import com.crystalgraphics.render.shader.CgBindingModel;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -24,6 +29,8 @@ import java.util.Arrays;
  * }</pre>
  *
  * <ul>
+ *   <li>A row names its primitive ({@link #primitive}, what a mesh pass processor reads) and, for a persistent one, the
+ *       primitive's kept commands ({@link #cache}) with the row's place among its rows ({@link #ordinal}).</li>
  *   <li>Reused: {@link #clear} keeps its storage, so a warm frame allocates nothing.</li>
  *   <li>A row's arrays ({@link #values}, {@link #positions}) are the batches' own: read them before the next
  *       visibility of the view.</li>
@@ -32,7 +39,7 @@ import java.util.Arrays;
 public final class CgMeshBatches {
 
     /** {@link #flags} bits: the primitive's passes. */
-    public static final int HALF_RESOLUTION = 1, AFTER_DISTORTION = 2, CASTS_SHADOW = 4, CUSTOM_DEPTH = 8;
+    public static final int HALF_RESOLUTION = 1, AFTER_DISTORTION = 2, CASTS_SHADOW = 4;
 
     /**
      * An instanced component's instances, as a row names them: their object ids on the CPU and, for the GPU's cull, in a
@@ -59,15 +66,31 @@ public final class CgMeshBatches {
     private CgMesh[] meshes = new CgMesh[64];
     private CgMaterialInterface[] materials = new CgMaterialInterface[64];
     private CgSortLayer[] layers = new CgSortLayer[64];
+    private CgPrimitiveInfo[] primitives = new CgPrimitiveInfo[64];
+    private CgCachedCommands[] caches = new CgCachedCommands[64];
     private int[] ints = new int[64 * INTS];
     private Instances[] instances = new Instances[64];
     private float[] distances = new float[64];
     private long[] keys = new long[64];
+    /**
+     * A GPU-driven row's (a dynamic primitive's {@code indirect}, {@code perRecord} or {@code records}): the buffer its
+     * count is in, else null, the count's byte offset, mode and factor; its records' buffer and capacity, else null.
+     */
+    private CgBufferHandle[] counts = new CgBufferHandle[64];
+    private long[] countOffsets = new long[64];
+    private CgIndirect[] countModes = new CgIndirect[64];
+    private int[] countFactors = new int[64];
+    private CgBufferHandle[] records = new CgBufferHandle[64];
+    private int[] recordCapacity = new int[64];
+    /** Per row, buffers it reads in place of engine buffers, and where: {@code CgDrawChunk.BUFFERS} slots, null unused. */
+    private CgBufferHandle[] rowBuffers = new CgBufferHandle[64 * CgDrawChunk.BUFFERS];
+    private CgBindingModel.Slot[] rowBufferAt = new CgBindingModel.Slot[64 * CgDrawChunk.BUFFERS];
     /** A dynamic row's object-to-world: its translation in doubles, then a 3x3 in floats; and its record's values. */
     private double[] positions = new double[64 * 3];
     private float[] values = new float[64 * VALUES];
 
-    private static final int INTS = 8, SUBMESH = 0, OBJECT = 1, COUNT = 2, FLAGS = 3, PRIORITY = 4, STENCIL = 5, MASK = 6, BONES = 7;
+    private static final int INTS = 6, SUBMESH = 0, OBJECT = 1, COUNT = 2, FLAGS = 3, PRIORITY = 4, BONES = 5;
+    private int[] ordinal = new int[64];
     /** Per dynamic row: the 3x3 (9), custom data (16), light (2), emission (1). */
     public static final int VALUES = 28, BASIS = 0, CUSTOM = 9, LIGHT = 25, EMISSION = 27;
 
@@ -75,7 +98,78 @@ public final class CgMeshBatches {
         Arrays.fill(meshes, 0, size, null);
         Arrays.fill(materials, 0, size, null);
         Arrays.fill(instances, 0, size, null);
+        Arrays.fill(primitives, 0, size, null);
+        Arrays.fill(caches, 0, size, null);
+        Arrays.fill(counts, 0, size, null);
+        Arrays.fill(records, 0, size, null);
+        Arrays.fill(rowBuffers, 0, size * CgDrawChunk.BUFFERS, null);
+        Arrays.fill(rowBufferAt, 0, size * CgDrawChunk.BUFFERS, null);
         size = 0;
+    }
+
+    /** A GPU-driven row's count buffer, or null for a row drawn as many times as it has objects. */
+    @Nullable
+    public CgBufferHandle count(int b) {
+        return counts[b];
+    }
+
+    public long countOffset(int b) {
+        return countOffsets[b];
+    }
+
+    public CgIndirect countMode(int b) {
+        return countModes[b];
+    }
+
+    public int countFactor(int b) {
+        return countFactors[b];
+    }
+
+    /** A {@code records} row's buffer of its own 48-float records, or null. */
+    @Nullable
+    public CgBufferHandle records(int b) {
+        return records[b];
+    }
+
+    public int recordCapacity(int b) {
+        return recordCapacity[b];
+    }
+
+    /** Row {@code b}'s buffer in slot {@code s} (0 to {@code CgDrawChunk.BUFFERS}), or null. */
+    @Nullable
+    public CgBufferHandle buffer(int b, int s) {
+        return rowBuffers[b * CgDrawChunk.BUFFERS + s];
+    }
+
+    @Nullable
+    public CgBindingModel.Slot bufferAt(int b, int s) {
+        return rowBufferAt[b * CgDrawChunk.BUFFERS + s];
+    }
+
+    /** The collector's: row {@code b} draws as many as the {@code uint} at {@code offset} of {@code buffer} times {@code factor} says. */
+    public void count(int b, CgBufferHandle buffer, long offset, CgIndirect mode, int factor) {
+        counts[b] = buffer;
+        countOffsets[b] = offset;
+        countModes[b] = mode;
+        countFactors[b] = factor;
+    }
+
+    /** The collector's: row {@code b} draws records of its own from {@code buffer}, at most {@code capacity}. */
+    public void records(int b, CgBufferHandle buffer, int capacity) {
+        records[b] = buffer;
+        recordCapacity[b] = capacity;
+    }
+
+    /** The collector's: row {@code b} reads {@code buffer} at pass slot {@code at}. */
+    public void buffer(int b, CgBindingModel.Slot at, CgBufferHandle buffer) {
+        for (int s = b * CgDrawChunk.BUFFERS, end = s + CgDrawChunk.BUFFERS; s < end; s++) {
+            if (rowBufferAt[s] == null || rowBufferAt[s] == at) {
+                rowBufferAt[s] = at;
+                rowBuffers[s] = buffer;
+                return;
+            }
+        }
+        throw new IllegalStateException("a row reads at most " + CgDrawChunk.BUFFERS + " buffers of its own");
     }
 
     public int size() {
@@ -95,7 +189,10 @@ public final class CgMeshBatches {
         return ints[b * INTS + SUBMESH];
     }
 
-    /** The GPU scene record's object id ({@code CgGpuScene.id}), or -1 for a dynamic or instanced row. */
+    /** What {@link #objectId} answers for a row naming no GPU scene record: no scene id, whose top bit is set, is -1. */
+    public static final int NO_OBJECT = -1;
+
+    /** The GPU scene record's object id ({@code CgGpuScene.id}, negative), or {@link #NO_OBJECT} for a dynamic or instanced row. */
     public int objectId(int b) {
         return ints[b * INTS + OBJECT];
     }
@@ -111,9 +208,25 @@ public final class CgMeshBatches {
         return ints[b * INTS + COUNT];
     }
 
-    /** {@link #HALF_RESOLUTION}, {@link #AFTER_DISTORTION}, {@link #CASTS_SHADOW}, {@link #CUSTOM_DEPTH}. */
+    /** {@link #HALF_RESOLUTION}, {@link #AFTER_DISTORTION}, {@link #CASTS_SHADOW}. */
     public int flags(int b) {
         return ints[b * INTS + FLAGS];
+    }
+
+    /** The primitive the row is of: what a mesh pass processor reads. */
+    public CgPrimitiveInfo primitive(int b) {
+        return primitives[b];
+    }
+
+    /** Its primitive's kept commands, or null for a row built every frame (a dynamic primitive's). */
+    @Nullable
+    public CgCachedCommands cache(int b) {
+        return caches[b];
+    }
+
+    /** Its place among its primitive's rows this frame, 0 up: what its kept commands are found by. */
+    public int ordinal(int b) {
+        return ordinal[b];
     }
 
     public CgSortLayer layer(int b) {
@@ -124,14 +237,6 @@ public final class CgMeshBatches {
         return ints[b * INTS + PRIORITY];
     }
 
-    /** The custom depth stencil value and its write mask, where {@link #CUSTOM_DEPTH} is set. */
-    public int stencil(int b) {
-        return ints[b * INTS + STENCIL];
-    }
-
-    public int stencilMask(int b) {
-        return ints[b * INTS + MASK];
-    }
 
     /** A skinned row's palette base this frame ({@code CgBonePalettes}), or -1 for a row that is not skinned. */
     public int bones(int b) {
@@ -159,24 +264,30 @@ public final class CgMeshBatches {
     }
 
     /**
-     * The gather's: a row of a primitive's settings, answering its index; {@link #object}, {@link #instances(int,
-     * Instances)}, the dynamic values and {@link #distance(int, float)} are set after.
+     * The gather's: a row of {@code primitive}'s, answering its index; {@link #object}, {@link #instances(int,
+     * Instances)}, the dynamic values and {@link #distance(int, float)} are set after. A primitive's rows are added
+     * together, so each takes the next {@link #ordinal}.
      */
     public int add(CgMesh mesh, CgMaterialInterface material, int submesh, CgSortLayer layer, int flags, int sortPriority,
-                   int stencil, int stencilMask) {
+                   CgPrimitiveInfo primitive, @Nullable CgCachedCommands cache) {
         if (size == meshes.length) grow();
         int b = size++;
         meshes[b] = mesh;
         materials[b] = material;
         layers[b] = layer;
+        primitives[b] = primitive;
+        caches[b] = cache;
+        counts[b] = null;
+        records[b] = null;
+        Arrays.fill(rowBuffers, b * CgDrawChunk.BUFFERS, (b + 1) * CgDrawChunk.BUFFERS, null);
+        Arrays.fill(rowBufferAt, b * CgDrawChunk.BUFFERS, (b + 1) * CgDrawChunk.BUFFERS, null);
+        ordinal[b] = b > 0 && primitives[b - 1] == primitive ? ordinal[b - 1] + 1 : 0;
         int i = b * INTS;
         ints[i + SUBMESH] = submesh;
-        ints[i + OBJECT] = -1;
+        ints[i + OBJECT] = NO_OBJECT;
         ints[i + COUNT] = 1;
         ints[i + FLAGS] = flags;
         ints[i + PRIORITY] = sortPriority;
-        ints[i + STENCIL] = stencil;
-        ints[i + MASK] = stencilMask;
         ints[i + BONES] = -1;
         instances[b] = null;
         distances[b] = Float.NaN;
@@ -220,10 +331,21 @@ public final class CgMeshBatches {
         meshes = Arrays.copyOf(meshes, n);
         materials = Arrays.copyOf(materials, n);
         layers = Arrays.copyOf(layers, n);
+        primitives = Arrays.copyOf(primitives, n);
+        caches = Arrays.copyOf(caches, n);
+        ordinal = Arrays.copyOf(ordinal, n);
         ints = Arrays.copyOf(ints, n * INTS);
         instances = Arrays.copyOf(instances, n);
         distances = Arrays.copyOf(distances, n);
         keys = Arrays.copyOf(keys, n);
+        counts = Arrays.copyOf(counts, n);
+        countOffsets = Arrays.copyOf(countOffsets, n);
+        countModes = Arrays.copyOf(countModes, n);
+        countFactors = Arrays.copyOf(countFactors, n);
+        records = Arrays.copyOf(records, n);
+        recordCapacity = Arrays.copyOf(recordCapacity, n);
+        rowBuffers = Arrays.copyOf(rowBuffers, n * CgDrawChunk.BUFFERS);
+        rowBufferAt = Arrays.copyOf(rowBufferAt, n * CgDrawChunk.BUFFERS);
         positions = Arrays.copyOf(positions, n * 3);
         values = Arrays.copyOf(values, n * VALUES);
     }

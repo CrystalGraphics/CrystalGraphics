@@ -426,7 +426,8 @@ public final class CgVfxRenderers {
                 tree.get("pre_rotation"),
                 sort(who, tree), flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                 Boolean.TRUE.equals(tree.get("cast_shadows")),
-                tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
+                tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN,
+                Boolean.TRUE.equals(tree.get("writes_velocity")));
     }
 
     private static CgVfxSpriteRendererProperties.Sort sort(String who, Map<String, Object> tree) {

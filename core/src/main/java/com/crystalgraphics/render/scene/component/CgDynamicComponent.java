@@ -32,6 +32,12 @@ public final class CgDynamicComponent extends CgPrimitiveComponent<CgDynamicComp
         return primitive;
     }
 
+    /** Its rows change frame to frame: their commands are built per view, never kept. */
+    @Override
+    boolean keepsCommands() {
+        return false;
+    }
+
     @Override
     void onSpawn() {
     }

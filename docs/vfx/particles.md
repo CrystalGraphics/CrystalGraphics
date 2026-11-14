@@ -121,6 +121,7 @@ CgVfxRenderers.mesh("r1").material(RING).field("meshes", List.of(Map.of("mesh", 
 | `roll_about` | the particle's sprite rotation rolls the mesh about the direction it faces (`facing`) or the one to the camera (`camera`) |
 | `pre_rotation` | a rotation, or a range rolled per particle, applied to the mesh before anything else, before its scale |
 | `meshes[].rotation`, `scale` | the mesh's own turn and size, inside the particle's |
+| `writes_velocity` | `true` to draw the meshes into the velocity pass, which motion blur and temporal AA read (Niagara's and Cascade's `bEnableMotionBlur`). `false` by default. Mesh particles do not draw through the scene's mesh passes yet, so for now the setting is read and kept, not drawn |
 
 - **A facing mesh ignores the particle's tumble**: only a mesh orientation module turns it besides its facing.
 - **A locked axis turns only a facing mesh**; under `default` it does nothing, as in Niagara.

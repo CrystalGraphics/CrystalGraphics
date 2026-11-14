@@ -40,7 +40,14 @@ public enum CgRenderPassVariant {
      * added into the world's distortion target and applied to the scene once, after the transparent pass. Takes the
      * material's keywords. Unlit and unfogged; a fragment behind the scene's depth is discarded.
      */
-    DISTORTION("Distortion");
+    DISTORTION("Distortion"),
+
+    /**
+     * Where each pixel of a solid surface was last frame ({@code lib/velocity.glsl}): its vertex placed at last frame's
+     * transform and bone palette and at this frame's, the difference written into the velocity target. Lowered for every
+     * opaque and masked surface; drawn for what moved or deformed (Unreal's velocity pass). Takes the material's keywords.
+     */
+    VELOCITY("Velocity");
 
     private final String lightModeName;
 

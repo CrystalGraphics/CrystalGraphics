@@ -631,7 +631,7 @@ public final class CgWorldRenderer {
                 .at(c.x(), c.y(), c.z()).transform(skeletalBasis).bounds(skeletalBounds)
                 .light(c.blockLight(), c.skyLight()).emission(c.emission());
         for (int k = 0; k < 4; k++) d.custom(k, c.customData(k, 0), c.customData(k, 1), c.customData(k, 2), c.customData(k, 3));
-        if (c.customDepthStencil() >= 0) d.customDepth(c.customDepthStencil(), c.customDepthMask());
+        if (c.customDepth() != null) d.customDepth(c.customDepth().value(), c.customDepth().writeMask());
         return d;
     }
 

@@ -31,8 +31,9 @@ import java.util.Arrays;
 /**
  * Every instanced row a view sees, culled on the GPU instance by instance against the view's frustum and its depth
  * pyramid: Unreal's instance culling ({@code InstanceCullBuildInstanceIdBufferCS}). Each kept instance's object id is
- * appended into its row's region of {@link #ids()}, and the row's word of {@link #counts()} counts them: the instance
- * count a draw of the row reads ({@code CgIndirect.INSTANCES}), and the ids it reads its records by.
+ * appended into its row's region of {@link #ids()} as a draw reads {@code cg_ObjectIds}, (id, 0), and the row's word of
+ * {@link #counts()} counts them: the instance count a draw of the row reads ({@code CgIndirect.INSTANCES}), and the
+ * ids it reads its records by ({@code CgDrawCommands.ids}).
  *
  * <pre>{@code
  * CgInstanceCulling culling = new CgInstanceCulling("mymod.culling");   // a renderer's, one per view it draws
@@ -55,8 +56,10 @@ import java.util.Arrays;
  */
 public final class CgInstanceCulling {
 
-    /** Where a row's region of {@link #ids} starts: a whole binding offset (256 bytes). */
-    private static final int ALIGN = 64;
+    /** Where a row's region of {@link #ids} starts: a whole binding offset (256 bytes, 32 entries). */
+    private static final int ALIGN = 32;
+    /** Bytes an entry: (id, 0), two words. */
+    private static final int ENTRY = 8;
     private static final String PATH = "crystalgraphics:shaders/compute/scene/instance_cull.compute";
     private static final String[] PLANES = {"_Plane0", "_Plane1", "_Plane2", "_Plane3", "_Plane4", "_Plane5"};
     private static final int TESTED = CgTrace.name("scene.instances.tested");
@@ -122,7 +125,7 @@ public final class CgInstanceCulling {
             tested += count;
             CgDispatch d = pass.dispatch(kernel(), count)
                     .bind("IDS", instances.gpuIds()).bind("RECORDS", records)
-                    .bind("OUT", ids, first[r] * 4L, (long) (count + ALIGN - 1) / ALIGN * ALIGN * 4L)
+                    .bind("OUT", ids, first[r] * (long) ENTRY, (long) (count + ALIGN - 1) / ALIGN * ALIGN * ENTRY)
                     .counter("OUT", counts, r * 4L)
                     .set("_Count", count)
                     .set("_ViewTile", (float) tx, (float) ty, (float) tz, (float) CgGpuScene.TILE)
@@ -145,7 +148,7 @@ public final class CgInstanceCulling {
         return batch[r];
     }
 
-    /** Where row {@code r}'s kept ids start in {@link #ids()}, in elements. */
+    /** Where row {@code r}'s kept ids start in {@link #ids()}, in entries of two words. */
     public int first(int r) {
         return first[r];
     }
@@ -155,7 +158,7 @@ public final class CgInstanceCulling {
         return r;
     }
 
-    /** The kept instances' object ids, row by row, each row's from {@link #first}; null before a cull with a row. */
+    /** The kept instances' (object id, 0) entries, row by row, each row's from {@link #first}; null before a cull with a row. */
     @Nullable
     public CgGraphBuffer ids() {
         return ids;
@@ -172,7 +175,7 @@ public final class CgInstanceCulling {
         if (ids == null || idCapacity < idWords) {
             if (ids != null) recording.release(ids);
             idCapacity = Integer.highestOneBit(Math.max(ALIGN, idWords - 1)) << 1;
-            ids = CgGraphBuffer.persistent(name + ".ids", CgBufferDesc.elements(idCapacity, 4, CgBufferUsage.STORAGE));
+            ids = CgGraphBuffer.persistent(name + ".ids", CgBufferDesc.elements(idCapacity, ENTRY, CgBufferUsage.STORAGE));
         }
         if (counts == null || countCapacity < rowWords) {
             if (counts != null) recording.release(counts);

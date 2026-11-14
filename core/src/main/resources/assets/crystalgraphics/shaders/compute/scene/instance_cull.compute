@@ -1,8 +1,8 @@
 // CgInstanceCulling: one instanced mesh component's instances, each a thread. Its GPU scene record is read by its
 // object id and placed in the view's camera-relative world by the view's tile (cg_env.glsl's decode), its mesh's box
 // tested against the frustum and, with a depth pyramid, the scene's depth (occlusion.glsl, as cull.compute tests);
-// a kept instance appends its object id, and the append's count is the row's instance count. Unreal's
-// InstanceCullBuildInstanceIdBufferCS: ids, never copies of records.
+// a kept instance appends its object id as a draw reads cg_ObjectIds, (record, material slot 0), and the append's count
+// is the row's instance count. Unreal's InstanceCullBuildInstanceIdBufferCS: ids, never copies of records.
 #pragma kernel InstanceCull append
 
 #include "crystalgraphics:shaders/compute/ops/occlusion.glsl"
@@ -48,7 +48,7 @@ struct SceneRecord {
 Buffers {
     IDS     ("The component's instances' object ids",  InstanceIds,   readonly)
     RECORDS ("The scene's records",                    SceneRecord,   readonly)
-    OUT     ("The kept instances' object ids",         uint,          append)
+    OUT     ("The kept instances' (object id, 0)",     uvec2,         append)
 }
 
 bool outside(vec4 plane, vec3 lo, vec3 hi) {
@@ -73,5 +73,5 @@ void InstanceCull() {
     if (outside(_Plane0, lo, hi) || outside(_Plane1, lo, hi) || outside(_Plane2, lo, hi)
             || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return;
     if (cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return;
-    OUT_APPEND(id);
+    OUT_APPEND(uvec2(id, 0u));
 }
