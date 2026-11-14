@@ -460,8 +460,9 @@ CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // 
 
 - **`add`** attaches a component to the root unless it rides something already, spawns it, and removes it with the
   actor.
-- **The root** stands at the entity's feet, turned as Minecraft turns a living model (`180 - bodyYaw`); place a
-  component relative to it with `at`.
+- **The root** stands at the entity's feet, turned by its body yaw (`-bodyYaw` about up): +z, a glTF mesh's front,
+  faces the entity's facing. A component keeps the placement it was built with as its offset from the root, so
+  `.at`, `.rotation` and `.transform` may come before or after `add`.
 - **`tick`** runs in `PLAYS`, before `POSE`: change components, draw nothing. An actor that throws is removed and its
   entity left to the host.
 - **The type** is the entity's registry key, `CgEntityQuery.type(id)`: `minecraft:zombie`, `mymod:wyvern`. Below 1.11

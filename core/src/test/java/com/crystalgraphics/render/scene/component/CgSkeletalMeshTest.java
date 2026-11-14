@@ -176,6 +176,24 @@ public class CgSkeletalMeshTest {
         assertEquals("its parent removed, it stands where it was", null, hat.attachParent());
     }
 
+    /** A placement given before attaching is kept as the offset from the socket, as one given after. */
+    @Test
+    public void aPlacementGivenBeforeAttachingIsKeptAsItsOffset() {
+        CgSkeletalMesh mesh = CgSocketTest.arm();
+        CgScene scene = new CgScene();
+        CgSkeletalMeshComponent arm = playing(scene, mesh).spawn();
+        CgSkeletalMeshComponent before = scene.skeletal(mesh).at(0, 1, 0).scale(0.5f).attach(arm, "palm").spawn();
+        CgSkeletalMeshComponent after = scene.skeletal(mesh).spawn();
+        after.attach(arm, "palm").at(0, 1, 0).scale(0.5f);
+        arm.anim().seek(0.25).evaluate();
+        scene.update();
+        assertEquals(after.x(), before.x(), 1e-9);
+        assertEquals(after.y(), before.y(), 1e-9);
+        assertEquals(after.z(), before.z(), 1e-9);
+        assertEquals(after.basis(new Matrix4f()).getScale(new Vector3f()).x,
+                before.basis(new Matrix4f()).getScale(new Vector3f()).x, 1e-6f);
+    }
+
     @Test
     public void anAttachmentIntoACycleOrOntoAMissingSocketIsRefused() {
         CgScene scene = new CgScene();

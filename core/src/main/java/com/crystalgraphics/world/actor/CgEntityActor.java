@@ -35,9 +35,14 @@ import java.util.List;
  *
  * <ul>
  *   <li>{@code add} attaches a component to the root where it rides nothing yet, and spawns it: attach it elsewhere
- *       first (a socket of another) to keep that.</li>
- *   <li>The root stands at the entity's feet, turned by its body yaw as Minecraft turns a living model
- *       ({@code 180 - bodyYaw} about up); offset a component with {@code at}, relative to the root.</li>
+ *       first (a socket of another) to keep that. Its placement is kept as its offset from the root, given before
+ *       {@code add} or after:
+ *       <pre>{@code
+ * add(scene().mesh(SADDLE, LEATHER).at(0, 1.4, -0.2));       // built placed
+ * add(scene().mesh(HORN, BONE)).at(0, 2.1, 0.8).scale(0.5f);  // placed after
+ *       }</pre></li>
+ *   <li>The root stands at the entity's feet, turned by its body yaw ({@code -bodyYaw} about up): +z, a glTF mesh's
+ *       front, faces the entity's facing.</li>
  *   <li>The client world's thread. {@code tick} runs in {@code PLAYS}, before {@code POSE}.</li>
  * </ul>
  */

@@ -394,8 +394,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
         e.present = entities.pose(e.id(), CgRenderStage.WORLD_OPAQUE.host().partialTick(), e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
-        // Minecraft turns a living model by 180 - bodyYaw about up (LivingEntityRenderer.setupRotations)
-        turn.rotationY((float) Math.toRadians(180.0 - e.bodyYaw()));
+        // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.
+        // Minecraft's own models face -z, hence its 180 - bodyYaw (LivingEntityRenderer.setupRotations)
+        turn.rotationY((float) Math.toRadians(-e.bodyYaw()));
         l.actor.root.at(e.x(), e.y(), e.z()).rotation(turn);
     }
 }
