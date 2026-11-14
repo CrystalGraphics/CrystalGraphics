@@ -1,6 +1,12 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.animation.CgAnimSection;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgAnimSlot;
+import com.crystalgraphics.animation.graph.CgBlendMask;
+import com.crystalgraphics.animation.graph.CgCachedPoseNode;
+import com.crystalgraphics.animation.graph.CgLayeredBlendNode;
+import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.graph.CgSlotNode;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -22,8 +28,11 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 
-/** A layered slot takes its branch's bones from what it plays and its material curves onto its component's materials. */
-public class CgAnimLayerTest {
+/**
+ * Kakarot's face graph: a slot layered over a branch takes that branch's bones from what it plays, and its material
+ * curves onto its component's materials.
+ */
+public class CgLayeredBlendTest {
 
     private static final String SPRITE = "crystalgraphics:shaders/vfx/particle/sprite.shader";
 
@@ -65,25 +74,29 @@ public class CgAnimLayerTest {
                 .value("_SoftDistance", 0.25f).build();
         CgSkeletalMeshComponent component = new CgScene().skeletal(mesh).material(0, CgMaterial.of(eye));
         CgAnimInstance goku = component.anim();
-        goku.play(CgAnimSection.of(body).until(Double.POSITIVE_INFINITY).build());
-        CgAnimLayer face = goku.layer("FacialSlot", "facialbase", 1);
-        face.play(CgAnimSection.of(open).until(Double.POSITIVE_INFINITY).build());
+        goku.graph(CgAnimGraph.builder("test:face", mesh.skeleton())
+                .save("body", CgSequencePlayerNode.of(body).loop())
+                .output(CgLayeredBlendNode.of(CgCachedPoseNode.use("body"))
+                        .layer(CgSlotNode.of("FacialSlot", CgCachedPoseNode.use("body")), CgBlendMask.branch("facialbase", 1)))
+                .build());
+        CgAnimSlot face = goku.slot("FacialSlot");
 
-        goku.seek(0.5).evaluate().applyCurves();
+        face.play(open, 0.5f, 1f);
+        goku.tick(0f).applyCurves();
         Quaternionf spine = rotation(goku, 1), jaw = rotation(goku, 3);
         assertEquals("the body keeps the spine", 1f, Math.abs(spine.dot(quat(turn(30)))), 1e-5f);
         assertEquals("the layer turns the jaw, under the body's spine", 1f, Math.abs(jaw.dot(quat(turn(70)))), 1e-5f);
         assertEquals("its curve on the instance's own material", 1.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
 
-        face.stop(1f);   // FacialOff: the body shows through, the face's curves gone with it
-        goku.evaluate().applyCurves();
+        face.play(open, 0.5f, 1f).stop(1f);   // FacialOff: the body shows through, the face's curves gone with it
+        goku.tick(0f).applyCurves();
         assertEquals("a stop shows the body's branch", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);
         assertEquals("and drops the layer's curves", 0.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
-        goku.evaluate().applyCurves();
+        face.play(open, 0.5f, 1f);
+        goku.tick(0f).applyCurves();
         assertEquals("for that frame only", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(70)))), 1e-5f);
 
-        face.clear();
-        goku.evaluate().applyCurves();
+        goku.tick(0f).applyCurves();
         assertEquals("with nothing playing the branch is the body's", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);
         assertEquals("a curve no clip keys goes back to the default", 0.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
     }

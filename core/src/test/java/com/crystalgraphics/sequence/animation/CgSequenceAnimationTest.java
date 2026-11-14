@@ -10,7 +10,8 @@ import org.joml.Vector3f;
 import org.junit.Test;
 
 import com.crystalgraphics.animation.CgAnimInstance;
-import com.crystalgraphics.api.animation.CgAnimSection;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -95,24 +96,30 @@ public class CgSequenceAnimationTest {
         sequencer.play(d, Map.of("caster", new Fighter(arm)));
 
         sequencer.evaluate(0.1f);                                        // tick 100: 0.1 s in, plus 0.25 s offset
-        assertEquals(1 + 0.35 * 4, elbow(arm.evaluate()), 1e-4);
+        assertEquals(1 + 0.35 * 4, elbow(arm.tick(0f)), 1e-4);
         sequencer.evaluate(0.4f);                                        // tick 500: the second, 0.1 s at twice the rate
-        assertEquals(1 + 0.2 * 4, elbow(arm.evaluate()), 1e-4);
+        assertEquals(1 + 0.2 * 4, elbow(arm.tick(0f)), 1e-4);
         sequencer.evaluate(0.2f);                                        // tick 700: 0.3 s at twice the rate
-        assertEquals(1 + 0.6 * 4, elbow(arm.evaluate()), 1e-4);
+        assertEquals(1 + 0.6 * 4, elbow(arm.tick(0f)), 1e-4);
         sequencer.evaluate(0.2f);                                        // finished at 800, past both: its rest pose
-        assertEquals(1, elbow(arm.evaluate()), 1e-4);
+        assertEquals(1, elbow(arm.tick(0f)), 1e-4);
     }
 
     @Test
-    public void aSlotKeepsItsSectionsTheRestOfItsWeightAndNormalisesPastOne() {
+    public void aSlotKeepsItsSourceTheRestOfItsWeightAndNormalisesPastOne() {
         CgSkeletalMesh mesh = arm();
         CgAnimSequence bend = mesh.sequence("bend");
-        CgAnimInstance arm = new CgAnimInstance(mesh).play(CgAnimSection.of(bend).until(Double.POSITIVE_INFINITY).build());
-        // Its section at 0 s (1), a quarter of the slot at 1 s (5): Unreal's source weight, 1 - the slot's.
-        assertEquals(0.75 * 1 + 0.25 * 5, elbow(arm.slot(bend, 1f, 0.25f).evaluate()), 1e-4);
-        // Two entries of weight 1 each: normalised to a half each, the section gone.
-        assertEquals((2 + 4) / 2.0, elbow(arm.slot(bend, 0.25f, 1f).slot(bend, 0.75f, 1f).evaluate()), 1e-4);
-        assertEquals(1, elbow(arm.evaluate()), 1e-4);                    // entries last one pose
+        CgAnimInstance arm = new CgAnimInstance(mesh).play(bend);
+        CgAnimSlot slot = arm.slot(CgAnimGraph.DEFAULT_SLOT);
+        // Its clip at 0 s (1), a quarter of the slot at 1 s (5): Unreal's source weight, 1 - the slot's.
+        slot.play(bend, 1f, 0.25f);
+        assertEquals(0.75 * 1 + 0.25 * 5, elbow(arm.tick(0f)), 1e-4);
+        // Two entries of weight 1 each: normalised to a half each, the source gone.
+        slot.play(bend, 0.25f, 1f).play(bend, 0.75f, 1f);
+        assertEquals((2 + 4) / 2.0, elbow(arm.tick(0f)), 1e-4);
+        assertEquals(1, elbow(arm.tick(0f)), 1e-4);                      // entries last one pose
+        // A stop blends them out: half stopped, half of the entry
+        slot.play(bend, 1f, 1f).stop(0.5f);
+        assertEquals(0.5 * 1 + 0.5 * 5, elbow(arm.tick(0f)), 1e-4);
     }
 }

@@ -12,7 +12,7 @@ import org.joml.Vector3f;
  * matrices and sockets are read from. Unreal's {@code FCompactPose} and its component-space transforms.
  *
  * <pre>{@code
- * CgPose pose = new CgPose(kurama.skeleton());          // made once, reused every frame
+ * CgAnimPose pose = new CgAnimPose(kurama.skeleton());          // made once, reused every frame
  * pose.rest();
  * attack.sample(pose, 0.4f);                             // the clip's bones at 0.4 s; the rest keep their rest pose
  * pose.resolve();                                        // component space, parents first
@@ -23,7 +23,7 @@ import org.joml.Vector3f;
  * <p>Blending, as Unreal's {@code FAnimationRuntime::BlendPosesTogether}:</p>
  *
  * <pre>{@code
- * out.blend(new CgPose[]{run, wave}, new float[]{0.7f, 0.3f}, 2);   // weights summing to 1
+ * out.blend(new CgAnimPose[]{run, wave}, new float[]{0.7f, 0.3f}, 2);   // weights summing to 1
  * }</pre>
  *
  * <ul>
@@ -32,11 +32,11 @@ import org.joml.Vector3f;
  *       changes.</li>
  * </ul>
  */
-public final class CgPose {
+public final class CgAnimPose {
 
     private static final int REST = CgSkeleton.REST;
     /** Unreal's {@code ZERO_ANIMWEIGHT_THRESH}: a weight this close to 0 or 1 is that weight. */
-    static final float ZERO_WEIGHT = 0.00001f;
+    public static final float ZERO_WEIGHT = 0.00001f;
 
     private final CgSkeleton skeleton;
     /** Per bone: translation 3, rotation 4 (x, y, z, w), scale 3, as the skeleton's rest. */
@@ -44,7 +44,7 @@ public final class CgPose {
     private final Matrix4f[] component;
     private final Matrix4f scratch = new Matrix4f();
 
-    public CgPose(CgSkeleton skeleton) {
+    public CgAnimPose(CgSkeleton skeleton) {
         this.skeleton = skeleton;
         this.local = skeleton.rest().clone();
         this.component = new Matrix4f[skeleton.boneCount()];
@@ -56,14 +56,14 @@ public final class CgPose {
     }
 
     /** Every bone back to its rest pose. */
-    public CgPose rest() {
+    public CgAnimPose rest() {
         float[] rest = skeleton.rest();
         System.arraycopy(rest, 0, local, 0, rest.length);
         return this;
     }
 
     /** {@code from}'s local pose, of the same skeleton. */
-    public CgPose set(CgPose from) {
+    public CgAnimPose set(CgAnimPose from) {
         requireSame(from);
         System.arraycopy(from.local, 0, local, 0, local.length);
         return this;
@@ -85,7 +85,7 @@ public final class CgPose {
     }
 
     /** Sets a bone's local transform; {@code rotation} unit length. */
-    public CgPose set(int bone, float tx, float ty, float tz, float qx, float qy, float qz, float qw, float sx, float sy, float sz) {
+    public CgAnimPose set(int bone, float tx, float ty, float tz, float qx, float qy, float qz, float qw, float sx, float sy, float sz) {
         int at = bone * REST;
         local[at] = tx;
         local[at + 1] = ty;
@@ -107,7 +107,7 @@ public final class CgPose {
      *
      * @param weights summing to 1, as the caller normalised them
      */
-    public CgPose blend(CgPose[] poses, float[] weights, int count) {
+    public CgAnimPose blend(CgAnimPose[] poses, float[] weights, int count) {
         if (count < 1) throw new IllegalArgumentException("a blend of no poses");
         if (count == 1) return set(poses[0]);
         for (int p = 0; p < count; p++) requireSame(poses[p]);
@@ -135,7 +135,7 @@ public final class CgPose {
      * (AnimationRuntime.cpp:1109-1148). Rotation {@code q · base⁻¹}, translation {@code t − base}, scale
      * {@code s / base − 1}, so differences blend and add. What {@link CgAnimSequence#sampleAdditive} makes.
      */
-    public CgPose convertToAdditive(CgPose base) {
+    public CgAnimPose convertToAdditive(CgAnimPose base) {
         requireSame(base);
         float[] b = base.local;
         for (int at = 0; at < local.length; at += REST) {
@@ -168,7 +168,7 @@ public final class CgPose {
      * body.accumulateAdditive(delta, 0.6f);      // a flinch at 60% over whatever the body plays
      * }</pre>
      */
-    public CgPose accumulateAdditive(CgPose additive, float weight) {
+    public CgAnimPose accumulateAdditive(CgAnimPose additive, float weight) {
         requireSame(additive);
         if (weight <= ZERO_WEIGHT) return this;
         boolean full = weight >= 1f - ZERO_WEIGHT;
@@ -222,7 +222,7 @@ public final class CgPose {
      * body.blendBones(face, faceWeights);   // the face's bones from the face pose, the rest from the body
      * }</pre>
      */
-    public CgPose blendBones(CgPose layer, float[] boneWeights) {
+    public CgAnimPose blendBones(CgAnimPose layer, float[] boneWeights) {
         requireSame(layer);
         float[] other = layer.local;
         for (int b = 0, at = 0; b < boneWeights.length; b++, at += REST) {
@@ -255,7 +255,7 @@ public final class CgPose {
      * pose.mirror(mirror);   // the right arm's swing, on the left
      * }</pre>
      */
-    public CgPose mirror(CgMirrorTable table) {
+    public CgAnimPose mirror(CgMirrorTable table) {
         if (table.skeleton() != skeleton && !table.skeleton().equals(skeleton)) {
             throw new IllegalArgumentException(table + " is of another skeleton");
         }
@@ -347,7 +347,7 @@ public final class CgPose {
     }
 
     /** Each bone's transform in the skeleton's space from the local pose, parents first (FillUpComponentSpaceTransforms). */
-    public CgPose resolve() {
+    public CgAnimPose resolve() {
         for (int b = 0; b < component.length; b++) {
             int at = b * REST;
             Matrix4f m = component[b].translationRotateScale(local[at], local[at + 1], local[at + 2], local[at + 3],
@@ -381,7 +381,7 @@ public final class CgPose {
         return out;
     }
 
-    private void requireSame(CgPose other) {
+    private void requireSame(CgAnimPose other) {
         if (other.skeleton != skeleton) throw new IllegalArgumentException("a pose of another skeleton");
     }
 

@@ -344,12 +344,12 @@ public final class CgAnimSequence {
      *   <li>Allocates nothing once bound; any thread, one pose per thread.</li>
      * </ul>
      */
-    public void sample(CgPose pose, float time) {
+    public void sample(CgAnimPose pose, float time) {
         sample(pose, time, false);
     }
 
     /**
-     * As {@link #sample(CgPose, float)}, with the root locked where its motion is extracted: Unreal's
+     * As {@link #sample(CgAnimPose, float)}, with the root locked where its motion is extracted: Unreal's
      * {@code FRootMotionReset} (AnimCompressionTypes.h), applied when {@code extractRootMotion} and the clip's root
      * motion is on, or always with {@code forceRootLock} (AnimSequence.cpp:1840-1866). The motion itself is
      * {@link #extractRootMotion}'s.
@@ -359,7 +359,7 @@ public final class CgAnimSequence {
      * lunge.extractRootMotion(skeleton, t, dt, false, step);         // what moved, for the character
      * }</pre>
      */
-    public void sample(CgPose pose, float time, boolean extractRootMotion) {
+    public void sample(CgAnimPose pose, float time, boolean extractRootMotion) {
         sampleKeys(pose, time);
         CgRootMotion rm = settings.rootMotion();
         if (extractRootMotion && rm.enabled() || rm.forceRootLock()) lockRoot(pose);
@@ -369,7 +369,7 @@ public final class CgAnimSequence {
      * Its pose at {@code time} as differences from its additive base, into {@code out}: Unreal's
      * {@code GetBonePose_Additive} (AnimSequence.cpp:1895-1918), the base from {@code GetAdditiveBasePose}
      * (:1938-1975), each bone through {@code ConvertTransformToAdditive} (AnimationRuntime.cpp:1109-1120).
-     * {@code base} is scratch, overwritten. Apply the result with {@link CgPose#accumulateAdditive}.
+     * {@code base} is scratch, overwritten. Apply the result with {@link CgAnimPose#accumulateAdditive}.
      *
      * <pre>{@code
      * flinch.sampleAdditive(delta, scratch, t);
@@ -378,7 +378,7 @@ public final class CgAnimSequence {
      *
      * @throws IllegalStateException for a clip that is not additive, or a mesh-space one (the aim offset node's)
      */
-    public void sampleAdditive(CgPose out, CgPose base, float time) {
+    public void sampleAdditive(CgAnimPose out, CgAnimPose base, float time) {
         CgAdditive additive = settings.additive();
         if (!additive.isAdditive()) throw new IllegalStateException(name + " is not additive");
         if (additive.type() == CgAdditive.Type.MESH_SPACE) {
@@ -479,7 +479,7 @@ public final class CgAnimSequence {
     }
 
     /** {@code ResetRootBoneForRootMotion}: the root to its lock. */
-    private void lockRoot(CgPose pose) {
+    private void lockRoot(CgAnimPose pose) {
         CgSkeleton skeleton = pose.skeleton();
         int root = rootBone(skeleton), at = root * CgSkeleton.REST;
         float[] out = pose.local;
@@ -537,7 +537,7 @@ public final class CgAnimSequence {
 
     private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
 
-    private void sampleKeys(CgPose pose, float time) {
+    private void sampleKeys(CgAnimPose pose, float time) {
         int[] bones = bind(pose.skeleton());
         if (keys != null) {
             sampleKeyed(bones, pose.local, time);
@@ -605,9 +605,9 @@ public final class CgAnimSequence {
             System.arraycopy(keys, 0, out, at, n);
             return;
         }
-        if (alpha <= CgPose.ZERO_WEIGHT || a == b) {
+        if (alpha <= CgAnimPose.ZERO_WEIGHT || a == b) {
             System.arraycopy(keys, a * n, out, at, n);
-        } else if (alpha >= 1f - CgPose.ZERO_WEIGHT) {
+        } else if (alpha >= 1f - CgAnimPose.ZERO_WEIGHT) {
             System.arraycopy(keys, b * n, out, at, n);
         } else {
             for (int c = 0; c < n; c++) out[at + c] = keys[a * n + c] + (keys[b * n + c] - keys[a * n + c]) * alpha;
@@ -616,11 +616,11 @@ public final class CgAnimSequence {
 
     /** {@code FQuat::FastLerp} (Quat.h:1371-1377), then normalised. */
     private static void nlerp(float[] keys, int a, int b, float alpha, float[] out, int at) {
-        if (keys.length == 4 || alpha <= CgPose.ZERO_WEIGHT || a == b) {
+        if (keys.length == 4 || alpha <= CgAnimPose.ZERO_WEIGHT || a == b) {
             System.arraycopy(keys, keys.length == 4 ? 0 : a * 4, out, at, 4);
             return;
         }
-        if (alpha >= 1f - CgPose.ZERO_WEIGHT) {
+        if (alpha >= 1f - CgAnimPose.ZERO_WEIGHT) {
             System.arraycopy(keys, b * 4, out, at, 4);
             return;
         }
@@ -628,7 +628,7 @@ public final class CgAnimSequence {
         float dot = keys[pa] * keys[pb] + keys[pa + 1] * keys[pb + 1] + keys[pa + 2] * keys[pb + 2] + keys[pa + 3] * keys[pb + 3];
         float bias = dot >= 0f ? 1f - alpha : alpha - 1f;
         for (int c = 0; c < 4; c++) out[at + c] = keys[pb + c] * alpha + keys[pa + c] * bias;
-        CgPose.normalizeRotation(out, at);
+        CgAnimPose.normalizeRotation(out, at);
     }
 
     /** Track to bone for {@code skeleton}, -1 where it lacks the bone; made once a skeleton. */

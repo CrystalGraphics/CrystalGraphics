@@ -69,7 +69,7 @@ public class CgClipDataTest {
     @Test
     public void theRootIsLockedOnlyWhileItsMotionIsExtracted() {
         CgAnimSequence walk = walk(CgClipSettings.NONE.withRootMotion(CgRootMotion.of(CgRootMotion.Lock.REF_POSE)));
-        CgPose pose = new CgPose(SKELETON);
+        CgAnimPose pose = new CgAnimPose(SKELETON);
         Vector3f t = new Vector3f();
         walk.sample(pose.rest(), 0.5f, false);
         assertEquals("as keyed", 1f, pose.translation(0, t).x, 1e-5f);
@@ -83,7 +83,7 @@ public class CgClipDataTest {
     @Test
     public void anAdditiveAddedToItsBaseGivesTheClipBack() {
         CgAnimSequence walk = walk(CgClipSettings.NONE.withAdditive(CgAdditive.local(CgAdditive.Base.REF_POSE, null, 0)));
-        CgPose delta = new CgPose(SKELETON), scratch = new CgPose(SKELETON), body = new CgPose(SKELETON), clip = new CgPose(SKELETON);
+        CgAnimPose delta = new CgAnimPose(SKELETON), scratch = new CgAnimPose(SKELETON), body = new CgAnimPose(SKELETON), clip = new CgAnimPose(SKELETON);
         walk.sampleAdditive(delta, scratch, 0.5f);
         body.rest().accumulateAdditive(delta, 1f);
         walk.sample(clip.rest(), 0.5f);

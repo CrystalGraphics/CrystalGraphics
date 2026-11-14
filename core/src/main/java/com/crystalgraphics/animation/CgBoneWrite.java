@@ -7,7 +7,7 @@ import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
-import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgAnimPose;
 
 /**
  * One bone moved by code after the clips and layers are blended: Unreal's Transform (Modify) Bone node
@@ -111,7 +111,7 @@ public final class CgBoneWrite {
     }
 
     /** Writes it into {@code pose}'s local transform; resolved first where {@link #needsComponent()}. */
-    void apply(CgPose pose) {
+    void apply(CgAnimPose pose) {
         if (alpha <= 0f || (scaleMode == Mode.IGNORE && rotationMode == Mode.IGNORE && translationMode == Mode.IGNORE)) return;
         pose.translation(bone, t0);
         pose.rotation(bone, q0);
@@ -170,7 +170,7 @@ public final class CgBoneWrite {
     }
 
     /** {@code ConvertCSTransformToBoneSpace}: {@link #boneTm} into {@link #spaceTm}. */
-    private void toSpace(CgPose pose, int parent, Space space) {
+    private void toSpace(CgAnimPose pose, int parent, Space space) {
         switch (space) {
             case COMPONENT -> spaceTm.set(boneTm);
             case PARENT -> {
@@ -182,7 +182,7 @@ public final class CgBoneWrite {
     }
 
     /** {@code ConvertBoneSpaceTransformToCS}: {@link #spaceTm} back into {@link #boneTm}. */
-    private void fromSpace(CgPose pose, int parent, Space space) {
+    private void fromSpace(CgAnimPose pose, int parent, Space space) {
         switch (space) {
             case COMPONENT -> boneTm.set(spaceTm);
             case PARENT -> {

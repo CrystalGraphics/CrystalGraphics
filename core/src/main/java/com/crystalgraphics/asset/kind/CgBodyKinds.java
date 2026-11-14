@@ -104,6 +104,102 @@ public final class CgBodyKinds {
             .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    // ── Anim graph ───────────────────────────────────────────────────────────────────────
+
+    /** A node name in the graph's {@code nodes}. */
+    private static final CgValueType NODE_NAME = STRING;
+    /** A constant, or the name of a variable the graph declares. */
+    private static final CgValueType ALPHA = CgValueType.oneOf(FLOAT, STRING);
+
+    static final CgType ANIM_VARIABLE = CgTypes.struct("crystalgraphics:anim_graph.variable")
+            .property("type", CgValueType.enumOf("float", "bool", "int")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("default", CgValueType.oneOf(FLOAT, BOOL)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** Nodes by {@code kind}: Unreal's anim graph nodes the engine runs. */
+    public static final CgType ANIM_NODES = CgTypes.dispatch("crystalgraphics:anim_graph.node", "kind").register();
+
+    private static CgType.Builder animNode(String kind) {
+        return CgTypes.struct("crystalgraphics:anim_graph." + kind).onRegister(t -> ANIM_NODES.member(kind, t));
+    }
+
+    static final CgType ANIM_SEQUENCE_PLAYER = animNode("sequence_player")
+            .property("clip", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("loop", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("play_rate", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("start_position", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_REF_POSE = animNode("ref_pose").register();
+    static final CgType ANIM_SLOT = animNode("slot")
+            .property("slot_name", STRING).defaultValue("DefaultSlot").flags(CgPropertyFlag.HEADLESS)
+            .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_TWO_WAY_BLEND = animNode("two_way_blend")
+            .property("a", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("b", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("alpha", ALPHA).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_BLEND_LIST_BY_BOOL = animNode("blend_list_by_bool")
+            .property("selector", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("when_true", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("when_false", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("blend_times", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("reset_child_on_activate", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_BLEND_LIST_BY_INT = animNode("blend_list_by_int")
+            .property("selector", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("poses", CgValueType.listOf(NODE_NAME)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("blend_times", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("reset_child_on_activate", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    static final CgType ANIM_BRANCH = CgTypes.struct("crystalgraphics:anim_graph.branch")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("depth", INT).forms(CgValueForm.CONSTANT).defaultValue(0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_BONE_WEIGHT = CgTypes.struct("crystalgraphics:anim_graph.bone_weight")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("weight", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FBranchFilter}s and blend mask entries. */
+    static final CgType ANIM_MASK = CgTypes.struct("crystalgraphics:anim_graph.mask")
+            .property("branches", CgValueType.listOf(CgValueType.struct(ANIM_BRANCH))).flags(CgPropertyFlag.HEADLESS)
+            .property("bones", CgValueType.listOf(CgValueType.struct(ANIM_BONE_WEIGHT))).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_LAYER = CgTypes.struct("crystalgraphics:anim_graph.layer")
+            .property("pose", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("mask", CgValueType.struct(ANIM_MASK)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("weight", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("curves", CgValueType.enumOf("max_weight", "use_base_only")).defaultValue("max_weight").flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_LAYERED_BLEND = animNode("layered_blend")
+            .property("base", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("layers", CgValueType.listOf(CgValueType.struct(ANIM_LAYER))).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_APPLY_ADDITIVE = animNode("apply_additive")
+            .property("base", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("additive", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("alpha", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** Its own name is the cached pose's. */
+    static final CgType ANIM_SAVE_CACHED_POSE = animNode("save_cached_pose")
+            .property("pose", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_USE_CACHED_POSE = animNode("use_cached_pose")
+            .property("save", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /**
+     * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name and the
+     * one whose pose is the output.
+     */
+    public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)
+            .property("variables", CgValueType.mapOf(CgValueType.struct(ANIM_VARIABLE))).flags(CgPropertyFlag.HEADLESS)
+            .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     // ── Springs ──────────────────────────────────────────────────────────────────────────
 
     static final CgType CHAIN = CgTypes.element("crystalgraphics:springs.chain")

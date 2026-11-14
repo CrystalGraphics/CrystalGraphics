@@ -205,7 +205,7 @@ CgSkeletalMeshComponent kurama = CgScene.client().skeletal(mesh)
         .materials(slot -> CgMaterial.of(kitMaterial(slot)))       // a material a slot, in slot order
         .at(x, y, z).rotation(facing).scale(2f)
         .spawn();
-kurama.anim().play(CgAnimSection.of(mesh.sequence("idle")).loop().build());
+kurama.anim().play(mesh.sequence("idle"));
 kurama.at(x + 1, y, z);                                             // moved
 kurama.remove();
 ```
@@ -219,65 +219,35 @@ kurama.remove();
 
 ## Playing clips
 
-Clips play as sections on the instance's timeline, evaluated every frame in `POSE` on workers by `CgAnimation`.
+What a component plays is its anim instance: one clip, or an anim graph fed by variables, with montages and sequences
+on its slots. **The animation guide is [`../animation/guides/graphs.md`](../animation/guides/graphs.md).**
 
 ```java
 CgAnimInstance anim = kurama.anim();
-anim.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());   // loops for ever
-anim.play(CgAnimSection.of(mesh.sequence("roar")).at(2.0).easeIn(0.25f).easeOut(0.25f).build());
-
-anim.seek(3.25);              // the pose playing reaches at 3.25 s, exactly
-anim.playing(false);          // held; anim.rate(0.5f) plays at half speed
+anim.play(mesh.sequence("idle"));                // one clip, looping
+anim.graph(HERO).onUpdate((a, dt) -> a.set(SPEED, speed));   // or a graph
+anim.slot("DefaultSlot").play(roar, 0.4f, 1f);   // this frame: a montage's clip over it
 ```
 
-| Section setting | Does (Unreal's skeletal animation section) |
-|---|---|
-| `at(t)`, `until(t)` | when it plays on the instance's timeline; past the clip's length it loops, else it holds its last frame |
-| `playRate(r)` | clip seconds a timeline second; negative plays from the end |
-| `startOffset`, `endOffset`, `firstLoopOffset` | clip seconds cut from each loop's start and end, and how far into the clip the first loop starts |
-| `reverse()`, `loop()` | played backwards; looped however long it lasts |
-| `weight(w)`, `easeIn(s)`, `easeOut(s)` | its weight, rising and falling over those seconds along Cubic InOut (`CgEasings.IN_OUT_CUBIC`), or the `CgEasing` given |
-
-- **Sections cross-fade by their weights, normalised**: one easing in alone plays at full weight, as Sequencer's does;
-  only two overlapping blend. Where none plays, the rest pose.
 - **A clip binds to the skeleton by bone name ignoring case**, so Goku's `Root` track moves his `root`.
-- **A pose is a pure function of the instance's time**: a seek, a replay or a late joiner lands on the same pose,
-  bit for bit.
-- **A montage slot plays over its sections for one pose**: `slot(clip, position, weight)`, set every frame it should
-  hold and cleared by the next evaluation, Unreal's `DefaultSlot`. Its sections keep `1 -` the slot's total weight;
-  past 1 the slot's entries are normalised and its sections are gone. A sequence's `animation` track sets it on its
-  role (`sequences.md` § *Playing a sequence*).
-
-```java
-anim.slot(roar, 0.4f, 1f);      // this pose: roar at 0.4 s over whatever its sections play
-```
-
 - **A clip's material curves** set the component's material parameters each frame (`scalar`, below), and put a
   parameter back when no clip keys it any more: Unreal's curves applied after evaluation.
-- By hand, for a tool or a test: `anim.evaluate()` poses it at its time; a scene of your own then needs `scene.update()`
-  for its palettes. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
 - About 9 µs to pose a 228-bone puppet; past `crystalgraphics.animation.parallelAt` (8) instances, `POSE` splits them
   across workers.
 - `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, U/I rate,
   K a Kamehameha charging on its right hand, X its cut.
-- **While the game is paused** every instance holds its time and is still posed, so it still draws. A new level or
+- **While the game is paused** every instance moves 0 s and is still posed, so it still draws. A new level or
   dimension clears the client scene.
 
-## Layers, bone writes, mirroring and hiding
+## Bone writes, mirroring and hiding
 
-What plays on part of the body, what code moves after the clips, a clip played on the other side, and bones not
-drawn. In the order a frame applies them: sections and the slot, then each layer, then each bone write, then hiding.
+What code moves after the graph, a clip played on the other side, and bones not drawn. In the order a frame applies
+them: the graph (its layers are the guide's), then each bone write, then hiding.
 
 ```java
 CgAnimInstance anim = role.anim();
 
-// A layer over part of the body: branches (each ramping in over its depth), or a weight per bone
-CgAnimLayer arms = anim.addLayer("Arms").branch("right_arm", 0).branch("left_arm", 0);
-CgAnimLayer lean = anim.addLayer("Lean").bone("body", 0.5f).bone("head", 0.25f);
-arms.slot(holdSword, 0f, 1f);       // this frame, over the arms
-arms.weight(0.6f);                  // the whole layer's weight, scaling its mask
-
-// Code after the clips: Unreal's Transform (Modify) Bone
+// Code after the graph: Unreal's Transform (Modify) Bone
 CgBoneWrite look = anim.modify("head");
 look.rotation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, yawPitch);   // each frame
 CgBoneWrite drop = anim.modify("model");
@@ -285,7 +255,7 @@ drop.translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0f, -0.125f,
 
 // A clip authored for the right side, played on the left
 CgMirrorTable mirror = CgMirrorTable.byName(mesh.skeleton(), CgMirrorTable.Axis.X).self("body").build();
-anim.slot(swing, phase, 1f, mirror);
+anim.slot("DefaultSlot").play(swing, phase, 1f, mirror);
 
 // Bones not drawn: the component's; their skinning collapses, never their pose
 role.hideBone("head", CgBoneHide.BONE);              // the head's own vertices; a hat on a child bone stays
@@ -293,17 +263,13 @@ role.hideBone("left_arm", CgBoneHide.BRANCH);        // the arm and all below it
 role.hideBoneFromOwner("head", CgBoneHide.BRANCH);   // the player does not see their own head
 ```
 
-- **A layer's mask** is Unreal's layered blend per bone: a branch gives a bone `d` levels below it `(d + 1) / depth`
-  (0 for the whole branch at once), and branches add up to 1; `bone(name, w)` sets one bone's weight alone (a blend
-  mask entry). Each bone then takes the layer's pose by its mask weight times the layer's `weight`. With nothing
-  playing, a layer leaves the body as it is.
 - **A bone write** applies scale, then rotation, then translation, each ignored, replaced or added to (an added
   rotation is `q * current`) in its own space: `COMPONENT` (the mesh's), `PARENT` (the bone's own local transform) or
   `BONE` (relative to where the bone is). Writes apply in the order made; a write in another space sees earlier writes.
   `alpha` blends it over the pose. A whole pose composed elsewhere is written bone by bone with `REPLACE` in `PARENT`.
 - **Mirroring** is Unreal's mirror data table: pairs by name (`r_`/`l_`, `_l`/`_r`, `right`/`left`, ...), centre
   bones (`spine`, `root`, `pelvis`, `neck`, `head` ...) onto themselves, and anything else left as it is, so name your
-  other centre bones with `self(name)`. Sections, slot entries and layer entries each take a table.
+  other centre bones with `self(name)`. A slot entry takes a table.
 - **Hiding** keeps sockets and the bones below moving. `hideBoneFromOwner` costs a second palette only while a bone is
   hidden from the owner; the owner's view reads it with `palette(true)`.
 
@@ -313,7 +279,7 @@ The server poses instances each game tick, for their bones and sockets, and draw
 
 ```java
 CgAnimInstance body = CgAnimation.server().add(new CgAnimInstance(mesh));   // CgMeshLoader.skeletal reads headless
-body.play(CgAnimSection.of(mesh.sequence("swing")).build());
+body.play(mesh.sequence("swing"), false);
 Matrix4f hand = body.socket(body.socket("hand_r"), new Matrix4f());          // this tick's pose, in the mesh's space
 ```
 
@@ -446,7 +412,7 @@ public final class DragonActor extends CgEntityActor {
 
     @Override protected void onSpawn(CgEntity dragon) {
         body = add(scene().skeletal(DRAGON_MESH).materials(DRAGON_SKINS::get).customDepth(1));
-        body.anim().play(CgAnimSection.of(IDLE).loop().build());
+        body.anim().play(IDLE);
     }
 
     @Override protected void tick(CgEntity dragon, float dt) {

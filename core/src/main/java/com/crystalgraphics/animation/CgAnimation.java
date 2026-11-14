@@ -14,15 +14,16 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 /**
- * Poses every {@link CgAnimInstance} of a world: each advanced by the world's time and evaluated, split across workers
- * by {@code CgJob.forEach} once there are enough to pay for waking them, then its material curves applied. On a
+ * Poses every {@link CgAnimInstance} of a world: each pre-updated on the schedule's thread, then its graph updated and
+ * evaluated, split across workers by {@code CgJob.forEach} once there are enough to pay for waking them, then its
+ * material curves applied. On a
  * client, once a frame in {@code POSE}; skeletal mesh components place themselves and write their palettes from these
  * poses in {@code ATTACH}. Unreal's parallel animation evaluation with its default
  * {@code AlwaysTickPoseAndRefreshBones}: every instance is posed whether or not it is drawn.
  *
  * <pre>{@code
  * CgSkeletalMeshComponent kurama = CgScene.client().skeletal(mesh).materials(skins::get).spawn();   // added here
- * kurama.anim().play(CgAnimSection.of(mesh.sequence("roar")).build());
+ * kurama.anim().play(mesh.sequence("roar"), false);
  * }</pre>
  *
  * <p>On a dedicated server, posed each game tick in {@code GAMEPLAY}, for its bones and sockets; nothing is drawn:</p>
@@ -36,7 +37,7 @@ import java.util.function.IntConsumer;
  * <ul>
  *   <li>Add, remove and change instances on the world's thread, outside its posing.</li>
  *   <li>A pose depends on no placement, so instances evaluate in any order, in parallel.</li>
- *   <li>While the game is paused every instance holds its time and is still posed, so a paused frame draws.</li>
+ *   <li>While the game is paused every instance moves 0 s and is still posed, so a paused frame draws.</li>
  *   <li>A new level or dimension drops the client's instances.</li>
  *   <li>{@code crystalgraphics.animation.parallelAt} (8): the instances from which evaluation fans out; fewer run on
  *       the schedule's thread.</li>
@@ -71,7 +72,7 @@ public final class CgAnimation extends CgWorldSubsystem {
     @Override
     protected void initialize() {
         if (world().server()) {
-            pose = world().schedule().add(CgTickGroup.GAMEPLAY, "crystalgraphics:animation", this::advanceAndEvaluate)
+            pose = world().schedule().add(CgTickGroup.GAMEPLAY, "crystalgraphics:animation", this::updateAndEvaluate)
                     .onServer(true).workers(true);
         } else {
             levelEpoch = CgWorldQueries.client().levelEpoch();
@@ -103,13 +104,11 @@ public final class CgAnimation extends CgWorldSubsystem {
         return instances.size();
     }
 
-    private void advanceAndEvaluate(float dt) {
+    private void updateAndEvaluate(float dt) {
         int n = instances.size();
         boolean paused = world().paused();
-        for (int i = 0; i < n; i++) {
-            CgAnimInstance instance = instances.get(i);
-            if (!paused && instance.playing()) instance.advance(dt);
-        }
+        // The game thread's half first (variables set, handed over), as Unreal's PreUpdate and NativeUpdateAnimation
+        for (int i = 0; i < n; i++) instances.get(i).preUpdate(paused ? 0f : dt);
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, EVALUATE)) {
             if (n >= PARALLEL_AT) {
                 CgJob.forEach(n, evaluateEach);
@@ -124,7 +123,7 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     private void pose(float dt) {
         followLevel();
-        advanceAndEvaluate(dt);
+        updateAndEvaluate(dt);
     }
 
     /** Drops every instance when the level changed, as the world's effects are cleared. */

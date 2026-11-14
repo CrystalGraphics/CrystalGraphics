@@ -2,7 +2,7 @@ package com.crystalgraphics.animation;
 
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
-import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
@@ -60,7 +60,7 @@ public class CgAnimationTest {
 
     @Test
     public void sampleAtAKeyIsTheKeyAndBetweenIsUnrealsLerp() {
-        CgPose pose = new CgPose(arm());
+        CgAnimPose pose = new CgAnimPose(arm());
         CgAnimSequence bend = bend();
         Vector3f t = new Vector3f();
         Quaternionf q = new Quaternionf();
@@ -90,7 +90,7 @@ public class CgAnimationTest {
 
     @Test
     public void tracksBindIgnoringCaseAndAnUnanimatedBoneRests() {
-        CgPose pose = new CgPose(arm());
+        CgAnimPose pose = new CgAnimPose(arm());
         bend().sample(pose.rest(), 0.5f);                       // the track says "elbow", the skeleton "Elbow"
         assertEquals(3f, pose.translation(1, new Vector3f()).y, 0f);
         assertEquals(0f, pose.translation(0, new Vector3f()).y, 0f);
@@ -136,27 +136,30 @@ public class CgAnimationTest {
     }
 
     @Test
-    public void sectionsCrossFadeNormalisedAndALoneOneNeverFadesFromRest() {
+    public void posesBlendByTheirWeights() {
         CgSkeleton arm = arm();
         CgAnimSequence bend = bend();
         CgAnimSequence still = CgAnimSequence.builder("still", 4, 1)
                 .track("elbow", new float[]{0, 7, 0}, new float[]{0, 0, 0, 1}, new float[]{1, 1, 1}).build();
-        CgPose a = new CgPose(arm), b = new CgPose(arm), out = new CgPose(arm);
+        CgAnimPose a = new CgAnimPose(arm), b = new CgAnimPose(arm), out = new CgAnimPose(arm);
         bend.sample(a.rest(), 0f);                               // y 1
         still.sample(b.rest(), 0f);                              // y 7
-        out.blend(new CgPose[]{a, b}, new float[]{0.25f, 0.75f}, 2);
+        out.blend(new CgAnimPose[]{a, b}, new float[]{0.25f, 0.75f}, 2);
         assertEquals(5.5f, out.translation(1, new Vector3f()).y, EPS);
+    }
 
-        CgAnimSection easing = CgAnimSection.of(still).at(0).until(2).easeIn(1f).build();
-        assertEquals(0.5f, easing.weight(0.5), EPS);
-        // Alone, its weight normalises to 1: the pose is the clip's, not half way from the rest pose
-        CgAnimInstance alone = new CgAnimInstance(armMesh(arm)).play(easing).seek(0.5).evaluate();
-        assertEquals(7f, alone.pose().translation(1, new Vector3f()).y, 0f);
-        // Beside a full-weight section, it takes a third: 0.5 / (1 + 0.5)
-        CgAnimInstance both = new CgAnimInstance(armMesh(arm)).play(easing)
-                .play(CgAnimSection.of(bend).at(0).until(2).build()).seek(0.5).evaluate();
-        float bendY = 3f;                                         // bend at 0.5 s: key 2
-        assertEquals(bendY * (2f / 3f) + 7f / 3f, both.pose().translation(1, new Vector3f()).y, EPS);
+    @Test
+    public void oneClipPlaysAloneAndItsPositionSeeks() {
+        CgSkeleton arm = arm();
+        CgAnimInstance anim = new CgAnimInstance(armMesh(arm)).play(bend(), false);
+        anim.tick(0.25f).tick(0.25f);                            // 0.5 s: key 2
+        assertEquals(3f, anim.pose().translation(1, new Vector3f()).y, EPS);
+        anim.tick(2f);                                          // once: held at its last frame
+        assertEquals(5f, anim.pose().translation(1, new Vector3f()).y, 0f);
+        anim.position(0.25f).tick(0f);
+        assertEquals(2f, anim.pose().translation(1, new Vector3f()).y, EPS);
+        anim.play(bend()).position(0.75f).tick(0.5f);            // looping: 1.25 wraps to 0.25
+        assertEquals(2f, anim.pose().translation(1, new Vector3f()).y, EPS);
     }
 
     /** One triangle on the elbow: an instance of {@code arm} with something to skin. */
@@ -209,14 +212,13 @@ public class CgAnimationTest {
         int bound = 0;
         for (int t = 0; t < clip.trackCount(); t++) if (mesh.skeleton().indexOfIgnoringCase(clip.trackBone(t)) >= 0) bound++;
         assertTrue(clip.name() + " binds none of " + clip.trackCount() + " tracks to " + mesh, bound > 0 || clip.trackCount() == 0);
-        CgAnimSection section = CgAnimSection.of(clip).until(Double.POSITIVE_INFINITY).build();
-        CgAnimInstance played = new CgAnimInstance(mesh).play(section);
-        CgAnimInstance seeked = new CgAnimInstance(mesh).play(section);
+        CgAnimInstance played = new CgAnimInstance(mesh).play(clip);
+        CgAnimInstance seeked = new CgAnimInstance(mesh).play(clip);
         Quaternionf q = new Quaternionf();
         Matrix4f m = new Matrix4f();
         for (int frame = 0; frame < 180; frame++) {
-            played.advance(1.0 / 60).evaluate();
-            seeked.seek(played.time()).evaluate();
+            played.tick(1f / 60);
+            seeked.position(played.position()).tick(0f);
             for (int bone = 0; bone < mesh.skeleton().boneCount(); bone++) {
                 float length = played.pose().rotation(bone, q).lengthSquared();
                 assertEquals(clip.name() + " bone " + bone + " rotation", 1f, length, 1e-5f);
@@ -225,8 +227,8 @@ public class CgAnimationTest {
             }
         }
         // Back to an earlier time: the pose there, whatever came before
-        CgAnimInstance fresh = new CgAnimInstance(mesh).play(section).seek(0.7).evaluate();
-        played.seek(0.7).evaluate();
+        CgAnimInstance fresh = new CgAnimInstance(mesh).play(clip).position(0.7f).tick(0f);
+        played.position(0.7f).tick(0f);
         for (int bone = 0; bone < mesh.skeleton().boneCount(); bone++) assertEquals(fresh.skinning()[bone], played.skinning()[bone]);
         return 1;
     }
@@ -243,14 +245,14 @@ public class CgAnimationTest {
             for (File file : files) {
                 CgSkeletalMesh mesh = CgMeshLoader.skeletal(file.getAbsolutePath());
                 if (mesh.sequences().isEmpty()) continue;
-                instances.add(new CgAnimInstance(mesh).play(CgAnimSection.of(mesh.sequences().get(0)).loop().build()));
+                instances.add(new CgAnimInstance(mesh).play(mesh.sequences().get(0)));
             }
         }
         Assume.assumeTrue(!instances.isEmpty());
         for (CgAnimInstance instance : instances) {
-            for (int i = 0; i < 2000; i++) instance.advance(1.0 / 60).evaluate();                    // warm
+            for (int i = 0; i < 2000; i++) instance.tick(1f / 60);                    // warm
             long start = System.nanoTime();
-            for (int i = 0; i < 5000; i++) instance.advance(1.0 / 60).evaluate();
+            for (int i = 0; i < 5000; i++) instance.tick(1f / 60);
             double us = (System.nanoTime() - start) / 5000.0 / 1000.0;
             System.out.printf(Locale.ROOT, "[b3] %s, %d bones: %.2f us an evaluation%n", instance.mesh(),
                     instance.mesh().skeleton().boneCount(), us);
@@ -260,8 +262,8 @@ public class CgAnimationTest {
         for (CgAnimInstance i : instances) if (i.mesh().skeleton().boneCount() > largest.mesh().skeleton().boneCount()) largest = i;
         for (int n : new int[]{1, 2, 4, 8, 16, 32}) {
             CgAnimInstance[] set = new CgAnimInstance[n];
-            for (int i = 0; i < n; i++) set[i] = new CgAnimInstance(largest.mesh()).play(largest.sections().get(0));
-            IntConsumer each = i -> set[i].advance(1.0 / 60).evaluate();
+            for (int i = 0; i < n; i++) set[i] = new CgAnimInstance(largest.mesh()).play(largest.mesh().sequences().get(0));
+            IntConsumer each = i -> set[i].tick(1f / 60);
             double serial = 0, split = 0;
             for (int round = 0; round < 2; round++) {
                 long start = System.nanoTime();

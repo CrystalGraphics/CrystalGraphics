@@ -12,7 +12,7 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import com.crystalgraphics.api.animation.CgAnimSequence;
-import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.asset.load.CgVfxAssets;
@@ -121,7 +121,7 @@ public final class CgSequencePuppet implements CgSequenceSpawner {
         private final CgSkeletalMesh mesh;
         private final CgAnimSequence clip;
         private final CgAttachment at;
-        private final CgPose pose;
+        private final CgAnimPose pose;
         private final Map<String, CgAttachment> bones = new HashMap<>();
         private final double[] root = new double[3];
         private final Quaternionf rootTurn = new Quaternionf(), boneTurn = new Quaternionf();
@@ -132,7 +132,7 @@ public final class CgSequencePuppet implements CgSequenceSpawner {
             this.mesh = mesh;
             this.clip = clip;
             this.at = at;
-            this.pose = new CgPose(mesh.skeleton());
+            this.pose = new CgAnimPose(mesh.skeleton());
             update();
         }
 

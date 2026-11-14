@@ -21,7 +21,7 @@ import org.junit.Assume;
 import org.junit.Test;
 
 import com.crystalgraphics.api.animation.CgAnimSequence;
-import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.serialization.CgCodecs;
@@ -86,7 +86,7 @@ public class CgGeckoModelTest {
         CgRichCurve rz = CgRichCurve.decode(Map.of("keys", List.of(List.of(0, 2.3))));
         CgAnimSequence s = CgAnimSequence.keyed("r", 1f).track("b", zero, zero, zero, rx, ry, rz, one, one, one).build();
         CgSkeletalMesh mesh = model().mesh();
-        CgPose pose = new CgPose(mesh.skeleton());
+        CgAnimPose pose = new CgAnimPose(mesh.skeleton());
         s.sample(pose, 0.5f);
         Quaternionf got = pose.rotation(0, new Quaternionf());
         Quaternionf want = new Quaternionf().rotationZ(2.3f).rotateY(-1.1f).rotateX(0.4f);

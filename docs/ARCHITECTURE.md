@@ -60,6 +60,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`runtime/mc/modern/README.md`](../runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `CLAUDE.md` |
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
 | [`docs/VFX.md`](VFX.md) | Writing effects: emitters, modules, events, a module of your own, and the gates for each |
+| [`docs/animation/`](animation/guides/graphs.md) | Animating a skinned character: one clip, anim graphs and their variables, slots, layers and cached poses, the `anim_graph` file; clips' markers, root motion and additives (`guides/clips.md`) |
 | [`docs/LIGHTS.md`](LIGHTS.md) | The world's lights: adding them, how they light Minecraft (deferred, the G-buffer rebuilt from depth and colour), falloff, day and night, the light grid, lights from effects, what is planned |
 | [`docs/COLLISION.md`](COLLISION.md) | Questions about space: shapes, world queries (overlap, cast, ray), hits, hitboxes over time, shields, hitboxes on every side, snapshots, exact tests, the debug view, recipes |
 | [`docs/JOBS.md`](JOBS.md) | Work off the game's thread: jobs handed back at the next tick, keys and debounce, lanes, repeating simulations, `forEach` across cores, cancelling, progress, replies |
@@ -129,8 +130,9 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | Path | What it covers |
 |---|---|
 | `api/mesh/CLAUDE.md` | `CgMesh` (a mesh as data), `CgMeshWriter`, `CgMeshShapes`, `CgMeshLoader`, `CgMeshLods`, `CgSubmesh`, `CgMeshChanges`, `CgMeshTopology`, `CgSkeletalMesh`, `CgCookedMesh` |
-| `api/animation/CLAUDE.md` | `CgSkeleton`, `CgAnimSequence`, `CgMorphTargets`, `CgCookedAnimation`: what a skinned model moves by, as data; `CgPose`, `CgAnimSection`: sampling, blending and section time |
+| `api/animation/CLAUDE.md` | `CgSkeleton`, `CgAnimSequence`, `CgMorphTargets`, `CgCookedAnimation`: what a skinned model moves by, as data; `CgAnimPose`, `CgAnimSection`: sampling, blending and section time |
 | `animation/CLAUDE.md` | `CgAnimInstance`, `CgAnimation`: what a skeletal mesh plays, posed here in `POSE`, on workers; headless on a server |
+| `animation/graph/CLAUDE.md` | `CgAnimGraph` and its nodes, `CgAnimGraphInstance`, the `anim_graph` kind's codec: Unreal's anim graph |
 
 ### Vertex / Instancing
 | Path | What it covers |

@@ -1,6 +1,5 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.animation.CgSocket;
@@ -48,12 +47,12 @@ public class CgSocketTest {
     }
 
     private static CgAnimInstance playing(CgSkeletalMesh mesh) {
-        return new CgAnimInstance(mesh).play(CgAnimSection.of(mesh.sequence("bend")).until(Double.POSITIVE_INFINITY).build());
+        return new CgAnimInstance(mesh).play(mesh.sequence("bend"));
     }
 
     @Test
     public void aSocketIsBoneTimesRelative() {
-        CgAnimInstance arm = playing(arm()).seek(0.5).evaluate();       // key 2: up 3, turned 45 degrees
+        CgAnimInstance arm = playing(arm()).position(0.5f).tick(0f);       // key 2: up 3, turned 45 degrees
         Matrix4f palm = arm.socket(arm.socket("palm"), new Matrix4f());
         Matrix4f expected = new Matrix4f().translate(0, 3, 0).rotateZ((float) Math.toRadians(45)).translate(0, 0.5f, 0);
         assertTrue(palm + " against " + expected, palm.equals(expected, 1e-5f));
@@ -61,7 +60,7 @@ public class CgSocketTest {
 
     @Test
     public void aSocketIsFoundAsUnrealFindsOne() {
-        CgAnimInstance arm = playing(arm()).seek(0.5).evaluate();
+        CgAnimInstance arm = playing(arm()).position(0.5f).tick(0f);
         assertTrue("the socket, ignoring case", (arm.socket("PALM") & (1 << 30)) != 0);
         assertEquals("else a bone, ignoring case", 1, arm.socket("elbow"));
         assertEquals(CgAnimInstance.NO_SOCKET, arm.socket("tail"));

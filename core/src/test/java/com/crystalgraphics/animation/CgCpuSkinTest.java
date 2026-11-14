@@ -1,6 +1,5 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -59,7 +58,7 @@ public class CgCpuSkinTest {
         CgScene scene = new CgScene();
         CgSkeletalMeshComponent component = scene.skeletal(mesh).at(10, 64, -3).transform(placement).spawn();
         CgAnimInstance arm = component.anim()
-                .play(CgAnimSection.of(mesh.sequence("bend")).until(Double.POSITIVE_INFINITY).build()).seek(0.5).evaluate();
+                .play(mesh.sequence("bend")).position(0.5f).tick(0f);
         scene.update();
         List<float[]> out = new ArrayList<>();
         component.cpuSkin(0, false, (x, y, z, u, v, argb, nx, ny, nz) -> out.add(new float[]{x, y, z, u, v, argb, nx, ny, nz}));
