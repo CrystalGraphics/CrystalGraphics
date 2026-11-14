@@ -354,4 +354,12 @@ public class CgClipMarkersTest {
             assertTrue(e.getMessage(), e.getMessage().contains("melee.animation.json") && e.getMessage().contains("melee_6.yaml"));
         }
     }
+
+    @Test
+    public void aSyncMarkerIsTheClipsNeverAnEvent() {
+        String json = "{ \"format_version\": \"1.8.0\", \"animations\": { \"run\": { "
+                + "  \"animation_length\": 0.5, \"timeline\": { \"0.1\": \"sync=foot_l;hit\" } } } }";
+        String tree = String.valueOf(CgClipMarkers.translate("rpgcore:core/run/run", "run.animation.json", json, ALL));
+        assertTrue(tree, tree.contains("hit") && !tree.contains("sync") && !tree.contains("foot_l"));
+    }
 }

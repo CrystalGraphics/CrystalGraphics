@@ -1,6 +1,8 @@
 package com.crystalgraphics.api.mesh;
 
 import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.api.animation.CgClipSettings;
+import com.crystalgraphics.api.animation.CgSyncMarker;
 import com.crystalgraphics.api.animation.CgMorphTargets;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
@@ -466,7 +468,38 @@ final class CgGltfLoader {
                 sequence.track(bone, track.getValue()[0], track.getValue()[1], track.getValue()[2]);
             }
             for (Map.Entry<String, float[]> curve : curves.entrySet()) sequence.curve(curve.getKey(), curve.getValue());
+            sequence.settings(CgClipSettings.NONE.withMarkers(syncMarkers(animation.getExtras(), rate, name)));
             out.add(sequence.build());
+        }
+        return out;
+    }
+
+    /**
+     * An animation's {@code extras.markers} ({@code [{ "name": "sync=foot_l", "frame": 3 }]}, or {@code "time"} in
+     * seconds) as its sync markers: the {@code sync=} rows. A frame counts at the clip's rate, and a marker past the
+     * clip's end fails as the clip builds. Any other row fails at load, naming it: its notify sequence is not made yet.
+     */
+    static List<CgSyncMarker> syncMarkers(@Nullable Object extras, double rate, String clip) throws IOException {
+        if (!(extras instanceof Map<?, ?> map) || !(map.get("markers") instanceof List<?> markers)) return List.of();
+        List<CgSyncMarker> out = new ArrayList<>();
+        for (Object o : markers) {
+            if (!(o instanceof Map<?, ?> m) || m.get("name") == null) throw new IOException(clip + ": a marker " + o + " has no name");
+            String row = String.valueOf(m.get("name")).trim();
+            if (!row.startsWith("sync=")) {
+                // The notify rows become the clip's notify sequence at scan, which glTF clips do not have yet: refused, never dropped
+                throw new IOException(clip + ": marker " + row + " is a notify row, which glTF clips do not translate yet");
+            }
+            float at;
+            if (m.get("time") instanceof Number t) {
+                at = t.floatValue();
+            } else if (m.get("frame") instanceof Number f) {
+                at = (float) (f.doubleValue() / rate);
+            } else {
+                throw new IOException(clip + ": marker " + row + " has neither a frame nor a time");
+            }
+            String marker = row.substring("sync=".length()).trim();
+            if (marker.isEmpty()) throw new IOException(clip + ": marker " + row + " names no sync marker");
+            out.add(new CgSyncMarker(marker, at));
         }
         return out;
     }

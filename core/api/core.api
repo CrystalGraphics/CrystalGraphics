@@ -133,6 +133,36 @@ com/crystalgraphics/api/PoseStack$Pose
   extends java/lang/Object
   method public normal ()Lorg/joml/Matrix3f;
   method public pose ()Lorg/joml/Matrix4f;
+com/crystalgraphics/api/animation/CgAdditive
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/api/animation/CgAdditive;
+  method public <init> (Lcom/crystalgraphics/api/animation/CgAdditive$Type;Lcom/crystalgraphics/api/animation/CgAdditive$Base;Lcom/crystalgraphics/api/animation/CgAnimSequence;I)V
+  method public base ()Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  method public baseClip ()Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public baseFrame ()I
+  method public isAdditive ()Z
+  method public type ()Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static local (Lcom/crystalgraphics/api/animation/CgAdditive$Base;Lcom/crystalgraphics/api/animation/CgAnimSequence;I)Lcom/crystalgraphics/api/animation/CgAdditive;
+com/crystalgraphics/api/animation/CgAdditive$Base
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CLIP_FRAME Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  field public,static,final FRAME Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  field public,static,final REF_POSE Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  method public,static values ()[Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+com/crystalgraphics/api/animation/CgAdditive$Type
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final LOCAL_SPACE Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  field public,static,final MESH_SPACE Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  field public,static,final NONE Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  method public,static values ()[Lcom/crystalgraphics/api/animation/CgAdditive$Type;
 com/crystalgraphics/api/animation/CgAnimSection
   access public,final
   extends java/lang/Object
@@ -177,20 +207,26 @@ com/crystalgraphics/api/animation/CgAnimSequence
   method public curveValue (II)F
   method public duration ()F
   method public equals (Ljava/lang/Object;)Z
+  method public extractRootMotion (Lcom/crystalgraphics/api/animation/CgSkeleton;FFZLorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
   method public frameCount ()I
   method public frameRate ()D
   method public hashCode ()I
   method public held (I)Z
   method public isKeyed ()Z
+  method public markersPassed (FFFLcom/crystalgraphics/api/animation/CgAnimSequence$MarkerSink;)V
   method public name ()Ljava/lang/String;
   method public rotation (IILorg/joml/Quaternionf;)Lorg/joml/Quaternionf;
   method public sample (Lcom/crystalgraphics/api/animation/CgPose;F)V
+  method public sample (Lcom/crystalgraphics/api/animation/CgPose;FZ)V
+  method public sampleAdditive (Lcom/crystalgraphics/api/animation/CgPose;Lcom/crystalgraphics/api/animation/CgPose;F)V
   method public scale (IILorg/joml/Vector3f;)Lorg/joml/Vector3f;
+  method public settings ()Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public toString ()Ljava/lang/String;
   method public track (Ljava/lang/String;)I
   method public trackBone (I)Ljava/lang/String;
   method public trackCount ()I
   method public translation (IILorg/joml/Vector3f;)Lorg/joml/Vector3f;
+  method public with (Lcom/crystalgraphics/api/animation/CgClipSettings;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public withCurve (Ljava/lang/String;[FI)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,static builder (Ljava/lang/String;DI)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
   method public,static keyed (Ljava/lang/String;F)Lcom/crystalgraphics/api/animation/CgAnimSequence$KeyedBuilder;
@@ -200,12 +236,53 @@ com/crystalgraphics/api/animation/CgAnimSequence$Builder
   method public build ()Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public curve (Ljava/lang/String;[F)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
   method public curve (Ljava/lang/String;[FI)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
+  method public settings (Lcom/crystalgraphics/api/animation/CgClipSettings;)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
   method public track (Ljava/lang/String;[F[F[F)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
 com/crystalgraphics/api/animation/CgAnimSequence$KeyedBuilder
   access public,final
   extends java/lang/Object
   method public build ()Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public settings (Lcom/crystalgraphics/api/animation/CgClipSettings;)Lcom/crystalgraphics/api/animation/CgAnimSequence$KeyedBuilder;
   method public track (Ljava/lang/String;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;Lcom/crystalgraphics/asset/curve/CgRichCurve;)Lcom/crystalgraphics/api/animation/CgAnimSequence$KeyedBuilder;
+com/crystalgraphics/api/animation/CgAnimSequence$MarkerSink
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract passed (Ljava/lang/String;F)V
+com/crystalgraphics/api/animation/CgClipDefinition
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public <init> (Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive$Type;Lcom/crystalgraphics/api/animation/CgAdditive$Base;Ljava/lang/String;ILjava/lang/String;)V
+  method public additiveBase ()Lcom/crystalgraphics/api/animation/CgAdditive$Base;
+  method public additiveType ()Lcom/crystalgraphics/api/animation/CgAdditive$Type;
+  method public baseClip ()Ljava/lang/String;
+  method public baseFrame ()I
+  method public id ()Ljava/lang/String;
+  method public markers ()Ljava/util/List;
+  method public notifies ()Ljava/lang/String;
+  method public rootMotion ()Lcom/crystalgraphics/api/animation/CgRootMotion;
+  method public settings (Ljava/util/function/Function;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static compile (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/api/animation/CgClipDefinition;
+  method public,static register ()V
+com/crystalgraphics/api/animation/CgClipSettings
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public <init> (Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive;Ljava/lang/String;)V
+  method public additive ()Lcom/crystalgraphics/api/animation/CgAdditive;
+  method public markers ()Ljava/util/List;
+  method public notifies ()Ljava/lang/String;
+  method public rootMotion ()Lcom/crystalgraphics/api/animation/CgRootMotion;
+  method public withAdditive (Lcom/crystalgraphics/api/animation/CgAdditive;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public withMarkers (Ljava/util/List;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public withNotifies (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public withRootMotion (Lcom/crystalgraphics/api/animation/CgRootMotion;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/animation/CgCookedAnimation
   access public,final
   extends java/lang/Object
@@ -262,10 +339,12 @@ com/crystalgraphics/api/animation/CgPose
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/api/animation/CgSkeleton;)V
+  method public accumulateAdditive (Lcom/crystalgraphics/api/animation/CgPose;F)Lcom/crystalgraphics/api/animation/CgPose;
   method public blend ([Lcom/crystalgraphics/api/animation/CgPose;[FI)Lcom/crystalgraphics/api/animation/CgPose;
   method public blendBones (Lcom/crystalgraphics/api/animation/CgPose;[F)Lcom/crystalgraphics/api/animation/CgPose;
   method public component (I)Lorg/joml/Matrix4fc;
   method public component (ILorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
+  method public convertToAdditive (Lcom/crystalgraphics/api/animation/CgPose;)Lcom/crystalgraphics/api/animation/CgPose;
   method public mirror (Lcom/crystalgraphics/api/animation/CgMirrorTable;)Lcom/crystalgraphics/api/animation/CgPose;
   method public resolve ()Lcom/crystalgraphics/api/animation/CgPose;
   method public rest ()Lcom/crystalgraphics/api/animation/CgPose;
@@ -276,6 +355,27 @@ com/crystalgraphics/api/animation/CgPose
   method public skeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public skinning (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;[Lorg/joml/Matrix4f;)[Lorg/joml/Matrix4f;
   method public translation (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
+com/crystalgraphics/api/animation/CgRootMotion
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/api/animation/CgRootMotion;
+  method public <init> (ZLjava/lang/String;Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;Z)V
+  method public enabled ()Z
+  method public forceRootLock ()Z
+  method public lock ()Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
+  method public rootBone ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;)Lcom/crystalgraphics/api/animation/CgRootMotion;
+com/crystalgraphics/api/animation/CgRootMotion$Lock
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ANIM_FIRST_FRAME Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
+  field public,static,final REF_POSE Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
+  field public,static,final ZERO Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
+  method public,static values ()[Lcom/crystalgraphics/api/animation/CgRootMotion$Lock;
 com/crystalgraphics/api/animation/CgSkeleton
   access public,final
   extends java/lang/Object
@@ -336,6 +436,15 @@ com/crystalgraphics/api/animation/CgSocket
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/api/animation/CgSocket;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/api/animation/CgSocket;
+com/crystalgraphics/api/animation/CgSyncMarker
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;F)V
+  method public name ()Ljava/lang/String;
+  method public time ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/buffer/CgBuffer
   access public,final
   extends java/lang/Object
@@ -2283,6 +2392,7 @@ com/crystalgraphics/asset/kind/CgAssetKinds
 com/crystalgraphics/asset/kind/CgBodyKinds
   access public,final
   extends java/lang/Object
+  field public,static,final CLIP Lcom/crystalgraphics/object/CgType;
   field public,static,final OPS Lcom/crystalgraphics/object/CgType;
   field public,static,final PREFAB Lcom/crystalgraphics/object/CgType;
   field public,static,final RETARGETER Lcom/crystalgraphics/object/CgType;

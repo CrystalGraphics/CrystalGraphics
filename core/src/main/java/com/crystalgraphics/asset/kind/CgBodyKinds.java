@@ -75,6 +75,35 @@ public final class CgBodyKinds {
             .property("fallbacks", CgValueType.mapOf(CgValueType.struct(FALLBACK))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    // ── Clip ─────────────────────────────────────────────────────────────────────────────
+
+    static final CgType SYNC_MARKER = CgTypes.struct("crystalgraphics:clip.sync_marker")
+            .property("name", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("at", FLOAT).forms(CgValueForm.CONSTANT).required().quantity(CgQuantity.TIME).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    static final CgType ROOT_MOTION = CgTypes.struct("crystalgraphics:clip.root_motion")
+            .property("enabled", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("root_bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("lock", CgValueType.enumOf("ref_pose", "anim_first_frame", "zero")).defaultValue("ref_pose").flags(CgPropertyFlag.HEADLESS)
+            .property("force_root_lock", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    static final CgType ADDITIVE = CgTypes.struct("crystalgraphics:clip.additive")
+            .property("type", CgValueType.enumOf("none", "local_space", "mesh_space")).defaultValue("none").flags(CgPropertyFlag.HEADLESS)
+            .property("base", CgValueType.enumOf("ref_pose", "frame", "clip_frame")).defaultValue("ref_pose").flags(CgPropertyFlag.HEADLESS)
+            .property("base_clip", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("base_frame", INT).forms(CgValueForm.CONSTANT).defaultValue(0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code clips/}: a clip's settings ({@code UAnimSequence}'s): sync markers, root motion, additive, notifies. */
+    public static final CgType CLIP = CgTypes.kind("crystalgraphics:clip").folder("clips").version(1)
+            .property("sync_markers", CgValueType.listOf(CgValueType.struct(SYNC_MARKER))).flags(CgPropertyFlag.HEADLESS)
+            .property("root_motion", CgValueType.struct(ROOT_MOTION)).flags(CgPropertyFlag.HEADLESS)
+            .property("additive", CgValueType.struct(ADDITIVE)).flags(CgPropertyFlag.HEADLESS)
+            .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     // ── Springs ──────────────────────────────────────────────────────────────────────────
 
     static final CgType CHAIN = CgTypes.element("crystalgraphics:springs.chain")

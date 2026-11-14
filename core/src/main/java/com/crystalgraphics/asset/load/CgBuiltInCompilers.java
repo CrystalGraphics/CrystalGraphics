@@ -1,5 +1,6 @@
 package com.crystalgraphics.asset.load;
 
+import com.crystalgraphics.api.animation.CgClipDefinition;
 import com.crystalgraphics.api.animation.CgSkeletonDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
@@ -42,6 +43,7 @@ public final class CgBuiltInCompilers {
         CgCameraShakeDefinition.register();
         CgSequenceDefinition.register();
         CgSkeletonDefinition.register();
+        CgClipDefinition.register();
         CgCueDefinition.register();
         CgStageDefinition.register();
         CgTextStyle.register();

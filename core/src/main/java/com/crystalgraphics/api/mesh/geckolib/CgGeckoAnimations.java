@@ -7,6 +7,8 @@ import java.util.Locale;
 import java.util.Map;
 
 import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.api.animation.CgClipSettings;
+import com.crystalgraphics.api.animation.CgSyncMarker;
 import com.crystalgraphics.asset.curve.CgRichCurve;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.format.CgFiles;
@@ -70,12 +72,41 @@ final class CgGeckoAnimations {
             tracks.add(new Object[]{boneName, c});
         }
         double length = a.get("animation_length") instanceof Number n ? n.doubleValue() : last;
-        CgAnimSequence.KeyedBuilder sequence = CgAnimSequence.keyed(name, (float) length);
+        CgAnimSequence.KeyedBuilder sequence = CgAnimSequence.keyed(name, (float) length)
+                .settings(CgClipSettings.NONE.withMarkers(syncMarkers(a.get("timeline"), where)));
         for (Object[] t : tracks) {
             CgRichCurve[] c = (CgRichCurve[]) t[1];
             sequence.track((String) t[0], c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7], c[8]);
         }
         return new CgGeckoAnimation(name, sequence.build(), loop);
+    }
+
+    /**
+     * The {@code timeline}'s {@code sync=<name>;} instructions as the clip's sync markers. Every other instruction is
+     * the clip's notify sequence's ({@code CgClipMarkers}).
+     */
+    private static List<CgSyncMarker> syncMarkers(Object timeline, String where) {
+        if (!(timeline instanceof Map<?, ?> keys)) return List.of();
+        List<CgSyncMarker> out = new ArrayList<>();
+        for (Map.Entry<?, ?> k : keys.entrySet()) {
+            float at;
+            try {
+                at = Float.parseFloat(String.valueOf(k.getKey()).trim());
+            } catch (NumberFormatException e) {
+                continue;   // a key that is no time is not a marker, as CgClipMarkers reads it
+            }
+            Object v = k.getValue();
+            for (Object entry : v instanceof List<?> l ? l : List.of(v)) {
+                for (String instruction : String.valueOf(entry).split(";")) {
+                    String i = instruction.trim();
+                    if (!i.startsWith("sync=")) continue;
+                    String name = i.substring("sync=".length()).trim();
+                    if (name.isEmpty()) throw new IllegalArgumentException(where + ": timeline key " + at + " names no sync marker");
+                    out.add(new CgSyncMarker(name, at));
+                }
+            }
+        }
+        return out;
     }
 
     /** {@code Animation.LoopType.fromJson}; a name it does not register fails rather than playing once. */

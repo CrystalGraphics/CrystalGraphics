@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.animation;
 
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -10,6 +11,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * An animation clip: each animated bone's translation, rotation and scale at evenly spaced frames, and any float
@@ -91,15 +93,18 @@ public final class CgAnimSequence {
     /** A keyed sequence's channels, nine a track (translation, Euler rotation, scale, each x y z); null when framed. */
     final CgRichCurve[][] keys;
     private final float keyedDuration;
+    private final CgClipSettings settings;
 
     CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
                    float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives) {
-        this(name, frameRate, frameCount, trackBones, translations, rotations, scales, curveNames, curves, curveDrives, null, 0f);
+        this(name, frameRate, frameCount, trackBones, translations, rotations, scales, curveNames, curves, curveDrives, null, 0f,
+                CgClipSettings.NONE);
     }
 
     private CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
                            float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives,
-                           CgRichCurve[][] keys, float keyedDuration) {
+                           CgRichCurve[][] keys, float keyedDuration, CgClipSettings settings) {
+        this.settings = settings;
         this.keys = keys;
         this.keyedDuration = keyedDuration;
         this.curveDrives = curveDrives;
@@ -114,6 +119,60 @@ public final class CgAnimSequence {
         this.curves = curves;
         for (int t = 0; t < trackBones.length; t++) trackIndex.put(trackBones[t], t);
         for (int c = 0; c < curveNames.length; c++) curveIndex.put(curveNames[c], c);
+        float length = duration();
+        for (CgSyncMarker m : settings.markers()) {
+            // A marker past the clip's end fails at load, as the format requires
+            if (m.time() > length + 1e-4f) throw new IllegalArgumentException(name + ": sync marker " + m.name() + " at " + m.time()
+                    + " s is past its end, " + length + " s");
+        }
+    }
+
+    /** Its sync markers, root motion, additive base and notify sequence ({@link CgClipSettings#NONE} unless given). */
+    public CgClipSettings settings() {
+        return settings;
+    }
+
+    /**
+     * This clip with {@code settings}: the same keys, shared, and new settings, as a {@code clip} asset gives them.
+     *
+     * <pre>{@code
+     * CgAnimSequence lunge = mesh.sequence("lunge").with(CgClipSettings.NONE.withRootMotion(CgRootMotion.of(CgRootMotion.Lock.REF_POSE)));
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a sync marker past its end
+     */
+    public CgAnimSequence with(CgClipSettings settings) {
+        return new CgAnimSequence(name, frameRate, frameCount, trackBones, translations, rotations, scales, curveNames, curves,
+                curveDrives, keys, keyedDuration, Objects.requireNonNull(settings, "settings"));
+    }
+
+    /** Hears each sync marker a play passes ({@link #markersPassed}). */
+    @FunctionalInterface
+    public interface MarkerSink {
+        /**
+         * @param name             the marker's name
+         * @param deltaWhenPassed  how far into this tick's move the marker lay, seconds ({@code DeltaTimeWhenPassed})
+         */
+        void passed(String name, float deltaWhenPassed);
+    }
+
+    /**
+     * Every sync marker in {@code [from, to)}, earliest first, into {@code sink}: Unreal's
+     * {@code FMarkerSyncData::CollectMarkersInRange} (AnimTypes.cpp:325-338). A looping play wrapping in one tick asks
+     * twice, once each side of the wrap.
+     *
+     * <pre>{@code
+     * run.markersPassed(0.45f, 0.53f, 0.08f, (name, delta) -> ...);   // foot_r at 0.5: passed 0.05 s before the move ended
+     * }</pre>
+     *
+     * @param moved this tick's whole move, seconds: what each marker's delta is measured back from
+     */
+    public void markersPassed(float from, float to, float moved, MarkerSink sink) {
+        List<CgSyncMarker> markers = settings.markers();
+        for (int i = 0; i < markers.size(); i++) {
+            CgSyncMarker m = markers.get(i);
+            if (m.time() >= from && m.time() < to) sink.passed(m.name(), moved - (m.time() - from));
+        }
     }
 
     /**
@@ -255,7 +314,7 @@ public final class CgAnimSequence {
         int[] d = new int[b.drives.size()];
         for (int i = 0; i < d.length; i++) d[i] = b.drives.get(i);
         return new CgAnimSequence(name, frameRate, frameCount, trackBones, translations, rotations, scales,
-                b.curveNames.toArray(new String[0]), k, d);
+                b.curveNames.toArray(new String[0]), k, d, null, 0f, settings);
     }
 
     /** The curve's value at {@code time} seconds: between its keys as {@link #sample} takes a bone's, clamped to its ends. */
@@ -286,6 +345,199 @@ public final class CgAnimSequence {
      * </ul>
      */
     public void sample(CgPose pose, float time) {
+        sample(pose, time, false);
+    }
+
+    /**
+     * As {@link #sample(CgPose, float)}, with the root locked where its motion is extracted: Unreal's
+     * {@code FRootMotionReset} (AnimCompressionTypes.h), applied when {@code extractRootMotion} and the clip's root
+     * motion is on, or always with {@code forceRootLock} (AnimSequence.cpp:1840-1866). The motion itself is
+     * {@link #extractRootMotion}'s.
+     *
+     * <pre>{@code
+     * lunge.sample(pose, t, true);                                   // the root held at its lock
+     * lunge.extractRootMotion(skeleton, t, dt, false, step);         // what moved, for the character
+     * }</pre>
+     */
+    public void sample(CgPose pose, float time, boolean extractRootMotion) {
+        sampleKeys(pose, time);
+        CgRootMotion rm = settings.rootMotion();
+        if (extractRootMotion && rm.enabled() || rm.forceRootLock()) lockRoot(pose);
+    }
+
+    /**
+     * Its pose at {@code time} as differences from its additive base, into {@code out}: Unreal's
+     * {@code GetBonePose_Additive} (AnimSequence.cpp:1895-1918), the base from {@code GetAdditiveBasePose}
+     * (:1938-1975), each bone through {@code ConvertTransformToAdditive} (AnimationRuntime.cpp:1109-1120).
+     * {@code base} is scratch, overwritten. Apply the result with {@link CgPose#accumulateAdditive}.
+     *
+     * <pre>{@code
+     * flinch.sampleAdditive(delta, scratch, t);
+     * body.accumulateAdditive(delta, 0.8f);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a clip that is not additive, or a mesh-space one (the aim offset node's)
+     */
+    public void sampleAdditive(CgPose out, CgPose base, float time) {
+        CgAdditive additive = settings.additive();
+        if (!additive.isAdditive()) throw new IllegalStateException(name + " is not additive");
+        if (additive.type() == CgAdditive.Type.MESH_SPACE) {
+            throw new IllegalStateException(name + " is a mesh-space additive: an aim offset plays it");
+        }
+        out.rest();
+        sample(out, time);
+        base.rest();
+        switch (additive.base()) {
+            case FRAME -> sample(base, frameTime(this, additive.baseFrame()));
+            case CLIP_FRAME -> additive.baseClip().sample(base, frameTime(additive.baseClip(), additive.baseFrame()));
+            default -> { }
+        }
+        out.convertToAdditive(base);
+    }
+
+    /** {@code GetSequencePose}'s time of a frame: {@code length · clamp(frame / keys)}, keys 0 for a keyed clip. */
+    private static float frameTime(CgAnimSequence clip, int frame) {
+        int keys = clip.frameCount;
+        float fraction = keys > 0 ? Math.min(1f, Math.max(0f, (float) frame / keys)) : 0f;
+        return clip.duration() * fraction;
+    }
+
+    /**
+     * The root's motion from {@code from} over {@code delta} seconds, in the mesh's space, into {@code out}: Unreal's
+     * {@code ExtractRootMotion} (AnimSequence.cpp:1564-1604), wrapping when {@code looping}, each range by
+     * {@code ExtractRootMotionFromRange} (:1606-1650) with scale cleared ({@code bUseNormalizedRootMotionScale}). A
+     * negative delta plays backwards.
+     *
+     * <pre>{@code
+     * Matrix4f step = lunge.extractRootMotion(skeleton, t, dt, false, new Matrix4f());
+     * mover.move(step);                                     // the character carried by this frame's step
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Identity where its root motion is off, the delta is 0 or it has no length.</li>
+     *   <li>Allocates nothing once warm; any thread.</li>
+     * </ul>
+     */
+    public Matrix4f extractRootMotion(CgSkeleton skeleton, float from, float delta, boolean looping, Matrix4f out) {
+        out.identity();
+        float length = duration();
+        if (!settings.rootMotion().enabled() || delta == 0f || !(length > 0f)) return out;
+        Scratch s = SCRATCH.get();
+        boolean backwards = delta < 0f, any = false;
+        float previous = from, current = from, remaining = delta;
+        for (int guard = 0; guard < 64; guard++) {
+            // FAnimationRuntime::AdvanceTime with looping off: to the move's end, or the clip's boundary
+            float target = current + remaining;
+            boolean finished = false;
+            if (target > length) {
+                target = length;
+                finished = true;
+            } else if (target < 0f) {
+                target = 0f;
+                finished = true;
+            }
+            rootMotionRange(skeleton, previous, target, s.range, s);
+            if (any) {
+                out.mul(s.range);   // RootMotionTransform = In * RootMotionTransform (AnimationAsset.h:736-744)
+            } else {
+                out.set(s.range);
+                any = true;
+            }
+            current = target;
+            if (!(finished && looping)) break;
+            remaining -= current - previous;
+            if (Math.abs(remaining) <= 1e-6f) break;
+            previous = backwards ? length : 0f;
+            current = previous;
+        }
+        return out;
+    }
+
+    /** {@code ExtractRootMotionFromRange}: {@code Ref · Start⁻¹ · End · Ref⁻¹}, Unreal's {@code End.GetRelativeTransform(Start)} in mesh space. */
+    private void rootMotionRange(CgSkeleton skeleton, float start, float end, Matrix4f out, Scratch s) {
+        int root = rootBone(skeleton);
+        rootLocal(skeleton, root, start, s.t);
+        trs(s.t, 0, s.start);
+        rootLocal(skeleton, root, end, s.t);
+        trs(s.t, 0, s.end);
+        trs(skeleton.rest(), root * CgSkeleton.REST, s.ref);
+        out.set(s.ref).mul(s.start.invert()).mul(s.end).mul(s.ref.invert());
+    }
+
+    /** A bone's translation and rotation, scale cleared, as a matrix. */
+    private static void trs(float[] local, int at, Matrix4f out) {
+        out.translationRotate(local[at], local[at + 1], local[at + 2], local[at + 3], local[at + 4], local[at + 5], local[at + 6]);
+    }
+
+    /** The root bone's index: the settings' {@code rootBone}, else bone 0. */
+    private int rootBone(CgSkeleton skeleton) {
+        String named = settings.rootMotion().rootBone();
+        if (named == null) return 0;
+        int b = skeleton.indexOfIgnoringCase(named);
+        if (b < 0) throw new IllegalArgumentException(name + ": root motion's root " + named + " is not a bone of " + skeleton);
+        return b;
+    }
+
+    /** {@code ResetRootBoneForRootMotion}: the root to its lock. */
+    private void lockRoot(CgPose pose) {
+        CgSkeleton skeleton = pose.skeleton();
+        int root = rootBone(skeleton), at = root * CgSkeleton.REST;
+        float[] out = pose.local;
+        switch (settings.rootMotion().lock()) {
+            case ANIM_FIRST_FRAME -> {
+                float[] t = SCRATCH.get().t;
+                rootLocal(skeleton, root, 0f, t);
+                System.arraycopy(t, 0, out, at, CgSkeleton.REST);
+            }
+            case ZERO -> {
+                Arrays.fill(out, at, at + 6, 0f);
+                out[at + 6] = 1f;
+                Arrays.fill(out, at + 7, at + 10, 1f);
+            }
+            default -> System.arraycopy(skeleton.rest(), at, out, at, CgSkeleton.REST);
+        }
+    }
+
+    /** The root bone's local transform at {@code time} into {@code out[0..10)}: its track's, else its rest. */
+    private void rootLocal(CgSkeleton skeleton, int root, float time, float[] out) {
+        int track = -1;
+        for (int t = 0; t < trackBones.length && track < 0; t++) {
+            if (trackBones[t].equalsIgnoreCase(skeleton.name(root))) track = t;
+        }
+        System.arraycopy(skeleton.rest(), root * CgSkeleton.REST, out, 0, CgSkeleton.REST);
+        if (track < 0) return;
+        if (keys != null) {
+            sampleKeyedTrack(keys[track], out, 0, time);
+            return;
+        }
+        int a, b;
+        float alpha;
+        if (frameCount < 2 || time <= 0f) {
+            a = b = 0;
+            alpha = 0f;
+        } else if (time >= duration()) {
+            a = b = frameCount - 1;
+            alpha = 0f;
+        } else {
+            float key = time / duration() * (frameCount - 1);
+            a = Math.min((int) Math.floor(key), frameCount - 1);
+            b = Math.min(a + 1, frameCount - 1);
+            alpha = key - (float) Math.floor(key);
+        }
+        lerp(translations[track], 3, a, b, alpha, out, 0);
+        nlerp(rotations[track], a, b, alpha, out, 3);
+        lerp(scales[track], 3, a, b, alpha, out, 7);
+    }
+
+    /** Per thread: what root motion works in. */
+    private static final class Scratch {
+        final Matrix4f range = new Matrix4f(), start = new Matrix4f(), end = new Matrix4f(), ref = new Matrix4f();
+        final float[] t = new float[CgSkeleton.REST];
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
+
+    private void sampleKeys(CgPose pose, float time) {
         int[] bones = bind(pose.skeleton());
         if (keys != null) {
             sampleKeyed(bones, pose.local, time);
@@ -321,8 +573,13 @@ public final class CgAnimSequence {
         for (int t = 0; t < bones.length; t++) {
             int bone = bones[t];
             if (bone < 0) continue;
-            CgRichCurve[] c = keys[t];
-            int at = bone * CgSkeleton.REST;
+            sampleKeyedTrack(keys[t], out, bone * CgSkeleton.REST, time);
+        }
+    }
+
+    /** One keyed track's nine curves at {@code time} into {@code out[at..at + 10)}. */
+    private static void sampleKeyedTrack(CgRichCurve[] c, float[] out, int at, float time) {
+        {
             out[at] = c[0].eval(time);
             out[at + 1] = c[1].eval(time);
             out[at + 2] = c[2].eval(time);
@@ -409,7 +666,7 @@ public final class CgAnimSequence {
                 && Arrays.deepEquals(rotations, s.rotations) && Arrays.deepEquals(scales, s.scales)
                 && Arrays.equals(curveNames, s.curveNames) && Arrays.deepEquals(curves, s.curves)
                 && Arrays.equals(curveDrives, s.curveDrives) && Arrays.deepEquals(keys, s.keys)
-                && keyedDuration == s.keyedDuration;
+                && keyedDuration == s.keyedDuration && settings.equals(s.settings);
     }
 
     @Override
@@ -434,6 +691,7 @@ public final class CgAnimSequence {
         private final List<float[]> translations = new ArrayList<>(), rotations = new ArrayList<>(), scales = new ArrayList<>(),
                 curves = new ArrayList<>();
         private final List<Integer> drives = new ArrayList<>();
+        private CgClipSettings settings = CgClipSettings.NONE;
 
         private Builder(String name, double frameRate, int frameCount) {
             if (name == null) throw new IllegalArgumentException("a sequence has a name");
@@ -485,12 +743,18 @@ public final class CgAnimSequence {
             return this;
         }
 
+        /** Its sync markers, root motion, additive base and notify sequence ({@link CgClipSettings#NONE} by default). */
+        public Builder settings(CgClipSettings settings) {
+            this.settings = Objects.requireNonNull(settings, "settings");
+            return this;
+        }
+
         public CgAnimSequence build() {
             int[] d = new int[drives.size()];
             for (int i = 0; i < d.length; i++) d[i] = drives.get(i);
             return new CgAnimSequence(name, frameRate, frameCount, bones.toArray(new String[0]),
                     translations.toArray(new float[0][]), rotations.toArray(new float[0][]), scales.toArray(new float[0][]),
-                    curveNames.toArray(new String[0]), curves.toArray(new float[0][]), d);
+                    curveNames.toArray(new String[0]), curves.toArray(new float[0][]), d, null, 0f, settings);
         }
 
         private float[] keys(String what, float[] keys, int width) {
@@ -528,6 +792,7 @@ public final class CgAnimSequence {
         private final float duration;
         private final List<String> bones = new ArrayList<>();
         private final List<CgRichCurve[]> tracks = new ArrayList<>();
+        private CgClipSettings settings = CgClipSettings.NONE;
 
         private KeyedBuilder(String name, float duration) {
             if (name == null) throw new IllegalArgumentException("a sequence has a name");
@@ -556,7 +821,13 @@ public final class CgAnimSequence {
             int n = bones.size();
             float[][] none = new float[n][];
             return new CgAnimSequence(name, 0, 0, bones.toArray(new String[0]), none, none, none, new String[0],
-                    new float[0][], new int[0], tracks.toArray(new CgRichCurve[0][]), duration);
+                    new float[0][], new int[0], tracks.toArray(new CgRichCurve[0][]), duration, settings);
+        }
+
+        /** Its sync markers, root motion, additive base and notify sequence ({@link CgClipSettings#NONE} by default). */
+        public KeyedBuilder settings(CgClipSettings settings) {
+            this.settings = Objects.requireNonNull(settings, "settings");
+            return this;
         }
     }
 }

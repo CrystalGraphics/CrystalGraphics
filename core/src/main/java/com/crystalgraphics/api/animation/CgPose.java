@@ -131,6 +131,89 @@ public final class CgPose {
     }
 
     /**
+     * This pose as differences from {@code base}, bone by bone: Unreal's {@code ConvertPoseToAdditive}
+     * (AnimationRuntime.cpp:1109-1148). Rotation {@code q · base⁻¹}, translation {@code t − base}, scale
+     * {@code s / base − 1}, so differences blend and add. What {@link CgAnimSequence#sampleAdditive} makes.
+     */
+    public CgPose convertToAdditive(CgPose base) {
+        requireSame(base);
+        float[] b = base.local;
+        for (int at = 0; at < local.length; at += REST) {
+            float qx = local[at + 3], qy = local[at + 4], qz = local[at + 5], qw = local[at + 6];
+            // q · conj(b): b is unit, so its conjugate is its inverse
+            float bx = -b[at + 3], by = -b[at + 4], bz = -b[at + 5], bw = b[at + 6];
+            local[at + 3] = qw * bx + qx * bw + qy * bz - qz * by;
+            local[at + 4] = qw * by - qx * bz + qy * bw + qz * bx;
+            local[at + 5] = qw * bz + qx * by - qy * bx + qz * bw;
+            local[at + 6] = qw * bw - qx * bx - qy * by - qz * bz;
+            normalizeRotation(local, at + 3);
+            for (int c = 0; c < 3; c++) {
+                local[at + c] -= b[at + c];
+                float s = b[at + 7 + c];
+                // GetSafeScaleReciprocal: 0 where the base's scale is within SMALL_NUMBER of 0
+                local[at + 7 + c] = local[at + 7 + c] * (Math.abs(s) <= 1e-8f ? 0f : 1f / s) - 1f;
+            }
+        }
+        return this;
+    }
+
+    /**
+     * {@code additive}'s differences added on top at {@code weight}, bone by bone: Unreal's
+     * {@code AccumulateLocalSpaceAdditivePoseInternal} (AnimationRuntime.cpp). At full weight
+     * {@code AccumulateWithAdditiveScale}, else {@code BlendFromIdentityAndAccumulate} (TransformNonVectorized.h:
+     * 1020-1095): rotation {@code a · q}, translation {@code t + a}, scale {@code s · (1 + a)}.
+     *
+     * <pre>{@code
+     * flinch.sampleAdditive(delta, scratch, t);
+     * body.accumulateAdditive(delta, 0.6f);      // a flinch at 60% over whatever the body plays
+     * }</pre>
+     */
+    public CgPose accumulateAdditive(CgPose additive, float weight) {
+        requireSame(additive);
+        if (weight <= ZERO_WEIGHT) return this;
+        boolean full = weight >= 1f - ZERO_WEIGHT;
+        float[] a = additive.local;
+        for (int at = 0; at < local.length; at += REST) {
+            float ax = a[at + 3], ay = a[at + 4], az = a[at + 5], aw = a[at + 6];
+            float tx = a[at], ty = a[at + 1], tz = a[at + 2], sx = a[at + 7], sy = a[at + 8], sz = a[at + 9];
+            if (!full) {
+                // FTransform::Blend from the additive identity: FastLerp from (0,0,0,1), then normalised
+                float bias = aw >= 0f ? 1f - weight : weight - 1f;
+                ax *= weight;
+                ay *= weight;
+                az *= weight;
+                aw = aw * weight + bias;
+                float n = (float) Math.sqrt(ax * ax + ay * ay + az * az + aw * aw);
+                if (n > 0f) {
+                    ax /= n;
+                    ay /= n;
+                    az /= n;
+                    aw /= n;
+                }
+                tx *= weight;
+                ty *= weight;
+                tz *= weight;
+                sx *= weight;
+                sy *= weight;
+                sz *= weight;
+            }
+            float qx = local[at + 3], qy = local[at + 4], qz = local[at + 5], qw = local[at + 6];
+            local[at + 3] = aw * qx + ax * qw + ay * qz - az * qy;
+            local[at + 4] = aw * qy - ax * qz + ay * qw + az * qx;
+            local[at + 5] = aw * qz + ax * qy - ay * qx + az * qw;
+            local[at + 6] = aw * qw - ax * qx - ay * qy - az * qz;
+            normalizeRotation(local, at + 3);
+            local[at] += tx;
+            local[at + 1] += ty;
+            local[at + 2] += tz;
+            local[at + 7] *= 1f + sx;
+            local[at + 8] *= 1f + sy;
+            local[at + 9] *= 1f + sz;
+        }
+        return this;
+    }
+
+    /**
      * Each bone moved toward {@code layer}'s by its weight in {@code boneWeights}, local to its parent: Unreal's layered
      * blend per bone in local space ({@code FAnimationRuntime::BlendPosesPerBoneFilter}). A weight of 0 keeps this
      * pose's bone, 1 takes the layer's.
