@@ -11,7 +11,9 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.Vec3;
 //?}
 
@@ -117,8 +119,45 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         //?} else {
         /*String fill = "replaceitem block %d %d %d container.0 minecraft:cobblestone 8";
         *///?}
-        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
+        if ("anvil".equals(block)) {
+            // an anvil falls through air: a floor first
+            return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y - 1, z),
+                    String.format(Locale.ROOT, "setblock %d %d %d minecraft:anvil", x, y, z));
+        }
+        // a chest under a solid block will not open
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y + 1, z),
+                String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
                 String.format(Locale.ROOT, fill, x, y, z));
+    }
+
+    // The item's count key was Count (a byte) until 1.20.5's count: both are given, and an unknown key is ignored.
+    @Override
+    public boolean merchant(int x, int y, int z) {
+        // On uneven ground a villager made inside terrain suffocates: a floor, and air for it to stand in.
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:stone", x, y - 1, z),
+                String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y, z),
+                String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y + 1, z),
+                String.format(Locale.ROOT, "summon minecraft:villager %d %d %d {NoAI:1b,Offers:{Recipes:[{"
+                + "buy:{id:\"minecraft:emerald\",Count:1b,count:1},sell:{id:\"minecraft:cobblestone\",Count:1b,count:1},"
+                + "maxUses:9999,uses:0}]}}", x, y, z));
+    }
+
+    @Override
+    public boolean useEntity(int id) {
+        //? if >=1.14.3 {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        Entity target = mc.level == null ? null : mc.level.getEntity(id);
+        if (player == null || mc.gameMode == null || target == null) return false;
+        //? if >=26.1 {
+        /*mc.gameMode.interact(player, target, new EntityHitResult(target), InteractionHand.MAIN_HAND);
+        *///?} else {
+        mc.gameMode.interact(player, target, InteractionHand.MAIN_HAND);
+        //?}
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
     }
 
     // useItemOn lost its level argument in 1.19; 1.14.3-1.14.4 spell the level MultiPlayerLevel.

@@ -122,7 +122,10 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
 
     @Override
     public boolean container(int x, int y, int z, String block) {
-        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
+        if ("anvil".equals(block)) return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:anvil", x, y, z));
+        // a chest under a solid block will not open
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:air", x, y + 1, z),
+                String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
                 String.format(Locale.ROOT, "replaceitem block %d %d %d slot.container.0 minecraft:cobblestone 8", x, y, z));
     }
 

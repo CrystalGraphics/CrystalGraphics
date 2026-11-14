@@ -16,7 +16,7 @@ import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.world.CgEntityQueries;
 
 /**
- * {@code crystalgraphics:containers}: a furnace and a chest opened as a player opens them, read through
+ * {@code crystalgraphics:containers}: a furnace, a chest, an anvil and a merchant opened as a player opens them, read through
  * {@link CgContainers} and driven with its clicks, against the single-player server that answers them. A click that
  * lands proves the packet was vanilla's: the server's reply is what the next read shows.
  *
@@ -29,8 +29,8 @@ import com.crystalgraphics.world.CgEntityQueries;
  * }</pre>
  *
  * <ul>
- *   <li>It changes the world: a furnace and a chest two blocks from the player, each holding eight cobblestone, broken
- *       at the end.</li>
+ *   <li>It changes the world: a furnace and a chest two blocks from the player, each holding eight cobblestone, an
+ *       anvil, and a villager with one trade; the blocks are broken and the villager removed at the end.</li>
  *   <li>Skipped, with the reason, where there is no single-player server or the era has no use-block call.</li>
  * </ul>
  */
@@ -92,6 +92,8 @@ public final class CgContainersProbe {
             by = (int) Math.floor(pose[CgEntityQuery.Y]);
             bz = (int) Math.floor(pose[CgEntityQuery.Z]);
             boolean made = stimulus.container(bx + 2, by, bz, "furnace") & stimulus.container(bx + 2, by, bz + 2, "chest");
+            boolean anvil = stimulus.container(bx + 2, by, bz - 2, "anvil");
+            boolean merchant = stimulus.merchant(bx - 2, by, bz);
             if (!made) {
                 skip("containers", "no single-player server to place a block on");
                 endTest();
@@ -99,6 +101,10 @@ public final class CgContainersProbe {
             }
             script("furnace", bx + 2, by, bz, "minecraft:furnace");
             script("chest", bx + 2, by, bz + 2, "minecraft:generic_9x");
+            if (anvil) anvil(bx + 2, by, bz - 2);
+            else skip("anvil", "this version cannot place an anvil");
+            if (merchant) merchant(bx - 2, by, bz);
+            else skip("merchant", "this version cannot place a villager");
             return true;
         }
 
@@ -129,6 +135,82 @@ public final class CgContainersProbe {
             }, "the player's own menu again"));
         }
 
+        /** The anvil: opened, its three slots and the player's, a rename sent where the era sends one, closed. */
+        private void anvil(int x, int y, int z) {
+            CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);
+            stages.add(new Stage("anvil.open", "anvil", () -> opened(stimulus.use(x, y, z), "anvil"),
+                    () -> isType("minecraft:anvil"), "a menu of minecraft:anvil"));
+            stages.add(layout("anvil"));
+            if (CgContainers.capabilities().rename()) {
+                stages.add(new Stage("anvil.rename", "anvil", () -> act(new Action.Rename("cg")),
+                        () -> isType("minecraft:anvil"), "a rename sent, the menu still open"));
+                stages.add(new Stage("anvil.state", "anvil", () -> { },
+                        () -> state("cost"), "the repair cost in the menu's state"));
+            } else {
+                skip("anvil.rename", "this era sends no rename");
+            }
+            stages.add(closing("anvil"));
+        }
+
+        /** The merchant: a villager found beside the player and used, its slots, a trade selected where the era selects, closed. */
+        private void merchant(int x, int y, int z) {
+            CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);
+            stages.add(new Stage("merchant.open", "merchant", () -> opened(stimulus.useEntity(villager(x, y, z)), "merchant"),
+                    () -> isType("minecraft:merchant"), "a menu of minecraft:merchant"));
+            stages.add(layout("merchant"));
+            if (CgContainers.capabilities().selectTrade()) {
+                stages.add(new Stage("merchant.select", "merchant", () -> act(new Action.SelectTrade(0)),
+                        () -> isType("minecraft:merchant"), "a trade selected, the menu still open"));
+                stages.add(new Stage("merchant.state", "merchant", () -> { },
+                        () -> state("offers"), "the offers in the menu's state"));
+            } else {
+                skip("merchant.select", "this era selects no trade");
+            }
+            stages.add(closing("merchant"));
+        }
+
+        private void opened(boolean sent, String group) {
+            if (sent) return;
+            skip(group + ".open", "this version has no use call for it");
+            stages.removeIf(stage -> stage.group().equals(group));
+            running = null;
+        }
+
+        /** The id of the villager near the point, or -1. */
+        private int villager(int x, int y, int z) {
+            CgEntityQuery entities = CgEntityQueries.client();
+            int me = entities.localPlayer();
+            int[] found = {-1};
+            entities.within(x - 1, y - 1, z - 1, x + 2, y + 3, z + 2, id -> {
+                if (id != me) found[0] = id;
+            });
+            return found[0];
+        }
+
+        private Stage layout(String group) {
+            return new Stage(group + ".layout", group, () -> { }, () -> {
+                CgContainers.Menu menu = CgContainers.menu();
+                return menu != null && menu.slots().size() == 39 && menu.slot(2).kind() == SlotKind.RESULT;
+            }, "3 slots and the player's 36, the third a result");
+        }
+
+        private Stage closing(String group) {
+            return new Stage(group + ".close", group, () -> act(new Action.Close()), () -> {
+                CgContainers.Menu menu = CgContainers.menu();
+                return menu == null || menu.isPlayerInventory();
+            }, "the player's own menu again");
+        }
+
+        private static boolean isType(String type) {
+            CgContainers.Menu menu = CgContainers.menu();
+            return menu != null && !menu.isPlayerInventory() && menu.type().startsWith(type);
+        }
+
+        private static boolean state(String key) {
+            CgContainers.Menu menu = CgContainers.menu();
+            return menu != null && menu.state().has(key);
+        }
+
         private void advance() {
             if (running != null) {
                 if (running.done().getAsBoolean()) {
@@ -150,6 +232,8 @@ public final class CgContainersProbe {
                 CgWorldStimulus stimulus = CgPlatform.get(CgWorldStimulus.SERVICE);
                 stimulus.breakBlock(bx + 2, by, bz);
                 stimulus.breakBlock(bx + 2, by, bz + 2);
+                stimulus.breakBlock(bx + 2, by, bz - 2);
+                stimulus.clear(bx - 2, by, bz, 3);
                 endTest();
                 return;
             }

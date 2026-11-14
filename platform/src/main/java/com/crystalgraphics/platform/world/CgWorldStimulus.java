@@ -90,9 +90,19 @@ public interface CgWorldStimulus {
 
     /**
      * A furnace or a chest set at the block by the server, with eight cobblestone in its first slot, for a probe of
-     * {@code CgContainers}. {@code block} is {@code "furnace"} or {@code "chest"}; false where this version cannot.
+     * {@code CgContainers}. {@code block} is {@code "furnace"} or {@code "chest"}, or {@code "anvil"}, which holds nothing; false where this version cannot.
      */
     default boolean container(int x, int y, int z, String block) {
+        return false;
+    }
+
+    /** A villager with one trade (an emerald for a cobblestone) standing at the block, for a probe of a merchant's menu; false where this version cannot. */
+    default boolean merchant(int x, int y, int z) {
+        return false;
+    }
+
+    /** The local player's use-entity click on the entity with that network id, as the use key sends it; false where this version has no such call. */
+    default boolean useEntity(int id) {
         return false;
     }
 

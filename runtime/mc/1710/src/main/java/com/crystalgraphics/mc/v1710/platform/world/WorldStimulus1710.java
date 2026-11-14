@@ -5,10 +5,14 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.entity.passive.EntityVillager;
 import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.village.MerchantRecipe;
+import net.minecraft.village.MerchantRecipeList;
 import net.minecraft.util.Vec3;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.settings.KeyBinding;
@@ -140,10 +144,42 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
         int dimension = Minecraft.getMinecraft().thePlayer.dimension;
         return run(server -> {
             WorldServer world = server.worldServerForDimension(dimension);
-            world.setBlock(x, y, z, "chest".equals(block) ? Blocks.chest : Blocks.furnace);
+            world.setBlockToAir(x, y + 1, z);   // a chest under a solid block will not open
+            if ("anvil".equals(block)) world.setBlock(x, y - 1, z, Blocks.stone);   // an anvil falls through air
+            world.setBlock(x, y, z, "chest".equals(block) ? Blocks.chest : "anvil".equals(block) ? Blocks.anvil : Blocks.furnace);
+            if ("anvil".equals(block)) return;
             TileEntity tile = world.getTileEntity(x, y, z);
             if (tile instanceof IInventory) ((IInventory) tile).setInventorySlotContents(0, new ItemStack(Blocks.cobblestone, 8));
         });
+    }
+
+    // A villager with a trade, its profession set so it is not a zombie's curiosity: 1.7.10 has no NoAI command tag.
+    @Override
+    public boolean merchant(int x, int y, int z) {
+        if (Minecraft.getMinecraft().thePlayer == null) return false;
+        int dimension = Minecraft.getMinecraft().thePlayer.dimension;
+        return run(server -> {
+            WorldServer world = server.worldServerForDimension(dimension);
+            // On uneven ground a villager made inside terrain suffocates: a floor, and air for it to stand in.
+            world.setBlock(x, y - 1, z, Blocks.stone);
+            world.setBlockToAir(x, y, z);
+            world.setBlockToAir(x, y + 1, z);
+            EntityVillager villager = new EntityVillager(world, 0);
+            villager.setPosition(x + 0.5, y, z + 0.5);
+            MerchantRecipeList offers = villager.getRecipes(null);
+            offers.clear();
+            offers.add(new MerchantRecipe(new ItemStack(Items.emerald), new ItemStack(Blocks.cobblestone)));
+            world.spawnEntityInWorld(villager);
+        });
+    }
+
+    @Override
+    public boolean useEntity(int id) {
+        Minecraft mc = Minecraft.getMinecraft();
+        Entity target = mc.theWorld == null ? null : mc.theWorld.getEntityByID(id);
+        if (mc.thePlayer == null || mc.playerController == null || target == null) return false;
+        mc.playerController.interactWithEntitySendPacket(mc.thePlayer, target);
+        return true;
     }
 
     // Side 1 is the top face.

@@ -14,12 +14,15 @@ import net.minecraft.entity.player.InventoryPlayer;
 import net.minecraft.inventory.Container;
 import net.minecraft.inventory.ContainerChest;
 import net.minecraft.inventory.ContainerFurnace;
+import net.minecraft.inventory.ContainerMerchant;
 import net.minecraft.inventory.ContainerPlayer;
+import net.minecraft.inventory.ContainerRepair;
 import net.minecraft.inventory.IInventory;
 import net.minecraft.inventory.InventoryCraftResult;
 import net.minecraft.inventory.Slot;
 import net.minecraft.inventory.SlotCrafting;
 import net.minecraft.inventory.SlotFurnace;
+import net.minecraft.inventory.SlotMerchantResult;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntityFurnace;
 import net.minecraft.util.StatCollector;
@@ -87,7 +90,7 @@ public final class Containers1710 implements CgContainers.Host {
         if (slot.inventory instanceof InventoryPlayer) {
             return inContainer < 9 ? SlotKind.HOTBAR : inContainer < 36 ? SlotKind.INVENTORY : SlotKind.ARMOR;
         }
-        if (slot.inventory instanceof InventoryCraftResult || slot instanceof SlotCrafting || slot instanceof SlotFurnace) {
+        if (slot.inventory instanceof InventoryCraftResult || slot instanceof SlotCrafting || slot instanceof SlotFurnace || slot instanceof SlotMerchantResult) {
             return SlotKind.RESULT;
         }
         return SlotKind.CONTAINER;
@@ -167,6 +170,8 @@ public final class Containers1710 implements CgContainers.Host {
         Container menu = menu();
         if (menu == player().inventoryContainer || menu instanceof ContainerPlayer) return CgContainers.Menu.PLAYER;
         if (menu instanceof ContainerFurnace) return "minecraft:furnace";
+        if (menu instanceof ContainerRepair) return "minecraft:anvil";
+        if (menu instanceof ContainerMerchant) return "minecraft:merchant";
         if (menu instanceof ContainerChest) {
             return "minecraft:generic_9x" + ((ContainerChest) menu).getLowerChestInventory().getSizeInventory() / 9;
         }
