@@ -13,6 +13,8 @@ import com.crystalgraphics.platform.command.CgCommandSource;
 import com.crystalgraphics.platform.command.CgCommands;
 import com.crystalgraphics.world.actor.CgEntityActor;
 import com.crystalgraphics.world.actor.CgEntityActors;
+import com.crystalgraphics.world.actor.kit.CgKitActor;
+import com.crystalgraphics.world.actor.kit.CgKitActorFile;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.builder.RequiredArgumentBuilder;
@@ -30,12 +32,20 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
  *   <li>The binding follows the player across respawns and level changes ({@link CgEntityActors#bindLocalPlayer});
  *       naming another actor replaces it.</li>
  *   <li>Other players are never affected.</li>
+ *   <li>A dev install adds characters from kit files with no code: {@link CgKitActorFile}.</li>
  * </ul>
  */
 public final class CgActorCommands implements CgCommands.Contribution {
 
     private static final Map<String, Supplier<? extends CgEntityActor>> ACTORS = new ConcurrentHashMap<>();
     private static CgEntityActors.Registration bound;
+
+    /** Every name the command takes: those registered, and the characters of {@link CgKitActorFile}'s file. */
+    private static Map<String, Supplier<? extends CgEntityActor>> actors() {
+        Map<String, Supplier<? extends CgEntityActor>> all = new TreeMap<>(ACTORS);
+        for (Map.Entry<String, CgKitActor.Spec> e : CgKitActorFile.read().entrySet()) all.putIfAbsent(e.getKey(), e.getValue().factory());
+        return all;
+    }
 
     /** {@code factory}'s actor answers to {@code /cgc actor <name>}. */
     public static void register(String name, Supplier<? extends CgEntityActor> factory) {
@@ -50,7 +60,7 @@ public final class CgActorCommands implements CgCommands.Contribution {
                         .then(LiteralArgumentBuilder.<S>literal("none").executes(ctx -> off(view.apply(ctx.getSource()))))
                         .then(RequiredArgumentBuilder.<S, String>argument("name", word())
                                 .suggests((ctx, b) -> {
-                                    for (String n : new TreeMap<>(ACTORS).keySet()) {
+                                    for (String n : actors().keySet()) {
                                         if (n.startsWith(b.getRemaining().toLowerCase())) b.suggest(n);
                                     }
                                     return b.buildFuture();
@@ -59,9 +69,10 @@ public final class CgActorCommands implements CgCommands.Contribution {
     }
 
     private static synchronized int on(CgCommandSource source, String name) {
-        Supplier<? extends CgEntityActor> factory = ACTORS.get(name);
+        Map<String, Supplier<? extends CgEntityActor>> all = actors();
+        Supplier<? extends CgEntityActor> factory = all.get(name);
         if (factory == null) {
-            source.fail("No actor '" + name + "'; known: " + String.join(", ", new TreeMap<>(ACTORS).keySet()));
+            source.fail("No actor '" + name + "'; known: " + String.join(", ", all.keySet()));
             return 0;
         }
         if (bound != null) bound.close();
