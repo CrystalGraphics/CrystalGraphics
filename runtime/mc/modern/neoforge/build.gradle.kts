@@ -7,6 +7,7 @@
 // @see cgbuildlogic.useNeoForgeApi
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunProperties
 import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.renderDocRun
 import cgbuildlogic.shaderToolchainRun
@@ -58,13 +59,8 @@ if (!stubMode) configure<NeoForgeExtension> {
         create("client") {
             client()
             gameDirectory = project.file("runs/client")
-            // Forward every -Dcrystalgraphics.* from the Gradle invocation into the game's JVM, the
-            // way the debug harness does. Without it the diagnostic flags this project ships --
-            // host.verify, state.verify, state.noDedup -- are unreachable from a dev run, which is
-            // the one place a developer would reach for them.
-            System.getProperties().stringPropertyNames()
-                    .filter { it.startsWith("crystalgraphics.") }
-                    .forEach { systemProperty(it, System.getProperty(it)) }
+            // The command line's -Dcrystalgraphics.* and -Dcrystalgui.*, into the game's JVM
+            devRunProperties().forEach { (key, value) -> systemProperty(key, value) }
             renderDocRun(this)
             shaderToolchainRun(this)
         }
