@@ -124,7 +124,7 @@ final class CgMaterialShaderMap {
     /** An empty map for this parse, its template block and engine buffers made now. Render thread: both are GPU objects. */
     static CgMaterialShaderMap of(String label, CgShaderSpec parsed) {
         CgMaterialProperties properties = new CgMaterialProperties(parsed.properties());
-        CgUniformBuffer block = properties.hasUboProps() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
+        CgUniformBuffer block = properties.hasBlock() ? new CgUniformBuffer(CgMaterial.MATERIAL_PROPERTIES_BLOCK,
                 properties.buildUboFormat(), CgBindingModel.MATERIAL_BLOCK) : null;
         return new CgMaterialShaderMap(label, parsed, block, engineBuffers(parsed));
     }

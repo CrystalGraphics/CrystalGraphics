@@ -28,6 +28,16 @@ public interface CgTexture {
     CgTextureView rhiView();
 
     /**
+     * Whether its storage is its own until it is deleted, moved only by itself: an engine texture, read through a
+     * bindless reference that keeps one index while its storage moves (Unreal's texture reference). False for the
+     * frame graph's, whose pooled storage may differ every frame: what reads one bindless resolves its index each frame,
+     * as Unreal's render graph does.
+     */
+    default boolean keepsStorage() {
+        return false;
+    }
+
+    /**
      * How it is sampled where a binding names no sampler. The same object each call; null for the device's defaults,
      * which repeat: an imported texture's, sampled as its owner left it.
      */

@@ -55,8 +55,13 @@ public final class VulkanBindless {
     public final VulkanBindingSet set;
     private final VkDevice device;
     private final long pool;
-    /** Each view's slots by sampler: looked up with no key made. */
-    private final Map<CgTextureView, Map<CgGpuSampler, Integer>> slots = new HashMap<>();
+    /**
+     * Each view's slots by sampler and the layout it is sampled in: a depth target sampled where it is attached
+     * (read-only depth) and sampled after (shader read) are two descriptors, as a bound set keyed by its layout is.
+     */
+    private final Map<CgTextureView, Map<SampledAs, Integer>> slots = new HashMap<>();
+
+    private record SampledAs(CgGpuSampler sampler, int layout) {}
     private final Map<CgGpuTexture, List<CgTextureView>> viewsOf = new IdentityHashMap<>();
     private int[] free = new int[64];
     private int freeCount, next;
@@ -94,15 +99,16 @@ public final class VulkanBindless {
      * {@code imageLayout} and {@code vkSampler}.
      */
     public int texture(CgTextureView view, CgGpuSampler sampler, long imageView, int imageLayout, long vkSampler) {
-        Map<CgGpuSampler, Integer> bySampler = slots.get(view);
-        Integer slot = bySampler == null ? null : bySampler.get(sampler);
+        Map<SampledAs, Integer> bySampler = slots.get(view);
+        SampledAs as = new SampledAs(sampler, imageLayout);
+        Integer slot = bySampler == null ? null : bySampler.get(as);
         if (slot != null) return slot;
         int s = take();
         if (bySampler == null) {
-            slots.put(view, bySampler = new IdentityHashMap<>(2));
+            slots.put(view, bySampler = new HashMap<>(2));
             viewsOf.computeIfAbsent(view.texture(), k -> new ArrayList<>(1)).add(view);
         }
-        bySampler.put(sampler, s);
+        bySampler.put(as, s);
         write(s, imageView, imageLayout, vkSampler);
         return s;
     }

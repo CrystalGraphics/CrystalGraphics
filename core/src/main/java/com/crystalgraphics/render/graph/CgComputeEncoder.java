@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.draw.CgExecutedBlocks;
+import com.crystalgraphics.render.shader.CgBindless;
+import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.compute.emit.CgKernelTarget;
 import com.crystalgraphics.compute.program.CgComputeCheck;
@@ -48,6 +51,8 @@ final class CgComputeEncoder {
     private final CgGraphDevice device;
     /** A dispatch's kernel slots its snapshot does not hold: buffers, counts, images, checked mode's report. */
     private final CgBindings kernelBindings = new CgBindings();
+    /** A dispatch's values with its samplers' indices, written as it executes (bindless). */
+    private final CgExecutedBlocks executed = new CgExecutedBlocks();
     private final Set<String> setsLogged = new HashSet<>();
     private final long[] keyScratch = new long[2];
     /** This execution's: the newest async point covering storage outside the graph, waited for at its end. */
@@ -169,6 +174,11 @@ final class CgComputeEncoder {
             if (access != 0) transitions.move(texture, access, -1, -1);
             k.image(CgBindingModel.FIRST_KERNEL_IMAGE + i, imageView(d, i, color));
         }
+        // Bindless, the values carry each sampler's index, written now that the samplers' storage is resolved
+        CgPropertyBlock properties = d.kernel.compute().properties();
+        if (CgBindless.active() && properties.textureOffsets().length > 0) {
+            executed.entry(frame.bindings, bindings, properties.textureOffsets(), k);
+        }
         if (program.checkPoint() >= 0) {
             k.buffer(CgBindingModel.FIRST_KERNEL_BUFFER + program.checkPoint(), CgBindingLayout.Type.STORAGE_BUFFER,
                     CgComputeCheck.buffer(), CgComputeCheck.claim(program), CgComputeCheck.SLOT_BYTES);
@@ -189,7 +199,7 @@ final class CgComputeEncoder {
             if (layout.sets().get(set).slots().isEmpty()) continue;
             long before = sets.defaulted();
             CgBindingSet s = sets.set(rhi, frame.bindings, set == CgBindingModel.VIEW ? constants : bindings, layout,
-                    set, set == CgBindingModel.MATERIAL ? k : set == CgBindingModel.VIEW ? view.bindings(rhi) : null);
+                    set, set == CgBindingModel.MATERIAL ? k : set == CgBindingModel.VIEW ? view.bindings(rhi, frame.bindings, constants, executed) : null);
             if (sets.defaulted() != before) {
                 String what = d.source.path() + " " + d.decl.name() + " " + sets.lastDefaulted();
                 if (setsLogged.add(what)) LOGGER.warn("device compute: {} defaulted", what);

@@ -34,6 +34,8 @@ public final class CgPropertyBlock {
     private final List<String> samplers;
     /** The {@code sampler3D} ones. */
     private final List<String> volumes;
+    /** Each sampler's index's float offset in the block. */
+    private final int[] textureOffsets;
     /** Its value fields by name: a dispatch sets each by name every frame. */
     private final Map<String, CgBufferField> fields = new HashMap<>();
 
@@ -43,6 +45,10 @@ public final class CgPropertyBlock {
         this.samplers = samplers;
         this.volumes = volumes;
         if (format != null) for (int i = 0; i < format.getFieldCount(); i++) fields.put(format.getField(i).getName(), format.getField(i));
+        textureOffsets = new int[format == null ? 0 : samplers.size()];
+        for (int i = 0; i < textureOffsets.length; i++) {
+            textureOffsets[i] = format.getField(CgMaterialProperties.textureMember(samplers.get(i))).getFloatOffset();
+        }
     }
 
     public static CgPropertyBlock of(List<CgMaterialProperty> properties) {
@@ -54,7 +60,7 @@ public final class CgPropertyBlock {
         }
         samplers = Collections.unmodifiableList(samplers);
         volumes = Collections.unmodifiableList(volumes);
-        if (!all.hasUboProps()) return new CgPropertyBlock(null, new float[0], samplers, volumes);
+        if (!all.hasBlock()) return new CgPropertyBlock(null, new float[0], samplers, volumes);
         CgBufferLayout format = all.buildUboFormat();
         CgBufferWriter writer = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
         all.writeUboProps(writer);
@@ -62,9 +68,14 @@ public final class CgPropertyBlock {
         return new CgPropertyBlock(format, defaults, samplers, volumes);
     }
 
-    /** Whether there are values to bind: samplers alone need no block. */
+    /** Whether there is a block to bind: values, or samplers, whose bindless indices it holds. */
     public boolean hasValues() {
         return format != null;
+    }
+
+    /** Each sampler's bindless index's float offset in the block, in unit order; empty for none. */
+    public int[] textureOffsets() {
+        return textureOffsets;
     }
 
     /** The block's layout, std140; null without values. */

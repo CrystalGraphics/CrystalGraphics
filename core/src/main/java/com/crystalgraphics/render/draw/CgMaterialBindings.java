@@ -4,6 +4,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -101,10 +102,23 @@ public final class CgMaterialBindings {
         for (int t = 0; t < textures.length; t++) if (textureSlots[t] != slot) b.put(textureSlots[t], textures[t], samplers[t]);
         b.put(slot, texture, sampler);
         b.rest(this);
+        // Bindless, the material block holds the texture's index: the override reads a version of its own
+        if (CgBindless.active()) b.swapTexture(index, texture, sampler);
         CgMaterialBindings made = b.build();
+        Over evicted = overs[oversNext];
+        if (evicted != null) evicted.made.supersedeOwnBlocks(this);
         overs[oversNext] = new Over(slot, texture, sampler, made);
         oversNext = (oversNext + 1) % KEPT_OVERS;
         return made;
+    }
+
+    /** Its blocks {@code base} does not hold, superseded: an override's own, no longer kept. */
+    private void supersedeOwnBlocks(CgMaterialBindings base) {
+        for (CgBlockVersion v : blocks) {
+            boolean shared = false;
+            for (CgBlockVersion w : base.blocks) shared |= v == w;
+            if (!shared) v.supersede();
+        }
     }
 
     public int textures() {
@@ -271,6 +285,15 @@ public final class CgMaterialBindings {
                 if (made.storageSlots[s] != storageSlots[s] || made.storage[s] != storage[s]) return false;
             }
             return true;
+        }
+
+        /** The material block's texture {@code index} read as {@code texture}: a version of its own. */
+        private void swapTexture(int index, CgTexture texture, @Nullable CgSampler sampler) {
+            int material = CgBindingModel.MATERIAL_BLOCK.packed();
+            for (int k = 0; k < blockCount; k++) {
+                if (blockSlots[k] != material || blocks[k].members == null || index >= blocks[k].members.count()) continue;
+                blocks[k] = blocks[k].withTexture(index, texture, sampler);
+            }
         }
 
         /** {@code from}'s blocks, buffers and storage: what {@link #with} keeps beside a new texture. */

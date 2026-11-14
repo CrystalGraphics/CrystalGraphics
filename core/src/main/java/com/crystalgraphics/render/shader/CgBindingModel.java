@@ -62,8 +62,13 @@ public final class CgBindingModel {
     public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
     /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
     public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
-    /** The view's textures a stage binds besides a material's: scene depth, scene colour and the lightmap. */
-    public static final int VIEW_TEXTURES = 3;
+    /** The view's textures a stage binds besides a material's: scene depth and colour, lightmap, media, local lights. */
+    public static final int VIEW_TEXTURES = 5;
+    /**
+     * {@code CgViewTextureBlock}: the view's textures' bindless indices (scene depth, scene colour, lightmap, media, local
+     * lights), written as the pass executes; bound only where the view's textures are read by index.
+     */
+    public static final Slot VIEW_TEXTURE_INDICES = new Slot(VIEW, 8);
     /** {@code cg_SceneObjects}: the scene's persistent records ({@code CgGpuScene}); an empty buffer where none is. */
     public static final Slot SCENE_OBJECTS = new Slot(VIEW, 7);
 

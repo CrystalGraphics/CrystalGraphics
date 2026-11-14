@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.draw.CgExecutedBlocks;
+import com.crystalgraphics.render.shader.CgBindless;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.state.CgStencilState;
@@ -106,6 +108,9 @@ final class CgRasterEncoder {
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
     /** The pass's view textures stated as it executes: scene copies, depth sampled in place. */
     private final CgViewTextures view = new CgViewTextures();
+    /** A draw's per-frame material versions, written as the pass executes (bindless). */
+    private final CgExecutedBlocks executed = new CgExecutedBlocks();
+    private final CgBindings materialParameters = new CgBindings();
     /**
      * The pass set's parameters: the pass's own (instances, records, tables) in {@link #passBase}, and the batch's over
      * them (its records, its buffers, its mesh's vertex words) in {@link #passBatch}, made again when those change.
@@ -611,7 +616,13 @@ final class CgRasterEncoder {
                     drawCache.set(rp, set, setMade[set], setOffsets[set], setOffsetCount[set]);
                     continue;
                 }
-                CgBindings parameters = set == CgBindingModel.VIEW ? view.bindings(rhi) : set == CgBindingModel.PASS ? passBatch : null;
+                CgBindings parameters = set == CgBindingModel.VIEW ? view.bindings(rhi, table, snapshot, executed)
+                        : set == CgBindingModel.PASS ? passBatch : null;
+                // Bindless, a block naming a graph texture is written now, inside the pass that resolves its storage
+                if (set == CgBindingModel.MATERIAL && CgBindless.active()) {
+                    materialParameters.clear();
+                    if (executed.versions(table, snapshot, materialParameters)) parameters = materialParameters;
+                }
                 CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, parameters, whole);
                 if (set < setLayout.length) {
                     setLayout[set] = bl;

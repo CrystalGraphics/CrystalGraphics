@@ -1111,8 +1111,9 @@ public final class CgMaterialShader implements CgReloadable {
 
     /**
      * Whether {@code program}, one of this shader's, samples {@code cg_DepthBuffer}: read from the compiled program's
-     * layout ({@link CgShader#sceneReads}), so a keyword variant answers for itself. {@link #readsSceneDepth()} for a
-     * program that did not compile.
+     * layout ({@link CgShader#sceneReads}), so a keyword variant answers for itself. {@link #readsSceneDepth()}, the
+     * source's answer for every variant, for a program that did not compile or reads the view's textures by index, as
+     * Unreal goes by its material's own scene-texture flags.
      *
      * <pre>{@code
      * CgShader program = shader.getOrCompile("Pass0", keywords);
@@ -1120,12 +1121,14 @@ public final class CgMaterialShader implements CgReloadable {
      * }</pre>
      */
     public boolean readsSceneDepth(CgShader program) {
-        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_DEPTH) != 0 : readsSceneDepth();
+        int reads = program.sceneReads();
+        return program.isCompiled() && reads != CgShader.READS_BY_INDEX ? (reads & CgShader.READS_DEPTH) != 0 : readsSceneDepth();
     }
 
     /** As {@link #readsSceneDepth(CgShader)}, for {@code cg_SceneColor}. */
     public boolean readsSceneColor(CgShader program) {
-        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_COLOR) != 0 : readsSceneColor();
+        int reads = program.sceneReads();
+        return program.isCompiled() && reads != CgShader.READS_BY_INDEX ? (reads & CgShader.READS_COLOR) != 0 : readsSceneColor();
     }
 
     /**

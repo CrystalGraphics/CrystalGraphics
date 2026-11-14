@@ -1,5 +1,7 @@
 package com.crystalgraphics.material.shader;
 
+import com.crystalgraphics.render.shader.CgBindless;
+import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.animation.CgBonePalettes;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
@@ -55,11 +57,13 @@ public final class CgGlslWriter {
     public static final String VERSION = "#version 450 core\n";
 
     /**
-     * What a device reading textures by index from its bindless heap defines after {@code #version}, before any code:
-     * the runtime arrays {@code cg_env.glsl} declares then need the extension, which no code may precede.
+     * The extensions the bindless heap needs, before any code: Vulkan's runtime arrays, GL's handles where its driver
+     * compiles the source. After {@link CgBindless#header()}, which defines {@code CG_BINDLESS}.
      */
-    static final String BINDLESS_EXTENSION = "#if defined(CG_BINDLESS) && defined(VULKAN)\n"
-            + "#extension GL_EXT_nonuniform_qualifier : require\n#endif\n";
+    public static final String BINDLESS_EXTENSION = "#if defined(CG_BINDLESS) && defined(VULKAN)\n"
+            + "#extension GL_EXT_nonuniform_qualifier : require\n"
+            + "#elif defined(CG_BINDLESS) && defined(CG_GL_NATIVE)\n"
+            + "#extension GL_ARB_bindless_texture : require\n#endif\n";
 
     /** Elements a table reads through one local array: a longer table branches to its chunk of this many first. */
     static final int TABLE_CHUNK = 16;
@@ -156,7 +160,7 @@ public final class CgGlslWriter {
     private static String vertex(CgShaderSpec spec, CgShaderPass pass, List<CgAttachedBuffer> buffers,
                                  @Nullable CgUniformBuffer block, Set<String> keywords, Set<String> extensions,
                                  CgVertexFormat format) {
-        StringBuilder sb = new StringBuilder(8192).append(VERSION).append(BINDLESS_EXTENSION);
+        StringBuilder sb = new StringBuilder(8192).append(VERSION).append(CgBindless.header()).append(BINDLESS_EXTENSION);
         keywordDefines(sb, spec, keywords);
         // Before any code, which a hoisted #include may already be: cg_env.glsl reads a draw's bases from it
         sb.append("#extension GL_ARB_shader_draw_parameters : require\n");
@@ -238,7 +242,7 @@ public final class CgGlslWriter {
 
     private static String fragment(CgShaderSpec spec, CgShaderPass pass, List<CgAttachedBuffer> buffers,
                                    @Nullable CgUniformBuffer block, Set<String> keywords, Set<String> extensions) {
-        StringBuilder sb = new StringBuilder(8192).append(VERSION).append(BINDLESS_EXTENSION);
+        StringBuilder sb = new StringBuilder(8192).append(VERSION).append(CgBindless.header()).append(BINDLESS_EXTENSION);
         keywordDefines(sb, spec, keywords);
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
         passDefines(sb, spec, pass);
@@ -462,16 +466,16 @@ public final class CgGlslWriter {
     }
 
     /**
-     * Each sampler: bound where the device binds, or its handle in the material block read through cg_env's
-     * {@code CG_TEXTURE_<type>} under the name the shader samples where it reads textures by index (Unreal's
-     * {@code UB_RESOURCE_MEMBER_SRV}).
+     * Each sampler: bound where the device binds, or its index in the material block (its {@code _cgt} member) read
+     * through cg_env's {@code CG_TEXTURE_<type>} under the name the shader samples where it reads textures by index
+     * (Unreal's {@code UB_RESOURCE_MEMBER_SRV}).
      */
     private static void samplers(StringBuilder sb, List<CgMaterialProperty> properties) {
         StringBuilder reads = new StringBuilder();
         for (CgMaterialProperty p : properties) {
             if (!p.getType().isSampler()) continue;
-            reads.append("#define ").append(p.getName()).append(" CG_TEXTURE_").append(p.getGlslType()).append("(_cgt")
-                 .append(p.getName()).append(")\n");
+            reads.append("#define ").append(p.getName()).append(" CG_TEXTURE_").append(p.getGlslType()).append('(')
+                 .append(CgMaterialProperties.textureMember(p.getName())).append(")\n");
         }
         if (reads.length() == 0) return;
         sb.append("// Sampler properties\n#ifdef CG_BINDLESS\n").append(reads).append("#else\n");
@@ -485,33 +489,21 @@ public final class CgGlslWriter {
     }
 
     /**
-     * {@code CgMaterialBlock}: the material's values, and where the device reads textures by index each texture's
-     * handle after them, so a material is one block (Unreal's material uniform buffer). Where its values live in its
-     * shader's arena, a slot of {@link CgMaterialArena} instead, but in the bindless form.
+     * {@code CgMaterialBlock}: the material's values, then each texture's heap index (read where the device reads
+     * textures by index), so a material is one block (Unreal's material uniform buffer); the layout is
+     * {@code CgMaterialProperties.buildUboFormat}'s on both paths. Where its values live in its shader's arena, a slot of
+     * {@link CgMaterialArena} instead.
      */
     private static void materialBlock(StringBuilder sb, List<CgMaterialProperty> properties, @Nullable CgUniformBuffer values,
                                       boolean arena) {
-        StringBuilder handles = new StringBuilder();
-        for (CgMaterialProperty p : properties) {
-            if (p.getType().isSampler()) handles.append("    uvec2 _cgt").append(p.getName()).append(";\n");
+        if (values == null) return;
+        if (arena) {
+            int floats = values.getFormat().getFloatCount();
+            sb.append(CgGlslBlocks.arena(values.getFormat(), CgBindingModel.MATERIAL_BLOCK, CgMaterialArena.stride(floats)));
+        } else {
+            sb.append(CgGlslBlocks.uniformBlock(values.getFormat(), values.getName(), CgBindingModel.MATERIAL_BLOCK));
         }
-        if (values != null) {
-            String block = CgGlslBlocks.uniformBlock(values.getFormat(), values.getName(), CgBindingModel.MATERIAL_BLOCK);
-            if (handles.length() > 0) {
-                int close = block.lastIndexOf("};");
-                block = block.substring(0, close) + "#ifdef CG_BINDLESS\n" + handles + "#endif\n" + block.substring(close);
-            }
-            if (arena) {
-                int floats = values.getFormat().getFloatCount();
-                block = "#ifdef CG_BINDLESS\n" + block + "#else\n"
-                        + CgGlslBlocks.arena(values.getFormat(), CgBindingModel.MATERIAL_BLOCK, CgMaterialArena.stride(floats))
-                        + "#endif\n";
-            }
-            sb.append(block).append('\n');
-        } else if (handles.length() > 0) {
-            sb.append("#ifdef CG_BINDLESS\n").append(CgBindingModel.MATERIAL_BLOCK.glsl())
-              .append("layout(std140) uniform CgMaterialBlock {\n").append(handles).append("};\n#endif\n");
-        }
+        sb.append('\n');
     }
 
     private static void attached(StringBuilder sb, List<CgAttachedBuffer> buffers) {

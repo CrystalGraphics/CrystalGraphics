@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.Objects;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 /**
  * A frame's bindings, as its executor reads them by id: each {@link CgMaterialBindings} version its draws name, entered
@@ -392,6 +393,12 @@ public final class CgFrameBindings {
         return (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
     }
 
+    /** Entry {@code id}'s {@code k}th ring block, as copied at frame build, into {@code into} from 0. */
+    void copyBlock(int id, int k, float[] into) {
+        int block = id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS;
+        System.arraycopy(floats, entries[block + 1], into, 0, entries[block + 2]);
+    }
+
     /** How many floats entry {@code id}'s {@code k}th block holds. */
     int blockFloatCount(int id, int k) {
         return entries[id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS + 2];
@@ -489,6 +496,11 @@ public final class CgFrameBindings {
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
                 CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+                if (version != null && version.perFrame) {
+                    ringOffsets[id * MAX_BLOCKS + b] = bytes;
+                    bytes += align(version.floats.length * 4);
+                    continue;
+                }
                 if (version != null) {
                     if (version.arena == null && store.place(version)) {
                         if (writes == writing.length) {
@@ -525,11 +537,18 @@ public final class CgFrameBindings {
         if (bytes == 0) return;
         FloatBuffer view = ring.mapFloats(bytes);
         int from = view.position();
+        boolean bindless = CgBindless.active();
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
-                if (refs[id * ENTRY_REFS + BLOCK_REFS + b] != null) continue;
+                CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+                if (version != null && !version.perFrame) continue;
                 int at = ringOffsets[id * MAX_BLOCKS + b];
+                if (version != null) {
+                    view.position(from + (at >> 2));
+                    version.put(view, bindless);
+                    continue;
+                }
                 if (at < 0) {
                     ringOffsets[id * MAX_BLOCKS + b] = -1 - at;
                     continue;
@@ -541,7 +560,7 @@ public final class CgFrameBindings {
         }
         for (int w = 0; w < writes; w++) {
             view.position(from + (writingAt[w] >> 2));
-            view.put(writing[w].floats);
+            writing[w].put(view, bindless);
         }
         int base = ring.commit(bytes);
         uploadedBuffer = ring.gpuBuffer();

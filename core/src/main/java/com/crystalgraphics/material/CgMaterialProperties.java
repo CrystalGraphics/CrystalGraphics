@@ -14,7 +14,11 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import com.crystalgraphics.render.draw.CgBlockVersion;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
+
+import javax.annotation.Nullable;
 
 /**
  * Partitioned view of a material's property list — separates UBO-eligible
@@ -45,6 +49,8 @@ public final class CgMaterialProperties implements CgMaterialValues {
 
     /** Set when a sampler property's texture unit changes. Consumed by the proxy's writes. */
     private boolean samplerUnitChanged = false;
+    /** Set when a sampler property's texture or sampler changes: its block's version holds it. */
+    private boolean texturesChanged = false;
 
     /**
      * Set when a block-backed property's value actually moves -- not on a write of what is already there, and never
@@ -84,6 +90,9 @@ public final class CgMaterialProperties implements CgMaterialValues {
     // ── Partition queries ─────────────────────────────────────────────────────
 
     public boolean hasUboProps()     { return !uboProps.isEmpty(); }
+
+    /** Whether it has a block: values, or textures, whose heap indices it holds. */
+    public boolean hasBlock()        { return !uboProps.isEmpty() || !samplerProps.isEmpty(); }
     public boolean hasSamplerProps() { return !samplerProps.isEmpty(); }
 
     /** How many samplers the shader declares: the units they take, from 0. */
@@ -95,21 +104,57 @@ public final class CgMaterialProperties implements CgMaterialValues {
     // ── UBO / sampler dispatch ────────────────────────────────────────────────
 
     /**
-     * Builds the {@link CgBufferLayout} for {@code CgMaterialBlock} from the non-sampler
-     * properties, where {@link #hasUboProps()}: the capture's packer and the shader map's block.
+     * Builds the {@link CgBufferLayout} for {@code CgMaterialBlock}, where {@link #hasBlock()}: the values, then a
+     * {@code uint} per texture, its heap index ({@link #textureMember}), on both paths so the layout is the device's
+     * either way. The capture's packer and the shader map's block.
      */
     public CgBufferLayout buildUboFormat() {
         CgBufferLayout.Builder b = CgBufferLayout.builder("CgMaterialBlock", CgBufferLayout.MemoryLayout.STD140);
         for (CgMaterialProperty p : uboProps) p.addToFormatBuilder(b);
+        for (CgMaterialProperty p : samplerProps) b.uint(textureMember(p.getName()));
         return b.build();
     }
 
-    /** Writes all non-sampler property values into the UBO writer as a single record. */
+    /** The block member texture property {@code name}'s heap index is in: what the shader reads it by. */
+    public static String textureMember(String name) {
+        return "_cgt" + name;
+    }
+
+    /** Writes all non-sampler property values into the UBO writer as a single record; texture indices as 0. */
     public void writeUboProps(CgBufferWriter w) {
         w.reset().beginRecord();
         // Indexed, here and in bindSamplerTextures: both run per bind, and an unmodifiable list's iterator is two
         // objects a call that the JIT was not eliminating.
         for (int i = 0; i < uboProps.size(); i++) uboProps.get(i).writeToUbo(w);
+        for (int i = 0; i < samplerProps.size(); i++) w.uint(textureMember(samplerProps.get(i).getName()), 0);
+    }
+
+    /**
+     * The block's texture members as they are now, in {@code format} ({@link #buildUboFormat}): each texture's index's
+     * float offset, its texture (its default where none is set) and sampler. Null for none.
+     */
+    @Nullable
+    public CgBlockVersion.Members textureMembers(CgBufferLayout format) {
+        int n = samplerProps.size();
+        if (n == 0) return null;
+        int[] offsets = new int[n];
+        CgTexture[] textures = new CgTexture[n];
+        CgSampler[] samplers = new CgSampler[n];
+        for (int i = 0; i < n; i++) {
+            offsets[i] = format.getField(textureMember(samplerProps.get(i).getName())).getByteOffset() / 4;
+            textures[i] = texture(i);
+            samplers[i] = samplerProps.get(i).getSampler();
+        }
+        return new CgBlockVersion.Members(offsets, textures, samplers);
+    }
+
+    /** Sampler {@code i}'s texture: the one set, else the engine texture its default names, else white of its kind. */
+    private CgTexture texture(int i) {
+        CgTexture texture = samplerProps.get(i).boundTexture();
+        if (texture != null) return texture;
+        CgMaterialProperty.Type type = samplerProps.get(i).getType();
+        return type == CgMaterialProperty.Type.SAMPLER3D ? CgFallbackTextures.WHITE_VOLUME
+                : type == CgMaterialProperty.Type.USAMPLER2D ? CgFallbackTextures.ZERO_UINT : CgFallbackTextures.WHITE_1x1;
     }
 
     /**
@@ -119,12 +164,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
      */
     public void captureSamplers(CgMaterialBindings.Builder bindings) {
         for (int i = 0; i < samplerProps.size(); i++) {
-            CgTexture texture = samplerProps.get(i).boundTexture();
-            if (texture == null) {
-                CgMaterialProperty.Type type = samplerProps.get(i).getType();
-                texture = type == CgMaterialProperty.Type.SAMPLER3D ? CgFallbackTextures.WHITE_VOLUME
-                        : type == CgMaterialProperty.Type.USAMPLER2D ? CgFallbackTextures.ZERO_UINT : CgFallbackTextures.WHITE_1x1;
-            }
+            CgTexture texture = texture(i);
             if (texture != null) bindings.texture(i, texture, samplerProps.get(i).getSampler());
         }
     }
@@ -150,6 +190,13 @@ public final class CgMaterialProperties implements CgMaterialValues {
     public boolean consumeBlockChanged() {
         boolean v = blockChanged;
         blockChanged = false;
+        return v;
+    }
+
+    /** Returns {@code true} and resets the flag if a sampler property's texture or sampler changed since the last call. */
+    public boolean consumeTexturesChanged() {
+        boolean v = texturesChanged;
+        texturesChanged = false;
         return v;
     }
 
@@ -205,6 +252,7 @@ public final class CgMaterialProperties implements CgMaterialValues {
         CgMaterialProperty p = propsByName.get(name);
         if (p != null && p.getType().isSampler()) {
             if (p.getSamplerUnit() != unit) samplerUnitChanged = true;
+            if (p.boundTexture() != texture || !Objects.equals(p.getSampler(), sampler)) texturesChanged = true;
             p.setTexture(unit, texture, sampler);
         }
         return this;

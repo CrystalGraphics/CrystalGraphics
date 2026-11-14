@@ -47,6 +47,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -148,9 +149,21 @@ public final class CgGLDevice implements CgRHI {
     private final List<HeapKey> heapKeys = new ArrayList<>();
     private long[] heapHandles = new long[0];
     /** Slots that are references ({@link #bindlessReference}), not a texture's own. */
-    private final java.util.BitSet referenceSlots = new java.util.BitSet();
-    /** Each resident handle's holders: a handle is one texture-sampler pair, which an index and a reference may share. */
-    private final Map<Long, Integer> residents = new HashMap<>();
+    private final BitSet referenceSlots = new BitSet();
+    /**
+     * Each resident handle, by the texture it samples and how many hold it: a handle is one texture-sampler pair, which
+     * an index and a reference may share. Deleting the texture deletes its handles, so they leave here with it.
+     */
+    private final Map<Long, Resident> residents = new HashMap<>();
+
+    private static final class Resident {
+        final GLTexture texture;
+        int holders;
+
+        Resident(GLTexture texture) {
+            this.texture = texture;
+        }
+    }
     private int[] freeIndices = new int[16];
     private int freeCount, heapNext;
 
@@ -452,6 +465,7 @@ public final class CgGLDevice implements CgRHI {
         } else if (o instanceof GLTexture t) {
             framebuffers.forget(t);
             dropHeapEntries(t);
+            residents.values().removeIf(r -> r.texture == t);   // a reference retargeted off it lets go after this
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl, programs);
@@ -498,6 +512,12 @@ public final class CgGLDevice implements CgRHI {
         heapKeys.set(index, key);
         heapIndex.put(key, index);
         return index;
+    }
+
+    /** {@code ARB_bindless_texture}: {@code TexImage*}, {@code TexStorage*} and {@code TexParameter*} fail on a texture with a handle. */
+    @Override
+    public boolean bindlessFreezesTextures() {
+        return true;
     }
 
     @Override
@@ -551,12 +571,19 @@ public final class CgGLDevice implements CgRHI {
             throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
         GLTexture t = (GLTexture) view.texture();
         long handle = gl.glGetTextureSamplerHandleARB(t.sampled(gl, view), sampler.name);
-        if (residents.merge(handle, 1, Integer::sum) == 1) gl.glMakeTextureHandleResidentARB(handle);
+        Resident r = residents.get(handle);
+        if (r == null) {
+            residents.put(handle, r = new Resident(t));
+            gl.glMakeTextureHandleResidentARB(handle);
+        }
+        r.holders++;
         return handle;
     }
 
+    /** One holder of {@code handle} fewer; nothing where its texture was deleted first, which deleted the handle. */
     private void letGo(long handle) {
-        if (residents.merge(handle, -1, Integer::sum) > 0) return;
+        Resident r = residents.get(handle);
+        if (r == null || --r.holders > 0) return;
         residents.remove(handle);
         gl.glMakeTextureHandleNonResidentARB(handle);
     }

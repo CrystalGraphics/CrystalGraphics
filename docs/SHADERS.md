@@ -7,6 +7,36 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 > materials and the engine's own passes are precached for you. **[`PRECACHE.md`](PRECACHE.md)** says which is which.
 > Editing a shipped shader also stales the shipped pipeline list (`PRECACHE.md` § *The shipped pipeline list*).
 
+## Textures in a shader: bindless or bound
+
+**Write a texture the same way on every GPU.** Declare it as a property, sample it by its name:
+
+```glsl
+Properties {
+    _Albedo ("Albedo", sampler2D) = "white"
+}
+struct v2f { vec2 uv0; };
+void surface(in v2f i, inout CgSurface s) {
+    s.baseColor = texture(_Albedo, i.uv0).rgb;
+}
+```
+
+Where the GPU has a **bindless heap** (one table of every texture, read by number; Vulkan's descriptor indexing, OpenGL's
+`ARB_bindless_texture`), the engine compiles every program with `CG_BINDLESS` defined. Each texture property is then a
+`uint` in the material's block, its number in the heap, and `_Albedo` is a macro reading the heap at it
+(`CG_TEXTURE_sampler2D(_cgt_Albedo)`). Without one, the property is a `sampler2D` bound to a texture unit for the draw.
+Both are the default of their device: [`TEXTURES.md`](TEXTURES.md) § *How shaders reach your textures* says when each is
+used, in plain terms, and how to force units with `-Dcrystalgraphics.bindless=false`.
+
+- **Nothing in a `.shader` or `.compute` changes.** Sample, pass to a function and read `textureSize` of a texture
+  property as always; a kernel's `Properties` samplers work the same way.
+- **Never declare a sampler of your own with `CG_BIND`**, nor test `CG_BINDLESS` to work round a path: the engine
+  writes the declarations, and code that works on one path works on the other.
+- **No engine limit on how many textures a material reads.** On units, more than the GPU's stage binds, less the view's
+  five, fails to load naming both numbers.
+- The view's textures (`cg_DepthBuffer`, `cg_SceneColor`, `cg_Lightmap`, `cg_Media`, `cg_LocalLights`, below) keep their
+  names on both paths. On OpenGL they stay on units even where the rest is bindless, since they may be Minecraft's own.
+
 ## Materials
 
 A `.shader` is a material. Its first line names its domain, and it says what the surface is, not how to draw it: the
@@ -136,16 +166,16 @@ shares (`CgPassConstants`):
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
 | `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view, `w` 1 when the target is the host's own (`CG_ENCODED_TARGET`). Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
-**Scene samplers**, bound by the engine for every draw; never declare or bind them yourself, nor bind a property to
-their units:
+**Scene samplers**, given by the engine to every draw, bound or read from the bindless heap (§ *Textures in a shader*);
+never declare or bind them yourself:
 
-| GLSL name | Type | Unit | Content |
+| GLSL name | Type | Slot | Content |
 |---|---|---|---|
 | `cg_DepthBuffer` | `sampler2D` | `CgBindingModel.SCENE_DEPTH` | The target's depth as it stands at the draw: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention**, reversed-Z on 26.2, so compare eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Both stages |
 | `cg_SceneColor` | `sampler2D` | `CgBindingModel.SCENE_COLOR` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. Read through `CG_SCENE_COLOR(uv)`; a material reading it sets `SceneColorMargin` |
 | `cg_Lightmap` | `sampler2D` | `CgBindingModel.LIGHTMAP` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)` |
 | `cg_Media` | `sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` |
-| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)`. The lowest unit the engine reserves: properties stay below it |
+| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)` |
 
 Convenience macros over the frame block:
 

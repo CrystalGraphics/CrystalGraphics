@@ -16,21 +16,28 @@
 #define CG_BIND(set_, binding_)
 #endif
 
-// The bindless heap (CgRHI.bindlessLayout, set 3), where the device defines CG_BINDLESS: a material's texture property
-// is then a handle, which the compiler names after the property, so the shader samples _MainTex as before. Every
-// texture with its sampler at binding 0, under each dimension's name; the handle's x is its index (GL's bindless
-// handle, S4, the whole uvec2).
-#if defined(CG_BINDLESS) && defined(VULKAN)
+// The bindless heap (set 3) where the engine compiles with CG_BINDLESS (CgBindless): a material's or kernel's texture,
+// and the view's, is then a uint index into it, which the compiler names after the property, so the shader samples
+// _MainTex as before. Every texture with its sampler, one slot each. GL compiled by its own driver reads a storage block
+// of ARB_bindless_texture handles; Vulkan, and GL through SPIRV-Cross, the arrays.
+#if defined(CG_BINDLESS) && defined(CG_GL_NATIVE)
+CG_BIND(3, 0) layout(std430) readonly buffer CgBindlessHeap { uvec2 cg_TextureHandles[]; };
+#define CG_TEXTURE_sampler2D(i) sampler2D(cg_TextureHandles[i])
+#define CG_TEXTURE_sampler2DArray(i) sampler2DArray(cg_TextureHandles[i])
+#define CG_TEXTURE_sampler3D(i) sampler3D(cg_TextureHandles[i])
+#define CG_TEXTURE_samplerCube(i) samplerCube(cg_TextureHandles[i])
+#define CG_TEXTURE_usampler2D(i) usampler2D(cg_TextureHandles[i])
+#elif defined(CG_BINDLESS)
 CG_BIND(3, 0) uniform sampler2D cg_Textures2D[];
 CG_BIND(3, 0) uniform sampler2DArray cg_Textures2DArray[];
 CG_BIND(3, 0) uniform sampler3D cg_Textures3D[];
 CG_BIND(3, 0) uniform samplerCube cg_TexturesCube[];
 CG_BIND(3, 0) uniform usampler2D cg_UTextures2D[];
-#define CG_TEXTURE_sampler2D(h) cg_Textures2D[(h).x]
-#define CG_TEXTURE_sampler2DArray(h) cg_Textures2DArray[(h).x]
-#define CG_TEXTURE_sampler3D(h) cg_Textures3D[(h).x]
-#define CG_TEXTURE_samplerCube(h) cg_TexturesCube[(h).x]
-#define CG_TEXTURE_usampler2D(h) cg_UTextures2D[(h).x]
+#define CG_TEXTURE_sampler2D(i) cg_Textures2D[i]
+#define CG_TEXTURE_sampler2DArray(i) cg_Textures2DArray[i]
+#define CG_TEXTURE_sampler3D(i) cg_Textures3D[i]
+#define CG_TEXTURE_samplerCube(i) cg_TexturesCube[i]
+#define CG_TEXTURE_usampler2D(i) cg_UTextures2D[i]
 #endif
 
 // The view, made once a firing, and the world's environment, which every pass of a frame shares (CgPassConstants).
@@ -188,23 +195,42 @@ flat in int cg_InstanceId;
 // (0, 0, 0, 1) from CgWorldRenderer. A VFX mesh particle's is what it rests against (CgVfxRange).
 #define CG_OBJECT_SPARE vec4(CG_OBJECT_DATA.normalMatrix[0].w, CG_OBJECT_DATA.normalMatrix[1].w, CG_OBJECT_DATA.normalMatrix[2].w, CG_OBJECT_DATA.normalMatrix[3].w)
 
-// -- Scene samplers (auto-bound by the engine; do not redeclare or bind manually) -----------
+// -- The view's textures (the engine's; never declare or bind them) ------------------------------------------------
+// Bound at view bindings 1 to 5, or read by index where the engine compiles bindless: their indices in
+// CgViewTextureBlock, written as the pass executes (CgViewTextures). They stay bound where a handle would freeze the
+// host's own (CG_VIEW_TEXTURES_BOUND, GL: Minecraft's lightmap, its depth sampled in place).
+#if defined(CG_BINDLESS) && !defined(CG_VIEW_TEXTURES_BOUND)
+#define CG_VIEW_TEXTURES_INDEXED 1
+CG_BIND(0, 8) layout(std140) uniform CgViewTextureBlock {
+    uvec4 cg_ViewTextures;    // x scene depth, y scene colour, z lightmap, w media
+    uvec4 cg_ViewTextures2;   // x local lights
+};
+#endif
+
 // cg_DepthBuffer: scene depth snapshot, in the host's depth format, taken at the start of the world stage that
 // reads it: in an opaque pass the host's world, in a transparent pass with the world renderer's opaque draws too.
-// Bound to CgBindingPoints.DEPTH_TEXTURE_UNIT in both vertex and fragment stages of every pass.
-// Do NOT use that texture unit in material Properties.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_DepthBuffer CG_TEXTURE_sampler2D(cg_ViewTextures.x)
+#else
 CG_BIND(0, 1) uniform sampler2D cg_DepthBuffer;
+#endif
 
 // cg_SceneColor: the scene's colour, taken the same way and at the same moments as cg_DepthBuffer, for a material that
-// bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered. Bound to
-// CgBindingPoints.SCENE_COLOR_TEXTURE_UNIT; do NOT use that unit in material Properties either.
+// bends what is behind it (heat haze, a shockwave). RGBA8, linearly filtered.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_SceneColor CG_TEXTURE_sampler2D(cg_ViewTextures.y)
+#else
 CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
+#endif
 // Level 0, as Unreal's CalcSceneColor: a screen read takes no derivatives, which a discard leaves undefined
 #define CG_SCENE_COLOR(uv) textureLod(cg_SceneColor, (uv), 0.0)
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
-// Bound to CgBindingPoints.LIGHTMAP_TEXTURE_UNIT; do NOT use that unit in material Properties either.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_Lightmap CG_TEXTURE_sampler2D(cg_ViewTextures.z)
+#else
 CG_BIND(0, 3) uniform sampler2D cg_Lightmap;
+#endif
 // The colour the world lights a thing with at block and sky light (0 to 15 each), as Minecraft lights its blocks.
 #define CG_LIGHTMAP(light) texture(cg_Lightmap, (clamp((light), 0.0, 15.0) + 0.5) / 16.0).rgb
 
@@ -289,9 +315,12 @@ uvec2 _cg_shadingModel = uvec2(0u);
 #define CG_DIRECTIONAL_SHADOW_WRAP cg_directional_shadow_has_no_pass_writing_it_yet
 
 // cg_Media: the world's froxel transmittance (CgWorldMedia), a volume over the screen, each texel to its slice's far edge
-// the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none. Bound to
-// CgBindingPoints.MEDIA_TEXTURE_UNIT; do NOT use that unit in Properties.
+// the light the air scattered toward the eye (rgb) and what gets through (a); white in a pass that binds none.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_Media CG_TEXTURE_sampler3D(cg_ViewTextures.w)
+#else
 CG_BIND(0, 4) uniform sampler3D cg_Media;
+#endif
 // Its slices in eye depth as Unreal's volumetric fog spaces them (CalculateGridZParams, r.VolumetricFog.
 // DepthDistributionScale 32): slice s's near edge at (2^(s / SPREAD) - O) / B, from CG_MEDIA_NEAR (Unreal's 9.5 cm) to
 // CG_MEDIA_FAR at the last. Twice Unreal's 64 slices, for four times its 60 m: each about as deep as Unreal's at 40 blocks.
@@ -347,8 +376,12 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
 // cascade 0 in z, and a column at x N whose texel (N, 0, N * cascade) holds the cascade's lowest corner from the camera
 // and its size. 4N deep in a firing drawing a
 // "Surface"-lit material: both cascades' direction behind them (cg_LocalLightDirectional). Black, and 1 texel, in a
-// pass that binds none. Bound to CgBindingPoints.LOCAL_LIGHTS_TEXTURE_UNIT; do NOT use that unit in Properties.
+// pass that binds none.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_LocalLights CG_TEXTURE_sampler3D(cg_ViewTextures2.x)
+#else
 CG_BIND(0, 5) uniform sampler3D cg_LocalLights;
+#endif
 
 // Layer 0 and 1 the cascades' light, 2 and 3 their direction; n the cells a side.
 vec3 cg_local_light_cascade(vec3 u, float layer, float n, float depth) {

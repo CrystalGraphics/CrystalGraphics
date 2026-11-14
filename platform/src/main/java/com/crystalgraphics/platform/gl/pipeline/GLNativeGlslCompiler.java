@@ -52,8 +52,10 @@ import static com.crystalgraphics.platform.gl.driver.GLC.GL_UNIFORM_BLOCK;
  *       Narrower than shaderc's SPIR-V reflection where the driver's optimiser drops a read, never wider. A compile is that probe link, on the device's context: call it where the
  *       device draws.</li>
  *   <li>Refused, naming the line: a binding it cannot class, a non-literal kernel binding (checked mode), a
- *       {@code push_constant} other than the kernel's, a vertex input {@code attribLocations} does not place. The
- *       bindless heap (set 3) is never declared: {@code CG_BINDLESS} is not defined.</li>
+ *       {@code push_constant} other than the kernel's, a vertex input {@code attribLocations} does not place.</li>
+ *   <li>The bindless heap (set 3), where the engine compiles with {@code CG_BINDLESS}, is a storage block of
+ *       {@code ARB_bindless_texture} handles at the point the device's heap layout gives it; the program reports it as
+ *       reading the heap, and set 3 holds no slot of its own.</li>
  * </ul>
  */
 public final class GLNativeGlslCompiler implements CgGlslCompiler {
@@ -95,7 +97,8 @@ public final class GLNativeGlslCompiler implements CgGlslCompiler {
         refusePushConstants(vertex, label);
         refusePushConstants(fragment, label);
         active(slots, label, GL_VERTEX_SHADER, vertex, GL_FRAGMENT_SHADER, fragment);
-        return new Explicit(module(vertex, slots), module(fragment, slots), sets(slots), false, 0, outputs(fragment));
+        return new Explicit(module(vertex, slots), module(fragment, slots), sets(slots), readsHeap(slots), 0,
+                outputs(fragment));
     }
 
     @Override
@@ -116,7 +119,7 @@ public final class GLNativeGlslCompiler implements CgGlslCompiler {
             refusePushConstants(source, label);
         }
         active(slots, label, GL_COMPUTE_SHADER, source);
-        return new ExplicitCompute(module(source, slots), local, sets(slots), false, push);
+        return new ExplicitCompute(module(source, slots), local, sets(slots), readsHeap(slots), push);
     }
 
     /** One binding: its set, binding and type, the define its point is written as, and whether the program reads it. */
@@ -267,7 +270,6 @@ public final class GLNativeGlslCompiler implements CgGlslCompiler {
         while (bind.find()) {
             if (lineOf(bare, bind.start()).trim().startsWith("#")) continue;
             int set = Integer.parseInt(bind.group(1)), binding = Integer.parseInt(bind.group(2));
-            if (set == CgRHI.BINDLESS_SET) continue;   // only declared under CG_BINDLESS, never defined here
             add(slots, new Slot(set, binding, classify(bare, bind.end(), label), "CG_GL_POINT_" + set + "_" + binding), label);
         }
         Map<String, int[]> bases = new TreeMap<>();
@@ -347,12 +349,21 @@ public final class GLNativeGlslCompiler implements CgGlslCompiler {
     }
 
     /** Each set's active slots in binding order, sets up to the highest read. */
+    /** Whether the program reads the bindless heap (set 3): the device's heap layout fills that set. */
+    private static boolean readsHeap(Map<Long, Slot> slots) {
+        for (Slot s : slots.values()) if (s.active && s.set == CgRHI.BINDLESS_SET) return true;
+        return false;
+    }
+
     private static List<List<CgBindingLayout.Slot>> sets(Map<Long, Slot> slots) {
         int count = 0;
         for (Slot s : slots.values()) if (s.active) count = Math.max(count, s.set + 1);
         List<List<CgBindingLayout.Slot>> sets = new ArrayList<>(count);
         for (int s = 0; s < count; s++) sets.add(new ArrayList<>());
-        for (Slot s : slots.values()) if (s.active) sets.get(s.set).add(new CgBindingLayout.Slot(s.binding, s.type));
+        // The heap's set is the device's layout, not the program's slots
+        for (Slot s : slots.values()) {
+            if (s.active && s.set != CgRHI.BINDLESS_SET) sets.get(s.set).add(new CgBindingLayout.Slot(s.binding, s.type));
+        }
         List<List<CgBindingLayout.Slot>> out = new ArrayList<>(count);
         for (List<CgBindingLayout.Slot> set : sets) out.add(List.copyOf(set));
         return List.copyOf(out);

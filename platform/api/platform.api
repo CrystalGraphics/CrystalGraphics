@@ -262,6 +262,7 @@ com/crystalgraphics/platform/gl/CgGLDevice
   implements com/crystalgraphics/platform/rhi/CgRHI
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;IIZ)V
   method public <init> (Lcom/crystalgraphics/platform/gl/driver/CgGLDriver;Lcom/crystalgraphics/platform/gl/pipeline/GLShaderTranslator;IIZLcom/crystalgraphics/platform/gl/state/GLHostState;)V
+  method public bindlessFreezesTextures ()Z
   method public bindlessIndex (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
@@ -1763,10 +1764,12 @@ com/crystalgraphics/platform/rhi/CgRHI
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final ASYNC_COMPUTE Lcom/crystalgraphics/variable/CgVar$Text;
+  field public,static,final BINDLESS Lcom/crystalgraphics/variable/CgVar$Bool;
   field public,static,final BINDLESS_SET I
   field public,static,final PRESENT_MODE Lcom/crystalgraphics/variable/CgVar$Text;
   field public,static,final SYNC_VALIDATION Lcom/crystalgraphics/variable/CgVar$Bool;
   field public,static,final TRANSFER Lcom/crystalgraphics/variable/CgVar$Bool;
+  method public bindlessFreezesTextures ()Z
   method public bindlessIndex (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I

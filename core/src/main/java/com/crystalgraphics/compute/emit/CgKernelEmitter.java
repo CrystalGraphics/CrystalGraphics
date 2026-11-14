@@ -1,5 +1,7 @@
 package com.crystalgraphics.compute.emit;
 
+import com.crystalgraphics.render.shader.CgBindless;
+import com.crystalgraphics.material.shader.CgGlslWriter;
 import com.crystalgraphics.compute.source.CgBufferAccess;
 import com.crystalgraphics.compute.source.CgBufferAccessor;
 import com.crystalgraphics.compute.source.CgBufferDecl;
@@ -122,7 +124,7 @@ public final class CgKernelEmitter {
                 .anyMatch(b -> b.element().equals("float") && kernel.accessors().contains(b.name() + "_ADD"));
 
         StringBuilder sb = new StringBuilder(4096);
-        sb.append(VERSION);
+        sb.append(VERSION).append(CgBindless.header()).append(CgGlslWriter.BINDLESS_EXTENSION);
         if (nativeSubgroups) for (String e : SUBGROUP_EXTENSIONS) sb.append("#extension ").append(e).append(" : require\n");
         if (nativeFloatAdd) sb.append("#extension GL_NV_shader_atomic_float : require\n");
         for (String e : source.extensions()) sb.append(e).append('\n');
@@ -256,16 +258,23 @@ public final class CgKernelEmitter {
           .append("#define CG_KSAMPLER(i) binding = i\n#endif\n");
     }
 
-    /** The {@code Properties} declarations: samplers and the block. */
+    /**
+     * The {@code Properties} declarations: samplers, bound or read by their index in the block where the engine compiles
+     * bindless (as a material's), and the block.
+     */
     private static void properties(StringBuilder sb, CgComputeSource source) {
         CgMaterialProperties properties = new CgMaterialProperties(source.properties());
         int unit = 0;
+        StringBuilder bound = new StringBuilder(), indexed = new StringBuilder();
         for (CgMaterialProperty p : properties.all()) {
             if (!p.getType().isSampler()) continue;
-            sb.append("layout(CG_KSAMPLER(").append(unit++).append(")) uniform ").append(p.getGlslType()).append(' ')
-              .append(p.getName()).append(";\n");
+            bound.append("layout(CG_KSAMPLER(").append(unit++).append(")) uniform ").append(p.getGlslType()).append(' ')
+                 .append(p.getName()).append(";\n");
+            indexed.append("#define ").append(p.getName()).append(" CG_TEXTURE_").append(p.getGlslType()).append('(')
+                   .append(CgMaterialProperties.textureMember(p.getName())).append(")\n");
         }
-        if (properties.hasUboProps()) {
+        if (unit > 0) sb.append("#ifdef CG_BINDLESS\n").append(indexed).append("#else\n").append(bound).append("#endif\n");
+        if (properties.hasBlock()) {
             sb.append(CgGlslBlocks.uniformBlock(properties.buildUboFormat(), PROPERTY_BLOCK, CgBindingModel.MATERIAL_BLOCK));
         }
     }

@@ -80,6 +80,11 @@ public interface CgRHI {
     CgVar.Text PRESENT_MODE = CgVar.text("crystalgraphics.vulkan.presentMode", "", CgVar.DEV | CgVar.RESTART,
             "immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose.");
 
+    CgVar.Bool BINDLESS = CgVar.bool("crystalgraphics.bindless", true, CgVar.DEV | CgVar.RESTART,
+            "Shaders read textures by index from the device's bindless heap wherever it has one (Vulkan's descriptor "
+                    + "indexing, GL's ARB_bindless_texture); false binds them to units, for testing that path on a GPU "
+                    + "with a heap.");
+
     /** The RHI installed now (Unreal's {@code GDynamicRHI}). */
     static CgRHI get() {
         CgRHI rhi = Current.rhi;
@@ -238,6 +243,15 @@ public interface CgRHI {
     /** Gives {@code slot} back once this frame retires: no frame in flight reads it written again. */
     default void releaseBindlessReference(int slot) {
         throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
+    /**
+     * Whether a texture read through the heap may never change its storage or sampling again: GL's
+     * {@code ARB_bindless_texture} freezes a texture once it has a handle. A host's own textures, which the host
+     * reallocates as it pleases (Minecraft's lightmap, its depth target), then stay bound to units.
+     */
+    default boolean bindlessFreezesTextures() {
+        return false;
     }
 
     // ── commands ──────────────────────────────────────────────────────────────
