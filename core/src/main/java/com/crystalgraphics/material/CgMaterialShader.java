@@ -43,6 +43,7 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 /**
  * Shared shader asset compiled from a {@code .shader} file. Owned by {@link CgMaterialShaderRegistry}.
@@ -1177,16 +1178,17 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     /**
-     * A shader's textures fit the installed GPU: as many as one stage binds, less the view's own
-     * ({@link CgBindingModel#VIEW_TEXTURES}). The engine sets no count of its own. Nothing to check before a device is
-     * installed: the compile there refuses what its driver cannot bind.
+     * A shader's textures fit the installed GPU where they are bound: as many as one stage binds, less the view's own
+     * ({@link CgBindingModel#VIEW_TEXTURES}). The engine sets no count of its own. Nothing to check on the bindless
+     * path, where a material's textures are read by index and take no unit, nor before a device is installed: the
+     * compile there refuses what its driver cannot bind.
      */
     private void requireUnits(CgShaderSpec parsed) {
         int samplers = 0;
         for (CgMaterialProperty property : parsed.properties()) {
             if (property.getType().isSampler()) samplers++;
         }
-        if (!CgRHI.installed()) return;
+        if (!CgRHI.installed() || CgBindless.active()) return;
         CgRHI rhi = CgRHI.get();
         int room = rhi.globals().limits().maxTextureUnits() - CgBindingModel.VIEW_TEXTURES;
         if (samplers > room) {

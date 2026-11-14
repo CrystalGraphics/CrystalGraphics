@@ -2320,6 +2320,7 @@ com/crystalgraphics/platform/rhi/nulldrv/CgNullRHI
   method public bindlessLayout ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public bindlessReference (Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;Lcom/crystalgraphics/platform/rhi/resource/CgGpuSampler;)I
   method public bindlessSet ()Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
+  method public close ()V
   method public createBindingLayout (Ljava/lang/String;Ljava/util/List;Z)Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;
   method public createBindingSet (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/binding/CgBindingLayout;Lcom/crystalgraphics/platform/rhi/binding/CgBindings;)Lcom/crystalgraphics/platform/rhi/binding/CgBindingSet;
   method public createBuffer (Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer$Desc;)Lcom/crystalgraphics/platform/rhi/resource/CgGpuBuffer;
@@ -2358,6 +2359,7 @@ com/crystalgraphics/platform/rhi/nulldrv/CgNullRHI
   method public waitRetired (J)V
   method public whenRetired (JLjava/lang/Runnable;)V
   method public withCompute (Lcom/crystalgraphics/platform/rhi/CgRHI$Globals$Compute;)Lcom/crystalgraphics/platform/rhi/nulldrv/CgNullRHI;
+  method public withoutBindless ()Lcom/crystalgraphics/platform/rhi/nulldrv/CgNullRHI;
   method public withoutLog ()Lcom/crystalgraphics/platform/rhi/nulldrv/CgNullRHI;
   method public,static emptySpirv ()Ljava/nio/ByteBuffer;
   method public,static idOf (Lcom/crystalgraphics/platform/rhi/resource/CgRHIResource;)I

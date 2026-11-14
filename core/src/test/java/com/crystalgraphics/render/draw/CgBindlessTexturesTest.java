@@ -30,6 +30,7 @@ public class CgBindlessTexturesTest {
 
     @AfterClass
     public static void uninstall() {
+        rhi.close();
         CgRHI.install(null);
     }
 

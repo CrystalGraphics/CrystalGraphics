@@ -58,7 +58,7 @@ import java.util.function.BiConsumer;
  */
 public final class CgNullRHI implements CgRHI {
 
-    /** Kept, never run: a null device has no close, and creates nothing on other threads. */
+    /** Run by {@link #close()}; it creates nothing on other threads. */
     private final List<Runnable> closing = new ArrayList<>();
 
     @Override
@@ -66,6 +66,27 @@ public final class CgNullRHI implements CgRHI {
         synchronized (closing) {
             closing.add(task);
         }
+    }
+
+    /**
+     * Runs what {@link #onClose} was handed, as a device's close does: what was decided for this device is asked
+     * again of the next one a test installs.
+     *
+     * <pre>{@code
+     * CgNullRHI rhi = new CgNullRHI(64, 64);
+     * CgRHI.install(rhi);
+     * ...
+     * rhi.close();
+     * CgRHI.install(null);
+     * }</pre>
+     */
+    public void close() {
+        List<Runnable> tasks;
+        synchronized (closing) {
+            tasks = new ArrayList<>(closing);
+            closing.clear();
+        }
+        for (Runnable task : tasks) task.run();
     }
 
     private static final int SPIRV_MAGIC = 0x07230203;
@@ -146,16 +167,33 @@ public final class CgNullRHI implements CgRHI {
      * }</pre>
      */
     public CgNullRHI withCompute(CgRHI.Globals.Compute compute) {
+        info = globals(compute, info.bindless());
+        return this;
+    }
+
+    /**
+     * Answers as a device with no bindless heap: what a test of the bound path installs, since
+     * {@link CgRHI#BINDLESS} is read once per launch.
+     *
+     * <pre>{@code
+     * CgRHI.install(new CgNullRHI(64, 64).withoutBindless());
+     * }</pre>
+     */
+    public CgNullRHI withoutBindless() {
+        info = globals(info.limits().compute(), false);
+        return this;
+    }
+
+    private static CgRHI.Globals globals(CgRHI.Globals.Compute compute, boolean bindless) {
         CgRHI.Globals.Limits l = INFO.limits();
-        info = new CgRHI.Globals(INFO.name(), INFO.vendor(), INFO.driver(), new CgRHI.Globals.Limits(l.maxTextureSize(),
+        return new CgRHI.Globals(INFO.name(), INFO.vendor(), INFO.driver(), new CgRHI.Globals.Limits(l.maxTextureSize(),
                 l.max3DTextureSize(), l.maxArrayLayers(), l.maxColorAttachments(), l.maxSamples(), l.maxVertexAttributes(),
-                l.maxTextureUnits(), l.maxBindlessTextures(), l.maxUniformBlockSize(), l.maxUniformBufferBindings(), l.maxDynamicUniformBuffers(),
-                l.maxStorageBufferBindings(), l.maxDynamicStorageBuffers(),
+                l.maxTextureUnits(), bindless ? l.maxBindlessTextures() : 0, l.maxUniformBlockSize(), l.maxUniformBufferBindings(),
+                l.maxDynamicUniformBuffers(), l.maxStorageBufferBindings(), l.maxDynamicStorageBuffers(),
                 l.maxTexelBufferElements(), l.uniformOffsetAlignment(), l.storageOffsetAlignment(), l.texelOffsetAlignment(),
                 l.maxViewportSize(), l.maxAnisotropy(), compute), INFO.timestamps(), INFO.anisotropy(), INFO.nonSolidFill(),
                 INFO.multiDrawIndirect(), INFO.indirectCount(), INFO.indirectFirstInstance(), INFO.asyncCompute(),
-                INFO.drawParameters(), INFO.independentBlend(), INFO.bindless());
-        return this;
+                INFO.drawParameters(), INFO.independentBlend(), bindless);
     }
 
     /**

@@ -10,7 +10,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
  *
  * <pre>{@code
  * StringBuilder sb = new StringBuilder().append("#version 450 core\n").append(CgBindless.header());
- * if (CgBindless.active()) block.putUint(member, CgBindlessTextures.index(rhi, texture, sampler));
+ * if (CgBindless.active()) block.putUint(member, CgBindlessTextures.index(texture, sampler));
  * }</pre>
  *
  * <ul>
