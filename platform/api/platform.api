@@ -3513,9 +3513,11 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgWorldStimulus;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
   method public jumpDown ()Z
+  method public container (IIILjava/lang/String;)Z
   method public pressJump ()Z
   method public turnLook (F)Z
   method public,abstract breakBlock (III)Z
+  method public use (III)Z
   method public,abstract clear (DDDD)Z
   method public,abstract dragon (DDD)Z
   method public,abstract explode (DDD)Z

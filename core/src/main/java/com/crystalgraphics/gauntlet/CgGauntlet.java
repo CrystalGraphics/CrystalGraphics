@@ -26,6 +26,7 @@ import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.probe.CgCollisionProbe;
+import com.crystalgraphics.probe.CgContainersProbe;
 import com.crystalgraphics.probe.CgServerSmoke;
 import com.crystalgraphics.probe.CgWorldProbe;
 import com.crystalgraphics.variable.CgVar;
@@ -108,6 +109,7 @@ public final class CgGauntlet {
         register("crystalgraphics:play", CgGauntletPlayTest::new);
         register("crystalgraphics:world", CgWorldProbe::test);
         register("crystalgraphics:collision", CgCollisionProbe::test);
+        register("crystalgraphics:containers", CgContainersProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:server", CgServerSmoke::new);
         register("crystalgraphics:pipelines", CgDemoPipelinesTest::new);

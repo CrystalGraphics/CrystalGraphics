@@ -88,6 +88,19 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /**
+     * A furnace or a chest set at the block by the server, with eight cobblestone in its first slot, for a probe of
+     * {@code CgContainers}. {@code block} is {@code "furnace"} or {@code "chest"}; false where this version cannot.
+     */
+    default boolean container(int x, int y, int z, String block) {
+        return false;
+    }
+
+    /** The local player's right-click on the block's top face, as the use key sends it; false where this version has no such call. */
+    default boolean use(int x, int y, int z) {
+        return false;
+    }
+
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
 

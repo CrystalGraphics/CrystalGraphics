@@ -5,6 +5,15 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.server.integrated.IntegratedServer;
+import net.minecraft.util.EnumFacing;
+//? if >=1.10 {
+import net.minecraft.util.EnumHand;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
+//?} else {
+/*import net.minecraft.util.BlockPos;
+import net.minecraft.util.Vec3;
+*///?}
 
 import java.util.Locale;
 
@@ -109,6 +118,31 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
     @Override
     public boolean jumpDown() {
         return Minecraft.getMinecraft().gameSettings.keyBindJump.isKeyDown();
+    }
+
+    @Override
+    public boolean container(int x, int y, int z, String block) {
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
+                String.format(Locale.ROOT, "replaceitem block %d %d %d slot.container.0 minecraft:cobblestone 8", x, y, z));
+    }
+
+    // processRightClickBlock: 1.8.9 onPlayerRightClick, 1.10 adds the hand, 1.12 drops the stack.
+    @Override
+    public boolean use(int x, int y, int z) {
+        Minecraft mc = Minecraft.getMinecraft();
+        EntityPlayerSP player = player();
+        if (player == null || mc.playerController == null) return false;
+        BlockPos pos = new BlockPos(x, y, z);
+        //? if >=1.12 {
+        mc.playerController.processRightClickBlock(player, mc.world, pos, EnumFacing.UP, new Vec3d(x + 0.5, y + 1.0, z + 0.5), EnumHand.MAIN_HAND);
+        //?} elif >=1.10 {
+        /*mc.playerController.processRightClickBlock(player, mc.world, player.getHeldItemMainhand(), pos, EnumFacing.UP,
+                new Vec3d(x + 0.5, y + 1.0, z + 0.5), EnumHand.MAIN_HAND);
+        *///?} else {
+        /*mc.playerController.onPlayerRightClick(player, mc.theWorld, player.getHeldItem(), pos, EnumFacing.UP,
+                new Vec3(x + 0.5, y + 1.0, z + 0.5));
+        *///?}
+        return true;
     }
 
     private static EntityPlayerSP player() {

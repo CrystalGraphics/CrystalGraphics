@@ -7,6 +7,13 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.commands.CommandSourceStack;
 //?}
+//? if >=1.14.3 {
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.Vec3;
+//?}
 
 import java.util.Locale;
 
@@ -100,6 +107,37 @@ public final class WorldStimulusModern implements CgWorldStimulus {
                 String.format(Locale.ROOT, "summon minecraft:painting %d %d %d {TileX:%d,TileY:%d,TileZ:%d,"
                         + "block_pos:[I;%d,%d,%d],Facing:2b,facing:2b,Motive:\"minecraft:kebab\",variant:\"minecraft:kebab\"}",
                         x, y, z, x, y, z, x, y, z));
+    }
+
+    // The slot command was `replaceitem` until 1.17's `item`.
+    @Override
+    public boolean container(int x, int y, int z, String block) {
+        //? if >=1.17 {
+        String fill = "item replace block %d %d %d container.0 with minecraft:cobblestone 8";
+        //?} else {
+        /*String fill = "replaceitem block %d %d %d container.0 minecraft:cobblestone 8";
+        *///?}
+        return run(String.format(Locale.ROOT, "setblock %d %d %d minecraft:%s", x, y, z, block),
+                String.format(Locale.ROOT, fill, x, y, z));
+    }
+
+    // useItemOn lost its level argument in 1.19; 1.14.3-1.14.4 spell the level MultiPlayerLevel.
+    @Override
+    public boolean use(int x, int y, int z) {
+        //? if >=1.14.3 {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
+        if (player == null || mc.gameMode == null) return false;
+        BlockHitResult hit = new BlockHitResult(new Vec3(x + 0.5, y + 1.0, z + 0.5), Direction.UP, new BlockPos(x, y, z), false);
+        //? if >=1.19 {
+        mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
+        //?} else {
+        /*mc.gameMode.useItemOn(player, mc.level, InteractionHand.MAIN_HAND, hit);
+        *///?}
+        return true;
+        //?} else {
+        /*return false;
+        *///?}
     }
 
     @Override

@@ -5,6 +5,11 @@ import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.client.Minecraft;
+import net.minecraft.init.Blocks;
+import net.minecraft.inventory.IInventory;
+import net.minecraft.item.ItemStack;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.Vec3;
 import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
@@ -126,6 +131,29 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
             WorldServer world = server.worldServerForDimension(dimension);
             world.spawnEntityInWorld(new EntityPainting(world, x, y, z + 1, 2, "Kebab"));
         });
+    }
+
+    // No replaceitem or blockdata on 1.7.10: the tile entity is filled by hand.
+    @Override
+    public boolean container(int x, int y, int z, String block) {
+        if (Minecraft.getMinecraft().thePlayer == null) return false;
+        int dimension = Minecraft.getMinecraft().thePlayer.dimension;
+        return run(server -> {
+            WorldServer world = server.worldServerForDimension(dimension);
+            world.setBlock(x, y, z, "chest".equals(block) ? Blocks.chest : Blocks.furnace);
+            TileEntity tile = world.getTileEntity(x, y, z);
+            if (tile instanceof IInventory) ((IInventory) tile).setInventorySlotContents(0, new ItemStack(Blocks.cobblestone, 8));
+        });
+    }
+
+    // Side 1 is the top face.
+    @Override
+    public boolean use(int x, int y, int z) {
+        Minecraft mc = Minecraft.getMinecraft();
+        if (mc.thePlayer == null || mc.playerController == null) return false;
+        mc.playerController.onPlayerRightClick(mc.thePlayer, mc.theWorld, mc.thePlayer.getHeldItem(), x, y, z, 1,
+                Vec3.createVectorHelper(x + 0.5, y + 1.0, z + 0.5));
+        return true;
     }
 
     // No @e selector on 1.7.10: removed by hand, in the player's dimension.
