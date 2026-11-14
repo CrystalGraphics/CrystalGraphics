@@ -47,7 +47,7 @@ import com.github.bsideup.jabel.Desugar;
  * to. Any thread; the appends run on the executor given.
  *
  * <pre>{@code
- * CgPipelineRecipes recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), executor);
+ * CgPipelineRecipes recipes = CgPipelineRecipes.load(CgCacheDirectory.of("pipelines"), true, executor);
  * for (CgPipelineRecipes.Recipe r : recipes.of(key)) build(r.desc(label, layout, vertex, fragment));   // as a program links
  * recipes.record(program.key(), CgPipelineRecipes.Recipe.of(desc));          // a pipeline built at a draw
  * }</pre>
@@ -79,7 +79,9 @@ public final class CgPipelineRecipes {
     /**
      * The process's list: the shipped one and the user's in the cache folder ({@code CgCacheDirectory.of("pipelines")}),
      * appended on a writer thread of its own. One for every pipeline cache, so two caches on a device (the tracked
-     * backend's, the graph's) read each other's recipes and never write the file at once.
+     * backend's, the graph's) read each other's recipes and never write the file at once. Without
+     * {@link CgPipelineCache#buildsAhead()} the shipped list is left unread, so the folder's list ends whole: every
+     * pipeline the run drew, not those the shipped list lacked.
      */
     public static synchronized CgPipelineRecipes shared() {
         if (shared == null) {
@@ -89,7 +91,7 @@ public final class CgPipelineRecipes {
                 t.setPriority(Thread.MIN_PRIORITY);
                 return t;
             });
-            shared = load(CgCacheDirectory.of("pipelines"), writer);
+            shared = load(CgCacheDirectory.of("pipelines"), CgPipelineCache.buildsAhead(), writer);
         }
         return shared;
     }
@@ -121,14 +123,10 @@ public final class CgPipelineRecipes {
         return h;
     }
 
-    /** The shipped list and the user's in {@code folder} (null: shipped only, nothing written). */
-    public static CgPipelineRecipes load(Path folder, Executor writer) {
+    /** The user's list in {@code folder} (null: nothing written), and the shipped one with {@code shipped}. */
+    public static CgPipelineRecipes load(Path folder, boolean shipped, Executor writer) {
         CgPipelineRecipes recipes = new CgPipelineRecipes(folder, writer);
-        try (InputStream shipped = CgPipelineRecipes.class.getResourceAsStream(SHIPPED)) {
-            if (shipped != null) recipes.read(new BufferedReader(new InputStreamReader(shipped, StandardCharsets.UTF_8)));
-        } catch (IOException e) {
-            LOGGER.warn("shipped pipeline list unread: {}", e.toString());
-        }
+        if (shipped) recipes.readShipped();
         if (recipes.file != null && Files.isRegularFile(recipes.file)) {
             try (BufferedReader in = Files.newBufferedReader(recipes.file, StandardCharsets.UTF_8)) {
                 recipes.read(in);
@@ -137,6 +135,14 @@ public final class CgPipelineRecipes {
             }
         }
         return recipes;
+    }
+
+    private void readShipped() {
+        try (InputStream in = CgPipelineRecipes.class.getResourceAsStream(SHIPPED)) {
+            if (in != null) read(new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8)));
+        } catch (IOException e) {
+            LOGGER.warn("shipped pipeline list unread: {}", e.toString());
+        }
     }
 
     private void read(BufferedReader in) throws IOException {
