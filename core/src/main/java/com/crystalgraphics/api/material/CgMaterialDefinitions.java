@@ -220,8 +220,10 @@ public final class CgMaterialDefinitions {
             if (k != null && parsed.features().contains(k) && !parsed.implicitFeatures().contains(k)) serves.add(u);
         }
         boolean particles = parsed.engineBuffers().contains("particle");
-        // With no usage keyword a particle program is placed by each particle factory
-        if (!serves.isEmpty()) serves.add(CgMaterialUsage.STATIC_MESH);
+        // A listed factory set's base branch is the mesh (under none of the others' keywords): static and skinned alike,
+        // the skinned program being the engine's variant. With no usage keyword a particle program is placed by each
+        // particle factory.
+        if (!serves.isEmpty()) serves.addAll(EnumSet.of(CgMaterialUsage.STATIC_MESH, CgMaterialUsage.SKELETAL_MESH));
         else if (particles) serves.addAll(EnumSet.of(CgMaterialUsage.SPRITES, CgMaterialUsage.MESH_PARTICLES, CgMaterialUsage.RIBBONS));
         else serves.addAll(EnumSet.of(CgMaterialUsage.STATIC_MESH, CgMaterialUsage.SKELETAL_MESH));
         for (CgMaterialUsage u : usage) {
