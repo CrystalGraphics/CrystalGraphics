@@ -89,6 +89,11 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
     private final Matrix4d world = new Matrix4d();
     private final Matrix4d relativeScratch = new Matrix4d(), parentScratch = new Matrix4d(), localScratch = new Matrix4d();
     private final Matrix4f socketScratch = new Matrix4f();
+    private final Vector3d boundsMin = new Vector3d(), boundsMax = new Vector3d();
+    /** Its world box, made again at the first ask after it moves or its bounds change. */
+    private final CgAABB worldBounds = new CgAABB();
+    private byte worldBoundsState = STALE;
+    private static final byte STALE = 0, KNOWN = 1, NONE = 2;
 
     /** A socket handle naming none: its origin. */
     static final int NO_SOCKET = -1;
@@ -276,6 +281,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
         p.socketWorld(parentSocket, parentScratch, socketScratch).mul(relative(relativeScratch));
         if (parentScratch.equals(world)) return;
         world.set(parentScratch);
+        worldBoundsState = STALE;
         if (spawned()) onMoved();
     }
 
@@ -316,6 +322,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
     public T bounds(@Nullable CgAABBc box) {
         requireLive();
         this.statedBounds = box == null ? null : new CgAABB(box);
+        worldBoundsState = STALE;
         return self();
     }
 
@@ -468,6 +475,29 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
         return kindBounds(out);
     }
 
+    /**
+     * Its bounds in the world, absolute: its object-space bounds under its transform, kept until it moves or they change
+     * (Unreal's scene primitive bounds); null for none known.
+     */
+    @Nullable
+    CgAABBc worldBounds() {
+        if (worldBoundsState == STALE) {
+            worldBoundsState = NONE;
+            if (localBounds(worldBounds)) {
+                world.transformAab(worldBounds.minX(), worldBounds.minY(), worldBounds.minZ(), worldBounds.maxX(),
+                        worldBounds.maxY(), worldBounds.maxZ(), boundsMin, boundsMax);
+                worldBounds.set(boundsMin.x, boundsMin.y, boundsMin.z, boundsMax.x, boundsMax.y, boundsMax.z);
+                worldBoundsState = KNOWN;
+            }
+        }
+        return worldBoundsState == KNOWN ? worldBounds : null;
+    }
+
+    /** Its kind's bounds changed (a skeletal mesh's pose): its world box is made again at the next ask. */
+    final void boundsChanged() {
+        worldBoundsState = STALE;
+    }
+
     /** A row of its settings in {@code out}, answering its index: what each kind adds per mesh it draws. */
     final int batch(CgMeshBatches out, CgMesh mesh, CgMaterialInterface material, int submesh) {
         return out.add(mesh, material, submesh, layer, passFlags(), sortPriority, stencil, stencilMask);
@@ -519,6 +549,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> {
             return self();
         }
         relative(world);
+        worldBoundsState = STALE;
         if (spawned()) onMoved();
         return self();
     }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.render.scene.sort.CgSortKey;
+import com.crystalgraphics.render.scene.visibility.CgInstanceCulling;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -308,6 +310,7 @@ public final class CgWorldRenderer {
 
     private static void precacheKernels() {
         CgGpuOps.precacheDepthPyramid();   // the GPU cull's
+        CgInstanceCulling.precache();
         CgWorldLights.precacheKernels();
         CgWorldMedia.precacheKernels();
         CgWorldHaze.precacheKernels();

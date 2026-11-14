@@ -32,8 +32,8 @@ public class CgSceneTest {
     @Test
     public void aSpawnedMesh_isGatheredByItsRecord_andRemovingItFreesTheRecord() {
         CgScene scene = new CgScene();
-        CgMeshComponent rock = scene.mesh(CUBE, STONE).at(10, 64, -3).layer(CgSortLayer.OVERLAY).customDepth(3).spawn();
-        scene.gather(view, camera, out);
+        CgMeshComponent rock = scene.mesh(CUBE, STONE).at(1, 0.5, -3).layer(CgSortLayer.OVERLAY).customDepth(3).spawn();
+        scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
         assertSame(CUBE, out.mesh(0));
         assertSame(STONE, out.material(0));
@@ -45,7 +45,7 @@ public class CgSceneTest {
         assertEquals(1, scene.gpu().size());
 
         rock.remove();
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(0, out.size());
         assertEquals(0, scene.gpu().size());
     }
@@ -55,13 +55,13 @@ public class CgSceneTest {
         CgScene scene = new CgScene();
         CgMeshComponent near = scene.mesh(CUBE, STONE).at(0, 0, -5).maxDistance(10f).spawn();
         CgMeshComponent far = scene.mesh(CUBE, STONE).at(0, 0, -50).maxDistance(10f).spawn();
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
         assertEquals(near.objectId(), out.objectId(0));
 
         near.visible(false);
         far.maxDistance(100f);
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
         assertEquals(far.objectId(), out.objectId(0));
     }
@@ -74,7 +74,7 @@ public class CgSceneTest {
         scene.mesh(lods, STONE).at(0, 0, -3).spawn();
         CgMeshComponent distant = scene.mesh(lods, STONE).at(0, 0, -40).spawn();
         scene.mesh(lods, STONE).at(0, 0, -900).spawn();   // under every level: culled
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(2, out.size());
         assertSame(CUBE, out.mesh(0));
         assertSame(coarse, out.mesh(1));
@@ -90,11 +90,11 @@ public class CgSceneTest {
         grass.add(2, 0, 0, none, 1f);
         grass.add(3, 0, 0, none, 1f);
         grass.remove(a);
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
         assertEquals(2, out.instanceCount(0));
-        int[] ids = out.instances(0);
-        assertNotNull(ids);
+        assertNotNull(out.instances(0));
+        int[] ids = out.instances(0).ids();
         for (int i = 0; i < 2; i++) assertTrue((ids[i] & CgGpuScene.SCENE_RECORD) != 0);
         assertEquals(2, scene.gpu().size());
 
@@ -109,7 +109,7 @@ public class CgSceneTest {
             o.mesh(CUBE, GLOW).at(5, 6, 7).customData(1, 0.5f, 0f, 0f, 1f).add();
             o.mesh(CUBE, STONE).add();
         }).at(1, 2, 3).layer(CgSortLayer.EFFECTS).emission(3f).spawn();
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(2, out.size());
         assertEquals(-1, out.objectId(0));
         assertSame(CgSortLayer.EFFECTS, out.layer(1));
@@ -126,11 +126,11 @@ public class CgSceneTest {
         CgScene scene = new CgScene();
         scene.drawOnce(CUBE, GLOW, 4, 5, 6);
         scene.primitives().beginFrame();
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
         assertEquals(6.0, out.position(0, 2), 0.0);
         scene.primitives().beginFrame();
-        scene.gather(view, camera, out);
+        scene.primitives().gather(view, camera, out);
         assertEquals(0, out.size());
     }
 

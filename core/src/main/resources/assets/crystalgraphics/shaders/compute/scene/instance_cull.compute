@@ -1,0 +1,77 @@
+// CgInstanceCulling: one instanced mesh component's instances, each a thread. Its GPU scene record is read by its
+// object id and placed in the view's camera-relative world by the view's tile (cg_env.glsl's decode), its mesh's box
+// tested against the frustum and, with a depth pyramid, the scene's depth (occlusion.glsl, as cull.compute tests);
+// a kept instance appends its object id, and the append's count is the row's instance count. Unreal's
+// InstanceCullBuildInstanceIdBufferCS: ids, never copies of records.
+#pragma kernel InstanceCull append
+
+#include "crystalgraphics:shaders/compute/ops/occlusion.glsl"
+
+Properties {
+    _Count        ("Instances",                                         int)  = 0
+    _Min          ("The mesh's box: low corner",                        vec4) = (0, 0, 0, 0)
+    _Max          ("The mesh's box: high corner",                       vec4) = (0, 0, 0, 0)
+    _ViewTile     ("The camera origin's tile; w a tile's size",         vec4) = (0, 0, 0, 1024)
+    _TileOffset   ("The origin's place in its tile",                    vec4) = (0, 0, 0, 0)
+    _ClipX        ("Projection times view: row 0",                      vec4) = (1, 0, 0, 0)
+    _ClipY        ("Row 1",                                             vec4) = (0, 1, 0, 0)
+    _ClipZ        ("Row 2",                                             vec4) = (0, 0, 1, 0)
+    _ClipW        ("Row 3",                                             vec4) = (0, 0, 0, 1)
+    _Plane0       ("The frustum's planes, JOML's order",                vec4) = (0, 0, 0, 1)
+    _Plane1       ("Plane 1",                                           vec4) = (0, 0, 0, 1)
+    _Plane2       ("Plane 2",                                           vec4) = (0, 0, 0, 1)
+    _Plane3       ("Plane 3",                                           vec4) = (0, 0, 0, 1)
+    _Plane4       ("Plane 4",                                           vec4) = (0, 0, 0, 1)
+    _Plane5       ("Plane 5",                                           vec4) = (0, 0, 0, 1)
+    _Eye          ("Projection [2][2], [2][3], [3][2], [3][3]",         vec4) = (-1, -1, 0, 0)
+    _Pyramid      ("Eye depth, each level the farthest it covers",      sampler2D) = "white"
+    _PyramidSize  ("Its width, height and levels; no levels, no test",  vec4) = (0, 0, 0, 0)
+}
+
+struct InstanceIds {   // CgMeshBatches.ID_LAYOUT: four ids a record
+    uvec4 ids;
+};
+
+// cg_env.glsl's CgSceneObject (CgGpuScene.RECORD) field for field, under a name of its own: the records are bound as the
+// culled scene's, where the view set holds the client scene's alone.
+struct SceneRecord {
+    vec4 origin;
+    mat4 model;
+    mat4 previousModel;
+    mat4 normalMatrix;
+    vec4 custom0;
+    vec4 custom1;
+    vec4 custom2;
+    vec4 custom3;
+};
+
+Buffers {
+    IDS     ("The component's instances' object ids",  InstanceIds,   readonly)
+    RECORDS ("The scene's records",                    SceneRecord,   readonly)
+    OUT     ("The kept instances' object ids",         uint,          append)
+}
+
+bool outside(vec4 plane, vec3 lo, vec3 hi) {
+    return plane.x * (plane.x < 0.0 ? lo.x : hi.x) + plane.y * (plane.y < 0.0 ? lo.y : hi.y)
+            + plane.z * (plane.z < 0.0 ? lo.z : hi.z) < -plane.w;
+}
+
+void InstanceCull() {
+    if (CG_ELEMENT >= _Count) return;
+    uint id = IDS(CG_ELEMENT >> 2).ids[CG_ELEMENT & 3];
+    SceneRecord s = RECORDS(int(id & 0x7FFFFFFFu));
+    mat4 m = s.model;
+    m[3].xyz += (s.origin.xyz - _ViewTile.xyz) * _ViewTile.w - _TileOffset.xyz;
+
+    // The box in the camera-relative world: JOML's transformAab, term for term.
+    vec3 lo = m[3].xyz, hi = m[3].xyz;
+    for (int a = 0; a < 3; a++) {
+        vec3 p = m[a].xyz * _Min[a], q = m[a].xyz * _Max[a];
+        lo += min(p, q);
+        hi += max(p, q);
+    }
+    if (outside(_Plane0, lo, hi) || outside(_Plane1, lo, hi) || outside(_Plane2, lo, hi)
+            || outside(_Plane3, lo, hi) || outside(_Plane4, lo, hi) || outside(_Plane5, lo, hi)) return;
+    if (cg_occluded(_Pyramid, _PyramidSize, _ClipX, _ClipY, _ClipZ, _ClipW, _Eye, lo, hi)) return;
+    OUT_APPEND(id);
+}

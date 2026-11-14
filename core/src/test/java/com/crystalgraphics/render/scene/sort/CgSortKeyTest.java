@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.world;
+package com.crystalgraphics.render.scene.sort;
 
 import com.crystalgraphics.api.material.CgRenderQueue;
 import org.junit.Test;

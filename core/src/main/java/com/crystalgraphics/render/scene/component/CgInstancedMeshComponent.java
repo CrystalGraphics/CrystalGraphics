@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.api.buffer.CgBuffer;
+import com.crystalgraphics.api.buffer.CgBufferRecords;
+import com.crystalgraphics.api.buffer.CgBuffers;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.api.material.CgMaterialInterface;
@@ -10,8 +13,10 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import org.joml.Matrix4d;
 import org.joml.Quaternionfc;
 
+import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 /**
  * Many of one mesh in one component, each instance its own GPU scene record: Unreal's
@@ -29,7 +34,8 @@ import java.util.Objects;
  * <ul>
  *   <li>Instances are added once it is spawned; {@link #add} before {@link #spawn} throws.</li>
  *   <li>The component's own position is where the instances' sort group is; its transform does not move them.</li>
- *   <li>A view draws every instance of it in one batch, none culled.</li>
+ *   <li>A view takes all of it as one batch; each instance is culled on the GPU against that view and its depth pyramid
+ *       ({@code CgInstanceCulling}), by its mesh's box under its own transform.</li>
  * </ul>
  */
 public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInstancedMeshComponent> {
@@ -41,11 +47,9 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
     private int indices;
     private int[] freeIndices = new int[16];
     private int freeCount;
-    /** The live instances' object ids, dense: rebuilt when one is added or removed. */
-    private int[] ids = new int[16];
     private int live;
-    private boolean idsStale;
     private final Matrix4d instance = new Matrix4d();
+    private final Ids ids = new Ids();
 
     CgInstancedMeshComponent(CgScenePrimitives scene, CgMesh mesh, CgMaterialInterface material) {
         super(scene);
@@ -67,7 +71,7 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
         scene.gpu().transform(slot, instance.translation(x, y, z).rotate(rotation).scale(scale));
         scene.writeValues(this, slot);
         live++;
-        idsStale = true;
+        ids.stale();
         return index;
     }
 
@@ -95,12 +99,17 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
         if (freeCount == freeIndices.length) freeIndices = Arrays.copyOf(freeIndices, freeIndices.length * 2);
         freeIndices[freeCount++] = index;
         live--;
-        idsStale = true;
+        ids.stale();
     }
 
     /** Live instances. */
     public int count() {
         return live;
+    }
+
+    /** The mesh every instance draws: whose box the GPU culls each instance by. */
+    public CgMesh mesh() {
+        return mesh;
     }
 
     private int slotOf(int index) {
@@ -116,7 +125,7 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
     void onRemove() {
         for (int i = 0; i < indices; i++) if (slots[i] >= 0) scene.gpu().remove(slots[i]);
         indices = freeCount = live = 0;
-        idsStale = true;
+        ids.release();
     }
 
     /** Its own position moves no instance. */
@@ -134,6 +143,7 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
         }
     }
 
+    /** None of its own: its instances are culled one by one on the GPU. */
     @Override
     boolean kindBounds(CgAABB out) {
         return false;
@@ -142,12 +152,66 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
     @Override
     void gather(CgView view, CgCamera camera, CgMeshBatches out, CgSceneGather gather) {
         if (live == 0) return;
-        if (idsStale) {
-            if (ids.length < live) ids = new int[Integer.highestOneBit(live) << 1];
-            int n = 0;
-            for (int i = 0; i < indices; i++) if (slots[i] >= 0) ids[n++] = CgGpuScene.id(slots[i]);
-            idsStale = false;
+        out.instances(batch(out, mesh, material, -1), ids);
+    }
+
+    /** Its live instances' object ids, dense, on the CPU and on the GPU: each rebuilt when an instance comes or goes. */
+    private final class Ids implements CgMeshBatches.Instances {
+        private int[] dense = new int[16];
+        private boolean denseStale, gpuStale;
+        @Nullable
+        private CgBuffer gpu;
+        private final Consumer<CgBufferRecords> writer = this::write;
+
+        void stale() {
+            denseStale = gpuStale = true;
         }
-        out.instances(batch(out, mesh, material, -1), ids, live);
+
+        @Override
+        public int[] ids() {
+            if (denseStale) {
+                if (dense.length < live) dense = new int[Integer.highestOneBit(live) << 1];
+                int n = 0;
+                for (int i = 0; i < indices; i++) if (slots[i] >= 0) dense[n++] = CgGpuScene.id(slots[i]);
+                denseStale = false;
+            }
+            return dense;
+        }
+
+        @Override
+        public int count() {
+            return live;
+        }
+
+        @Override
+        public CgBuffer gpuIds() {
+            int records = (live + 3) / 4;
+            if (gpu == null || gpu.count() < records) {
+                if (gpu != null) gpu.release();
+                gpu = CgBuffers.create("crystalgraphics.scene.instance-ids", CgMeshBatches.ID_LAYOUT,
+                        Math.max(4, Integer.highestOneBit(Math.max(1, records - 1)) << 1));
+                gpuStale = true;
+            }
+            if (gpuStale) {
+                ids();
+                gpu.write(0, records, writer);
+                gpuStale = false;
+            }
+            return gpu;
+        }
+
+        /** Four ids a record; the last record's spare lanes 0, which no thread reads. */
+        private void write(CgBufferRecords out) {
+            for (int i = 0; i < live; i += 4) {
+                out.next().uvec4("ids", dense[i], i + 1 < live ? dense[i + 1] : 0, i + 2 < live ? dense[i + 2] : 0,
+                        i + 3 < live ? dense[i + 3] : 0);
+            }
+        }
+
+        void release() {
+            if (gpu != null) gpu.release();
+            gpu = null;
+            stale();
+        }
     }
 }

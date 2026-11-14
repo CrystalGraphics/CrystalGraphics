@@ -281,6 +281,13 @@ public final class CgGpuScene {
         return buffer;
     }
 
+    /** {@link #records}'s buffer itself, flushed for this frame: what a compute pass binds by {@link #RECORD}; null with none. */
+    @Nullable
+    public CgBuffer buffer() {
+        records();
+        return buffer;
+    }
+
     private void flush() {
         settle();
         upload();

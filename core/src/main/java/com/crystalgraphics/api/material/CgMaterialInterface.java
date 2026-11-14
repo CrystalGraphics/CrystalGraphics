@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.material;
 
 import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.material.shader.CgShaderPermutations;
 
 import javax.annotation.Nullable;
@@ -48,6 +49,23 @@ public interface CgMaterialInterface {
     @Nullable
     default String lastCompileError() {
         return material().lastCompileError();
+    }
+
+    /**
+     * Its {@link CgRenderQueue}: its shader's, moved by its state's blend. What sorts it and which passes take it, as
+     * Unreal's {@code GetBlendMode}.
+     *
+     * <pre>{@code
+     * boolean transparent = material.renderQueue() >= CgRenderQueue.TRANSPARENT_THRESHOLD;
+     * }</pre>
+     */
+    default int renderQueue() {
+        return CgMaterialProxy.of(this).getRenderQueue();
+    }
+
+    /** Whether its Forward pass writes depth: a transparent one that does draws first in its sort group. */
+    default boolean writesDepth() {
+        return CgMaterialProxy.of(this).writesDepth();
     }
 
     /** Its render state where it is not its shader's; {@link CgMaterialState#SHADER} for none. */

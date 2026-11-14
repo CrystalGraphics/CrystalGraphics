@@ -27,7 +27,7 @@ import java.util.Objects;
  * <pre>{@code
  * CgScenePrimitives primitives = scene.primitives();
  * primitives.update();                          // ATTACH: attachments, then skeletal palettes
- * primitives.gather(view, camera, batches);     // what the view draws of the scene this frame
+ * primitives.gather(view, camera, batches);     // what the view sees of the scene: its CgViewVisibility's
  * int spawned = primitives.size();
  * }</pre>
  */
@@ -124,9 +124,11 @@ public final class CgScenePrimitives {
     }
 
     /**
-     * What {@code view}, seen through {@code camera}, draws this frame, into {@code out} (cleared first): every visible
-     * primitive within its reach, a mesh with levels at the level its screen size picks. Not culled against the view's
-     * frustum: that is the view's visibility pass, once per view.
+     * What {@code view}, seen through {@code camera}, sees of the scene, into {@code out} (cleared first): every visible
+     * primitive within its reach whose world box meets the view's frustum (Unreal's {@code FrustumCull}), a mesh with
+     * levels at the level its screen size picks, a dynamic primitive asked only once in view, each row at its distance
+     * ahead of the eye. A primitive with no bounds is never culled; an instanced one's instances are the GPU's to cull.
+     * The view's {@code CgViewVisibility} runs it once a frame; a test or a tool may call it directly.
      */
     public void gather(CgView view, CgCamera camera, CgMeshBatches out) {
         if (CgFrameRing.frame() != frame) beginFrame();
@@ -134,10 +136,24 @@ public final class CgScenePrimitives {
         gathering.begin(camera);
         for (int i = 0, n = primitives.size(); i < n; i++) {
             CgPrimitiveComponent<?> p = primitives.get(i);
-            if (!p.visible || !p.inReach(camera)) continue;
+            if (!p.visible || !p.inReach(camera) || !gathering.inView(p)) continue;
+            int first = out.size();
             p.gather(view, camera, out, gathering);
+            for (int b = first, rows = out.size(); b < rows; b++) {
+                if (Float.isNaN(out.distance(b))) out.distance(b, gathering.distance);
+            }
         }
         if (now.count > 0) oneFrame.gather(view, camera, out, gathering);
+    }
+
+    /** Primitives the last {@link #gather} tested against its view's frustum. */
+    public int tested() {
+        return gathering.tested;
+    }
+
+    /** Of those, the ones the frustum left out. */
+    public int culled() {
+        return gathering.culled;
     }
 
     /** A new frame: what {@link #drawOnce} queued since the last is what this one draws. */

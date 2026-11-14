@@ -6,12 +6,12 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
-import com.crystalgraphics.camera.CgCamera;
+
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
-import com.crystalgraphics.render.scene.batch.CgMeshBatches;
+
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
@@ -20,7 +20,7 @@ import com.crystalgraphics.render.scene.component.CgScenePrimitives;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
-import com.crystalgraphics.render.view.CgView;
+
 import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -32,8 +32,8 @@ import java.util.List;
 /**
  * A world of primitives kept until removed, Unreal's {@code FScene}: meshes, instanced meshes, skeletal meshes and
  * dynamic primitives, each a component made here, set up and spawned. Its {@link CgGpuScene} holds every persistent
- * primitive's record on the GPU; each frame, every view that draws it {@link #gather gathers} what it sees into its
- * mesh batches, without a submit.
+ * primitive's record on the GPU; each frame, every view that draws it takes what it sees once, as its
+ * {@code CgViewVisibility}, without a submit.
  *
  * <pre>{@code
  * CgScene scene = CgScene.client();                  // the client world's; cleared with the level
@@ -136,10 +136,6 @@ public final class CgScene {
         primitives.update();
     }
 
-    /** What {@code view}, seen through {@code camera}, draws of it this frame, into {@code out} (cleared first). */
-    public void gather(CgView view, CgCamera camera, CgMeshBatches out) {
-        primitives.gather(view, camera, out);
-    }
 
     /** Removes every primitive: the level ended. */
     public void clear() {

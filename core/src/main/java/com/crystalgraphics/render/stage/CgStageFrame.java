@@ -22,6 +22,8 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.visibility.CgViewVisibility;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import org.joml.Matrix4f;
@@ -464,6 +466,11 @@ public final class CgStageFrame {
         view = named.state().get(previousKey).frame == frame ? CgView.unkept() : named;
         view.state().begin(frame);
         remember(host.camera(), frame);
+        // What the view sees of the client's scene, once a frame before its first world callback: Unreal's InitViews
+        if ((stage == CgRenderStage.WORLD_OPAQUE || stage == CgRenderStage.WORLD_TRANSPARENT)
+                && CgScene.client().primitives().size() > 0) {
+            CgViewVisibility.of(view, CgScene.client(), host.camera());
+        }
     }
 
     /** As {@link #begin} for a rehearsal's firing: it draws as {@link CgView#unkept()}, the real views left alone. */

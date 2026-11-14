@@ -1,10 +1,10 @@
-package com.crystalgraphics.render.world;
+package com.crystalgraphics.render.scene.sort;
 
-import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.api.material.CgRenderQueue;
 
 /**
- * The 64-bit key a world draw sorts by: Filament's {@code RenderPass} layout, with the depth bucket a log-quantised
+ * The 64-bit key a mesh batch sorts by in its view ({@code CgViewVisibility} keys each once a frame): Filament's
+ * {@code RenderPass} layout, with the depth bucket a log-quantised
  * distance so no far plane is needed. Its {@link CgSortLayer} outranks everything but the slot; a transparent draw then
  * sorts in Niagara's levels: its group (an effect) back to front, then within it by its own order and distance.
  *
@@ -29,7 +29,7 @@ import com.crystalgraphics.api.material.CgRenderQueue;
  *       pipeline, snapshot and mesh.</li>
  * </ul>
  */
-final class CgSortKey {
+public final class CgSortKey {
 
     /** Bucket units per natural log of a block distance: 0 to 65,535 covers 0 to about 60,000 blocks. */
     private static final double BUCKETS_PER_LOG = 5950.0;
@@ -37,7 +37,7 @@ final class CgSortKey {
     private CgSortKey() {
     }
 
-    static long opaque(int queue, int layer, int order, int materialId, int meshId, float distance) {
+    public static long opaque(int queue, int layer, int order, int materialId, int meshId, float distance) {
         return head(queue, layer)
                 | ((long) (order & 0xFF)) << 45
                 | ((long) (materialId & 0xFFFF)) << 29
@@ -49,7 +49,7 @@ final class CgSortKey {
      * A draw in a group at {@code groupDistance}, at {@code order} within it, then by {@code batchKey} (0 for most).
      * A draw in no group is its own: its distance in both places. One that writes depth goes first in its group.
      */
-    static long transparent(int queue, int layer, float groupDistance, boolean writesDepth, int order, int batchKey,
+    public static long transparent(int queue, int layer, float groupDistance, boolean writesDepth, int order, int batchKey,
                             float distance) {
         return head(queue, layer)
                 | ((long) (0xFFFF - bucket(groupDistance))) << 37
@@ -64,7 +64,7 @@ final class CgSortKey {
     }
 
     /** At most 3: a slot of 8 or more would set the sign bit, and the keys compare as signed longs. */
-    static int slot(int queue) {
+    public static int slot(int queue) {
         if (queue >= CgRenderQueue.OVERLAY_THRESHOLD) return 3;
         if (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD) return 2;
         if (queue >= CgRenderQueue.ALPHA_TEST_THRESHOLD) return 1;
@@ -72,7 +72,7 @@ final class CgSortKey {
     }
 
     /** Nearer is smaller, and a block's difference near the eye outweighs one far away. */
-    static int bucket(float distance) {
+    public static int bucket(float distance) {
         return (int) Math.min(0xFFFF, Math.log1p(Math.max(0f, distance)) * BUCKETS_PER_LOG);
     }
 }

@@ -551,6 +551,7 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
         }
         CgSkinBounds.posed(mesh, skinning, posedBounds);
         bounded = true;
+        boundsChanged();
         collapse();
         palette = CgBonePalettes.write(skinning, skinning.length);
         ownerPalette = anyHiddenFromOwner ? CgBonePalettes.write(ownerSkinning, ownerSkinning.length) : -1;

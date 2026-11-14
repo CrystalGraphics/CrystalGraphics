@@ -28,6 +28,7 @@ public final class CgMeshCollector {
     private CgMeshBatches out;
     private CgPrimitiveComponent<?> primitive;
     private CgCamera camera;
+    private CgSceneGather gather;
     private CgMesh mesh;
     private CgMaterialInterface material;
     private int submesh;
@@ -36,10 +37,11 @@ public final class CgMeshCollector {
     private final float[] custom = new float[16];
     private float blockLight, skyLight, emission;
 
-    void begin(CgMeshBatches out, CgPrimitiveComponent<?> primitive, CgCamera camera) {
+    void begin(CgMeshBatches out, CgPrimitiveComponent<?> primitive, CgCamera camera, CgSceneGather gather) {
         this.out = out;
         this.primitive = primitive;
         this.camera = camera;
+        this.gather = gather;
         this.mesh = null;
     }
 
@@ -120,6 +122,7 @@ public final class CgMeshCollector {
         p[b * 3] = x;
         p[b * 3 + 1] = y;
         p[b * 3 + 2] = z;
+        out.distance(b, gather.distance(x, y, z));
         float[] v = out.values();
         int at = b * CgMeshBatches.VALUES;
         basis.get(v, at + CgMeshBatches.BASIS);
