@@ -127,11 +127,11 @@ public final class CgKitActor extends CgEntityActor {
         return true;
     }
 
-    /** The mesh scaled to {@code height}, feet on the root, centred, and turned to face the entity's way. */
+    /** The mesh scaled to {@code height}, feet on the root, centred; kit meshes face -z, so it is turned to Minecraft's +z. */
     private static Matrix4f fit(CgSkeletalMesh mesh, float height) {
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         float scale = height / (float) Math.max(box.maxY() - box.minY(), 1e-4);
-        return new Matrix4f().scaling(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
+        return new Matrix4f().rotationY((float) Math.PI).scale(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
                 (float) -box.minY(), (float) -(box.minZ() + box.maxZ()) / 2f);
     }
 
