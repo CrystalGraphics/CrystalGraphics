@@ -7102,6 +7102,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public sceneFolds ()Z
   method public separateTranslucency ()Z
   method public surfaceLit ()Z
+  method public templateReadsSceneColor ()Z
   method public toString ()Ljava/lang/String;
   method public tube ()Lcom/crystalgraphics/material/shader/CgShaderSpec$Tube;
   method public unlit ()Z
@@ -10970,7 +10971,7 @@ com/crystalgraphics/render/shader/CgBindless
   extends java/lang/Object
   method public,static active ()Z
   method public,static header ()Ljava/lang/String;
-  method public,static viewTexturesBound ()Z
+  method public,static hostTexturesBound ()Z
 com/crystalgraphics/render/shader/CgShaderToolchainFiles
   access public,final
   extends java/lang/Object

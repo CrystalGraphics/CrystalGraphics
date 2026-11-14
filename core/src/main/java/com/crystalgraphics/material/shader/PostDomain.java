@@ -153,6 +153,7 @@ final class PostDomain {
                     }
                 }
             }
+            spec.templateReadsSceneColor |= readsColor || namesOpacity;
             String name = step.name() != null ? step.name() : "Pass0";
             if (step.settings().containsKey("Target")) {
                 spec.postTargets.add(new CgShaderSpec.PostTarget(name, STEP_PREFIX + step.name(),

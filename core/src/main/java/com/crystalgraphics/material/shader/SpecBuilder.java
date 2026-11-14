@@ -120,6 +120,8 @@ final class SpecBuilder {
     CgShaderPermutations permutations;
     float sceneColorMargin = Float.NaN;
     boolean handedLights, handedSun, handedScene, writesCustomData;
+    /** Whether the domain's own code around the material reads the scene's colour (a post step's s.color). */
+    boolean templateReadsSceneColor;
     List<CgBufferDecl> buffers = List.of();
     String bufferStructs = "";
 

@@ -336,7 +336,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderQueue = parsed.queue();
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
-            this.sceneColor = sceneColorIn(source);
+            this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
             this.discards = discardsIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
@@ -480,7 +480,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderType = parsed.renderType();
             if (!source.equals(parsedSource)) {
                 this.sceneDepth = sceneDepthIn(source);
-                this.sceneColor = sceneColorIn(source);
+                this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
                 this.discards = discardsIn(source);
             }
             this.parsedSource = source;
@@ -1145,7 +1145,10 @@ public final class CgMaterialShader implements CgReloadable {
                 "cg_DepthFade");
     }
 
-    /** As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}. */
+    /**
+     * As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}, or the code its domain
+     * writes around it reading the scene ({@link CgShaderSpec#templateReadsSceneColor}).
+     */
     public boolean readsSceneColor() {
         return parsedSource == null || sceneColor;
     }

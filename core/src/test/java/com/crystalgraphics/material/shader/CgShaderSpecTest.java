@@ -264,6 +264,16 @@ public class CgShaderSpecTest {
     }
 
     @Test
+    public void aPostStepReadingItsStartingColourReadsTheScene() {
+        String head = "#domain post\nStep over {\n    void surface(in CgScreen i, inout CgPostSurface s) { ";
+        assertTrue(CgShaderSpec.read(head + "s.color = mix(s.color, vec3(1.0), 0.5); }\n}\n", "test:p.shader")
+                .templateReadsSceneColor());
+        assertTrue(CgShaderSpec.read(head + "s.color = vec3(1.0); s.opacity = 0.5; }\n}\n", "test:p.shader")
+                .templateReadsSceneColor());
+        assertFalse(CgShaderSpec.read(post("over"), "test:p.shader").templateReadsSceneColor());
+    }
+
+    @Test
     public void postRefusals() {
         for (String scale : new String[]{"0", "1.5", "half"}) {
             refused(post("down Target RGBA16_FLOAT  Scale " + scale, "over"), "Scale");
