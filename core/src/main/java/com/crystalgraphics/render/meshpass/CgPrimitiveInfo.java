@@ -25,4 +25,7 @@ public interface CgPrimitiveInfo {
      * ({@code writesVelocity}). A processor reading it answers per frame, so the velocity pass's commands are not kept.
      */
     boolean hasVelocity();
+
+    /** Whether it grades what it draws by a look of its own: it draws again into that look's layer. */
+    boolean graded();
 }

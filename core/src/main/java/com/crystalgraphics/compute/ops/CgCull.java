@@ -29,7 +29,7 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>The view and the place are both camera-relative: subtract the camera from the set's origin in doubles, as
- *       {@code CgWorldRenderer} does, and put the difference in the place's translation.</li>
+ *       the scene renderer does, and put the difference in the place's translation.</li>
  *   <li>A plain mesh ({@link #mesh(CgMesh)}) has one level and is never culled by size; a {@link CgMeshLods} of up to
  *       {@link #MAX_LEVELS} levels culls what is smaller on screen than its last.</li>
  *   <li>Each kept record's light ({@code CG_OBJECT_LIGHT}) is its own unless {@link #light} stamps one; each custom

@@ -1,5 +1,6 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -78,7 +79,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
     private CgCanvasWidgetPainter painter;
     @Nullable
     private CgStageFrame frame;
-    private final Projector onHud = (x, y, z, out) -> frame.projectWorld(x, y, z, out);
+    private final Projector onHud = (x, y, z, out) -> frame.project(x, y, z, out);
     private final CgUserWidgetPool pool = new CgUserWidgetPool();
     private final List<CgWidgetComponent> queued = new ArrayList<>();
     private final List<CgWidgetComponent> live = new ArrayList<>();
@@ -202,7 +203,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
 
     private void draw(CgStageFrame frame) {
         if (live.isEmpty()) return;
-        CgCamera eye = CgRenderStage.WORLD_OPAQUE.host().camera();
+        CgCamera eye = CgView.main().camera();
         this.frame = frame;
         try {
             if (gather(onHud, eye.x(), eye.y(), eye.z()) == 0) return;
@@ -212,7 +213,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
         if (painter == null) {
             painter = new CgCanvasWidgetPainter(id, CgCanvasMaterials.SCREEN).retaining(retainedWidth, retainedHeight, margin);
         }
-        float scale = CgUiScale.of(kit).scale(frame.host().width(), frame.host().height());
+        float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
         painter.begin(frame.canvas(), frame.recording(), scale * retainedScale);
         paint(painter, scale);
     }

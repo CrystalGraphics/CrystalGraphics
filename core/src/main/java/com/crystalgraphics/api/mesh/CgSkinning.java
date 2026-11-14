@@ -17,7 +17,7 @@ import java.util.Arrays;
  * <pre>{@code
  * Matrix4f[] skinning = ...;                                   // pose(bone) * inverseBind(bone), in the skeleton's order
  * CgMesh posed = CgSkinning.skin(kurama.mesh(), skinning);    // SPATIAL: drawn by any material, no palette
- * world.draw(posed, material).at(x, y, z).submit();
+ * scene.once().mesh(posed, material).at(x, y, z).add();
  * }</pre>
  *
  * <ul>

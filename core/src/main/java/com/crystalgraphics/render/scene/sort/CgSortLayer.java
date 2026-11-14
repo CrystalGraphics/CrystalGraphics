@@ -11,7 +11,7 @@ import java.util.Objects;
  *
  * <pre>{@code
  * public static final CgSortLayer PORTALS = CgSortLayer.after("mymod:portals", CgSortLayer.EFFECTS);
- * world.draw(mesh, material).at(x, y, z).layer(PORTALS).submit();
+ * scene.once().mesh(mesh, material).at(x, y, z).layer(PORTALS).add();
  * }</pre>
  *
  * <ul>

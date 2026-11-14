@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.grid;
 
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -19,8 +22,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgWorldMedia;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -45,7 +47,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * holding cells only where something is, in tiles of {@link CgVfxTiles#TILE} drawn from one pool through its page table,
  * as the gases hold theirs. A tile is given out where particles splat and where what a grid holds spreads, and taken
  * back once it has been empty a while, so a grid reaches as far as its particles go. Stepped once a frame by
- * {@code vfx/grid/grid.compute} on {@link CgRenderStage#WORLD_OPAQUE}, after the particles that splat into it and
+ * {@code vfx/grid/grid.compute} on {@link CgRenderStage#PREPARE}, after the particles that splat into it and
  * the gases: each pool's particles that rasterize are drawn into their grids where Range draws them this frame, then
  * every channel steps, a rebuilt one taking that frame's alone. A grid's layers and the particles reading it take {@link #view()} and {@link #pages()}; its light (the sun's
  * transmittance and the sky's light through channel x) is {@link #light()}.
@@ -80,8 +82,8 @@ public final class CgVfxGridAtlas {
     public static final int SPAN = CgVfxTiles.SPAN;
     /** The most splats a frame, every grid's together. */
     public static final int SPLATS = 131072;
-    /** Where it records on {@code WORLD_OPAQUE}: after the particle pools, which splat into it, and the gases. */
-    public static final int ORDER = CgWorldRenderer.ORDER - 88;
+    /** Where it records on {@code PREPARE}, once a frame: after the particle pools, which splat into it, and the gases. */
+    public static final int ORDER = -88;
     /** The GPU's frame the grids may take. */
     public static final CgGpuBudget GPU_BUDGET = CgGpuBudget.define("vfx.grid", 1f);
     /** What a grid layer's shader declares, and the frame binds, in this order: {@link #view()}, {@link #light()}, {@link #pages()}. */
@@ -253,9 +255,9 @@ public final class CgVfxGridAtlas {
             grid.ticked = now;
             starvedSince[b] = -1;
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
+                registration = CgRenderStage.PREPARE.register(ORDER, CgVfxBudget.charged(this::record)).allScenes();
                 CgEngineLifecycle.addListener(context);
-                CgWorldRenderer.get().media().add(this::inject);
+                CgScene.client().media().add(this::inject);
                 CgCompute file = CgCompute.load(KERNELS);
                 splat = file.kernel("Splat");
                 rasterize = file.kernel("Rasterize");
@@ -288,7 +290,7 @@ public final class CgVfxGridAtlas {
     }
 
     /** Every lit grid's channel x in the world's media, so what is drawn behind its smoke is dimmed by it. */
-    private boolean inject(CgComputePass pass, CgWorldMedia media) {
+    private boolean inject(CgComputePass pass, CgSceneMedia media) {
         if (view == null) return false;
         boolean any = false;
         for (int b = 0; b < CAPACITY; b++) {
@@ -332,7 +334,12 @@ public final class CgVfxGridAtlas {
         }
     };
 
+    /** The frame recorded in: once a frame, in the first view, whatever the scenes; never a rehearsal's. */
+    private long recorded = Long.MIN_VALUE;
+
     private void record(CgStageFrame stage) {
+        if (CgRehearsal.active() || recorded == CgFrameRing.frame()) return;
+        recorded = CgFrameRing.frame();
         now = (int) ((System.nanoTime() - ORIGIN) / 1_000_000L);
         int live = 0;
         for (int b = 0; b < CAPACITY; b++) {

@@ -481,7 +481,7 @@ public final class CgGpuOps {
     // ── Culling ──────────────────────────────────────────────────────────────
 
     /**
-     * Culls the count's instances of one mesh as {@code CgWorldRenderer} culls a draw: each record of
+     * Culls the count's instances of one mesh as a view culls a scene row: each record of
      * {@code instances} ({@code CgInstanceKind.OBJECT}'s layout, in the set's own space) placed by {@code cull}, its
      * box tested against the view's frustum, given the level its screen height picks, and, with a pyramid, tested
      * against the scene's depth. Each one kept is written into {@code out} as the record a draw reads: level l's from

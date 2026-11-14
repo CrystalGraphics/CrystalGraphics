@@ -97,7 +97,7 @@ final class CgPostCrossfade implements CgPostEffect {
 
     /** Copies the target as it stands into {@link #held}, made at its size; whether it could. */
     private boolean hold(CgPostContext post, CgRecording recording) {
-        int w = post.stage().host().width(), h = post.stage().host().height();
+        int w = post.view().width(), h = post.view().height();
         if (w <= 0 || h <= 0) return false;
         if (held == null || held.getWidth() != w || held.getHeight() != h) {
             if (held != null) recording.release(held);

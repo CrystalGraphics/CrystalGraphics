@@ -62,7 +62,7 @@ public final class CgDynamicComponent extends CgPrimitiveComponent<CgDynamicComp
     /** This frame's bounds from its primitive where it gives them, absolute; else its component's, as any primitive's. */
     @Override
     @Nullable
-    CgAABBc worldBounds() {
+    public CgAABBc worldBounds() {
         return primitive.bounds(frameBounds) ? frameBounds : super.worldBounds();
     }
 

@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BooleanSupplier;
 
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 
 /** One asset's prepare: its steps in order, run a frame's budget at a time. */
 final class CgPreparePlan implements CgAssetPreparer.Plan {

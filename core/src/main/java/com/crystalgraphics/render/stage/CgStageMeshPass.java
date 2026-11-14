@@ -17,19 +17,19 @@ import java.util.Objects;
  * {@link CgStageFrame#meshPass}; one a firing at a time.
  *
  * <pre>{@code
- * CgRenderStage.WORLD_TRANSLUCENT.register(frame -> {
+ * CgRenderStage.TRANSLUCENT.register(frame -> {
  *     CgGraphTexture heat = CgGraphTexture.transientTexture("mymod.heat", CgTextureDesc.of(w, h, CgFormat.R16_FLOAT));
  *     frame.meshPass(THERMAL)
  *             .color(heat, CgLoad.clear(0f, 0f, 0f, 0f))
  *             .depth(frame.depth(), CgLoad.load(), CgDepthAccess.READ)
- *             .draw();                                   // the client scene's batches its processor took, culled, sorted
+ *             .draw();                                   // the view's batches its processor took, culled, sorted
  * });
  *
- * frame.meshPass(THERMAL).scene(preview).color(target, CgLoad.CLEAR).culled(frame.depthPyramid()).draw();
+ * frame.meshPass(THERMAL).scene(preview).color(target, CgLoad.CLEAR).culled(frame.view().textures().hzb()).draw();
  * }</pre>
  *
  * <ul>
- *   <li>The client scene's unless {@link #scene} says otherwise; the firing's view and camera.</li>
+ *   <li>The view's scene unless {@link #scene} says otherwise; the firing's view and camera.</li>
  *   <li>Declare its colour or depth first, then {@link #draw}: the pass ends there, and what it drew is what a later read
  *       of its targets sees.</li>
  *   <li>{@link #culled} culls the view's instanced meshes on the GPU first, against a depth pyramid; without it every
@@ -53,14 +53,14 @@ public final class CgStageMeshPass {
 
     CgStageMeshPass begin(CgMeshPassType type) {
         this.type = Objects.requireNonNull(type, "type");
-        scene = CgScene.client();
+        scene = frame.scene();
         pass = null;
         culled = false;
         pyramid = null;
         return this;
     }
 
-    /** Draws {@code scene}'s primitives rather than the client's. */
+    /** Draws {@code scene}'s primitives rather than the view's own scene's. */
     public CgStageMeshPass scene(CgScene scene) {
         this.scene = Objects.requireNonNull(scene, "scene");
         return this;
@@ -91,7 +91,7 @@ public final class CgStageMeshPass {
         CgViewPasses passes = CgViewPasses.of(frame.view(), scene, frame.camera());
         if (culled) passes.cull(frame.recording(), pyramid);
         CgRasterPass p = pass;
-        p.constants(frame.constants()).add(passes.commands(type, frame.recording()));
+        p.camera(frame.camera()).add(passes.commands(type, frame.recording()));
         p.end();
         pass = null;
         return p;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ScaledResolution;
@@ -34,7 +35,7 @@ public final class OverlayStagesLegacy {
     private static void fire(CgRenderStage stage) {
         Minecraft mc = Minecraft.getMinecraft();
         try {
-            stage.fireOverlay(mc.displayWidth, mc.displayHeight, new ScaledResolution(mc).getScaleFactor(),
+            CgStageHost.fireOverlay(stage, mc.displayWidth, mc.displayHeight, new ScaledResolution(mc).getScaleFactor(),
                     OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0);
         } finally {
             // What Minecraft's fixed-function present assumes, through GlStateManager so its cache agrees: the section's

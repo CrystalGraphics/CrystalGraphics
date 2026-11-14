@@ -6,6 +6,8 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.meshpass.CgCustomDepth;
 import com.crystalgraphics.render.meshpass.CgPrimitiveFlag;
 import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.render.scene.batch.CgCachedCommands;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
@@ -14,6 +16,7 @@ import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.joml.Matrix4d;
+import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
@@ -89,6 +92,9 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     private CgCustomDepth customDepth;
     private int primitiveFlags;
     private boolean halfResolution, afterDistortion, castsShadow = true, writesVelocity;
+    @Nullable
+    private CgPostSettings grade;
+    private int subject, debugLabel = -1;
     /** Bumped by every setting a mesh pass processor reads: its kept commands are built again. */
     private int passSettings;
     /** The host frame it last moved in: it has velocity in that frame. */
@@ -436,16 +442,71 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
         return passSettings;
     }
 
+    /**
+     * Draws a translucent primitive at half the target's size, added over the scene depth-aware; a premultiplied one
+     * (smoke, a volume) is blended with its last frame (the {@code world.halfResolution} flag turns it off per view).
+     */
     public T halfResolution(boolean half) {
         requireLive();
+        if (half == halfResolution) return self();
         this.halfResolution = half;
+        return passesChanged();
+    }
+
+    /** Draws a translucent primitive after the distortion pass, unbent by the hazes behind it. */
+    public T afterDistortion(boolean after) {
+        requireLive();
+        if (after == afterDistortion) return self();
+        this.afterDistortion = after;
+        return passesChanged();
+    }
+
+    /**
+     * Grades what it draws by its own post look, composited where it shows (an effect's colour grade, its own bloom
+     * threshold): Unreal's post volume per primitive, as the VFX engine's effects grade themselves. Null for the
+     * scene's look.
+     */
+    public T grade(@Nullable CgPostSettings look) {
+        requireLive();
+        if (look == grade) return self();
+        grade = look;
+        return passesChanged();
+    }
+
+    @Nullable
+    public CgPostSettings grade() {
+        return grade;
+    }
+
+    @Override
+    public boolean graded() {
+        return grade != null;
+    }
+
+    /**
+     * What an impact frame whose look names {@code key} draws as its subject: this primitive's glow, drawn apart before
+     * anything else of ours, so nothing else covers it. 0 for none.
+     */
+    public T subject(int key) {
+        requireLive();
+        subject = key;
         return self();
     }
 
-    public T afterDistortion(boolean after) {
+    public int subject() {
+        return subject;
+    }
+
+    /** Groups its draws under {@code label} in a GPU capture (RenderDoc, Nsight), while GPU groups are traced. */
+    public T debugLabel(@Nullable String label) {
         requireLive();
-        this.afterDistortion = after;
+        debugLabel = label == null ? -1 : CgGpuTrace.name(label);
         return self();
+    }
+
+    /** Its debug label's trace name, -1 for none. */
+    public int debugLabelName() {
+        return debugLabel;
     }
 
     public T castsShadow(boolean casts) {
@@ -510,6 +571,11 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     // -- For the scene and the kinds ----------------------------------------------
 
     /** Its object-to-world, absolute: under its parent's socket while attached, else position, rotation, scale, local. */
+    /** Its object-to-world now: absolute, in doubles, its parent's socket applied where attached. Read, never keep. */
+    public final Matrix4dc worldTransform() {
+        return world();
+    }
+
     final Matrix4d world() {
         return world;
     }
@@ -541,10 +607,10 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
 
     /**
      * Its bounds in the world, absolute: its object-space bounds under its transform, kept until it moves or they change
-     * (Unreal's scene primitive bounds); null for none known.
+     * (Unreal's scene primitive bounds); null for none known. What culls it, and what its screen rect is made from.
      */
     @Nullable
-    CgAABBc worldBounds() {
+    public CgAABBc worldBounds() {
         if (worldBoundsState == STALE) {
             worldBoundsState = NONE;
             if (localBounds(worldBounds)) {
@@ -564,7 +630,10 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
 
     /** A row of its settings in {@code out}, answering its index: what each kind adds per mesh it draws. */
     final int batch(CgMeshBatches out, CgMesh mesh, CgMaterialInterface material, int submesh) {
-        return out.add(mesh, material, submesh, layer, passFlags(), sortPriority, this, keepsCommands() ? commands : null);
+        int b = out.add(mesh, material, submesh, layer, passFlags(), sortPriority, this, keepsCommands() ? commands : null);
+        out.grade(b, grade);
+        out.subject(b, subject);
+        return b;
     }
 
     /** Whether its rows' commands are kept across frames: a persistent primitive's are, a dynamic one's are not. */

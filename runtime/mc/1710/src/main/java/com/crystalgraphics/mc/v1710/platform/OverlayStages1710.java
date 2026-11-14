@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import net.minecraft.client.Minecraft;
@@ -32,7 +33,7 @@ public final class OverlayStages1710 {
         Minecraft mc = Minecraft.getMinecraft();
         int scale = new ScaledResolution(mc, mc.displayWidth, mc.displayHeight).getScaleFactor();
         try {
-            stage.fireOverlay(mc.displayWidth, mc.displayHeight, scale,
+            CgStageHost.fireOverlay(stage, mc.displayWidth, mc.displayHeight, scale,
                     OpenGlHelper.isFramebufferEnabled() ? mc.getFramebuffer().framebufferObject : 0);
         } finally {
             // What Minecraft's fixed-function present assumes: it binds its screen texture to the active unit and draws

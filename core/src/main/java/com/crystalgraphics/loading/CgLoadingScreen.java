@@ -40,8 +40,9 @@ import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
+import com.crystalgraphics.render.scene.renderer.CgScenePipelines;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -151,11 +152,12 @@ public final class CgLoadingScreen {
     /** The host drew the screen or held its opening here, so it draws it until the fade ends. */
     private static boolean hostDraws;
 
-    /** Whether a host fired a world stage since the last {@link #frame()}: if none did, the screen fires its own. */
+    /** Whether a host drew its world (the main view) since the last {@link #frame()}: if none did, the screen draws its own. */
     private static boolean worldFired;
     /** The world frame's target while no host draws a world: small, since nobody sees it. */
     private static final int WARM_SIZE = 256;
-    private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
+    /** The client scene seen from a fixed point while no host draws it: what warms the world's paths behind the screen. */
+    private static final CgView WARM = CgView.create("loading.warm");
     private static final Matrix4f WARM_VIEW = new Matrix4f(),
             WARM_PROJECTION = CgCamera.perspectiveMatrix(new Matrix4f(), 70f, 1f, 0.05f, 512f);
     private static CgTexture2D warmColour, warmDepth;
@@ -311,7 +313,7 @@ public final class CgLoadingScreen {
      * <pre>{@code
      * int side = CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0
      *         ? Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight())
-     *         : Math.min(frame.host().width(), frame.host().height());
+     *         : Math.min(frame.width(), frame.height());
      * }</pre>
      */
     public static int windowWidth() {
@@ -354,8 +356,10 @@ public final class CgLoadingScreen {
         installed = true;
         warm(width, height);
         LOGGER.info("[loading] shown: {}", reason);
-        // First of the stage: a host's own world firing this frame means the screen need not fire one.
-        CgRenderStage.WORLD_OPAQUE.register(Integer.MIN_VALUE, frame -> worldFired = true);
+        // First of the stage: a host's own world drawn this frame means the screen need not draw one.
+        CgRenderStage.PREPARE.register(Integer.MIN_VALUE, frame -> {
+            if (frame.view() == CgView.main()) worldFired = true;
+        });
         ENGINE.add(new CgLoadingProcess() {
             @Override
             public String loading() {
@@ -479,7 +483,7 @@ public final class CgLoadingScreen {
         boolean warm = false;
         if (shown()) {
             // Not while the engine's programs build behind it: a world firing would draw passes not built yet
-            warm = !worldFired && !CgWorldRenderer.get().booting();
+            warm = !worldFired && !CgScenePipelines.booting();
             // Nothing of its own until the view draws whole: the host's screen shows meanwhile. Asked here too, not
             // only in frame(): each ask advances its build a step, and the workers had the frame's GUI since
             askView(now);
@@ -502,17 +506,17 @@ public final class CgLoadingScreen {
     }
 
     /**
-     * Fires one warm frame now, as {@link #draw} does behind the screen each frame it shows: the world stages into a
-     * {@value #WARM_SIZE}x{@value #WARM_SIZE} target of its own, from its fixed view. For a gate measuring what one
-     * costs (the harness's {@code warm-frame-load}). Render thread, inside a host section.
+     * Draws one warm frame now, as {@link #draw} does behind the screen each frame it shows: a view of the client
+     * scene into a {@value #WARM_SIZE}x{@value #WARM_SIZE} target of its own, from a fixed point. For a gate measuring
+     * what one costs (the harness's {@code warm-frame-load}). Render thread, inside a host section.
      */
     public static void fireWarmFrame() {
         warmFrame();
     }
 
     /**
-     * Fires the world stages into a target of its own: pipelines settle and effects warm and rehearse only in a world
-     * frame, and behind the screen a host may draw none (Minecraft's menus, a harness scene not started).
+     * Draws its view of the client scene into a target of its own: pipelines settle and effects warm and rehearse only
+     * in a world frame, and behind the screen a host may draw none (Minecraft's menus, a harness scene not started).
      */
     private static void warmFrame() {
         if (warmTarget == null) {
@@ -520,15 +524,11 @@ public final class CgLoadingScreen {
             warmDepth = CgTextures.of("cg_loading_world.depth", CgTextureDesc.of(WARM_SIZE, WARM_SIZE, worldDepth));
             warmTarget = CgTextures.target("cg_loading_world", warmColour, warmDepth).drawnAsHost();
         }
-        try (CgExecutor.Into ignored = CgExecutor.into(warmTarget)) {
-            CgDepthConvention.inWorld(() -> {
-                for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, WARM_SIZE, WARM_SIZE, warmTarget).camera().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
-                    stage.fire();
-                }
-                return true;
-            });
-        }
+        WARM.camera().set(0, 0, 0, WARM_VIEW, WARM_PROJECTION);
+        CgDepthConvention.inWorld(() -> {
+            WARM.renderInto(warmTarget);
+            return true;
+        });
         worldFired = false;
     }
 

@@ -1,5 +1,5 @@
 // The host's depth copied into a target's own, for a host that lends none (framebuffer 0, multisampled): no colour,
-// depth from cg_DepthBuffer. CgWorldRenderer's custom-data pass draws it first.
+// depth from cg_DepthBuffer. The scene renderer's custom-data pass draws it first.
 //
 // Written a few 24-bit steps farther: through a float, the copy lands a step off on about 2% of pixels, and a
 // redraw of the surface that wrote it would fail its own depth there. What hides behind it is farther than that.

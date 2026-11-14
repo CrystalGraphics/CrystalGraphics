@@ -414,12 +414,12 @@ public final class CgPostSettings {
 
     /**
      * What a drawn impact frame fills in ink: the glows of the world draws tagged {@code key}
-     * ({@code CgWorldRenderer.Draw.subject}), which nothing else in the scene hides. 0, the default, is every visible
+     * ({@code CgMeshCollector.subject}, a primitive's {@code subject}), which nothing else in the scene hides. 0, the default, is every visible
      * glow, which another effect's smoke may cover.
      *
      * <pre>{@code
      * settings.impact(look, 1f, seed).subject(key);
-     * world.draw(dome, glow).at(x, y, z).subject(key).submit();
+     * scene.once().mesh(dome, glow).at(x, y, z).subject(key).add();
      * }</pre>
      */
     public CgPostSettings subject(int key) {

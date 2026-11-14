@@ -1,10 +1,11 @@
 package com.crystalgraphics.vfx.camera;
 
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.settings.CgGraphicsSettings;
@@ -77,7 +78,7 @@ final class CgShakeRuntime {
         if (scheduled) return;
         scheduled = true;
         CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:shake", dt -> {
-            if (installed) frame(CgRenderStage.WORLD_OPAQUE.host(), CgWorld.client().paused());
+            if (installed) frame(CgStageHost.frame(CgStageHost.WORLD_OPAQUE), CgWorld.client().paused());
         }).whilePaused(true);
     }
 

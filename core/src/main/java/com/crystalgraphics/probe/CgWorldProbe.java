@@ -1,5 +1,8 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.host.CgHostFrame;
+import com.crystalgraphics.render.view.CgView;
 import java.nio.file.Paths;
 
 import com.crystalgraphics.audio.CgAudioEngine;
@@ -34,9 +37,8 @@ import com.crystalgraphics.platform.world.CgWorldBegin;
 import com.crystalgraphics.platform.world.CgWorldEvents;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostFrame;
-import com.crystalgraphics.render.stage.CgHostTextures;
+import com.crystalgraphics.render.host.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgHostTextures;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -180,7 +182,7 @@ public final class CgWorldProbe {
         @Override
         protected void onInit() {
             active = this;
-            frame = CgRenderStage.WORLD_OPAQUE.register(Integer.MAX_VALUE, CgWorldProbe::frame);
+            frame = CgRenderStage.OPAQUE.register(Integer.MAX_VALUE, CgWorldProbe::frame);
             // Where a shake is summed: an offset set here must turn the camera of this same frame.
             shake = CgWorld.client().schedule().add(CgTickGroup.SHAKE, "crystalgraphics:world-probe", dt -> turnInShake())
                     .whilePaused(true);
@@ -216,8 +218,8 @@ public final class CgWorldProbe {
     }
 
     private static void frame(CgStageFrame stage) {
-        if (phase == Phase.DONE) return;
-        CgHostFrame host = CgRenderStage.WORLD_OPAQUE.host();
+        if (phase == Phase.DONE || stage.view() != CgView.main()) return;
+        CgHostFrame host = CgStageHost.frame(CgStageHost.WORLD_OPAQUE);
         CgEntityQuery entities = CgEntityQueries.client();
         long now = System.nanoTime();
         CgCueProbe.watch();   // every frame from the play: its shake lasts seconds, ending before the events
@@ -704,7 +706,7 @@ public final class CgWorldProbe {
     private static void turnInShake() {
         if (!sameFrameArmed) return;
         sameFrameArmed = false;
-        baseView.set(CgRenderStage.WORLD_OPAQUE.host().camera().view());
+        baseView.set(CgView.main().camera().view());
         offset(YAW, 0f, 1f);
         sameFrameAt = CgFrameRing.frame();
     }

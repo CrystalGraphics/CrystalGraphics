@@ -11,6 +11,7 @@ import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -95,6 +96,9 @@ public final class CgRasterPass extends CgPass {
     private boolean depthNamed;
     private CgDepthAccess depthAccess;
     final float[] constants = new float[CgPassConstants.FLOATS];
+    /** The scene whose records its draws read, from its constants: null for the client's. */
+    @Nullable
+    CgGpuScene scene;
     @Nullable
     CgRenderState state;
     CgOrder order;
@@ -166,6 +170,7 @@ public final class CgRasterPass extends CgPass {
         depthNamed = false;
         depthAccess = CgDepthAccess.WRITE;
         constants.write(this.constants, 0);
+        scene = constants.scene();
         state = null;
         order = CgOrder.SORTED;
         gpuZone = -1;
@@ -529,6 +534,7 @@ public final class CgRasterPass extends CgPass {
     public CgRasterPass constants(CgPassConstants constants) {
         declaring();
         constants.write(this.constants, 0);
+        scene = constants.scene();
         encodeTarget();
         return this;
     }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -205,7 +206,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      */
     protected float seed;
     /**
-     * Its draws' impact frame subject key ({@code CgWorldRenderer.Draw.subject}), never 0: an impact frame it opens
+     * Its draws' impact frame subject key ({@code CgMeshCollector.subject}), never 0: an impact frame it opens
      * names it ({@code CgPostSettings.subject}) to fill this effect alone in ink.
      */
     protected final int subject = SUBJECTS.incrementAndGet() & Integer.MAX_VALUE | 1;
@@ -466,7 +467,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     private float exposure = 1f;
 
     /**
-     * Grades its draws as {@code look} grades them, apart from the rest of the frame ({@code CgWorldRenderer.Draw.grade}):
+     * Grades its draws as {@code look} grades them, apart from the rest of the frame ({@code CgMeshCollector.grade}):
      * the game its looks were authored under, its tonemapper and its bloom, on its own light alone. A kit's look sets it
      * for every effect of the kit.
      *
@@ -750,7 +751,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      */
     protected final CgCollisionWorld world() {
         return authority != null ? authority.world
-                : CgCollisionWorld.client(CgRenderStage.WORLD_OPAQUE.host().partialTick());
+                : CgCollisionWorld.client(CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
     }
 
     /**

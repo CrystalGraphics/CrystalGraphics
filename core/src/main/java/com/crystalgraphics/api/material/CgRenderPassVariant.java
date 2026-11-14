@@ -10,7 +10,7 @@ package com.crystalgraphics.api.material;
  * }</pre>
  *
  * <p>There is no shadow-caster variant: the world's shadows are ray-traced from each pixel (Unreal's MegaLights,
- * {@code CgWorldLights}), so nothing is drawn from a light's side.</p>
+ * {@code CgSceneLights}), so nothing is drawn from a light's side.</p>
  *
  * <ul>
  *   <li>{@link #FORWARD} takes the material's enabled keywords; {@link #DEPTH} none.</li>

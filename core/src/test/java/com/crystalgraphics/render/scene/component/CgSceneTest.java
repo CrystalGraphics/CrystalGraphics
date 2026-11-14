@@ -124,16 +124,27 @@ public class CgSceneTest {
     }
 
     @Test
-    public void drawOnce_drawsInTheNextFrameOnly() {
+    public void drawOnce_drawsInItsFrameOnly() {
         CgScene scene = new CgScene();
-        scene.drawOnce(CUBE, GLOW, 4, 5, 6);
-        scene.primitives().beginFrame();
+        scene.drawOnce(CUBE, GLOW, 4, 5, -60);
         scene.primitives().gather(view, camera, out);
         assertEquals(1, out.size());
-        assertEquals(6.0, out.position(0, 2), 0.0);
-        scene.primitives().beginFrame();
+        assertEquals(-60.0, out.position(0, 2), 0.0);
+        scene.primitives().gather(view, camera, out);
+        assertEquals("a second view of the frame draws it too", 1, out.size());
+        CgFrameRing.endFrame();
         scene.primitives().gather(view, camera, out);
         assertEquals(0, out.size());
+    }
+
+    @Test
+    public void onceRows_outsideTheView_areLeftOut() {
+        CgScene scene = new CgScene();
+        scene.once().mesh(CUBE, GLOW).at(0, 0, -10).add();
+        scene.once().mesh(CUBE, GLOW).at(0, 0, 10).add();   // behind the eye
+        scene.primitives().gather(view, camera, out);
+        assertEquals(1, out.size());
+        assertEquals(-10.0, out.position(0, 2), 0.0);
     }
 
     @Test

@@ -46,7 +46,7 @@ final class SpecBuilder {
             "CG_SHADING_MODEL_ID("};
     private static final String[] WRITES_CUSTOM_DATA = {"CG_CUSTOM_DATA_OUT", "CG_SHADING_MODEL_OUT"};
 
-    /** Where the light grid a handed program reads lies this firing ({@code CgWorldLights.hand}). */
+    /** Where the light grid a handed program reads lies this firing ({@code CgSceneLights.hand}). */
     private static final String HANDED_LIGHT_PROPERTIES = """
             _cg_LightGrid ("Cells across, up and deep, and 1 while the grid holds lights", vec4) = (1, 1, 1, 0)
             _cg_LightTile ("A tile's share of the target across and up", vec4) = (1, 1, 0, 0)

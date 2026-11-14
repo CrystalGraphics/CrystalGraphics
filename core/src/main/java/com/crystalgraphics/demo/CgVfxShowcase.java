@@ -1,13 +1,13 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -33,9 +33,9 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  * <pre>{@code
  * CgVfxShowcase showcase = new CgVfxShowcase();
  * // every frame, before the world stages fire:
- * showcase.submit(CgWorldRenderer.get(), x, y, z, CgFrameClock.seconds());       // the spheres, on a floor at y
- * showcase.submitStage(CgWorldRenderer.get(), x, y, z, cameraX, cameraY, cameraZ); // and the floor and sky
- * showcase.submitSky(CgWorldRenderer.get(), cameraX, cameraY, cameraZ);             // or the sky alone, over a world
+ * showcase.submit(CgScene.client(), x, y, z, CgFrameClock.seconds());       // the spheres, on a floor at y
+ * showcase.submitStage(CgScene.client(), x, y, z, cameraX, cameraY, cameraZ); // and the floor and sky
+ * showcase.submitSky(CgScene.client(), cameraX, cameraY, cameraZ);             // or the sky alone, over a world
  * // once, when the context goes:
  * showcase.delete();
  * }</pre>
@@ -233,15 +233,15 @@ public final class CgVfxShowcase {
     }
 
     /** Submits the sixteen spheres and their glow, on a floor point {@code (x, y, z)}, as they are at {@code seconds}. */
-    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
+    public void submit(CgScene scene, double x, double y, double z, double seconds) {
         ensureResources();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SPHERES_ZONE)) {
-            spheres(world, x, y, z, seconds);
+            spheres(scene, x, y, z, seconds);
         }
-        waves(world, x, y, z, seconds);
+        waves(scene, x, y, z, seconds);
     }
 
-    private void spheres(CgWorldRenderer world, double x, double y, double z, double seconds) {
+    private void spheres(CgScene scene, double x, double y, double z, double seconds) {
         for (int k = 0; k < COUNT; k++) {
             int row = k / 4, column = k % 4;
             double cx = x + (column - 1.5) * SPACING;
@@ -250,28 +250,28 @@ public final class CgVfxShowcase {
             spin(k, seconds);
             if (k == SUPERNOVA) {
                 transform.scale(SUPERNOVA_SIZE);
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).layer(CgSortLayer.EFFECTS).submit();
+                scene.once().mesh(sphere, materials[k]).at(cx, cy, cz).transform(transform).layer(CgSortLayer.EFFECTS).add();
                 transform.identity().scale(SUPERNOVA_SIZE * CORONA_REACH);
                 float flare = 1f + 0.15f * (float) Math.sin(seconds * 2.1) + 0.08f * flicker(seconds, k);
-                world.draw(sphere, corona).at(cx, cy, cz).transform(transform)
-                        .custom(1, 1f / CORONA_REACH, flare, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
+                scene.once().mesh(sphere, corona).at(cx, cy, cz).transform(transform)
+                        .customData(1, 1f / CORONA_REACH, flare, 0f, 0f).layer(CgSortLayer.EFFECTS).add();
                 continue;
             }
             // Every sphere knows how high above the floor it is: the metals mirror the floor from there.
             float above = (float) (cy - y);
             if (k == SHIELD) {
                 shieldImpacts(seconds);
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform)
-                        .custom(0, impacts[0], impacts[1], impacts[2], impacts[3])
-                        .custom(1, impacts[4], impacts[5], impacts[6], impacts[7])
-                        .custom(2, impacts[8], impacts[9], impacts[10], impacts[11])
-                        .custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
-                boltsInFlight(world, cx, cy, cz);
+                scene.once().mesh(sphere, materials[k]).at(cx, cy, cz).transform(transform)
+                        .customData(0, impacts[0], impacts[1], impacts[2], impacts[3])
+                        .customData(1, impacts[4], impacts[5], impacts[6], impacts[7])
+                        .customData(2, impacts[8], impacts[9], impacts[10], impacts[11])
+                        .customData(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).add();
+                boltsInFlight(scene, cx, cy, cz);
                 // What the field protects: a small gold core turning inside it.
                 transform.identity().rotateY((float) (-seconds * 0.6 % TURN)).scale(0.45f);
-                world.draw(sphere, materials[0]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
+                scene.once().mesh(sphere, materials[0]).at(cx, cy, cz).transform(transform).customData(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).add();
             } else {
-                world.draw(sphere, materials[k]).at(cx, cy, cz).transform(transform).custom(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
+                scene.once().mesh(sphere, materials[k]).at(cx, cy, cz).transform(transform).customData(3, above, 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).add();
             }
             float strength = GLOW[k][3];
             if (strength <= 0f) continue;
@@ -279,14 +279,14 @@ public final class CgVfxShowcase {
             // Each glowing sphere lights the world round it: the ground below lit to about its strength times its colour,
             // twice over (π for Unreal's Lambert). Unshadowed: it sits inside its own sphere, which casts.
             float light = strength * above * above * 2f * (float) Math.PI;
-            world.lights().addLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light, GLOW[k][2] * light, 0f)
+            scene.lights().addLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light, GLOW[k][2] * light, 0f)
                     .shadowed(false);
             // The black hole has no ball to glow round: its disk lights the floor alone.
             if (k == BLACK_HOLE) continue;
             transform.identity().scale(GLOW_REACH[k]);
-            world.draw(sphere, glow).at(cx, cy, cz).transform(transform)
-                    .custom(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
-                    .custom(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).submit();
+            scene.once().mesh(sphere, glow).at(cx, cy, cz).transform(transform)
+                    .customData(1, GLOW[k][0], GLOW[k][1], GLOW[k][2], strength)
+                    .customData(2, 1f / GLOW_REACH[k], 0f, 0f, 0f).layer(CgSortLayer.EFFECTS).add();
         }
     }
 
@@ -294,7 +294,7 @@ public final class CgVfxShowcase {
      * Submits the floor under the grid at {@code (x, y, z)} and the sky around the camera: for a host with no world of
      * its own, as the harness is.
      */
-    public void submitStage(CgWorldRenderer world, double x, double y, double z,
+    public void submitStage(CgScene scene, double x, double y, double z,
                             double cameraX, double cameraY, double cameraZ) {
         ensureResources();
         if (x != gridX || z != gridZ) {
@@ -303,9 +303,9 @@ public final class CgVfxShowcase {
             float gx = (float) x, gz = (float) z;
             floorMaterial.vec4("_Grid", gx, gz, SPACING, HEIGHT);
         }
-        world.draw(floor, floorMaterial).at(x, y, z).submit();
+        scene.once().mesh(floor, floorMaterial).at(x, y, z).add();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
+        scene.once().mesh(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).add();
     }
 
     /**
@@ -313,12 +313,12 @@ public final class CgVfxShowcase {
      * that world's own sky did, the distant terrain fades into it before the world's fog would tint it, and clouds and
      * weather the host draws after the world stages stay off it.
      */
-    public void submitSky(CgWorldRenderer world, double cameraX, double cameraY, double cameraZ) {
+    public void submitSky(CgScene scene, double cameraX, double cameraY, double cameraZ) {
         ensureResources();
         transform.identity().scale(80f);
-        world.draw(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
-        world.draw(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).layer(CgSortLayer.BACKGROUND).submit();
-        world.draw(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).submit();
+        scene.once().mesh(sphere, sky).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).add();
+        scene.once().mesh(sphere, horizon).at(cameraX, cameraY, cameraZ).transform(transform).layer(CgSortLayer.BACKGROUND).add();
+        scene.once().mesh(sphere, seal).at(cameraX, cameraY, cameraZ).transform(transform).layer(SKY).add();
     }
 
     /** Makes the spheres' meshes and materials and warms every program the showcase draws with. On the render thread. */
@@ -400,7 +400,7 @@ public final class CgVfxShowcase {
      * alternating between its two targets, each charging, growing out, bending at the waypoint, holding, running out and
      * bursting. Starts over when the grid moves.
      */
-    private void waves(CgWorldRenderer world, double x, double y, double z, double seconds) {
+    private void waves(CgScene scene, double x, double y, double z, double seconds) {
         if (x != waveX || y != waveY || z != waveZ) {
             for (int k = 0; k < waves.length; k++) {
                 if (waves[k] != null) waves[k].kill();
@@ -439,7 +439,7 @@ public final class CgVfxShowcase {
         }
         if (drives) {
             vfx.system().update(seconds);
-            vfx.system().submit(world);
+            vfx.system().submit();
         }
     }
 
@@ -480,7 +480,7 @@ public final class CgVfxShowcase {
     }
 
     /** The bolts still on their way to the shield centred at {@code (cx, cy, cz)}: streaks flying in along their lane. */
-    private void boltsInFlight(CgWorldRenderer world, double cx, double cy, double cz) {
+    private void boltsInFlight(CgScene scene, double cx, double cy, double cz) {
         for (int lane = 0; lane < 3; lane++) {
             int at = lane * 4;
             float age = impacts[at + 3];
@@ -490,7 +490,7 @@ public final class CgVfxShowcase {
             float distance = BOLT_RANGE + (1f - BOLT_RANGE) * travel;
             boolean steep = Math.abs(dy) > 0.95f;
             transform.identity().rotateTowards(dx, dy, dz, steep ? 1f : 0f, steep ? 0f : 1f, 0f).scale(0.05f, 0.05f, 0.34f);
-            world.draw(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).layer(CgSortLayer.EFFECTS).submit();
+            scene.once().mesh(sphere, bolt).at(cx + dx * distance, cy + dy * distance, cz + dz * distance).transform(transform).layer(CgSortLayer.EFFECTS).add();
         }
     }
 

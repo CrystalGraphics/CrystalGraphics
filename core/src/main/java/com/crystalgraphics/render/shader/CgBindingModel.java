@@ -16,7 +16,7 @@ import com.github.bsideup.jabel.Desugar;
  * // CG_BIND(2, 0) layout(std140) uniform CgMaterialBlock { ... };
  *
  * pass.texture(CgBindingModel.LIGHTMAP, host.lightmapTexture());          // a view texture, by its slot
- * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn());    // an engine buffer's, for one draw
+ * scene.once().mesh(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn());    // an engine buffer's, for one draw
  * }</pre>
  *
  * <table>
@@ -128,12 +128,23 @@ public final class CgBindingModel {
 
     /** The material's {@code Buffers { }} entry {@code i}. */
     public static Slot buffer(int i) {
-        return new Slot(MATERIAL, FIRST_BUFFER + i);
+        return i < SLOTS_KEPT ? BUFFER_SLOTS[i] : new Slot(MATERIAL, FIRST_BUFFER + i);
     }
 
     /** The material's texture property {@code i}, counting texture properties alone, where textures are bound. */
     public static Slot texture(int i) {
-        return new Slot(MATERIAL, FIRST_TEXTURE + i);
+        return i < SLOTS_KEPT ? TEXTURE_SLOTS[i] : new Slot(MATERIAL, FIRST_TEXTURE + i);
+    }
+
+    /** The first material buffers' and textures' slots, made once: a material's bindings name them each time they change. */
+    private static final int SLOTS_KEPT = 64;
+    private static final Slot[] BUFFER_SLOTS = new Slot[SLOTS_KEPT], TEXTURE_SLOTS = new Slot[SLOTS_KEPT];
+
+    static {
+        for (int i = 0; i < SLOTS_KEPT; i++) {
+            BUFFER_SLOTS[i] = new Slot(MATERIAL, FIRST_BUFFER + i);
+            TEXTURE_SLOTS[i] = new Slot(MATERIAL, FIRST_TEXTURE + i);
+        }
     }
 
     /** {@link #texture}'s packed, allocating nothing: what a binding table keys a material texture by. */

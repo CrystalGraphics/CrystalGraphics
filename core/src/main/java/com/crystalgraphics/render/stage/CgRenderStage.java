@@ -1,114 +1,117 @@
 package com.crystalgraphics.render.stage;
 
-import com.crystalgraphics.camera.CgCamera;
-import java.util.Set;
-import java.util.EnumSet;
-import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
-import com.crystalgraphics.platform.rhi.CgRHI;
-import com.crystalgraphics.platform.rhi.CgExternalTarget;
-import com.crystalgraphics.platform.rhi.CgDeviceSection;
-import com.crystalgraphics.gpu.resource.CgFrameRing;
-import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
-import com.crystalgraphics.lifecycle.CgEngineLifecycle;
-import com.crystalgraphics.render.graph.CgExecutor;
-import com.crystalgraphics.trace.CgGpuTrace;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
-import com.crystalgraphics.render.graph.CgRehearsal;
-import com.crystalgraphics.render.view.CgView;
-
-import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * A point in a host's frame where renderers draw. A renderer registers on a stage; whoever owns the hook fills the
- * stage's {@link #host() frame} and fires it, and every renderer records into one frame on the host's target, which
- * executes there and then. CrystalGraphics defines the world's two and its hosts fire them; a mod defines its own and
- * fires it from a hook of its own.
+ * A named point in the frame where renderers draw, named for the phase it joins (Unreal's scene view extension hooks).
+ * The world stages run once per view of the scenes they are registered for, at their place in the scene renderer's
+ * order; the GUI stages once a frame, over the host's interface.
  *
  * <pre>{@code
- * // Drawing at a stage
- * CgRenderStage.Registration drawing = CgRenderStage.WORLD_OPAQUE.register(0, frame -> {
- *     CgPassConstants camera = frame.defaults(new CgPassConstants());
- *     camera.view.set(view);
- *     camera.projection.set(projection);
- *     CgRasterPass pass = frame.pass(camera, CgOrder.SORTED);
- *     // ... chunks into pass ...
- *     pass.end();
- * });
- * drawing.close();   // stops it
- * }</pre>
- *
- * <pre>{@code
-// A stage of your own: defined once, filled and fired from your hook on the render thread
- * public static final CgRenderStage AFTER_SKY = CgRenderStage.define("mymod:after_sky");
- * AFTER_SKY.host().set(partialTick, width, height, mainFramebufferId)
- *         .camera().set(camX, camY, camZ, viewRotation, projection);
- * AFTER_SKY.fire();
- *
- * // Anywhere on the render thread: the world's camera as of its latest frame
- * CgCamera world = CgRenderStage.WORLD_OPAQUE.host().camera();
- * }</pre>
- *
- * <p>A stage may fire more than once in a host frame: 1.7.10's anaglyph draws the world once per eye, and a portal
- * mod once per portal. Each firing draws a {@link CgView}, named by the host ({@code host().view(...)}), which keeps
- * that view's histories apart from another's. A renderer that advances state, a simulation stepping its particles,
- * records on the first firing only, and every later firing and stage reads what it wrote:</p>
- * <pre>{@code
- * CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(CgWorldRenderer.ORDER - 1, frame -> {
- *     CgComputePass step = frame.recording().compute("sparks.step");
- *     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);   // a history buffer
+ * // Compute what the frame's draws read, before anything of ours draws
+ * CgRenderStage.Registration sim = CgRenderStage.PREPARE.register(frame -> {
+ *     CgComputePass step = frame.recording().compute("mymod.sparks.step");
+ *     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
  *     step.end();
  * });
- * CgRenderStage.WORLD_OPAQUE.register(CgWorldRenderer.ORDER - 1, frame -> cullAndSort(frame));   // per view
+ *
+ * // On the lit opaque scene, before anything translucent: an outline from custom depth
+ * CgRenderStage.SURFACES.register(frame -> {
+ *     CgRasterPass pass = frame.recording().raster("mymod.outline")
+ *             .color(frame.target(), CgLoad.load())
+ *             .reads(frame.view().textures().customDepth())
+ *             .camera(frame.camera());
+ *     pass.draw(FULL_SCREEN, outlineMaterial);              // CgMesh.vertices(3, TRIANGLES): one triangle over it
+ *     pass.end();
+ * });
+ *
+ * // The HUD: device pixels, or the host GUI's
+ * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+ *     if (frame.project(x, y, z, at)) frame.canvas().text(damage).at(at.x, at.y).submit();
+ * });
+ *
+ * sim.close();                                                     // unregisters
+ * }</pre>
+ *
+ * <pre>{@code
+ * // A lab's pass for its own scene, and a debug view in every scene
+ * CgRenderStage.OVERLAY.register(frame -> drawGizmos(frame)).scene(lab);
+ * CgRenderStage.OVERLAY.register(frame -> drawBounds(frame)).allScenes();
  * }</pre>
  *
  * <ul>
- *   <li>An id is {@code namespace:path}, defined once; a second {@link #define} of it throws. Its path names the
- *       stage's trace zone and GPU timer.</li>
- *   <li>What a once-per-frame renderer writes is read by later firings, so it lives past the firing: a persistent or
- *       history buffer, never a transient or the blackboard.</li>
- *   <li>Renderers record in ascending order, ties in the order they registered. Any thread may register.</li>
- *   <li>{@link #fire} on the render thread only, from the host's own frame: it opens the host section itself, starts
- *       the engine if nothing has, and does nothing after the engine is torn down.</li>
+ *   <li>Within a stage, ascending {@code order} (0 by default), ties in registration order. The engine's own work sits
+ *       between stages, never at a number inside one.</li>
+ *   <li>A world stage reaches the client's scene unless its registration names others: a mod's pass reaches the game's
+ *       views and captures, never an editor's scene unasked.</li>
+ *   <li>A world stage runs once per view: work that must happen once a frame whatever the views (a simulation's step)
+ *       keeps its own frame stamp.</li>
+ *   <li>Any thread may register; renderers run on the render thread.</li>
+ *   <li>Firing a stage is the hosts' ({@code CgStageHost}); a mod defines and fires a stage of its own there.</li>
  * </ul>
  */
 public final class CgRenderStage {
 
+    /** Where a stage runs and who fires it. */
+    enum Kind {
+        /** Per view, at its place in the scene renderer's order. */
+        WORLD,
+        /** Once a frame, over the host's interface: fired by the host. */
+        GUI,
+        /** A host's callback into the world, which the scene renderer runs inside: nothing registers on it. */
+        HOST,
+        /** A mod's own, fired from its own hook. */
+        CUSTOM
+    }
+
     private static final Map<String, CgRenderStage> BY_ID = new LinkedHashMap<>();
 
-    /** The opaque world is drawn and translucent terrain is not; the scene's depth is in the host's target. */
-    public static final CgRenderStage WORLD_OPAQUE = define("crystalgraphics:world.opaque");
-
-    /** Translucent terrain and particles are drawn. */
-    public static final CgRenderStage WORLD_TRANSPARENT = define("crystalgraphics:world.transparent");
-
     /**
-     * Over the in-game HUD, once it has drawn: under any screen. A GUI stage: its frame's camera is orthographic over
-     * the window's device pixels, origin top left; {@code frame.guiScaledCanvas()} draws GUI-scaled instead
-     * ({@link #fireOverlay}). Not fired while the HUD is hidden (F1).
-     *
-     * <pre>{@code
-     * CgRenderStage.HUD.register(0, frame -> frame.callback("mymod:badge", this::drawBadge));
-     * }</pre>
+     * Per view, before anything of ours draws, in the host's opaque callback: compute what the frame's draws read (a
+     * simulation, a cull, a count). Its target is the host's, as the host drew it.
      */
-    public static final CgRenderStage HUD = define("crystalgraphics:hud");
+    public static final CgRenderStage PREPARE = define("crystalgraphics:prepare", Kind.WORLD);
 
-    /** Over a screen, once it has drawn: an inventory, a menu, another mod's. A GUI stage, as {@link #HUD}. */
-    public static final CgRenderStage SCREEN = define("crystalgraphics:screen");
+    /** Per view, after our opaque draws and before the host's translucent ones: opaque work of your own. */
+    public static final CgRenderStage OPAQUE = define("crystalgraphics:opaque", Kind.WORLD);
 
     /**
-     * The order on a GUI stage for what follows a point in the world (a damage number, a name plate, a marker): under
-     * the {@link #VIEWPORT_WIDGETS}, so a menu or a window covers it. Unreal's screen-space widget components, in their
-     * shared layer at {@code LayerZOrder} -100 under the viewport's widgets ({@code UWidgetComponent},
-     * {@code SGameLayerManager::AddLayerForPlayer}).
+     * Per view, on the lit opaque scene before anything translucent: decals, outlines, effects on surfaces, post
+     * materials before translucency (Unreal's {@code BL_BeforeTranslucency}). Its target is the HDR scene.
+     */
+    public static final CgRenderStage SURFACES = define("crystalgraphics:surfaces", Kind.WORLD);
+
+    /** Per view, after our translucent draws and distortion, before post: what post should grade and bloom. */
+    public static final CgRenderStage TRANSLUCENT = define("crystalgraphics:translucent", Kind.WORLD);
+
+    /** Per view, on the final picture before the HUD: world-space overlays post must not touch. */
+    public static final CgRenderStage OVERLAY = define("crystalgraphics:overlay", Kind.WORLD);
+
+    /**
+     * Over the in-game HUD, once it has drawn, once a frame: under any screen. Its canvas is in the window's device
+     * pixels, origin top left; {@code frame.scaled()} draws in the host GUI's. Not fired while the HUD is hidden (F1).
+     */
+    public static final CgRenderStage HUD = define("crystalgraphics:hud", Kind.GUI);
+
+    /** Over a screen, once it has drawn: an inventory, a menu, another mod's. Once a frame, as {@link #HUD}. */
+    public static final CgRenderStage SCREEN = define("crystalgraphics:screen", Kind.GUI);
+
+    /**
+     * The order on a GUI stage for what follows a point in the world (a damage number, a name plate): under the
+     * {@link #VIEWPORT_WIDGETS}, so a menu covers it. Unreal's screen-space widget components' layer, at
+     * {@code LayerZOrder} -100 ({@code SGameLayerManager::AddLayerForPlayer}).
      *
      * <pre>{@code
      * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> drawDamageNumbers(frame));
@@ -117,82 +120,97 @@ public final class CgRenderStage {
      */
     public static final int WORLD_WIDGETS = -100;
 
-    /**
-     * The order on a GUI stage of the game's own interface: windows, menus, the HUD's panels, as Unreal adds a widget
-     * to the viewport at ZOrder 0. Lower draws under them, higher over them.
-     *
-     * <pre>{@code
-     * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS + 1, frame -> drawCursorTrail(frame));   // over every window
-     * }</pre>
-     */
+    /** The order on a GUI stage of the game's own interface: windows, menus, panels, as Unreal's viewport ZOrder 0. */
     public static final int VIEWPORT_WIDGETS = 0;
 
-    /** The GUI stages' projection, refilled each firing. Render thread. */
-    private static final Matrix4f OVERLAY_PROJECTION = new Matrix4f();
-    private static final Matrix4f OVERLAY_VIEW = new Matrix4f();
-
-    /** A renderer registered on a stage; closing it unregisters it. */
-    @FunctionalInterface
+    /** A renderer registered on a stage: which scenes it reaches, and closing it unregisters it. */
     public interface Registration extends AutoCloseable {
+
+        /** Reaches {@code scene}'s views as well: a lab's pass for its own scene. World stages only. */
+        Registration scene(CgScene scene);
+
+        /** Reaches every scene's views: a debug view, a pass that must draw in every capture and viewport. */
+        Registration allScenes();
+
         @Override
         void close();
     }
 
-    /** A renderer and where it records; {@code lastFrame} is the host frame a once-per-frame one last recorded in. */
-    private static final class Entry {
+    private final class Entry implements Registration {
         final int order;
         final long sequence;
         final CgStageRenderer renderer;
-        final boolean oncePerFrame;
-        /** Its record's zone: the stage, the class that made the renderer (a lambda's declaring class) and its order. */
         final int zone;
-        long lastFrame = -1;
+        /** The scenes it reaches besides none; null for the client's alone. */
+        @Nullable
+        volatile Set<CgScene> scenes;
+        volatile boolean all;
 
-        Entry(String stage, int order, long sequence, CgStageRenderer renderer, boolean oncePerFrame) {
+        Entry(int order, long sequence, CgStageRenderer renderer) {
             this.order = order;
             this.sequence = sequence;
             this.renderer = renderer;
-            this.oncePerFrame = oncePerFrame;
             String type = renderer.getClass().getSimpleName();
             int lambda = type.indexOf("$$");
-            this.zone = CgTrace.name(stage + ".record/" + (lambda > 0 ? type.substring(0, lambda) : type) + "@" + order);
+            this.zone = CgTrace.name(path + ".record/" + (lambda > 0 ? type.substring(0, lambda) : type) + "@" + order);
+        }
+
+        boolean reaches(@Nullable CgScene scene) {
+            if (kind != Kind.WORLD || all) return true;
+            Set<CgScene> s = scenes;
+            return s == null ? scene == CgScene.client() : s.contains(scene);
+        }
+
+        @Override
+        public Registration scene(CgScene scene) {
+            if (kind != Kind.WORLD) throw new IllegalStateException(id + " runs once a frame: it has no scenes");
+            synchronized (CgRenderStage.this) {
+                Set<CgScene> next = Collections.newSetFromMap(new IdentityHashMap<>());
+                if (scenes != null) next.addAll(scenes);
+                next.add(scene);
+                scenes = next;
+            }
+            return this;
+        }
+
+        @Override
+        public Registration allScenes() {
+            if (kind != Kind.WORLD) throw new IllegalStateException(id + " runs once a frame: it has no scenes");
+            all = true;
+            return this;
+        }
+
+        @Override
+        public void close() {
+            synchronized (CgRenderStage.this) {
+                List<Entry> next = new ArrayList<>(renderers);
+                next.remove(this);
+                renderers = List.copyOf(next);
+            }
         }
     }
 
     private final String id;
     private final String path;
-    private final CgHostFrame host = new CgHostFrame();
-    private final int gpuName;
-    private final CgStageFrame frame = new CgStageFrame(this);
+    final Kind kind;
     private volatile List<Entry> renderers = List.of();
     private long sequence;
-    /** Stages firing now on the render thread; nested for a stage fired from another's renderer. */
-    private static int firing;
 
-    /** Whether a stage is firing: what an asset swap or a synchronous load must never happen inside. Render thread. */
-    public static boolean firing() {
-        return firing > 0;
-    }
-
-    private CgRenderStage(String id) {
+    private CgRenderStage(String id, Kind kind) {
         this.id = id;
         this.path = id.substring(id.indexOf(':') + 1);
-        this.gpuName = CgGpuTrace.name(path);
+        this.kind = kind;
     }
 
-    /**
-     * Defines a stage. Once per id, which is {@code namespace:path} — your mod's id, then the stage's.
-     *
-     * @throws IllegalArgumentException if {@code id} is malformed or already defined
-     */
-    public static CgRenderStage define(String id) {
+    /** Defines a stage once per id ({@code namespace:path}); a second definition throws. */
+    static CgRenderStage define(String id, Kind kind) {
         int colon = id.indexOf(':');
         if (colon <= 0 || colon == id.length() - 1 || id.indexOf(':', colon + 1) >= 0) {
             throw new IllegalArgumentException("a stage id is namespace:path, got " + id);
         }
         synchronized (BY_ID) {
             if (BY_ID.containsKey(id)) throw new IllegalArgumentException("stage " + id + " is already defined");
-            CgRenderStage stage = new CgRenderStage(id);
+            CgRenderStage stage = new CgRenderStage(id, kind);
             BY_ID.put(id, stage);
             return stage;
         }
@@ -206,16 +224,19 @@ public final class CgRenderStage {
         }
     }
 
-    /** Every stage defined, in the order they were. */
-    public static List<CgRenderStage> all() {
-        synchronized (BY_ID) {
-            return List.copyOf(BY_ID.values());
-        }
-    }
-
     /** {@code namespace:path}. */
     public String id() {
         return id;
+    }
+
+    /** Its path: its trace zone's and GPU timer's name. */
+    String path() {
+        return path;
+    }
+
+    /** Whether it runs per view in the scene renderer's order. */
+    public boolean perView() {
+        return kind == Kind.WORLD;
     }
 
     /** Registers {@code renderer} at order 0. */
@@ -225,34 +246,19 @@ public final class CgRenderStage {
 
     /** Registers {@code renderer}, recording after every lower {@code order} and after this order's earlier ones. */
     public Registration register(int order, CgStageRenderer renderer) {
-        return add(order, renderer, false);
-    }
-
-    /**
-     * Registers {@code renderer} to record on this stage's first firing of each host frame only, ordered as
-     * {@link #register(int, CgStageRenderer)} orders: a simulation, which a second firing of the frame must not step
-     * again. Work that depends on the view (culling, sorting by depth) registers per firing instead.
-     */
-    public Registration registerOncePerFrame(int order, CgStageRenderer renderer) {
-        return add(order, renderer, true);
-    }
-
-    private Registration add(int order, CgStageRenderer renderer, boolean oncePerFrame) {
+        if (kind == Kind.HOST) {
+            throw new IllegalStateException(id + " is a host's callback: register on PREPARE, OPAQUE, SURFACES,"
+                    + " TRANSLUCENT or OVERLAY");
+        }
         Entry entry;
         synchronized (this) {
-            entry = new Entry(path, order, sequence++, renderer, oncePerFrame);
+            entry = new Entry(order, sequence++, renderer);
             List<Entry> next = new ArrayList<>(renderers);
             next.add(entry);
             next.sort(Comparator.comparingInt((Entry e) -> e.order).thenComparingLong(e -> e.sequence));
             renderers = List.copyOf(next);
         }
-        return () -> {
-            synchronized (this) {
-                List<Entry> next = new ArrayList<>(renderers);
-                next.remove(entry);
-                renderers = List.copyOf(next);
-            }
-        };
+        return entry;
     }
 
     /** Whether any renderer is registered. */
@@ -260,178 +266,22 @@ public final class CgRenderStage {
         return !renderers.isEmpty();
     }
 
-    /**
-     * What the host said about this stage's latest frame: filled before {@link #fire}, readable by anything on the
-     * render thread after — the world's camera from a HUD, say. One instance, refilled every frame.
-     */
-    public CgHostFrame host() {
-        return host;
-    }
-
-    /**
-     * Lets every renderer record into one frame on the host's target under {@link #host()}, and executes it, inside a
-     * host section of its own. Render thread, from the host's frame. Nothing happens after the engine is torn down.
-     */
-    public void fire() {
-        // Nothing runs after a teardown. Minecraft keeps dispatching render stages for a frame or two after
-        // GameShuttisngDownEvent, and by then every registry is deleted: a stage reaching CgMaterial.load threw
-        // "CgMaterialRegistry has been deleted" out of a render event, which surfaced as a crash on quitting.
-        if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
-        CgDeviceSection.begin();
-        try {
-            // The engine starts on the first stage a host fires if the host never announced its context.
-            CgEngineLifecycle.ensureGraphicsContext(host.width(), host.height());
-            if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-            // The host's target, where the engine named none (fireInto, a rehearsal); a GUI stage its colour alone
-            try (CgExecutor.Into ignored = CgExecutor.hasCurrentTarget() ? null
-                    : this == HUD || this == SCREEN ? CgExecutor.into(host.target().colorOnly())
-                    : CgExecutor.into(host.target())) {
-                CgGpuTrace.begin(gpuName, CgGpuTrace.WATCH);   // timed always: a slow firing is logged by name
-                firing++;
-                try (CgTrace.Zone ignored2 = CgTrace.zone(CgChannels.WORLD, path)) {
-                    recordAndExecute();
-                } finally {
-                    firing--;
-                    CgGpuTrace.end();
-                }
-            }
-        } finally {
-            CgDeviceSection.end();
-        }
-    }
-
-    /**
-     * {@link #fire} into {@code target} rather than the host's: a view of the world of its own, as an editor's viewport
-     * draws one. It is the firing's current target, and nothing is bound. Fill {@link #host()} for the target first, its
-     * size and the target itself, and put the host's frame back after.
-     *
-     * <pre>{@code
-     * CgExternalTarget into = viewport.external();
-     * stage.host().set(0f, into.width(), into.height(), into).camera().set(x, y, z, view, projection);
-     * stage.fireInto(into);
-     * }</pre>
-     */
-    public void fireInto(CgExternalTarget target) {
-        try (CgExecutor.Into ignored = CgExecutor.into(target)) {
-            fire();
-        }
-    }
-
-    /**
-     * Fills this stage's frame as a GUI's and fires it: the world's partial tick, the host's {@code mainFramebuffer} of
-     * {@code width x height} device pixels, a camera orthographic over those pixels, origin top left, and {@code scale},
-     * the host GUI's, as {@link CgHostFrame#guiScale()}. What a host's GUI hook calls for {@link #HUD} and
-     * {@link #SCREEN}. The camera is the window's, as Unreal's canvas is; a renderer wanting the GUI's takes
-     * {@code frame.guiScaledCanvas()}.
-     *
-     * <pre>{@code
-     * CgRenderStage.HUD.fireOverlay(window.getWidth(), window.getHeight(), (float) window.getGuiScale(), mainFbo);
-     * }</pre>
-     */
-    public void fireOverlay(int width, int height, float scale, int mainFramebuffer) {
-        host.set(WORLD_OPAQUE.host.partialTick(), width, height, mainFramebuffer);
-        overlay(width, height, scale);
-    }
-
-    /** {@link #fireOverlay(int, int, float, int)} over a target given whole: a framebuffer of ours, as its {@code external()}. */
-    public void fireOverlay(int width, int height, float scale, CgExternalTarget target) {
-        host.set(WORLD_OPAQUE.host.partialTick(), width, height, target);
-        overlay(width, height, scale);
-    }
-
-    private void overlay(int width, int height, float scale) {
-        host.guiScale(scale).camera().set(0d, 0d, 0d, OVERLAY_VIEW.identity(),
-                CgCamera.orthographicMatrix(OVERLAY_PROJECTION, 0f, width, height, 0f, -1f, 1f));
-        fire();
-    }
-
-    /**
-     * Records every renderer into the stage's frame under the host's latest frame and executes it into a target of the
-     * rehearsals' own, the host's size and depth, which every stage's rehearsal shares: a {@link CgRehearsal}'s pass, at
-     * the frame boundary, after the frame's last firing. It is bound as the current target, while the host frame still
-     * names the host's, so what renderers decide from the host's target (a depth to draw beside, an attachment it takes)
-     * they decide as the cast will. Once-per-frame renderers are skipped: they ran this frame, and their state is the
-     * real frame's. Render thread.
-     */
-    public void rehearse() {
-        if (renderers.isEmpty() || !CgGraphicsLifecycle.isInitialized()) return;
-        if (!CgRehearsal.active()) throw new IllegalStateException(path + " rehearses only inside a rehearsal's pass");
-        if (host.width() <= 0 || host.height() <= 0) {
-            // Never fired (a loading screen): the window's size, and a camera at the origin looking down -Z, which the
-            // next real firing replaces.
-            int w = CgGraphicsLifecycle.getCurrentWidth(), h = CgGraphicsLifecycle.getCurrentHeight();
-            if (w <= 0 || h <= 0) return;
-            host.set(0f, w, h, host.framebuffer()).camera().set(0d, 0d, 0d, REHEARSAL_VIEW,
-                    CgCamera.perspectiveMatrix(REHEARSAL_PROJECTION, 70f, (float) w / h, 0.05f, 512f));
-        }
-        CgExternalTarget hostTarget = host.target();
-        CgRHI rhi = CgRHI.get();
-        if (rehearsalTarget == null || hostTarget != rehearsedHost || rhi != rehearsedOn
-                || rehearsalTarget.width() != host.width() || rehearsalTarget.height() != host.height()) {
-            if (rehearsalTarget != null && rhi == rehearsedOn) {
-                rhi.release(rehearsalTarget.color().texture());
-                rhi.release(rehearsalTarget.depth().texture());
-            }
-            // The host's depth type and size: copies of the current target are taken in both, so the cast reuses the
-            // rehearsal's and a copy never reads past the target.
-            CgFormat depth = host.depthFormat();
-            Set<CgGpuTexture.Usage> usage = EnumSet.of(CgGpuTexture.Usage.ATTACHMENT, CgGpuTexture.Usage.SAMPLED,
-                    CgGpuTexture.Usage.COPY_SRC, CgGpuTexture.Usage.COPY_DST);
-            rehearsalTarget = CgExternalTarget.of("cg_rehearsal",
-                    rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal colour", CgGpuTexture.Kind.D2,
-                            CgFormat.RGBA8_UNORM, host.width(), host.height(), 1, 1, 1, usage)),
-                    rhi.createTexture(new CgGpuTexture.Desc("cg_rehearsal depth", CgGpuTexture.Kind.D2,
-                            depth != null ? depth : CgFormat.DEPTH32_FLOAT_STENCIL8, host.width(), host.height(),
-                            1, 1, 1, usage)));
-            rehearsedHost = hostTarget;
-            rehearsedOn = rhi;
-        }
-        firing++;
-        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, REHEARSE)) {
-            frame.beginRehearsal(host);
-            record(CgFrameRing.frame(), true);
-            frame.executeInto(rehearsalTarget);
-        } finally {
-            firing--;
-        }
-    }
-
-    private static final int REHEARSE = CgTrace.name("stage.rehearse");
-    /** A stage that never fired is rehearsed under these: identity at the origin, and a 70-degree perspective. */
-    private static final Matrix4f REHEARSAL_VIEW = new Matrix4f(), REHEARSAL_PROJECTION = new Matrix4f();
-    /** What a rehearsal draws into: the host target's colour and depth, hidden; and the host target it is shaped by. */
-    @Nullable
-    private static CgExternalTarget rehearsalTarget;
-    /** The device that made {@link #rehearsalTarget}: another's textures are gone with it. */
-    @Nullable
-    private static CgRHI rehearsedOn;
-    @Nullable
-    private static CgExternalTarget rehearsedHost;
-
-    /** One firing's work once the engine runs: the renderers record into the stage's frame, which executes. */
-    void recordAndExecute() {
-        frame.begin(host);
-        record(CgFrameRing.frame(), false);
-        frame.execute();
-    }
-
-    /** Lets every renderer due in host frame {@code hostFrame} record into the stage's frame, in order. */
-    void record(long hostFrame) {
-        record(hostFrame, false);
-    }
-
-    /** As {@link #record(long)}; a rehearsal's skips the once-per-frame renderers. */
-    void record(long hostFrame, boolean rehearsal) {
+    /** Whether a renderer reaching {@code scene} is registered. */
+    public boolean hasRenderers(@Nullable CgScene scene) {
         List<Entry> due = renderers;
+        for (int i = 0; i < due.size(); i++) if (due.get(i).reaches(scene)) return true;
+        return false;
+    }
+
+    /** Lets every renderer reaching the frame's scene record into it, in order, each a turn of its canvas. */
+    void record(CgStageFrame frame) {
+        List<Entry> due = renderers;
+        CgScene scene = frame.sceneOrNull();
         for (int i = 0; i < due.size(); i++) {
             Entry entry = due.get(i);
-            if (entry.oncePerFrame) {
-                if (rehearsal) continue;
-                if (entry.lastFrame == hostFrame) continue;
-                entry.lastFrame = hostFrame;
-            }
+            if (!entry.reaches(scene)) continue;
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, entry.zone)) {
-                frame.turnBegins();
+                frame.turnBegins(this);
                 try {
                     entry.renderer.render(frame);
                 } finally {

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post;
 
+import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -19,8 +20,6 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -36,7 +35,7 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
  *
  * <pre>{@code
  * CgPostMaterial thermal = CgPostMaterial.of("mymod:shaders/post/thermal.shader", CgPostPoint.AFTER_COMPOSITE);
- * CgRenderStage.Registration on = CgPostStack.get().add(thermal);
+ * CgPostStack.Registration on = CgPostStack.get().add(thermal);
  * thermal.weight(0.8f);                                       // each tick, as a track says; 0 draws nothing
  * thermal.material().set1f("_Heat", 2f);
  * on.close();                                                 // removes it
@@ -176,8 +175,8 @@ public final class CgPostMaterial implements CgPostEffect {
         // too (multi-draw, depth, normals), compiled for nothing at a cut that spawns it.
         if (!warm && material.precache() && resolve()) warm = precacheAll();
         // Held until every pass is built, as Unreal skips a draw whose PSO is not (r.SkipDrawOnPSOPrecaching): a
-        // fade raised the frame it is added would otherwise compile at its draw. The world's hold switch is this one too.
-        return (warm || !CgWorldRenderer.get().skipUnready()) && weight > 0f;
+        // fade raised the frame it is added would otherwise compile at its draw. The view's hold switch is its draws' too.
+        return (warm || !post.view().flag(CgSceneRenderer.SKIP_UNREADY)) && weight > 0f;
     }
 
     /** Starts or polls every pipeline it draws, each pass's and the last's; whether all are built. */
@@ -200,16 +199,16 @@ public final class CgPostMaterial implements CgPostEffect {
         CgRecording recording = post.recording();
         if (CgMaterialProxy.of(material).handedScene()) {
             // Unreal's SceneTextures, from what this firing published; the fallbacks read stencil 0, no normal, no data.
-            CgGraphTexture custom = post.resources().get(CgFrameKeys.CUSTOM_DEPTH);
-            CgGraphTexture normals = post.resources().get(CgFrameKeys.WORLD_NORMALS);
-            CgGraphTexture data = post.resources().get(CgFrameKeys.CUSTOM_DATA);
+            CgGraphTexture custom = post.textures().customDepth();
+            CgGraphTexture normals = post.textures().normals();
+            CgGraphTexture data = post.textures().customData();
             bind("_cg_CustomStencil", custom != null ? custom.stencil() : CgFallbackTextures.ZERO_UINT);
             bind("_cg_WorldNormal", normals != null ? normals : CgFallbackTextures.TRANSPARENT);
             bind("_cg_CustomData", data != null ? data : CgFallbackTextures.TRANSPARENT);
         }
         CgGraphTexture screen = post.target();
         // The host's size: an imported target's texture knows none until it executes.
-        int screenW = post.stage().host().width(), screenH = post.stage().host().height();
+        int screenW = post.view().width(), screenH = post.view().height();
         for (int t = 0; t < textures.length; t++) {
             CgShaderSpec.PostTarget target = resolved.get(t);
             int w = Math.max(1, Math.round(screenW * target.scale()));
@@ -243,7 +242,7 @@ public final class CgPostMaterial implements CgPostEffect {
     private void draw(CgRecording recording, CgGraphTexture into, CgLoad load, CgPostContext post, CgPipeline pipeline,
                       CgGraphTexture colourOf) {
         CgRasterPass pass = recording.raster("post.material").color(into, load).constants(post.constants())
-                .texture(CgBindingModel.LIGHTMAP, post.stage().host().textures().lightmapTexture());
+                .texture(CgBindingModel.LIGHTMAP, post.view().hostTextures().lightmapTexture());
         // A pass into a target of its own reads the scene's colour and depth, not the target it clears.
         CgGraphTexture screen = post.target();
         CgPipeline drawn = depthless(pipeline);

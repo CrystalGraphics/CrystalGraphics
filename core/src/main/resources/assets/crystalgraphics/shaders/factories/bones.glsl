@@ -2,7 +2,7 @@
 // hand. cg_Position and cg_Normal then read as the skinned vertex, so a material skins with no code of its own.
 #pragma once
 
-// Where the draw's palette starts, in bones: its object record's spare x (CgWorldRenderer's .bones(base)).
+// Where the draw's palette starts, in bones: its object record's spare x (a row's .bones(base)).
 #define CG_BONE_BASE int(CG_OBJECT_SPARE.x + 0.5)
 // Whether its mesh is SKINNED_WIDE, 16-bit indices in a 52-byte vertex: the record's spare y (CgMeshDrawCommands).
 #define CG_BONES_WIDE (CG_OBJECT_SPARE.y > 0.5)

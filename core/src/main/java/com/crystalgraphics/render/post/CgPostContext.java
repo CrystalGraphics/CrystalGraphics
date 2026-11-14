@@ -6,17 +6,18 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.distortion.CgPostDistortion;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgFrameResources;
-import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
+import com.crystalgraphics.render.stage.CgStageFiring;
+import com.crystalgraphics.render.view.CgSceneTextures;
+import com.crystalgraphics.render.view.CgView;
 
 /**
- * What a {@link CgPostEffect} records with: the stage firing it runs in, the firing's blackboard, and the composite it
- * may feed. One instance, refilled every firing; never hold it past {@link CgPostEffect#record}.
+ * What a {@link CgPostEffect} records with: the view it runs for, its scene textures, the firing's recording and the
+ * composite it may feed. One instance, refilled every firing; never hold it past {@link CgPostEffect#record}.
  *
  * <pre>{@code
- * CgGraphTexture subject = post.resources().get(CgFrameKeys.SUBJECT);
- * CgRasterPass pass = post.recording().raster("postContext.target").color(post.target(), CgLoad.load()).constants(post.constants());
+ * CgGraphTexture subject = post.textures().subject();
+ * CgRasterPass pass = post.recording().raster("mymod.post").color(post.target(), CgLoad.load()).constants(post.constants());
  * post.composite().bloom(level1, intensity);   // at BEFORE_COMPOSITE: an input of the one composite pass
  * CgGraphTexture bent = post.distorted(subject);   // a side input bent as the scene was
  * }</pre>
@@ -25,7 +26,7 @@ public final class CgPostContext {
 
     private final CgPostComposite composite;
     private final CgPostDistortion distortion;
-    private CgStageFrame stage;
+    private CgStageFiring firing;
     private CgPostSettings settings;
 
     CgPostContext(CgPostComposite composite, CgPostDistortion distortion) {
@@ -33,8 +34,8 @@ public final class CgPostContext {
         this.distortion = distortion;
     }
 
-    void begin(CgStageFrame stage, CgPostSettings settings) {
-        this.stage = stage;
+    void begin(CgStageFiring firing, CgPostSettings settings) {
+        this.firing = firing;
         this.settings = settings;
         distortion.begin();
     }
@@ -44,46 +45,46 @@ public final class CgPostContext {
         return settings;
     }
 
-    /** The stage firing the stack records in. */
-    public CgStageFrame stage() {
-        return stage;
+    /** The view the stack records for: its camera, size and environment. */
+    public CgView view() {
+        return firing.view();
+    }
+
+    /** The view's scene textures this frame: the HDR scene, custom depth, normals, the subject. */
+    public CgSceneTextures textures() {
+        return firing.view().textures();
     }
 
     public CgRecording recording() {
-        return stage.recording();
+        return firing.recording();
     }
 
-    /** The host's target: what the composite draws onto. */
+    /** What the composite draws onto: the HDR scene before it, the host's target from it. */
     public CgGraphTexture target() {
-        return stage.target();
+        return firing.target();
     }
 
-    /** The depth of the scene the composite draws over ({@link CgStageFrame#depth()}). */
+    /** The depth of the scene the composite draws over. */
     public CgGraphTexture depth() {
-        return stage.depth();
+        return firing.depth();
     }
 
-    /** The host's camera as pass constants ({@link CgStageFrame#constants()}). */
+    /** The view's camera as pass constants. */
     public CgPassConstants constants() {
-        return stage.constants();
-    }
-
-    /** The firing's blackboard: what the scene's renderers published ({@code CgFrameKeys}). */
-    public CgFrameResources resources() {
-        return stage.resources();
+        return firing.constants();
     }
 
     /**
-     * {@code input} bent by this firing's distortion ({@link CgFrameKeys#DISTORTION}), as the scene beneath it was: for
-     * an effect reading a side input of the scene (a mask, a subject) rather than the target, which is bent already.
-     * {@code input} itself when nothing distorted; bent once however many effects ask.
+     * {@code input} bent by this frame's distortion, as the scene beneath it was: for an effect reading a side input of
+     * the scene (a mask, a subject) rather than the target, which is bent already. {@code input} itself when nothing
+     * distorted; bent once however many effects ask.
      *
      * <pre>{@code
-     * CgGraphTexture subject = post.distorted(post.resources().get(CgFrameKeys.SUBJECT));
+     * CgGraphTexture subject = post.distorted(post.textures().subject());
      * }</pre>
      */
     public CgGraphTexture distorted(CgGraphTexture input) {
-        return distortion.bend(recording(), resources().get(CgFrameKeys.DISTORTION), constants(), input);
+        return distortion.bend(recording(), view().read(CgDistortionField.KEY), constants(), input);
     }
 
     /** The composite this firing: an effect at {@link CgPostPoint#BEFORE_COMPOSITE} sets its inputs. */

@@ -15,7 +15,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
-import com.crystalgraphics.render.stage.CgDistortionField;
+import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import java.util.Arrays;

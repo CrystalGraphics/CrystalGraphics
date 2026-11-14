@@ -14,7 +14,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * and the {@code CG_PARTICLE_*} macros read through it.
  *
  * <pre>{@code
- * world.draw(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn())
+ * out.indirect(quads, spark).buffer(CgParticleBuffer.SLOT, pool.drawn())
  *      .buffer(SLOT, range.order())...
  * }</pre>
  *

@@ -1,5 +1,6 @@
 package com.crystalgraphics.loading.watchdog;
 
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import java.lang.management.ManagementFactory;
 import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;

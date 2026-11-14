@@ -20,7 +20,7 @@ import org.apache.logging.log4j.Logger;
  * }</pre>
  *
  * <ul>
- *   <li>{@code CgPipeline.precache} and {@code CgVfxSystem}'s warming ask it, so {@code CgWorldRenderer.precache} and
+ *   <li>{@code CgPipeline.precache} and {@code CgVfxSystem}'s warming ask it, so {@code CgScenePipelines.precache} and
  *       {@code CgVfxOwner.precache} spread by themselves.</li>
  *   <li>Unlimited until {@code CgEngineLifecycle.ensureGraphicsContext} starts it: a process with no context (a test) warms at
  *       once.</li>

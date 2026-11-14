@@ -34,11 +34,11 @@ import java.util.function.Consumer;
  * {@code text.shader}'s {@code WORLD_LABEL} variant, and a frame that changed nothing but their places writes one
  * matrix a label. 10,000 outlined, shadowed labels draw in 3 draws at about 230 ns a label.
  *
- * <p>The world's own is {@code CgWorldRenderer.get().labels()}, drawn into every transparent world firing, depth-tested
+ * <p>A scene's own is {@code scene.renderer().labels()} (what {@code scene.label(...)} queues), drawn into each view's translucent callback, depth-tested
  * as a name tag: {@code world.text(...)} queues on it.</p>
  *
  * <pre>{@code
- * CgCanvasLabels labels = CgWorldRenderer.get().labels();
+ * CgCanvasLabels labels = CgScene.client().renderer().labels();
  * labels.text().at(x, y + 2, z).height(0.5f).font(font).style(LABEL).text("Spawn").submit();   // each frame
  * labels.text().at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).text(sign).submit();
  * }</pre>
@@ -468,7 +468,7 @@ public final class CgCanvasLabels {
     /**
      * One label's place in the world: a point, a height, which point of the text stands there, and a turn. How it
      * draws is its {@link CgTextDraw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
-     * queue it. Build it from {@link #text}, or {@code CgWorldRenderer.text}.
+     * queue it. Build it from {@link #text}, or {@code CgScene.label}.
      */
     public static final class Label {
         private final CgTextDraw draw;

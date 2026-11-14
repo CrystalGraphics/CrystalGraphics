@@ -3,7 +3,7 @@ package com.crystalgraphics.render.post;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.post.look.CgFilmLut;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
@@ -18,10 +18,12 @@ import com.crystalgraphics.camera.CgCamera;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.stage.CgStageHook;
-import com.crystalgraphics.render.world.CgPipelineList;
+import com.crystalgraphics.render.stage.CgStageFiring;
+import com.crystalgraphics.render.view.CgSceneTextures;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewState;
+import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -36,15 +38,16 @@ import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 
 /**
- * The post-processing stack: what runs after the world renderer has drawn the scene, on the same stage firing. Every
- * active {@link CgPostEffect} records at its {@link CgPostPoint}, then one composite pass lays the firing's looks over
- * the target, as every production engine composes bloom inside its tonemap or uber pass. The world renderer produces
- * (it publishes {@code CgFrameKeys.SCENE}); the stack consumes.
+ * The post-processing stack: what runs after the scene renderer has drawn a view of the client scene, in the same
+ * firing, between the {@code TRANSLUCENT} and {@code OVERLAY} stages. Every active {@link CgPostEffect} records at its
+ * {@link CgPostPoint}, then one composite pass lays the view's looks over the target, as every production engine
+ * composes bloom inside its tonemap or uber pass. The scene renderer produces (the view's scene textures); the stack
+ * consumes.
  *
  * <pre>{@code
  * CgPostStack post = CgPostStack.get();
  * post.bloom().intensity(1.2f);                                 // the built-in bloom's settings
- * CgRenderStage.Registration outline = post.add(new Outline()); // a mod's effect at its point
+ * CgPostStack.Registration outline = post.add(new Outline());   // a mod's effect at its point
  * outline.close();
  *
  * // An effect's look for a moment: a volume, never the global settings
@@ -54,16 +57,13 @@ import javax.annotation.Nullable;
  * }</pre>
  *
  * <ul>
- *   <li>Registered on {@code WORLD_TRANSPARENT} at {@link #ORDER}, after the world renderer. The engine installs it
- *       with the world renderer.</li>
+ *   <li>Run by the scene renderer for the client scene's views whose show flags keep post on.</li>
  *   <li>Render thread for recording; any thread may {@link #add} or remove an effect, which takes effect at the next
  *       firing.</li>
  * </ul>
  */
 public final class CgPostStack {
 
-    /** Where the stack records on {@code WORLD_TRANSPARENT}: after the world renderer (1000). */
-    public static final int ORDER = 2000;
 
     private static final CgPostStack INSTANCE = new CgPostStack();
 
@@ -82,7 +82,9 @@ public final class CgPostStack {
     /** Every volume, by priority ascending then when it was made: replaced whole, as the effects are. */
     private volatile CgPostVolume[] volumes = new CgPostVolume[0];
     /** The volumes blended at the camera, this firing. */
-    private final CgPostSettings settings = new CgPostSettings();
+    /** A view's volumes blended at its camera this frame (Unreal's {@code FinalPostProcessSettings}): its own, per view. */
+    private static final CgViewState.Key<CgPostSettings> SETTINGS =
+            new CgViewState.Key<>("crystalgraphics:post.settings", CgPostSettings::new);
     private final Matrix4f viewProjection = new Matrix4f();
     private final Vector4f clip = new Vector4f();
     private boolean installed;
@@ -94,13 +96,17 @@ public final class CgPostStack {
         return INSTANCE;
     }
 
-    /** Registers on {@code WORLD_TRANSPARENT}, and on {@code WORLD_OPAQUE} for a keyed subject, once. The engine calls it when it starts. */
+    /** An effect added to the stack; closing it removes it. */
+    @FunctionalInterface
+    public interface Registration extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /** Requests its programs and kernels for the precache, once. The engine calls it when it starts. */
     public void install() {
         if (installed) return;
         installed = true;
-        CgRenderStage.WORLD_OPAQUE.register(DEMAND_ORDER, this::demandSubject);
-        CgRenderStage.WORLD_TRANSPARENT.register(DEMAND_ORDER, this::demand);
-        CgRenderStage.WORLD_TRANSPARENT.register(ORDER, this::record);
         // A step a shader: each reads and parses its file to name its permutations, together 100 ms and more of a frame
         CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("crystalgraphics:post");
         for (String pass : WARMED) steps.step(pipelines -> pipelines.addPass(pass));
@@ -164,47 +170,39 @@ public final class CgPostStack {
         if (lookSets.add(key)) CgPipelinePrecache.register("crystalgraphics:post volume " + key, p -> p.addPass(COMPOSITE_COPY, keywords));
     }
 
-    /** Before the world renderer: where the volumes blend, so it knows whether bloom will read the emission. */
-    public static final int DEMAND_ORDER = 0;
-
     /**
-     * Blends the volumes and, while a drawn impact frame shows, says the subject will be read
-     * ({@link CgFrameKeys#SUBJECT_READ}).
+     * Engine side, the scene renderer's at a view's opaque callback, before {@code PREPARE}: blends the volumes at the
+     * view's camera, and asks the view's textures for what this frame's effects read (a drawn impact frame's subject,
+     * the scene textures a post material is handed).
      */
-    private void demand(CgStageFrame stage) {
-        resolve(stage);
-        if (looks.drawsImpact(settings)) stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
-        if (readsScene()) stage.resources().put(CgFrameKeys.CUSTOM_DATA_READ, Boolean.TRUE);
-        if (effects.length > 0 && effects[0].point() == CgPostPoint.BEFORE_TRANSLUCENCY) {
-            stage.resources().put(CgFrameKeys.BEFORE_TRANSLUCENCY, beforeTranslucency);
+    public void prepare(CgView view) {
+        CgPostSettings settings = view.state().get(SETTINGS);
+        resolve(view, settings);
+        CgSceneTextures textures = view.textures();
+        if (looks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
+        if (readsScene()) {
+            textures.requestNormals();
+            textures.requestCustomData();
         }
     }
 
-    /** The world renderer's call at its before-translucency point: those effects, onto the HDR scene. */
-    private final CgStageHook beforeTranslucency = this::recordBeforeTranslucency;
-    /** Whether this firing's before-translucency effects were recorded by the world renderer's hook. */
+    /** Whether this firing's before-translucency effects were recorded at the renderer's point. */
     private boolean recordedBefore;
 
-    private void recordBeforeTranslucency(CgStageFrame stage) {
-        // No scene yet (its programs unbuilt): nothing linear to grade, so they record with AFTER_WORLD.
-        if (!stage.resources().has(CgFrameKeys.SCENE)) return;
+    /**
+     * Engine side, the scene renderer's just before {@code SURFACES}: the effects at {@link CgPostPoint#BEFORE_TRANSLUCENCY}
+     * onto the lit opaque HDR scene (Unreal's {@code BL_BeforeTranslucency}). With no HDR scene yet (its programs
+     * unbuilt) they record with the rest.
+     */
+    public void recordBeforeTranslucency(CgStageFiring firing) {
+        recordedBefore = false;
+        CgPostEffect[] current = effects;
+        if (current.length == 0 || current[0].point() != CgPostPoint.BEFORE_TRANSLUCENCY || !firing.view().textures().linear()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.beforeTranslucency")) {
-            context.begin(stage, settings);
-            recordAt(CgPostPoint.BEFORE_TRANSLUCENCY, effects, 0);
+            context.begin(firing, firing.view().state().get(SETTINGS));
+            recordAt(CgPostPoint.BEFORE_TRANSLUCENCY, current, 0);
             recordedBefore = true;
         }
-    }
-
-    /**
-     * At the opaque stage, a drawn impact frame's subject key: the world renderer draws a keyed subject there; and the
-     * world normals, which its opaque pass writes, while a post material reads the scene textures.
-     */
-    private void demandSubject(CgStageFrame stage) {
-        resolve(stage);
-        if (looks.drawsImpact(settings) && settings.impactSubject() != 0) {
-            stage.resources().put(CgFrameKeys.SUBJECT_READ, settings.impactSubject());
-        }
-        if (readsScene()) stage.resources().put(CgFrameKeys.WORLD_NORMALS_READ, Boolean.TRUE);
     }
 
     /** Whether an active post material reads the scene textures it is handed ({@code env/handed/scene.glsl}). */
@@ -233,7 +231,7 @@ public final class CgPostStack {
     }
 
     /** Adds {@code effect} at its point; closing the registration removes it. */
-    public CgRenderStage.Registration add(CgPostEffect effect) {
+    public Registration add(CgPostEffect effect) {
         Objects.requireNonNull(effect, "effect");
         synchronized (this) {
             CgPostEffect[] next = Arrays.copyOf(effects, effects.length + 1);
@@ -297,9 +295,13 @@ public final class CgPostStack {
         if (debug != null) debug.release();
     }
 
-    private void record(CgStageFrame stage) {
+    /**
+     * Engine side, the scene renderer's after {@code TRANSLUCENT}: every effect at its point, and the composite, which
+     * encodes the HDR scene back into the host's target, every later stage's again.
+     */
+    public void record(CgStageFiring firing) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.record")) {
-            context.begin(stage, settings);   // the volumes were blended at DEMAND_ORDER
+            context.begin(firing, firing.view().state().get(SETTINGS));   // blended at the view's opaque callback
             composite.begin();
             CgPostEffect[] current = effects;
             // Before-translucency effects the world renderer recorded at its point are past; otherwise they record here
@@ -314,26 +316,30 @@ public final class CgPostStack {
             translucency.record(context);
             i = recordAt(CgPostPoint.AFTER_WORLD, current, i);
             i = recordAt(CgPostPoint.BEFORE_COMPOSITE, current, i);
-            CgGraphTexture scene = stage.resources().get(CgFrameKeys.SCENE);
+            CgSceneTextures textures = firing.view().textures();
+            CgGraphTexture scene = textures.linear() ? textures.sceneColor() : null;
             if (scene != null) {
-                // The composite encodes the scene into the host's target, which is every later renderer's again.
+                // The composite encodes the scene into the host's target, which is every later stage's again.
                 composite.scene(scene);
-                stage.retarget(null, null);
+                firing.retarget(null, null);
+                textures.sceneColor(null, false);
             }
-            composite.record(stage.recording(), stage.target(), stage.constants());
+            composite.record(firing.recording(), firing.target(), firing.constants());
             recordAt(CgPostPoint.AFTER_COMPOSITE, current, i);
         }
     }
 
-    /** Blends every volume into {@link #settings} at the stage's camera, a placed one's focus where it is on screen. */
-    private void resolve(CgStageFrame stage) {
+    /**
+     * Blends every volume into {@code settings} at {@code of}'s camera, a placed one's focus where it is on screen. The
+     * volumes are the client world's: a view of a scene of its own blends none.
+     */
+    private void resolve(CgView of, CgPostSettings settings) {
         settings.reset();
         CgPostVolume[] current = volumes;
-        if (current.length == 0) return;
-        CgCamera view = stage.host().camera();
+        if (current.length == 0 || of.scene() != CgScene.client()) return;
+        CgCamera view = of.camera();
         double cx = view.x(), cy = view.y(), cz = view.z();
-        CgPassConstants camera = stage.constants();
-        camera.projection.mul(camera.view, viewProjection);
+        viewProjection.set(view.projection()).mul(view.view());
         for (CgPostVolume v : current) {
             float w = v.weightAt(cx, cy, cz);
             if (w <= 0f) continue;

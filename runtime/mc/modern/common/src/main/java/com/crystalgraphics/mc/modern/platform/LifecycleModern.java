@@ -1,7 +1,8 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.CgDepthConvention;
 import com.crystalgraphics.mc.modern.platform.actor.ActorsModern;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
@@ -89,13 +90,13 @@ public final class LifecycleModern {
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                CgHostFrame frame = CgRenderStage.WORLD_OPAQUE.host()
+                CgHostFrame frame = CgStageHost.frame(CgStageHost.WORLD_OPAQUE)
                         .set(partialTick, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
                 HostCameraModern.capture(mc, partialTick, frame.camera());
                 EnvironmentModern.capture(mc, partialTick, frame.camera(), frame.environment());
                 TexturesModern.capture(mc, frame.textures());
                 WorldEventsModern.poll(mc);
-                CgRenderStage.WORLD_OPAQUE.fire();
+                CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
             } finally {
                 worldDepth(false);
             }
@@ -125,14 +126,10 @@ public final class LifecycleModern {
             int mainFbo = bindMainTarget(mc);
             worldDepth(true);
             try {
-                // The same level render as the opaque pass: its camera, and the partial tick these loaders do not pass.
-                CgHostFrame opaque = CgRenderStage.WORLD_OPAQUE.host();
-                CgRenderStage.WORLD_TRANSPARENT.host()
-                        .set(opaque.partialTick(), Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo)
-                        .camera().set(opaque.camera());
-                CgRenderStage.WORLD_TRANSPARENT.host().environment().set(opaque.environment());
-                CgRenderStage.WORLD_TRANSPARENT.host().textures().set(opaque.textures());
-                CgRenderStage.WORLD_TRANSPARENT.fire();
+                // The opaque callback's frame, which this one shares: one level render. Its target bound again.
+                CgHostFrame host = CgStageHost.frame(CgStageHost.WORLD_TRANSPARENT);
+                host.set(host.partialTick(), Windows.of(mc).getWidth(), Windows.of(mc).getHeight(), mainFbo);
+                CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT);
             } finally {
                 worldDepth(false);
             }
@@ -187,7 +184,7 @@ public final class LifecycleModern {
         CgDeviceSection.begin();
         try {
             int mainFbo = bindMainTarget(mc);
-            stage.fireOverlay(Windows.of(mc).getWidth(), Windows.of(mc).getHeight(),
+            CgStageHost.fireOverlay(stage, Windows.of(mc).getWidth(), Windows.of(mc).getHeight(),
                     (float) Windows.of(mc).getGuiScale(), mainFbo);
         } finally {
             CgDeviceSection.end();

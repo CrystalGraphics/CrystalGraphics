@@ -14,8 +14,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.world.CgGradeLayers;
-import com.crystalgraphics.render.world.CgSeparateTranslucency;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgSeparateTranslucency;
 
 /**
  * Lays the firing's separate translucency ({@link CgSeparateTranslucency}) over the scene, and each graded look's share
@@ -36,13 +36,13 @@ final class CgTranslucencyComposition {
     private CgMaterialInstance material;
 
     void record(CgPostContext post) {
-        CgSeparateTranslucency apart = post.resources().get(CgSeparateTranslucency.KEY);
+        CgSeparateTranslucency apart = post.view().read(CgSeparateTranslucency.KEY);
         if (apart == null) return;
         if (material == null) material = CgMaterial.load(SHADER).instance();
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         if (apart.target() != null) over(post, pipeline, post.target(), apart.target());
-        CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
+        CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
         if (layers == null) return;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (apart.layer(k) != null && layers.layer(k) != null) over(post, pipeline, layers.layer(k), apart.layer(k));

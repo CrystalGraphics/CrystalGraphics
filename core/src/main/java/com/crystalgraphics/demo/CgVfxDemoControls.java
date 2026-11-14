@@ -24,7 +24,7 @@ import java.util.Locale;
  *
  * // each frame: the host's seconds through the time switch, into the scene
  * float t = controls.time(hostSeconds);
- * scene.submit(world, x, y, z, t);
+ * scene.submit(scene, x, y, z, t);
  *
  * // each wave a scene fires
  * CgVfxSystemInstance<CgEnergyWave> wave = vfx.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z));

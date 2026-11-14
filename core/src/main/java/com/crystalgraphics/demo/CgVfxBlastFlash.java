@@ -1,6 +1,6 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.vfx.CgVfxMomentListener;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxOwner;
@@ -24,7 +24,7 @@ import java.util.List;
  *
  * // each frame: the target on the ground, the view's horizontal direction (the wave fires across it), and the
  * // scene's seconds through the time switch
- * blast.submit(CgWorldRenderer.get(), x, y, z, forwardX, forwardZ, CgVfxDemoControls.get().time(hostSeconds));
+ * blast.submit(CgScene.client(), x, y, z, forwardX, forwardZ, CgVfxDemoControls.get().time(hostSeconds));
  * }</pre>
  *
  * <p>{@link #clear} ends what plays and keeps what it built; the next submit starts a new wave.</p>
@@ -66,7 +66,7 @@ public final class CgVfxBlastFlash {
     }
 
     /** Plays the scene round the target {@code (x, y, z)} at {@code seconds}, firing across the view's horizontal {@code forward}. */
-    public void submit(CgWorldRenderer world, double x, double y, double z, double forwardX, double forwardZ,
+    public void submit(CgScene scene, double x, double y, double z, double forwardX, double forwardZ,
                        double seconds) {
         clock = seconds;
         cycle(x, y, z, forwardX, forwardZ);
@@ -78,7 +78,7 @@ public final class CgVfxBlastFlash {
         }
         if (drives) {
             vfx.system().update(clock);
-            vfx.system().submit(world);
+            vfx.system().submit();
         }
     }
 

@@ -5,7 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 
 import java.util.Objects;
 
@@ -57,7 +57,7 @@ public final class CgOutline implements AutoCloseable {
 
     private final CgMaterialInstance material;
     private final CgPostMaterial post;
-    private final CgRenderStage.Registration registration;
+    private final CgPostStack.Registration registration;
 
     private CgOutline(CgMaterialInstance material) {
         this.material = material;

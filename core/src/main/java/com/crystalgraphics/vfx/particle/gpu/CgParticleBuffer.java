@@ -16,7 +16,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * simulation's buffer through its sorted indices.
  *
  * <pre>{@code
- * world.draw(quads, material).buffer(SLOT, pool.drawn())
+ * out.indirect(quads, material).buffer(SLOT, pool.drawn())
  *      .buffer(CgParticleOrderBuffer.SLOT, range.order())...   // particles [base, base + count) of the order
  * }</pre>
  *

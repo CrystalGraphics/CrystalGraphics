@@ -1,14 +1,14 @@
 package com.crystalgraphics.mc.v1710.mixins.early.impl.client;
 
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.mc.v1710.platform.world.HostCamera1710;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
-import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.v1710.platform.LoadingScreen1710;
 import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
 import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
-import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
@@ -69,7 +69,7 @@ public class CgRenderHook {
         // 1.7.10 renders into mc.getFramebuffer().framebufferObject (the MC main FBO).
         // Validated: Framebuffer.java field `public int framebufferObject`.
         Minecraft mc = Minecraft.getMinecraft();
-        crystalgraphics$fire(CgRenderStage.WORLD_OPAQUE, mc, partialTicks);
+        crystalgraphics$opaque(mc, partialTicks);
     }
 
     /**
@@ -87,8 +87,8 @@ public class CgRenderHook {
     )
     private void onAfterTranslucentContent(float partialTicks, long finishTimeNano,
                                             CallbackInfo ci) {
-        // Note: CG geometry renders outside Angelica/Iris's GBuffer chain.
-        crystalgraphics$fire(CgRenderStage.WORLD_TRANSPARENT, Minecraft.getMinecraft(), partialTicks);
+        // Note: CG geometry renders outside Angelica/Iris's GBuffer chain. The opaque callback's frame: one level render.
+        CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT);
     }
 
     /**
@@ -98,23 +98,18 @@ public class CgRenderHook {
      * uniformly, closing the gap left by hooking {@code renderWorld} alone.
      */
     // 1.7.10 renders into mc.getFramebuffer().framebufferObject, the main FBO.
+    /** Fills the world callbacks' frame, which the transparent one shares, and fires the opaque one. */
     @Unique
-    private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
-        CgHostFrame frame = stage.host()
+    private static void crystalgraphics$opaque(Minecraft mc, float partialTicks) {
+        CgHostFrame frame = CgStageHost.frame(CgStageHost.WORLD_OPAQUE)
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
         // Anaglyph draws the world once per eye: each eye a view, with histories of its own
         frame.view(mc.gameSettings.anaglyph && EntityRenderer.anaglyphField == 1 ? HostCamera1710.RIGHT_EYE : CgView.main());
         HostCamera1710.capture(mc, partialTicks, frame.camera());
-        if (stage == CgRenderStage.WORLD_OPAQUE) {
-            Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());
-            Textures1710.capture(mc, frame.textures());
-            WorldEvents1710.poll();
-        } else {
-            // The same level render as the opaque pass.
-            frame.environment().set(CgRenderStage.WORLD_OPAQUE.host().environment());
-            frame.textures().set(CgRenderStage.WORLD_OPAQUE.host().textures());
-        }
-        stage.fire();
+        Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());
+        Textures1710.capture(mc, frame.textures());
+        WorldEvents1710.poll();
+        CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
     }
 
     @Inject(method = "updateCameraAndRender", at = @At("TAIL"))

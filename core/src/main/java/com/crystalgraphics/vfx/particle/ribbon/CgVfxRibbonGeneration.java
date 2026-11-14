@@ -30,10 +30,10 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
  * <pre>{@code
  * // each frame, as an emitter's ribbon renderer draws its slot (CgVfxFrame does this):
  * CgVfxRibbonGeneration ribbons = CgVfxRibbonGeneration.of(pool).ribbon(slot, renderer);
- * world.draw(CgMesh.vertices(ribbons.vertices(slot, renderer), CgMeshTopology.TRIANGLES), material)
- *      .buffer(CgParticleBeamBuffer.SLOT, ribbons.run())
- *      .indirect(ribbons.args(), ribbons.argsWord(slot), CgIndirect.VERTICES, 1)
- *      .custom(0, orderBase, ribbons.slotRecord(slot), size, ribbons.mode(renderer))...
+ * out.indirect(CgMesh.vertices(ribbons.vertices(slot, renderer), CgMeshTopology.TRIANGLES), material)
+ *    .buffer(CgParticleBeamBuffer.SLOT, ribbons.run())
+ *    .count(ribbons.args(), ribbons.argsWord(slot), CgIndirect.VERTICES, 1)
+ *    .customData(0, orderBase, ribbons.slotRecord(slot), size, ribbons.mode(renderer))...
  *
  * // Range then records every pool's generation in its own pass, after Place:
  * generation.upload(recording, view, slotFirst);

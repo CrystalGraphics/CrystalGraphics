@@ -15,7 +15,7 @@ package com.crystalgraphics.render.post;
  *         pass.end();
  *     }
  * }
- * CgRenderStage.Registration outline = CgPostStack.get().add(new Outline());
+ * CgPostStack.Registration outline = CgPostStack.get().add(new Outline());
  * outline.close();   // removes it
  * }</pre>
  *

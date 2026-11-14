@@ -4,7 +4,7 @@ import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.world.CgPipelineList;
+import com.crystalgraphics.render.precache.CgPipelineList;
 
 import java.util.ArrayList;
 import java.util.Arrays;

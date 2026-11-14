@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
@@ -14,7 +15,6 @@ import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextLayer.Blend;
@@ -36,7 +36,7 @@ import org.joml.Quaternionf;
  * <pre>{@code
  * CgTextDemo text = new CgTextDemo(labelFont);
  * text.precache();                                      // then ready() each frame until true
- * text.submit(world, view, x, y, z, seconds);           // each frame, its point on the ground
+ * text.submit(scene, view, x, y, z, seconds);           // each frame, its point on the ground
  * text.clear();                                         // draws nothing until the next submit
  * }</pre>
  *
@@ -213,7 +213,7 @@ public final class CgTextDemo {
                 COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE, null};
         warm = CgMaterial.of(plasma).keyword("MSDF_MODE", true);
         // After the world renderer's draws and before the post stack, as world text with additive layers is drawn.
-        drawing = CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 10, this::draw);
+        drawing = CgRenderStage.TRANSLUCENT.register(10, this::draw);
     }
 
     /** Starts compiling the shader stations' program and loading the critical's style, and reads the damage's face. */
@@ -249,7 +249,7 @@ public final class CgTextDemo {
      * facing where the camera stood when the point moved (the demo moves it only for a new scene, a new level or a
      * jump), and fixed there: the words never turn after the camera.
      */
-    public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
+    public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
         this.seconds = seconds;
         if (x != laidX || y != laidY || z != laidZ) {
             laidX = x;
@@ -268,7 +268,7 @@ public final class CgTextDemo {
             }
         }
         for (int i = 0; i < STATIONS; i++) {
-            world.text(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
+            scene.label(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
                     .font(labelFont).style(CgDemoStyles.LABEL).submit();
         }
         // A hit landing four times a second, climbing from single digits to the trillions, three random hits to each
@@ -285,7 +285,7 @@ public final class CgTextDemo {
 
     private void draw(CgStageFrame frame) {
         if (!active) return;
-        CgCamera view = frame.host().camera();
+        CgCamera view = frame.camera();
         CgCanvas canvas = frame.canvas();
         // Back row first: blended text covers what is behind it.
         for (int row = 3; row >= 0; row--) {

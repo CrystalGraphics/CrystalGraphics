@@ -21,7 +21,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * data[at * 4] = radius;                           // a number takes its row vec4's x
  * System.arraycopy(core, 0, data, (at + 1) * 4, 4);
  * CgPropertyRows.upload(data, rows);
- * world.draw(mesh, material).custom(3, at, 0f, 0f, 0f).submit();
+ * scene.once().mesh(mesh, material).customData(3, at, 0f, 0f, 0f).add();
  * }</pre>
  *
  * <ul>

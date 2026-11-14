@@ -23,7 +23,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * <pre>{@code
  * // each frame, per skinned draw: pose(bone) * inverseBind(bone) for every bone, then the draw names where it starts
  * int base = CgBonePalettes.write(skinning, skeleton.boneCount());
- * world.draw(kurama.mesh(), material).bones(base).at(x, y, z).submit();
+ * scene.once().mesh(kurama.mesh(), material).bones(base).at(x, y, z).add();
  * }</pre>
  *
  * <ul>

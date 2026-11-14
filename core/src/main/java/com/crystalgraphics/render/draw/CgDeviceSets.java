@@ -79,8 +79,10 @@ public final class CgDeviceSets {
     @Nullable
     private CgGpuBuffer defaultBuffer;
     private long made, reused, defaulted;
-    /** The last slot {@link #fill} left to a default, for a caller naming it. */
-    private String lastDefaulted = "";
+    /** The last slot {@link #fill} left to a default, for a caller naming it: kept as numbers, named only when asked. */
+    private int lastSet = -1;
+    @Nullable
+    private CgBindingLayout.Slot lastSlot;
     /** The frame the set being filled is for. */
     private long frame;
     /** The set being filled binds an arena block as the whole arena, else as its slot alone. */
@@ -201,7 +203,7 @@ public final class CgDeviceSets {
 
     /** The last slot a default filled: {@code "set 2 binding 16 SAMPLED_TEXTURE"}. */
     public String lastDefaulted() {
-        return lastDefaulted;
+        return lastSlot == null ? "" : "set " + lastSet + " binding " + lastSlot.binding() + " " + lastSlot.type();
     }
 
     /** Releases every set it made and its default buffer; the next {@link #set} starts again. */
@@ -231,7 +233,8 @@ public final class CgDeviceSets {
             if (slot.type() != CgBindingLayout.Type.SAMPLED_TEXTURE && owned(packed, slot)) continue;
             fallback(rhi, slot);
             defaulted++;
-            lastDefaulted = "set " + set + " binding " + slot.binding() + " " + slot.type();
+            lastSet = set;
+            lastSlot = slot;
             CgTrace.add(CgChannels.GL, DEFAULTED, 1);
         }
     }

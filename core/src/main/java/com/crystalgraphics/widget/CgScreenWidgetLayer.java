@@ -160,9 +160,9 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
         if (painter == null) {
             painter = new CgCanvasWidgetPainter(id, CgCanvasMaterials.SCREEN).retaining(retainedWidth, retainedHeight, margin);
         }
-        float scale = CgUiScale.of(kit).scale(frame.host().width(), frame.host().height());
+        float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
         painter.begin(frame.canvas(), frame.recording(), scale * retainedScale);
-        paint(painter, frame.host().width() / scale, frame.host().height() / scale, scale);
+        paint(painter, frame.width() / scale, frame.height() / scale, scale);
     }
 
     /**

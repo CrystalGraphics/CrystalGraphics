@@ -1,5 +1,6 @@
 package com.crystalgraphics.frame;
 
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgWorldBegin;
@@ -81,12 +82,12 @@ public final class CgWorld implements AutoCloseable {
 
     /**
      * The client level's world, made on first ask. It is paused with the host's game, and
-     * {@code CgWorldRenderer} runs it. Render thread.
+     * the client scene's renderer runs it, at its first view of the frame. Render thread.
      */
     public static synchronized CgWorld client() {
         if (client == null) {
             client = new CgWorld();
-            client.paused(() -> CgRenderStage.WORLD_OPAQUE.host().environment().paused());
+            client.paused(() -> CgView.main().environment().paused());
         }
         return client;
     }

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.bloom;
 
+import com.crystalgraphics.render.view.CgViewKey;
 import java.util.Arrays;
 
 import com.crystalgraphics.compute.CgCompute;
@@ -15,17 +16,15 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
-import com.crystalgraphics.render.stage.CgFrameKey;
-import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.world.CgGradeLayers;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
- * The post stack's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the HDR scene's ({@link CgFrameKeys#SCENE})
+ * The post stack's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the HDR scene's ({@code textures().sceneColor()})
  * light past {@link #threshold}, halved, spread by six layers of separable Gaussians and added over the picture by the
  * composite, in linear light. Its settings are global, as every engine's are; {@code CgPostStack.get().bloom()} is the instance.
  *
@@ -67,7 +66,7 @@ public final class CgBloom implements CgPostEffect {
      * The firing's bloom stages, the glow first and null past the last, a texture each: published for a later effect (the
      * debug view) to read. Read only.
      */
-    public static final CgFrameKey<CgGraphTexture[]> LEVELS = CgFrameKey.of("crystalgraphics:bloom_levels", CgGraphTexture[].class);
+    public static final CgViewKey<CgGraphTexture[]> LEVELS = new CgViewKey<>("crystalgraphics:bloom_levels");
 
     /** {@link #intensity(float)}'s default. */
     public static final float INTENSITY = 1f;
@@ -101,6 +100,8 @@ public final class CgBloom implements CgPostEffect {
     private static final int GPU_BLOOM = CgGpuTrace.name("post.bloom");
 
     private final Chain chain = new Chain();
+    /** Each graded layer's bloom in {@link #chain} this frame, or -1: scratch for {@link #record}. */
+    private final int[] layers = new int[CgGradeLayers.MAX];
     /** The engine's layers, for the frame and for each graded layer: {@link #engine} sets their bloom and threshold. */
     private final CgPostSettings engine = engineLayers();
     private final CgPostSettings[] layerEngine = {engineLayers(), engineLayers()};
@@ -160,20 +161,21 @@ public final class CgBloom implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return intensity > 0f && (post.resources().has(CgGradeLayers.KEY) || post.settings().bloom() > 0f
-                && post.resources().has(CgFrameKeys.SCENE));
+        return intensity > 0f && ((post.view().read(CgGradeLayers.KEY) != null) || post.settings().bloom() > 0f
+                && post.textures().linear());
     }
 
     @Override
     public void record(CgPostContext post) {
-        CgGraphTexture scene = post.resources().get(CgFrameKeys.SCENE);
+        CgGraphTexture scene = post.textures().sceneColor();
         if (scene == null) return;
-        CgGradeLayers graded = post.resources().get(CgGradeLayers.KEY);
+        CgGradeLayers graded = post.view().read(CgGradeLayers.KEY);
         Chain c = chain;
         c.begin(scene, graded);
         int frame = -1;
         if (post.settings().bloom() > 0f) frame = c.add(Chain.FRAME, shape(post.settings(), engine, threshold));
-        int[] layer = {-1, -1};
+        int[] layer = layers;
+        Arrays.fill(layer, -1);
         for (int k = 0; graded != null && k < CgGradeLayers.MAX; k++) {
             CgPostSettings look = graded.look(k);
             if (look == null || look.bloom() <= 0f) continue;
@@ -182,7 +184,7 @@ public final class CgBloom implements CgPostEffect {
         }
         if (!c.record(post.recording())) return;
         if (frame >= 0) {
-            post.resources().put(LEVELS, c.levels(frame));
+            post.view().publish(LEVELS, c.levels(frame));
             post.composite().bloom(c.glow(frame), intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
             post.composite().linear();
         }

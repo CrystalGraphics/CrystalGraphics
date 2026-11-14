@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -696,8 +697,9 @@ public final class CgFrameBuilder {
         if (!localLights && CgFallbackTextures.BLACK_VOLUME != null) {
             constants.texture(CgBindingModel.LOCAL_LIGHTS, CgFallbackTextures.BLACK_VOLUME);
         }
-        // The scene's records, or the device's empty buffer while it has none
-        CgBufferHandle sceneRecords = CgScene.client().gpu().records();
+        // The records of the scene the pass's view draws (the client's for any other pass), or the device's empty buffer
+        CgGpuScene drawn = pass.scene;
+        CgBufferHandle sceneRecords = (drawn != null ? drawn : CgScene.client().gpu()).records();
         if (sceneRecords != null) constants.storage(CgBindingModel.SCENE_OBJECTS, sceneRecords);
         if (pass.depthFrom() != null) frame.readsCurrentDepth |= usesCurrent(pass.depthFrom());
         if (pass.colorFrom() != null) {

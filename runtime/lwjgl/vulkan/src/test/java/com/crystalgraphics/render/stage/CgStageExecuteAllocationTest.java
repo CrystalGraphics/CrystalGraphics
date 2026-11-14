@@ -1,5 +1,8 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.host.CgHostFrame;
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.render.graph.CgExecutor;
@@ -72,13 +75,14 @@ public class CgStageExecuteAllocationTest {
         assumeTrue(CgThreadAllocation.available());
         CgMaterial material = CgMaterial.fromSource(SOURCE);
         CgPipeline quads = CgMaterialProxy.of(material).pipeline(CgInstanceKind.QUAD);
-        CgRenderStage stage = CgRenderStage.define("test:execute_allocation");
-        stage.host().set(0f, 64, 64, 0);
-        CgStageFrame frame = new CgStageFrame(stage);
+        CgRenderStage stage = CgStageHost.define("test:execute_allocation");
+        CgHostFrame host = CgStageHost.frame(stage).set(0f, 64, 64, 0);
+        CgStageFiring frame = new CgStageFiring("test.execute_allocation");
         CgPassConstants constants = new CgPassConstants();
         Runnable firing = () -> {
-            frame.begin(stage.host());
-            CgRasterPass pass = frame.pass(frame.defaults(constants), CgOrder.SORTED);
+            frame.beginOnce(host);
+            CgRasterPass pass = frame.recording().raster("test.target").color(frame.target(), CgLoad.load())
+                    .constants(frame.defaults(constants)).order(CgOrder.SORTED);
             for (int c = 0; c < 4; c++) {
                 CgChunkBuilder chunk = frame.recording().chunks().begin();
                 chunk.draw(quads, CgMaterialProxy.of(material).bindings()).sortKey(c);
@@ -115,9 +119,9 @@ public class CgStageExecuteAllocationTest {
     @Test
     public void aFetchEveryFrameAllocatesNothingWhileItsDeliveriesAreInFlight() {
         assumeTrue(CgThreadAllocation.available());
-        CgRenderStage stage = CgRenderStage.define("test:fetch_allocation");
-        stage.host().set(0f, 64, 64, 0);
-        CgStageFrame frame = new CgStageFrame(stage);
+        CgRenderStage stage = CgStageHost.define("test:fetch_allocation");
+        CgHostFrame host = CgStageHost.frame(stage).set(0f, 64, 64, 0);
+        CgStageFiring frame = new CgStageFiring("test.fetch_allocation");
         CgGraphBuffer counts = CgGraphBuffer.persistent("test:fetched",
                 CgBufferDesc.elements(4, 4, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         int[] word = {0};
@@ -125,7 +129,7 @@ public class CgStageExecuteAllocationTest {
         CgReadback.Sink read = data -> delivered[0]++;
         Runnable firing = () -> {
             CgReadback.poll();   // as the host's frame polls them: a delivery lands FRAMES frames after its issue
-            frame.begin(stage.host());
+            frame.beginOnce(host);
             word[0]++;
             frame.recording().update(counts, 0, word, 0, 1);
             frame.recording().fetch(counts, 0, 4, read);

@@ -1,5 +1,6 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
@@ -292,7 +293,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
     private void refresh(Live l) {
         CgEntityQuery entities = CgEntityQueries.client();
         CgEntity e = l.entity;
-        e.present = entities.pose(e.id(), CgRenderStage.WORLD_OPAQUE.host().partialTick(), e.pose);
+        e.present = entities.pose(e.id(), CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
         // Minecraft turns a living model by 180 - bodyYaw about up (LivingEntityRenderer.setupRotations)

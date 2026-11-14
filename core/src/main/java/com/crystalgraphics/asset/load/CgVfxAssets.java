@@ -1,5 +1,6 @@
 package com.crystalgraphics.asset.load;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -423,7 +424,7 @@ public final class CgVfxAssets {
      */
     public void publish() {
         if (swaps.isEmpty()) return;
-        if (CgRenderStage.firing()) throw new IllegalStateException("definitions publish at the frame boundary, never inside a stage firing");
+        if (CgStageHost.firing()) throw new IllegalStateException("definitions publish at the frame boundary, never inside a stage firing");
         for (int i = 0; i < swaps.size(); ) {
             Swap s = swaps.get(i);
             if (!s.prepared) {
@@ -834,7 +835,7 @@ public final class CgVfxAssets {
     Object loadNow(CgAssetRef<?> ref) {
         CgAssetLoad l = ref.load;
         if (l != null && l.state() == CgAssetState.FAILED) return null;
-        if (CgRenderStage.firing()) {
+        if (CgStageHost.firing()) {
             if (!ref.loggedRefused) {
                 ref.loggedRefused = true;
                 LOGGER.warn("{} {} asked for inside a stage firing before it loaded: drawn without it", ref.kind().id(), ref.id());

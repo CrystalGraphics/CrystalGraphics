@@ -1,5 +1,7 @@
 package com.crystalgraphics.camera;
 
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -131,7 +133,7 @@ public final class CgCameraSystem extends CgWorldSubsystem {
     private static boolean localPlayer(Vector3d out) {
         CgEntityQuery entities = CgEntityQueries.client();
         int player = entities.localPlayer();
-        if (player < 0 || !entities.pose(player, CgRenderStage.WORLD_OPAQUE.host().partialTick(), PLAYER)) return false;
+        if (player < 0 || !entities.pose(player, CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), PLAYER)) return false;
         out.set(PLAYER[CgEntityQuery.X], PLAYER[CgEntityQuery.Y], PLAYER[CgEntityQuery.Z]);
         return true;
     }
@@ -271,7 +273,7 @@ public final class CgCameraSystem extends CgWorldSubsystem {
         double x = at.location().x, z = at.location().z;
         // The client has chunks only within its render distance of the player: a pose past the last full chunk would
         // see the world end, so it is drawn back toward the player.
-        double reach = CgRenderStage.WORLD_OPAQUE.host().environment().renderDistance() - REACH_MARGIN;
+        double reach = CgView.main().environment().renderDistance() - REACH_MARGIN;
         double dx = 0, dz = 0, d2 = 0;
         if (reach > 0 && anchor.read(around)) {
             dx = x - around.x;

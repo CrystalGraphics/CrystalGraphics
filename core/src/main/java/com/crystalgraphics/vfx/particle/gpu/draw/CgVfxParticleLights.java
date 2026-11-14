@@ -1,12 +1,12 @@
 package com.crystalgraphics.vfx.particle.gpu.draw;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.world.CgWorldLights;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 
@@ -31,7 +31,7 @@ import java.util.Arrays;
  *   <li>A slot noted twice in a frame (two light renderers) gives its particles two lights each, as Cascade's would.</li>
  * </ul>
  */
-public final class CgVfxParticleLights implements CgWorldLights.Appender {
+public final class CgVfxParticleLights implements CgSceneLights.Appender {
 
     private static final String KERNELS = "crystalgraphics:shaders/vfx/particle/lights.compute";
     /**
@@ -65,14 +65,14 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
         }
     }
 
-    /** The one instance, added to {@link CgWorldRenderer#lights()} at its first ask. */
+    /** The one instance, added to the client scene's lights at its first ask. */
     public static CgVfxParticleLights get() {
         CgVfxParticleLights lights = instance;
         if (lights == null) {
             synchronized (CgVfxParticleLights.class) {
                 if (instance == null) {
                     instance = new CgVfxParticleLights();
-                    CgWorldRenderer.get().lights().add(instance);
+                    CgScene.client().lights().add(instance);
                 }
                 lights = instance;
             }
@@ -101,7 +101,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     }
 
     @Override
-    public void upload(CgRecording recording, CgWorldLights lights) {
+    public void upload(CgRecording recording, CgSceneLights lights) {
         Frame f = published;
         for (int i = 0; i < f.count; i++) {
             CgVfxParticlePool pool = f.pools[i];
@@ -119,7 +119,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     }
 
     @Override
-    public boolean append(CgComputePass pass, CgWorldLights lights) {
+    public boolean append(CgComputePass pass, CgSceneLights lights) {
         Frame f = published;
         boolean any = false;
         CgKernel kernel = null;
@@ -144,7 +144,7 @@ public final class CgVfxParticleLights implements CgWorldLights.Appender {
     }
 
     /** Every slot of {@code pool} noted in {@code f}, its origin from the firing's eye; the rest give no light. */
-    private void upload(CgRecording recording, CgWorldLights lights, Frame f, CgVfxParticlePool pool, CgGraphBuffer buffer, int bytes) {
+    private void upload(CgRecording recording, CgSceneLights lights, Frame f, CgVfxParticlePool pool, CgGraphBuffer buffer, int bytes) {
         if (staging.capacity() < bytes) staging = ByteBuffer.allocate(Math.max(bytes, staging.capacity() * 2)).order(ByteOrder.nativeOrder());
         staging.clear();
         for (int b = 0; b < bytes; b += 4) staging.putFloat(b, 0f);

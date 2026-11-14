@@ -991,7 +991,7 @@ public final class CgMaterialProxy {
      * //   struct Spark { vec4 positionLife; vec4 velocitySeed; };
      * //   Buffers { SPARKS ("Sparks", Spark, readonly) }
      * sparkMaterial.buffer("SPARKS", sparks);
-     * world.draw(CgMesh.quads(capacity), sparkMaterial).indirect(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();
+     * scene.once().indirect(CgMesh.quads(capacity), sparkMaterial).count(alive, 0, CgIndirect.INDICES, 6).at(x, y, z).add();
      * }</pre>
      *
      * <ul>

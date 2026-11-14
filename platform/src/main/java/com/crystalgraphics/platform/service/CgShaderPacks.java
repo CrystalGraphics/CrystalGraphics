@@ -11,10 +11,9 @@ import java.lang.reflect.Method;
  * (the opaque and transparent passes' meshes and roles), never its VFX, so this is what decides how they are drawn.
  *
  * <pre>{@code
+ * body.visible(!CgShaderPacks.packInUse());               // the engine's own draw only without a pack
  * if (CgShaderPacks.packInUse()) {
  *     body.cpuSkin(slot, ownerView, sink);                  // through the host's render type: the pack lights it
- * } else {
- *     world.draw(body);                                     // the engine's own draw
  * }
  * if (CgShaderPacks.renderingShadowPass()) return;          // inside a renderer the pack calls again for its shadows
  * LOGGER.info("shader mod: {}", CgShaderPacks.mod());       // "iris", "oculus", "angelica" or "none"

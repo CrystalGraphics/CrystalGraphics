@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
-import com.crystalgraphics.render.world.CgWorldEntityBoxes;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgEntityBoxes;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -14,7 +15,7 @@ import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxInstanceView;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
-import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgVoxelWindow;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -74,7 +75,7 @@ public final class CgVfxDataInterfaces {
      */
     public static final CgVfxDataInterface WORLD = register(new Engine("world", "FxWorld", "step_world(inst)") {
         @Override public List<String> libraries() { return List.of(SIM + "data/world.glsl"); }
-        @Override public String properties() { return CgWorldVoxelWindow.PROPERTIES; }
+        @Override public String properties() { return CgVoxelWindow.PROPERTIES; }
         @Override public String functions(int lanesAt) {
             return """
 
@@ -98,7 +99,7 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldVoxelWindow.get().use().bind(d); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVoxelWindow.get().use().bind(d); }
     });
 
     /**
@@ -107,7 +108,7 @@ public final class CgVfxDataInterfaces {
      */
     public static final CgVfxDataInterface WORLD_DISTANCE = register(new Engine("world_distance", "FxWorld", "step_world(inst)") {
         @Override public List<CgVfxDataInterface> requires() { return List.of(WORLD); }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldVoxelWindow.get().useDistance(); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVoxelWindow.get().useDistance(); }
     });
 
     /**
@@ -142,18 +143,18 @@ public final class CgVfxDataInterfaces {
                     }
                     """;
         }
-        @Override public void beforeFrame(CgStageFrame frame) { CgVfxParticlePool.depth(frame.host().camera(), frame.depthPyramid()); }
+        @Override public void beforeFrame(CgStageFrame frame) { CgVfxParticlePool.depth(frame.camera(), frame.depthPyramid()); }
         @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgVfxParticlePool.bindDepth(d); }
     });
 
     /**
      * The entities round the camera this frame, as boxes in an {@code FxEntities} that {@code vfx/sim/data/entities.glsl}'s
      * readers take ({@code fx_entities_enter}): mobs and players a particle can strike from any side, on screen or not.
-     * At most {@code CgWorldEntityBoxes.MAX} of them, the living nearest the camera.
+     * At most {@code CgEntityBoxes.MAX} of them, the living nearest the camera.
      */
     public static final CgVfxDataInterface ENTITIES = register(new Engine("entities", "FxEntities", "step_entities(inst)") {
         @Override public List<String> libraries() { return List.of(SIM + "data/entities.glsl"); }
-        @Override public String properties() { return CgWorldEntityBoxes.PROPERTIES; }
+        @Override public String properties() { return CgEntityBoxes.PROPERTIES; }
         @Override public String buffers() { return "    ENTITIES      (\"Entity boxes, two rows each\", uvec4,   readonly)\n"; }
         @Override public String functions(int lanesAt) {
             return """
@@ -176,12 +177,12 @@ public final class CgVfxDataInterfaces {
                     """;
         }
         @Override public void beforeFrame(CgStageFrame frame) {
-            CgCamera view = frame.host().camera();
-            CgVfxParticlePool.entities(view.x(), view.y(), view.z(), frame.host().partialTick());
+            CgCamera view = frame.camera();
+            CgVfxParticlePool.entities(view.x(), view.y(), view.z(), CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick());
         }
-        @Override public void upload(CgRecording recording) { CgWorldEntityBoxes.upload(recording); }
-        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgWorldEntityBoxes.bind(d); }
-        @Override public void forget() { CgWorldEntityBoxes.forget(); }
+        @Override public void upload(CgRecording recording) { CgEntityBoxes.upload(recording); }
+        @Override public void bind(CgDispatch d, CgVfxParticlePool pool) { CgEntityBoxes.bind(d); }
+        @Override public void forget() { CgEntityBoxes.forget(); }
     });
 
     /**
@@ -210,7 +211,7 @@ public final class CgVfxDataInterfaces {
             words.vec4((float) (ox - CgFieldWorld.anchor(0)), (float) (oy - CgFieldWorld.anchor(1)), (float) (oz - CgFieldWorld.anchor(2)), 0f);
         }
         @Override public void beforeFrame(CgStageFrame frame) {
-            CgCamera view = frame.host().camera();
+            CgCamera view = frame.camera();
             CgFieldWorld.around(view.x(), view.y(), view.z());
         }
         @Override public void upload(CgRecording recording) { CgFieldWorld.upload(recording); }

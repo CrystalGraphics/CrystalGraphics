@@ -1,6 +1,6 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
-import com.crystalgraphics.render.stage.CgHostTextures;
+import com.crystalgraphics.render.host.CgHostTextures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 //? if >=1.21.5 {

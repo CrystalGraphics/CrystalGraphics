@@ -16,7 +16,7 @@ import java.util.function.BooleanSupplier;
  * // a host whose world draws reversed (Minecraft 26.2), around its world passes:
  * CgDepthConvention.host(true);
  * try {
- *     CgRenderStage.WORLD_OPAQUE.fire();
+ *     CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
  * } finally {
  *     CgDepthConvention.host(false);
  * }

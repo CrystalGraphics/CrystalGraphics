@@ -4,7 +4,7 @@
 //
 //     CgMaterial glow = CgMaterial.newInstance("crystalgraphics:shaders/materials/emission_only.shader");
 //     glow.applyProperties(b -> b.vec4("_EmissionColor", 1f, 0.6f, 0.2f, 1f).set1f("_EmissionStrength", 3f));
-//     world.draw(CgMeshShapes.sphere(16, 24), glow).at(x, y, z).emission(fade).submit();
+//     scene.once().mesh(CgMeshShapes.sphere(16, 24), glow).at(x, y, z).emission(fade).add();
 #domain surface
 Material { BlendMode Additive  ShadingModel Unlit }
 

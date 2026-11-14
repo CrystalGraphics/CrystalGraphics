@@ -1,5 +1,6 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
@@ -118,7 +119,7 @@ final class CgCueProbe {
         boolean playing = cue != null && cue.burst().shake() != null
                 && cue.burst().shake().definition() instanceof CgCameraShakeDefinition d && CgShakePlay.playing(d) != null;
         if (playing) felt = true;
-        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
+        CgCamera view = CgView.main().camera();
         INVERSE.set(view.view()).invert();
         INVERSE.transformPosition(EYE.zero());
         double ex = view.x() + EYE.x, ey = view.y() + EYE.y, ez = view.z() + EYE.z;

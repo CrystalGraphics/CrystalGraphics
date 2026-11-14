@@ -26,5 +26,14 @@ public interface CgMeshBatch {
     int relevance();
 
     /** Whether its mesh is skinned: every pipeline it draws through is then its skinned form. */
+    /** A row's flags: drawn at half size; after distortion; casting shadows. */
+    int HALF_RESOLUTION = 1, AFTER_DISTORTION = 2, CASTS_SHADOW = 4;
+
     boolean skinned();
+
+    /** Its row's flags: {@link #HALF_RESOLUTION}, {@link #AFTER_DISTORTION}, {@link #CASTS_SHADOW}. */
+    int flags();
+
+    /** Whether it sorts in separate translucency: its layer is {@code CgSortLayer.SEPARATE_TRANSLUCENCY}. */
+    boolean separate();
 }

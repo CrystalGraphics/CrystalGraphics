@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
@@ -188,7 +189,7 @@ public final class CgCollisionShow {
             long now = System.nanoTime();
             boolean transparent = transparent();
             CLIENT_LINES.drawTo(now, out, transparent);
-            LIVE.writeTo(FRAME_LINES, now, CgRenderStage.WORLD_OPAQUE.host().partialTick(), transparent);
+            LIVE.writeTo(FRAME_LINES, now, CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), transparent);
             FRAME_LINES.drawTo(now, out, transparent);
             FRAME_LINES.clear();
             byte[] pack = serverLines;

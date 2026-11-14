@@ -13,7 +13,6 @@ import com.crystalgraphics.render.view.CgView;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -55,8 +54,10 @@ public final class CgScenePrimitives {
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
 
-    /** {@link #drawOnce}'s: this frame's and the next's. */
-    private final OneFrame now = new OneFrame(), next = new OneFrame();
+    /** {@link #once}'s rows, and the ring frame they were added in: no view of a later frame draws them. */
+    private final CgMeshBatches onceRows = new CgMeshBatches();
+    private final CgMeshCollector onceOut;
+    private long onceFrame = Long.MIN_VALUE;
     private final CgDynamicComponent oneFrame;
     private long frame = -1;
 
@@ -64,7 +65,8 @@ public final class CgScenePrimitives {
     public CgScenePrimitives(CgGpuScene gpu, @Nullable Driver driver) {
         this.gpu = Objects.requireNonNull(gpu, "gpu");
         this.driver = driver;
-        this.oneFrame = new CgDynamicComponent(this, (view, out) -> now.collect(out));
+        this.oneFrame = new CgDynamicComponent(this, (view, out) -> out.take(onceRows));
+        this.onceOut = CgMeshCollector.into(onceRows, oneFrame);
     }
 
     public CgMeshComponent mesh(CgMesh mesh, CgMaterialInterface material) {
@@ -97,7 +99,17 @@ public final class CgScenePrimitives {
     }
 
     public void drawOnce(CgMesh mesh, CgMaterialInterface material, double x, double y, double z) {
-        next.add(Objects.requireNonNull(mesh, "mesh"), Objects.requireNonNull(material, "material"), x, y, z);
+        once().mesh(Objects.requireNonNull(mesh, "mesh"), Objects.requireNonNull(material, "material")).at(x, y, z).add();
+    }
+
+    /** Rows drawn in this ring frame only, by every view of it that draws after: each {@code mesh(...)...add()} is one. */
+    public CgMeshCollector once() {
+        long now = CgFrameRing.frame();
+        if (now != onceFrame) {
+            onceRows.clear();
+            onceFrame = now;
+        }
+        return onceOut;
     }
 
     /** Spawned primitives. */
@@ -127,8 +139,7 @@ public final class CgScenePrimitives {
     /** Removes every primitive and what {@link #drawOnce} queued. */
     public void clear() {
         for (int i = primitives.size() - 1; i >= 0; i--) primitives.get(i).remove();
-        now.clear();
-        next.clear();
+        onceRows.clear();
     }
 
     /**
@@ -149,9 +160,10 @@ public final class CgScenePrimitives {
             p.gather(view, camera, out, gathering);
             for (int b = first, rows = out.size(); b < rows; b++) {
                 if (Float.isNaN(out.distance(b))) out.distance(b, gathering.distance);
+                if (Float.isNaN(out.primitiveDistance(b))) out.primitiveDistance(b, gathering.distance);
             }
         }
-        if (now.count > 0) oneFrame.gather(view, camera, out, gathering);
+        if (onceFrame == CgFrameRing.frame() && onceRows.size() > 0) oneFrame.gather(view, camera, out, gathering);
     }
 
     /** Primitives the last {@link #gather} tested against its view's frustum. */
@@ -164,10 +176,9 @@ public final class CgScenePrimitives {
         return gathering.culled;
     }
 
-    /** A new frame: what {@link #drawOnce} queued since the last is what this one draws. */
+    /** A new frame: the gather's stamp. */
     void beginFrame() {
         frame = CgFrameRing.frame();
-        now.takeFrom(next);
     }
 
     CgGpuScene gpu() {
@@ -231,53 +242,4 @@ public final class CgScenePrimitives {
         for (int k = 0; k < 4; k++) gpu.custom(slot, k, c[k * 4], c[k * 4 + 1], c[k * 4 + 2], c[k * 4 + 3]);
     }
 
-    /** One frame's {@link #drawOnce} calls. */
-    private static final class OneFrame {
-        CgMesh[] meshes = new CgMesh[16];
-        CgMaterialInterface[] materials = new CgMaterialInterface[16];
-        double[] positions = new double[48];
-        int count;
-
-        void add(CgMesh mesh, CgMaterialInterface material, double x, double y, double z) {
-            if (count == meshes.length) {
-                meshes = Arrays.copyOf(meshes, count * 2);
-                materials = Arrays.copyOf(materials, count * 2);
-                positions = Arrays.copyOf(positions, count * 6);
-            }
-            meshes[count] = mesh;
-            materials[count] = material;
-            positions[count * 3] = x;
-            positions[count * 3 + 1] = y;
-            positions[count * 3 + 2] = z;
-            count++;
-        }
-
-        void collect(CgMeshCollector out) {
-            for (int i = 0; i < count; i++) {
-                out.mesh(meshes[i], materials[i]).at(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]).add();
-            }
-        }
-
-        /** Takes {@code other}'s calls, leaving it empty; both keep their arrays. */
-        void takeFrom(OneFrame other) {
-            clear();
-            CgMesh[] m = meshes;
-            CgMaterialInterface[] mat = materials;
-            double[] p = positions;
-            meshes = other.meshes;
-            materials = other.materials;
-            positions = other.positions;
-            count = other.count;
-            other.meshes = m;
-            other.materials = mat;
-            other.positions = p;
-            other.count = 0;
-        }
-
-        void clear() {
-            Arrays.fill(meshes, 0, count, null);
-            Arrays.fill(materials, 0, count, null);
-            count = 0;
-        }
-    }
 }

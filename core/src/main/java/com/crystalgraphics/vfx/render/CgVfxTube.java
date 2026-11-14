@@ -4,7 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshWriter;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.component.CgMeshCollector;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -18,7 +18,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  * Draws a {@link CgVfxPath} as a tube: one static chunk mesh, {@link #SPANS} ring spans by {@link #SIDES} sides, drawn
  * once per chunk of the path and skinned onto its rings in the vertex shader ({@code lib/vfx/tube.glsl}).
  *
- * <p>Each chunk is its own {@link CgWorldRenderer} draw, at its centre and scaled to its bounds, so the world renderer
+ * <p>Each chunk is its own row of the system's, at its centre and scaled to its bounds, so the scene renderer
  * culls and sorts chunks one by one. What a chunk's shader reads:</p>
  * <ul>
  *   <li>{@code CG_OBJECT_CUSTOM0}: the path's row, the chunk's first ring, the layer's size, 0.</li>
@@ -80,7 +80,7 @@ public final class CgVfxTube {
      * origin of {@code effect}, sorted in its group, {@code size} times its rings: what {@code CgVfxFrame.tube} calls,
      * with the system's mesh and the layer's material, and the effect's header.
      */
-    public void submit(CgWorldRenderer world, CgMesh mesh, CgMaterialInterface material, CgVfxLook.Placed placed, CgVfxPath path,
+    public void submit(CgMeshCollector out, CgMesh mesh, CgMaterialInterface material, CgVfxLook.Placed placed, CgVfxPath path,
                        int row, CgVfxEffect<?> effect, float size, int valuesRow, float age, float seed, float presence) {
         int count = path.count();
         if (count < 2) return;
@@ -109,14 +109,14 @@ public final class CgVfxTube {
                 scale.scaling(maxX - minX + 2f * reach, maxY - minY + 2f * reach, maxZ - minZ + 2f * reach);
             }
             int owned = last == count - 1 ? last - first + 1 : SPANS;
-            CgWorldRenderer.Draw draw = world.draw(mesh, material).at(ox + cx, oy + cy, oz + cz).transform(scale)
-                    .custom(0, row, first, scaleOf, 0f)
-                    .custom(1, cx, cy, cz, owned)
-                    .custom(3, valuesRow, age, seed, presence);
+            CgMeshCollector draw = out.mesh(mesh, material).at(ox + cx, oy + cy, oz + cz).transform(scale)
+                    .customData(0, row, first, scaleOf, 0f)
+                    .customData(1, cx, cy, cz, owned)
+                    .customData(3, valuesRow, age, seed, presence);
             CgVfxSystem.place(draw, placed, effect);
             // A volume is soft light that adds: a quarter of the pixels draws it as well.
             if (volume) draw.halfResolution();
-            draw.submit();
+            draw.add();
             CgVfxTrace.count(volume ? DRAWS_TUBE_VOLUME : DRAWS_TUBE, 1);
         }
     }

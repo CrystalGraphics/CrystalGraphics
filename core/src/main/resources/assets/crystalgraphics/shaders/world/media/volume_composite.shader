@@ -1,4 +1,4 @@
-// The world renderer's volumes laid over its target in the transparent pass (CgWorldRenderer.Draw.halfResolution, a
+// The scene renderer's volumes laid over its target in the translucent pass (a row's .halfResolution(), a
 // volume): their resolved half-size light, premultiplied, upsampled as world/half_upsample.shader upsamples added light
 // (each pixel weighing the four texels round it by bilinear distance and by how near the scene's depth where each was
 // marched is to its own, the nearest in depth where none agrees), then blended over what is behind it.

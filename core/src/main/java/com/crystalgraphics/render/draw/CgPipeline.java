@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.material.CgShader;
 import com.crystalgraphics.api.state.CgRenderState;

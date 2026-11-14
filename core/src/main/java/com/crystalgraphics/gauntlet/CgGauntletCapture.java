@@ -1,5 +1,8 @@
 package com.crystalgraphics.gauntlet;
 
+import com.crystalgraphics.render.host.CgHostFrame;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import java.awt.image.BufferedImage;
@@ -18,7 +21,6 @@ import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.platform.io.CgAtomicFile;
-import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
 /**
@@ -115,9 +117,11 @@ public final class CgGauntletCapture {
         installed = true;
         // The stages only note the target; the frame end reads it. A host batches its GUI and draws it after the stage
         // fires, so a read at the stage misses it (1.20.1's title buttons).
-        CgRenderStage.WORLD_TRANSPARENT.register(Integer.MAX_VALUE, frame -> note(frame.host(), false));
-        CgRenderStage.HUD.register(Integer.MAX_VALUE, frame -> note(frame.host(), true));
-        CgRenderStage.SCREEN.register(Integer.MAX_VALUE, frame -> note(frame.host(), true));
+        CgRenderStage.OVERLAY.register(Integer.MAX_VALUE, frame -> {
+            if (frame.view() == CgView.main()) note(CgStageHost.frame(CgStageHost.WORLD_OPAQUE), false);
+        });
+        CgRenderStage.HUD.register(Integer.MAX_VALUE, frame -> note(CgStageHost.frame(CgRenderStage.HUD), true));
+        CgRenderStage.SCREEN.register(Integer.MAX_VALUE, frame -> note(CgStageHost.frame(CgRenderStage.SCREEN), true));
     }
 
     private static void note(CgHostFrame host, boolean withGui) {

@@ -27,7 +27,7 @@ bool cg_occluded(sampler2D pyramid, vec4 size, vec4 clipX, vec4 clipY, vec4 clip
     for (int c = 0; c < 8; c++) {
         vec4 p = vec4((c & 1) == 0 ? lo.x : hi.x, (c & 2) == 0 ? lo.y : hi.y, (c & 4) == 0 ? lo.z : hi.z, 1.0);
         float w = dot(clipW, p);
-        if (w < 0.01) return false;   // crossing the near plane: CgWorldRenderer's NEAR_W
+        if (w < 0.01) return false;   // crossing the near plane: the CPU cull's NEAR_W
         float nx = dot(clipX, p) / w, ny = dot(clipY, p) / w;
         x0 = min(x0, nx);
         x1 = max(x1, nx);

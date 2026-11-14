@@ -237,7 +237,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * unsigned integer through a {@code usampler2D}, nearest.
      *
      * <pre>{@code
-     * CgGraphTexture custom = stage.resources().get(CgFrameKeys.CUSTOM_DEPTH);
+     * CgGraphTexture custom = stage.view().textures().customDepth();
      * CgMaterialBindings reads = CgMaterialProxy.of(probe).bindings().with(0, custom.stencil());
      * // in the shader: usampler2D _Stencil; uint bits = texelFetch(_Stencil, ivec2(gl_FragCoord.xy), 0).r;
      * }</pre>

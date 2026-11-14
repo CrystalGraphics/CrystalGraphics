@@ -28,7 +28,7 @@ import java.util.function.Consumer;
  * <pre>{@code
  * CgMeshLoader.Model ship = CgMeshLoader.model("mymod:models/ship.glb");   // SPATIAL
  * for (int i = 0; i < ship.mesh().submeshCount(); i++) {
- *     world.draw(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).submit();
+ *     scene.once().mesh(ship.mesh(), materialNamed(ship.material(i))).submesh(i).at(x, y, z).add();
  * }
  *
  * CgMesh rock = CgMeshLoader.load("mymod:models/rock.obj");                          // every part, drawn whole

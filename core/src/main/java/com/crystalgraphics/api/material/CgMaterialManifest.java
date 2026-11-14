@@ -25,7 +25,7 @@ import com.github.bsideup.jabel.Desugar;
  * }</pre>
  *
  * <p>A permutation no manifest listed is a cook bug: drawn cold, it is skipped and counted where the world renderer
- * skips unready draws ({@code CgWorldRenderer.skipUnready}).</p>
+ * skips unready draws ({@code CgSceneRenderer.SKIP_UNREADY}).</p>
  *
  * @param uses each permutation and how it is drawn, without repeats
  */

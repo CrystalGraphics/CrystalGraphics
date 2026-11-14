@@ -197,6 +197,51 @@ public final class CgDrawCommands {
         }
     }
 
+    /**
+     * Appends every command of {@code other}, made for the same table, as it was: what merges two pass types' commands
+     * into one list drawn in key order (a glow pass's surfaces' covers among its glows). Sort after.
+     *
+     * <pre>{@code
+     * merged.clear();
+     * merged.append(passes.commands(EMISSIVE, rec, glows));
+     * merged.append(passes.commands(TRANSLUCENT, rec, covers));
+     * merged.sort();
+     * }</pre>
+     */
+    public void append(CgDrawCommands other) {
+        if (other.table != table && other.table != null) throw new IllegalArgumentException("commands of another table");
+        for (int k = 0; k < other.size; k++) {
+            if (size == pipelines.length) grow();
+            int c = size++;
+            pipelines[c] = other.pipelines[k];
+            bindings[c] = other.bindings[k];
+            meshes[c] = other.meshes[k];
+            System.arraycopy(other.ranges, k * 3, ranges, c * 3, 3);
+            byte kind = other.objectKinds[k];
+            objectKinds[c] = kind;
+            objectBuffers[c] = other.objectBuffers[k];
+            objectCount[c] = other.objectCount[k];
+            if (kind == SCENE || kind == FRAME) {
+                int n = other.objectCount[k];
+                if (idCount + n > ids.length) ids = Arrays.copyOf(ids, Math.max(idCount + n, ids.length * 2));
+                System.arraycopy(other.ids, other.objectFirst[k], ids, idCount, n);
+                objectFirst[c] = idCount;
+                idCount += n;
+            } else {
+                objectFirst[c] = other.objectFirst[k];
+            }
+            counts[c] = other.counts[k];
+            countOffsets[c] = other.countOffsets[k];
+            countModes[c] = other.countModes[k];
+            countFactors[c] = other.countFactors[k];
+            System.arraycopy(other.buffers, k * CgDrawChunk.BUFFERS, buffers, c * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
+            System.arraycopy(other.bufferAt, k * CgDrawChunk.BUFFERS, bufferAt, c * CgDrawChunk.BUFFERS, CgDrawChunk.BUFFERS);
+            keys[c] = other.keys[k];
+            groups[c] = other.groups[k];
+            order[c] = c;
+        }
+    }
+
     /** Forgets every command. */
     public void clear() {
         Arrays.fill(bindings, 0, size, null);

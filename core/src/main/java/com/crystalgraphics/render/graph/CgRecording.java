@@ -19,7 +19,10 @@ import com.crystalgraphics.util.CgBoxedInts;
 
 import javax.annotation.Nullable;
 import java.nio.ByteBuffer;
+import com.crystalgraphics.variable.CgVar;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.Collections;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
@@ -733,7 +736,7 @@ public final class CgRecording {
      */
     public CgGraphBuffer resize(CgGraphBuffer buffer, CgBufferDesc desc) {
         requireOpen();
-        CgRehearsal.grew("resizes", buffer);
+        grew("resizes", buffer);
         boolean history = buffer.kind() == CgGraphBuffer.Kind.HISTORY;
         if (!history && buffer.kind() != CgGraphBuffer.Kind.PERSISTENT || buffer.isPreviousVersion()) {
             throw new IllegalArgumentException("only a persistent or history buffer is resized: " + buffer);
@@ -750,7 +753,7 @@ public final class CgRecording {
     /** Frees a persistent or history buffer's storage after the last step of this frame that uses it, as a texture's. */
     public void release(CgGraphBuffer buffer) {
         requireOpen();
-        CgRehearsal.grew("releases", buffer);
+        grew("releases", buffer);
         if (buffer.kind() != CgGraphBuffer.Kind.PERSISTENT && buffer.kind() != CgGraphBuffer.Kind.HISTORY
                 || buffer.isPreviousVersion()) {
             throw new IllegalArgumentException("only a persistent or history buffer is released: " + buffer);
@@ -967,4 +970,31 @@ public final class CgRecording {
         eventViews[eventCount] = view;
         eventCount++;
     }
+
+    private static final boolean LIST_GROWTH = CgVar.bool("crystalgraphics.rehearsal.listGrowth", false, CgVar.DEV | CgVar.RESTART,
+            "Lists what a hidden pass (a VFX rehearsal's) resized or released: what to size ahead.").get();
+    /** What hidden passes resized or released, under {@link #LIST_GROWTH}. */
+    private static final Set<String> GROWN = new LinkedHashSet<>();
+
+    /** A hidden pass's resize or release of {@code buffer}, listed under {@code crystalgraphics.rehearsal.listGrowth}. */
+    private static void grew(String what, CgGraphBuffer buffer) {
+        if (LIST_GROWTH && hiddenPasses) GROWN.add(what + " " + buffer.name());
+    }
+
+    /** Whether what records now is a hidden pass's: {@link #hiddenPasses(boolean)}. */
+    private static boolean hiddenPasses;
+
+    /**
+     * Marks what records from now, until turned off, as a hidden pass's (a warm-up's, which nobody sees): its resizes and
+     * releases are listed under {@code crystalgraphics.rehearsal.listGrowth}, as what to size ahead. Render thread.
+     */
+    public static void hiddenPasses(boolean on) {
+        hiddenPasses = on;
+    }
+
+    /** What hidden passes resized or released under {@code crystalgraphics.rehearsal.listGrowth}, in the order first seen. */
+    public static List<String> grownWhileHidden() {
+        return new ArrayList<>(GROWN);
+    }
+
 }

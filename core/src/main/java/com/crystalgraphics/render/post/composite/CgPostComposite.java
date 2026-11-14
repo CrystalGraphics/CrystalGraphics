@@ -179,7 +179,7 @@ public final class CgPostComposite {
     }
 
     /**
-     * Composites from {@code scene}, the firing's linear HDR scene ({@code CgFrameKeys.SCENE}), into the target: the
+     * Composites from {@code scene}, the view's linear HDR scene ({@code textures().sceneColor()}), into the target: the
      * pass then always draws, in the copy form, reading the scene rather than a copy of the target. The stack's.
      */
     public CgPostComposite scene(CgGraphTexture scene) {
@@ -229,7 +229,7 @@ public final class CgPostComposite {
 
     /**
      * Turns the picture {@code amount} (0 to 1) into {@code look} drawn from {@code seed}, centred on {@code (x, y)};
-     * a drawn frame's subject is {@code subject} ({@code CgFrameKeys.SUBJECT}, bent), or with none the picture's light
+     * a drawn frame's subject is {@code subject} ({@code textures().subject()}, bent), or with none the picture's light
      * past white.
      */
     public CgPostComposite impact(CgImpactFrame look, float amount, int seed, float x, float y, @Nullable CgGraphTexture subject) {

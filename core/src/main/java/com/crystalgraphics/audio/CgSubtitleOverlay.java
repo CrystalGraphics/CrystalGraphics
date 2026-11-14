@@ -154,8 +154,8 @@ final class CgSubtitleOverlay {
             shown = wanted;
         }
         if (phase == Phase.HIDDEN || widget == null) return;
-        float scale = CgUiScale.of(widgetStyle.namespace()).scale(frame.host().width(), frame.host().height());
-        widget.allot(frame.host().width() / scale, frame.host().height() / scale);
+        float scale = CgUiScale.of(widgetStyle.namespace()).scale(frame.width(), frame.height());
+        widget.allot(frame.width() / scale, frame.height() / scale);
         painter.begin(frame.canvas(), frame.recording(), scale);
         widget.retain(painter);
         widget.paint(painter, placement.scaling(scale));
@@ -214,7 +214,7 @@ final class CgSubtitleOverlay {
                 return;
             }
         }
-        int width = frame.host().width(), height = frame.host().height();
+        int width = frame.width(), height = frame.height();
         float region = Math.round(width * (1f - 2f * SAFE_SIDE));
         if (plainLayout == null || region != plainWidth || !text.equals(plainText)) {
             plainLayout = CgTextLayout.of(text, canvasFont).maxWidth(region).align(CgTextAlign.CENTER)

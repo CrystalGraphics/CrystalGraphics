@@ -18,9 +18,9 @@ import java.util.List;
  *         .level(rockMid, 0.08f)
  *         .level(rockLow, 0.01f)      // under 1%, nothing
  *         .build();
- * world.draw(rock, stone).at(x, y, z).submit();
+ * scene.once().mesh(rock, stone).at(x, y, z).add();
  *
- * world.draw(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).submit();   // shared, never culled
+ * scene.once().mesh(CgMeshShapes.sphereLods(), smoke).at(x, y, z).transform(scale).add();   // shared, never culled
  * }</pre>
  *
  * <ul>

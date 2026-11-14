@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.variable.CgVar;
@@ -50,7 +51,7 @@ public class CgVfxScalabilityTest {
 
     /** The world's camera at {@code (0, 0, z)}, looking down -z. */
     private static void camera(double z) {
-        CgRenderStage.WORLD_OPAQUE.host().camera().set(0, 0, z, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.05f, 2000f));
+        CgView.main().camera().set(0, 0, z, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.05f, 2000f));
     }
 
     private static final CgVar.Num FRAME_TIME = budgetVar("crystalgraphics.vfx.budget.debug.frameTime"),
@@ -72,7 +73,7 @@ public class CgVfxScalabilityTest {
 
     @After
     public void noCamera() {
-        CgRenderStage.WORLD_OPAQUE.host().camera().set(0, 0, 0, new Matrix4f(), new Matrix4f().zero());
+        CgView.main().camera().set(0, 0, 0, new Matrix4f(), new Matrix4f().zero());
         FRAME_TIME.set(-1f);
         CONCURRENT_TIME.set(-1f);
         CgVfxBudget.get().reset();

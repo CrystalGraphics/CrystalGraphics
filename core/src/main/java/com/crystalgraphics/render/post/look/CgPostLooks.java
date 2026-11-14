@@ -7,8 +7,7 @@ import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.stage.CgFrameKeys;
-import com.crystalgraphics.render.world.CgGradeLayers;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 
 import java.util.EnumSet;
@@ -23,7 +22,7 @@ import java.util.EnumSet;
  *   <li>Flash and impact frames are scaled by the player's {@code CgGraphicsSettings.FLASHES}: 0 shows neither. A fade
  *       is not: it is a cut, not a flash.</li>
  *   <li>A look at its neutral value records nothing, so a firing with no volume draws as before.</li>
- *   <li>A drawn impact frame reads the world renderer's subject ({@link CgFrameKeys#SUBJECT}), bent as the scene was.</li>
+ *   <li>A drawn impact frame reads the world renderer's subject ({@code textures().subject()}), bent as the scene was.</li>
  *   <li>The tonemapper's table is built on the GPU only when its film settings or the grade move ({@link CgFilmLut});
  *       with it on, the grade is in the table, and without it the composite grades ({@link CgColorGrade}).</li>
  * </ul>
@@ -45,7 +44,7 @@ public final class CgPostLooks implements CgPostEffect {
         CgPostSettings s = post.settings();
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
-                || s.fade() > 0f || s.tonemaps() || s.grades() || post.resources().has(CgGradeLayers.KEY);
+                || s.fade() > 0f || s.tonemaps() || s.grades() || (post.view().read(CgGradeLayers.KEY) != null);
     }
 
     /**
@@ -84,15 +83,15 @@ public final class CgPostLooks implements CgPostEffect {
         if (s.vignette() > 0f) composite.vignette(s.vignette());
         if (s.chromatic() > 0f) composite.chromatic(s.chromatic(), s.focusX(), s.focusY());
         if (impact > 0f) {
-            CgGraphTexture subject = s.impactLook().readsSubject() ? post.resources().get(CgFrameKeys.SUBJECT) : null;
+            CgGraphTexture subject = s.impactLook().readsSubject() ? post.textures().subject() : null;
             composite.impact(s.impactLook(), impact, s.impactSeed(), s.focusX(), s.focusY(),
                     subject != null ? post.distorted(subject) : null);
         }
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
         if (s.tonemaps()) composite.tonemap(lut.texture(post.recording(), s), s.tonemapWeight(), s.tonemapsFilmic());
         else if (s.grades()) composite.grade(grading.constants(s));
-        CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
-        if (layers == null || !post.resources().has(CgFrameKeys.SCENE)) return;
+        CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
+        if (layers == null || !post.textures().linear()) return;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             CgPostSettings look = layers.look(k);
             // Its tonemapper and grade alone: a vignette, flash or impact frame would grade the whole screen

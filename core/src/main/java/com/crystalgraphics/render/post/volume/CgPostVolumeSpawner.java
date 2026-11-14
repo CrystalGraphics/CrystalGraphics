@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.volume;
 
+import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -229,7 +230,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
     private static final class Blend implements CgSequenceTarget {
         final CgPostBlendable blendable;
         final CgPostMaterial post;
-        final CgRenderStage.Registration registration;
+        final CgPostStack.Registration registration;
         @Nullable
         private final CgAttachment screen;
         private final List<String> names = new ArrayList<>();
@@ -240,7 +241,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         private final Vector4f clip = new Vector4f();
         private final float[] uv = new float[4];
 
-        Blend(CgPostBlendable blendable, CgPostMaterial post, CgRenderStage.Registration registration,
+        Blend(CgPostBlendable blendable, CgPostMaterial post, CgPostStack.Registration registration,
               @Nullable CgAttachment screen) {
             this.blendable = blendable;
             this.post = post;
@@ -279,7 +280,7 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         /** The followed place on screen, 0 to 1 from the bottom left as the material's UV; nothing where it is behind. */
         void screen() {
             if (screen == null || !screen.place(point, null)) return;
-            CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
+            CgCamera view = CgView.main().camera();
             clip.set((float) (point[0] - view.x()), (float) (point[1] - view.y()), (float) (point[2] - view.z()), 1f);
             view.view().transform(clip);
             view.projection().transform(clip);

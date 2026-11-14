@@ -1,6 +1,6 @@
 package com.crystalgraphics.demo;
 
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfx;
@@ -31,7 +31,7 @@ import java.util.List;
  * <pre>{@code
  * CgVfxBlasts blasts = new CgVfxBlasts(120);
  * // every frame, before the world stages fire:
- * blasts.submit(CgWorldRenderer.get(), x, y, z, CgFrameClock.seconds());   // the disc centred on (x, z), its floor at y
+ * blasts.submit(CgScene.client(), x, y, z, CgFrameClock.seconds());   // the disc centred on (x, z), its floor at y
  * // once, when the context goes:
  * blasts.delete();
  * }</pre>
@@ -116,7 +116,7 @@ public final class CgVfxBlasts {
     }
 
     /** Fires the bursts due at {@code seconds} round {@code (x, z)} over a floor at {@code y}, and submits every one alive. */
-    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
+    public void submit(CgScene scene, double x, double y, double z, double seconds) {
         int count = shots.length;
         if (!started) {
             // Taken up mid-cycle (a host's clock is far from 0, or after a clear): each spot waits for its own next
@@ -144,7 +144,7 @@ public final class CgVfxBlasts {
         }
         if (drives) {
             vfx.system().update(seconds);
-            vfx.system().submit(world);
+            vfx.system().submit();
         }
     }
 

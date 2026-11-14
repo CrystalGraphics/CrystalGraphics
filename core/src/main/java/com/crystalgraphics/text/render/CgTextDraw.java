@@ -90,7 +90,7 @@ public final class CgTextDraw {
 
     /**
      * A draw whose {@link #submit()} hands it to {@code queue}, for an owner that draws it later under a camera it
-     * knows then: {@code CgWorldRenderer}'s labels.
+     * knows then: a scene's labels ({@code CgScene.label}).
      */
     public static CgTextDraw queued(Consumer<CgTextDraw> queue) {
         return new CgTextDraw(null, Objects.requireNonNull(queue, "queue"));

@@ -10,7 +10,7 @@ import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.material.shader.CgShaderSpec;
-import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.vfx.effect.beam.CgBeamBody;
 import com.crystalgraphics.vfx.look.CgVfxKit;
 import com.crystalgraphics.vfx.look.CgVfxLook;
@@ -147,7 +147,7 @@ public class CgVfxSlotRendererTest {
         CgVfxSlotRenderer.Light light = loaded.light();
         float a = 0x80 / 255f;
         assertEquals(2f * a, light.red(), 1e-6f);
-        assertEquals(CgWorldLights.linear(0x80 / 255f) * 2f * a, light.green(), 1e-6f);
+        assertEquals(CgSceneLights.linear(0x80 / 255f) * 2f * a, light.green(), 1e-6f);
         assertEquals(0f, light.blue(), 0f);
         assertEquals(4f, light.intensity(), 0f);
         assertEquals(2.2f, light.attenuationRadius(), 1e-6f);

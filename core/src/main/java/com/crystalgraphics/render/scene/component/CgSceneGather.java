@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.joml.FrustumIntersection;
@@ -26,6 +28,8 @@ final class CgSceneGather {
     float distance;
     /** Primitives tested and those the frustum left out, since {@link #begin}. */
     int tested, culled;
+    /** The row {@link #rowInView} last tested: the fraction of the screen's height it covers, as levels are picked by. */
+    float rowHeight;
 
     void begin(CgCamera camera) {
         viewProjection.set(camera.projection()).mul(camera.view());
@@ -64,6 +68,54 @@ final class CgSceneGather {
     /** How far ahead of the eye an absolute point is, along the view's forward; 0 behind it. */
     float distance(double x, double y, double z) {
         return Math.max(0f, (float) ((x - eyeX) * forward.x + (y - eyeY) * forward.y + (z - eyeZ) * forward.z));
+    }
+
+    /**
+     * Whether a dynamic row's box (its stated bounds, else its mesh's), through its basis at its position, meets the
+     * frustum, setting {@link #rowHeight}. A GPU-placed row is tested by its stated bounds alone, as Unreal culls a GPU
+     * sim by its fixed bounds, and always passes without them; its levels are the GPU's, so its height stays the most.
+     * A row whose mesh has no bounds always passes.
+     */
+    boolean rowInView(CgMeshBatches rows, int b) {
+        rowHeight = Float.MAX_VALUE;
+        boolean gpu = rows.gpuPlaced(b);
+        if (gpu && !rows.statesBounds(b)) return true;
+        float cx, cy, cz, hx, hy, hz;
+        if (rows.statesBounds(b)) {
+            cx = (rows.statedBounds(b, 0) + rows.statedBounds(b, 3)) * 0.5f;
+            cy = (rows.statedBounds(b, 1) + rows.statedBounds(b, 4)) * 0.5f;
+            cz = (rows.statedBounds(b, 2) + rows.statedBounds(b, 5)) * 0.5f;
+            hx = rows.statedBounds(b, 3) - cx;
+            hy = rows.statedBounds(b, 4) - cy;
+            hz = rows.statedBounds(b, 5) - cz;
+        } else {
+            CgMeshLods levels = rows.lods(b);
+            if ((levels != null ? levels.finest() : rows.mesh(b)).bounds(box) == null) return true;
+            cx = (float) ((box.minX() + box.maxX()) * 0.5);
+            cy = (float) ((box.minY() + box.maxY()) * 0.5);
+            cz = (float) ((box.minZ() + box.maxZ()) * 0.5);
+            hx = (float) box.maxX() - cx;
+            hy = (float) box.maxY() - cy;
+            hz = (float) box.maxZ() - cz;
+        }
+        tested++;
+        float[] v = rows.values();
+        int o = b * CgMeshBatches.VALUES + CgMeshBatches.BASIS;   // column-major 3x3
+        float px = (float) (rows.position(b, 0) - originX) + v[o] * cx + v[o + 3] * cy + v[o + 6] * cz;
+        float py = (float) (rows.position(b, 1) - originY) + v[o + 1] * cx + v[o + 4] * cy + v[o + 7] * cz;
+        float pz = (float) (rows.position(b, 2) - originZ) + v[o + 2] * cx + v[o + 5] * cy + v[o + 8] * cz;
+        float scale = (float) Math.sqrt(Math.max(v[o] * v[o] + v[o + 1] * v[o + 1] + v[o + 2] * v[o + 2],
+                Math.max(v[o + 3] * v[o + 3] + v[o + 4] * v[o + 4] + v[o + 5] * v[o + 5],
+                        v[o + 6] * v[o + 6] + v[o + 7] * v[o + 7] + v[o + 8] * v[o + 8])));
+        float r = (float) Math.sqrt(hx * hx + hy * hy + hz * hz) * scale + rows.boundsPad(b);
+        if (!frustum.testSphere(px, py, pz, r)) {
+            culled++;
+            return false;
+        }
+        if (gpu) return true;
+        float clipW = viewProjection.m03() * px + viewProjection.m13() * py + viewProjection.m23() * pz + viewProjection.m33();
+        if (clipW > r) rowHeight = r * projectionScale / clipW;
+        return true;
     }
 
     /**

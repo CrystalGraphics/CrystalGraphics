@@ -10,7 +10,8 @@ import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.tag.CgGameplayTag;
@@ -272,13 +273,13 @@ public final class CgCueInspector extends CgWorldSubsystem {
         return this;
     }
 
-    /** Whether each kit's draws are graded under its own look ({@link CgWorldRenderer#gradeDraws()}). */
+    /** Whether each kit's draws are graded under its own look in the main view ({@link CgSceneRenderer#GRADE_DRAWS}). */
     public boolean gradesEnabled() {
-        return CgWorldRenderer.get().gradeDraws();
+        return CgView.main().flag(CgSceneRenderer.GRADE_DRAWS);
     }
 
     public CgCueInspector setGrades(boolean on) {
-        CgWorldRenderer.get().gradeDraws(on);
+        CgView.main().override(CgSceneRenderer.GRADE_DRAWS, on);
         return this;
     }
 

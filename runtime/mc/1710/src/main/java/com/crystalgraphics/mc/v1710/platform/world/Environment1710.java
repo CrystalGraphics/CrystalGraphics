@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
 import com.crystalgraphics.platform.world.CgWorldQuery;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityClientPlayerMP;

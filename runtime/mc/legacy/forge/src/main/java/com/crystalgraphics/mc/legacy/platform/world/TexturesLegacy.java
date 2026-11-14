@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.mc.legacy.mixin.EntityRendererAccessor;
-import com.crystalgraphics.render.stage.CgHostTextures;
+import com.crystalgraphics.render.host.CgHostTextures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.ITextureObject;
 import net.minecraft.client.renderer.texture.TextureMap;

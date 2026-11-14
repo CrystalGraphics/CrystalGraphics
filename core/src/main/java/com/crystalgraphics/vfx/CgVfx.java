@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx;
 
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
@@ -11,12 +12,11 @@ import com.crystalgraphics.net.object.CgCharacterClockNet;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.vfx.fluid.CgVfxFluidAtlas;
 import com.crystalgraphics.vfx.grid.CgVfxGridAtlas;
 import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
-import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
@@ -44,7 +44,7 @@ import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.variable.CgVar;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 
@@ -175,7 +175,7 @@ public final class CgVfx {
                 .step(pipelines -> pipelines.kernels(CgVfxGridAtlas::precacheKernels))
                 .step(pipelines -> pipelines.kernels(CgVfxFluidAtlas::precacheKernels)).start();
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
-        CgCharacterClockNet.install(() -> CgRenderStage.WORLD_OPAQUE.host().environment().gameTime());
+        CgCharacterClockNet.install(() -> CgView.main().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
         CgVfxPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
@@ -227,7 +227,7 @@ public final class CgVfx {
     }
 
     private static void submit() {
-        world().submit(CgWorldRenderer.get());
+        world().submit();
     }
 
     /**
@@ -291,7 +291,7 @@ public final class CgVfx {
      * no scalability culls it; {@code forward} (if given) its view direction. Answers {@code at}.
      */
     public static Vector3d rehearsalPoint(Vector3d at, @Nullable Vector3f forward) {
-        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
+        CgCamera view = CgView.main().camera();
         Vector3f f = forward != null ? forward : new Vector3f();
         view.view().positiveZ(f).negate();
         return at.set(view.x() + f.x * REHEARSAL_AHEAD, view.y() + f.y * REHEARSAL_AHEAD, view.z() + f.z * REHEARSAL_AHEAD);

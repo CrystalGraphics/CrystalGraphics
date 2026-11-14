@@ -13,7 +13,7 @@ import java.util.Arrays;
  * <pre>{@code
  * CgExternalTarget main = CgExternalTarget.host(mainFbo, width, height);   // Minecraft's main target
  * try (CgExecutor.Into ignored = CgExecutor.into(main)) {
- *     CgRenderStage.WORLD_OPAQUE.fire();
+ *     CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
  * }
  * if (main.lendsAttachments()) { ... }    // a scene of ours may draw beside its depth
  * }</pre>

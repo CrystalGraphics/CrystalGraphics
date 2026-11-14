@@ -39,7 +39,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *     canvas.text().style(DAMAGE).text("12").font(font).at(x, y).submit();     // a CgTextStyle
  * });
  *
- * CgRenderStage.WORLD_TRANSPARENT.register(0, frame -> {
+ * CgRenderStage.TRANSLUCENT.register(frame -> {
  *     CgCanvas canvas = frame.canvas();
  *     canvas.quad(GLOW).world(x, y, z).pose(facingCamera).at(-0.5f, -0.5f).size(1f, 1f).submit();   // absolute
  * });
@@ -305,7 +305,7 @@ public final class CgCanvas {
 
     /**
      * Where its space's origin is, absolute: a world stage's camera, so {@code world(x, y, z)} places an item at an
-     * absolute position in doubles as {@code CgWorldRenderer} does. 0 for a screen.
+     * absolute position in doubles as a scene row does. 0 for a screen.
      */
     public CgCanvas origin(double x, double y, double z) {
         originX = x;

@@ -30,7 +30,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceBinding;
  *
  * <pre>{@code
  * CgPostBlendable b = CgPostBlendable.of(entry, "mymod:arena: volumes[0].post.materials[0]", deps, null);
- * CgRenderStage.Registration on = CgPostStack.get().add(b.draw(priority));   // drawn at its material's post.stage
+ * CgPostStack.Registration on = CgPostStack.get().add(b.draw(priority));   // drawn at its material's post.stage
  * }</pre>
  *
  * <ul>

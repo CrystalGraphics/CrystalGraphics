@@ -25,7 +25,7 @@ import java.util.Arrays;
  * stage recorders charges it too:
  *
  * <pre>{@code
- * CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxBudget.charged(MyField::record));    // a recorder, timed
+ * CgRenderStage.PREPARE.register(ORDER, CgVfxBudget.charged(MyField::record));    // a recorder, timed
  * recording.compute("mymod.field").charged(CgVfxBudget.FRAME);                           // its pass as it executes
  * long began = System.nanoTime(); stepOnWorker(); CgVfxBudget.WORKERS.add(System.nanoTime() - began);
  * }</pre>

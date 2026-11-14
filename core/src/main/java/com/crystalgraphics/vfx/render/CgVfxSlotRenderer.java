@@ -11,7 +11,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.material.shader.CgShaderSpec;
-import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSlot;
@@ -45,7 +45,7 @@ import java.util.function.Supplier;
  * }</pre>
  *
  * <p>A light in place of a material, as Niagara's light renderer adds its system's lights: Unreal's point or spot light,
- * added to the world's light list ({@link CgWorldLights}) each frame the slot draws.
+ * added to the world's light list ({@link CgSceneLights}) each frame the slot draws.
  *
  * <pre>{@code
  * CgVfxSlotRenderer glow = CgVfxSlotRenderer.light("light", CgVfxBlast.LIGHT)
@@ -347,8 +347,8 @@ public final class CgVfxSlotRenderer {
                 int argb = (int) argbN.longValue();
                 float i = m.get("intensity") instanceof Number n ? n.floatValue() : 1f;
                 float a = (argb >>> 24) / 255f;
-                return new float[] {CgWorldLights.linear((argb >> 16 & 0xFF) / 255f) * i * a,
-                        CgWorldLights.linear((argb >> 8 & 0xFF) / 255f) * i * a, CgWorldLights.linear((argb & 0xFF) / 255f) * i * a};
+                return new float[] {CgSceneLights.linear((argb >> 16 & 0xFF) / 255f) * i * a,
+                        CgSceneLights.linear((argb >> 8 & 0xFF) / 255f) * i * a, CgSceneLights.linear((argb & 0xFF) / 255f) * i * a};
             }
             if (value instanceof List<?> v && v.size() >= 3 && v.size() <= 4) {
                 float[] c = new float[4];

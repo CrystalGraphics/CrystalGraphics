@@ -20,7 +20,7 @@ import java.util.List;
  * CgMaterialInstance hot = CgMaterial.load("mymod:shaders/glow.shader").instance()
  *         .set1f("_Strength", 2f).vec4("_Tint", 1f, 0.5f, 0.2f, 1f).sampler("_Mask", 0, mask);
  * hot.set1f("_Strength", 3f);                       // when it changes
- * world.draw(mesh, hot).submit();
+ * scene.once().mesh(mesh, hot).add();
  * hot.delete();                                     // its owner's, once nothing draws it
  * }</pre>
  *

@@ -7,8 +7,8 @@
  * CgMaterial terrain = CgMaterial.load("mymod:shaders/terrain.shader");        // the same object every call
  * CgMaterialInstance red = terrain.instance().vec4("_Color", 1f, 0f, 0f, 1f);  // once, kept in a field
  *
- * CgWorldRenderer.get().draw(mesh, terrain).at(x, y, z).submit();             // each frame it draws
- * CgWorldRenderer.get().draw(mesh, red).at(x, y + 2, z).submit();
+ * CgScene.client().mesh(mesh, terrain).at(x, y, z).spawn();                    // once: it draws until removed
+ * CgScene.client().once().mesh(mesh, red).at(x, y + 2, z).add();               // this frame only
  * }</pre>
  *
  * <ul>

@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.api.texture.CgTextures;
@@ -20,8 +21,7 @@ import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.primitive.CgCylinder;
 import com.crystalgraphics.shape.primitive.CgBox;
@@ -86,7 +86,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CgVfxModules modules = new CgVfxModules(font);    // on the render thread: its textures and materials; the
  *                                                   // flipbook sheets filled by kernels at a submit once built
- * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:modules", dt -> modules.submit(world, x, y, z, CgFrameClock.seconds()));
+ * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:modules", dt -> modules.submit(scene, x, y, z, CgFrameClock.seconds()));
  * modules.delete();
  * }</pre>
  *
@@ -206,7 +206,7 @@ public final class CgVfxModules {
     private double nextPlay;
     private CgMesh sphere, cube;
     private CgMaterial mercury, copper;
-    private CgWorldRenderer world;
+    private CgScene scene;
     private final CgFont font;
     /** Each station's floor this play, absolute. */
     private float[] floors;
@@ -2649,18 +2649,18 @@ public final class CgVfxModules {
         @Override
         public void sphere(float x, float y, float z, float radius) {
             scaled.identity().scale(radius);
-            world.draw(sphere, mercury).at(currentX + x, currentY + y, currentZ + z).transform(scaled).submit();
+            scene.once().mesh(sphere, mercury).at(currentX + x, currentY + y, currentZ + z).transform(scaled).add();
         }
 
         @Override
         public void box(float x, float y, float z, Matrix4f transform) {
-            world.draw(cube, copper).at(currentX + x, currentY + y, currentZ + z).transform(transform).submit();
+            scene.once().mesh(cube, copper).at(currentX + x, currentY + y, currentZ + z).transform(transform).add();
         }
 
         @Override
         public void label(float x, float y, float z, float height, String text, int color) {
             if (font == null) return;
-            world.text(text).at(currentX + x, currentY + y, currentZ + z).height(height).font(font).color(color)
+            scene.label(text).at(currentX + x, currentY + y, currentZ + z).height(height).font(font).color(color)
                     .style(CgDemoStyles.LABEL).submit();
         }
     };
@@ -2671,8 +2671,8 @@ public final class CgVfxModules {
      * Plays every station round {@code (x, y, z)} each {@link #PERIOD} seconds and submits this frame's draws: once a
      * frame, before the world stages record.
      */
-    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
-        this.world = world;
+    public void submit(CgScene scene, double x, double y, double z, double seconds) {
+        this.scene = scene;
         bakeSheets();
         if (seconds >= nextPlay) {
             for (int i = 0; i < stations.size(); i++) {
@@ -2685,7 +2685,7 @@ public final class CgVfxModules {
         }
         if (drives) {
             vfx.system().update(seconds);
-            vfx.system().submit(world);
+            vfx.system().submit();
         }
         if (++probeFrames % 120 == 0) System.out.println("[probe] frame " + probeFrames + " stations " + stations.size() + " particlesDrawn " + CgVfxSystem.particlesDrawn());   // PROBE
         for (int i = 0; i < stations.size(); i++) {
@@ -2697,10 +2697,10 @@ public final class CgVfxModules {
                 // Its name over it, and what it shows under that.
                 int split = s.name().indexOf(": ");
                 String title = split < 0 ? s.name() : s.name().substring(0, split);
-                world.text(title).at(currentX, currentY + 10.2, currentZ).height(1.1f).font(font)
+                scene.label(title).at(currentX, currentY + 10.2, currentZ).height(1.1f).font(font)
                         .style(CgDemoStyles.LABEL).submit();
                 if (split >= 0) {
-                    world.text(s.name().substring(split + 2)).at(currentX, currentY + 9.1, currentZ).height(0.6f)
+                    scene.label(s.name().substring(split + 2)).at(currentX, currentY + 9.1, currentZ).height(0.6f)
                             .font(font).color(0xFFB8D8FF).style(CgDemoStyles.LABEL).submit();
                 }
             }

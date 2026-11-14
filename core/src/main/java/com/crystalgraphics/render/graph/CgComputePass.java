@@ -173,7 +173,7 @@ public final class CgComputePass extends CgPass {
      *
      * <pre>{@code
      * // A simulation stepped at the opaque stage, drawn at the transparent one: the world draws beside it.
-     * CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(order, frame -> {
+     * CgRenderStage.PREPARE.register(order, frame -> {
      *     CgComputePass step = frame.recording().compute("sparks.step").async();
      *     step.dispatch(simulate, capacity).bind("IN", sparks).bind("OUT", sparks);
      *     step.end();

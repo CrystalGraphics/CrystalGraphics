@@ -2,7 +2,7 @@ package com.crystalgraphics.asset.load;
 
 import java.util.function.BooleanSupplier;
 
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 
 /**
  * Says what a kind's compiled definition needs on the GPU before it is {@link CgAssetState#READY}: its uploads, the

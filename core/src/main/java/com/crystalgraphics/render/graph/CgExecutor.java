@@ -219,7 +219,7 @@ public final class CgExecutor {
      *     stage.fire();
      * }
      * try (CgExecutor.Into ignored = CgExecutor.into(host.colorOnly())) {   // a GUI over the finished frame
-     *     CgRenderStage.HUD.fire();
+     *     CgStageHost.fire(CgRenderStage.HUD);
      * }
      * }</pre>
      *

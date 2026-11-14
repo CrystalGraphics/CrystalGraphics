@@ -10,7 +10,7 @@ import com.crystalgraphics.material.CgPropertyRows;
 import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.vfx.look.CgVfxLayout;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -407,9 +407,9 @@ final class CgVfxMaterials {
             blue = values.raw(at + 2);
             float scale = Math.max(1f, Math.max(red, Math.max(green, blue)));
             float times = values.raw(at + 3) * scale * r.factor[LIGHT_COLOR];
-            red = CgWorldLights.linear(red / scale) * times;
-            green = CgWorldLights.linear(green / scale) * times;
-            blue = CgWorldLights.linear(blue / scale) * times;
+            red = CgSceneLights.linear(red / scale) * times;
+            green = CgSceneLights.linear(green / scale) * times;
+            blue = CgSceneLights.linear(blue / scale) * times;
         }
         float intensity = scalar(values, r, LIGHT_INTENSITY);
         out[0] = red * intensity;

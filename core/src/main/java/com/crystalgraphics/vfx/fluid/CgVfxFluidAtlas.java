@@ -1,5 +1,8 @@
 package com.crystalgraphics.vfx.fluid;
 
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -22,14 +25,13 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgWorldMedia;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.sparse.CgVfxTiles;
-import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgVoxelWindow;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 
@@ -44,7 +46,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * Every fluid's simulation: NVIDIA Flow's grid step (BSD-3-Clause, {@code flow/source/nvflowext/Grid.cpp}
  * {@code simulateStep}) over sparse tiles, each fluid a grid of {@link #SPAN} cells a side about where it was placed,
  * holding cells only where it has smoke, in {@link #TILE}-cell tiles from one pool ({@link CgVfxTiles}). Recorded once a
- * frame on {@link CgRenderStage#WORLD_OPAQUE} after the voxel window: each fluid's fixed steps on its own clock
+ * frame on {@link CgRenderStage#PREPARE} after the voxel window: each fluid's fixed steps on its own clock
  * ({@link CgVfxTimeStepper}), then its density carried on by the time left over (Flow's {@code interpolateTimeSteps}),
  * lit, and laid out for its layers. {@link CgVfxFluid} is what an effect uses; this is what a renderer or a check reads.
  *
@@ -76,8 +78,8 @@ public final class CgVfxFluidAtlas {
     public static final int SHADE_TILE = CgVfxTiles.APRON_TILE;
     /** Flow's PressureJacobiCS on one level takes 40; the fewest the budget drops to. */
     public static final int ITERATIONS = 40, MIN_ITERATIONS = 12;
-    /** Where it records on {@code WORLD_OPAQUE}: after the voxel window, which it reads. */
-    public static final int ORDER = CgWorldRenderer.ORDER - 89;
+    /** Where it records on {@code PREPARE}, once a frame: after the voxel window, which it reads. */
+    public static final int ORDER = -89;
     public static final CgGpuBudget GPU_BUDGET = CgGpuBudget.define("vfx.fluid", 2f);
     /** What a fluid layer's shader declares, and the frame binds, in this order. */
     public static final String SHADE_SAMPLER = "_FluidShade", REST_A_SAMPLER = "_FluidRestA", REST_B_SAMPLER = "_FluidRestB",
@@ -185,14 +187,14 @@ public final class CgVfxFluidAtlas {
     private int mediaCount;
     @Nullable
     private CgGraphBuffer mediaRows;
-    private final CgWorldMedia.Injector media = new CgWorldMedia.Injector() {
+    private final CgSceneMedia.Injector media = new CgSceneMedia.Injector() {
         @Override
-        public void upload(CgRecording recording, CgWorldMedia into) {
+        public void upload(CgRecording recording, CgSceneMedia into) {
             uploadMedia(recording, into);
         }
 
         @Override
-        public boolean inject(CgComputePass pass, CgWorldMedia into) {
+        public boolean inject(CgComputePass pass, CgSceneMedia into) {
             return injectMedia(pass, into);
         }
     };
@@ -290,9 +292,9 @@ public final class CgVfxFluidAtlas {
             fluid.stepper.reset();
             fluid.owed = 0f;
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(this::record));
+                registration = CgRenderStage.PREPARE.register(ORDER, CgVfxBudget.charged(this::record)).allScenes();
                 CgEngineLifecycle.addListener(context);
-                CgWorldRenderer.get().media().add(media);
+                CgScene.client().media().add(media);
                 precache();
             }
             return b;
@@ -320,7 +322,7 @@ public final class CgVfxFluidAtlas {
      * Each fluid's rows for the world's media, from this firing's eye: its grid's low corner and its extinction a unit,
      * then its cell. A fluid with none is written with no extinction, which the kernel skips.
      */
-    private void uploadMedia(CgRecording recording, CgWorldMedia into) {
+    private void uploadMedia(CgRecording recording, CgSceneMedia into) {
         mediaCount = 0;
         if (shade == null) return;
         mediaUpload.clear();
@@ -342,7 +344,7 @@ public final class CgVfxFluidAtlas {
     }
 
     /** Every fluid's smoke in the world's media, so what is drawn behind it is dimmed by it. */
-    private boolean injectMedia(CgComputePass pass, CgWorldMedia into) {
+    private boolean injectMedia(CgComputePass pass, CgSceneMedia into) {
         if (mediaCount == 0 || shade == null) return false;
         if (mediaKernel == null) mediaKernel = CgCompute.load(MEDIA_KERNELS).kernel("Gas");
         into.dispatch(pass, mediaKernel).texture("_GasShade", shade).texture("_GasPages", tiles.pages())
@@ -395,7 +397,12 @@ public final class CgVfxFluidAtlas {
         }
     }
 
+    /** The frame recorded in: once a frame, in the first view, whatever the scenes; never a rehearsal's. */
+    private long recorded = Long.MIN_VALUE;
+
     private void record(CgStageFrame stage) {
+        if (CgRehearsal.active() || recorded == CgFrameRing.frame()) return;
+        recorded = CgFrameRing.frame();
         now = (int) ((System.nanoTime() - ORIGIN) / 1_000_000L);
         int live = 0;
         for (int b = 0; b < CAPACITY; b++) {
@@ -429,7 +436,7 @@ public final class CgVfxFluidAtlas {
         writeCarves(live);
         upload(recording);
         uploadFills(recording, live);
-        CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
+        CgVoxelWindow window = CgVoxelWindow.get().use();
         int iterations = Math.max(MIN_ITERATIONS, Math.round(ITERATIONS * GPU_BUDGET.scale()));
         if (most > 0) recording.fill(tiles.occupancy(), 0);
         CgComputePass pass = recording.compute("vfx.fluid", stage.defaults(constants)).timed(GPU_ZONE).timed(GPU_BUDGET).charged(CgVfxBudget.FRAME)

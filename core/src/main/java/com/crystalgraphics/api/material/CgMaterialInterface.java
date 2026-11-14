@@ -13,10 +13,10 @@ import java.util.List;
  *
  * <pre>{@code
  * CgMaterial stone = CgMaterial.load("mymod:shaders/stone.shader");
- * world.draw(mesh, stone).submit();                       // the asset as it is
+ * scene.once().mesh(mesh, stone).add();                       // the asset as it is
  *
  * CgMaterialInstance hot = stone.instance().set1f("_Heat", 0.8f);
- * world.draw(mesh, hot).submit();                         // its programs, these values
+ * scene.once().mesh(mesh, hot).add();                         // its programs, these values
  * }</pre>
  *
  * <p>The reads answer its material's: an instance changes values, never programs.</p>

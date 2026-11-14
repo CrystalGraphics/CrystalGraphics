@@ -1,5 +1,6 @@
 package com.crystalgraphics.world;
 
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -256,7 +257,7 @@ public final class CgEntityAttachments {
         double wx = CAMERA[0] + at.x, wy = CAMERA[1] + at.y, wz = CAMERA[2] + at.z;
         // Drawn somewhere other than the world this frame: the inventory's figure, a shadow pass.
         CgEntityQuery entities = CgEntityQueries.client();
-        if (!entities.pose(entity, CgRenderStage.WORLD_OPAQUE.host().partialTick(), GUARD_POSE)) return;
+        if (!entities.pose(entity, CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), GUARD_POSE)) return;
         double reach = 2.0 * Math.max(GUARD_POSE[CgEntityQuery.HEIGHT], GUARD_POSE[CgEntityQuery.WIDTH]) + 2.0;
         double dx = wx - GUARD_POSE[CgEntityQuery.X], dy = wy - GUARD_POSE[CgEntityQuery.Y], dz = wz - GUARD_POSE[CgEntityQuery.Z];
         if (dx * dx + dy * dy + dz * dz > reach * reach) return;
@@ -478,7 +479,7 @@ public final class CgEntityAttachments {
         @Override
         public boolean place(double[] out, Quaternionf turn) {
             boolean drawn = drawn();
-            partialTick = drawn ? CgRenderStage.WORLD_OPAQUE.host().partialTick() : 1f;
+            partialTick = drawn ? CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick() : 1f;
             posed = entities.pose(entity, partialTick, pose);
             if (!posed) return false;
             if (drawn) {

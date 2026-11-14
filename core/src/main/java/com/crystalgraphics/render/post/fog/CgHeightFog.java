@@ -19,7 +19,7 @@ import com.crystalgraphics.render.stage.CgRenderStage;
  * <pre>{@code
  * CgHeightFog fog = new CgHeightFog().density(0.2f).heightFalloff(10f).height(64).colour(0.41f, 0.89f, 1f)
  *         .maxOpacity(0.65f).startDistance(300f);
- * CgRenderStage.Registration on = fog.show();
+ * CgPostStack.Registration on = fog.show();
  * on.close();
  * }</pre>
  *
@@ -101,7 +101,7 @@ public final class CgHeightFog implements CgPostEffect {
     }
 
     /** Shows it on the post stack until the registration closes. */
-    public CgRenderStage.Registration show() {
+    public CgPostStack.Registration show() {
         return CgPostStack.get().add(this);
     }
 
@@ -118,7 +118,7 @@ public final class CgHeightFog implements CgPostEffect {
     @Override
     public void record(CgPostContext post) {
         // FogRendering.cpp: the observer held below the fog's height plus 65536 cm, and the density at it collapsed
-        double eye = post.stage().host().camera().y();
+        double eye = post.view().camera().y();
         double observer = Math.min(eye, height + MAX_OBSERVER_ABOVE);
         double power = Math.max(-125.0, Math.min(126.0, -falloff * (observer - height)));
         fog0[0] = (float) (density * Math.pow(2.0, power));

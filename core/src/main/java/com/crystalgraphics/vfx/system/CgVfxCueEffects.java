@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.system;
 
+import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -133,7 +134,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             return true;
         }
         if (CgWorldQueries.client().levelEpoch() == 0) return false;
-        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
+        CgCamera view = CgView.main().camera();
         out[0] = view.x();
         out[1] = view.y();
         out[2] = view.z();

@@ -6,7 +6,13 @@ import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.compute.ops.CgCull;
+import com.crystalgraphics.compute.ops.CgCullSets;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.graph.CgBufferDesc;
+import com.crystalgraphics.render.graph.CgBufferUsage;
+import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.draw.CgPipeline;
@@ -23,6 +29,7 @@ import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgCachedCommands;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
+import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.render.scene.visibility.CgInstanceCulling;
 import com.crystalgraphics.render.scene.visibility.CgViewVisibility;
 import com.crystalgraphics.render.shader.CgBindingModel;
@@ -34,6 +41,7 @@ import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.WeakHashMap;
 
@@ -78,13 +86,23 @@ public final class CgViewPasses {
     private final CgInstanceCulling culling;
     private CgViewVisibility seen;
     private CgCamera camera;
-    private long frame = Long.MIN_VALUE;
     private double originX, originY, originZ;
 
-    /** Per pass type: its list and the recording and frame it was built for. */
+    /**
+     * Per pass type: its list and the recording and visibility ({@link #made}) it was built for. A recording is reused by
+     * a view's next draw in the same frame, so the recording alone never says the list is this draw's.
+     */
     private CgDrawCommands[] lists = new CgDrawCommands[16];
     private CgRecording[] listRecordings = new CgRecording[16];
-    private long[] listFrames = new long[16];
+    private int[] listMade = new int[16];
+    /** Formed lists, per pass type and form: each its list and the recording and visibility it was built for. */
+    private final Map<CgCommandForm, Formed[]> formed = new IdentityHashMap<>();
+
+    private static final class Formed {
+        CgDrawCommands list;
+        CgRecording recording;
+        int made = -1;
+    }
 
     /** Per row: its frame record's slot in {@link #slotsRecording}'s table this frame, -1 until written. */
     private int[] frameSlots = new int[64];
@@ -100,10 +118,37 @@ public final class CgViewPasses {
     private CgGraphBuffer palettes;
 
     private final CgMeshPassCommands out = new CgMeshPassCommands();
+    /** The culled records rows' cull this recording: one dispatch for all, its kept records and counts. */
+    private final CgCull recordCull = new CgCull();
+    private final CgCullSets recordSets = new CgCullSets();
+    private final Matrix4f place = new Matrix4f();
+    private int[] recordHandles = new int[64];
+    @Nullable
+    private CgGraphBuffer recordsOut, recordsKept;
+    @Nullable
+    private CgRecording recordsRecording;
     private final Batch batch = new Batch();
     private final Matrix4f model = new Matrix4f(), normal = new Matrix4f();
     private boolean skipUnready = true;
     private int built, kept, unready;
+    /** Which of its visibility's makings these passes are of: a new one is a new draw. */
+    private int made = -1;
+    /** Every view's draws left out as unready since the start: render thread. */
+    private static long unreadyTotal;
+
+    /**
+     * Draws left out since the start because their pipeline was still building ({@code skipUnready}): a precache that
+     * worked keeps it still across a move's first play.
+     *
+     * <pre>{@code
+     * long before = CgViewPasses.unreadyDraws();
+     * play(move);                                          // ... frames later:
+     * assert CgViewPasses.unreadyDraws() == before;
+     * }</pre>
+     */
+    public static long unreadyDraws() {
+        return unreadyTotal;
+    }
 
     private CgViewPasses(CgView view, CgScene scene) {
         this.view = view;
@@ -117,14 +162,14 @@ public final class CgViewPasses {
         CgViewPasses p = all.get(scene);
         if (p == null) all.put(scene, p = new CgViewPasses(view, scene));
         CgViewVisibility seen = CgViewVisibility.of(view, scene, camera);
-        if (p.frame != seen.frame()) p.newFrame(seen, camera);
+        if (p.made != seen.computations()) p.newFrame(seen, camera);
         return p;
     }
 
     private void newFrame(CgViewVisibility seen, CgCamera camera) {
         this.seen = seen;
         this.camera = camera;
-        frame = seen.frame();
+        made = seen.computations();
         originX = camera.originX();
         originY = camera.originY();
         originZ = camera.originZ();
@@ -149,11 +194,63 @@ public final class CgViewPasses {
      * against the frustum and {@code pyramid} (null for the frustum alone): what every pass of the recording asked after this draws of them. Once per recording.
      */
     public void cull(CgRecording recording, @Nullable CgGraphTexture pyramid) {
-        if (culledRecording == recording) return;
+        if (culledRecording == recording || recordsRecording == recording) return;
         culling.cull(recording, scene, seen, camera, pyramid);
         Arrays.fill(cullRows, 0, seen.batches().size(), -1);
         for (int r = 0; r < culling.rows(); r++) cullRows[culling.batch(r)] = r;
         culledRecording = culling.rows() > 0 ? recording : null;
+        cullRecords(recording, pyramid);
+    }
+
+    /** Whether the view has rows {@link #cull} culls: instances, or culled records. */
+    public boolean culls() {
+        CgMeshBatches rows = seen.batches();
+        for (int b = 0, n = rows.size(); b < n; b++) if (rows.instances(b) != null || rows.culled(b)) return true;
+        return false;
+    }
+
+    /**
+     * The view's culled {@code records} rows, all in one dispatch: each record kept where its box, placed by the row's
+     * transform and scale, meets the frustum and the pyramid; the row's stated custom data stamped on it.
+     */
+    private void cullRecords(CgRecording recording, @Nullable CgGraphTexture pyramid) {
+        CgMeshBatches rows = seen.batches();
+        int n = rows.size();
+        if (recordHandles.length < n) recordHandles = new int[Math.max(n, recordHandles.length * 2)];
+        recordSets.clear();
+        boolean any = false;
+        float[] v = rows.values();
+        for (int b = 0; b < n; b++) {
+            recordHandles[b] = -1;
+            if (!rows.culled(b)) continue;
+            int at = b * CgMeshBatches.VALUES;
+            place.set(v[at], v[at + 1], v[at + 2], 0f, v[at + 3], v[at + 4], v[at + 5], 0f, v[at + 6], v[at + 7], v[at + 8], 0f,
+                    (float) (rows.position(b, 0) - originX), (float) (rows.position(b, 1) - originY),
+                    (float) (rows.position(b, 2) - originZ), 1f);
+            recordCull.mesh(rows.mesh(b)).place(place).pad(rows.cullPad(b))
+                    .light(v[at + CgMeshBatches.LIGHT], v[at + CgMeshBatches.LIGHT + 1]).scale(rows.cullScale(b)).ownCustoms();
+            int mask = rows.customMask(b);
+            for (int k = 0; k < 4; k++) {
+                int c = at + CgMeshBatches.CUSTOM + k * 4;
+                if ((mask & 1 << k) != 0) recordCull.custom(k, v[c], v[c + 1], v[c + 2], v[c + 3]);
+            }
+            recordHandles[b] = recordSets.add(recordCull, (CgGraphBuffer) rows.records(b), rows.recordFirst(b), rows.cullCount(b));
+            any = true;
+        }
+        recordsRecording = null;
+        if (!any) return;
+        long bytes = (long) recordSets.records() * CgGpuOps.cullRecordBytes(), words = recordSets.words() * 4L;
+        if (recordsOut == null || recordsOut.size() < bytes) {
+            recordsOut = CgGraphBuffer.transientBuffer("cg_scene.culledRecords", CgBufferDesc.of(bytes, CgBufferUsage.STORAGE));
+        }
+        if (recordsKept == null || recordsKept.size() < words) {
+            recordsKept = CgGraphBuffer.transientBuffer("cg_scene.keptRecords", CgBufferDesc.of(words, CgBufferUsage.STORAGE, CgBufferUsage.INDIRECT));
+        }
+        recordCull.view(camera.view(), camera.projection()).pyramid(pyramid);
+        CgComputePass pass = recording.compute("scene.cullRecords");
+        CgGpuOps.cull(pass, recordCull, recordSets, recordsOut, recordsKept);
+        pass.end();
+        recordsRecording = recording;
     }
 
     /** The instance cull this view's passes draw from: its kept ids and counts. */
@@ -177,20 +274,45 @@ public final class CgViewPasses {
             int n = Math.max(t + 1, lists.length * 2);
             lists = Arrays.copyOf(lists, n);
             listRecordings = Arrays.copyOf(listRecordings, n);
-            listFrames = Arrays.copyOf(listFrames, n);
+            listMade = Arrays.copyOf(listMade, n);
         }
-        if (lists[t] != null && listRecordings[t] == recording && listFrames[t] == frame) return lists[t];
+        if (lists[t] != null && listRecordings[t] == recording && listMade[t] == made) return lists[t];
         if (lists[t] == null || lists[t].table() != recording.primitives()) lists[t] = new CgDrawCommands(recording.primitives());
         CgDrawCommands list = lists[t];
         listRecordings[t] = recording;
-        listFrames[t] = frame;
+        listMade[t] = made;
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, ZONE)) {
-            build(type, recording, list);
+            build(type, recording, list, null);
         }
         return list;
     }
 
-    private void build(CgMeshPassType type, CgRecording recording, CgDrawCommands list) {
+    /**
+     * {@code type}'s commands for this view in {@code recording}, each through what {@code form} makes of its pipeline
+     * (left out where it answers null), sorted: built at the first ask of the frame, recording and form. The scene
+     * renderer's per-view choices; keep the form in a field, as a list is kept per form.
+     */
+    public CgDrawCommands commands(CgMeshPassType type, CgRecording recording, CgCommandForm form) {
+        int t = type.index();
+        Formed[] byType = formed.get(form);
+        if (byType == null || byType.length <= t) {
+            Formed[] grown = new Formed[Math.max(t + 1, 16)];
+            if (byType != null) System.arraycopy(byType, 0, grown, 0, byType.length);
+            formed.put(form, byType = grown);
+        }
+        Formed f = byType[t];
+        if (f == null) byType[t] = f = new Formed();
+        if (f.list != null && f.recording == recording && f.made == made) return f.list;
+        if (f.list == null || f.list.table() != recording.primitives()) f.list = new CgDrawCommands(recording.primitives());
+        f.recording = recording;
+        f.made = made;
+        try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, ZONE)) {
+            build(type, recording, f.list, form);
+        }
+        return f.list;
+    }
+
+    private void build(CgMeshPassType type, CgRecording recording, CgDrawCommands list, @Nullable CgCommandForm form) {
         list.clear();
         CgMeshBatches rows = seen.batches();
         int t = type.index(), before = built, keptBefore = kept;
@@ -203,7 +325,7 @@ public final class CgViewPasses {
                 type.processor().add(batch.at(rows, b), primitive, out);
                 built++;
                 for (int i = 0; i < out.size(); i++) {
-                    emit(list, recording, rows, b, out.pipeline(i), out.material(i), out.mesh(i), out.submesh(i));
+                    emit(list, recording, rows, b, formed(form, rows, b, out.pipeline(i)), out.material(i), out.mesh(i), out.submesh(i));
                 }
                 continue;
             }
@@ -218,7 +340,7 @@ public final class CgViewPasses {
                 built++;
             }
             for (int i = cache.first(row, t), end = i + cache.count(row, t); i < end; i++) {
-                emit(list, recording, rows, b, cache.pipeline(i), cache.material(i), cache.mesh(i), cache.submesh(i));
+                emit(list, recording, rows, b, formed(form, rows, b, cache.pipeline(i)), cache.material(i), cache.mesh(i), cache.submesh(i));
             }
         }
         list.sort();
@@ -227,18 +349,27 @@ public final class CgViewPasses {
         CgTrace.add(CgChannels.WORLD, COMMANDS, list.size());
     }
 
+    @Nullable
+    private static CgPipeline formed(@Nullable CgCommandForm form, CgMeshBatches rows, int b, CgPipeline pipeline) {
+        return form == null ? pipeline : form.form(rows, b, pipeline);
+    }
+
     /** One command of row {@code b}: its pipeline and material's bindings now, its objects, its key, its palettes. */
-    private void emit(CgDrawCommands list, CgRecording recording, CgMeshBatches rows, int b, CgPipeline pipeline,
+    private void emit(CgDrawCommands list, CgRecording recording, CgMeshBatches rows, int b, @Nullable CgPipeline pipeline,
                       CgMaterialInterface material, CgMesh mesh, int submesh) {
+        if (pipeline == null) return;
         if (skipUnready && !pipeline.isBuilt()) {
             pipeline.precache();
             unready++;
+            unreadyTotal++;
             CgTrace.add(CgChannels.WORLD, UNREADY, 1);
             return;
         }
-        list.add(pipeline, CgMaterialProxy.of(material).bindings(), mesh).range(submesh, 0, -1);
+        list.add(pipeline, CgMaterialProxy.of(material).bindings(), mesh).range(submesh, rows.firstIndex(b), rows.indexCount(b));
         objects(list, recording, rows, b);
         list.sortKey(rows.key(b));
+        int label = ((CgPrimitiveComponent<?>) rows.primitive(b)).debugLabelName();
+        if (label >= 0 && CgTrace.isEnabled(CgChannels.GPU_GROUPS)) list.gpuGroup(label);
         if (rows.bones(b) >= 0) list.buffer(CgBindingModel.BONES, palettes(recording));
         for (int s = 0; s < CgDrawChunk.BUFFERS; s++) {
             if (rows.bufferAt(b, s) != null) list.buffer(rows.bufferAt(b, s), rows.buffer(b, s));
@@ -265,8 +396,15 @@ public final class CgViewPasses {
             list.sceneRecord(id);
             return;
         }
+        int h = recordsRecording == recording && rows.culled(b) ? recordHandles[b] : -1;
+        if (h >= 0) {
+            int capacity = rows.cullCount(b).capacity();
+            list.records(recordsOut, recordSets.first(h) + CgGpuOps.cullFirst(0, capacity), capacity)
+                    .indirect(recordsKept, recordSets.word(h) * 4L, CgIndirect.INSTANCES, 1);
+            return;
+        }
         if (rows.records(b) != null) {
-            list.records(rows.records(b), 0, rows.recordCapacity(b));
+            list.records(rows.records(b), rows.recordFirst(b), rows.recordCapacity(b));
         } else {
             list.frameRecord(frameRecord(recording, rows, b));
         }
@@ -364,6 +502,16 @@ public final class CgViewPasses {
         @Override
         public boolean skinned() {
             return rows.bones(b) >= 0 || rows.mesh(b).format().isSkinned();
+        }
+
+        @Override
+        public int flags() {
+            return rows.flags(b);
+        }
+
+        @Override
+        public boolean separate() {
+            return rows.layer(b) == CgSortLayer.SEPARATE_TRANSLUCENCY;
         }
     }
 }

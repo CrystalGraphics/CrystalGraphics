@@ -9,9 +9,15 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.graph.CgGraphBuffer;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import org.joml.Matrix3f;
+import org.joml.Matrix4fc;
 import org.joml.Quaternionfc;
 
+import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.shape.bounds.CgAABBc;
 import javax.annotation.Nullable;
 import java.util.Objects;
 
@@ -48,22 +54,74 @@ public final class CgMeshCollector {
     private CgCamera camera;
     private CgSceneGather gather;
     private CgMesh mesh;
+    @Nullable
+    private CgMeshLods lods;
     private CgMaterialInterface material;
     private int submesh;
     private double x, y, z;
     private final Matrix3f basis = new Matrix3f();
     private final float[] custom = new float[16];
     private float blockLight, skyLight, emission;
+    private int flags, batchKey, subject, sortPriority, customMask, bones, firstIndex, indexCount;
+    @Nullable
+    private CgAABBc bounds;
+    private float boundsPad;
+    @Nullable
+    private CgGpuCount recordCount;
+    private float cullScale = Float.NaN, cullPad;
+    private CgSortLayer layer;
+    @Nullable
+    private CgPostSettings grade;
+    private double sortX = Double.NaN, sortY, sortZ;
     /** The row's GPU form: its count, its records, and the buffers it reads. */
     @Nullable
     private CgBufferHandle count, records;
     private long countOffset;
     private CgIndirect countMode;
-    private int countFactor, recordCapacity, buffers;
+    private int countFactor, recordCapacity, recordFirst, buffers;
     private final CgBufferHandle[] buffer = new CgBufferHandle[CgDrawChunk.BUFFERS];
     private final CgBindingModel.Slot[] bufferAt = new CgBindingModel.Slot[CgDrawChunk.BUFFERS];
 
-    void begin(CgMeshBatches out, CgPrimitiveComponent<?> primitive, CgCamera camera, CgSceneGather gather) {
+    /**
+     * A collector writing {@code owner}'s rows into {@code rows} rather than a view's: rows made once a frame, as Unreal
+     * makes a primitive's dynamic data, which each view then {@link #take}s. Clear {@code rows} before each frame's.
+     *
+     * <pre>{@code
+     * final CgMeshBatches rows = new CgMeshBatches();
+     * final CgMeshCollector build = CgMeshCollector.into(rows, component);
+     *
+     * rows.clear();                                                  // once a frame
+     * build.mesh(spark, glow).at(x, y, z).sortAt(ox, oy, oz).add();
+     *
+     * public void collect(CgView view, CgMeshCollector out) { out.take(rows); }   // each view
+     * }</pre>
+     */
+    public static CgMeshCollector into(CgMeshBatches rows, CgDynamicComponent owner) {
+        CgMeshCollector c = new CgMeshCollector();
+        c.begin(rows, owner, null, null);
+        return c;
+    }
+
+    /**
+     * Every row of {@code rows}, made through {@link #into}, into this view: each at its distance from its eye, of its
+     * level for its height in it; a row whose box is outside the view's frustum is left out.
+     */
+    public void take(CgMeshBatches rows) {
+        for (int b = 0, n = rows.size(); b < n; b++) {
+            if (!gather.rowInView(rows, b)) continue;
+            CgMeshLods levels = rows.lods(b);
+            CgMesh level = levels == null ? null : levels.pick(gather.rowHeight);
+            if (levels != null && level == null) continue;
+            int c = out.copy(rows, b);
+            if (level != null) out.mesh(c, level);
+            out.distance(c, gather.distance(rows.position(b, 0), rows.position(b, 1), rows.position(b, 2)));
+            if (rows.hasSortPoint(b)) {
+                out.primitiveDistance(c, gather.distance(rows.sortPoint(b, 0), rows.sortPoint(b, 1), rows.sortPoint(b, 2)));
+            }
+        }
+    }
+
+    void begin(CgMeshBatches out, CgPrimitiveComponent<?> primitive, @Nullable CgCamera camera, @Nullable CgSceneGather gather) {
         this.out = out;
         this.primitive = primitive;
         this.camera = camera;
@@ -76,9 +134,20 @@ public final class CgMeshCollector {
         return camera;
     }
 
+    /**
+     * Begins a row of the level of {@code lods} for how tall it stands in each view: picked there, and dropped where it
+     * is smaller than the coarsest level's height.
+     */
+    public CgMeshCollector mesh(CgMeshLods lods, CgMaterialInterface material) {
+        mesh(lods.finest(), material);
+        this.lods = lods;
+        return this;
+    }
+
     /** Begins a row: {@code mesh} drawn whole with {@code material}, at the primitive's position. */
     public CgMeshCollector mesh(CgMesh mesh, CgMaterialInterface material) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
+        this.lods = null;
         this.material = Objects.requireNonNull(material, "material");
         submesh = -1;
         x = primitive.x();
@@ -89,8 +158,58 @@ public final class CgMeshCollector {
         blockLight = primitive.blockLight;
         skyLight = primitive.skyLight;
         emission = primitive.emission;
+        flags = batchKey = customMask = firstIndex = 0;
+        bones = indexCount = -1;
+        bounds = null;
+        boundsPad = 0f;
+        recordCount = null;
+        cullScale = Float.NaN;
+        layer = primitive.layer;
+        sortPriority = primitive.sortPriority;
+        grade = primitive.grade();
+        subject = primitive.subject();
+        sortX = Double.NaN;
         count = records = null;
         buffers = 0;
+        return this;
+    }
+
+    /**
+     * The row's box in object space, in place of its mesh's: what each view culls it by and picks its level by. For a
+     * mesh whose shader places its vertices (a quad grid, a ribbon), whose own box bounds nothing.
+     *
+     * <pre>{@code
+     * scene.once().mesh(CgMesh.quads(1024), grid).at(x, y, z).bounds(CgAABB.of(0, 0, 0, 3.2, 3.2, 0)).add();
+     * }</pre>
+     */
+    public CgMeshCollector bounds(CgAABBc local) {
+        bounds = local;
+        return this;
+    }
+
+    /** Grows the row's box by {@code pad} on every side: what bones or a vertex wave move it past its rest pose by. */
+    public CgMeshCollector pad(float pad) {
+        boundsPad = pad;
+        return this;
+    }
+
+    /**
+     * Draws {@code count} of the submesh's indices from {@code first} rather than all of them: one band of a strip, the
+     * part of a buffer written so far (Unreal's element {@code FirstIndex}, {@code NumPrimitives}). A range is within a
+     * submesh: on a mesh of several, name it with {@link #submesh} first, or {@code add()} refuses.
+     */
+    public CgMeshCollector indices(int first, int count) {
+        firstIndex = first;
+        indexCount = count;
+        return this;
+    }
+
+    /**
+     * Skins the row by the bone palette starting at {@code base} (a skinned mesh's, from {@code CgBonePalettes}): a
+     * skinned mesh drawn by hand rather than as a skeletal mesh component.
+     */
+    public CgMeshCollector bones(int base) {
+        bones = base;
         return this;
     }
 
@@ -132,8 +251,15 @@ public final class CgMeshCollector {
 
     /** A {@link #records} row's records, 48 floats each ({@code cg_Objects}), as many as {@code count} says. */
     public CgMeshCollector from(CgBufferHandle records, CgGpuCount count) {
+        return from(records, 0, count);
+    }
+
+    /** As {@link #from(CgBufferHandle, CgGpuCount)}, from record {@code first} of {@code records}: a slot of a shared buffer. */
+    public CgMeshCollector from(CgBufferHandle records, int first, CgGpuCount count) {
         this.records = Objects.requireNonNull(records, "records");
+        recordFirst = first;
         recordCapacity = count.capacity();
+        recordCount = count;
         if (count.onGpu()) count(count.buffer(), count.word() * 4L, CgIndirect.INSTANCES, 1);
         return this;
     }
@@ -159,6 +285,18 @@ public final class CgMeshCollector {
         return this;
     }
 
+    /**
+     * Its local transform about its position: the basis of {@code local}, its translation added to the position. What
+     * a scaled, turned or sheared mesh is placed by.
+     */
+    public CgMeshCollector transform(Matrix4fc local) {
+        local.get3x3(basis);
+        x += local.m30();
+        y += local.m31();
+        z += local.m32();
+        return this;
+    }
+
     public CgMeshCollector rotation(Quaternionfc q) {
         basis.rotate(q);
         return this;
@@ -174,7 +312,26 @@ public final class CgMeshCollector {
         return this;
     }
 
+    /**
+     * Culls a {@link #records} row's records on the GPU against each view and its depth pyramid, each placed by the
+     * row's transform scaled by {@code scale} and given the custom data the row states: a particle system's meshes,
+     * kept where a particle is in view. {@code pad} widens each record's box by its own reach (blocks).
+     *
+     * <pre>{@code
+     * out.records(rock, stone).from(objects, base, CgGpuCount.at(visible, word, capacity)).culled(size, reach)
+     *         .at(ox, oy, oz).customData(3, row, age, seed, presence).add();
+     * }</pre>
+     */
+    public CgMeshCollector culled(float scale, float pad) {
+        if (!(records instanceof CgGraphBuffer)) throw new IllegalStateException("culled(...) after from(...) of a graph buffer");
+        cullScale = scale;
+        cullPad = pad;
+        return this;
+    }
+
+    /** {@code CG_OBJECT_CUSTOM0..3}: the row's own, over its primitive's; a culled row stamps the slots it states. */
     public CgMeshCollector customData(int slot, float x, float y, float z, float w) {
+        customMask |= 1 << slot;
         int c = slot * 4;
         custom[c] = x;
         custom[c + 1] = y;
@@ -194,15 +351,86 @@ public final class CgMeshCollector {
         return this;
     }
 
+    /** Draws this row at half the target's size, whatever its primitive says: a soft volume, a wide smoke. */
+    public CgMeshCollector halfResolution() {
+        flags |= CgMeshBatches.HALF_RESOLUTION;
+        return this;
+    }
+
+    /** Draws this translucent row after the distortion pass, unbent by the hazes behind it. */
+    public CgMeshCollector afterDistortion() {
+        flags |= CgMeshBatches.AFTER_DISTORTION;
+        return this;
+    }
+
+    /** Its sort layer, over its primitive's. */
+    public CgMeshCollector layer(CgSortLayer layer) {
+        this.layer = Objects.requireNonNull(layer, "layer");
+        return this;
+    }
+
+    /** Its sort priority among rows of one layer and distance, over its primitive's: a higher draws later. */
+    public CgMeshCollector sortPriority(int priority) {
+        sortPriority = priority;
+        return this;
+    }
+
+    /**
+     * Sorts the row as one with every row sorting at the same point: an effect's draws at its origin, ordered among
+     * themselves by their priority and batch key, as Unreal sorts a primitive's sections at its bounds' centre.
+     */
+    public CgMeshCollector sortAt(double x, double y, double z) {
+        sortX = x;
+        sortY = y;
+        sortZ = z;
+        return this;
+    }
+
+    /** Grades the row by {@code look} apart from the scene's, over its primitive's grade; null for the scene's look. */
+    public CgMeshCollector grade(@Nullable CgPostSettings look) {
+        grade = look;
+        return this;
+    }
+
+    /** The impact frame subject key the row glows for, over its primitive's; 0 for none. */
+    public CgMeshCollector subject(int key) {
+        subject = key;
+        return this;
+    }
+
+    /**
+     * What orders this row among its primitive's translucent rows at one distance: a VFX renderer's draw order. Rows
+     * sort by their primitive's distance first, then their sort priority, then this.
+     */
+    public CgMeshCollector batchKey(int key) {
+        batchKey = key;
+        return this;
+    }
+
     /** Writes the row. */
     public void add() {
         if (mesh == null) throw new IllegalStateException("add() with no mesh(...) begun");
+        boolean ranged = firstIndex != 0 || indexCount >= 0;
+        if (ranged && submesh < 0) {
+            if (mesh.submeshCount() > 1) {
+                throw new IllegalStateException("indices() on a mesh of " + mesh.submeshCount() + " submeshes names none: submesh(i) first");
+            }
+            submesh = 0;   // a range is within a submesh, as the store draws it
+        }
         int b = primitive.batch(out, mesh, material, submesh);
         double[] p = out.positions();
         p[b * 3] = x;
         p[b * 3 + 1] = y;
         p[b * 3 + 2] = z;
-        out.distance(b, gather.distance(x, y, z));
+        out.layer(b, layer);
+        out.sortPriority(b, sortPriority);
+        out.grade(b, grade);
+        out.subject(b, subject);
+        if (!Double.isNaN(sortX)) out.sortAt(b, sortX, sortY, sortZ);
+        if (gather != null) {
+            out.distance(b, gather.distance(x, y, z));
+            if (!Double.isNaN(sortX)) out.primitiveDistance(b, gather.distance(sortX, sortY, sortZ));
+        }
         float[] v = out.values();
         int at = b * CgMeshBatches.VALUES;
         basis.get(v, at + CgMeshBatches.BASIS);
@@ -210,9 +438,23 @@ public final class CgMeshCollector {
         v[at + CgMeshBatches.LIGHT] = blockLight;
         v[at + CgMeshBatches.LIGHT + 1] = skyLight;
         v[at + CgMeshBatches.EMISSION] = emission;
+        if (flags != 0) out.addFlags(b, flags);
+        out.batchKey(b, batchKey);
         if (count != null) out.count(b, count, countOffset, countMode, countFactor);
-        if (records != null) out.records(b, records, recordCapacity);
+        if (records != null) out.records(b, records, recordFirst, recordCapacity);
+        out.customMask(b, customMask);
+        if (!Float.isNaN(cullScale)) out.culled(b, recordCount, cullScale, cullPad);
         for (int s = 0; s < buffers; s++) out.buffer(b, bufferAt[s], buffer[s]);
+        if (bones >= 0) out.bones(b, bones);
+        if (ranged) out.indices(b, firstIndex, indexCount);
+        if (bounds != null || boundsPad != 0f) out.bounds(b, bounds, boundsPad);
         mesh = null;
+        if (lods == null) return;
+        out.lods(b, lods);
+        if (gather == null) return;   // made once a frame: each view picks at take
+        gather.rowInView(out, b);
+        CgMesh level = lods.pick(gather.rowHeight);
+        if (level != null) out.mesh(b, level);
+        else out.removeLast();
     }
 }

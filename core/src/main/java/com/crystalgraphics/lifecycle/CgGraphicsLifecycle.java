@@ -35,8 +35,9 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
+import com.crystalgraphics.render.scene.renderer.CgScenePipelines;
+import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.gpu.resource.CgStreamBuffer;
@@ -253,8 +254,8 @@ public final class CgGraphicsLifecycle {
                 CgStartSteps.step("loading view");
             }
             case 3 -> {
-                CgWorldRenderer.get().install();
-                CgStartSteps.step("world renderer");
+                CgSceneRenderer.install();
+                CgStartSteps.step("scene renderer");
             }
             case 4 -> {
                 CgPostStack.get().install();
@@ -274,11 +275,11 @@ public final class CgGraphicsLifecycle {
         CgCollisionDebug.install();
         // The engine's own passes, built together behind the loading screen rather than each at its first draw;
         // no world stage fires until they are
-        CgWorldRenderer.get().beginBoot();
+        CgScenePipelines.beginBoot();
         // Never after a host's shader toolchain fetch: offline it fails only after its retries and timeouts, and the
         // driver compiles these as fast as the toolchain would
         CgLoadPlan.get().task("crystalgraphics:programs").render(task -> {
-            boolean done = CgWorldRenderer.get().bootStep();
+            boolean done = CgScenePipelines.bootStep();
             int total = CgPipelinePrecache.total();
             if (total > 0) task.progress(1f - CgPipelinePrecache.remaining() / (float) total);
             // A step settles what the frame's warm budget allows: a second call this frame would only poll
@@ -584,12 +585,12 @@ public final class CgGraphicsLifecycle {
         CgFontRegistry.get().releaseAll();
 
 
-        // Step 8: the world renderer's draws and depth snapshot (whose framebuffer step 9 frees), and the demo's mesh,
+        // Step 8: the scene renderers' targets and depth snapshots (whose framebuffers step 9 frees), and the demo's mesh,
         // before the registries they reference are torn down.
         CgRenderDemo.INSTANCE.dispose();
         CgVfx.release();
         CgCollisionDebug.release();
-        CgWorldRenderer.get().release();
+        CgSceneRenderer.releaseAll();
         CgPostStack.get().release();
         CgView.forgetAll();
         CgScene.client().gpu().release();

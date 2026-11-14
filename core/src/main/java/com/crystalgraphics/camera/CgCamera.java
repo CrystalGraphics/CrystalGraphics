@@ -210,7 +210,7 @@ public final class CgCamera {
      * host fills its stages' cameras with, once per level render; copies, allocates nothing.
      *
      * <pre>{@code
-     * CgRenderStage.WORLD_OPAQUE.host().camera().set(camera.x, camera.y, camera.z, viewRotation, projection);
+     * CgView.main().camera().set(camera.x, camera.y, camera.z, viewRotation, projection);
      * }</pre>
      */
     public CgCamera set(double x, double y, double z, Matrix4fc view, Matrix4fc projection) {
@@ -322,7 +322,7 @@ public final class CgCamera {
      *
      * <pre>{@code
      * // a damage number over its target, at a GUI stage, in its canvas's pixels
-     * if (CgRenderStage.WORLD_OPAQUE.host().camera().project(x, y, z, frame.host().width(), frame.host().height(), at)) {
+     * if (CgView.main().camera().project(x, y, z, frame.width(), frame.height(), at)) {
      *     frame.canvas().quad(DIGIT).at(at.x - 16, at.y - 16).size(32, 32).submit();
      * }
      * }</pre>

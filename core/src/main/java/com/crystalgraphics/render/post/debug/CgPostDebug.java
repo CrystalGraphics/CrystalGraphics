@@ -16,8 +16,7 @@ import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
-import com.crystalgraphics.render.stage.CgDistortionField;
-import com.crystalgraphics.render.stage.CgFrameKeys;
+import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
@@ -79,8 +78,8 @@ public final class CgPostDebug implements CgPostEffect {
 
     @Override
     public boolean active(CgPostContext post) {
-        return level == DISTORTION ? post.resources().has(CgFrameKeys.DISTORTION)
-                : post.resources().has(level >= 0 ? CgBloom.LEVELS : CgFrameKeys.OVERDRAW);
+        return level == DISTORTION ? (post.view().read(CgDistortionField.KEY) != null)
+                : level >= 0 ? post.view().read(CgBloom.LEVELS) != null : post.textures().overdraw() != null;
     }
 
     @Override
@@ -88,13 +87,13 @@ public final class CgPostDebug implements CgPostEffect {
         CgTexture source;
         int count = 0;
         if (level == DISTORTION) {
-            CgDistortionField field = post.resources().get(CgFrameKeys.DISTORTION);
+            CgDistortionField field = post.view().read(CgDistortionField.KEY);
             source = field.offsets();
             count = field.count();
         } else if (level < 0) {
-            source = post.resources().get(CgFrameKeys.OVERDRAW);
+            source = post.textures().overdraw();
         } else {
-            CgGraphTexture[] stages = post.resources().get(CgBloom.LEVELS);
+            CgGraphTexture[] stages = post.view().read(CgBloom.LEVELS);
             int k = Math.min(level, stages.length - 1);
             while (k > 0 && stages[k] == null) k--;
             source = stages[k];

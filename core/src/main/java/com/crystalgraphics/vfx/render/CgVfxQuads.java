@@ -20,7 +20,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
  * <p>The GPU does the same work either way: four vertices a particle, each reading its record by index. This
  * shape wins here because:</p>
  * <ul>
- *   <li><b>The world renderer's instancing is already taken.</b> Each {@code CgWorldRenderer} draw is an instance
+ *   <li><b>The scene's instancing is already taken.</b> Each scene row is an instance
  *       with its own object record, so a quad instanced per particle would be a record per particle, copying what the
  *       particle buffer already holds.</li>
  *   <li><b>Tiny instances underfill the GPU.</b> Vertices are shaded in batches of 32 to 64; a 4-vertex instance leaves

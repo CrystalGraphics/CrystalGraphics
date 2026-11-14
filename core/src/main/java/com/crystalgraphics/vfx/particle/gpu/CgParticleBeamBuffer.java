@@ -14,7 +14,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * as Unreal's beam-and-trail vertex factory places one; {@code CG_PARTICLE_BEAM(i)} reads vec4 {@code i}.
  *
  * <pre>{@code
- * world.draw(strip, material).buffer(CgParticleBuffer.SLOT, pool.drawn())
+ * out.indirect(strip, material).buffer(CgParticleBuffer.SLOT, pool.drawn())
  *      .buffer(CgParticleOrderBuffer.SLOT, range.order()).buffer(SLOT, pool.beamRuns())...
  * }</pre>
  *

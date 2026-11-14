@@ -1,7 +1,10 @@
 package com.crystalgraphics.vfx.particle.gpu.sim;
 
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
+import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.platform.rhi.CgRHI;
-import com.crystalgraphics.render.world.CgWorldEntityBoxes;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgEntityBoxes;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
 import com.crystalgraphics.vfx.particle.form.CgVfxCurveBlock;
 import com.crystalgraphics.vfx.particle.form.CgVfxFormInput;
@@ -24,8 +27,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
@@ -51,7 +53,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
-import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
 import org.joml.Matrix4f;
@@ -79,7 +81,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleBeamBuffer;
  * GPU, stepped by one dispatch per step however many effects play it (vfx-gpu §4.4, §13). An instance owns a slot
  * while it plays; its definition's numbers are a row of the pool's parameter table, shared by every instance of it.
  * The CPU decides every step what spawns and where each instance is, and queues it here; the pool records the queued
- * steps once a host frame on {@link CgRenderStage#WORLD_OPAQUE} at {@link #ORDER}, a dispatch of its shape's Step
+ * steps once a host frame on {@link CgRenderStage#PREPARE} at {@link #ORDER}, a dispatch of its shape's Step
  * kernel ({@link CgVfxEmitterCompiler}) each, and a draw reads what they left: {@link #records()} and {@link #live()}.
  *
  * <pre>{@code
@@ -151,8 +153,8 @@ public final class CgVfxParticlePool {
     /** A curve row's words; its speeds are (-1, -1) over life. A pool's rows add size by speed and drawn slots: {@link #rowWords()}. */
     public static final int CURVE_WORDS = 4 * CURVE_VECTORS;
 
-    /** Where the pools record their steps on {@link CgRenderStage#WORLD_OPAQUE}: ahead of the world renderer and Range. */
-    public static final int ORDER = CgWorldRenderer.ORDER - 100;
+    /** Where the pools record their steps on {@link CgRenderStage#PREPARE}: after the voxel window, before Range. */
+    public static final int ORDER = -100;
 
     /** Every pool, by owner and shape key, and in the order made; and those released since the last recording. */
     private static final Map<Object, Map<String, List<CgVfxParticlePool>>> POOLS = new IdentityHashMap<>();
@@ -449,7 +451,7 @@ public final class CgVfxParticlePool {
     /**
      * The pool {@code owner}'s definitions of {@code emitter}'s shape share, made the first time: one simulation steps
      * its own pools, since a step moves every particle of one. The first pool made registers the pools' recording on
-     * {@link CgRenderStage#WORLD_OPAQUE}. Render thread.
+     * {@link CgRenderStage#PREPARE}. Render thread.
      *
      * <pre>{@code
      * CgVfxParticlePool pool = CgVfxParticlePool.of(system, EMBERS);   // a system's own, by identity
@@ -477,7 +479,7 @@ public final class CgVfxParticlePool {
             pool.hidden = HIDDEN.contains(owner);
             (pool.hidden ? REHEARSED : REAL).add(pool);
             if (recording == null) {
-                recording = CgRenderStage.WORLD_OPAQUE.registerOncePerFrame(ORDER, CgVfxBudget.charged(CgVfxParticlePool::recordStage));
+                recording = CgRenderStage.PREPARE.register(ORDER, CgVfxBudget.charged(CgVfxParticlePool::recordStage)).allScenes();
                 CgEngineLifecycle.addListener(CONTEXT);
             }
         }
@@ -694,11 +696,16 @@ public final class CgVfxParticlePool {
      * hand calls it first, or its kinds see no entities. Render thread.
      */
     public static void entities(double x, double y, double z, float partialTick) {
-        CgWorldEntityBoxes.around(x, y, z, partialTick);
+        CgEntityBoxes.around(x, y, z, partialTick);
     }
+
+    /** The frame recorded in: steps run once a frame, in the first view, whatever the scenes; never a rehearsal's. */
+    private static long recorded = Long.MIN_VALUE;
 
     /** The stage's recording: each data interface a stepping shape takes gathers what it reads first, once. */
     private static void recordStage(CgStageFrame frame) {
+        if (CgRehearsal.active() || recorded == CgFrameRing.frame()) return;
+        recorded = CgFrameRing.frame();
         TAKEN.clear();
         for (int i = 0; i < ALL.size(); i++) {
             CgVfxParticlePool pool = ALL.get(i);
@@ -1264,7 +1271,7 @@ public final class CgVfxParticlePool {
     /** The Look kernel's values: this shape's layout and the voxel window. */
     private void lookValues(CgDispatch d) {
         CgVfxRecord record = shape.record();
-        CgWorldVoxelWindow.get().bindBlocks(d
+        CgVoxelWindow.get().bindBlocks(d
                 .set("_DrawnStride", shape.drawnStride()).set("_Drawn", shape.drawnMask()).set("_RowVectors", shape.rowVectors())
                 .set("_LifeRollAt", shape.lifeRollAt()).set("_LifeRolls", shape.lifeRolls()).set("_LifeBindAt", shape.lifeBindAt())
                 .set("_DrawnBindAt", shape.drawnBindAt()).set("_LightAt", shape.lightAt()).set("_LightBindAt", shape.lightBindAt())
@@ -2173,7 +2180,7 @@ public final class CgVfxParticlePool {
 
     /**
      * Drops the queued steps unrecorded, as if the world had recorded them: a headless system's stand-in for
-     * {@link CgRenderStage#WORLD_OPAQUE}, which never fires there. Never on a client, whose slots would then hold
+     * {@link CgRenderStage#PREPARE}, which never fires there. Never on a client, whose slots would then hold
      * particles their books count as dead. Render thread, between steps.
      */
     public void discardQueued() {
@@ -2484,7 +2491,7 @@ public final class CgVfxParticlePool {
 
     /**
      * Records the queued steps into {@code recording}, one dispatch each in one compute pass, and takes them. The pools
-     * record themselves once a host frame on {@link CgRenderStage#WORLD_OPAQUE}; call it only where that stage does
+     * record themselves once a host frame on {@link CgRenderStage#PREPARE}; call it only where that stage does
      * not fire, as a check scene. Render thread, between steps.
      */
     public void record(CgRecording recording) {
@@ -3069,7 +3076,7 @@ public final class CgVfxParticlePool {
      * turns back by the instance's rotation (Niagara's camera query, read on the CPU once a step).
      */
     private static float cameraAxis(CgVfxUserBinding.Camera camera, int axis, CgVfxInstanceView view) {
-        Matrix4fc m = CgRenderStage.WORLD_OPAQUE.host().camera().view();
+        Matrix4fc m = CgView.main().camera().view();
         float vx, vy, vz;
         switch (camera) {
             case RIGHT -> { vx = m.m00(); vy = m.m10(); vz = m.m20(); }

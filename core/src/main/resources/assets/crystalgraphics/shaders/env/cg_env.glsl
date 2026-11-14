@@ -192,11 +192,11 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_CUSTOM3 (CG_OBJECT_DATA.custom3)
 // The world's light at the draw: block and sky light, 0 to 15 each. Rides in the normal matrix's unused column.
 #define CG_OBJECT_LIGHT (CG_OBJECT_DATA.normalMatrix[3].xy)
-// The draw's emission scale (CgWorldRenderer's .emission), stored less 1 in the same column so a writer leaving the
+// The draw's emission scale (a row's .emission), stored less 1 in the same column so a writer leaving the
 // slot 0 means 1. Read through CG_EMISSION.
 #define CG_OBJECT_EMISSION (1.0 + CG_OBJECT_DATA.normalMatrix[3].z)
 // Four lanes the engine never reads, the normal matrix's w row, for a record's writer to hand its material:
-// (0, 0, 0, 1) from CgWorldRenderer. A VFX mesh particle's is what it rests against (CgVfxRange).
+// (0, 0, 0, 1) from a scene row. A VFX mesh particle's is what it rests against (CgVfxRange).
 #define CG_OBJECT_SPARE vec4(CG_OBJECT_DATA.normalMatrix[0].w, CG_OBJECT_DATA.normalMatrix[1].w, CG_OBJECT_DATA.normalMatrix[2].w, CG_OBJECT_DATA.normalMatrix[3].w)
 
 // -- The view's textures (the engine's; never declare or bind them) ------------------------------------------------
@@ -288,7 +288,7 @@ float cg_EngineDepth(float windowDepth) {
 #define CG_SCENE_VELOCITY(uv) cg_scene_velocity_has_no_pass_writing_it_yet(uv)
 
 // What an opaque program writes beside its colour for a post material (Unreal's GBufferD custom data, and GBufferB's
-// shading model with a 2-bit type): kept only in the draw CgWorldRenderer makes of it for CG_CUSTOM_DATA_TARGET, in a
+// shading model with a 2-bit type): kept only in the draw the scene renderer makes of it for CG_CUSTOM_DATA_TARGET, in a
 // frame a post material reads them; a no-op in every other draw. Fragment stage.
 //
 //     CG_CUSTOM_DATA_OUT(vec4(outlineColour, outlineId));   // read back as CG_CUSTOM_DATA(uv)
@@ -437,7 +437,7 @@ vec3 cg_LocalLightDirectional(vec3 p) {
 // Whether this pass draws onto the host's own target, its colour sRGB-encoded. A "ColorSpace" = "Linear" Forward
 // pass's colour is linear light, so the generated main encodes it there (cg_SceneEncode).
 #define CG_ENCODED_TARGET      (cg_FrameParams.w > 0.5)
-// What a glow drawn into the scene is multiplied by (CgWorldRenderer.sceneEmission): 1 anywhere else.
+// What a glow drawn into the scene is multiplied by (CgSceneRenderer.SCENE_EMISSION, per view): 1 anywhere else.
 #define CG_SCENE_GLOW          (CG_LINEAR_SCENE ? cg_DepthParams.w : 1.0)
 // A material's value for each path, e.g. CG_HDR(0.4, 1.0): one program, picked at runtime.
 #define CG_HDR(off, on)        (CG_LINEAR_SCENE ? (on) : (off))

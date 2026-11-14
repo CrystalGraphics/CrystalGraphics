@@ -1,5 +1,6 @@
 package com.crystalgraphics.camera;
 
+import com.crystalgraphics.render.view.CgView;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -19,7 +20,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgCameraManager;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
 /** The composed pose reaching the host: held while a rig has the camera, released once, and a rig's {@code on_missing}. */
@@ -178,7 +179,7 @@ public class CgCameraHandoffTest {
     /** A pose past the chunks the client has, the render distance less one round the anchor, is held at that edge. */
     @Test
     public void aPosePastTheLoadedChunksIsHeldAtTheEdge() {
-        CgHostEnvironment env = CgRenderStage.WORLD_OPAQUE.host().environment();
+        CgHostEnvironment env = CgView.main().environment();
         Recorder host = host(ALL);
         CgCameraSystem cameras = cameras().anchor(out -> {
             out.set(-3, 64, 0);

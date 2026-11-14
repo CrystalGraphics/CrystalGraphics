@@ -6,6 +6,8 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
+
+import javax.annotation.Nullable;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.shader.CgBindingModel;
 
@@ -102,6 +104,9 @@ public final class CgPassConstants {
     private boolean fog;
     private int frameIndex;
     private boolean historyValid, netherLighting;
+    /** The scene whose GPU records the pass draws ({@code cg_SceneObjects}): its view's; null for the client's. */
+    @Nullable
+    private CgGpuScene scene;
 
     private final float[] packed = new float[FLOATS];
     private final Vector3f eye = new Vector3f();
@@ -146,6 +151,7 @@ public final class CgPassConstants {
      * environment and history). What a pass's or a canvas's {@code camera(...)} writes.
      */
     public CgPassConstants seenThrough(CgCamera camera, float width, float height) {
+        scene = null;
         view.set(camera.view());
         projection.set(camera.projection());
         time(camera.time()).resolution(camera.width() > 0f ? camera.width() : width,
@@ -155,6 +161,18 @@ public final class CgPassConstants {
         origin(camera.originX(), camera.originY(), camera.originZ());
         if (camera.viewState() != null) camera.viewState().write(this);
         return this;
+    }
+
+    /** Draws the records of {@code scene}: a view's camera names its scene, so a view of a scene of its own reads its own. */
+    public CgPassConstants scene(@Nullable CgGpuScene scene) {
+        this.scene = scene;
+        return this;
+    }
+
+    /** The scene whose records a pass of these constants draws; null for the client's. */
+    @Nullable
+    public CgGpuScene scene() {
+        return scene;
     }
 
     /** Puts the camera where {@link #view} sees from, for an affine view: a pass with no other camera to give. */

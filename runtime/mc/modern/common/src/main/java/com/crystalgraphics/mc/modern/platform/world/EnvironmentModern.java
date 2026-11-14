@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.mc.modern.platform.CgMinecraftClient;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;

@@ -1,4 +1,4 @@
-// The world renderer's half-resolution draws added over its target (CgWorldRenderer.Draw.halfResolution): a joint
+// The scene renderer's half-resolution draws added over its target (a row's .halfResolution()): a joint
 // bilateral upsample. Each pixel weighs the four half-size texels round it by distance, as bilinear filtering would,
 // and by how close the scene's depth where each texel was drawn is to its own, so light on a far wall does not bleed
 // onto a near silhouette. Where none agrees (a thin foreground edge), the texel nearest in depth. After Kopf et al.,

@@ -1,7 +1,11 @@
 package com.crystalgraphics.render.stage;
 
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -19,7 +23,6 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgAllocationSources;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.vfx.CgVfxEffect;
@@ -63,7 +66,6 @@ public class CgVfxSubmitAllocationTest {
             .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Drag(0.5f, 0f)).build();
     private static final CgVfxEmitter SMOKE = CgVfxEmitter.builder("submit_smoke").capacity(256)
             .ratePerBlock(4f).life(1f, 2f).speed(0.2f, 0.6f).module(new CgVfxModule.Buoyancy(2f, 0.5f)).build();
-    private static final CgRenderStage[] WORLD = {CgRenderStage.WORLD_OPAQUE, CgRenderStage.WORLD_TRANSPARENT};
 
     /** A desktop GPU's compute limits: the VFX range's kernels are wider than Vulkan's minimum of 128. */
     private static final CgRHI.Globals.Compute DESKTOP =
@@ -99,6 +101,28 @@ public class CgVfxSubmitAllocationTest {
         }
     }
 
+    /** A view of the client scene drawn whole into the null device's surface, as {@code CgView.renderInto} draws one. */
+    static final class Eye {
+        final CgView view = CgView.create("test.submit");
+        static final CgRenderStage HOST = CgStageHost.define("test:submit_allocation");
+        final CgHostFrame host = CgStageHost.frame(HOST).set(0f, 64, 64, 0);
+        final CgStageFiring firing = new CgStageFiring("test.submit_allocation");
+
+        Eye() {
+            view.size(64, 64).camera().set(0, 0, 0, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f));
+        }
+
+        void draw() {
+            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the null device's surface
+                firing.beginView(host, view);
+                CgSceneRenderer renderer = view.scene().renderer();
+                renderer.opaque(firing);
+                renderer.translucent(firing);
+                firing.execute();
+            }
+        }
+    }
+
     @BeforeClass
     public static void install() {
         compiler = new ShadercGlslCompiler();
@@ -118,9 +142,8 @@ public class CgVfxSubmitAllocationTest {
         assumeTrue(CgThreadAllocation.available());
         CgVfxSystem vfx = new CgVfxSystem();
         for (int i = 0; i < 6; i++) vfx.play(new Fountain(i * 4 - 10));
-        CgWorldRenderer world = CgWorldRenderer.get();
-        world.install();
-        Matrix4f view = new Matrix4f(), projection = new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f);
+        CgSceneRenderer.install();
+        Eye eye = new Eye();
         double[] clock = {0.0};
         Runnable frame = () -> {
             CgJob.drain();       // answers from the workers, as the client thread drains them every tick
@@ -128,13 +151,8 @@ public class CgVfxSubmitAllocationTest {
             CgUploads.tick();    // upload staging the GPU has read, back in its pool
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
-            vfx.submit(world);
-            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {   // the null device's surface
-                for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, 64, 64, 0).camera().set(0, 0, 0, view, projection);
-                    stage.recordAndExecute();   // fire() less the host section and the lifecycle, which want a platform
-                }
-            }
+            vfx.submit();
+            eye.draw();
             CgFrameRing.endFrame();
         };
         try {
@@ -178,9 +196,8 @@ public class CgVfxSubmitAllocationTest {
 
         CgVfxSystem vfx = new CgVfxSystem();
         for (CgAssetRef<CgVfxSystemDefinition> ref : refs) vfx.play(new CgVfxSystemInstance<>(ref, 0, 1.5, -8)).ground(0f);
-        CgWorldRenderer world = CgWorldRenderer.get();
-        world.install();
-        Matrix4f view = new Matrix4f(), projection = new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f);
+        CgSceneRenderer.install();
+        Eye eye = new Eye();
         double[] clock = {0.0};
         Runnable frame = () -> {
             CgFrameBoundary.run();   // the assets' drain and publish, as every host frame runs them
@@ -189,13 +206,8 @@ public class CgVfxSubmitAllocationTest {
             CgUploads.tick();        // upload staging the GPU has read, back in its pool
             clock[0] += 1.0 / 60.0;
             vfx.update(clock[0]);
-            vfx.submit(world);
-            try (CgExecutor.Into ignored = CgExecutor.into(CgExternalTarget.host(0, 64, 64))) {
-                for (CgRenderStage stage : WORLD) {
-                    stage.host().set(0f, 64, 64, 0).camera().set(0, 0, 0, view, projection);
-                    stage.recordAndExecute();
-                }
-            }
+            vfx.submit();
+            eye.draw();
             CgFrameRing.endFrame();
         };
         try {

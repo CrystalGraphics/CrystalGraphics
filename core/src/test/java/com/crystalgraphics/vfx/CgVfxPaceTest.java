@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.render.stage.CgHostEnvironment;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;

@@ -1,5 +1,6 @@
 package com.crystalgraphics.vfx.system;
 
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
@@ -7,7 +8,6 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.asset.load.CgAssetRef;
-import com.crystalgraphics.render.graph.CgRehearsal;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.look.CgVfxLook;

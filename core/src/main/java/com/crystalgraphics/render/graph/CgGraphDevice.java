@@ -98,13 +98,12 @@ final class CgGraphDevice {
     long besideMismatch;
     boolean refusedLogged;
     /** The views a target copy's blits named last, the oldest replaced first: a frame copies between a few. */
-    final CgTextureView[] attachedViews = new CgTextureView[8];
+    final CgTextureView[] attachedViews = new CgTextureView[16];
     int nextAttached;
     /** A comparison's two reads, grown to the largest asked. */
     @Nullable
     ByteBuffer compareFirst, compareSecond;
-    /** Whether a rehearsal's pass is running. */
-    boolean rehearsing;
+
     /** The step whose bindings {@link CgGraphCheck} asks about, named in a refusal; null outside one. */
     @Nullable
     CgPass checkedStep;

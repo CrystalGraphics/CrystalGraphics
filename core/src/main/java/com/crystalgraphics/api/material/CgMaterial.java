@@ -19,7 +19,7 @@ import java.util.List;
  * <pre>{@code
  * CgMaterial stone = CgMaterial.load("mymod:shaders/stone.shader");          // a shader with its defaults
  * CgMaterial rock = CgMaterial.of(definition);                               // a materials/ asset
- * CgWorldRenderer.get().draw(mesh, stone).at(x, y, z).submit();
+ * CgScene.client().mesh(mesh, stone).at(x, y, z).spawn();
  * }</pre>
  *
  * <h3>Keywords and state make other materials</h3>
@@ -32,7 +32,7 @@ import java.util.List;
  * <h3>Values of your own</h3>
  * <pre>{@code
  * CgMaterialInstance tinted = stone.instance().colorARGB("_Tint", 0xFF3080FF);
- * world.draw(mesh, tinted).submit();
+ * scene.once().mesh(mesh, tinted).add();
  * }</pre>
  *
  * <ul>
@@ -83,7 +83,7 @@ public final class CgMaterial implements CgMaterialInterface {
      *
      * <pre>{@code
      * CgMaterial glow = CgMaterial.of(definition);
-     * CgWorldRenderer.get().draw(mesh, glow).at(x, y, z).submit();
+     * CgScene.client().mesh(mesh, glow).at(x, y, z).spawn();
      * }</pre>
      */
     public static CgMaterial of(CgMaterialDefinition definition) {

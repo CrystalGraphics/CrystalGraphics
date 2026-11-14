@@ -1,5 +1,10 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.loading.CgLoadingScreen;
@@ -22,11 +27,9 @@ import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.bloom.CgBloom;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -61,7 +64,7 @@ import java.util.Locale;
 import java.util.function.Supplier;
 
 /**
- * A development demo drawn through {@link CgWorldRenderer} under the host's own camera, on unless turned off: one scene
+ * A development demo drawn through the scene under the host's own camera, on unless turned off: one scene
  * at a time, switched in game, with the harness's HUD and toggles in the top left.
  *
  * <pre>
@@ -153,7 +156,7 @@ public final class CgRenderDemo {
         /** Whether what {@link #precache} started compiling is built: it draws nothing until then. */
         boolean ready();
 
-        void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds);
+        void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds);
 
         /** Ends what it plays at once, keeping what it built; its next submit starts over. */
         void clear();
@@ -209,7 +212,7 @@ public final class CgRenderDemo {
     private int profiled;
     private long profileFrom;
 
-    /** The transparent stage's frame, for the capture callback, which runs inside that firing. */
+    /** The host's world frame, for the capture callback, which runs inside the main view's firing. */
     private CgHostFrame captured;
     private final Runnable capture = () -> capture(captured.target(), captured.width(), captured.height());
 
@@ -302,10 +305,12 @@ public final class CgRenderDemo {
         CgWorld.client().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:demo", dt -> frame(CgWorld.client().view()))
                 .whilePaused(true);
         // The keys and whether the GUI is hidden, from the world's frame, which carries the host's environment
-        CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1000, frame -> {
-            CgHostEnvironment world = frame.host().environment();
-            keys(world.screenOpen());
-            guiHidden = world.guiHidden();
+        CgRenderStage.OVERLAY.register(1000, frame -> {
+            CgHostEnvironment world = frame.view().environment();
+            if (frame.view() == CgView.main()) {
+                keys(world.screenOpen());
+                guiHidden = world.guiHidden();
+            }
             // Behind the loading screen, into its warm target at the window's size: the real HUD's glyphs made there
             if (CgLoadingScreen.shown() && CgLoadingScreen.windowHeight() > 0 && hudShown) {
                 hudSide = Math.min(CgLoadingScreen.windowWidth(), CgLoadingScreen.windowHeight());
@@ -315,15 +320,15 @@ public final class CgRenderDemo {
         // The HUD on the HUD stage, over the finished world: Minecraft draws clouds and weather after the world stages
         CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS - 1, frame -> {
             if (guiHidden || !hudShown) return;
-            hudSide = Math.min(frame.host().width(), frame.host().height());
+            hudSide = Math.min(frame.width(), frame.height());
             drawHud(frame);
         });
         if (!CAPTURE.isEmpty()) {
             // After the composite: with the HDR scene on, the host's target holds the world only from then.
-            CgRenderStage.WORLD_TRANSPARENT.register(CgPostStack.ORDER + 1, frame -> {
-                if (++worldFrames != CAPTURE_AT) return;
-                captured = frame.host();
-                frame.callback("demo.capture", capture);
+            CgRenderStage.OVERLAY.register(1, frame -> {
+                if (frame.view() != CgView.main() || ++worldFrames != CAPTURE_AT) return;
+                captured = CgStageHost.frame(CgStageHost.WORLD_OPAQUE);
+                frame.recording().callback("demo.capture", frame.target(), capture);
             });
         }
         // The shown scene alone: building all three cost the first world frame a quarter second (26.2, Vulkan). It warms
@@ -370,8 +375,8 @@ public final class CgRenderDemo {
         CgVfxBlasts blasts = new CgVfxBlasts(BLASTS, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                blasts.submit(world, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                blasts.submit(scene, x, y, z, seconds);
             }
 
             @Override
@@ -400,9 +405,9 @@ public final class CgRenderDemo {
         CgVfxShowcase showcase = new CgVfxShowcase(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                showcase.submit(world, x, y, z, seconds);
-                if (SKY) showcase.submitSky(world, view.x(), view.y(), view.z());
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                showcase.submit(scene, x, y, z, seconds);
+                if (SKY) showcase.submitSky(scene, view.x(), view.y(), view.z());
             }
 
             @Override
@@ -437,8 +442,8 @@ public final class CgRenderDemo {
         CgVfxFluidDemo fluid = new CgVfxFluidDemo(labelFont, VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                fluid.submit(world, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                fluid.submit(scene, x, y, z, seconds);
             }
 
             @Override
@@ -471,8 +476,8 @@ public final class CgRenderDemo {
             private boolean precached;
 
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                if (precached) modules.submit(world, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                if (precached) modules.submit(scene, x, y, z, seconds);
             }
 
             @Override
@@ -506,8 +511,8 @@ public final class CgRenderDemo {
         CgVfxBlastFlash blast = new CgVfxBlastFlash(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                blast.submit(world, x, y, z, aheadX, aheadZ, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                blast.submit(scene, x, y, z, aheadX, aheadZ, seconds);
             }
 
             @Override
@@ -541,8 +546,8 @@ public final class CgRenderDemo {
         CgCollisionDemo demo = new CgCollisionDemo();
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                float partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                float partialTick = CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick();
                 demo.submit(CgCollisionWorld.client(partialTick), x, y, z, seconds);
             }
 
@@ -571,8 +576,8 @@ public final class CgRenderDemo {
         CgLightsDemo lights = new CgLightsDemo(VFX);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                lights.submit(world, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                lights.submit(scene, x, y, z, seconds);
             }
 
             @Override
@@ -606,8 +611,8 @@ public final class CgRenderDemo {
         CgShadowsDemo shadows = new CgShadowsDemo();
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                shadows.submit(world, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                shadows.submit(scene, x, y, z, seconds);
             }
 
             @Override
@@ -640,8 +645,8 @@ public final class CgRenderDemo {
         CgGlassDemo glass = new CgGlassDemo(labelFont);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                glass.submit(world, view, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                glass.submit(scene, view, x, y, z, seconds);
             }
 
             @Override
@@ -671,8 +676,8 @@ public final class CgRenderDemo {
         CgTextDemo text = new CgTextDemo(labelFont);
         return new Scene() {
             @Override
-            public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
-                text.submit(world, view, x, y, z, seconds);
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                text.submit(scene, view, x, y, z, seconds);
             }
 
             @Override
@@ -726,7 +731,7 @@ public final class CgRenderDemo {
         double seconds = CgVfxDemoControls.get().time(CgFrameClock.seconds());
         // The scenes play on the world's system, which keeps the host's clock: the time switch reaches it as a scale.
         CgWorld.client().timeDilation(CgVfxDemoControls.get().speed());
-        scenes[current].submit(CgWorldRenderer.get(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
+        scenes[current].submit(CgScene.client(), view, anchorX + 0.5, anchorY, anchorZ + 0.5, seconds);
         shownFrames++;
         long work = CgLoadingScreen.firstUseWork();
         quietFrames = work == lastWork ? quietFrames + 1 : 0;
@@ -894,10 +899,10 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> toggleBloom();
-            case CgKeyCodes.KEY_X -> CgWorldRenderer.get().gradeDraws(!CgWorldRenderer.get().gradeDraws());
+            case CgKeyCodes.KEY_X -> CgView.main().override(CgSceneRenderer.GRADE_DRAWS, !CgView.main().flag(CgSceneRenderer.GRADE_DRAWS));
             // A quarter down or up, as the harness's.
-            case CgKeyCodes.KEY_LBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() / 1.25f);
-            case CgKeyCodes.KEY_RBRACKET -> CgWorldRenderer.get().sceneEmission(CgWorldRenderer.get().sceneEmission() * 1.25f);
+            case CgKeyCodes.KEY_LBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) / 1.25f);
+            case CgKeyCodes.KEY_RBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) * 1.25f);
             case CgKeyCodes.KEY_MINUS -> scaleBloom(1f / 1.25f);
             case CgKeyCodes.KEY_EQUALS -> scaleBloom(1.25f);
             case CgKeyCodes.KEY_O -> CgShadowsDemo.toggleShadows();
@@ -966,7 +971,7 @@ public final class CgRenderDemo {
                 hudLayout = CgTextLayout.of(hudText(), hudFont).build();
                 hudDirty = false;
             }
-            int w = Math.max(1, frame.host().width()), h = Math.max(1, frame.host().height());
+            int w = Math.max(1, frame.width()), h = Math.max(1, frame.height());
             hudCamera.view.identity();
             CgCamera.orthographicMatrix(hudCamera.projection, 0f, w, h, 0f, -1f, 1f);
             hudCamera.resolution(w, h);
@@ -989,14 +994,14 @@ public final class CgRenderDemo {
                 + "\nScene [N]: " + kinds[wanted].name() + " - Hide [H]"
                 + String.format(Locale.ROOT, "\nParticles: %,d", particles)
                 + ("lights".equals(kinds[wanted].name()) ? String.format(Locale.ROOT, " | Lights dropped: %,d, budget %d a cell",
-                        CgWorldRenderer.get().lights().cellsDropped(), CgWorldRenderer.get().lights().budgetPerCell()) : "")
+                        CgScene.client().lights().cellsDropped(), CgScene.client().lights().budgetPerCell()) : "")
                 + (scenes[wanted] != null ? scenes[wanted].hud() : "")
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
-                + " | Kit looks [X]: " + (CgWorldRenderer.get().gradeDraws() ? "on" : "off")
+                + " | Kit looks [X]: " + (CgView.main().flag(CgSceneRenderer.GRADE_DRAWS) ? "on" : "off")
                 + (bloom.intensity() == 0f ? "\nBloom [L]: off"
                         : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.intensity()))
-                + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgWorldRenderer.get().sceneEmission())
+                + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgView.main().flag(CgSceneRenderer.SCENE_EMISSION))
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }
 

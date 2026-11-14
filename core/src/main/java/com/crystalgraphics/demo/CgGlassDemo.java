@@ -1,5 +1,6 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgCanvasBackdrop;
@@ -9,7 +10,6 @@ import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import org.joml.Matrix4f;
 
 /**
@@ -21,7 +21,7 @@ import org.joml.Matrix4f;
  * <pre>{@code
  * CgGlassDemo glass = new CgGlassDemo(font);
  * glass.precache();                                      // then ready() each frame until true
- * glass.submit(world, view, x, y, z, seconds);           // each frame, its point on the ground
+ * glass.submit(scene, view, x, y, z, seconds);           // each frame, its point on the ground
  * glass.clear();                                         // draws nothing until the next submit
  * }</pre>
  *
@@ -57,7 +57,7 @@ public final class CgGlassDemo {
             looks[i] = LOOKS[i].scaled(UNITS_PER_PIXEL);
         }
         // After the world renderer's draws and before the post stack: the glass sees the world and lands in the scene.
-        drawing = CgRenderStage.WORLD_TRANSPARENT.register(CgWorldRenderer.ORDER + 10, this::draw);
+        drawing = CgRenderStage.TRANSLUCENT.register(10, this::draw);
     }
 
     /** Starts compiling every look's program. */
@@ -76,7 +76,7 @@ public final class CgGlassDemo {
      * The row this frame, centred on {@code (x, y, z)}, the ground under it. Laid out across the camera's line to the
      * point when the point moves (the demo moves it only for a new scene, a new level or a jump), and fixed there.
      */
-    public void submit(CgWorldRenderer world, CgCamera view, double x, double y, double z, double seconds) {
+    public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
         if (x != laidX || z != laidZ) {
             laidX = x;
             laidZ = z;
@@ -90,7 +90,7 @@ public final class CgGlassDemo {
         }
         for (int i = 0; i < LOOKS.length; i++) {
             at[i * 3 + 1] = y + LIFT;
-            world.text(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
+            scene.label(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
                     .font(font).style(CgDemoStyles.LABEL).submit();
         }
         active = true;

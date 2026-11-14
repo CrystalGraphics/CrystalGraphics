@@ -48,8 +48,11 @@ import org.apache.logging.log4j.Logger;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import com.crystalgraphics.render.canvas.CgCurveBatch;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
@@ -104,6 +107,8 @@ final class CgRasterEncoder {
     private final CgDrawStateCache drawCache = new CgDrawStateCache();
     /** What was logged once: a pipeline skipped, a second attachment dropped. */
     private final Set<String> loggedOnce = new HashSet<>();
+    /** Pipelines a set of which was left to a default, each named once. */
+    private final Set<CgPipeline> defaultedPipelines = Collections.newSetFromMap(new IdentityHashMap<>());
     private final List<CgFormat> deviceFormats = new ArrayList<>(4);
     private final int[] scissorRect = new int[4], scissorPart = new int[4];
     /** The pass's view textures stated as it executes: scene copies, depth sampled in place. */
@@ -512,16 +517,29 @@ final class CgRasterEncoder {
         CgDeviceSection.end();
         sceneCopy(pass, packed.sceneOp[b], packed.copyRect, b * 4);
         CgDeviceSection.begin();
-        CgPassDesc d = devicePassDesc;
+        CgTrace.add(CgChannels.GL, MID_PASS_SPLITS, 1);
+        return open(rhi, reloading(devicePassDesc));
+    }
+
+    /** {@code d} loading what it drew: made once per pass description, which its builder keeps. */
+    private CgPassDesc reloading(CgPassDesc d) {
+        CgPassDesc kept = reloads.get(d);
+        if (kept != null) return kept;
         List<CgPassDesc.Color> colors = new ArrayList<>(d.colors().size());
         for (CgPassDesc.Color c : d.colors()) {
             colors.add(new CgPassDesc.Color(c.view(), CgPassDesc.LoadOp.LOAD, c.r(), c.g(), c.b(), c.a(), c.store()));
         }
         CgPassDesc.Depth depth = d.depth() == null ? null : new CgPassDesc.Depth(d.depth().view(), CgPassDesc.LoadOp.LOAD,
                 d.depth().clearDepth(), CgPassDesc.LoadOp.LOAD, d.depth().clearStencil(), d.depth().store(), d.depth().readOnly());
-        CgTrace.add(CgChannels.GL, MID_PASS_SPLITS, 1);
-        return open(rhi, new CgPassDesc(d.label(), colors, depth, d.width(), d.height()));
+        if (reloads.size() >= RELOADS_KEPT) reloads.clear();   // descriptions a resize left behind
+        kept = new CgPassDesc(d.label(), colors, depth, d.width(), d.height());
+        reloads.put(d, kept);
+        return kept;
     }
+
+    /** Each split pass's reloading description, by the description it splits. */
+    private final Map<CgPassDesc, CgPassDesc> reloads = new IdentityHashMap<>();
+    private static final int RELOADS_KEPT = 64;
 
     private void batches(CgFrame frame, CgRasterPass pass, CgFrame.Raster packed, @Nullable int[] damage,
                          CgRHI rhi, CgRenderState passState, @Nullable CgFormat depthFormat,
@@ -624,7 +642,11 @@ final class CgRasterEncoder {
                     materialParameters.clear();
                     if (executed.versions(table, snapshot, materialParameters)) parameters = materialParameters;
                 }
+                long defaultedBefore = deviceSets.defaulted();
                 CgBindingSet made = deviceSets.set(rhi, table, snapshot, layout, set, parameters, whole);
+                if (deviceSets.defaulted() != defaultedBefore && defaultedPipelines.add(pipeline)) {
+                    LOGGER.warn("device raster: {} in {} defaulted {}", pipeline, pass.name(), deviceSets.lastDefaulted());
+                }
                 if (set < setLayout.length) {
                     setLayout[set] = bl;
                     setSnapshot[set] = memo;

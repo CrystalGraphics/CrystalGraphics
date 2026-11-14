@@ -1,13 +1,13 @@
 package com.crystalgraphics.mc.legacy.mixin;
 
+import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
-import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.mc.legacy.platform.LoadingScreenLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.EnvironmentLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.TexturesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
-import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
@@ -36,32 +36,28 @@ public abstract class CgRenderHook {
     @Inject(method = "func_175068_a", remap = false, require = 1, at = @At(value = "INVOKE_STRING",
             target = "Lnet/minecraft/profiler/Profiler;func_76318_c(Ljava/lang/String;)V", args = "ldc=translucent"))
     private void cg$opaquePass(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        crystalgraphics$fire(CgRenderStage.WORLD_OPAQUE, Minecraft.getMinecraft(), partialTicks, pass);
+        crystalgraphics$opaque(Minecraft.getMinecraft(), partialTicks, pass);
     }
 
     @Inject(method = "func_175068_a", remap = false, require = 1, at = @At(value = "INVOKE",
             target = "Lnet/minecraftforge/client/ForgeHooksClient;dispatchRenderLast(Lnet/minecraft/client/renderer/RenderGlobal;F)V"))
     private void cg$transparentPass(int pass, float partialTicks, long finishTimeNano, CallbackInfo ci) {
-        crystalgraphics$fire(CgRenderStage.WORLD_TRANSPARENT, Minecraft.getMinecraft(), partialTicks, pass);
+        // The opaque callback's frame: one level render
+        CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT);
     }
 
+    /** Fills the world callbacks' frame, which the transparent one shares, and fires the opaque one. */
     @Unique
-    private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks, int pass) {
-        CgHostFrame frame = stage.host()
+    private static void crystalgraphics$opaque(Minecraft mc, float partialTicks, int pass) {
+        CgHostFrame frame = CgStageHost.frame(CgStageHost.WORLD_OPAQUE)
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
         // renderWorldPass's pass is 0 and 1 for anaglyph's eyes, 2 otherwise: each eye a view, with histories of its own
         frame.view(pass == 1 ? HostCameraLegacy.RIGHT_EYE : CgView.main());
         HostCameraLegacy.capture(mc, partialTicks, frame.camera());
-        if (stage == CgRenderStage.WORLD_OPAQUE) {
-            EnvironmentLegacy.capture(mc, partialTicks, frame.camera(), frame.environment());
-            TexturesLegacy.capture(mc, frame.textures());
-            WorldEventsLegacy.poll();
-        } else {
-            // The same level render as the opaque pass.
-            frame.environment().set(CgRenderStage.WORLD_OPAQUE.host().environment());
-            frame.textures().set(CgRenderStage.WORLD_OPAQUE.host().textures());
-        }
-        stage.fire();
+        EnvironmentLegacy.capture(mc, partialTicks, frame.camera(), frame.environment());
+        TexturesLegacy.capture(mc, frame.textures());
+        WorldEventsLegacy.poll();
+        CgStageHost.fire(CgStageHost.WORLD_OPAQUE);
     }
 
     @Inject(method = "func_181560_a", remap = false, require = 1, at = @At("TAIL"))

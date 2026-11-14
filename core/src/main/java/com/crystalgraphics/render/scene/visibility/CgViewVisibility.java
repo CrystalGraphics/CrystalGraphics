@@ -36,8 +36,9 @@ import java.util.WeakHashMap;
  * }</pre>
  *
  * <ul>
- *   <li>The frame thread's. Made at the first ask of a host frame ({@code CgFrameRing.frame()}) through that ask's
- *       camera; asks after it in the same frame answer it unchanged, whatever camera they pass.</li>
+ *   <li>The frame thread's. Made at the first ask of a view's draw ({@code CgView.beginDraw}: its opaque callback)
+ *       in a host frame ({@code CgFrameRing.frame()}) through that ask's camera; asks after it in the same draw answer it
+ *       unchanged, whatever camera they pass. A second draw of the view in one frame makes it again.</li>
  *   <li>Each view keeps one per scene, kept as long as the scene is.</li>
  *   <li>Counted on the {@code crystalgraphics.world} trace channel: {@code scene.visibility.computed} once per view
  *       and scene a frame, {@code .reused} for every later ask, {@code .tested}, {@code .culled} and {@code .rows}.</li>
@@ -67,13 +68,17 @@ public final class CgViewVisibility {
         CgViewVisibility v = seen.get(scene);
         if (v == null) seen.put(scene, v = new CgViewVisibility(view));
         long now = CgFrameRing.frame();
-        if (v.frame == now) {
+        if (v.frame == now && v.draw == view.draws()) {
             CgTrace.add(CgChannels.WORLD, REUSED, 1);
             return v;
         }
+        v.draw = view.draws();
         v.compute(scene, camera, now);
         return v;
     }
+
+    /** The view's draw it was made in. */
+    private long draw = -1;
 
     private void compute(CgScene scene, CgCamera camera, long now) {
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, ZONE)) {
@@ -92,8 +97,8 @@ public final class CgViewVisibility {
 
     /**
      * Row {@code b}'s key: its material's queue, its layer, its sort priority as the key's order ({@code priority +
-     * 128}, a byte), then by material and mesh near to far when opaque, far to near when transparent. A transparent
-     * row is its own sort group until scenes have groups.
+     * 128}, a byte), then by material and mesh near to far when opaque. A translucent row sorts far to near at its
+     * primitive's distance (Unreal sorts a primitive's sections as one), then by its order, batch key and own distance.
      */
     private long key(int b) {
         CgMaterialInterface material = batches.material(b);
@@ -101,7 +106,9 @@ public final class CgViewVisibility {
         int order = Math.max(0, Math.min(255, batches.sortPriority(b) + 128));
         float distance = batches.distance(b);
         if (queue >= CgRenderQueue.TRANSPARENT_THRESHOLD) {
-            return CgSortKey.transparent(queue, layer, distance, material.writesDepth(), order, 0, distance);
+            float primitive = batches.primitiveDistance(b);
+            return CgSortKey.transparent(queue, layer, Float.isNaN(primitive) ? distance : primitive, material.writesDepth(),
+                    order, batches.batchKey(b), distance);
         }
         return CgSortKey.opaque(queue, layer, order, material.getMaterialId(), System.identityHashCode(batches.mesh(b)), distance);
     }
@@ -120,7 +127,7 @@ public final class CgViewVisibility {
         return frame;
     }
 
-    /** How many times it has been made: once for every frame a view asked. */
+    /** How many times it has been made: once for every draw of a frame a view asked in. */
     public int computations() {
         return computations;
     }

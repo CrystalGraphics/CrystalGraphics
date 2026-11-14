@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.particle.gpu.draw;
 
-import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuCount;
@@ -21,7 +21,6 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -30,7 +29,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuEmitter;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxRecord;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
-import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgVoxelWindow;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshFacing;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
@@ -59,25 +58,25 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
  *
  * <pre>{@code
  * CgVfxRange range = CgVfxRange.of(pool);
- * world.draw(quads, spark)                                                  // per slot and layer
- *      .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
- *      .indirect(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
- *      .custom(0, range.base(slot), capacity, radius, parameter)
- *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
+ * out.indirect(quads, spark)                                                // a row per slot and layer
+ *    .buffer(CgParticleBuffer.SLOT, pool.drawn()).buffer(CgParticleOrderBuffer.SLOT, range.order())
+ *    .count(range.visible(), range.visibleWord(slot) * 4L, CgIndirect.INDICES, 6)
+ *    .customData(0, range.base(slot), capacity, radius, parameter)
+ *    .at(ox, oy, oz).sortAt(ox, oy, oz).add();
  * }</pre>
  *
  * <p>A mesh per particle ({@code MESHES}) draws the same particles as object records, culled and given levels again on
  * the GPU; each layer scales them and states its own colours, leaving custom 0 each particle's velocity:</p>
  *
  * <pre>{@code
- * world.draw(billow, smoke)
- *      .instances(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
- *      .instanceScale(layer.radius()).custom(2, r, g, b, a)
- *      .at(ox, oy, oz).gpuCulled().group(ox, oy, oz).submit();
+ * out.records(billow, smoke)
+ *    .from(range.objects(), range.base(slot), CgGpuCount.at(range.visible(), range.visibleWord(slot), capacity))
+ *    .culled(layer.radius(), 0f).customData(2, r, g, b, a)
+ *    .at(ox, oy, oz).sortAt(ox, oy, oz).add();
  * }</pre>
  *
  * <ul>
- *   <li>It records on every firing of {@link CgRenderStage#WORLD_OPAQUE} at {@link #ORDER}, after the pools step and
+ *   <li>It records on every firing of {@link CgRenderStage#PREPARE} at {@link #ORDER}, after the pools step and
  *       before the world renderer: a second firing with another view culls again.</li>
  *   <li>Ask {@link #order()}, {@link #visible()}, {@link #base} and {@link #visibleWord} after the frame's slots open:
  *       each pool's place in the shared buffers follows every pool's slots, and a draw holding an older answer reads
@@ -88,8 +87,8 @@ import com.crystalgraphics.vfx.particle.gpu.CgParticleOrderBuffer;
  */
 public final class CgVfxRange {
 
-    /** Where ranges record on {@link CgRenderStage#WORLD_OPAQUE}: after the pools' steps, before the world renderer. */
-    public static final int ORDER = CgWorldRenderer.ORDER - 50;
+    /** Where ranges record on {@link CgRenderStage#PREPARE}, each view: after the pools' steps, before the scene draws. */
+    public static final int ORDER = -50;
     /** The record's steps, on the frame thread. */
     private static final int REC_PYRAMID = CgTrace.name("vfx.range.pyramid"), REC_UPLOAD = CgTrace.name("vfx.range.upload"),
             REC_KEY = CgTrace.name("vfx.range.key"), REC_SORT = CgTrace.name("vfx.range.sort"),
@@ -252,7 +251,7 @@ public final class CgVfxRange {
             // A pool's first draw makes its range after the frame's layOut: laid out now, or its draws read word 0.
             if (list == ALL) layOut();
             if (registration == null) {
-                registration = CgRenderStage.WORLD_OPAQUE.register(ORDER, CgVfxBudget.charged(CgVfxRange::recordAll));
+                registration = CgRenderStage.PREPARE.register(ORDER, CgVfxBudget.charged(CgVfxRange::recordAll)).allScenes();
                 CgEngineLifecycle.addListener(CONTEXT);
             }
         }
@@ -478,18 +477,22 @@ public final class CgVfxRange {
     }
 
     /**
-     * As {@link #visibleCount()}, for the views drawn into {@code target} alone: a second viewport's own count, not
-     * the world's. 0 for a target nothing has drawn into lately. Render thread.
+     * As {@link #visibleCount()}, for {@code view} alone: a second viewport's own count, not the world's. 0 for a view
+     * not drawn lately. Render thread.
      *
      * <pre>{@code
-     * stats.setText(CgVfxRange.visibleCount(viewport.external()) + " particles");
+     * stats.setText(CgVfxRange.visibleCount(viewport) + " particles");
      * }</pre>
      */
-    public static int visibleCount(CgExternalTarget target) {
+    public static int visibleCount(CgView view) {
         counting = true;
-        int t = targetSlot(target, false);
+        int t = targetSlot(view, false);
         return t < 0 ? 0 : TARGET_COUNT[t];
     }
+
+    /** The view the stage records Range for, which its counts are filed under; null outside a stage. */
+    @Nullable
+    private static CgView recordingFor;
 
     /** Which word of {@link #visible()} counts {@code slot}'s visible particles: its byte offset over 4. */
     public int visibleWord(int slot) {
@@ -613,7 +616,12 @@ public final class CgVfxRange {
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, REC_PYRAMID)) {
             pyramid = any ? frame.depthPyramid() : null;
         }
-        record(frame.recording(), frame.host().camera(), pyramid);
+        recordingFor = frame.view();
+        try {
+            record(frame.recording(), frame.camera(), pyramid);
+        } finally {
+            recordingFor = null;
+        }
     }
 
     /**
@@ -630,7 +638,7 @@ public final class CgVfxRange {
 
     /**
      * Records every range for {@code view} into {@code recording}. Ranges record themselves on every firing of
-     * {@link CgRenderStage#WORLD_OPAQUE}; call it only where that stage does not fire, as a check scene. Render thread.
+     * {@link CgRenderStage#PREPARE}; call it only where that stage does not fire, as a check scene. Render thread.
      */
     public static void record(CgRecording recording, CgCamera view) {
         record(recording, view, null);
@@ -680,7 +688,7 @@ public final class CgVfxRange {
         }
         uploading.close();
         CgTrace.Zone keying = CgTrace.zone(CgChannels.WORLD, REC_KEY);
-        CgWorldVoxelWindow window = CgWorldVoxelWindow.get().use();
+        CgVoxelWindow window = CgVoxelWindow.get().use();
         VIEW_PROJECTION.set(view.projection()).mul(view.view());
         CgCompute kernels = CgCompute.load(KERNELS);
         CgKernel key = kernels.kernel("Key"), place = kernels.kernel("Place"), objected = kernels.kernel("Objects");
@@ -787,7 +795,7 @@ public final class CgVfxRange {
                 if (countTail - countHead == COUNT_FRAMES.length) countHead++;
                 int at = countTail++ & (COUNT_FRAMES.length - 1);
                 COUNT_FRAMES[at] = CgFrameRing.frame();
-                COUNT_TARGETS[at] = CgRenderStage.WORLD_OPAQUE.host().target();
+                COUNT_TARGETS[at] = recordingFor;
             }
             recording.readback(visible, 0, allSlots * 4L, COUNT);
         }

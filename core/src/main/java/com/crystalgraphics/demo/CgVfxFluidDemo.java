@@ -1,10 +1,10 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.render.world.CgWorldRenderer;
 import com.crystalgraphics.shape.primitive.CgBox;
 import com.crystalgraphics.shape.primitive.CgRing;
 import com.crystalgraphics.shape.primitive.CgSphere;
@@ -54,7 +54,7 @@ import java.util.function.Consumer;
  *
  * <pre>{@code
  * CgVfxFluidDemo fluid = new CgVfxFluidDemo(font);     // on the render thread
- * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:fluid", dt -> fluid.submit(world, x, y, z, CgFrameClock.seconds()));
+ * CgWorld.client().schedule().add(CgTickGroup.SUBMIT, "mymod:fluid", dt -> fluid.submit(scene, x, y, z, CgFrameClock.seconds()));
  * CgVfxFluidDemo.Shot shot = fluid.shots().get(3);     // where a camera stands to frame the fourth station
  * fluid.delete();
  * }</pre>
@@ -669,7 +669,7 @@ public final class CgVfxFluidDemo {
      * Plays every station round {@code (x, y, z)} each {@link #PERIOD} seconds and submits this frame's draws: once a
      * frame, before the world stages record.
      */
-    public void submit(CgWorldRenderer world, double x, double y, double z, double seconds) {
+    public void submit(CgScene scene, double x, double y, double z, double seconds) {
         if (seconds >= nextPlay) {
             // A fluid or grid holds its place until its play dies: the last plays go first, so the new ones find places.
             vfx.clear();
@@ -683,15 +683,15 @@ public final class CgVfxFluidDemo {
         }
         if (drives) {
             vfx.system().update(seconds);
-            vfx.system().submit(world);
+            vfx.system().submit();
         }
         if (font == null) return;
         for (int i = 0; i < stations.size(); i++) {
             Station s = stations.get(i);
             float size = Math.max(1.1f, s.view() / 26f);
             double lx = x + s.x(), ly = floors[i] + s.label(), lz = z + s.z();
-            world.text(s.title()).at(lx, ly + size, lz).height(size).font(font).style(CgDemoStyles.LABEL).submit();
-            world.text(s.subtitle()).at(lx, ly, lz).height(size * 0.55f).font(font).color(0xFFB8D8FF)
+            scene.label(s.title()).at(lx, ly + size, lz).height(size).font(font).style(CgDemoStyles.LABEL).submit();
+            scene.label(s.subtitle()).at(lx, ly, lz).height(size * 0.55f).font(font).color(0xFFB8D8FF)
                     .style(CgDemoStyles.LABEL).submit();
         }
     }

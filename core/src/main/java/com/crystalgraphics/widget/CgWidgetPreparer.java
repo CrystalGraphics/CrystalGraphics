@@ -5,7 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.world.CgPipelineList;
+import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**

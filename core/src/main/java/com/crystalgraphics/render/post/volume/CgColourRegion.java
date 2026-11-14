@@ -23,9 +23,9 @@ import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgGradeLayers;
-import com.crystalgraphics.render.world.CgWorldLight;
-import com.crystalgraphics.render.world.CgWorldLights;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLight;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
@@ -40,7 +40,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * CgColourRegion flash = new CgColourRegion().shape(CgColourRegion.Shape.SPHERE)
  *         .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 1f, 1f, 1f, 2f);   // twice as bright
  * flash.place(x, y, z, new Quaternionf(), 6f, 6f, 6f);            // each frame: a sphere 3 blocks round
- * CgRenderStage.Registration on = flash.show();
+ * CgPostStack.Registration on = flash.show();
  * on.close();                                                       // gone
  * }</pre>
  *
@@ -158,7 +158,7 @@ public final class CgColourRegion implements CgPostEffect {
     /**
      * Lights by its gain as a flash lights a surface, however dark the world is where it stands: each channel's lift
      * ({@code gain - 1}) divided by the ambient Minecraft lit its centre with (the host's lightmap at its block and sky
-     * light), as {@link CgWorldLights} divide their light by it. A day under open sky (ambient 1) plays its gain as
+     * light), as {@link CgSceneLights} divide their light by it. A day under open sky (ambient 1) plays its gain as
      * authored; at night the same flash multiplies harder, keeping colours, blacks and contrast. Not Unreal's.
      *
      * <pre>{@code
@@ -259,7 +259,7 @@ public final class CgColourRegion implements CgPostEffect {
     }
 
     /** Shows it on the post stack until the registration closes. */
-    public CgRenderStage.Registration show() {
+    public CgPostStack.Registration show() {
         return CgPostStack.get().add(this);
     }
 
@@ -281,7 +281,7 @@ public final class CgColourRegion implements CgPostEffect {
 
     @Override
     public void record(CgPostContext post) {
-        CgCamera view = post.stage().host().camera();
+        CgCamera view = post.view().camera();
         // Camera-relative in doubles: the shader's points are the camera's
         float cx = (float) (x - view.x()), cy = (float) (y - view.y()), cz = (float) (z - view.z());
         // Its unit shape half a block across at scale 1 (WorldToMetersScale / 2), turned into its axes
@@ -297,13 +297,13 @@ public final class CgColourRegion implements CgPostEffect {
             rows[r * 4 + 2] = c;
             rows[r * 4 + 3] = -(a * cx + b * cy + c * cz);
         }
-        int light = CgWorldLight.at(x, y, z);
-        blockLight = CgWorldLight.block(light);
-        skyLight = CgWorldLight.sky(light);
+        int light = CgSceneLight.at(x, y, z);
+        blockLight = CgSceneLight.block(light);
+        skyLight = CgSceneLight.sky(light);
         write(material);
         draw.record(post);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
-        CgGradeLayers layers = post.resources().get(CgGradeLayers.KEY);
+        CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
         if (layers == null) return;
         write(layerMaterial);
         layerMaterial.set1f("_Coverage", 1f);

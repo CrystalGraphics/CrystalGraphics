@@ -10,7 +10,7 @@ import org.joml.Vector3d;
  * JOML's sense.
  *
  * <pre>{@code
- * world.draw(sparks, material).at(x, y, z).bounds(CgAABBc.UNIT).submit();   // the -1..1 cube
+ * scene.once().mesh(sparks, material).at(x, y, z).bounds(CgAABBc.UNIT).add();   // the -1..1 cube
  * static final CgAABBc ARENA = CgAABB.of(-20, 0, -20, 20, 12, 20);   // read-only through this type
  * if (ARENA.contains(px, py, pz)) ...
  * }</pre>

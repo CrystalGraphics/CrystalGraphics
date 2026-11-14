@@ -15,7 +15,7 @@ import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
-import com.crystalgraphics.render.world.CgPipelineList;
+import com.crystalgraphics.render.precache.CgPipelineList;
 
 import java.util.HashMap;
 import java.util.Map;

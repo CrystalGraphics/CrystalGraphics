@@ -12,7 +12,7 @@ import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.trace.CgTrace;
@@ -113,7 +113,7 @@ public final class CgCollisionDebug {
         CgShapeLines.mark(x, y, z, nx, ny, nz, MARK, LINES);
     }
 
-    /** Draws what was queued each world frame, and the show's. Once, with the world renderer. */
+    /** Draws what was queued each world frame, and the show's. Once, at the engine's start. */
     public static synchronized void install() {
         if (installed) return;
         installed = true;
@@ -287,8 +287,8 @@ public final class CgCollisionDebug {
                 }
             }
             // one group at the eye, so back faces, lines and front faces draw in that order whatever their distances
-            CgWorldRenderer.get().draw(into, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).group(ex, ey, ez)
-                    .order(order).submit();
+            CgScene.client().once().mesh(into, material).at(ox, oy, oz).layer(CgSortLayer.OVERLAY).sortAt(ex, ey, ez)
+                    .sortPriority(order).add();
             return into;
         }
 

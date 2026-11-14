@@ -1,6 +1,7 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.platform.rhi.CgExternalTarget;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
@@ -20,14 +21,17 @@ import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.CgWarmBudget;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.render.graph.CgRehearsal;
+import com.crystalgraphics.lifecycle.rehearsal.CgRehearsal;
 import com.crystalgraphics.frame.CgFrameBoundary;
-import com.crystalgraphics.render.stage.CgHostEnvironment;
-import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.world.CgPipelineList;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.host.CgHostEnvironment;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.batch.CgMeshBatches;
+import com.crystalgraphics.render.scene.component.CgDynamicComponent;
+import com.crystalgraphics.render.scene.component.CgMeshCollector;
+import com.crystalgraphics.render.precache.CgPipelineList;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
-import com.crystalgraphics.render.world.CgWorldRenderer;
+
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
@@ -61,7 +65,7 @@ import com.crystalgraphics.vfx.system.CgVfxBehaviour;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstancePool;
-import com.crystalgraphics.render.world.CgWorldVoxelWindow;
+import com.crystalgraphics.render.scene.renderer.feature.field.CgVoxelWindow;
 import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
@@ -93,9 +97,9 @@ import java.util.function.IntConsumer;
  * <pre>{@code
  * CgVfxSystem vfx = new CgVfxSystem();
  * CgEnergyWave wave = vfx.play(new CgEnergyWave(CgEnergyWave.kamehameha(), x, y, z));
- * // every frame, before the world stages record (a tick function in CgWorld.client().schedule(), or ahead of a harness's fire):
+ * // every frame, before the scene draws (a tick function in CgWorld.client().schedule(), or ahead of a harness's fire):
  * vfx.update(seconds);
- * vfx.submit(CgWorldRenderer.get());
+ * vfx.submit();
  * // once, when the context goes:
  * vfx.delete();
  * }</pre>
@@ -225,6 +229,12 @@ public final class CgVfxSystem {
     /** Every layer's resolved bindings and materials, and the frame's rows. */
     private final CgVfxMaterials materials = new CgVfxMaterials();
     private final CgVfxFrame frame = new CgVfxFrame(this, materials);
+    private CgScene scene = CgScene.client();
+    /** This frame's rows, built once by {@link #submit} and taken by each view of {@link #scene}. */
+    private final CgMeshBatches rows = new CgMeshBatches();
+    @Nullable
+    private CgDynamicComponent component;
+    private CgMeshCollector out;
     /** How many of {@link #materials}' materials have the path texture bound. */
     private int pathsBound;
     /** The materials a draw step just named, scratch for {@link #addWarming}. */
@@ -356,6 +366,29 @@ public final class CgVfxSystem {
         return this;
     }
 
+    /**
+     * Draws into {@code scene} from the next submit: an editor's preview of its own, drawn through a view of that scene.
+     * The client scene by default.
+     *
+     * <pre>{@code
+     * CgScene preview = new CgScene();
+     * CgVfxSystem vfx = new CgVfxSystem().scene(preview);
+     * CgView viewport = CgView.of(preview);   // viewport.renderInto(target) each frame, after vfx.submit()
+     * }</pre>
+     */
+    public CgVfxSystem scene(CgScene scene) {
+        if (scene == this.scene) return this;
+        if (component != null) component.remove();
+        component = null;
+        this.scene = scene;
+        return this;
+    }
+
+    /** The scene it draws into. */
+    public CgScene scene() {
+        return scene;
+    }
+
     /** Hears every effect's named moments from now on: the visual debugging hook ({@link CgVfxMomentListener}). */
     public void onMoment(CgVfxMomentListener listener) {
         momentListeners.add(listener);
@@ -422,7 +455,7 @@ public final class CgVfxSystem {
     public void scalability(double seconds) {
         if (seconds == scaledAt) return;
         scaledAt = seconds;
-        CgHostEnvironment world = CgRenderStage.WORLD_OPAQUE.host().environment();
+        CgHostEnvironment world = CgView.main().environment();
         readSettings(world);
         follow();
         resolveRates();
@@ -664,7 +697,7 @@ public final class CgVfxSystem {
         for (int i = 0; i < effects.size(); i++) {
             CgVfxEffect<?> effect = effects.get(i);
             if (effect.followingId() < 0 && !effect.hasClock() && !effect.dilated()) continue;
-            if (Float.isNaN(partialTick)) partialTick = CgRenderStage.WORLD_OPAQUE.host().partialTick();
+            if (Float.isNaN(partialTick)) partialTick = CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick();
             effect.resolveRate(partialTick);
         }
     }
@@ -707,7 +740,7 @@ public final class CgVfxSystem {
         CgVfxBudget budget = CgVfxBudget.get();
         budget.tick(quality);
         usage = budget.worstAdjustedUsage();
-        culling.view(CgRenderStage.WORLD_OPAQUE.host().camera());
+        culling.view(CgView.main().camera());
         culling.run(effects, passed, CgEntityQueries.client().localPlayer(), usage);
         int asleep = 0;
         for (int i = 0; i < effects.size(); i++) {
@@ -961,19 +994,23 @@ public final class CgVfxSystem {
     }
 
     /**
-     * The GPU pools' particles drawn into {@code target} in the latest frame: a viewport's own, not the world's. For a
+     * The GPU pools' particles drawn in {@code view} in the latest frame: a viewport's own, not the world's. For a
      * readout, never a decision; a frame or two late, as {@link #particlesDrawn()}. Render thread.
      */
-    public static int particlesDrawn(CgExternalTarget target) {
-        return CgVfxRange.visibleCount(target);
+    public static int particlesDrawn(CgView view) {
+        return CgVfxRange.visibleCount(view);
     }
 
-    /** Draws every playing effect into {@code world}, interpolated between the last two ticks. Render thread. */
-    public void submit(CgWorldRenderer world) {
+    /**
+     * Builds this frame's draws of every playing effect, interpolated between the last two ticks, into its scene: one
+     * primitive whose rows every view of the scene takes. Render thread, once a frame, before the scene draws.
+     */
+    public void submit() {
+        rows.clear();
         if (effects.isEmpty()) return;
         long began = System.nanoTime(), mark = CgTrace.allocationBegin(CgVfxTrace.CHANNEL);
         try {
-            submitTimed(world);
+            submitTimed();
         } finally {
             CgVfxBudget.FRAME.add(System.nanoTime() - began);
             CgTrace.allocationEnd(CgVfxTrace.CHANNEL, SUBMIT_ALLOCATION, mark);
@@ -994,7 +1031,16 @@ public final class CgVfxSystem {
         }
     }
 
-    private void submitTimed(CgWorldRenderer world) {
+    /** The system's primitive in its scene, made at the first submit and again after the scene changed or cleared. */
+    private CgMeshCollector out() {
+        if (component == null || component.removed()) {
+            component = scene.dynamic((view, c) -> c.take(rows)).layer(CgSortLayer.EFFECTS).spawn();
+            out = CgMeshCollector.into(rows, component);
+        }
+        return out;
+    }
+
+    private void submitTimed() {
         buildMeshes();
         try (CgTrace.Zone ignored = CgTrace.zone(CgVfxTrace.CHANNEL, SUBMIT_ZONE)) {
             try (CgTrace.Zone warming = CgTrace.zone(CgVfxTrace.CHANNEL, WARM_ZONE)) {
@@ -1010,7 +1056,7 @@ public final class CgVfxSystem {
             }
             int n = effects.size();
             materials.begin(CgFrameRing.frame());
-            frame.begin(world, alpha, n, gx / n, gy / n, gz / n);
+            frame.begin(out(), alpha, n, gx / n, gy / n, gz / n);
             paths.begin();
             for (int i = 0; i < effects.size(); i++) {
                 CgVfxEffect<?> effect = effects.get(i);
@@ -1139,7 +1185,7 @@ public final class CgVfxSystem {
             precachedTier.put(e, tier);
             steps.step(p -> emitterStep(p, e, tier));
             // The window fills only once played, but its kernels are the look's to build now.
-            if (readsWorld(e)) steps.step(p -> p.kernels(CgWorldVoxelWindow.get()::precache));
+            if (readsWorld(e)) steps.step(p -> p.kernels(CgVoxelWindow.get()::precache));
         }
         lookRequests.add(steps.start());
         preloads.add(CgPreload.request(l -> {
@@ -1314,13 +1360,17 @@ public final class CgVfxSystem {
         final CgRehearsal rehearsal = CgRehearsal.of(this::pass);
         @Nullable
         CgVfxSystem hidden;
+        /** The hidden system's scene drawn as a cast's frame draws it, into a target nobody sees. */
+        @Nullable
+        CgView view;
         double clock;
         /** Casts played since the hidden system last emptied: one that joined since plays at the next pass. */
         int played;
 
         void start() {
-            CgVfxSystem h = new CgVfxSystem();
+            CgVfxSystem h = new CgVfxSystem().scene(new CgScene());
             h.rehearsing = true;
+            view = CgView.of(h.scene);
             // What this system built and warmed, shared: a pass rebuilding the meshes or re-warming the looks was 12 ms.
             buildMeshes();
             h.tubeMesh = tubeMesh;
@@ -1347,11 +1397,13 @@ public final class CgVfxSystem {
                     while (played < casts.size()) casts.get(played++).accept(h);
                 }
                 h.update(clock += REHEARSAL_STEP);
-                h.submit(CgWorldRenderer.get());
+                h.submit();
                 CgVfxParticlePool.recordRehearsed(pass.recording());
                 pass.execute();
-                CgRenderStage.WORLD_OPAQUE.rehearse();
-                CgRenderStage.WORLD_TRANSPARENT.rehearse();
+                view.camera().set(CgView.main().camera());
+                CgView main = CgView.main();
+                view.renderInto(pass.hiddenTarget(main.width() > 0 ? main.width() : REHEARSAL_SIZE,
+                        main.height() > 0 ? main.height() : REHEARSAL_SIZE));
             } finally {
                 CgVfxParticlePool.rehearsing(false);
                 CgVfxRange.rehearsing(false);
@@ -1364,8 +1416,12 @@ public final class CgVfxSystem {
             hidden.tubeMesh = hidden.closedTubeMesh = hidden.ribbonMesh = hidden.sphereMesh = hidden.volumeMesh = null;
             hidden.delete();
             hidden = null;
+            view = null;
         }
     }
+
+    /** A rehearsal's hidden target before the main view has drawn: after, the main view's size, so what it sizes is warm. */
+    private static final int REHEARSAL_SIZE = 256;
 
     /** A frame's passes of the rehearsal running. */
     private static final int REHEARSE_ZONE = CgTrace.name("vfx.rehearse");
@@ -1411,7 +1467,7 @@ public final class CgVfxSystem {
     private static void useWindow(CgVfxLook look) {
         List<CgVfxEmitter> emitters = look.emitters();
         for (int k = 0; k < emitters.size(); k++) {
-            if (readsWorld(emitters.get(k))) CgWorldVoxelWindow.get().use();
+            if (readsWorld(emitters.get(k))) CgVoxelWindow.get().use();
         }
     }
 
@@ -1616,6 +1672,9 @@ public final class CgVfxSystem {
         eventListeners.clear();
         gpuSteps.clear();
         frame.clear();
+        rows.clear();
+        if (component != null) component.remove();
+        component = null;
         paths.delete();
         if (tubeMesh != null) tubeMesh.release();
         if (closedTubeMesh != null) closedTubeMesh.release();
@@ -1674,11 +1733,11 @@ public final class CgVfxSystem {
      * the effect's group and its order in its look, and a surface draw ({@link CgVfxLook.Placed#afterDistortion()})
      * after the distortion apply, so no haze of its own effect bends it.
      */
-    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, double ox, double oy,
+    public static CgMeshCollector place(CgMeshCollector draw, CgVfxLook.Placed placed, double ox, double oy,
                                              double oz) {
         CgMaterialDefinition material = placed.definition();
         CgSortLayer sortLayer = material == null ? CgSortLayer.EFFECTS : sortLayer(material.sortLayer(), placed.distorts());
-        draw.layer(sortLayer).group(ox, oy, oz).order(placed.order());
+        draw.layer(sortLayer).sortAt(ox, oy, oz).sortPriority(placed.order());
         return placed.afterDistortion() ? draw.afterDistortion() : draw;
     }
 
@@ -1698,13 +1757,13 @@ public final class CgVfxSystem {
      * {@code draw} placed as {@code effect}'s draw of {@code placed}: in the effect's group at its origin, or in its
      * {@link CgVfxSortGroup} at the group's place with the group's rank for the layer.
      */
-    public static CgWorldRenderer.Draw place(CgWorldRenderer.Draw draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
+    public static CgMeshCollector place(CgMeshCollector draw, CgVfxLook.Placed placed, CgVfxEffect<?> effect) {
         CgVfxSortGroup group = effect.sortGroup();
         draw.grade(effect.grade());
         if (group == null) return place(draw, placed, effect.originX, effect.originY, effect.originZ);
         long frame = CgFrameRing.frame();
         place(draw, placed, group.x(frame), group.y(frame), group.z(frame));
-        return draw.order(group.order(effect.look(), placed));
+        return draw.sortPriority(group.order(effect.look(), placed));
     }
 
     CgMesh ribbonMesh() {

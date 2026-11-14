@@ -2,6 +2,8 @@ package com.crystalgraphics.render.meshpass.engine;
 
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
+import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.state.CgBlendState;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -37,7 +39,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #DEPTH}: what writes depth, depth alone (Unreal's {@code DepthPass}).</li>
  *   <li>{@link #BASE}: solids, their Forward pass ({@code BasePass}).</li>
  *   <li>{@link #TRANSLUCENT}: what blends, its Forward pass, sorted back to front by its key
- *       ({@code TranslucencyStandard}).</li>
+ *       ({@code TranslucencyStandard}); none drawn at half size, after distortion or as separate translucency.</li>
+ *   <li>{@link #AFTER_DISTORTION}: what blends after the hazes, unbent by them.</li>
+ *   <li>{@link #SEPARATE}: separate translucency (a material whose state says so), drawn into a layer of its own after
+ *       every other translucent draw (Unreal's {@code TranslucencyAfterDOF}).</li>
+ *   <li>{@link #HALF}: what blends by adding, marked half-resolution, drawn at half size and added over the scene.</li>
+ *   <li>{@link #VOLUME}: what covers premultiplied (smoke, a volume), marked half-resolution: marched at half size and
+ *       blended with its last frame.</li>
  *   <li>{@link #EMISSIVE}: what names {@code s.emissive}, its Emissive pass, into the bloom's input.</li>
  *   <li>{@link #DISTORTION}: what names {@code s.refraction}, its Distortion pass, into the distortion target
  *       ({@code Distortion}).</li>
@@ -61,6 +69,14 @@ public final class CgEnginePasses {
     public static final CgMeshPassType BASE = CgMeshPassType.register("crystalgraphics:base", SCENE, CgEnginePasses::base);
     public static final CgMeshPassType TRANSLUCENT = CgMeshPassType.register("crystalgraphics:translucent", SCENE,
             CgEnginePasses::translucent);
+    public static final CgMeshPassType AFTER_DISTORTION = CgMeshPassType.register("crystalgraphics:after_distortion", SCENE,
+            CgEnginePasses::afterDistortion);
+    public static final CgMeshPassType SEPARATE = CgMeshPassType.register("crystalgraphics:separate", SCENE,
+            CgEnginePasses::separate);
+    public static final CgMeshPassType HALF = CgMeshPassType.register("crystalgraphics:half",
+            CgPassLayout.color(CgFormat.RG11B10_UFLOAT), CgEnginePasses::half);
+    public static final CgMeshPassType VOLUME = CgMeshPassType.register("crystalgraphics:volume",
+            CgPassLayout.color(CgFormat.RGBA16_FLOAT), CgEnginePasses::volume);
     public static final CgMeshPassType EMISSIVE = CgMeshPassType.register("crystalgraphics:emissive", SCENE,
             CgEnginePasses::emissive);
     public static final CgMeshPassType DISTORTION = CgMeshPassType.register("crystalgraphics:distortion", SCENE,
@@ -98,7 +114,60 @@ public final class CgEnginePasses {
     }
 
     private static void translucent(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
-        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) != 0) out.draw(batch, batch.material());
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0) return;
+        if ((batch.flags() & CgMeshBatch.HALF_RESOLUTION) != 0 || after(batch) || separate(batch)) return;
+        withGlow(batch, out);
+    }
+
+    /**
+     * A translucent batch's Forward pass, and its Emissive pass after it at the same key, so its glow follows its colour
+     * in the pass; the scene renderer folds the two into one where the glow merges, or leaves the glow out where no
+     * HDR scene takes it.
+     */
+    private static void withGlow(CgMeshBatch batch, CgMeshPassCommands out) {
+        out.draw(batch, batch.material());
+        if ((batch.relevance() & CgPrimitiveRelevance.EMISSIVE) != 0) {
+            out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.EMISSIVE));
+        }
+    }
+
+    private static void afterDistortion(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 || (batch.flags() & CgMeshBatch.HALF_RESOLUTION) != 0) return;
+        if (after(batch) && !separate(batch)) withGlow(batch, out);
+    }
+
+    private static void separate(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 || (batch.flags() & CgMeshBatch.HALF_RESOLUTION) != 0) return;
+        if (separate(batch)) withGlow(batch, out);
+    }
+
+    private static void half(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 || (batch.flags() & CgMeshBatch.HALF_RESOLUTION) == 0) return;
+        if (!covers(batch.material())) out.draw(batch, batch.material());
+    }
+
+    private static void volume(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 || (batch.flags() & CgMeshBatch.HALF_RESOLUTION) == 0) return;
+        if (covers(batch.material())) out.draw(batch, batch.material());
+    }
+
+    /** Whether a translucent batch draws after the hazes: its row says so, or its material's queue does. */
+    private static boolean after(CgMeshBatch batch) {
+        return (batch.flags() & CgMeshBatch.AFTER_DISTORTION) != 0
+                || batch.material().renderQueue() >= CgRenderQueue.AFTER_DISTORTION_THRESHOLD || separate(batch);
+    }
+
+    /** Whether a translucent batch is separate translucency: its material's state, or its sort layer. */
+    private static boolean separate(CgMeshBatch batch) {
+        return batch.separate() || CgMaterialProxy.of(batch.material()).separateTranslucency();
+    }
+
+    /** Whether a material's Forward pass covers what is behind it, premultiplied: a volume's blend. */
+    public static boolean covers(CgMaterialInterface material) {
+        CgPipeline forward = CgMeshPassCommands.pipeline(material, CgRenderPassVariant.FORWARD);
+        CgBlendState blend = forward == null ? null : forward.state().getBlend();
+        return blend != null && blend.enabled() && blend.srcRgb() == CgBlendState.PREMULTIPLIED_ALPHA.srcRgb()
+                && blend.dstRgb() == CgBlendState.PREMULTIPLIED_ALPHA.dstRgb();
     }
 
     private static void emissive(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {

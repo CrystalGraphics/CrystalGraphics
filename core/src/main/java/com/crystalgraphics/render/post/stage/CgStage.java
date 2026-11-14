@@ -37,7 +37,7 @@ public final class CgStage implements AutoCloseable {
     private final List<CgPostVolume> volumes = new ArrayList<>();
     private final List<CgPostMaterial> materials = new ArrayList<>();
     private final List<CgPostBlendable> blendables = new ArrayList<>();
-    private final List<CgRenderStage.Registration> registrations = new ArrayList<>();
+    private final List<CgPostStack.Registration> registrations = new ArrayList<>();
     @Nullable
     private final CgHeightFog fog;
     private float weight = 1f;
@@ -100,6 +100,6 @@ public final class CgStage implements AutoCloseable {
         if (closed) return;
         closed = true;
         for (CgPostVolume v : volumes) v.close();
-        for (CgRenderStage.Registration r : registrations) r.close();
+        for (CgPostStack.Registration r : registrations) r.close();
     }
 }

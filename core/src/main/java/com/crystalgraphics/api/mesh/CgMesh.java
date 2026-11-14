@@ -156,7 +156,7 @@ public final class CgMesh {
      * count; it has no bounds, so a draw of it states its own.
      *
      * <pre>{@code
-     * world.draw(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).submit();
+     * scene.once().mesh(CgMesh.quads(1024), sparks).indices(0, live * 6).at(x, y, z).bounds(CgAABBc.UNIT).add();
      * }</pre>
      *
      * <p>What draws it reads no vertex data ({@code VertexType none}): there are no attributes to read.</p>
@@ -187,7 +187,7 @@ public final class CgMesh {
      * a shader places from {@code CG_VERTEX_ID}. Shared per count and topology.
      *
      * <pre>{@code
-     * world.draw(CgMesh.vertices(segments * 2, CgMeshTopology.TRIANGLE_STRIP), lightning).at(x, y, z).bounds(box).submit();
+     * scene.once().mesh(CgMesh.vertices(segments * 2, CgMeshTopology.TRIANGLE_STRIP), lightning).at(x, y, z).bounds(box).add();
      * }</pre>
      */
     public static CgMesh vertices(int count, CgMeshTopology topology) {

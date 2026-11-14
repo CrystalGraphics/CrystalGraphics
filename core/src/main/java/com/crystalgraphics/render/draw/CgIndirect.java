@@ -5,10 +5,10 @@ package com.crystalgraphics.render.draw;
  * draw's factor and composes the command from it and the mesh's placement.
  *
  * <pre>{@code
- * world.draw(CgMesh.quads(capacity), sparks).indirect(live, 0, CgIndirect.INDICES, 6).at(x, y, z).submit();   // a quad each
- * world.draw(billow, smoke).indirect(live, 0, CgIndirect.INSTANCES, 1).at(x, y, z).submit();                   // a mesh each
- * world.draw(CgMesh.vertices(capacity * 3, CgMeshTopology.TRIANGLES), shards)
- *      .indirect(live, 0, CgIndirect.VERTICES, 3).at(x, y, z).submit();                                       // a triangle each
+ * rows.indirect(CgMesh.quads(capacity), sparks).count(live, 0, CgIndirect.INDICES, 6).at(x, y, z).add();     // a quad each
+ * rows.indirect(billow, smoke).count(live, 0, CgIndirect.INSTANCES, 1).at(x, y, z).add();                     // a mesh each
+ * rows.indirect(CgMesh.vertices(capacity * 3, CgMeshTopology.TRIANGLES), shards)
+ *     .count(live, 0, CgIndirect.VERTICES, 3).at(x, y, z).add();                                              // a triangle each
  * }</pre>
  */
 public enum CgIndirect {

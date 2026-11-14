@@ -17,7 +17,7 @@
 //              ink, focus lines, hatching's length, the star's size; _ImpactMore the cross and the jitter in pixels;
 //              _ImpactLight and _ImpactDark its two tones, linear
 //   FADE       _Fade.a of the way to _Fade.rgb, in the target's encoding, after every other look
-//   SUBJECT    a drawn frame's subject is _Subject (CgFrameKeys.SUBJECT: what the effect glows with); without it, the
+//   SUBJECT    a drawn frame's subject is _Subject (the view's subject texture: what the effect glows with); without it, the
 //              scene's light past white
 //   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
 //              hue, then clamped; a value within 0.1 of an 8-bit code

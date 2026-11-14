@@ -5,7 +5,7 @@
 // distorting surface: a bend whose farthest tap would land nearer than the nearest haze here is shortened until it stops
 // at that edge, so the foreground is never pulled in and the bend fades to nothing at its silhouette rather than
 // cutting off. It writes the depth of where it read too, so what draws after it (a sharp layer, the host's particles)
-// is hidden by the bent scene rather than by the outline each thing had before. CgWorldRenderer draws it; nothing else
+// is hidden by the bent scene rather than by the outline each thing had before. The scene renderer draws it (CgDistortion); nothing else
 // should.
 #domain global
 Material { SceneColorMargin 0.1  Media On }

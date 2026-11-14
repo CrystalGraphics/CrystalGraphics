@@ -17,7 +17,7 @@ import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.view.CgView;
-import com.crystalgraphics.render.world.CgPipelinePrecache;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4d;
