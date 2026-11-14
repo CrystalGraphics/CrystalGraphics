@@ -3,7 +3,6 @@ package com.crystalgraphics.render.scene.component;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.animation.CgAnimation;
 import com.crystalgraphics.animation.CgSocketTest;
-import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialInstance;
@@ -55,7 +54,7 @@ public class CgSkeletalMeshTest {
 
     private static CgSkeletalMeshComponent playing(CgScene scene, CgSkeletalMesh mesh) {
         CgSkeletalMeshComponent arm = scene.skeletal(mesh).at(10, 64, -3).scale(2f);
-        arm.anim().play(CgAnimSection.of(mesh.sequence("bend")).until(Double.POSITIVE_INFINITY).build());
+        arm.anim().play(mesh.sequence("bend"));
         return arm;
     }
 
@@ -70,7 +69,7 @@ public class CgSkeletalMeshTest {
     public void aSocketStandsWhereItsComponentPlacesIt() {
         CgScene scene = new CgScene();
         CgSkeletalMeshComponent arm = playing(scene, CgSocketTest.arm()).spawn();
-        arm.anim().seek(0.5).evaluate();                                  // key 2: up 3, turned 45 degrees
+        arm.anim().position(0.5f).tick(0f);                                  // key 2: up 3, turned 45 degrees
         double[] point = new double[3];
         assertTrue(arm.attachment("palm").place(point, null));
         Matrix4f expected = new Matrix4f().scaling(2f).translate(0, 3, 0).rotateZ((float) Math.toRadians(45)).translate(0, 0.5f, 0);
@@ -117,7 +116,7 @@ public class CgSkeletalMeshTest {
             double[] clock = {0};
             world.schedule().add(CgTickGroup.EFFECTS, "test:vfx", dt -> vfx.update(clock[0]));
             CgAnimInstance reference = new CgAnimInstance(mesh)
-                    .play(CgAnimSection.of(mesh.sequence("bend")).until(Double.POSITIVE_INFINITY).build());
+                    .play(mesh.sequence("bend"));
             int checked = 0;
             for (int f = 0; f < 90; f++) {
                 clock[0] = f / 60.0;
@@ -125,7 +124,7 @@ public class CgSkeletalMeshTest {
                 world.frame(null);
                 if (f < 2) continue;                                   // the system's first update only sets its clock
                 // This frame's pose, worked out apart: the effect ticked against exactly it, not the frame before's
-                Vector3d expected = palm(arm, reference.seek(arm.anim().time()).evaluate());
+                Vector3d expected = palm(arm, reference.position(arm.anim().position()).tick(0f));
                 assertEquals("frame " + f, expected.x, hand.x, 1e-6);
                 assertEquals("frame " + f, expected.y, hand.y, 1e-6);
                 assertEquals("frame " + f, expected.z, hand.z, 1e-6);
@@ -156,7 +155,7 @@ public class CgSkeletalMeshTest {
         CgSkeletalMeshComponent arm = playing(scene, mesh).spawn();
         hat.attach(arm, "palm").at(0, 1, 0).scale(0.5f);
         for (int f = 0; f < 30; f++) {
-            arm.anim().seek(f / 60.0).evaluate();
+            arm.anim().position(f / 60f).tick(0f);
             scene.update();
             Matrix4f inMesh = arm.anim().socket(arm.anim().socket("palm"), new Matrix4f()).translate(0, 1, 0);
             Matrix4d expected = new Matrix4d().translation(10, 64, -3).scale(2).mul(new Matrix4d(inMesh));
@@ -167,13 +166,31 @@ public class CgSkeletalMeshTest {
         }
         hat.detach();
         double x = hat.x();
-        arm.anim().seek(1.0).evaluate();
+        arm.anim().position(1.0f).tick(0f);
         scene.update();
         assertEquals("detached, it stays where it stood", x, hat.x(), 1e-9);
 
         hat.attach(arm, "palm");
         arm.remove();
         assertEquals("its parent removed, it stands where it was", null, hat.attachParent());
+    }
+
+    /** A placement given before attaching is kept as the offset from the socket, as one given after. */
+    @Test
+    public void aPlacementGivenBeforeAttachingIsKeptAsItsOffset() {
+        CgSkeletalMesh mesh = CgSocketTest.arm();
+        CgScene scene = new CgScene();
+        CgSkeletalMeshComponent arm = playing(scene, mesh).spawn();
+        CgSkeletalMeshComponent before = scene.skeletal(mesh).at(0, 1, 0).scale(0.5f).attach(arm, "palm").spawn();
+        CgSkeletalMeshComponent after = scene.skeletal(mesh).spawn();
+        after.attach(arm, "palm").at(0, 1, 0).scale(0.5f);
+        arm.anim().position(0.25f).tick(0f);
+        scene.update();
+        assertEquals(after.x(), before.x(), 1e-9);
+        assertEquals(after.y(), before.y(), 1e-9);
+        assertEquals(after.z(), before.z(), 1e-9);
+        assertEquals(after.basis(new Matrix4f()).getScale(new Vector3f()).x,
+                before.basis(new Matrix4f()).getScale(new Vector3f()).x, 1e-6f);
     }
 
     @Test
@@ -208,7 +225,7 @@ public class CgSkeletalMeshTest {
         CgSkeletalMeshComponent leader = playing(scene, mesh).spawn();
         CgSkeletalMeshComponent shell = scene.skeletal(mesh).followPose(leader).spawn();
         assertSame("posed by the leader", leader.anim(), shell.anim());
-        leader.anim().seek(0.75).evaluate();
+        leader.anim().position(0.75f).tick(0f);
         scene.update();
         assertEquals("it rides the leader's origin", leader.x(), shell.x(), 0);
         List<float[]> a = skinned(leader), b = skinned(shell);
@@ -221,8 +238,8 @@ public class CgSkeletalMeshTest {
     public void itsBoundsAreItsPosesNeverAPad() {
         CgScene scene = new CgScene();
         CgSkeletalMeshComponent arm = scene.skeletal(CgSocketTest.arm()).spawn();
-        arm.anim().play(CgAnimSection.of(arm.mesh().sequence("bend")).until(Double.POSITIVE_INFINITY).build());
-        arm.anim().seek(0.75).evaluate();                                 // key 3: the elbow up 4, turned 67.5 degrees
+        arm.anim().play(arm.mesh().sequence("bend"));
+        arm.anim().position(0.75f).tick(0f);                                 // key 3: the elbow up 4, turned 67.5 degrees
         scene.update();
         CgAABB box = arm.drawnBounds(new CgAABB());
         for (float[] v : skinned(arm)) {

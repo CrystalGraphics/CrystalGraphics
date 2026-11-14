@@ -34,6 +34,7 @@ import com.crystalgraphics.serialization.format.CgFiles;
  *   <tr><td>{@code begin=<sequence>;} … {@code end=<sequence>;}</td><td>a looping {@code subsequence} over the span</td></tr>
  *   <tr><td>{@code particle_effects} {@code { effect, locator }}</td><td>a {@code system} spawnable at the caster's socket, activated at the key</td></tr>
  *   <tr><td>{@code sound_effects} {@code { effect }}</td><td>a {@code sound} section on the caster at the key</td></tr>
+ *   <tr><td>{@code sync=<name>;}</td><td>nothing here: a sync marker on the clip itself, read by its bake</td></tr>
  *   <tr><td>any other instruction</td><td>an {@code rpg} event of that name, for the mod (RPG-Core's {@code hit})</td></tr>
  * </table>
  *
@@ -245,6 +246,10 @@ public final class CgClipMarkers {
                     Float began = open.remove(id);
                     if (began == null) throw fail(at, id, "ends with no begin open");
                     subsequence(id, began, ticks(at), true);
+                }
+                case "sync" -> {
+                    // A sync marker is the clip's (its bake reads it), never an event
+                    if (value == null || value.isEmpty()) throw fail(at, instruction, "names no sync marker");
                 }
                 default -> events.add(List.of(ticks(at), instruction));
             }

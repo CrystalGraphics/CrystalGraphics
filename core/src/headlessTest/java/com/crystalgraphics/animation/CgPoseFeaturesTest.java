@@ -1,8 +1,6 @@
 package com.crystalgraphics.animation;
 
 import static org.junit.Assert.assertEquals;
-
-
 import static org.junit.Assert.assertTrue;
 
 import org.joml.Matrix4f;
@@ -10,10 +8,14 @@ import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.junit.Test;
 
-import com.crystalgraphics.api.animation.CgAnimSection;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgBlendMask;
+import com.crystalgraphics.animation.graph.CgLayeredBlendNode;
+import com.crystalgraphics.animation.graph.CgRefPoseNode;
+import com.crystalgraphics.animation.graph.CgSlotNode;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgMirrorTable;
-import com.crystalgraphics.api.animation.CgPose;
+import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
@@ -51,7 +53,7 @@ public class CgPoseFeaturesTest {
         return new float[] {q.x, q.y, q.z, q.w};
     }
 
-    private static float angleZ(CgPose pose, int bone) {
+    private static float angleZ(CgAnimPose pose, int bone) {
         Quaternionf q = pose.rotation(bone, new Quaternionf());
         return (float) Math.toDegrees(q.getEulerAnglesXYZ(new Vector3f()).z);
     }
@@ -64,7 +66,7 @@ public class CgPoseFeaturesTest {
         assertEquals("a centre bone mirrors onto itself", s.indexOf("spine"), mirror.mirrorOf(s.indexOf("spine")));
         assertEquals("l_hand has no partner, so it is left as it is", -1, mirror.mirrorOf(s.indexOf("l_hand")));
 
-        CgPose pose = new CgPose(s);
+        CgAnimPose pose = new CgAnimPose(s);
         float[] z = rotZ(30);
         pose.set(s.indexOf("l_arm"), 1, 0, 0, z[0], z[1], z[2], z[3], 1, 1, 1);
         pose.mirror(mirror);
@@ -103,17 +105,18 @@ public class CgPoseFeaturesTest {
         CgSkeletalMesh mesh = body();
         CgAnimSequence raise = CgAnimSequence.builder("raise", 30, 1)
                 .track("l_arm", new float[] {1, 0, 0}, rotZ(40), new float[] {1, 1, 1}).build();
-        CgAnimInstance body = new CgAnimInstance(mesh);
-        CgAnimLayer arms = body.addLayer("Arms").bone("l_arm", 1f).weight(0.5f);
-        arms.slot(raise, 0f, 1f);
-        body.evaluate();
+        CgAnimInstance body = new CgAnimInstance(mesh).graph(CgAnimGraph.builder("test:arms", mesh.skeleton())
+                .output(CgLayeredBlendNode.of(CgRefPoseNode.create())
+                        .layer(CgSlotNode.of("Arms", CgRefPoseNode.create()), CgBlendMask.bone("l_arm", 1f), 0.5f))
+                .build());
+        body.slot("Arms").play(raise, 0f, 1f);
+        body.tick(0f);
         assertEquals(20f, angleZ(body.pose(), mesh.skeleton().indexOf("l_arm")), 0.5f);
 
-        CgAnimLayer branches = new CgAnimInstance(mesh).addLayer("Both").branch("spine", 2).branch("l_arm", 2);
-        assertEquals("overlapping branches add, at most 1", 1f, branches.boneWeights[mesh.skeleton().indexOf("l_arm")], EPS);
-        assertEquals(0.5f, branches.boneWeights[mesh.skeleton().indexOf("spine")], EPS);
+        float[] branches = CgBlendMask.branch("spine", 2).andBranch("l_arm", 2).weights(mesh.skeleton());
+        assertEquals("overlapping branches add, at most 1", 1f, branches[mesh.skeleton().indexOf("l_arm")], EPS);
+        assertEquals(0.5f, branches[mesh.skeleton().indexOf("spine")], EPS);
     }
-
 
     @Test
     public void aServerPosesOnItsTickAndHoldsWhilePaused() {
@@ -130,16 +133,16 @@ public class CgPoseFeaturesTest {
         server.paused(() -> paused[0]);
         CgAnimation animation = server.add(new CgAnimation());
         CgAnimInstance body = animation.add(new CgAnimInstance(mesh));
-        body.play(CgAnimSection.of(slide).build());
+        body.play(slide, false);
         for (int i = 0; i < 10; i++) server.tick();
-        double time = body.time();
+        float time = body.position();
         assertTrue("ten ticks moved it: " + time, time > 0.4 && time < 0.6);
         float hand = body.socket(body.socket("l_hand"), new Matrix4f()).m30();
-        assertEquals("the hand rode the slide, read headless", 2f + (float) time, hand, 0.05);
+        assertEquals("the hand rode the slide, read headless", 2f + time, hand, 0.05);
 
         paused[0] = true;
         for (int i = 0; i < 5; i++) server.tick();
-        assertEquals("paused, it holds its time", time, body.time(), 0.0);
+        assertEquals("paused, it holds its time", time, body.position(), 0f);
         server.close();
         assertTrue("the world's end stops posing it", !body.posed());
     }

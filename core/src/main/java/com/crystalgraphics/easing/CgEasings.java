@@ -77,6 +77,12 @@ public final class CgEasings {
 
     public static final CgEasing LINEAR = t -> CgEasing.clamp(t);
 
+    /** {@code 3t² − 2t³}: Unreal's {@code FMath::SmoothStep}, its HermiteCubic and Cubic blends. */
+    public static final CgEasing SMOOTH_STEP = t -> {
+        t = CgEasing.clamp(t);
+        return t * t * (3 - 2 * t);
+    };
+
     public static final CgEasing IN_SINE = t -> 1 - Math.cos(CgEasing.clamp(t) * Math.PI * 0.5);
     public static final CgEasing OUT_SINE = t -> Math.sin(CgEasing.clamp(t) * Math.PI * 0.5);
     public static final CgEasing IN_OUT_SINE = t -> -(Math.cos(Math.PI * CgEasing.clamp(t)) - 1) * 0.5;

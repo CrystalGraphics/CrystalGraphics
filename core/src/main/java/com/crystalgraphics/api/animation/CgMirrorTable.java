@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 
 /**
  * Which bone of a skeleton mirrors onto which, and across which axis: Unreal's {@code UMirrorDataTable}. A pose is
- * mirrored with {@link CgPose#mirror}; a clip authored for the right arm then plays on the left.
+ * mirrored with {@link CgAnimPose#mirror}; a clip authored for the right arm then plays on the left.
  *
  * <pre>{@code
  * CgMirrorTable mirror = CgMirrorTable.byName(skeleton, CgMirrorTable.Axis.X).build();   // r_/l_, _l/_r, right/left...

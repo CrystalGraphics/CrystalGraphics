@@ -4,7 +4,8 @@ import java.util.Locale;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.animation.CgAnimLayer;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.api.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.tree.CgAssetException;
@@ -20,8 +21,10 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
  * the section's time to and its weight, every frame play is inside it. Unreal's skeletal animation track
  * ({@code MovieSceneSkeletalAnimationSystem.cpp:552-557}: {@code Weight * EvaluateEasing}, then
  * {@code UpdateAnimTrack(clip, position, weight)}, AnimSequencerInstanceProxy.cpp:266-299); the mapping is
- * {@link CgAnimSection#animationTime}'s. A section play has left sets nothing, so its clip is gone from the next pose. A
- * {@code stop} section plays nothing on a layered slot, the body showing through ({@link CgAnimLayer#stop}).
+ * {@link CgAnimSection#animationTime}'s. A section play has left sets nothing, so its clip is gone from the next pose.
+ * A section names its slot ({@code slot}, {@link CgAnimGraph#DEFAULT_SLOT} where it names none); a slot the target's
+ * graph lacks plays nothing, as a montage on it in Unreal. A {@code stop} section plays the slot's source through
+ * ({@link CgAnimSlot#stop}).
  */
 public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
 
@@ -67,17 +70,13 @@ public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section, float tick) {
         if (section == null || !(player.target(track) instanceof CgSequenceSkeletal skeletal)) return;
         Object data = player.data(track, section);
+        CgAnimSlot slot = skeletal.instance().slot(section.fields().get("slot") instanceof String name ? name : CgAnimGraph.DEFAULT_SLOT);
+        if (slot == null) return;
         if (data == STOP) {
-            // On a slot the instance does not layer it stops nothing, as StopSlotAnimation on a slot the graph lacks
-            CgAnimLayer layer = skeletal.instance().layer((String) section.fields().get("slot"));
-            if (layer != null) layer.stop(section.weight(tick));
-            return;
+            slot.stop(section.weight(tick));
+        } else if (data instanceof CgAnimSection clip) {
+            double seconds = tick * player.definition().seconds(1);
+            slot.play(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
         }
-        if (!(data instanceof CgAnimSection clip)) return;
-        double seconds = tick * player.definition().seconds(1);
-        // A section on a slot the instance layers (Kakarot's FacialSlot) plays there; any other in its montage slot
-        CgAnimLayer layer = section.fields().get("slot") instanceof String slot ? skeletal.instance().layer(slot) : null;
-        if (layer != null) layer.slot(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
-        else skeletal.instance().slot(clip.sequence(), clip.animationTime(seconds), section.weight(tick));
     }
 }

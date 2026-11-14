@@ -564,13 +564,13 @@ public final class CgSceneRenderer {
 
     /**
      * The view's solids as the lights' shadow casters, each traced through its mesh's distance field (Unreal's
-     * bCastShadow): rows whose geometry the CPU sees, casting shadows. Instances, GPU-fed rows and half-size rows cast
-     * none.
+     * bCastShadow): rows whose geometry the CPU sees, casting shadows. Instances, GPU-fed rows, half-size rows and
+     * skinned rows (their bind pose is not where they stand) cast none.
      */
     private void casters(CgMeshBatches rows) {
         for (int b = 0, n = rows.size(); b < n; b++) {
             if ((rows.flags(b) & (CgMeshBatches.CASTS_SHADOW | CgMeshBatches.HALF_RESOLUTION)) != CgMeshBatches.CASTS_SHADOW
-                    || rows.instances(b) != null || rows.count(b) != null || rows.records(b) != null) continue;
+                    || rows.instances(b) != null || rows.count(b) != null || rows.records(b) != null || rows.bones(b) >= 0) continue;
             if (queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD && !CgMaterialProxy.of(rows.material(b)).solid()) continue;
             CgMesh mesh = rows.mesh(b);
             double x, y, z;

@@ -215,12 +215,14 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
 
     /**
      * Rides {@code parent}: at {@code socket} on a skeletal parent (its mesh's socket of that name, else its bone,
-     * ignoring case), or at its origin for null. From now on its placement is relative to that point, identity until
-     * set; it is placed each frame in {@code ATTACH}, after the parent's pose.
+     * ignoring case), or at its origin for null. From now on its placement is relative to that point: what it was
+     * given before attaching is kept as that offset, as Unreal's {@code KeepRelativeTransform}. It is placed each frame
+     * in {@code ATTACH}, after the parent's pose.
      *
      * <pre>{@code
-     * hat.attach(goku, "head");     // a socket, else a bone
-     * shell.attach(goku, null);     // where goku stands
+     * hat.attach(goku, "head");                              // a socket, else a bone
+     * shell.attach(goku, null);                              // where goku stands
+     * scene.mesh(halo, gold).at(0, 2, 0).attach(goku, null); // two blocks above him: placed before or after, the same
      * }</pre>
      *
      * @throws IllegalArgumentException where {@code parent} is of another scene, rides this one, or has no such socket
@@ -238,13 +240,7 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
             handle = parent.socketHandle(socket);
             if (handle == NO_SOCKET) throw new IllegalArgumentException(parent + " has no socket or bone '" + socket + "'");
         }
-        if (this.parent == null) {
-            x = y = z = 0;
-            rotation.identity();
-            scaleX = scaleY = scaleZ = 1f;
-            local = null;
-            scene.attached(this);
-        }
+        if (this.parent == null) scene.attached(this);
         this.parent = parent;
         this.parentSocket = handle;
         this.parentSocketName = socket;
