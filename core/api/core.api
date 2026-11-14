@@ -32,7 +32,7 @@ com/crystalgraphics/animation/CgAnimInstance
   method public rate (F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public remove (Lcom/crystalgraphics/animation/CgBoneWrite;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public requestTransitionEvent (Ljava/lang/String;D)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public requestTransitionEvent (Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public requestTransitionEvent (Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;I)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Z)Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -420,6 +420,63 @@ com/crystalgraphics/animation/state/CgAnimState
   method public,final toString ()Ljava/lang/String;
   method public,static conduit (Ljava/lang/String;Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimState;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/state/CgAnimState;
+com/crystalgraphics/animation/state/CgAnimStateMachine
+  access public,final
+  extends java/lang/Object
+  method public initial ()I
+  method public maxTransitionsPerFrame ()I
+  method public name ()Ljava/lang/String;
+  method public reinitializeOnBecomingRelevant ()Z
+  method public skipFirstUpdateTransition ()Z
+  method public state (Ljava/lang/String;)I
+  method public states ()Ljava/util/List;
+  method public toString ()Ljava/lang/String;
+  method public transitions ()Ljava/util/List;
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+com/crystalgraphics/animation/state/CgAnimStateMachine$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/animation/state/CgAnimStateMachine;
+  method public initial (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+  method public maxTransitionsPerFrame (I)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+  method public reinitializeOnBecomingRelevant (Z)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+  method public skipFirstUpdateTransition (Z)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+  method public state (Lcom/crystalgraphics/animation/state/CgAnimState;)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+  method public transition (Lcom/crystalgraphics/animation/state/CgAnimTransition;)Lcom/crystalgraphics/animation/state/CgAnimStateMachine$Builder;
+com/crystalgraphics/animation/state/CgAnimStateMachineNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public in (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Machine;
+  method public machine ()Lcom/crystalgraphics/animation/state/CgAnimStateMachine;
+  method public toString ()Ljava/lang/String;
+  method public,static clearTransitionEvents (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;)V
+  method public,static of (Lcom/crystalgraphics/animation/state/CgAnimStateMachine;)Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode;
+  method public,static requestTransitionEvent (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;)V
+com/crystalgraphics/animation/state/CgAnimStateMachineNode$Machine
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode$Runtime
+  implements com/crystalgraphics/animation/state/CgAnimRule$Context
+  method public activeTransitions ()I
+  method public currentState ()Ljava/lang/String;
+  method public elapsed ()F
+  method public evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public event (Ljava/lang/String;)Z
+  method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
+  method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
+  method public stateTime ()F
+  method public stateWeight (Ljava/lang/String;)F
+  method public timeRemaining ()F
+  method public timeRemainingFraction ()F
+  method public update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
+com/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final APPEND Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;
+  field public,static,final IGNORE Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;
+  field public,static,final OVERWRITE Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;
+  method public,static values ()[Lcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;
 com/crystalgraphics/animation/state/CgAnimTransition
   access public,final,record
   extends java/lang/Record
@@ -449,63 +506,6 @@ com/crystalgraphics/animation/state/CgAnimTransition
   method public,final toString ()Ljava/lang/String;
   method public,static automatic (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimTransition;
   method public,static of (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimTransition;
-com/crystalgraphics/animation/state/CgStateMachine
-  access public,final
-  extends java/lang/Object
-  method public initial ()I
-  method public maxTransitionsPerFrame ()I
-  method public name ()Ljava/lang/String;
-  method public reinitializeOnBecomingRelevant ()Z
-  method public skipFirstUpdateTransition ()Z
-  method public state (Ljava/lang/String;)I
-  method public states ()Ljava/util/List;
-  method public toString ()Ljava/lang/String;
-  method public transitions ()Ljava/util/List;
-  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-com/crystalgraphics/animation/state/CgStateMachine$Builder
-  access public,final
-  extends java/lang/Object
-  method public build ()Lcom/crystalgraphics/animation/state/CgStateMachine;
-  method public initial (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-  method public maxTransitionsPerFrame (I)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-  method public reinitializeOnBecomingRelevant (Z)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-  method public skipFirstUpdateTransition (Z)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-  method public state (Lcom/crystalgraphics/animation/state/CgAnimState;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-  method public transition (Lcom/crystalgraphics/animation/state/CgAnimTransition;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
-com/crystalgraphics/animation/state/CgStateMachineNode
-  access public,final
-  extends com/crystalgraphics/animation/graph/CgAnimNode
-  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
-  method public in (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)Lcom/crystalgraphics/animation/state/CgStateMachineNode$Machine;
-  method public machine ()Lcom/crystalgraphics/animation/state/CgStateMachine;
-  method public toString ()Ljava/lang/String;
-  method public,static clearTransitionEvents (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;)V
-  method public,static of (Lcom/crystalgraphics/animation/state/CgStateMachine;)Lcom/crystalgraphics/animation/state/CgStateMachineNode;
-  method public,static requestTransitionEvent (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;)V
-com/crystalgraphics/animation/state/CgStateMachineNode$Machine
-  access public,final
-  extends com/crystalgraphics/animation/graph/CgAnimNode$Runtime
-  implements com/crystalgraphics/animation/state/CgAnimRule$Context
-  method public activeTransitions ()I
-  method public currentState ()Ljava/lang/String;
-  method public elapsed ()F
-  method public evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
-  method public event (Ljava/lang/String;)Z
-  method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
-  method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
-  method public stateTime ()F
-  method public stateWeight (Ljava/lang/String;)F
-  method public timeRemaining ()F
-  method public timeRemainingFraction ()F
-  method public update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
-com/crystalgraphics/animation/state/CgStateMachineNode$Replace
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final APPEND Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
-  field public,static,final IGNORE Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
-  field public,static,final OVERWRITE Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
-  method public,static values ()[Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
 com/crystalgraphics/api/PoseStack
   access public
   extends java/lang/Object

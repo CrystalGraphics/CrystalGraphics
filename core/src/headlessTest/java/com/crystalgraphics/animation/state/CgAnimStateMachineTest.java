@@ -36,7 +36,7 @@ import com.sun.management.ThreadMXBean;
  * Unreal's state machine and inertialization on a dedicated server's classpath, every number worked by hand from
  * AnimNode_StateMachine.cpp, AlphaBlend.cpp and AnimNode_Inertialization.cpp.
  */
-public class CgStateMachineTest {
+public class CgAnimStateMachineTest {
 
     private static final float EPS = 1e-5f;
     private static final CgAnimVariable<Boolean> GO = CgAnimVariable.bool("go");
@@ -49,7 +49,7 @@ public class CgStateMachineTest {
     @BeforeClass
     public static void kinds() {
         CgAssetKinds.register();
-        CgAnimGraphCodec.registerKind("state_machine", CgStateMachineNode.KIND);
+        CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);
     }
 
@@ -95,20 +95,20 @@ public class CgStateMachineTest {
         return new CgAnimInstance(MESH).graph(CgAnimGraph.builder("test:machine", ARM).variables(variables).output(output).build());
     }
 
-    private static CgStateMachine.Builder ab() {
-        return CgStateMachine.builder("ab").state(CgAnimState.of("a", hold(1))).state(CgAnimState.of("b", hold(5)));
+    private static CgAnimStateMachine.Builder ab() {
+        return CgAnimStateMachine.builder("ab").state(CgAnimState.of("a", hold(1))).state(CgAnimState.of("b", hold(5)));
     }
 
     @Test
     public void theFirstUpdateEntersAtOnce() {
-        CgAnimInstance anim = run(CgStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO))).build()), GO);
+        CgAnimInstance anim = run(CgAnimStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO))).build()), GO);
         anim.set(GO, true).tick(0.05f);
         assertEquals("bSkipFirstUpdateTransition: b at once", 5f, elbow(anim), EPS);
     }
 
     @Test
     public void aCrossfadeFollowsItsCurveAndEndsWithItsBlend() {
-        CgStateMachineNode node = CgStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO))
+        CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO))
                 .crossfade(0.2f)).build());
         CgAnimInstance anim = run(node, GO);
         assertEquals(1f, elbow(anim.tick(0.05f)), EPS);
@@ -125,7 +125,7 @@ public class CgStateMachineTest {
 
     @Test
     public void aTransitionBackMidCrossfadeStacksAndIsShortenedByTheInverseAlpha() {
-        CgStateMachineNode node = CgStateMachineNode.of(ab()
+        CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab()
                 .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)).crossfade(0.2f))
                 .transition(CgAnimTransition.of("b", "a", CgAnimRule.not(CgAnimRule.isTrue(GO))).crossfade(0.2f)).build());
         CgAnimInstance anim = run(node, GO);
@@ -152,7 +152,7 @@ public class CgStateMachineTest {
             CgAnimTransition t = CgAnimTransition.automatic("a", "b").crossfade(0.25f);
             if (mode == 1) t = t.triggerTime(0.3f);                 // trips at 0.25 left: 0.05 over
             if (mode == 2) t = t.overshootCorrection(false);        // Unreal 4.21's: no shortening
-            CgStateMachineNode node = CgStateMachineNode.of(CgStateMachine.builder("auto")
+            CgAnimStateMachineNode node = CgAnimStateMachineNode.of(CgAnimStateMachine.builder("auto")
                     .state(CgAnimState.of("a", CgSequencePlayerNode.of(rise()))).state(CgAnimState.of("b", hold(0)))
                     .transition(t).build());
             CgAnimInstance anim = run(node);
@@ -170,7 +170,7 @@ public class CgStateMachineTest {
 
     @Test
     public void aConduitGatesItsWayAndIsPassedInTheSameFrame() {
-        CgStateMachineNode node = CgStateMachineNode.of(ab().state(CgAnimState.conduit("gate", CgAnimRule.isTrue(OPEN)))
+        CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab().state(CgAnimState.conduit("gate", CgAnimRule.isTrue(OPEN)))
                 .transition(CgAnimTransition.of("a", "gate", CgAnimRule.isTrue(GO)))
                 .transition(CgAnimTransition.of("gate", "b", CgAnimRule.always()).crossfade(0f)).build());
         CgAnimInstance anim = run(node, GO, OPEN);
@@ -184,7 +184,7 @@ public class CgStateMachineTest {
     @Test
     public void aFrameTakesAtMostItsMaxTransitions() {
         for (int max : new int[] {1, 3}) {
-            CgStateMachineNode node = CgStateMachineNode.of(ab().state(CgAnimState.of("c", hold(7)))
+            CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab().state(CgAnimState.of("c", hold(7)))
                     .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)))
                     .transition(CgAnimTransition.of("b", "c", CgAnimRule.isTrue(GO)))
                     .maxTransitionsPerFrame(max).build());
@@ -196,7 +196,7 @@ public class CgStateMachineTest {
 
     @Test
     public void anEventIsTakenOnceAndExpires() {
-        CgStateMachineNode node = CgStateMachineNode.of(ab().state(CgAnimState.of("c", hold(7)))
+        CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab().state(CgAnimState.of("c", hold(7)))
                 .transition(CgAnimTransition.of("a", "b", CgAnimRule.event("jump")).crossfade(0f))
                 .transition(CgAnimTransition.of("b", "c", CgAnimRule.event("jump")).crossfade(0f)).build());
         CgAnimInstance anim = run(node);
@@ -205,7 +205,7 @@ public class CgStateMachineTest {
         anim.tick(0.05f);
         assertEquals("b", node.in(anim.graph()).currentState());
 
-        CgAnimInstance late = run(CgStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.all(
+        CgAnimInstance late = run(CgAnimStateMachineNode.of(ab().transition(CgAnimTransition.of("a", "b", CgAnimRule.all(
                 CgAnimRule.event("jump"), CgAnimRule.isTrue(GO))).crossfade(0f)).build()), GO);
         late.tick(0.05f).requestTransitionEvent("jump", 0.1).tick(0.05f).tick(0.1f);
         late.set(GO, true).tick(0.05f);
@@ -214,7 +214,7 @@ public class CgStateMachineTest {
 
     @Test
     public void aStateIsNotReenteredWithinItsMinimum() {
-        CgStateMachineNode node = CgStateMachineNode.of(ab()
+        CgAnimStateMachineNode node = CgAnimStateMachineNode.of(ab()
                 .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)).crossfade(0f).minReentry(0.5f))
                 .transition(CgAnimTransition.of("b", "a", CgAnimRule.not(CgAnimRule.isTrue(GO))).crossfade(0f)).build());
         CgAnimInstance anim = run(node, GO);
@@ -230,7 +230,7 @@ public class CgStateMachineTest {
     public void aStateRestartsFromNoWeightOrAlways() {
         for (boolean always : new boolean[] {false, true}) {
             CgAnimState rising = CgAnimState.of("a", CgSequencePlayerNode.of(rise()));
-            CgStateMachineNode node = CgStateMachineNode.of(CgStateMachine.builder("r")
+            CgAnimStateMachineNode node = CgAnimStateMachineNode.of(CgAnimStateMachine.builder("r")
                     .state(always ? rising.alwaysResetOnEntry() : rising).state(CgAnimState.of("b", hold(0)))
                     .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)).crossfade(0.25f))
                     .transition(CgAnimTransition.of("b", "a", CgAnimRule.not(CgAnimRule.isTrue(GO))).crossfade(0.25f)).build());
@@ -254,7 +254,7 @@ public class CgStateMachineTest {
 
     @Test
     public void inertializationDecaysTheOffsetAlongUnrealsQuintic() {
-        CgStateMachineNode machine = CgStateMachineNode.of(ab()
+        CgAnimStateMachineNode machine = CgAnimStateMachineNode.of(ab()
                 .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)).crossfade(0.25f).inertialize()).build());
         CgAnimInstance anim = run(CgInertializationNode.of(machine), GO);
         anim.tick(0.125f).tick(0.125f);
@@ -267,7 +267,7 @@ public class CgStateMachineTest {
 
     @Test
     public void inertializingWithNoNodeAboveFailsWhenTheGraphRuns() {
-        CgStateMachineNode machine = CgStateMachineNode.of(ab()
+        CgAnimStateMachineNode machine = CgAnimStateMachineNode.of(ab()
                 .transition(CgAnimTransition.of("a", "b", CgAnimRule.isTrue(GO)).inertialize()).build());
         IllegalArgumentException e = assertThrows(IllegalArgumentException.class, () -> run(machine, GO));
         assertTrue(e.getMessage(), e.getMessage().contains("no inertialization node is above the machine"));
@@ -276,7 +276,7 @@ public class CgStateMachineTest {
     @Test
     public void aMachineWritesReadsAndPlaysTheSame() {
         CgAnimVariable<Float> speed = CgAnimVariable.floating("speed");
-        CgStateMachine m = CgStateMachine.builder("loco")
+        CgAnimStateMachine m = CgAnimStateMachine.builder("loco")
                 .state(CgAnimState.of("idle", hold(1)))
                 .state(CgAnimState.of("run", CgSequencePlayerNode.of(rise()).loop()).alwaysResetOnEntry())
                 .state(CgAnimState.conduit("branch", CgAnimRule.any(CgAnimRule.isTrue(GO), CgAnimRule.event("dash"))))
@@ -289,7 +289,7 @@ public class CgStateMachineTest {
                 .transition(CgAnimTransition.of("stop", "run", CgAnimRule.timeRemainingFraction(CgAnimRule.Op.LESS, 0.5f)))
                 .maxTransitionsPerFrame(2).build();
         CgAnimGraph java = CgAnimGraph.builder("test:loco", ARM).variables(speed, GO)
-                .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(m)))).build();
+                .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(m)))).build();
         String yaml = CgAssetYaml.write(CgAnimGraphCodec.toTree(java), CgBodyKinds.ANIM_GRAPH);
         Map<String, CgAnimSequence> clips = Map.of("y1.0", at("y1.0", 1), "rise", rise());
         CgAnimGraph data = CgAnimGraphCodec.compile(CgAssetData.of("test:loco", CgBodyKinds.ANIM_GRAPH,
@@ -340,14 +340,14 @@ public class CgStateMachineTest {
         CgAnimGraph g = CgAnimGraphCodec.compile(CgAssetData.of("mymod:hero", CgBodyKinds.ANIM_GRAPH,
                 (Map<?, ?>) CgAssetYaml.read(yaml), null), null).graph(ARM, clips::get);
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(g);
-        CgStateMachineNode loco = null;
+        CgAnimStateMachineNode loco = null;
         for (CgAnimNode n = g.output(); loco == null; ) {
             CgAnimNode[] next = new CgAnimNode[1];
             n.forEachChild(c -> next[0] = c);
-            if (next[0] instanceof CgStateMachineNode m) loco = m;
+            if (next[0] instanceof CgAnimStateMachineNode m) loco = m;
             n = next[0];
         }
-        CgStateMachineNode.Machine m = loco.in(anim.graph());
+        CgAnimStateMachineNode.Machine m = loco.in(anim.graph());
         anim.tick(0.1f);
         assertEquals("idle", m.currentState());
         anim.set(CgAnimVariable.floating("speed"), 1f).tick(0.1f);
@@ -361,7 +361,7 @@ public class CgStateMachineTest {
 
     @Test
     public void aWarmMachineAllocatesNothing() {
-        CgStateMachineNode machine = CgStateMachineNode.of(ab().state(CgAnimState.conduit("gate", CgAnimRule.isTrue(OPEN)))
+        CgAnimStateMachineNode machine = CgAnimStateMachineNode.of(ab().state(CgAnimState.conduit("gate", CgAnimRule.isTrue(OPEN)))
                 .transition(CgAnimTransition.of("a", "gate", CgAnimRule.isTrue(GO)))
                 .transition(CgAnimTransition.of("gate", "b", CgAnimRule.always()))
                 .transition(CgAnimTransition.of("b", "a", CgAnimRule.not(CgAnimRule.isTrue(GO))).inertialize()).build());

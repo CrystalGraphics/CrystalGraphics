@@ -4,11 +4,11 @@
 
 | Type | Role |
 |---|---|
-| `CgStateMachine` | `FBakedAnimationStateMachine`: states in order, transitions, the initial state, max transitions per frame, skip-first-update, reinitialize-on-relevant; each state's exits ordered by priority, then as made |
+| `CgAnimStateMachine` | `FBakedAnimationStateMachine`: states in order, transitions, the initial state, max transitions per frame, skip-first-update, reinitialize-on-relevant; each state's exits ordered by priority, then as made |
 | `CgAnimState` | a state (a pose, `alwaysResetOnEntry`) or a conduit (an entry rule) |
 | `CgAnimTransition` | `FAnimationTransitionBetweenStates` with its exit rule: rule or `automatic`, crossfade, `CgAlphaBlend`, inertialization, priority, trigger time, overshoot correction, re-entry, self-inertialization; Unreal's editor defaults |
 | `CgAnimRule` | the rule graph as a tree: variables, `time_remaining`, its fraction, `state_time`, `event`, `all`/`any`/`not`; its data form (`read`) |
-| `CgStateMachineNode` | `FAnimNode_StateMachine`: transitions found, entries stacked and crossfaded, states updated at their weights and evaluated once, inertialization requested; `Machine`, its state in one instance; transition events; the `state_machine` kind's reader (`KIND`) |
+| `CgAnimStateMachineNode` | `FAnimNode_StateMachine`: transitions found, entries stacked and crossfaded, states updated at their weights and evaluated once, inertialization requested; `Machine`, its state in one instance; transition events; the `state_machine` kind's reader (`KIND`) |
 
 ## Rules
 
@@ -22,5 +22,5 @@
   it is requested, on the game thread.
 - **Not played, failing at load**: blend profiles, custom curves, custom transition graphs, state and transition
   notifies (A5's).
-- Gates: `CgStateMachineTest` (headless, every number hand-worked), `CgAnimGraphCensusGateTest` (an imported file
+- Gates: `CgAnimStateMachineTest` (headless, every number hand-worked), `CgAnimGraphCensusGateTest` (an imported file
   against its census, `-PanimGraphFile` `-PanimGraphCensus`, and `-PanimGraphParent` for a child graph).

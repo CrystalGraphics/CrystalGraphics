@@ -21,12 +21,12 @@ import com.crystalgraphics.api.animation.CgAnimPose;
  * Only the target state updates and evaluates, so it costs one pose where a crossfade costs two.
  *
  * <pre>{@code
- * CgStateMachine moves = CgStateMachine.builder("moves")
+ * CgAnimStateMachine moves = CgAnimStateMachine.builder("moves")
  *         .state(CgAnimState.of("idle", idle)).state(CgAnimState.of("hit", hit))
  *         .transition(CgAnimTransition.of("idle", "hit", CgAnimRule.event("hit")).crossfade(0.25f).inertialize())
  *         .build();
  * CgAnimGraph.builder("mymod:hero", skeleton)
- *         .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(moves))))
+ *         .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(moves))))
  *         .build();
  * }</pre>
  *

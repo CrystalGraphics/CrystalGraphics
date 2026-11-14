@@ -46,7 +46,7 @@ public class CgAnimGraphCensusGateTest {
         String file = System.getProperty("crystalgraphics.animGraph.file"), census = System.getProperty("crystalgraphics.animGraph.census");
         Assume.assumeTrue("-PanimGraphFile and -PanimGraphCensus name the files", file != null && census != null);
         CgAssetKinds.register();
-        CgAnimGraphCodec.registerKind("state_machine", CgStateMachineNode.KIND);
+        CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);
 
         Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(Path.of(file), StandardCharsets.UTF_8));
@@ -61,7 +61,7 @@ public class CgAnimGraphCensusGateTest {
         CgAnimGraph graph = CgAnimGraphCodec.compile(CgAssetData.of("gate:imported", CgBodyKinds.ANIM_GRAPH, tree, parent), null)
                 .graph(bone, id -> clip);
 
-        List<CgStateMachine> machines = new ArrayList<>();
+        List<CgAnimStateMachine> machines = new ArrayList<>();
         collect(graph.output(), machines);
         for (CgAnimNode saved : graph.saves().values()) collect(saved, machines);
 
@@ -73,7 +73,7 @@ public class CgAnimGraphCensusGateTest {
             Map<?, ?> em = (Map<?, ?>) o;
             // The format's names are snake_case (BrakingSub is braking_sub); states keep the game's
             String name = ((String) em.get("name")).replaceAll("([a-z0-9])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
-            CgStateMachine m = machines.stream().filter(x -> x.name().equals(name)).findFirst()
+            CgAnimStateMachine m = machines.stream().filter(x -> x.name().equals(name)).findFirst()
                     .orElseThrow(() -> new AssertionError("no machine " + name));
             assertEquals(name + " initial", em.get("initial"), m.states().get(m.initial()).name());
             List<?> es = (List<?>) em.get("states");
@@ -105,8 +105,8 @@ public class CgAnimGraphCensusGateTest {
     }
 
     /** Every machine under {@code node}, a state's pose included. */
-    private static void collect(CgAnimNode node, List<CgStateMachine> out) {
-        if (node instanceof CgStateMachineNode m && !out.contains(m.machine())) {
+    private static void collect(CgAnimNode node, List<CgAnimStateMachine> out) {
+        if (node instanceof CgAnimStateMachineNode m && !out.contains(m.machine())) {
             out.add(m.machine());
             for (CgAnimState s : m.machine().states()) if (s.pose() != null) collect(s.pose(), out);
             return;

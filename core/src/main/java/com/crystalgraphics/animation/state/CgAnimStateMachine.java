@@ -12,10 +12,10 @@ import javax.annotation.Nullable;
 /**
  * A state machine: states, the transitions between them, and where it starts. Unreal's
  * {@code FBakedAnimationStateMachine}: immutable, shared by every graph that plays it through a
- * {@link CgStateMachineNode}.
+ * {@link CgAnimStateMachineNode}.
  *
  * <pre>{@code
- * static final CgStateMachine LOCOMOTION = CgStateMachine.builder("locomotion")
+ * static final CgAnimStateMachine LOCOMOTION = CgAnimStateMachine.builder("locomotion")
  *         .state(CgAnimState.of("idle", CgSequencePlayerNode.of(IDLE).loop()))
  *         .state(CgAnimState.of("run", CgSequencePlayerNode.of(RUN).loop()))
  *         .state(CgAnimState.of("land", CgSequencePlayerNode.of(LAND)).alwaysResetOnEntry())
@@ -25,7 +25,7 @@ import javax.annotation.Nullable;
  *         .build();                                        // starts in its first state, "idle"
  *
  * CgAnimGraph hero = CgAnimGraph.builder("mymod:hero", skeleton).variables(SPEED)
- *         .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(LOCOMOTION)))
+ *         .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(LOCOMOTION)))
  *         .build();
  * }</pre>
  *
@@ -38,7 +38,7 @@ import javax.annotation.Nullable;
  *   <li>A transition naming a state the machine lacks fails when it builds.</li>
  * </ul>
  */
-public final class CgStateMachine {
+public final class CgAnimStateMachine {
 
     private final String name;
     private final List<CgAnimState> states;
@@ -49,7 +49,7 @@ public final class CgStateMachine {
     private final int[][] exits;
     private final int[] from, to;
 
-    private CgStateMachine(Builder b) {
+    private CgAnimStateMachine(Builder b) {
         this.name = b.name;
         this.states = List.copyOf(b.states);
         this.transitions = List.copyOf(b.transitions);
@@ -142,10 +142,10 @@ public final class CgStateMachine {
 
     @Override
     public String toString() {
-        return "CgStateMachine(" + name + ")";
+        return "CgAnimStateMachine(" + name + ")";
     }
 
-    /** Builds a {@link CgStateMachine}. */
+    /** Builds a {@link CgAnimStateMachine}. */
     public static final class Builder {
 
         private final String name;
@@ -199,8 +199,8 @@ public final class CgStateMachine {
          * @throws IllegalArgumentException for no state, a state named twice, an initial state that is missing or a
          *                                  conduit, or a transition naming a state the machine lacks
          */
-        public CgStateMachine build() {
-            return new CgStateMachine(this);
+        public CgAnimStateMachine build() {
+            return new CgAnimStateMachine(this);
         }
     }
 }

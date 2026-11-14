@@ -19,16 +19,16 @@ import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
- * Runs a {@link CgStateMachine} in a graph: Unreal's {@code FAnimNode_StateMachine} (AnimNode_StateMachine.cpp). Each
+ * Runs a {@link CgAnimStateMachine} in a graph: Unreal's {@code FAnimNode_StateMachine} (AnimNode_StateMachine.cpp). Each
  * frame it takes the transitions whose rules hold, crossfades between the states it left and entered, and updates and
  * evaluates only the states that show.
  *
  * <pre>{@code
  * CgAnimGraph.builder("mymod:hero", skeleton).variables(SPEED, GROUNDED)
- *         .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(LOCOMOTION)))
+ *         .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(LOCOMOTION)))
  *         .build();
  *
- * CgStateMachineNode.Machine m = machineNode.in(anim.graph());   // its state in one instance, for a tool or a test
+ * CgAnimStateMachineNode.Machine m = machineNode.in(anim.graph());   // its state in one instance, for a tool or a test
  * m.currentState();                                              // "run"
  * }</pre>
  *
@@ -42,14 +42,14 @@ import com.crystalgraphics.asset.tree.CgAssetException;
  *   <li>Allocates nothing per frame; a transition event allocates when it is requested.</li>
  * </ul>
  */
-public final class CgStateMachineNode extends CgAnimNode {
+public final class CgAnimStateMachineNode extends CgAnimNode {
 
     /** Unreal's {@code MaxTransitionsRequests}: events queued at most, the oldest dropped. */
     private static final int MAX_EVENTS = 32;
 
-    private final CgStateMachine machine;
+    private final CgAnimStateMachine machine;
 
-    private CgStateMachineNode(CgStateMachine machine) {
+    private CgAnimStateMachineNode(CgAnimStateMachine machine) {
         this.machine = Objects.requireNonNull(machine, "machine");
     }
 
@@ -57,7 +57,7 @@ public final class CgStateMachineNode extends CgAnimNode {
      * The {@code state_machine} kind's reader: {@code {kind: state_machine, machine: <name>}}, the machine under the
      * graph's {@code machines}. Registered with {@code CgAnimGraphCodec.registerKind}.
      */
-    public static final CgAnimNodeKind KIND = CgStateMachineNode::read;
+    public static final CgAnimNodeKind KIND = CgAnimStateMachineNode::read;
 
     private static CgAnimNode read(CgAnimNodeKind.Context c, String at, Map<?, ?> node) {
         String name = c.string(at, node, "machine");
@@ -65,7 +65,7 @@ public final class CgStateMachineNode extends CgAnimNode {
         if (m == null) throw new CgAssetException(at + ".machine: " + name + " is no machine of the graph");
         String file = at.contains(": ") ? at.substring(0, at.indexOf(": ")) : at;
         String mat = file + ": machines." + name;
-        CgStateMachine.Builder b = CgStateMachine.builder(name);
+        CgAnimStateMachine.Builder b = CgAnimStateMachine.builder(name);
         if (!(m.get("states") instanceof Map<?, ?> states) || states.isEmpty()) throw new CgAssetException(mat + ".states: none");
         try {
             for (Map.Entry<?, ?> e : states.entrySet()) {
@@ -108,11 +108,11 @@ public final class CgStateMachineNode extends CgAnimNode {
     }
 
     /** A node running {@code machine}. */
-    public static CgStateMachineNode of(CgStateMachine machine) {
-        return new CgStateMachineNode(machine);
+    public static CgAnimStateMachineNode of(CgAnimStateMachine machine) {
+        return new CgAnimStateMachineNode(machine);
     }
 
-    public CgStateMachine machine() {
+    public CgAnimStateMachine machine() {
         return machine;
     }
 

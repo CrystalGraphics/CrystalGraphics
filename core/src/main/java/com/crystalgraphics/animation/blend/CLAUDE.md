@@ -13,4 +13,4 @@
   teleport handling; curves are not inertialized. Both are recorded departures, not oversights.
 - **A requester finds the node through the graph instance** (`pushInertializer`, Unreal's graph message); a machine
   checks at instantiate that one is above it (`inertializerAbove`).
-- Gate: `CgStateMachineTest`'s inertialization cases (the quintic against a hand-worked value).
+- Gate: `CgAnimStateMachineTest`'s inertialization cases (the quintic against a hand-worked value).

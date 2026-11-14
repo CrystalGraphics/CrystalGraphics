@@ -7,7 +7,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.animation.graph.CgAnimNode;
 
 /**
- * One state of a {@link CgStateMachine}: a pose the machine plays while in it, or a conduit, a branch point that holds no
+ * One state of a {@link CgAnimStateMachine}: a pose the machine plays while in it, or a conduit, a branch point that holds no
  * pose. Unreal's {@code FBakedAnimationState}.
  *
  * <pre>{@code

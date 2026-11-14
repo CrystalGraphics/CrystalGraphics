@@ -2,7 +2,7 @@ package com.crystalgraphics.asset.load;
 
 import com.crystalgraphics.animation.blend.CgInertializationNode;
 import com.crystalgraphics.animation.graph.CgAnimGraphCodec;
-import com.crystalgraphics.animation.state.CgStateMachineNode;
+import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgClipDefinition;
 import com.crystalgraphics.api.animation.CgSkeletonDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
@@ -48,7 +48,7 @@ public final class CgBuiltInCompilers {
         CgSkeletonDefinition.register();
         CgClipDefinition.register();
         CgAnimGraphCodec.register();
-        CgAnimGraphCodec.registerKind("state_machine", CgStateMachineNode.KIND);
+        CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);
         CgCueDefinition.register();
         CgStageDefinition.register();

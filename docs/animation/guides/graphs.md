@@ -61,7 +61,7 @@ anim.graph(hero(mesh))
 | `CgLayeredBlendNode.of(base).layer(pose, mask[, weight])` `.curvesFromBase()` | Layered blend per bone | a pose over part of the skeleton |
 | `CgApplyAdditiveNode.of(base, additive, alpha)` | Apply Additive | an additive pose added over `base` |
 | `graph.save(name, source)`, `CgCachedPoseNode.use(name)` | Save / Use Cached Pose | one pose read in several places, evaluated once a frame |
-| `CgStateMachineNode.of(machine)` | State Machine | states and the transitions between them ([below](#state-machines)) |
+| `CgAnimStateMachineNode.of(machine)` | State Machine | states and the transitions between them ([below](#state-machines)) |
 | `CgInertializationNode.of(source)` | Inertialization | smooths a switch below it away instead of crossfading |
 
 - **A node updates only while it shows**: a player under a blend at weight 0 does not advance, as in Unreal. Use
@@ -113,7 +113,7 @@ CgLayeredBlendNode.of(run).layer(aim, spine, AIM_WEIGHT);                     //
 
 ## State machines
 
-A **state machine** (`CgStateMachine`, Unreal's) plays one state at a time and moves between states when a
+A **state machine** (`CgAnimStateMachine`, Unreal's) plays one state at a time and moves between states when a
 transition's rule holds, crossfading as it goes. States are poses (any node, another machine included); a **conduit** is
 a branch point with a rule of its own.
 
@@ -121,7 +121,7 @@ a branch point with a rule of its own.
 static final CgAnimVariable<Float> SPEED = CgAnimVariable.floating("speed");
 static final CgAnimVariable<Boolean> GROUNDED = CgAnimVariable.bool("grounded", true);
 
-static final CgStateMachine LOCOMOTION = CgStateMachine.builder("locomotion")
+static final CgAnimStateMachine LOCOMOTION = CgAnimStateMachine.builder("locomotion")
         .state(CgAnimState.of("idle", CgSequencePlayerNode.of(IDLE).loop()))
         .state(CgAnimState.of("run", CgSequencePlayerNode.of(RUN).loop()))
         .state(CgAnimState.of("fall", CgSequencePlayerNode.of(FALL).loop()))
@@ -135,7 +135,7 @@ static final CgStateMachine LOCOMOTION = CgStateMachine.builder("locomotion")
         .build();
 
 anim.graph(CgAnimGraph.builder("mymod:hero", mesh.skeleton()).variables(SPEED, GROUNDED)
-        .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(LOCOMOTION)))
+        .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(LOCOMOTION)))
         .build());
 ```
 
@@ -172,13 +172,13 @@ along a curve that never overshoots (Unreal's inertialization). Only the target 
 crossfade costs two: the cheap choice for sudden moves such as a hit, a dodge or a cancel.
 
 ```java
-CgStateMachine moves = CgStateMachine.builder("moves")
+CgAnimStateMachine moves = CgAnimStateMachine.builder("moves")
         .state(CgAnimState.of("guard", guard)).state(CgAnimState.of("hit", hit).alwaysResetOnEntry())
         .transition(CgAnimTransition.of("guard", "hit", CgAnimRule.event("hit")).crossfade(0.2f).inertialize())
         .transition(CgAnimTransition.automatic("hit", "guard").inertialize())
         .build();
 CgAnimGraph.builder("mymod:fighter", skeleton)
-        .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(moves))))
+        .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgAnimStateMachineNode.of(moves))))
         .build();
 ```
 

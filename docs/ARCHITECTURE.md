@@ -133,7 +133,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `api/animation/CLAUDE.md` | `CgSkeleton`, `CgAnimSequence`, `CgMorphTargets`, `CgCookedAnimation`: what a skinned model moves by, as data; `CgAnimPose`, `CgAnimSection`: sampling, blending and section time |
 | `animation/CLAUDE.md` | `CgAnimInstance`, `CgAnimation`: what a skeletal mesh plays, posed here in `POSE`, on workers; headless on a server |
 | `animation/graph/CLAUDE.md` | `CgAnimGraph` and its nodes, `CgAnimGraphInstance`, the `anim_graph` kind's codec: Unreal's anim graph |
-| `animation/state/CLAUDE.md` | `CgStateMachine` and `CgStateMachineNode`: Unreal's state machines, rules and transition events |
+| `animation/state/CLAUDE.md` | `CgAnimStateMachine` and `CgAnimStateMachineNode`: Unreal's state machines, rules and transition events |
 | `animation/blend/CLAUDE.md` | `CgAlphaBlend` (Unreal's blend options) and `CgInertializationNode` |
 
 ### Vertex / Instancing
