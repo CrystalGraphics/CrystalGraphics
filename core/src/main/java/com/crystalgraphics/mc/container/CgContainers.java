@@ -3,42 +3,41 @@ package com.crystalgraphics.mc.container;
 import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
- * The player's open container as data, and clicks into it: the platform half of every screen made of slots (the
- * inventory, a chest, a furnace). Client only, on the client thread; a host answers it through {@link Host}.
+ * The player's open container as data, and the player's actions into it: the platform half of every screen made of
+ * slots (the inventory, a chest, a furnace, an anvil, a merchant). Client only, on the client thread; a host answers
+ * it through {@link Host}.
  *
  * <pre>{@code
- * CgContainers.Menu menu = CgContainers.menu();                 // the open container, else the player's inventory; null with no player
- * CgItemStack held = menu.carried();                                // what the cursor carries
- * CgItemStack first = menu.slot(36).stack();                        // the hotbar's first slot, by InventoryMenu index
+ * ContainerMirror mirror = CgContainers.mirror();                   // one per screen
+ * ContainerMirror.Update update = mirror.poll();                     // every frame: null unless something changed
+ * if (update != null) for (int i : update.slots()) show(i, update.menu().slot(i).stack());
  *
- * CgContainers.click(menu.id(), 36, 0, CgContainers.Click.PICKUP);              // left-click it
- * CgContainers.click(menu.id(), 20, 0, CgContainers.Click.QUICK_MOVE);          // shift-click
- * CgContainers.click(menu.id(), 20, 2, CgContainers.Click.SWAP);                // number key 3: swap with hotbar slot 3
- * CgContainers.dragStart(menu.id(), 0);                                         // a left-button drag over three slots
- * CgContainers.dragAdd(menu.id(), 10, 0); CgContainers.dragAdd(menu.id(), 11, 0); CgContainers.dragAdd(menu.id(), 12, 0);
- * CgContainers.dragEnd(menu.id(), 0);
+ * CgContainers.Menu menu = mirror.menu();                            // the open container, else the player's inventory
+ * menu.slot(36).stack();                                             // the hotbar's first slot, a CgItemStack
+ * menu.state().getInt("cost");                                       // an anvil's level cost: per kind, MenuTypes
+ *
+ * CgContainers.act(menu.id(), new Action.Click(20, 0, ClickType.QUICK_MOVE));    // shift-click slot 20
+ * CgContainers.act(menu.id(), new Action.Rename("Excalibur"));                  // the anvil's name
  * }</pre>
  *
  * <ul>
- *   <li><b>A click goes through the game's own interaction call</b>, so the server sees the packet vanilla's own screen
- *       would send: hoppers, sorting mods, recipe viewers and anti-cheat see an ordinary player. Nothing here sends a
- *       packet of ours, and nothing here changes a slot on the client: the server's answer does.</li>
- *   <li>A click names the menu it was made against, {@link Menu#id}. The game drops one for a menu that has since
+ *   <li><b>An action goes through the game's own interaction call</b>, so the server sees the packet vanilla's own
+ *       screen would send: hoppers, sorting mods, recipe viewers and anti-cheat see an ordinary player. Nothing here
+ *       changes a slot on the client: the server's answer does.</li>
+ *   <li>An action names the menu it was made against, {@link Menu#id}. The game drops one for a menu that has since
  *       closed.</li>
- *   <li>A snapshot is a copy of what the slots held when it was taken; ask again for the next. It allocates, so ask on a
- *       tick or a change, not per frame.</li>
  *   <li>The menu's {@link Menu#slots} are in the game's own order, the container's own slots first and the player's
  *       after, as vanilla's menus lay them out; the player's own inventory menu is {@link Menu#PLAYER}: 0 result,
  *       1-4 crafting, 5-8 armour (head first), 9-35 main, 36-44 hotbar, 45 offhand.</li>
- *   <li>Without a host (the harness, a server) there is no menu: {@link #menu()} is null and a click does nothing.</li>
+ *   <li>Without a host (the harness, a server) there is no menu: {@link #present} is false and an action does nothing.</li>
  * </ul>
  *
  * A host, from its client install:
@@ -49,29 +48,31 @@ import java.util.Map;
  */
 public final class CgContainers {
 
-    /** What a click does; the numbering is vanilla's click type, the protocol's {@code mode}. */
-    public enum Click {
-        /** Pick up, put down, swap with the cursor, or split: button {@code 0} left, {@code 1} right. */
-        PICKUP,
-        /** Shift-click: move the stack to the menu's other side. */
-        QUICK_MOVE,
-        /** A number key or the offhand key: swap with a hotbar slot, button {@code 0-8}, or {@code 40} for the offhand. */
-        SWAP,
-        /** Middle-click in creative: a full stack onto the cursor. */
-        CLONE,
-        /** The drop key: button {@code 0} one, {@code 1} the whole stack. */
-        THROW,
-        /** A drag across slots, in three clicks: see {@link #dragStart}. */
-        QUICK_CRAFT,
-        /** Double-click: gather every matching stack onto the cursor. */
-        PICKUP_ALL
-    }
-
     /** The slot a click on nothing, outside the window, names: it drops the cursor's stack. */
     public static final int OUTSIDE = -999;
 
-    /** One slot at {@code index} of the menu, and what it holds. */
-    public record Slot(int index, CgItemStack stack) {
+    /**
+     * Where a slot is and what it is, fixed while its menu is open.
+     *
+     * @param container      which container of the menu holds it: the player's inventory is one, a chest another, a result its own
+     * @param containerIndex its place in that container
+     * @param x              its place in the menu's picture, in vanilla's GUI units from the panel's corner
+     * @param kind           what the slot is
+     * @param maxStack       the most its container holds in it
+     */
+    public record Layout(int container, int containerIndex, int x, int y, SlotKind kind, int maxStack) {
+    }
+
+    /** One slot at {@code index} of the menu, what it holds, and whether the player may take it. */
+    public record Slot(int index, CgItemStack stack, Layout layout, boolean canTake) {
+
+        public SlotKind kind() {
+            return layout.kind();
+        }
+
+        public Slot withStack(CgItemStack stack, boolean canTake) {
+            return new Slot(index, stack, layout, canTake);
+        }
     }
 
     /**
@@ -81,29 +82,24 @@ public final class CgContainers {
      * @param type    the menu's kind, {@code namespace:path} as vanilla names it ({@code minecraft:player},
      *                {@code minecraft:furnace}, {@code minecraft:generic_9x3}); {@code unknown} for a menu the host
      *                cannot name
+     * @param title   the container's name as the player reads it; empty when the game has not opened a screen of it
      * @param slots   every slot, by index
      * @param carried what the cursor holds
-     * @param data    the menu's progress values by name, the schema of its kind, in whole numbers: {@code burn} and
-     *                {@code cook} (0-1000) of a furnace, blast furnace and smoker. Empty for a menu with none
+     * @param state   the menu's own values, the schema of its kind ({@link MenuTypes}): {@code burn} and {@code cook}
+     *                (0-1000) of a furnace, {@code cost} of an anvil, {@code offers} of a merchant. Empty for a menu with none
      */
-    public record Menu(int id, String type, List<Slot> slots, CgItemStack carried, Map<String, Integer> data) {
+    public record Menu(int id, String type, String title, List<Slot> slots, CgItemStack carried, CgNbtCompound state) {
 
         /** The type of the player's own inventory. */
         public static final String PLAYER = "minecraft:player";
 
         public Menu {
             slots = Collections.unmodifiableList(new ArrayList<>(slots));
-            data = Collections.unmodifiableMap(new HashMap<>(data));
         }
 
         /** The slot at {@code index}. */
         public Slot slot(int index) {
             return slots.get(index);
-        }
-
-        /** The value {@code name} of {@link #data}, or {@code 0}. */
-        public int data(String name) {
-            return data.getOrDefault(name, 0);
         }
 
         /** Whether this is the player's own inventory rather than a container opened over it. */
@@ -112,21 +108,69 @@ public final class CgContainers {
         }
     }
 
-    /** What a host answers, one class per era, {@code Containers<Era>}. Called on the client thread. */
+    /**
+     * What a host answers, one class per era, {@code Containers<Era>}: primitives only, no copy of a stack that did not
+     * change. Called on the client thread. A slot index is the menu's.
+     */
     public interface Host {
-        /** The open menu: the container the player has open, else their inventory; null with no player. */
-        Menu menu();
 
-        /** Makes the click through the game's own interaction call. */
-        void click(int containerId, int slot, int button, Click type);
+        /** Whether there is a player and so a menu. */
+        boolean present();
 
-        /** Closes the open container as the player closing its screen does, telling the server; nothing if none is open. */
-        void close();
+        /** The menu's window id. */
+        int id();
+
+        /** The menu's registry name, {@link Menu#PLAYER} for the player's own, {@code unknown} when the host cannot name it. */
+        String type();
+
+        /** The container's name, empty when none is known. */
+        String title();
+
+        /** How many slots the menu has. */
+        int size();
+
+        Layout layout(int slot);
+
+        /** A hash of the slot's item, its data and its count, taken without a copy ({@link com.crystalgraphics.mc.item.CgItems#stampOf}). */
+        int stamp(int slot);
+
+        CgItemStack stack(int slot);
+
+        /** Whether the player may take the slot's stack. */
+        boolean canTake(int slot);
+
+        /** {@link #stamp} of what the cursor carries. */
+        int carriedStamp();
+
+        CgItemStack carried();
+
+        /** Whether the slot accepts {@code stack}, the game's own {@code mayPlace}. */
+        boolean mayPlace(int slot, CgItemStack stack);
+
+        /** The menu's own values, {@link Menu#state}; a fresh empty compound for a kind with none. */
+        CgNbtCompound state();
+
+        /** Carries {@code action} out against the menu {@code id}; false for one this version cannot carry. */
+        boolean act(int id, Action action);
+
+        Capabilities capabilities();
 
         Host NONE = new Host() {
-            @Override public Menu menu() { return null; }
-            @Override public void click(int containerId, int slot, int button, Click type) { }
-            @Override public void close() { }
+            @Override public boolean present() { return false; }
+            @Override public int id() { return 0; }
+            @Override public String type() { return "unknown"; }
+            @Override public String title() { return ""; }
+            @Override public int size() { return 0; }
+            @Override public Layout layout(int slot) { throw new IndexOutOfBoundsException(slot); }
+            @Override public int stamp(int slot) { return 0; }
+            @Override public CgItemStack stack(int slot) { return CgItemStack.EMPTY; }
+            @Override public boolean canTake(int slot) { return false; }
+            @Override public int carriedStamp() { return 0; }
+            @Override public CgItemStack carried() { return CgItemStack.EMPTY; }
+            @Override public boolean mayPlace(int slot, CgItemStack stack) { return false; }
+            @Override public CgNbtCompound state() { return new CgNbtCompound(); }
+            @Override public boolean act(int id, Action action) { return false; }
+            @Override public Capabilities capabilities() { return Capabilities.NONE; }
         };
     }
 
@@ -140,41 +184,36 @@ public final class CgContainers {
         return CgPlatform.get(HOST);
     }
 
-    /** The open menu, as a snapshot, or null with no player. */
+    /** Whether there is a player, and so a menu. */
+    public static boolean present() {
+        return host().present();
+    }
+
+    /** A mirror of the open menu for one screen: ask it for what changed. */
+    public static ContainerMirror mirror() {
+        return new ContainerMirror(host());
+    }
+
+    /** The open menu in full, as a snapshot, or null with no player. It copies every slot: a screen uses {@link #mirror}. */
+    @Nullable
     public static Menu menu() {
-        return host().menu();
+        ContainerMirror mirror = new ContainerMirror(host());
+        mirror.poll();
+        return mirror.menu();
     }
 
-    /** One click into the menu {@code containerId}, through the game's own interaction call. */
-    public static void click(int containerId, int slot, int button, Click type) {
-        host().click(containerId, slot, button, type);
+    /** Whether the slot of the open menu accepts {@code stack}. */
+    public static boolean mayPlace(int slot, CgItemStack stack) {
+        return host().mayPlace(slot, stack);
     }
 
-    /** Closes the open container, as the player does, so the server learns it. */
-    public static void close() {
-        host().close();
+    /** Carries {@code action} out against the menu {@code containerId}, through the game's own call; false for one this version cannot carry. */
+    public static boolean act(int containerId, Action action) {
+        return host().act(containerId, action);
     }
 
-    /**
-     * Starts a drag across slots with mouse {@code button} ({@code 0} left: split evenly, {@code 1} right: one each,
-     * {@code 2} middle, creative). Then one {@link #dragAdd} per slot crossed, then {@link #dragEnd}.
-     */
-    public static void dragStart(int containerId, int button) {
-        click(containerId, OUTSIDE, quickCraft(0, button), Click.QUICK_CRAFT);
-    }
-
-    /** Adds {@code slot} to the drag begun with {@code button}. */
-    public static void dragAdd(int containerId, int slot, int button) {
-        click(containerId, slot, quickCraft(1, button), Click.QUICK_CRAFT);
-    }
-
-    /** Ends the drag begun with {@code button}: the stack is shared over the slots added. */
-    public static void dragEnd(int containerId, int button) {
-        click(containerId, OUTSIDE, quickCraft(2, button), Click.QUICK_CRAFT);
-    }
-
-    /** Vanilla's packing of a drag's stage (0 start, 1 slot, 2 end) and mouse button into one number. */
-    static int quickCraft(int stage, int button) {
-        return (stage & 3) | ((button & 3) << 2);
+    /** What this version's host can carry. */
+    public static Capabilities capabilities() {
+        return host().capabilities();
     }
 }
