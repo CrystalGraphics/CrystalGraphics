@@ -1506,14 +1506,14 @@ public final class CgWorldRenderer {
     /**
      * This frame's opaque draws as the lights' shadow casters, each traced through its mesh's distance field (Unreal's
      * bCastShadow is on for every opaque primitive). Draws whose geometry the CPU cannot see cast none: instance sets,
-     * indirect counts, half-size draws and meshes the shader places.
+     * indirect counts, half-size draws, skinned draws (their bind pose is not where they stand) and meshes the shader places.
      */
     private void casters() {
         for (int i = 0; i < draws.count; i++) {
             CgMesh mesh = draws.lods[i] != null ? draws.lods[i].finest() : draws.meshes[i];
             // A transparent draw that is a solid drawn late (a program lighting itself) casts as opaque ones do; one that
             // blends never does, though it write depth (a beam's closed core), or it shadows its own lights.
-            if (mesh == null || draws.sets[i] != null || draws.counts[i] != null || draws.halves[i] || draws.culledOnGpu[i]
+            if (mesh == null || draws.sets[i] != null || draws.counts[i] != null || draws.halves[i] || draws.culledOnGpu[i] || draws.boneBases[i] >= 0
                     || draws.queues[i] >= CgRenderQueue.TRANSPARENT_THRESHOLD && !CgMaterialProxy.of(draws.materials[i]).solid()) {
                 continue;
             }

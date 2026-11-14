@@ -22,9 +22,10 @@ import java.util.Map;
  *   namespace: mykit                # how its assets are named
  *   shading: mystudio               # the namespace its materials name their shading models by
  *   mesh: models/Hero.glb           # the rest are under the kit
- *   clips: anims/hero
  *   skeleton: skeletons/Hero_Skeleton.yaml
  *   prefab: prefabs/Hero_BP.yaml
+ *   outline: mykit:Renderer/Outline   # optional: a kit material drawn as the engine's outline
+ *   stencil: 1                        # and the custom depth stencil value it reads the character by
  * }</pre>
  *
  * <p>A malformed entry is logged and left out.</p>
@@ -32,7 +33,7 @@ import java.util.Map;
 public final class CgKitActorFile {
 
     private static final Logger LOGGER = LogManager.getLogger(CgKitActorFile.class);
-    private static final String[] KEYS = {"kit", "namespace", "shading", "mesh", "clips", "skeleton", "prefab"};
+    private static final String[] KEYS = {"kit", "namespace", "shading", "mesh", "skeleton", "prefab"};
 
     private CgKitActorFile() {
     }
@@ -59,7 +60,9 @@ public final class CgKitActorFile {
                     LOGGER.warn("[actors] {}: no {}", name, missing);
                     continue;
                 }
-                out.put(name, new CgKitActor.Spec(name, Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5], v[6]));
+                out.put(name, new CgKitActor.Spec(name, Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
+                        m.get("outline") == null ? null : String.valueOf(m.get("outline")),
+                        m.get("stencil") instanceof Number n ? n.intValue() : 0));
             }
         } catch (IOException | RuntimeException ex) {
             LOGGER.warn("[actors] {} did not read: {}", file, ex.toString());

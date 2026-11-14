@@ -1,13 +1,11 @@
 package com.crystalgraphics.world.actor.kit;
 
-import com.crystalgraphics.animation.CgAnimInstance;
-import com.crystalgraphics.api.animation.CgAnimSection;
-import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.render.post.CgOutline;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.vfx.CgVfx;
@@ -21,26 +19,24 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
- * An entity drawn as a skinned character from a kit's files: its mesh, its first clip looping, its prefab's materials.
- * Nothing shows until the kit's materials are ready; the mesh, clips and kit load once per {@link Spec}, off the
+ * An entity drawn as a skinned character from a kit's files: its mesh in its default pose, in its prefab's materials.
+ * Nothing shows until the kit's materials are ready; the mesh and kit load once per {@link Spec}, off the
  * frame, and every actor of it shares them.
  *
  * <pre>{@code
  * CgKitActor.Spec hero = new CgKitActor.Spec("hero", Paths.get("D:/kits/mykit"), "mykit", "mystudio",
- *         "models/Hero.glb", "anims/hero", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml");
+ *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml");
  * CgEntityActors.bindLocalPlayer(hero.factory());        // the client's player, drawn as it
  * }</pre>
  *
  * <ul>
- *   <li>The mesh is fitted to the entity's height, feet at the root, and turned to face where the entity does.</li>
+ *   <li>The mesh is fitted to the entity's height, feet at the root, in its default pose: no clip plays.</li>
  *   <li>A spec with a missing file fails once, logged, and its actors draw nothing.</li>
  * </ul>
  */
@@ -51,11 +47,12 @@ public final class CgKitActor extends CgEntityActor {
 
     /**
      * A character's files, each path under {@code kit}: {@code namespace} is how the kit's assets are named,
-     * {@code shading} the namespace its materials name their shading models by, {@code clips} a folder of
-     * {@code .glb} clip files, {@code skeleton} the sockets' asset and {@code prefab} the one naming its materials.
+     * {@code shading} the namespace its materials name their shading models by, {@code skeleton} the sockets' asset and {@code prefab} the one naming its materials.
+     * {@code outline} is the id of a material of the kit drawn as the engine's outline over the character, marked by
+     * {@code stencil} (its custom depth stencil value); null and 0 for none.
      */
-    public record Spec(String name, Path kit, String namespace, String shading, String mesh, String clips, String skeleton,
-                       String prefab) {
+    public record Spec(String name, Path kit, String namespace, String shading, String mesh, String skeleton,
+                       String prefab, @Nullable String outline, int stencil) {
 
         /** An actor factory for this character, for {@code CgEntityActors.bind}. */
         public Supplier<CgKitActor> factory() {
@@ -66,7 +63,7 @@ public final class CgKitActor extends CgEntityActor {
     /** What a spec loaded: the files read on a worker, then the kit's materials. */
     private static final class Loaded {
         volatile CgSkeletalMesh mesh;
-        volatile List<CgAnimSequence> clips;
+        /** The prefab's materials, one a slot, and the outline's after them where there is one. */
         volatile List<String> materials;
         volatile boolean failed;
         CgKitAssets kit;
@@ -75,6 +72,8 @@ public final class CgKitActor extends CgEntityActor {
     private final Spec spec;
     private Loaded loaded;
     private CgSkeletalMeshComponent body;
+    @Nullable
+    private CgOutline outline;
 
     private CgKitActor(Spec spec) {
         this.spec = spec;
@@ -93,6 +92,12 @@ public final class CgKitActor extends CgEntityActor {
     }
 
     @Override
+    protected void onRemove(CgEntity entity) {
+        if (outline != null) outline.close();
+        outline = null;
+    }
+
+    @Override
     protected void tick(CgEntity entity, float dt) {
         if (body != null || loaded.failed || loaded.mesh == null || !entity.present()) return;
         if (loaded.kit == null) {
@@ -106,13 +111,15 @@ public final class CgKitActor extends CgEntityActor {
             return;
         }
         if (!kit.declared() || !allReady(kit, loaded.materials.size())) return;
+        int slots = loaded.mesh.mesh().submeshCount();
         double height = entity.pose(CgEntityQuery.HEIGHT);
         body = add(scene().skeletal(loaded.mesh).transform(fit(loaded.mesh, height > 0 ? (float) height : 1.8f))
                 .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f));
-        CgAnimInstance anim = body.anim();
-        anim.play(CgAnimSection.of(loaded.clips.get(0)).at(anim.time()).until(Double.POSITIVE_INFINITY).loop().build());
-        LOGGER.info("[kit-actor] {} drawn as {}: {} clips, playing {}", entity, spec.name(), loaded.clips.size(),
-                loaded.clips.get(0).name());
+        if (spec.outline() != null) {
+            body.customDepth(spec.stencil(), 0xFF);
+            outline = CgOutline.add(CgMaterial.of(kit.material(slots).get()));
+        }
+        LOGGER.info("[kit-actor] {} drawn as {}{}", entity, spec.name(), outline != null ? ", outlined" : "");
     }
 
     private static boolean allReady(CgKitAssets kit, int slots) {
@@ -124,8 +131,7 @@ public final class CgKitActor extends CgEntityActor {
     private static Matrix4f fit(CgSkeletalMesh mesh, float height) {
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         float scale = height / (float) Math.max(box.maxY() - box.minY(), 1e-4);
-        // the root is turned as a Minecraft model (180 - body yaw), whose front is -z; the mesh's is +z
-        return new Matrix4f().rotationY((float) Math.PI).scale(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
+        return new Matrix4f().scaling(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
                 (float) -box.minY(), (float) -(box.minZ() + box.maxZ()) / 2f);
     }
 
@@ -134,24 +140,14 @@ public final class CgKitActor extends CgEntityActor {
         File mesh = s.kit().resolve(s.mesh()).toFile();
         if (!mesh.isFile()) throw new IllegalStateException("no mesh at " + mesh);
         CgSkeletalMesh body = CgKitModels.withSockets(CgMeshLoader.skeletal(mesh.getPath()), s.kit(), s.skeleton());
-        List<CgAnimSequence> clips = new ArrayList<>(body.sequences());
-        File[] files = s.kit().resolve(s.clips()).toFile().listFiles((dir, n) -> n.toLowerCase(Locale.ROOT).endsWith(".glb"));
-        if (files != null) {
-            Arrays.sort(files);
-            for (File f : files) {
-                for (CgAnimSequence c : CgMeshLoader.sequences(f.getAbsolutePath())) {
-                    if (c.trackCount() > 1) clips.add(c);   // the _dmy files move one locator
-                }
-            }
-        }
-        if (clips.isEmpty()) throw new IllegalStateException(s.name() + " has no clips");
         List<String> materials = CgKitModels.prefabMaterials(s.kit().resolve(s.prefab()));
         if (materials.size() != body.mesh().submeshCount()) {
             throw new IllegalStateException(s.name() + "'s prefab names " + materials.size() + " materials for "
                     + body.mesh().submeshCount() + " slots");
         }
-        out.clips = clips;
-        out.materials = materials;
+        List<String> all = new ArrayList<>(materials);
+        if (s.outline() != null) all.add(s.outline());
+        out.materials = all;
         out.mesh = body;
     }
 }
