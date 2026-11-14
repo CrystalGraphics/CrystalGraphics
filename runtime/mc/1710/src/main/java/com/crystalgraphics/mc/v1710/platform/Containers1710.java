@@ -5,8 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.crystalgraphics.platform.service.CgContainers;
-import com.crystalgraphics.platform.service.CgItemStack;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItemStack;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -14,7 +14,6 @@ import net.minecraft.inventory.Container;
 import net.minecraft.inventory.ContainerChest;
 import net.minecraft.inventory.ContainerFurnace;
 import net.minecraft.inventory.ContainerPlayer;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.tileentity.TileEntityFurnace;
 
@@ -68,9 +67,7 @@ public final class Containers1710 implements CgContainers.Host {
 
     private static CgItemStack stack(ItemStack stack) {
         if (stack == null || stack.stackSize <= 0) return CgItemStack.EMPTY;
-        String item = Item.itemRegistry.getNameForObject(stack.getItem());
-        int tag = stack.getTagCompound() == null ? 0 : stack.getTagCompound().hashCode();
-        return new CgItemStack(String.valueOf(item), stack.stackSize, stack.getItemDamage(), stack.getMaxDamage(), tag, stack);
+        return CgItemStack.of(stack);
     }
 
     private static String type(EntityPlayerSP player, Container menu) {

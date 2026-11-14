@@ -45,6 +45,8 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.mc.item.CgItemStack;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 import com.crystalgraphics.serialization.nbt.CgNbtList;
 import com.crystalgraphics.serialization.nbt.CgNbt;
@@ -117,6 +119,7 @@ public final class CgServerSmoke extends CgGauntletController {
         check("server.no-device", !CgRHI.installed(), "something started a device or probed CgCapabilities on a server");
         checkPersistence();
         checkNbtRoundTrip();
+        checkItemStack();
         checkTextFormats();
         ticks = new ServerTicks();
     }
@@ -322,6 +325,26 @@ public final class CgServerSmoke extends CgGauntletController {
             detail = String.valueOf(failed);
         }
         check("server.nbt", ok, detail);
+    }
+
+    /** A stack with a name, lore, an enchantment, damage and data of ours goes into the game's stack and back, equal. */
+    private void checkItemStack() {
+        String detail;
+        boolean ok = false;
+        try {
+            boolean legacy = CgItems.shape() == CgItems.Shape.LEGACY;
+            CgItemStack made = CgItemStack.of("minecraft:diamond_sword", 1).withName("Excalibur").withLore(List.of("first", "second"))
+                    .withEnchantment(legacy ? "16" : "minecraft:sharpness", 5).withDamage(7)
+                    .withCustomData(d -> d.put("mymod:charge", 3));
+            Object host = made.toHost();
+            CgItemStack back = CgItemStack.of(host);
+            boolean stamped = CgItems.stampOf(host) == CgItems.stampOf(made.toHost());
+            ok = made.equals(back) && back.maxDamage() > 0 && stamped && CgItemStack.of(null).isEmpty();
+            detail = ok ? back + "; max damage " + back.maxDamage() : "built " + made + ", read back " + back + ", stamps equal " + stamped;
+        } catch (Throwable failed) {
+            detail = String.valueOf(failed);
+        }
+        check("server.items", ok, detail);
     }
 
     /** One of every tag kind this version has, so a host that spells one wrongly shows: a long array only where the version has them. */

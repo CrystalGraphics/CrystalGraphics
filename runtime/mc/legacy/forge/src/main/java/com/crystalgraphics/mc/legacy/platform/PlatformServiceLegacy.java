@@ -33,7 +33,8 @@ import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
-import com.crystalgraphics.platform.service.CgContainers;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
@@ -98,6 +99,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesLegacy());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostLegacy());
         CgPlatform.provide(CgNbt.HOST, new NbtLegacy());
+        CgPlatform.provide(CgItems.HOST, ItemsLegacy.INSTANCE);
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new TicksLegacy());

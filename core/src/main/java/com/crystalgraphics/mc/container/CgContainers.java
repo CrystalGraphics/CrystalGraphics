@@ -1,5 +1,6 @@
-package com.crystalgraphics.platform.service;
+package com.crystalgraphics.mc.container;
 
+import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 

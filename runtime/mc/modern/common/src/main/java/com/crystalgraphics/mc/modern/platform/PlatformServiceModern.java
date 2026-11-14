@@ -51,7 +51,8 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
-import com.crystalgraphics.platform.service.CgContainers;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgModelSpace;
@@ -111,6 +112,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());
         CgPlatform.provide(CgNbt.HOST, new NbtModern());
+        CgPlatform.provide(CgItems.HOST, ItemsModern.INSTANCE);
         CgPlatform.provide(CgCommands.HOST, CommandsModern.INSTANCE);
     }
 
@@ -121,6 +123,7 @@ public final class PlatformServiceModern implements CgPlatformService {
      */
     public static void installClient() {
         ClientModern.install();
+        ItemsClientModern.install();
         CgPlatform.provide(CgCameraManager.HOST, new HostCameraModern());
         CgPlatform.provide(CgHostDebug.SERVICE, new HostDebugModern());
         CgPlatform.provide(CgModelSpace.SERVICE, HostCameraModern::modelSpace);

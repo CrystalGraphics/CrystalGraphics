@@ -27,6 +27,7 @@ public final class ServerModern {
     public static void serverStarting(MinecraftServer server) {
         PlayersModern.INSTANCE.server(server);
         ServersModern.INSTANCE.server(server);
+        ItemsModern.server(server);
         CgEngineLifecycle.serverStarting(server);
     }
 
@@ -40,5 +41,6 @@ public final class ServerModern {
         CgEngineLifecycle.serverStopping();
         PlayersModern.INSTANCE.server(null);
         ServersModern.INSTANCE.server(null);
+        ItemsModern.server(null);
     }
 }

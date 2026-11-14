@@ -33,7 +33,8 @@ import com.crystalgraphics.platform.world.CgHostShapes;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.service.CgGameThreads;
 import com.crystalgraphics.platform.input.CgKeyBindings;
-import com.crystalgraphics.platform.service.CgContainers;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.platform.service.CgScreens;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
@@ -99,6 +100,7 @@ public final class PlatformService1710 implements CgPlatformService {
         CgPlatform.provide(CgHostShapes.HOST, new HostShapes1710());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHost1710());
         CgPlatform.provide(CgNbt.HOST, new Nbt1710());
+        CgPlatform.provide(CgItems.HOST, Items1710.INSTANCE);
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new Ticks1710());

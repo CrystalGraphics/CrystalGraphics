@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
-import com.crystalgraphics.platform.service.CgContainers;
-import com.crystalgraphics.platform.service.CgItemStack;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItemStack;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -37,7 +37,7 @@ import java.util.Map;
  *   <li>The cursor's stack is the menu's from 1.17.1, the player's inventory's before.</li>
  *   <li>A menu's kind is its {@code MenuType}'s registry name from 1.14.3; the player's own menu has none, and 1.13.2's
  *       menus are not typed, so it is {@code unknown} there.</li>
- *   <li>A stack's data is its component patch from 1.20.6 and its NBT before.</li>
+ *   <li>A stack is copied whole through {@code CgItemStack.of}, its data and all.</li>
  *   <li>A furnace's progress is whole pixels of its two textures to 1.20.1 and a fraction from 1.20.2.</li>
  * </ul>
  */
@@ -84,18 +84,7 @@ public final class ContainersModern implements CgContainers.Host {
     }
 
     private static CgItemStack stack(ItemStack stack) {
-        if (stack.isEmpty()) return CgItemStack.EMPTY;
-        //? if >=1.19.3 {
-        String item = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
-        //?} else {
-        /*String item = Registry.ITEM.getKey(stack.getItem()).toString();
-        *///?}
-        //? if >=1.20.6 {
-        /*int tag = stack.getComponentsPatch().hashCode();
-        *///?} else {
-        int tag = stack.getTag() == null ? 0 : stack.getTag().hashCode();
-        //?}
-        return new CgItemStack(item, stack.getCount(), stack.getDamageValue(), stack.getMaxDamage(), tag, stack);
+        return stack.isEmpty() ? CgItemStack.EMPTY : CgItemStack.of(stack);
     }
 
     /** The menu's registry name; the player's own menu has no type, and neither does anything before 1.14.3. */

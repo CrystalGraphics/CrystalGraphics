@@ -5,8 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.crystalgraphics.platform.service.CgContainers;
-import com.crystalgraphics.platform.service.CgItemStack;
+import com.crystalgraphics.mc.container.CgContainers;
+import com.crystalgraphics.mc.item.CgItemStack;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
@@ -18,7 +18,6 @@ import net.minecraft.inventory.IInventory;
 //? if >=1.9 {
 import net.minecraft.inventory.ClickType;
 //?}
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
 /**
@@ -82,18 +81,10 @@ public final class ContainersLegacy implements CgContainers.Host {
     private static CgItemStack stack(ItemStack stack) {
         //? if >=1.11 {
         if (stack.isEmpty()) return CgItemStack.EMPTY;
-        int count = stack.getCount();
         //?} else {
         /*if (stack == null || stack.stackSize <= 0) return CgItemStack.EMPTY;
-        int count = stack.stackSize;
         *///?}
-        //? if >=1.10 {
-        Object key = Item.REGISTRY.getNameForObject(stack.getItem());
-        //?} else {
-        /*Object key = Item.itemRegistry.getNameForObject(stack.getItem());
-        *///?}
-        int tag = stack.getTagCompound() == null ? 0 : stack.getTagCompound().hashCode();
-        return new CgItemStack(String.valueOf(key), count, stack.getItemDamage(), stack.getMaxDamage(), tag, stack);
+        return CgItemStack.of(stack);
     }
 
     private static String type(EntityPlayerSP player, Container menu) {

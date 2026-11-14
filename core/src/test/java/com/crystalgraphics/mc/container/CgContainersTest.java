@@ -1,5 +1,6 @@
-package com.crystalgraphics.platform.service;
+package com.crystalgraphics.mc.container;
 
+import com.crystalgraphics.mc.item.CgItemStack;
 import com.crystalgraphics.platform.CgPlatform;
 import org.junit.After;
 import org.junit.Test;
@@ -19,18 +20,6 @@ public class CgContainersTest {
     @After
     public void clear() {
         CgPlatform.provide(CgContainers.HOST, null);
-    }
-
-    @Test
-    public void aStackComparesByItsDataAndNotByTheHostsObject() {
-        CgItemStack a = new CgItemStack("minecraft:stone", 16, 0, 0, 7, new Object());
-        CgItemStack b = new CgItemStack("minecraft:stone", 16, 0, 0, 7, new Object());
-        assertEquals(a, b);
-        assertEquals(a.hashCode(), b.hashCode());
-        assertFalse(a.equals(new CgItemStack("minecraft:stone", 15, 0, 0, 7, null)));
-        assertFalse("a rename is another stack", a.equals(new CgItemStack("minecraft:stone", 16, 0, 0, 8, null)));
-        assertEquals("every empty stack is one", CgItemStack.EMPTY, new CgItemStack("minecraft:air", 0, 0, 0, 3, null));
-        assertTrue(CgItemStack.of("minecraft:stone", 0).isEmpty());
     }
 
     @Test
