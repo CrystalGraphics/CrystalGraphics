@@ -2,7 +2,7 @@ package com.crystalgraphics.sequence.binding;
 
 import java.util.Arrays;
 
-import com.crystalgraphics.animation.CgAnimInstance;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 
 /**
@@ -34,18 +34,18 @@ public final class CgRoleRim implements CgSequenceTarget {
     /** The contract's slot names, in slot order. */
     public static final String STRENGTH = "rim_strength", POWER = "rim_power", COLOUR = "rim";
 
-    private final CgAnimInstance instance;
+    private final CgSkeletalMeshComponent instance;
     private final String strength, power, colour;
     /** Per slot, what was keyed, NaN while unkeyed. */
     private final float[][] keyed = new float[3][4];
 
     /**
-     * @param instance the role's skinned instance, its own materials already set
+     * @param instance the role's skeletal mesh, its materials already set
      * @param strength the scalar for {@code rim_strength} (Kakarot's {@code FresnelInfluence})
      * @param power    the scalar for {@code rim_power} ({@code FresnelPower})
      * @param colour   the vector for {@code rim} ({@code FresnelColor})
      */
-    public CgRoleRim(CgAnimInstance instance, String strength, String power, String colour) {
+    public CgRoleRim(CgSkeletalMeshComponent instance, String strength, String power, String colour) {
         this.instance = instance;
         this.strength = strength;
         this.power = power;

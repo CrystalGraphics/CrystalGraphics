@@ -8,7 +8,7 @@ import com.crystalgraphics.api.animation.CgAnimSequence;
 
 /**
  * An instance's material curves this frame: each playing clip's curves that drive a material, summed by the clip's
- * weight in the pose, then set on the instance's materials. Unreal's material curve map
+ * weight in the pose, then set on its {@link CgAnimCurveTarget}. Unreal's material curve map
  * ({@code FAnimInstanceProxy::UpdateCurvesToEvaluationContext}) and its application
  * ({@code UpdateCurvesPostEvaluation}): a curve no clip keys this frame puts its parameter back to the material's
  * default. Owned by one {@link CgAnimInstance}; allocates only when it first meets a curve's name.
@@ -59,11 +59,11 @@ final class CgMaterialCurves {
         }
     }
 
-    /** Sets each keyed curve's value on {@code instance}'s materials, and puts back what no clip keys any more. */
-    void apply(CgAnimInstance instance) {
+    /** Sets each keyed curve's value on {@code target}, and puts back what no clip keys any more. */
+    void apply(CgAnimCurveTarget target) {
         for (int i = 0; i < count; i++) {
-            if (keyed[i]) instance.scalar(names[i], values[i]);
-            else if (wasKeyed[i]) instance.resetScalar(names[i]);
+            if (keyed[i]) target.scalar(names[i], values[i]);
+            else if (wasKeyed[i]) target.resetScalar(names[i]);
         }
     }
 

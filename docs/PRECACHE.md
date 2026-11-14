@@ -16,7 +16,7 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 | A VFX look in `CgVfxRegistry` | precached at the graphics start, and rehearsed | nothing (`.precache(false)` opts out one played rarely) |
 | A VFX look played with no cue (a hit spark, a trail, a projectile) | precached if you name it once | `VFX.precache(LOOK)` at your mod's init, any thread |
 | A VFX system asset, from a kit or a mounted pack | precached and rehearsed before it is READY | nothing |
-| A skinned mesh's material (`CgAnimInstance.material`) | requested as it is set | nothing |
+| A skinned mesh's material (`CgSkeletalMeshComponent.material`) | requested as it is set | nothing |
 | A post volume (`CgPostStack.volume(priority, settings)`) | its look's composite passes registered as it is made, built over the next frames | nothing; a look switched on later by changing its settings: `lookPasses(settings, p)` in a request |
 | A `CgPostMaterial` | built when first active, drawn once built (a few frames late) | nothing; add it at load if it must show on its first frame |
 | A CrystalGUI widget's paint material | registered at client init (`CgUiRenderer.precache`), built behind the loading screen | nothing |

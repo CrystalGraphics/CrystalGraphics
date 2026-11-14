@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.animation.CgAnimInstance;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 
 /**
@@ -40,7 +40,7 @@ public final class CgRoleFlash implements CgSequenceTarget {
     public static final String TINT = "tint", TINT_STRENGTH = "tint_strength", FLASH = "flash",
             FLASH_STRENGTH = "flash_strength";
 
-    private final CgAnimInstance instance;
+    private final CgSkeletalMeshComponent instance;
     private final String tint, flash;
     @Nullable
     private final String tintStrength, flashStrength;
@@ -48,13 +48,13 @@ public final class CgRoleFlash implements CgSequenceTarget {
     private final float[][] keyed = new float[4][4];
 
     /**
-     * @param instance      the role's skinned instance, its own materials already set
+     * @param instance      the role's skeletal mesh, its materials already set
      * @param tint          the vector for {@code tint}
      * @param tintStrength  the scalar for {@code tint_strength}; null to write it as {@code tint}'s alpha
      * @param flash         the vector for {@code flash}
      * @param flashStrength the scalar for {@code flash_strength}; null to write it as {@code flash}'s alpha
      */
-    public CgRoleFlash(CgAnimInstance instance, String tint, @Nullable String tintStrength, String flash,
+    public CgRoleFlash(CgSkeletalMeshComponent instance, String tint, @Nullable String tintStrength, String flash,
                        @Nullable String flashStrength) {
         this.instance = instance;
         this.tint = tint;

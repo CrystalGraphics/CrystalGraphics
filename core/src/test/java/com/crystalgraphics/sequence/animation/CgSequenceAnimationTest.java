@@ -1,5 +1,7 @@
 package com.crystalgraphics.sequence.animation;
 
+import org.joml.Matrix4f;
+
 import static org.junit.Assert.assertEquals;
 
 import java.util.Map;
@@ -44,9 +46,7 @@ public class CgSequenceAnimationTest {
 
     /** Where the elbow is as last posed. */
     private static double elbow(CgAnimInstance arm) {
-        double[] point = new double[3];
-        arm.socket(arm.socket("elbow"), point, null);
-        return point[1];
+        return arm.socket(arm.socket("elbow"), new Matrix4f()).m31();
     }
 
     private static final class Fighter implements CgSequenceSkeletal {

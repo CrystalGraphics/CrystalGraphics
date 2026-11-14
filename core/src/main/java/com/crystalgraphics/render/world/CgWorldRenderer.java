@@ -27,7 +27,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
-import com.crystalgraphics.animation.CgAnimInstance;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.animation.CgBonePalettes;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
@@ -592,70 +592,44 @@ public final class CgWorldRenderer {
     }
 
     /**
-     * Starts a draw of a skinned mesh posed this frame: its mesh, skinned by the palette {@code POSE} wrote, where the
-     * instance stands. Submit from {@code SUBMIT}, or another group after {@code POSE}.
+     * Draws a spawned skeletal mesh component as posed this frame, each submesh in its slot's material: Unreal's skinned
+     * mesh component drawing its sections, each with {@code GetMaterial(slot)} (SkinnedMeshComponentHelper.h:108-125),
+     * into CustomDepth where it is marked, and each again in its slot's overlay within its overlay distance. Bounded by
+     * its pose. The client scene calls it in {@code SUBMIT} for every skeletal component it holds; nothing else does.
      *
-     * <pre>{@code
-     * world.draw(kurama, skin).pad(4f).submit();       // padded: a pose reaches past the bind pose's bounds
-     * }</pre>
-     *
-     * @throws IllegalStateException where {@code CgAnimation} has not posed it this frame
+     * @throws IllegalStateException where a slot has no material: Unreal draws the default material there, and this
+     *         engine has none to draw, so it names the slot
      */
-    public Draw draw(CgAnimInstance instance, CgMaterialInterface material) {
-        int palette = instance.palette();
-        if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
-        Draw d = scratch.start(instance.mesh().mesh(), material).bones(palette)
-                .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad());
-        if (instance.customDepthStencil() >= 0) d.customDepth(instance.customDepthStencil(), instance.customDepthWriteMask());
-        return d;
-    }
-
-    /**
-     * Draws a skinned mesh posed this frame, each submesh in its slot's material ({@link CgAnimInstance#material}):
-     * Unreal's skinned mesh component drawing its sections, each with {@code GetMaterial(slot)}
-     * (SkinnedMeshComponentHelper.h:108-125), into CustomDepth too where it is marked, and each again in its slot's
-     * overlay within its overlay distance (Unreal's {@code OverlayMaterial}). Submit from {@code SUBMIT}, or another
-     * group after {@code POSE}.
-     *
-     * <pre>{@code
-     * goku.material(0, hair).material(1, head)...;   // or every slot from a prefab's materials
-     * goku.overlay(outline).customDepth(1, 0xFF);
-     * world.draw(goku);
-     * }</pre>
-     *
-     * @throws IllegalStateException where it is not posed this frame, or a slot has no material: Unreal draws the
-     *         default material there, and this engine has none to draw, so it names the slot
-     */
-    public void draw(CgAnimInstance instance) {
-        int palette = instance.palette();
-        if (palette < 0) throw new IllegalStateException(instance + " is not posed this frame: CgAnimation.add it, and draw after POSE");
-        boolean overlays = withinOverlayDistance(instance);
-        for (int slot = 0; slot < instance.materialSlots(); slot++) {
-            CgMaterialInterface material = instance.material(slot);
+    public void draw(CgSkeletalMeshComponent component) {
+        int palette = component.palette();
+        if (palette < 0) return;
+        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
+        if (!component.drawnFrom(view.x(), view.y(), view.z())) return;
+        boolean overlays = component.overlayDrawnFrom(view.x(), view.y(), view.z());
+        component.drawnBounds(skeletalBounds);
+        component.basis(skeletalBasis);
+        for (int slot = 0; slot < component.materialSlots(); slot++) {
+            CgMaterialInterface material = component.material(slot);
             if (material == null) {
-                throw new IllegalStateException(instance + "'s slot " + slot + " (" + instance.mesh().material(slot)
+                throw new IllegalStateException(component + "'s slot " + slot + " (" + component.mesh().material(slot)
                         + ") has no material: set it with material(slot, material)");
             }
-            Draw d = scratch.start(instance.mesh().mesh(), material).bones(palette).submesh(slot)
-                    .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad());
-            if (instance.customDepthStencil() >= 0) d.customDepth(instance.customDepthStencil(), instance.customDepthWriteMask());
-            d.submit();
-            CgMaterialInterface overlay = overlays ? instance.overlay(slot) : null;
-            if (overlay != null) {
-                scratch.start(instance.mesh().mesh(), overlay).bones(palette).submesh(slot)
-                        .at(instance.x(), instance.y(), instance.z()).transform(instance.transform()).pad(instance.boundsPad())
-                        .submit();
-            }
+            skeletal(component, material, palette, slot).submit();
+            CgMaterialInterface overlay = overlays ? component.overlay(slot) : null;
+            if (overlay != null) skeletal(component, overlay, palette, slot).submit();
         }
     }
 
-    /** Whether {@code instance}'s overlay draws this frame: within its overlay distance of the world's camera, or no limit. */
-    private static boolean withinOverlayDistance(CgAnimInstance instance) {
-        float most = instance.overlayMaxDistance();
-        if (most <= 0f) return true;
-        CgCamera view = CgRenderStage.WORLD_OPAQUE.host().camera();
-        double dx = instance.x() - view.x(), dy = instance.y() - view.y(), dz = instance.z() - view.z();
-        return dx * dx + dy * dy + dz * dz <= (double) most * most;
+    private final CgAABB skeletalBounds = new CgAABB();
+    private final Matrix4f skeletalBasis = new Matrix4f();
+
+    private Draw skeletal(CgSkeletalMeshComponent c, CgMaterialInterface material, int palette, int slot) {
+        Draw d = scratch.start(c.mesh().mesh(), material).bones(palette).submesh(slot)
+                .at(c.x(), c.y(), c.z()).transform(skeletalBasis).bounds(skeletalBounds)
+                .light(c.blockLight(), c.skyLight()).emission(c.emission());
+        for (int k = 0; k < 4; k++) d.custom(k, c.customData(k, 0), c.customData(k, 1), c.customData(k, 2), c.customData(k, 3));
+        if (c.customDepthStencil() >= 0) d.customDepth(c.customDepthStencil(), c.customDepthMask());
+        return d;
     }
 
     /**

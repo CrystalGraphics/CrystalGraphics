@@ -53,9 +53,9 @@ public final class CgMeshCollector {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
         this.material = Objects.requireNonNull(material, "material");
         submesh = -1;
-        x = primitive.x;
-        y = primitive.y;
-        z = primitive.z;
+        x = primitive.x();
+        y = primitive.y();
+        z = primitive.z();
         basis.identity();
         System.arraycopy(primitive.customData, 0, custom, 0, 16);
         blockLight = primitive.blockLight;

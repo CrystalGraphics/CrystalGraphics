@@ -16,14 +16,14 @@ import com.crystalgraphics.api.animation.CgPose;
  * frame in the order written; change its values each frame as the code that drives it decides.
  *
  * <pre>{@code
- * CgBoneWrite look = role.write("head");                                       // once
+ * CgBoneWrite look = role.anim().modify("head");                               // once
  * look.rotation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, yawPitch);  // each frame, before POSE
  * }</pre>
  *
  * <p>A pose composed by another rule, written whole, bone by bone, in the parent's space (what a GeckoLib bone holds):</p>
  *
  * <pre>{@code
- * CgBoneWrite arm = role.write("right_arm");
+ * CgBoneWrite arm = role.anim().modify("right_arm");
  * arm.translation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, x, y, z)
  *    .rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, turn);
  * }</pre>

@@ -41,7 +41,7 @@ public final class CgMeshBatches {
     private double[] positions = new double[64 * 3];
     private float[] values = new float[64 * VALUES];
 
-    private static final int INTS = 7, SUBMESH = 0, OBJECT = 1, COUNT = 2, FLAGS = 3, PRIORITY = 4, STENCIL = 5, MASK = 6;
+    private static final int INTS = 8, SUBMESH = 0, OBJECT = 1, COUNT = 2, FLAGS = 3, PRIORITY = 4, STENCIL = 5, MASK = 6, BONES = 7;
     /** Per dynamic row: the 3x3 (9), custom data (16), light (2), emission (1). */
     public static final int VALUES = 28, BASIS = 0, CUSTOM = 9, LIGHT = 25, EMISSION = 27;
 
@@ -106,6 +106,11 @@ public final class CgMeshBatches {
         return ints[b * INTS + MASK];
     }
 
+    /** A skinned row's palette base this frame ({@code CgBonePalettes}), or -1 for a row that is not skinned. */
+    public int bones(int b) {
+        return ints[b * INTS + BONES];
+    }
+
     /** A dynamic row's absolute translation along {@code axis}. */
     public double position(int b, int axis) {
         return positions[b * 3 + axis];
@@ -135,6 +140,7 @@ public final class CgMeshBatches {
         ints[i + PRIORITY] = sortPriority;
         ints[i + STENCIL] = stencil;
         ints[i + MASK] = stencilMask;
+        ints[i + BONES] = -1;
         instances[b] = null;
         return b;
     }
@@ -142,6 +148,11 @@ public final class CgMeshBatches {
     /** The gather's: row {@code b} draws GPU scene record {@code objectId}. */
     public void object(int b, int objectId) {
         ints[b * INTS + OBJECT] = objectId;
+    }
+
+    /** The gather's: row {@code b} is skinned by the palette starting at {@code base}. */
+    public void bones(int b, int base) {
+        ints[b * INTS + BONES] = base;
     }
 
     /** The gather's: row {@code b} draws {@code count} records, {@code ids}' first. */

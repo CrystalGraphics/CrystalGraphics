@@ -783,7 +783,7 @@ CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
 CgWorldRenderer.get().draw(mesh, outline).at(x, y, z).submit();   // its own material, the same mesh
 ```
 
-A skinned instance names one for every slot: `CgAnimInstance.overlay(material)`.
+A skeletal mesh component names one for every slot: `CgSkeletalMeshComponent.overlay(material)`.
 
 ---
 

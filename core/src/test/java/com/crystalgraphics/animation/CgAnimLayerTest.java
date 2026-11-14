@@ -11,6 +11,8 @@ import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -20,7 +22,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 
-/** A layered slot takes its branch's bones from what it plays and its material curves onto the instance's own materials. */
+/** A layered slot takes its branch's bones from what it plays and its material curves onto its component's materials. */
 public class CgAnimLayerTest {
 
     private static final String SPRITE = "crystalgraphics:shaders/vfx/particle/sprite.shader";
@@ -58,11 +60,11 @@ public class CgAnimLayerTest {
                 .track("jaw", new float[] {0, 0, 1}, turn(40), new float[] {1, 1, 1})
                 .curve("_SoftDistance", ramp(31, 0.5f, 2f), CgAnimSequence.DRIVES_MATERIAL)
                 .build();
-        CgAnimInstance goku = new CgAnimInstance(mesh);
         // A material declaring a scalar: the sprite program's, whose usage it must state
         CgMaterialDefinition eye = CgMaterialDefinition.of("test:eye", SPRITE).usage(CgMaterialUsage.SPRITES)
                 .value("_SoftDistance", 0.25f).build();
-        goku.material(0, eye);
+        CgSkeletalMeshComponent component = new CgScene().skeletal(mesh).material(0, CgMaterial.of(eye));
+        CgAnimInstance goku = component.anim();
         goku.play(CgAnimSection.of(body).until(Double.POSITIVE_INFINITY).build());
         CgAnimLayer face = goku.layer("FacialSlot", "facialbase", 1);
         face.play(CgAnimSection.of(open).until(Double.POSITIVE_INFINITY).build());
@@ -71,19 +73,19 @@ public class CgAnimLayerTest {
         Quaternionf spine = rotation(goku, 1), jaw = rotation(goku, 3);
         assertEquals("the body keeps the spine", 1f, Math.abs(spine.dot(quat(turn(30)))), 1e-5f);
         assertEquals("the layer turns the jaw, under the body's spine", 1f, Math.abs(jaw.dot(quat(turn(70)))), 1e-5f);
-        assertEquals("its curve on the instance's own material", 1.25f, scalar(goku.material(0), "_SoftDistance"), 1e-4f);
+        assertEquals("its curve on the instance's own material", 1.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
 
         face.stop(1f);   // FacialOff: the body shows through, the face's curves gone with it
         goku.evaluate().applyCurves();
         assertEquals("a stop shows the body's branch", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);
-        assertEquals("and drops the layer's curves", 0.25f, scalar(goku.material(0), "_SoftDistance"), 1e-4f);
+        assertEquals("and drops the layer's curves", 0.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
         goku.evaluate().applyCurves();
         assertEquals("for that frame only", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(70)))), 1e-5f);
 
         face.clear();
         goku.evaluate().applyCurves();
         assertEquals("with nothing playing the branch is the body's", 1f, Math.abs(rotation(goku, 3).dot(quat(turn(30)))), 1e-5f);
-        assertEquals("a curve no clip keys goes back to the default", 0.25f, scalar(goku.material(0), "_SoftDistance"), 1e-4f);
+        assertEquals("a curve no clip keys goes back to the default", 0.25f, scalar(component.material(0), "_SoftDistance"), 1e-4f);
     }
 
     private static float[] ramp(int frames, float from, float to) {

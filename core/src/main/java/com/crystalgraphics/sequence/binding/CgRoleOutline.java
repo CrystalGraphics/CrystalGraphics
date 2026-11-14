@@ -2,9 +2,9 @@ package com.crystalgraphics.sequence.binding;
 
 import com.crystalgraphics.api.material.CgMaterialInstance;
 
-import com.crystalgraphics.animation.CgAnimInstance;
-import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.material.CgMaterialValues;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
+
+
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.sequence.CgSequenceTarget;
@@ -16,7 +16,7 @@ import com.crystalgraphics.sequence.CgSequenceTarget;
  * character's dynamic materials, and {@code OutlinePost_SetTypeColor} writes the colour into the outline pass's slot.
  *
  * <pre>{@code
- * for (int s = 0; s < goku.materialSlots(); s++) goku.material(s, gokuMaterials.get(s));   // his own copies
+ * goku.materials(gokuMaterials::get);                                     // goku: a CgSkeletalMeshComponent
  * CgRoleOutline outline = new CgRoleOutline(goku, battleOutline, 1, "OutlineColorType", "TypeColor1");
  *
  * // the role answers the slot through it
@@ -26,9 +26,8 @@ import com.crystalgraphics.sequence.CgSequenceTarget;
  * }</pre>
  *
  * <ul>
- *   <li>The slot is set on the instance's own materials ({@link CgAnimInstance#material(int,
- *       com.crystalgraphics.api.material.CgMaterialDefinition)}); a shared one is left alone. A material that does not
- *       declare {@code slotParameter} writes no outline slot.</li>
+ *   <li>The slot is set on every slot's own instance ({@link CgSkeletalMeshComponent#scalar}); a material that does
+ *       not declare {@code slotParameter} writes no outline slot.</li>
  *   <li>Slots are the outline's, one a role in play (Kakarot: the role's index among the battle's members plus 1); two
  *       roles given one slot share its colour.</li>
  * </ul>
@@ -38,7 +37,7 @@ public final class CgRoleOutline implements CgSequenceTarget {
     /** The contract's slot name. */
     public static final String SLOT = "outline";
 
-    private final CgAnimInstance instance;
+    private final CgSkeletalMeshComponent instance;
     private final CgMaterialInstance post;
     private final String slotParameter;
     private final int outlineSlot;
@@ -49,13 +48,13 @@ public final class CgRoleOutline implements CgSequenceTarget {
     private boolean keyed;
 
     /**
-     * @param instance        the role's skinned instance, its own materials already set
+     * @param instance        the role's skeletal mesh, its materials already set
      * @param post            the outline post material drawing the role
      * @param outlineSlot     the role's colour slot, 1 or more
      * @param slotParameter   the scalar its materials read their slot from (Kakarot's {@code OutlineColorType})
      * @param colourParameter the post's colour for that slot (Kakarot's {@code TypeColor1} for slot 1)
      */
-    public CgRoleOutline(CgAnimInstance instance, CgPostMaterial post, int outlineSlot, String slotParameter,
+    public CgRoleOutline(CgSkeletalMeshComponent instance, CgPostMaterial post, int outlineSlot, String slotParameter,
                          String colourParameter) {
         if (outlineSlot < 1) throw new IllegalArgumentException("a role's outline slot is 1 or more, not " + outlineSlot);
         this.instance = instance;

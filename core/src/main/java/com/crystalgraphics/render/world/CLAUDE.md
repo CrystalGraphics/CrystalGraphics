@@ -114,7 +114,7 @@
   published before it.
 - **CustomDepth** (`recordCustomDepth`, near the top of the transparent firing, after custom data, as Unreal's after
   its base pass, CustomDepthRendering.cpp): every draw in
-  view marked `Draw.customDepth(stencil, writeMask)` (or a `CgAnimInstance.customDepth`), opaque or writing depth,
+  view marked `Draw.customDepth(stencil, writeMask)` (or a skeletal mesh component's `customDepth`), opaque or writing depth,
   drawn by its depth pipeline into a transient DEPTH32F_STENCIL8 target of the stage's size, **tested against that
   target alone, never the scene's** (aaa-design §2.88: a mesh behind a wall is written), writing its stencil under its
   mask, depth-fail kept under 0xFF and replaced under a partial mask. Published as `CgFrameKeys.CUSTOM_DEPTH`; a pass

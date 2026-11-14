@@ -1,43 +1,24 @@
 # The public API of com.crystalgraphics:core:0.0.1 as last released. Written by apiDump; apiCheck fails on a removal.
+com/crystalgraphics/animation/CgAnimCurveTarget
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract resetScalar (Ljava/lang/String;)V
+  method public,abstract scalar (Ljava/lang/String;F)V
 com/crystalgraphics/animation/CgAnimInstance
   access public,final
   extends java/lang/Object
   field public,static,final NO_SOCKET I
   method public <init> (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)V
   method public addLayer (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimLayer;
-  method public advance (D)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public attachParent ()Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public attachTo (Lcom/crystalgraphics/animation/CgAnimInstance;Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public attachment (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
-  method public boundsPad ()F
-  method public boundsScale (F)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public bone (Ljava/lang/String;)I
   method public clear ()Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public cpuSkin (IZLcom/crystalgraphics/animation/CgPosedVertexSink;)V
-  method public customDepth (II)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public customDepthStencil ()I
-  method public customDepthWriteMask ()I
-  method public detach ()Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public curveTarget (Lcom/crystalgraphics/animation/CgAnimCurveTarget;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public evaluate ()Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public hidden (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
-  method public hide (Ljava/lang/String;Lcom/crystalgraphics/animation/CgAnimInstance$Hide;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public hideFromOwner (Ljava/lang/String;Lcom/crystalgraphics/animation/CgAnimInstance$Hide;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public evaluations ()J
   method public layer (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimLayer;
   method public layer (Ljava/lang/String;Ljava/lang/String;I)Lcom/crystalgraphics/animation/CgAnimLayer;
-  method public material (I)Lcom/crystalgraphics/api/material/CgMaterialInterface;
-  method public material (ILcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public material (ILcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public materialSlots ()I
   method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
-  method public noCustomDepth ()Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public overlay (I)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public overlay (ILcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public overlay (Lcom/crystalgraphics/api/material/CgMaterial;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public overlayMaxDistance ()F
-  method public overlayMaxDistance (F)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public palette ()I
-  method public palette (Z)I
-  method public place (DDD)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public place (DDDLorg/joml/Matrix4fc;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public modify (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite;
   method public play (Lcom/crystalgraphics/api/animation/CgAnimSection;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public play (Lcom/crystalgraphics/api/animation/CgAnimSection;Lcom/crystalgraphics/api/animation/CgMirrorTable;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public playing ()Z
@@ -48,33 +29,15 @@ com/crystalgraphics/animation/CgAnimInstance
   method public rate (F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public remove (Lcom/crystalgraphics/animation/CgBoneWrite;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public remove (Lcom/crystalgraphics/api/animation/CgAnimSection;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public resetScalar (Ljava/lang/String;)V
-  method public resetVector (Ljava/lang/String;)V
-  method public scalar (Ljava/lang/String;F)V
   method public sections ()Ljava/util/List;
   method public seek (D)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public skinning ()[Lorg/joml/Matrix4f;
   method public slot (Lcom/crystalgraphics/api/animation/CgAnimSequence;FF)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public slot (Lcom/crystalgraphics/api/animation/CgAnimSequence;FFLcom/crystalgraphics/api/animation/CgMirrorTable;)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public socket (I[DLorg/joml/Quaternionf;)V
+  method public socket (ILorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
   method public socket (Ljava/lang/String;)I
-  method public socketScale (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public time ()D
   method public toString ()Ljava/lang/String;
-  method public transform ()Lorg/joml/Matrix4fc;
-  method public vector (Ljava/lang/String;FFFF)V
-  method public write (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite;
-  method public x ()D
-  method public y ()D
-  method public z ()D
-com/crystalgraphics/animation/CgAnimInstance$Hide
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final BONE Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
-  field public,static,final BRANCH Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
-  field public,static,final NONE Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
-  method public,static values ()[Lcom/crystalgraphics/animation/CgAnimInstance$Hide;
 com/crystalgraphics/animation/CgAnimLayer
   access public,final
   extends java/lang/Object
@@ -137,10 +100,19 @@ com/crystalgraphics/animation/CgBoneWrite$Space
   field public,static,final PARENT Lcom/crystalgraphics/animation/CgBoneWrite$Space;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite$Space;
   method public,static values ()[Lcom/crystalgraphics/animation/CgBoneWrite$Space;
+com/crystalgraphics/animation/CgCpuSkin
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public skin (Lcom/crystalgraphics/api/mesh/CgMesh;I[Lorg/joml/Matrix4f;Lorg/joml/Matrix4fc;Lcom/crystalgraphics/animation/CgPosedVertexSink;)V
 com/crystalgraphics/animation/CgPosedVertexSink
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract vertex (FFFFFIFFF)V
+com/crystalgraphics/animation/CgSkinBounds
+  access public,final
+  extends java/lang/Object
+  method public,static posed (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;[Lorg/joml/Matrix4fc;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
 com/crystalgraphics/api/PoseStack
   access public
   extends java/lang/Object
@@ -10763,6 +10735,8 @@ com/crystalgraphics/render/scene/CgScene
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public primitives ()Lcom/crystalgraphics/render/scene/component/CgScenePrimitives;
+  method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public update ()V
   method public,static client ()Lcom/crystalgraphics/render/scene/CgScene;
 com/crystalgraphics/render/scene/batch/CgMeshBatches
   access public,final
@@ -10778,6 +10752,8 @@ com/crystalgraphics/render/scene/batch/CgMeshBatches
   field public,static,final VALUES I
   method public <init> ()V
   method public add (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;ILcom/crystalgraphics/render/scene/sort/CgSortLayer;IIII)I
+  method public bones (I)I
+  method public bones (II)V
   method public clear ()V
   method public flags (I)I
   method public instanceCount (I)I
@@ -10796,6 +10772,14 @@ com/crystalgraphics/render/scene/batch/CgMeshBatches
   method public stencilMask (I)I
   method public submesh (I)I
   method public values ()[F
+com/crystalgraphics/render/scene/component/CgBoneHide
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BONE Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+  field public,static,final BRANCH Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+  field public,static,final NONE Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgBoneHide;
 com/crystalgraphics/render/scene/component/CgDynamicComponent
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
@@ -10841,11 +10825,20 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   extends java/lang/Object
   method public afterDistortion (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public at (DDD)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public attach (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public attachParent ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public attachSocket ()Ljava/lang/String;
+  method public blockLight ()F
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public castsShadow (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public customData (IFFFF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public customData (II)F
   method public customDepth (I)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public customDepth (II)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public customDepthMask ()I
+  method public customDepthStencil ()I
+  method public detach ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public emission ()F
   method public emission (F)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public fullBright ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public halfResolution (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -10858,6 +10851,7 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public scale (F)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public scale (FFF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public skyLight ()F
   method public sortPriority (I)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public spawn ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public spawned ()Z
@@ -10866,10 +10860,12 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public x ()D
   method public y ()D
   method public z ()D
+  method public,final basis (Lorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
+  method public,final drawnFrom (DDD)Z
 com/crystalgraphics/render/scene/component/CgScenePrimitives
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;)V
+  method public <init> (Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;Lcom/crystalgraphics/render/scene/component/CgScenePrimitives$Driver;)V
   method public clear ()V
   method public drawOnce (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;DDD)V
   method public dynamic (Lcom/crystalgraphics/render/scene/component/CgDynamicPrimitive;)Lcom/crystalgraphics/render/scene/component/CgDynamicComponent;
@@ -10878,6 +10874,47 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public size ()I
+  method public skeletal ()Ljava/util/List;
+  method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public update ()V
+com/crystalgraphics/render/scene/component/CgScenePrimitives$Driver
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract pose (Lcom/crystalgraphics/animation/CgAnimInstance;Z)V
+  method public,abstract started ()V
+com/crystalgraphics/render/scene/component/CgSkeletalMeshComponent
+  access public,final
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  implements com/crystalgraphics/animation/CgAnimCurveTarget
+  method public anim ()Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public attachment (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
+  method public boneHidden (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+  method public cpuSkin (IZLcom/crystalgraphics/animation/CgPosedVertexSink;)V
+  method public drawnBounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+  method public dynamicMaterial (I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public followPose (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public hideBone (Ljava/lang/String;Lcom/crystalgraphics/render/scene/component/CgBoneHide;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public hideBoneFromOwner (Ljava/lang/String;Lcom/crystalgraphics/render/scene/component/CgBoneHide;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public leaderPose ()Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public material (I)Lcom/crystalgraphics/api/material/CgMaterialInterface;
+  method public material (ILcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public materialSlots ()I
+  method public materials (Ljava/util/function/IntFunction;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
+  method public objectId ()I
+  method public overlay (I)Lcom/crystalgraphics/api/material/CgMaterialInterface;
+  method public overlay (ILcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public overlay (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public overlayDrawnFrom (DDD)Z
+  method public overlayMaxDistance ()F
+  method public overlayMaxDistance (F)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
+  method public palette ()I
+  method public palette (Z)I
+  method public resetScalar (Ljava/lang/String;)V
+  method public resetVector (Ljava/lang/String;)V
+  method public scalar (Ljava/lang/String;F)V
+  method public toString ()Ljava/lang/String;
+  method public vector (Ljava/lang/String;FFFF)V
 com/crystalgraphics/render/scene/gpu/CgGpuScene
   access public,final
   extends java/lang/Object
@@ -11430,10 +11467,9 @@ com/crystalgraphics/render/world/CgWorldRenderer
   method public booting ()Z
   method public distortionScale ()F
   method public distortionScale (F)V
-  method public draw (Lcom/crystalgraphics/animation/CgAnimInstance;)V
-  method public draw (Lcom/crystalgraphics/animation/CgAnimInstance;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public draw (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
   method public draw (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/world/CgWorldRenderer$Draw;
+  method public draw (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;)V
   method public gradeDraws ()Z
   method public gradeDraws (Z)Lcom/crystalgraphics/render/world/CgWorldRenderer;
   method public halfResolution ()Z
@@ -11683,7 +11719,7 @@ com/crystalgraphics/sequence/binding/CgRoleFlash
   field public,static,final TINT Ljava/lang/String;
   field public,static,final TINT_STRENGTH Ljava/lang/String;
   implements com/crystalgraphics/sequence/CgSequenceTarget
-  method public <init> (Lcom/crystalgraphics/animation/CgAnimInstance;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
   method public get (I[F)V
   method public set (I[FI)V
   method public slot (Ljava/lang/String;)I
@@ -11692,7 +11728,7 @@ com/crystalgraphics/sequence/binding/CgRoleOutline
   extends java/lang/Object
   field public,static,final SLOT Ljava/lang/String;
   implements com/crystalgraphics/sequence/CgSequenceTarget
-  method public <init> (Lcom/crystalgraphics/animation/CgAnimInstance;Lcom/crystalgraphics/render/post/CgPostMaterial;ILjava/lang/String;Ljava/lang/String;)V
+  method public <init> (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;Lcom/crystalgraphics/render/post/CgPostMaterial;ILjava/lang/String;Ljava/lang/String;)V
   method public get (I[F)V
   method public set (I[FI)V
   method public slot (Ljava/lang/String;)I
@@ -11703,7 +11739,7 @@ com/crystalgraphics/sequence/binding/CgRoleRim
   field public,static,final POWER Ljava/lang/String;
   field public,static,final STRENGTH Ljava/lang/String;
   implements com/crystalgraphics/sequence/CgSequenceTarget
-  method public <init> (Lcom/crystalgraphics/animation/CgAnimInstance;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public <init> (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
   method public get (I[F)V
   method public set (I[FI)V
   method public slot (Ljava/lang/String;)I

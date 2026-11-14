@@ -1,7 +1,9 @@
 package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -9,25 +11,47 @@ import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.view.CgView;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
 /**
- * A scene's primitives: the components spawned into it, and the gather that turns them into a view's mesh batches each
- * frame (Unreal's per-view mesh collection over a scene's primitives). {@code CgScene} owns one and forwards to it.
+ * A scene's primitives: the components spawned into it, the update that places what rides another and poses skeletal
+ * meshes' palettes, and the gather that turns them into a view's mesh batches each frame (Unreal's per-view mesh
+ * collection over a scene's primitives). {@code CgScene} owns one and forwards to it.
  *
  * <pre>{@code
  * CgScenePrimitives primitives = scene.primitives();
+ * primitives.update();                          // ATTACH: attachments, then skeletal palettes
  * primitives.gather(view, camera, batches);     // what the view draws of the scene this frame
  * int spawned = primitives.size();
  * }</pre>
  */
 public final class CgScenePrimitives {
 
+    /** What runs a scene's frame: the client world for the client's scene. */
+    public interface Driver {
+        /** A skeletal mesh spawned or a primitive attached: its frame must run from now. */
+        void started();
+
+        /** Poses {@code anim} each frame from now when {@code on}, else stops. */
+        void pose(CgAnimInstance anim, boolean on);
+    }
+
+    private static final Comparator<CgPrimitiveComponent<?>> PARENTS_FIRST = Comparator.comparingInt(CgPrimitiveComponent::attachDepth);
+
     private final CgGpuScene gpu;
+    @Nullable
+    private final Driver driver;
     private final List<CgPrimitiveComponent<?>> primitives = new ArrayList<>();
+    /** Every live primitive riding another, spawned or not, parents first after each {@link #update}. */
+    private final List<CgPrimitiveComponent<?>> attached = new ArrayList<>();
+    private final List<CgSkeletalMeshComponent> skeletal = new ArrayList<>();
+    private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
 
     /** {@link #drawOnce}'s: this frame's and the next's. */
@@ -35,8 +59,10 @@ public final class CgScenePrimitives {
     private final CgDynamicComponent oneFrame;
     private long frame = -1;
 
-    public CgScenePrimitives(CgGpuScene gpu) {
+    /** A scene of {@code gpu}'s records whose frame {@code driver} runs; null leaves it to its owner. */
+    public CgScenePrimitives(CgGpuScene gpu, @Nullable Driver driver) {
         this.gpu = Objects.requireNonNull(gpu, "gpu");
+        this.driver = driver;
         this.oneFrame = new CgDynamicComponent(this, (view, out) -> now.collect(out));
     }
 
@@ -52,6 +78,10 @@ public final class CgScenePrimitives {
         return new CgInstancedMeshComponent(this, mesh, material);
     }
 
+    public CgSkeletalMeshComponent skeletal(CgSkeletalMesh mesh) {
+        return new CgSkeletalMeshComponent(this, Objects.requireNonNull(mesh, "mesh"));
+    }
+
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return new CgDynamicComponent(this, Objects.requireNonNull(primitive, "primitive"));
     }
@@ -63,6 +93,23 @@ public final class CgScenePrimitives {
     /** Spawned primitives. */
     public int size() {
         return primitives.size();
+    }
+
+    /** Its spawned skeletal mesh components, in no order: what a renderer draws skinned. */
+    public List<CgSkeletalMeshComponent> skeletal() {
+        return skeletalView;
+    }
+
+    /**
+     * This frame's placement, in {@code ATTACH} after {@code POSE}: every attached primitive from its parent's socket,
+     * parents first (Unreal's attachment update after animation), then each skeletal mesh's palettes.
+     */
+    public void update() {
+        if (!attached.isEmpty()) {
+            attached.sort(PARENTS_FIRST);
+            for (int i = 0, n = attached.size(); i < n; i++) attached.get(i).resolveAttachment();
+        }
+        for (int i = 0, n = skeletal.size(); i < n; i++) skeletal.get(i).writePalettes();
     }
 
     /** Removes every primitive and what {@link #drawOnce} queued. */
@@ -102,6 +149,29 @@ public final class CgScenePrimitives {
     void added(CgPrimitiveComponent<?> p) {
         p.index = primitives.size();
         primitives.add(p);
+        if (p instanceof CgSkeletalMeshComponent s) skeletal.add(s);
+    }
+
+    void attached(CgPrimitiveComponent<?> p) {
+        attached.add(p);
+        if (driver != null) driver.started();
+    }
+
+    void detached(CgPrimitiveComponent<?> p) {
+        attached.remove(p);
+    }
+
+    /** {@code p} is gone: what rode it stands where it is. */
+    void parentRemoved(CgPrimitiveComponent<?> p) {
+        for (int i = attached.size() - 1; i >= 0; i--) {
+            if (i < attached.size() && attached.get(i).attachParent() == p) attached.get(i).parentGone();
+        }
+    }
+
+    void pose(CgAnimInstance anim, boolean on) {
+        if (driver == null) return;
+        if (on) driver.started();
+        driver.pose(anim, on);
     }
 
     void removed(CgPrimitiveComponent<?> p) {
@@ -112,6 +182,7 @@ public final class CgScenePrimitives {
             last.index = i;
         }
         p.index = -1;
+        if (p instanceof CgSkeletalMeshComponent s) skeletal.remove(s);
     }
 
     /** {@code p}'s transform and values into {@code slot}'s record. */

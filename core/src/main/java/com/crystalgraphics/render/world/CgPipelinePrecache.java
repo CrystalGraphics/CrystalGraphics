@@ -76,7 +76,7 @@ import com.github.bsideup.jabel.Desugar;
  *       half size), and every variant of a directory is thousands of programs.</li>
  *   <li>A step that throws is logged under its request's name and skipped; the request goes on with the rest.</li>
  *   <li>An effect's look requests its own through {@code CgVfxOwner.precache}; a skinned mesh's materials are requested
- *       by its {@code CgAnimInstance} as they are set. Textures and meshes are {@code CgPreload}'s, not this.</li>
+ *       by its {@code CgSkeletalMeshComponent} as they are set. Textures and meshes are {@code CgPreload}'s, not this.</li>
  * </ul>
  */
 public final class CgPipelinePrecache {

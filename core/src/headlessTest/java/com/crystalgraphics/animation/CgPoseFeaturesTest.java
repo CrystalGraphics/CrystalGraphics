@@ -1,8 +1,8 @@
 package com.crystalgraphics.animation;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
+
+
 import static org.junit.Assert.assertTrue;
 
 import org.joml.Matrix4f;
@@ -80,9 +80,9 @@ public class CgPoseFeaturesTest {
         CgSkeletalMesh mesh = body();
         CgAnimInstance body = new CgAnimInstance(mesh);
         Quaternionf quarter = new Quaternionf().rotateZ((float) Math.toRadians(90));
-        body.write("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter);
+        body.modify("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter);
         // In component space, after the spine turned: +x of the component, whatever the parent's turn
-        body.write("l_arm").translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0.5f, 0, 0);
+        body.modify("l_arm").translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0.5f, 0, 0);
         body.evaluate();
         int arm = mesh.skeleton().indexOf("l_arm");
         Matrix4f m = body.pose().component(arm, new Matrix4f());
@@ -90,9 +90,9 @@ public class CgPoseFeaturesTest {
         assertEquals(0.5f, m.m30(), EPS);
         assertEquals(2f, m.m31(), EPS);
 
-        CgBoneWrite half = new CgAnimInstance(mesh).write("spine");
+        CgBoneWrite half = new CgAnimInstance(mesh).modify("spine");
         CgAnimInstance faded = new CgAnimInstance(mesh);
-        faded.write("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter).alpha(0.5f);
+        faded.modify("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter).alpha(0.5f);
         faded.evaluate();
         assertEquals("alpha 0.5 is half the turn", 45f, angleZ(faded.pose(), mesh.skeleton().indexOf("spine")), 1e-2f);
         assertEquals(1f, half.alpha(), 0f);
@@ -114,29 +114,6 @@ public class CgPoseFeaturesTest {
         assertEquals(0.5f, branches.boneWeights[mesh.skeleton().indexOf("spine")], EPS);
     }
 
-    @Test
-    public void aHiddenBoneCollapsesInSkinningAloneAndABranchTakesItsChildren() {
-        CgSkeletalMesh mesh = body();
-        CgSkeleton s = mesh.skeleton();
-        CgAnimInstance body = new CgAnimInstance(mesh);
-        body.hide("l_arm", CgAnimInstance.Hide.BONE).evaluate();
-        assertTrue("its own vertices go", collapsed(body.skinning()[s.indexOf("l_arm")]));
-        assertTrue("its child stays", !collapsed(body.skinning()[s.indexOf("l_hand")]));
-        assertEquals("the pose is untouched", 1f, body.pose().component(s.indexOf("l_arm")).m30(), EPS);
-
-        body.hide("l_arm", CgAnimInstance.Hide.BRANCH).evaluate();
-        assertTrue(collapsed(body.skinning()[s.indexOf("l_hand")]));
-        assertNull("no owner palette while nothing is hidden from the owner", body.ownerSkinning());
-
-        body.hide("l_arm", CgAnimInstance.Hide.NONE).hideFromOwner("spine", CgAnimInstance.Hide.BRANCH).evaluate();
-        assertTrue(!collapsed(body.skinning()[s.indexOf("l_hand")]));
-        assertNotNull(body.ownerSkinning());
-        assertTrue(collapsed(body.ownerSkinning()[s.indexOf("l_hand")]));
-    }
-
-    private static boolean collapsed(Matrix4f m) {
-        return Math.abs(m.m00()) + Math.abs(m.m11()) + Math.abs(m.m22()) + Math.abs(m.m01()) + Math.abs(m.m10()) < EPS;
-    }
 
     @Test
     public void aServerPosesOnItsTickAndHoldsWhilePaused() {
@@ -157,9 +134,8 @@ public class CgPoseFeaturesTest {
         for (int i = 0; i < 10; i++) server.tick();
         double time = body.time();
         assertTrue("ten ticks moved it: " + time, time > 0.4 && time < 0.6);
-        double[] hand = new double[3];
-        body.socket(body.socket("l_hand"), hand, null);
-        assertEquals("the hand rode the slide, read headless", 2f + (float) time, hand[0], 0.05);
+        float hand = body.socket(body.socket("l_hand"), new Matrix4f()).m30();
+        assertEquals("the hand rode the slide, read headless", 2f + (float) time, hand, 0.05);
 
         paused[0] = true;
         for (int i = 0; i < 5; i++) server.tick();

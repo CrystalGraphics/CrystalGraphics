@@ -132,7 +132,7 @@ player.stop();
 
 ```java
 final class Fighter implements CgSequenceRole, CgSequenceSkeletal {
-    @Override public CgAnimInstance instance() { return body; }
+    @Override public CgAnimInstance instance() { return body.anim(); }   // body: a CgSkeletalMeshComponent
     @Override public CgAnimSequence clip(String id) { return clips.get(id.substring(id.lastIndexOf('/') + 1)); }
     ...
 }
@@ -289,7 +289,7 @@ is scanned, each animation becomes a notify sequence under the clip's id: the fi
 
 - **A role's outline colour** (the material contract's `outline`, a `material` track keying `colours.outline` on the
   role) is a `CgRoleOutline` the role answers the slot through: a keyed colour sets the role's slot on its own materials
-  (`CgAnimInstance.scalar`) and writes the colour into the outline post's slot; `restore_state` puts the materials' own
+  (`CgSkeletalMeshComponent.scalar`) and writes the colour into the outline post's slot; `restore_state` puts the materials' own
   back.
 
 ```java
