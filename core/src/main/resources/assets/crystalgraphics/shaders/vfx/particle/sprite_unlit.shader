@@ -14,7 +14,7 @@
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/particle.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Sheet    ("The flipbook sheet, straight alpha, frame 0 at the top left", sampler2D) = "white"
@@ -43,6 +43,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 tint = cg_Particle.color.rgb * _Color.rgb;
     vec3 colour;
     float cover;
@@ -69,7 +70,10 @@ void surface(in v2f i, inout CgSurface s) {
     cover = _Additive > 0.5 ? 0.0 : texel.a;
 #endif
     float strength = cg_Particle.color.a * _Color.a;
-    s.baseColor = colour * strength;   // premultiplied
+    s.emissive = colour * strength;   // premultiplied
     s.opacity = cover * strength;
-    s.emissive = s.baseColor * cg_dynamic_parameter(cg_Particle, 0, vec4(0.0)).x;
+    glowLight = s.emissive * cg_dynamic_parameter(cg_Particle, 0, vec4(0.0)).x;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

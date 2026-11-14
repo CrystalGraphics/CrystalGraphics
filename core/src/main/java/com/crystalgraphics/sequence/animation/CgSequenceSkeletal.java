@@ -15,10 +15,10 @@ import com.crystalgraphics.sequence.binding.CgSequenceRole;
  *
  * <pre>{@code
  * final class Fighter implements CgSequenceRole, CgSequenceSkeletal {
- *     private final CgAnimInstance body;
+ *     private final CgSkeletalMeshComponent body;
  *     private final Map<String, CgAnimSequence> clips;      // by the last segment of each clip's id
  *
- *     @Override public CgAnimInstance instance() { return body; }
+ *     @Override public CgAnimInstance instance() { return body.anim(); }
  *     @Override public CgAnimSequence clip(String id) { return clips.get(id.substring(id.lastIndexOf('/') + 1)); }
  *     ...
  * }

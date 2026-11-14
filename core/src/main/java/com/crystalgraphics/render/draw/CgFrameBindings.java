@@ -23,6 +23,7 @@ import java.util.EnumSet;
 import java.util.Set;
 import java.util.Objects;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 /**
  * A frame's bindings, as its executor reads them by id: each {@link CgMaterialBindings} version its draws name, entered
@@ -52,25 +53,31 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  */
 public final class CgFrameBindings {
 
-    /** An entry's caps: a version's ({@link CgMaterialBindings}). */
-    static final int MAX_TEXTURES = CgMaterialBindings.MAX_TEXTURES;
+    /** An entry's caps: a version's ({@link CgMaterialBindings}). Textures have none: they are pooled. */
     static final int MAX_BLOCKS = CgMaterialBindings.MAX_BLOCKS;
     static final int MAX_BUFFERS = CgMaterialBindings.MAX_BUFFERS;
     static final int MAX_STORAGE = CgMaterialBindings.MAX_STORAGE;
 
-    /** Per entry: texture, block, buffer and storage counts, a unit per texture, (binding, offset, floats) per block, a
-     * slot per storage handle. */
-    private static final int HEADER = 4;
+    /**
+     * Per entry: texture, block, buffer and storage counts, where its textures start in the pool, (binding, offset,
+     * floats) per block, a slot per storage handle.
+     */
+    private static final int COUNTS = 4;
+    private static final int TEXTURES_FROM = COUNTS;
     private static final int BLOCK_INTS = 3;
-    private static final int BLOCKS_AT = HEADER + MAX_TEXTURES;
+    private static final int BLOCKS_AT = TEXTURES_FROM + 1;
     private static final int STORAGE_AT = BLOCKS_AT + MAX_BLOCKS * BLOCK_INTS;
     private static final int ENTRY_INTS = STORAGE_AT + MAX_STORAGE;
 
-    /** Per entry: the textures, the buffers, the storage handles, each texture's sampler, then each block's version. */
-    private static final int STORAGE_REFS = MAX_TEXTURES + MAX_BUFFERS;
-    private static final int SAMPLER_REFS = STORAGE_REFS + MAX_STORAGE;
-    private static final int BLOCK_REFS = SAMPLER_REFS + MAX_TEXTURES;
+    /** Per entry: the buffers, the storage handles, then each block's version. */
+    private static final int STORAGE_REFS = MAX_BUFFERS;
+    private static final int BLOCK_REFS = STORAGE_REFS + MAX_STORAGE;
     private static final int ENTRY_REFS = BLOCK_REFS + MAX_BLOCKS;
+
+    /** Every entry's textures, each entry's together: a unit each, and a texture and its sampler each. */
+    private int[] textureUnits = new int[256];
+    private Object[] textureRefs = new Object[512];
+    private int textureCursor;
 
     /** {@code GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT} is at most 256 on every GL and Vulkan device we run on. */
     private static final int BLOCK_ALIGNMENT = 256;
@@ -130,6 +137,7 @@ public final class CgFrameBindings {
         entries[e + 1] = 0;
         entries[e + 2] = 0;
         entries[e + 3] = 0;
+        entries[e + TEXTURES_FROM] = textureCursor;
         return this;
     }
 
@@ -150,12 +158,15 @@ public final class CgFrameBindings {
 
     private CgFrameBindings put(int packed, CgTexture texture, @Nullable CgSampler sampler) {
         int e = building * ENTRY_INTS;
-        int n = entries[e];
-        if (n == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures in one entry");
-        entries[e + HEADER + n] = packed;
-        refs[building * ENTRY_REFS + n] = texture;
-        refs[building * ENTRY_REFS + SAMPLER_REFS + n] = sampler;
-        entries[e] = n + 1;
+        if (textureCursor == textureUnits.length) {
+            textureUnits = Arrays.copyOf(textureUnits, textureCursor * 2);
+            textureRefs = Arrays.copyOf(textureRefs, textureCursor * 4);
+        }
+        textureUnits[textureCursor] = packed;
+        textureRefs[textureCursor * 2] = texture;
+        textureRefs[textureCursor * 2 + 1] = sampler;
+        textureCursor++;
+        entries[e]++;
         return this;
     }
 
@@ -200,9 +211,14 @@ public final class CgFrameBindings {
         int e = building * ENTRY_INTS;
         int n = entries[e + 2];
         if (n == MAX_BUFFERS) throw new IllegalStateException("more than " + MAX_BUFFERS + " buffers in one entry");
-        refs[building * ENTRY_REFS + MAX_TEXTURES + n] = buffer;
+        refs[building * ENTRY_REFS + n] = buffer;
         entries[e + 2] = n + 1;
         return this;
+    }
+
+    /** {@code buffer}'s whole storage at {@code slot}, as it is when the pass executes: the scene's records. */
+    public CgFrameBindings storage(CgBindingModel.Slot slot, CgBufferHandle buffer) {
+        return storage(slot.packed(), buffer);
     }
 
     private CgFrameBindings storage(int point, CgBufferHandle buffer) {
@@ -233,7 +249,10 @@ public final class CgFrameBindings {
                 return id;
             }
             if (hashes[found] == hash && sameContent(found, id)) {
-                floatCursor = buildFloats;   // the duplicate's floats were never needed
+                floatCursor = buildFloats;   // the duplicate's floats and textures were never needed
+                int from = entries[id * ENTRY_INTS + TEXTURES_FROM];
+                Arrays.fill(textureRefs, from * 2, textureCursor * 2, null);
+                textureCursor = from;
                 Arrays.fill(refs, id * ENTRY_REFS, (id + 1) * ENTRY_REFS, null);
                 return found;
             }
@@ -313,17 +332,17 @@ public final class CgFrameBindings {
 
     /** The slot ({@link CgBindingModel#pack packed}) entry {@code id}'s {@code i}th texture binds to. */
     public int textureUnit(int id, int i) {
-        return entries[id * ENTRY_INTS + HEADER + i];
+        return textureUnits[entries[id * ENTRY_INTS + TEXTURES_FROM] + i];
     }
 
     /** Entry {@code id}'s {@code i}th texture. */
     public CgTexture texture(int id, int i) {
-        return (CgTexture) refs[id * ENTRY_REFS + i];
+        return (CgTexture) textureRefs[(entries[id * ENTRY_INTS + TEXTURES_FROM] + i) * 2];
     }
 
     /** The sampler entry {@code id}'s {@code i}th texture is sampled by; null for its own. */
     public CgSampler sampler(int id, int i) {
-        return (CgSampler) refs[id * ENTRY_REFS + SAMPLER_REFS + i];
+        return (CgSampler) textureRefs[(entries[id * ENTRY_INTS + TEXTURES_FROM] + i) * 2 + 1];
     }
 
     /** How many uniform blocks entry {@code id} binds. */
@@ -366,12 +385,18 @@ public final class CgFrameBindings {
 
     /** Entry {@code id}'s {@code i}th buffer. */
     public CgShaderBuffer buffer(int id, int i) {
-        return (CgShaderBuffer) refs[id * ENTRY_REFS + MAX_TEXTURES + i];
+        return (CgShaderBuffer) refs[id * ENTRY_REFS + i];
     }
 
     /** Entry {@code id}'s {@code k}th block's persistent version; null for one copied into the ring. */
     CgBlockVersion blockVersion(int id, int k) {
         return (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + k];
+    }
+
+    /** Entry {@code id}'s {@code k}th ring block, as copied at frame build, into {@code into} from 0. */
+    void copyBlock(int id, int k, float[] into) {
+        int block = id * ENTRY_INTS + BLOCKS_AT + k * BLOCK_INTS;
+        System.arraycopy(floats, entries[block + 1], into, 0, entries[block + 2]);
     }
 
     /** How many floats entry {@code id}'s {@code k}th block holds. */
@@ -410,6 +435,8 @@ public final class CgFrameBindings {
             arenaSlots[id] = -1;
         }
         Arrays.fill(refs, 0, count * ENTRY_REFS, null);
+        Arrays.fill(textureRefs, 0, textureCursor * 2, null);
+        textureCursor = 0;
         if (versions > 0) {
             Arrays.fill(versionSlots, null);
             versions = 0;
@@ -469,6 +496,11 @@ public final class CgFrameBindings {
             for (int b = 0; b < entries[e + 1]; b++) {
                 int block = e + BLOCKS_AT + b * BLOCK_INTS;
                 CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+                if (version != null && version.perFrame) {
+                    ringOffsets[id * MAX_BLOCKS + b] = bytes;
+                    bytes += align(Math.max(version.floats.length * 4, version.storageBytes));
+                    continue;
+                }
                 if (version != null) {
                     if (version.arena == null && store.place(version)) {
                         if (writes == writing.length) {
@@ -505,11 +537,18 @@ public final class CgFrameBindings {
         if (bytes == 0) return;
         FloatBuffer view = ring.mapFloats(bytes);
         int from = view.position();
+        boolean bindless = CgBindless.active();
         for (int id = 0; id < count; id++) {
             int e = id * ENTRY_INTS;
             for (int b = 0; b < entries[e + 1]; b++) {
-                if (refs[id * ENTRY_REFS + BLOCK_REFS + b] != null) continue;
+                CgBlockVersion version = (CgBlockVersion) refs[id * ENTRY_REFS + BLOCK_REFS + b];
+                if (version != null && !version.perFrame) continue;
                 int at = ringOffsets[id * MAX_BLOCKS + b];
+                if (version != null) {
+                    view.position(from + (at >> 2));
+                    version.put(view, bindless);
+                    continue;
+                }
                 if (at < 0) {
                     ringOffsets[id * MAX_BLOCKS + b] = -1 - at;
                     continue;
@@ -521,7 +560,7 @@ public final class CgFrameBindings {
         }
         for (int w = 0; w < writes; w++) {
             view.position(from + (writingAt[w] >> 2));
-            view.put(writing[w].floats);
+            writing[w].put(view, bindless);
         }
         int base = ring.commit(bytes);
         uploadedBuffer = ring.gpuBuffer();
@@ -638,9 +677,10 @@ public final class CgFrameBindings {
         int e = id * ENTRY_INTS;
         int r = id * ENTRY_REFS;
         int h = ((entries[e] * 31 + entries[e + 1]) * 31 + entries[e + 2]) * 31 + entries[e + 3];
-        for (int t = 0; t < entries[e]; t++) {
-            h = ((h * 31 + entries[e + HEADER + t]) * 31 + System.identityHashCode(refs[r + t])) * 31
-                    + Objects.hashCode(refs[r + SAMPLER_REFS + t]);
+        int t0 = entries[e + TEXTURES_FROM];
+        for (int t = t0; t < t0 + entries[e]; t++) {
+            h = ((h * 31 + textureUnits[t]) * 31 + System.identityHashCode(textureRefs[t * 2])) * 31
+                    + Objects.hashCode(textureRefs[t * 2 + 1]);
         }
         for (int b = 0; b < entries[e + 1]; b++) {
             int block = e + BLOCKS_AT + b * BLOCK_INTS;
@@ -653,7 +693,7 @@ public final class CgFrameBindings {
             int from = entries[block + 1];
             for (int f = 0; f < entries[block + 2]; f++) h = h * 31 + Float.floatToRawIntBits(floats[from + f]);
         }
-        for (int b = 0; b < entries[e + 2]; b++) h = h * 31 + System.identityHashCode(refs[r + MAX_TEXTURES + b]);
+        for (int b = 0; b < entries[e + 2]; b++) h = h * 31 + System.identityHashCode(refs[r + b]);
         for (int b = 0; b < entries[e + 3]; b++) {
             h = (h * 31 + entries[e + STORAGE_AT + b]) * 31 + System.identityHashCode(refs[r + STORAGE_REFS + b]);
         }
@@ -668,10 +708,11 @@ public final class CgFrameBindings {
     private boolean sameContent(int a, int b, boolean share) {
         int ea = a * ENTRY_INTS, eb = b * ENTRY_INTS;
         int ra = a * ENTRY_REFS, rb = b * ENTRY_REFS;
-        for (int i = 0; i < HEADER; i++) if (entries[ea + i] != entries[eb + i]) return false;
+        for (int i = 0; i < COUNTS; i++) if (entries[ea + i] != entries[eb + i]) return false;
+        int ta = entries[ea + TEXTURES_FROM], tb = entries[eb + TEXTURES_FROM];
         for (int t = 0; t < entries[ea]; t++) {
-            if (entries[ea + HEADER + t] != entries[eb + HEADER + t] || refs[ra + t] != refs[rb + t]
-                    || !Objects.equals(refs[ra + SAMPLER_REFS + t], refs[rb + SAMPLER_REFS + t])) return false;
+            if (textureUnits[ta + t] != textureUnits[tb + t] || textureRefs[(ta + t) * 2] != textureRefs[(tb + t) * 2]
+                    || !Objects.equals(textureRefs[(ta + t) * 2 + 1], textureRefs[(tb + t) * 2 + 1])) return false;
         }
         for (int k = 0; k < entries[ea + 1]; k++) {
             int ba = ea + BLOCKS_AT + k * BLOCK_INTS, bb = eb + BLOCKS_AT + k * BLOCK_INTS;
@@ -685,7 +726,7 @@ public final class CgFrameBindings {
             }
         }
         for (int k = 0; k < entries[ea + 2]; k++) {
-            if (refs[ra + MAX_TEXTURES + k] != refs[rb + MAX_TEXTURES + k]) return false;
+            if (refs[ra + k] != refs[rb + k]) return false;
         }
         for (int k = 0; k < entries[ea + 3]; k++) {
             if (entries[ea + STORAGE_AT + k] != entries[eb + STORAGE_AT + k]

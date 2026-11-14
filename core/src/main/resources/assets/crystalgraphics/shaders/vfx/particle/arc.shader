@@ -46,6 +46,6 @@ void surface(in v2f i, inout CgSurface s) {
     float cover = 1.0 - smoothstep(1.0 - 2.0 * aa, 1.0, across);
     s.opacityMask = cover;
     float alpha = cover * i.stroke.y * _Color.a;
-    s.baseColor = _Color.rgb * i.tint * alpha;   // premultiplied
+    s.emissive = _Color.rgb * i.tint * alpha;   // premultiplied
     s.opacity = alpha;
 }

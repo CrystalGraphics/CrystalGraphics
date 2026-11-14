@@ -5,7 +5,7 @@
 // intensity. _Shell is the skin, its alpha a strength; _ShellHot its hottest streaks. Its filaments bloom. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Shell    ("The skin; its alpha a strength", color) = (0.15, 0.55, 1.6, 1)
@@ -38,6 +38,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 ray = normalize(i.world - CG_CAMERA_POSITION);
     vec3 n = normalize(transpose(inverse(mat3(CG_OBJECT_TO_WORLD))) * i.local);
     float rim = 1.0 - abs(dot(n, ray));
@@ -59,7 +60,10 @@ void surface(in v2f i, inout CgSurface s) {
     float far = smoothstep(-0.3, 0.3, dot(n, ray));
     float strength = alpha * fade * _Shell.a * cg_VfxMesh.values.z * mix(1.0, 0.55, far);
     float flicker = fx_flicker(age, seed);
-    s.baseColor = (skin + glow) * flicker * strength;   // premultiplied
+    s.emissive = (skin + glow) * flicker * strength;   // premultiplied
     s.opacity = _Cover * strength;
-    s.emissive = glow * flicker * strength * _GlowGain;
+    glowLight = glow * flicker * strength * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

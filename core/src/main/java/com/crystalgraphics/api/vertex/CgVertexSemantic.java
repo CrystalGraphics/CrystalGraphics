@@ -20,6 +20,8 @@ public enum CgVertexSemantic {
     COLOR,
     /** Surface normal. */
     NORMAL,
+    /** The tangent a normal map's x runs along, and in w the sign of its bitangent ({@code cross(normal, tangent) * w}). */
+    TANGENT,
     /** The bones a skinned vertex follows, as indices into its skeleton. */
     BONE_INDICES,
     /** How much the vertex follows each of its {@link #BONE_INDICES}, summing to 1. */

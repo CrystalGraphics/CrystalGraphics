@@ -15,6 +15,7 @@ import com.crystalgraphics.platform.rhi.resource.CgGpuBuffer;
 import com.crystalgraphics.platform.rhi.resource.CgGpuSampler;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
@@ -172,9 +173,14 @@ public final class CgDeviceSets {
      * pass, as an upload is a copy. Before the first {@link #set} of a frame.
      */
     public void prepare(CgFrameBindings table) {
+        boolean bindless = CgBindless.active();
         for (int id = 0; id < table.size(); id++) {
             for (int t = 0; t < table.textures(id); t++) {
-                if (table.texture(id, t) instanceof CgTextureAbstract engine) engine.getId();
+                CgTexture texture = table.texture(id, t);
+                if (texture instanceof CgTextureAbstract engine) engine.getId();
+                // An engine texture's reference pointed at its storage now, before any draw reading it is encoded; a
+                // graph texture has storage only inside its pass, which indexes it then
+                if (bindless && texture.keepsStorage()) CgBindlessTextures.index(texture, table.sampler(id, t));
             }
             for (int b = 0; b < table.buffers(id); b++) table.buffer(id, b).flush();
         }
@@ -247,10 +253,11 @@ public final class CgDeviceSets {
             case UNIFORM_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
-                    if (version != null && version.arena != null) continue;   // a storage block
+                    if (version != null && (version.arena != null || version.storageBytes > 0)) continue;   // a storage block
                     if (table.blockBinding(id, k) != packed) continue;
-                    CgGpuBuffer buffer = version != null ? version.buffer : table.uploadedBuffer();
-                    long at = version != null ? version.offset : table.ringOffset(id, k);
+                    boolean kept = version != null && !version.perFrame;
+                    CgGpuBuffer buffer = kept ? version.buffer : table.uploadedBuffer();
+                    long at = kept ? version.offset : table.ringOffset(id, k);
                     if (buffer == null) return false;
                     // Read this frame: its range is not freed until the frame retires
                     if (version != null) version.lastUse = frame;
@@ -263,8 +270,14 @@ public final class CgDeviceSets {
             case STORAGE_BUFFER -> {
                 for (int k = 0; k < table.blocks(id); k++) {
                     CgBlockVersion version = table.blockVersion(id, k);
-                    if (version == null || version.arena == null) continue;
-                    if (table.blockBinding(id, k) != packed) continue;
+                    if (version == null || table.blockBinding(id, k) != packed) continue;
+                    if (version.storageBytes > 0) {   // its copy in the frame's ring, one slot
+                        CgGpuBuffer frameRing = table.uploadedBuffer();
+                        if (frameRing == null) return false;
+                        contents.buffer(slot.binding(), slot.type(), frameRing, table.ringOffset(id, k), version.storageBytes);
+                        return true;
+                    }
+                    if (version.arena == null) continue;
                     CgMaterialArena arena = version.arena;
                     if (arena.buffer == null) return false;
                     long at = wholeArena ? 0 : (long) version.slot * arena.stride();

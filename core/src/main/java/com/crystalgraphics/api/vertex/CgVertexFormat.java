@@ -74,8 +74,8 @@ public final class CgVertexFormat {
             .build();
 
     /**
-     * The vertex of every mesh a material draws: position, normal, colour and four UV sets in 40 bytes, Unreal's local
-     * vertex factory's streams at its default precision: what a {@code VertexType spatial} factory reads.
+     * The vertex of every mesh a material draws: position, normal, colour, four UV sets and a tangent in 48 bytes,
+     * Unreal's local vertex factory's streams: what a {@code VertexType spatial} factory reads.
      *
      * <pre>{@code
      * CgMesh tri = CgMesh.build(CgVertexFormat.SPATIAL, m -> {
@@ -95,6 +95,7 @@ public final class CgVertexFormat {
      *   <tr><td>7</td><td>{@code vec2 cg_TexCoord1}</td><td>2 halves</td><td>{@code TexCoords1}</td></tr>
      *   <tr><td>8</td><td>{@code vec2 cg_TexCoord2}</td><td>2 halves</td><td>{@code TexCoords2}</td></tr>
      *   <tr><td>9</td><td>{@code vec2 cg_TexCoord3}</td><td>2 halves</td><td>{@code TexCoords3}</td></tr>
+     *   <tr><td>10-11</td><td>{@code vec4 cg_Tangent}</td><td>4 snorm16: the tangent, its bitangent's sign in w</td><td>{@code TangentX}, {@code TangentZ.w}</td></tr>
      * </table>
      *
      * <ul>
@@ -102,6 +103,8 @@ public final class CgVertexFormat {
      *       colour stream and its repeated last UV channel. Every attribute is always there, so one pool serves every
      *       mesh; four sets, not Unreal's per-mesh count, is 8 bytes a vertex for that.</li>
      *   <li>UVs are halves: steps of 1/2048 below 1, 1/1024 to 2, 1/16 at 64. A UV tiled far past that needs a format of its own.</li>
+     *   <li>A mesh written with no tangent is given MikkTSpace's when its body ends ({@code CgMeshWriter.tangent}):
+     *       give every vertex one or none. The bitangent is {@code cross(normal, tangent.xyz) * tangent.w}, as glTF's.</li>
      *   <li>Read stored bytes back with {@link CgVertexAttribute#read}, never {@code getFloat}.</li>
      * </ul>
      */
@@ -113,10 +116,11 @@ public final class CgVertexFormat {
             .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.TANGENT, 0, "cg_Tangent", 4, 4, CgAttribType.SHORT, true)
             .build();
 
     /**
-     * The vertex of a skinned mesh: {@link #SPATIAL}'s 40 bytes, then the four bones it follows and how much, 48 bytes in
+     * The vertex of a skinned mesh: {@link #SPATIAL}'s 48 bytes, then the four bones it follows and how much, 56 bytes in
      * all. Unreal's GPU skin vertex factory beside its local one: a format of its own, so skinned and static meshes never
      * share a pool or a program. {@code #type skinned}.
      *
@@ -130,9 +134,9 @@ public final class CgVertexFormat {
      *
      * <table>
      *   <tr><th>Words</th><th>Shader reads</th><th>Stored</th><th>Unreal</th></tr>
-     *   <tr><td>0-9</td><td>as {@link #SPATIAL}</td><td>as {@link #SPATIAL}</td><td></td></tr>
-     *   <tr><td>10</td><td>{@code uvec4 cg_BoneIndices}</td><td>4 u8</td><td>{@code BlendIndices}</td></tr>
-     *   <tr><td>11</td><td>{@code vec4 cg_BoneWeights}</td><td>4 unorm8, summing to exactly 255</td><td>{@code BlendWeights}</td></tr>
+     *   <tr><td>0-11</td><td>as {@link #SPATIAL}</td><td>as {@link #SPATIAL}</td><td></td></tr>
+     *   <tr><td>12</td><td>{@code uvec4 cg_BoneIndices}</td><td>4 u8</td><td>{@code BlendIndices}</td></tr>
+     *   <tr><td>13</td><td>{@code vec4 cg_BoneWeights}</td><td>4 unorm8, summing to exactly 255</td><td>{@code BlendWeights}</td></tr>
      * </table>
      *
      * <ul>
@@ -150,12 +154,13 @@ public final class CgVertexFormat {
             .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.TANGENT, 0, "cg_Tangent", 4, 4, CgAttribType.SHORT, true)
             .add(CgVertexSemantic.BONE_INDICES, "cg_BoneIndices", 4, CgAttribType.UNSIGNED_BYTE, false)
             .add(CgVertexSemantic.BONE_WEIGHTS, "cg_BoneWeights", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();
 
     /**
-     * {@link #SKINNED} with 16-bit bone indices, 52 bytes: the vertex of a mesh whose skeleton has more than 256 bones,
+     * {@link #SKINNED} with 16-bit bone indices, 60 bytes: the vertex of a mesh whose skeleton has more than 256 bones,
      * Unreal's {@code bUse16BitBoneIndex}. {@code #type skinned_wide}; its shader reads the same {@code uvec4}.
      * {@code CgMeshLoader.skeletal} picks it by the skeleton's size.
      */
@@ -167,6 +172,7 @@ public final class CgVertexFormat {
             .add(CgVertexSemantic.UV, 1,    "cg_TexCoord1", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 2,    "cg_TexCoord2", 2, CgAttribType.HALF_FLOAT, false)
             .add(CgVertexSemantic.UV, 3,    "cg_TexCoord3", 2, CgAttribType.HALF_FLOAT, false)
+            .add(CgVertexSemantic.TANGENT, 0, "cg_Tangent", 4, 4, CgAttribType.SHORT, true)
             .add(CgVertexSemantic.BONE_INDICES, "cg_BoneIndices", 4, CgAttribType.UNSIGNED_SHORT, false)
             .add(CgVertexSemantic.BONE_WEIGHTS, "cg_BoneWeights", 4, CgAttribType.UNSIGNED_BYTE, true)
             .build();

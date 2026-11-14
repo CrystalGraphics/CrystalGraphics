@@ -8,7 +8,7 @@
 // burst, its alpha a strength; _Shell the cool shell. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Core     ("The hot burst; its alpha a strength", color) = (1, 1, 1, 1)
@@ -34,6 +34,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float progress = cg_VfxMesh.values.w, seed = cg_Vfx.seed, age = cg_Vfx.age;
     float heat = 1.0 - progress;
     vec3 eye = CG_CAMERA_POSITION;
@@ -89,7 +90,10 @@ void surface(in v2f i, inout CgSurface s) {
     col *= fx_flicker(age, seed);
     float veil = gl_FrontFacing ? min(_Veil * (0.2 + 0.35 * body + 0.25 * bright), 0.85) * left * fade : 0.0;
     float intensity = cg_VfxMesh.values.z;
-    s.baseColor = col * left * _Core.a * intensity * (gl_FrontFacing ? 1.0 : 0.35);   // premultiplied
+    s.emissive = col * left * _Core.a * intensity * (gl_FrontFacing ? 1.0 : 0.35);   // premultiplied
     s.opacity = veil * intensity;
-    s.emissive = s.baseColor;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

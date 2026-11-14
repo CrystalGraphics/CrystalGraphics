@@ -470,6 +470,14 @@ public final class CgMaterialProperty {
      * <p>The returned instance is independent — mutating the copy does not affect the original.</p>
      */
     public CgMaterialProperty copyWithDefaults() {
+        return copyNamed(name, displayName);
+    }
+
+    /**
+     * {@link #copyWithDefaults()} under another name: a material layer's own property, {@code Moss_Tint} for its slot's
+     * {@code Tint} ({@code Layers { }}).
+     */
+    public CgMaterialProperty copyNamed(String name, String displayName) {
         CgMaterialProperty copy = CgMaterialProperty.fromDecl(name, displayName, type.getPropertyTypeName(), rawDefault,
                 array ? count : 0);
         copy.rows = rows;

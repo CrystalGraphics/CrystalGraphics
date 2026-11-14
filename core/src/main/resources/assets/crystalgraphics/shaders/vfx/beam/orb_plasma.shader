@@ -7,7 +7,7 @@
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Core     ("The hot heart; its alpha a strength", color) = (1, 1, 1, 1)
@@ -40,6 +40,7 @@ float filaments(vec3 p, float age, float seed) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_POSITION;
     vec3 ray = normalize(i.world - eye);
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
@@ -83,6 +84,9 @@ void surface(in v2f i, inout CgSurface s) {
     // The orb's centre against the opaque scene, softened over the orb's own size.
     float radius = length(CG_OBJECT_TO_WORLD[0].xyz);
     float seen = smoothstep(-radius, radius * 0.5, FX_SCENE_DISTANCE(ray) - dot(centre - eye, ray));
-    s.baseColor = sum * _Brightness * fx_flicker(age, seed) * _Core.a * cg_VfxMesh.values.z * seen;
-    s.emissive = s.baseColor;
+    s.emissive = sum * _Brightness * fx_flicker(age, seed) * _Core.a * cg_VfxMesh.values.z * seen;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

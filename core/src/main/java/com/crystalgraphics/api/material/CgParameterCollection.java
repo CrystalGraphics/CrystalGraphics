@@ -65,6 +65,29 @@ public final class CgParameterCollection {
         this.namespace = namespace;
     }
 
+    /**
+     * The collection defined as {@code namespace}, by Java or by an asset, or null: what code that sets a collection
+     * an asset declares looks it up by.
+     *
+     * <pre>{@code
+     * CgParameterCollection outline = CgParameterCollection.named("outline");
+     * if (outline != null) outline.vectorNamed("Type1").set(0xFFFFB030, 2.5f);
+     * }</pre>
+     */
+    @Nullable
+    public static synchronized CgParameterCollection named(String namespace) {
+        for (CgParameterCollection c : COLLECTIONS) if (c.namespace.equals(namespace)) return c;
+        return null;
+    }
+
+    /** Its parameters in order, {@code s:<name>} a scalar and {@code v:<name>} a vector: what an asset declaring it must match. */
+    synchronized List<String> layout() {
+        List<String> out = new ArrayList<>();
+        for (Scalar s : scalars) out.add("s:" + s.name);
+        for (Vector v : vectors) out.add("v:" + v.name);
+        return out;
+    }
+
     /** A new collection read as {@code CG_GLOBAL_<namespace>_<name>}. A namespace is defined once. */
     public static synchronized CgParameterCollection of(String namespace) {
         checkName(namespace, "namespace");

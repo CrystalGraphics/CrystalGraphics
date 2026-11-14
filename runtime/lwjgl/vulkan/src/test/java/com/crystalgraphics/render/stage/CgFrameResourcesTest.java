@@ -3,6 +3,7 @@ package com.crystalgraphics.render.stage;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.platform.gl.CgCapabilities;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.vulkan.shader.ShadercGlslCompiler;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -12,7 +13,8 @@ import static org.junit.Assert.*;
 
 /**
  * The stage firing's blackboard lives one firing: two firings of one stage in one frame (1.7.10's anaglyph) never see
- * each other's values. On the null device, so a firing executes for real.
+ * each other's values; and each firing draws a view, a second one for the same view drawing as nobody's. On the null
+ * device, so a firing executes for real.
  */
 public class CgFrameResourcesTest {
 
@@ -54,6 +56,24 @@ public class CgFrameResourcesTest {
         frame.resources().put(COUNT, 4);
         frame.execute();
         assertNull(frame.resources().get(COUNT));
+    }
+
+    @Test
+    public void aSecondFiringForAViewInOneFrame_drawsAsUnkept_andANamedViewItsOwn() {
+        CgRenderStage stage = CgRenderStage.define("test:views");
+        CgHostFrame host = stage.host().set(0f, 64, 64, 0);
+        CgStageFrame frame = new CgStageFrame(stage);
+        frame.begin(host);
+        assertSame(CgView.main(), frame.view());
+        frame.execute();
+        frame.begin(host);   // the same view again this frame: its histories must not be written twice
+        assertSame(CgView.unkept(), frame.view());
+        frame.execute();
+        CgView eye = CgView.create("test.eye");
+        frame.begin(host.view(eye));
+        assertSame(eye, frame.view());
+        frame.execute();
+        host.view(CgView.main());
     }
 
     @Test

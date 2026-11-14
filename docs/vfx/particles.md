@@ -77,7 +77,7 @@ static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
   - { id: r2, kind: mesh, material: mymod:materials/fx/wave, soft_depth: 30 }
   ```
 
-  A material of your own fades with `CG_DEPTH_FADE` (`docs/SHADERS.md` § *Unreal's material expressions*), declaring
+  A material of your own fades with `cg_depth_fade` (`docs/SHADERS.md` § *Unreal's material expressions*), declaring
   `_SoftDistance` under `PerDrawValues On`: an additive one scales its colour by it, since its blend ignores alpha.
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes (a prefab's and a
   `sequence` renderer's as a clip), an arc renderer as arcs, every other kind as quads, and an emitter whose renderers

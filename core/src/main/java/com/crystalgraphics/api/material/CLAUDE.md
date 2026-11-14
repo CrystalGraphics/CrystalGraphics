@@ -196,11 +196,21 @@ CgVertexFormat format = CgVertexFormat.SPATIAL;
 CgMesh mesh = CgMeshShapes.cube(format);
 ```
 
-## The sampler budget
+## Textures: bindless or bound
 
-A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order; the
-view's (lightmap, depth, scene colour) are another set's and never collide. A shader declaring more than
-`CgBindingModel.MATERIAL_TEXTURES` fails to load with a `CgShaderError` naming the count.
+Where the device has a bindless heap the engine compiles every program with `CG_BINDLESS` (`CgBindless`, decided once
+per device; `crystalgraphics.bindless=false` forces units): a texture property is then a `uint` member `_cgt<name>` of
+the material block, written as the block version is placed (`CgBlockVersion`, `CgBindlessTextures`), and the GLSL name a
+macro reading the heap. The block's layout holds those members on both paths. On GL scene depth and the lightmap stay
+bound (`CgBindless.hostTexturesBound`): they may be Minecraft's own, which a handle would freeze. User-facing: `docs/TEXTURES.md` and
+`docs/SHADERS.md`, each § *bindless*.
+
+### The sampler budget
+
+A material's samplers are its set's textures from `CgBindingModel.FIRST_TEXTURE`, by declaration order, last in
+the set and open-ended; the view's (lightmap, depth, scene colour) are another set's and never collide. The engine
+sets no count: a shader declaring more than the installed GPU binds in one stage, less the view's
+(`Limits.maxTextureUnits - CgBindingModel.VIEW_TEXTURES`), fails to load with a `CgShaderError` naming both numbers.
 
 ## Ownership Rules
 

@@ -269,7 +269,7 @@ lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                   
 
   - A material entry covers each pass of its chain, its depth, Emissive and Distortion passes, the multi-draw form of
     each, and the renderer passes it brings in (the distortion apply; with `half` true the upsample and the volume
-    resolve and composite). `add(material, half, true)` is a skinned mesh's forms; `CgAnimInstance.material` requests
+    resolve and composite). `add(material, half, true)` is a skinned mesh's forms; `CgSkeletalMeshComponent.material` requests
     them itself.
   - `addPass(shader, keywords...)` is a renderer's own full-screen pass: its Forward program alone.
   - Textures, meshes and other files are `CgPreload`'s (`asset.load`): `CgPreload.request(l -> l.texture(t).mesh(path))`,

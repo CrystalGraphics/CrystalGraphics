@@ -94,11 +94,16 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 
 | Output | Type | Default | What it is |
 |---|---|---|---|
-| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour: lit by the world, or shown as written under `ShadingModel Unlit` |
-| `opacity` | `float` | `1` | How much it hides what is behind it (translucent blend modes) |
+| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour, lit: by the world under `WorldLit`, as linear albedo under `DefaultLit` and `Subsurface`. **Not read under `ShadingModel Unlit`**, which refuses it: write `emissive` |
+| `metallic` | `float` | `0` | `DefaultLit` and `Subsurface`: 1 a metal, whose base colour is its reflection |
+| `specular` | `float` | `0.5` | `DefaultLit` and `Subsurface`: a non-metal's reflectance, 0.08 times this |
+| `roughness` | `float` | `0.5` | `DefaultLit` and `Subsurface`: 0 a mirror, 1 matte |
+| `ambientOcclusion` | `float` | `1` | `DefaultLit` and `Subsurface`: how much of the sky's light reaches it |
+| `subsurfaceColor` | `vec3` | `(1, 1, 1)` | `Subsurface`: the colour light takes through it |
+| `opacity` | `float` | `1` | How much it hides what is behind it (translucent blend modes); under `Subsurface`, how much the normal counts in the light through it |
 | `opacityMask` | `float` | `1` | Where it is solid: kept at or above `MaskClip` (`Masked`, `ClipDepth`, `DepthPrepass`) |
-| `emissive` | `vec3` | `(0, 0, 0)` | Light it gives off, linear and unlit; past 1, it blooms |
-| `normal` | `vec3` | `(0, 1, 0)` | World-space normal, lighting a translucent surface (`TranslucencyLighting Surface`) |
+| `emissive` | `vec3` | `(0, 0, 0)` | Light it gives off, linear and unlit; past 1, it blooms. **Under `ShadingModel Unlit` it is the whole colour drawn** |
+| `normal` | `vec3` | the mesh's, or `(0, 1, 0)` | World-space normal, lighting a `DefaultLit` or `Subsurface` surface (the mesh's by default, toward the eye on a back face) or a translucent one (`TranslucencyLighting Surface`) |
 | `refraction` | `vec2` | `(0, 0)` | How far it bends what is behind it, in screen UV (0.02 = 2% of the screen) |
 | `refractionSplit` | `float` | `0` | The bend split by colour: red bends `1 + split` as far, blue `1 - split` |
 | `refractionDepth` | `float` | the pixel's eye depth | Where the bend starts, for a haze traced inside a volume |
@@ -108,6 +113,19 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 | `light` | `vec2` | the draw's | The `(block, sky)` light it is lit by: for a particle, its own |
 | `volumeDepth` | `float` | `0` | A volume's eye distance, so what draws after it knows where smoke starts |
 | `depth` | `float` | the fragment's own | The eye depth it stands at: a volume traced inside its hull writes where the ray enters (`cg_EyeDepth(point)`), nearer or farther |
+
+> **An `Unlit` material's colour is `s.emissive`.** As in Unreal, `ShadingModel Unlit` draws the emissive alone and
+> reads no base colour: write the colour there, and how much it covers in `s.opacity`. Naming `s.baseColor` under
+> `Unlit` is a compile error, and an unlit surface writing nothing draws black. Past 1 it blooms, as any light does.
+>
+> ```glsl
+> Material { BlendMode Translucent  ShadingModel Unlit }
+> void surface(in v2f i, inout CgSurface s) {
+>     vec4 c = texture(_MainTex, i.uv0) * _Tint;
+>     s.emissive = c.rgb * _Intensity;     // the colour drawn
+>     s.opacity = c.a;
+> }
+> ```
 
 ```glsl
 // A glass pane that tints, bends a little, and glows where it is cracked
@@ -185,11 +203,13 @@ Worked out once, when the material loads, from what `surface()` names:
 | The material… | Draws in |
 |---|---|
 | is `Opaque` or `Masked` | the depth pass, the base pass, the world-normals target |
-| is translucent and writes `baseColor` or `opacity` | the translucent pass (or the separate one, or the overlay, by `TranslucencyPass`) |
-| writes `emissive` | the glow: folded into its colour's draw where it can, or a draw of its own |
+| is translucent and writes its colour (`baseColor`; `emissive` when `Unlit`) or `opacity` | the translucent pass (or the separate one, or the overlay, by `TranslucencyPass`) |
+| is lit and writes `emissive` | the glow: folded into its colour's draw where it can, or a draw of its own |
 | writes `refraction` | the distortion pass |
-| writes only `emissive` | the glow alone, no colour draw |
+| is lit and writes only `emissive` | the glow alone, no colour draw |
 | writes only `refraction` | the distortion pass alone: a pure heat haze is one draw |
+
+An `Unlit` material's `emissive` is its colour, not a glow: it draws where a colour does, with no glow of its own.
 
 "Writes" means `surface()` (or a helper it calls) names the output, even under a keyword: a keyword switches a value,
 not a pass.
@@ -201,7 +221,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | Property | Values (default first) | What it does |
 |---|---|---|
 | `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` ignore `opacity` and leave what is behind's alpha as it was |
-| `ShadingModel` | `WorldLit`, `Unlit` | Lit by the world's light, or shown as written |
+| `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; drawn as its `emissive` alone (`Unlit`); or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |
 | `TranslucencyPass` | `Standard`, `AfterDistortion`, `Separate`, `Overlay` | When a translucent material draws: with the others, after the bend, after everything translucent, or over the world |
@@ -267,6 +287,67 @@ Spark p = SPARKS(CG_VERTEX_ID >> 2);                     // in vertex() or surfa
 sparks.buffer("SPARKS", kernelOutput);
 ```
 
+### 4.8 `Layers { }`: a material as a stack
+
+A material built of whole surfaces laid one over another, Unreal's material layers: rock, moss over it where the face
+looks up, snow over both above a height. Each **layer** is a function returning a whole `CgSurface`; each **blend**
+lays one over the layers below it. An asset swaps a layer for another its shader offers, or hides one, without a
+shader of its own.
+
+```glsl
+#include "crystalgraphics:shaders/lib/material/blend_material_attributes.glsl"
+Material { ShadingModel DefaultLit }
+
+Layers {
+    Rock  rock                                  // the base: below everything, never hidden
+    Moss  moss | wet_moss  by slope {           // two layers to choose from, laid on by slope
+        Tint ("Moss colour", color) = (0.25, 0.45, 0.15, 1)    // this slot's own: Moss_Tint
+    }
+    Snow  snow  by height {
+        Line ("Snow line, blocks", float) = 64.0
+    }
+}
+
+struct v2f { vec2 uv0; vec3 normal; vec3 world; };
+
+CgSurface rock(in v2f i, CgSurface s) { s.baseColor = texture(_Rock, i.uv0).rgb; s.roughness = 0.85; return s; }
+CgSurface moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb; s.roughness = 0.7; return s; }
+CgSurface wet_moss(in v2f i, CgSurface s) { s.baseColor = Tint.rgb * 0.6; s.roughness = 0.25; return s; }
+CgSurface snow(in v2f i, CgSurface s) { s.baseColor = vec3(0.92); s.roughness = 0.6; return s; }
+
+CgSurface slope(in v2f i, CgSurface below, CgSurface top) {
+    return cg_blend_material_attributes(below, top, smoothstep(0.6, 0.85, normalize(i.normal).y));
+}
+CgSurface height(in v2f i, CgSurface below, CgSurface top) {
+    return cg_blend_material_attributes(below, top, smoothstep(Line - 2.0, Line + 2.0, i.world.y + CG_CAMERA_POSITION.y));
+}
+
+void surface(in v2f i, inout CgSurface s) {
+    s = cg_MaterialLayers(i, s);                // the stack: each layer from s, each blend over the ones below
+}
+```
+
+```yaml
+# a material asset of it: wet moss, no snow
+shader: mymod:shaders/rock.shader
+layers: { Moss: wet_moss, Snow: hidden }
+values: { Moss_Tint: [0.2, 0.35, 0.1, 1.0] }
+```
+
+| Line | Means |
+|---|---|
+| `Name layer` | the base slot: `CgSurface layer(in v2f i, CgSurface s)` |
+| `Name a \| b by blend` | a slot over the ones above it, `a` by default, `b` an asset's choice; `CgSurface blend(in v2f i, CgSurface below, CgSurface top)` |
+| `{ properties }` | the slot's own properties, `Name_Property` to an asset, read as `Property` by the slot's functions |
+
+- **Each choice is its own program**, as a keyword's is: a slot is the one-of `LAYER_<SLOT>` of its layers, and
+  `HIDDEN` for any slot but the base. Precache builds every stack; keep the choices to what assets pick.
+- **One function, several slots**: each slot gets its own copy, so `Tint` in `moss` is `Moss_Tint` in slot `Moss` and
+  `Snow_Tint` in a slot `Snow` using it too.
+- **Write the layer and blend functions, and what they call, before `surface()`**: the stack is written there.
+- A `Layers { }` that `surface()` never calls fails, as does a base with `by`, a slot after it without, or a layer
+  that is no function of the file.
+
 ---
 
 ## 5. Vertex factories: what draws a surface material
@@ -293,10 +374,10 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 
 | `VertexFactory` | What draws it | It hands you |
 |---|---|---|
-| `Mesh` (default) | A mesh: `pass.draw(mesh, material)`, static, instanced or skinned | the mesh's vertices |
+| `Mesh` (default) | A mesh: `pass.draw(mesh, material)`, static, instanced or skinned | the mesh's vertices; `cg_TangentToWorld` |
 | `Procedural` | A draw of a vertex count, no mesh | nothing: your `vertex()` assigns `v.world`, usually from `Buffers { }` and `CG_VERTEX_ID` |
 | `Sprites` | A particle renderer's camera-facing quads (`CgVfxRenderers.sprite`); a beam's or ribbon's strips | each corner placed, faced and flipbooked; `cg_Particle` |
-| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle` |
+| `MeshParticles` | A particle renderer's meshes (`CgVfxRenderers.mesh`) | the mesh's vertices placed by the particle (`v.position` the mesh's own); `cg_Particle`; `cg_TangentToWorld` |
 | `VfxMesh` | A VFX mesh slot (`CgVfxFrame.mesh`): a unit sphere or the layer's mesh, placed by the slot | the mesh's vertices; `cg_VfxMesh` |
 | `Billboard` | A VFX billboard slot (`CgVfxFrame.billboard`): one camera-facing quad, a lone particle | the quad's corner (`v.position` -1..1); `cg_Billboard` |
 | `Ribbons` | A VFX ribbons slot (`CgVfxFrame.ribbons`): stateless strips of 32 segments, placed by the material | nothing: your `vertex()` assigns `v.world` from `cg_Ribbon` |
@@ -307,6 +388,26 @@ Material { BlendMode Translucent  VertexFactory Sprites }
 | `Tube` | A VFX tube slot: a path drawn as chunks of rings, ends open | the tube's vertices; `cg_Tube`; `uv0` = (blocks along, 0..1 around) |
 | `TubeClosed` | A tube slot, its chunks capped | as `Tube`; an end cap's centre has angle -1 |
 | `TubeVolume` | A tube slot, each chunk on a sphere round it | the sphere's vertices; `cg_Tube` |
+
+**`cg_TangentToWorld`** (`Mesh`, `MeshParticles`) is the vertex's tangent, bitangent and normal in the world, in
+`vertex()`: what a normal map is read in. Every mesh carries a tangent (`cg_Tangent`, its bitangent's sign in `w`):
+the file's, or MikkTSpace's made when it loads, as Unreal's mesh build makes them. Pass it to `surface()` through your
+`v2f`:
+
+```glsl
+struct v2f { vec2 uv0; mat3 tangentToWorld; };
+void vertex(inout CgVertex v, out v2f o) {
+    o.uv0 = v.uv0;
+    o.tangentToWorld = cg_TangentToWorld;
+}
+void surface(in v2f i, inout CgSurface s) {
+    vec3 n = texture(_Normal, i.uv0).xyz * 2.0 - 1.0;          // tangent space: x along u, y along v
+    s.normal = normalize(i.tangentToWorld * n);                  // ShadingModel DefaultLit lights by it
+}
+```
+
+**`CG_OBJECT_POSITION`** is what is drawn's position, camera-relative, under every factory: the mesh's origin, or for
+a particle its system's bounds' centre (Unreal's ObjectPositionWS).
 
 **`cg_Particle`** is the particle the vertex belongs to, readable in `vertex()` and `surface()`:
 
@@ -356,7 +457,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world = fx_ribbon_vertex(p, mat3(CG_OBJECT_TO_WORLD) * vec3(0.0, 0.0, 1.0), CG_CAMERA_POSITION, 0.05, r.side);
     o.side = r.side;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0 - abs(i.side)); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0 - abs(i.side)); }
 ```
 
 ```glsl
@@ -388,7 +489,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world += v.normal * 0.1 * cg_Tube.ring.intensity;
     o.along = cg_Tube.ring.arc;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(fract(i.along)); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(fract(i.along)); }
 ```
 
 **Only what `surface()` names reaches the pixel.** Reading `cg_Particle.color` in `surface()` passes the colour and
@@ -467,6 +568,8 @@ void vertex(inout CgVertex v, out v2f o) {
 ```
 
 Factories listed together share a vertex type, and at most one has parameters: read them only under its keywords.
+Every factory but `Mesh` and `Procedural` has a `Usage` keyword, so any of them may follow the first; those two are
+bases, as Unreal's static mesh takes no usage flag.
 
 **Meshes and particles both** (a game's material marked for static meshes, mesh particles and sprites): list `Mesh`
 then `MeshParticles`. Static and skeletal meshes take `Mesh`; every particle draw (a mesh, a sprite, a strip) takes

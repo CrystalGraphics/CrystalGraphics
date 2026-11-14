@@ -249,6 +249,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         private final Map<String, Object> state = new LinkedHashMap<>(), values = new LinkedHashMap<>(),
                 textures = new LinkedHashMap<>();
         private final List<String> keywords = new ArrayList<>();
+        private final Map<String, Object> layers = new LinkedHashMap<>();
         private final List<String> usage = new ArrayList<>();
         private Integer order;
         private String sortLayer;
@@ -309,6 +310,19 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         /** What draws it, each a program variant: static mesh where none is given. */
         public Builder usage(CgMaterialUsage... usages) {
             for (CgMaterialUsage u : usages) usage.add(u.fileName());
+            return this;
+        }
+
+        /**
+         * A layer slot's choice: one of the layers its shader's {@code Layers { }} names for it, or {@code hidden} for any
+         * slot but the first.
+         *
+         * <pre>{@code
+         * CgMaterialDefinition.of("mymod:materials/wet_rock", "mymod:shaders/rock.shader").layer("Moss", "wet_moss").build();
+         * }</pre>
+         */
+        public Builder layer(String slot, String choice) {
+            layers.put(slot, choice);
             return this;
         }
 
@@ -411,6 +425,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             if (order != null) t.put("order", order);
             if (sortLayer != null) t.put("sort_layer", sortLayer);
             if (!keywords.isEmpty()) t.put("keywords", new ArrayList<>(keywords));
+            if (!layers.isEmpty()) t.put("layers", new LinkedHashMap<>(layers));
             if (!values.isEmpty()) t.put("values", new LinkedHashMap<>(values));
             if (!textures.isEmpty()) t.put("textures", new LinkedHashMap<>(textures));
             return t;

@@ -1,6 +1,5 @@
 package com.crystalgraphics.vfx;
 
-import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.asset.load.CgAssetFollower;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.hit.CgHit;
@@ -348,7 +347,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     /**
      * Rides {@code attachment}: each frame, before it ticks, its origin and turn are the attachment's, so it never lags
      * what it rides. Unreal's {@code AttachToComponent(parent, socket)}, whatever the parent: a skinned mesh's socket
-     * ({@link CgAnimInstance#attachment}), a sequence's locator. Its named points ({@code socket_location} spawning)
+     * ({@code CgSkeletalMeshComponent.attachment}), a sequence's locator. Its named points ({@code socket_location} spawning)
      * are the attachment's. It stops, where it last was, once the attachment is gone.
      *
      * <pre>{@code

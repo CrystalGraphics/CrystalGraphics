@@ -64,6 +64,7 @@ crystalgraphics:world: PASS (31 passed, 0 failed, 4 skipped)
 | `crystalgraphics:world` | client | Every world seam the host answers, against the others (`probe.CgWorldProbe`) |
 | `crystalgraphics:collision` | client | Collision against real entities: a ring on stands, a dragon's parts, a painting (`docs/COLLISION.md`) |
 | `crystalgraphics:containers` | client | A furnace and a chest placed beside the player, opened with the use-block call, read through `CgContainers`, and driven: pick up, put back, quick-move, close (`probe.CgContainersProbe`, `docs/CONTAINERS.md`) |
+| `crystalgraphics:actors` | client | Entity actors bound by the host: one spawned for a summoned target, following it, its model left to it, gone with it (`docs/vfx/prefabs.md` § *Entity actors*) |
 | `crystalgraphics:net` | client, server | Networked objects across a player's death, and how late a change arrives (`docs/NETWORKING.md`) |
 | `crystalgraphics:server` | dedicated server | The server-side stack is up and no client class loaded (`probe.CgServerSmoke`) |
 

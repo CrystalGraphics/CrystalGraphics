@@ -14,7 +14,6 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.render.graph.CgFrameBuilder;
 import com.crystalgraphics.render.graph.CgFrameGraph;
-import com.crystalgraphics.render.graph.CgFrameScope;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgPass;
@@ -23,6 +22,8 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgRequest;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewState;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 
@@ -48,9 +49,11 @@ import javax.annotation.Nullable;
  *       there overrides a texture's own filtering, and clips every draw to its box.</li>
  *   <li>{@link #callback} draws immediately at its place in the stage, with GL state restored after — for work that
  *       is not recorded yet.</li>
- *   <li>{@link #constants()} carries the last frame's view of this firing ({@code CgPassConstants.history}): the n-th
- *       firing of a host frame is compared with last frame's n-th, and is no history of it after a teleport (8
- *       blocks), a turn past 30 degrees, a change of projection, framebuffer or size, or a skipped frame.</li>
+ *   <li>Each firing draws a {@link #view()}: what one firing hands a later one, and what a temporal effect keeps for
+ *       the next frame, lives in its state, never in a renderer's field.</li>
+ *   <li>{@link #constants()} carries the last frame's camera of this stage's view ({@code CgPassConstants.history}),
+ *       which is no history of it after a teleport (8 blocks), a turn past 30 degrees, a change of projection,
+ *       framebuffer or size, or a skipped frame.</li>
  * </ul>
  */
 public final class CgStageFrame {
@@ -69,9 +72,15 @@ public final class CgStageFrame {
     private CgTextureDesc pyramidDesc;
     /** Whether this firing is a rehearsal's, which builds its own pyramid and takes none of the frame's. */
     private boolean rehearsing;
-    /** The frame's pyramid and the host whose target it was built from (L1: one a frame, every firing's). */
-    private static final CgFrameScope.Key<CgGraphTexture> PYRAMID = new CgFrameScope.Key<>("stage.pyramid");
-    private static final CgFrameScope.Key<CgExternalTarget> PYRAMID_HOST = new CgFrameScope.Key<>("stage.pyramid.host");
+
+    /** A view's pyramid, the host frame it was built in and the host target it was built from: one a view a frame. */
+    private static final class Pyramid {
+        CgGraphTexture texture;
+        CgExternalTarget host;
+        long frame = Long.MIN_VALUE;
+    }
+
+    private static final CgViewState.Key<Pyramid> PYRAMID = new CgViewState.Key<>("stage.pyramid", Pyramid::new);
     /** Pyramids built, and firings asking for one: what each built before the frame shared one. */
     private static final int PYRAMIDS = CgTrace.name("stage.pyramids-built"), PYRAMID_ASKS = CgTrace.name("stage.pyramid-asks");
     @Nullable
@@ -94,28 +103,28 @@ public final class CgStageFrame {
     /** Whether this turn's canvas draws GUI-scaled ({@link #guiScaledCanvas}) rather than in the window's pixels. */
     private boolean guiPixels;
 
-    /** Firings a host frame remembered for the next: the n-th is compared with last frame's n-th. */
-    private static final int ORDINALS = 4;
     /** How far the camera may move in a frame, and turn (as the cosine), and still be the last frame's view. */
     private static final double TELEPORT = 8.0;
     private static final float TURN_COS = 0.866f, PROJECTION_JUMP = 0.1f;
-    private final Matrix4f[] lastViewProjection = new Matrix4f[ORDINALS];
-    private final double[] lastOrigin = new double[ORDINALS * 3];
-    private final float[] lastLens = new float[ORDINALS * 3];
-    private final CgExternalTarget[] lastTarget = new CgExternalTarget[ORDINALS];
-    private final int[] lastWidth = new int[ORDINALS], lastHeight = new int[ORDINALS];
-    private final long[] lastFrame = new long[ORDINALS];
-    private long firingFrame = Long.MIN_VALUE;
-    private int ordinal;
+
+    /** What this stage last saw of a view: the next frame's firing of it is compared with it (Unreal's PrevViewInfo). */
+    private static final class Previous {
+        final Matrix4f viewProjection = new Matrix4f();
+        double x, y, z;
+        float lens00, lens11, lens22;
+        CgExternalTarget target;
+        int width, height;
+        long frame = Long.MIN_VALUE;
+    }
+
+    /** This stage's record in each view's state: a key per stage. */
+    private final CgViewState.Key<Previous> previousKey = new CgViewState.Key<>("stage.previous", Previous::new);
+    private CgView view = CgView.main();
     private final Matrix4f previous = new Matrix4f(), viewProjection = new Matrix4f();
     private boolean historyValid;
 
     CgStageFrame(CgRenderStage stage) {
         this.stage = stage;
-        for (int i = 0; i < ORDINALS; i++) {
-            lastViewProjection[i] = new Matrix4f();
-            lastFrame[i] = Long.MIN_VALUE;
-        }
     }
 
     /** The stage firing. */
@@ -217,7 +226,7 @@ public final class CgStageFrame {
 
     /** What this firing adds to a pass of its camera: the scene's encoding, the last frame's view, the atmosphere. */
     private void viewState(CgPassConstants constants) {
-        constants.linearScene(target != null).history(previous, (int) firingFrame, historyValid);
+        constants.linearScene(target != null).history(previous, view.state().frameIndex(), historyValid);
         CgWorldAtmosphere.apply(host.environment(), constants);
     }
 
@@ -234,9 +243,17 @@ public final class CgStageFrame {
         return historyValid;
     }
 
-    /** Which firing of its host frame this is, from 0: what a temporal effect keeps a history per. */
-    public int ordinal() {
-        return ordinal;
+    /**
+     * The view this firing draws: the host's ({@code host().view()}), or {@link CgView#unkept()} for a rehearsal and for
+     * a second firing of this stage in one host frame for the same view. What it hands a later firing and keeps for the
+     * next frame lives in its state.
+     *
+     * <pre>{@code
+     * Kept kept = frame.view().state().get(KEPT);   // this view's, never another's
+     * }</pre>
+     */
+    public CgView view() {
+        return view;
     }
 
     /** A raster pass onto the host's target under {@code constants}, loading what is there. */
@@ -245,9 +262,10 @@ public final class CgStageFrame {
     }
 
     /**
-     * The depth pyramid of the host's target, built at the frame's first ask and shared by every renderer and every
-     * later firing of the host's frame that asks after ({@link CgGpuOps#depthPyramid}: each level the farthest eye depth
-     * it covers), as Unreal builds one furthest HZB a view a frame. What a GPU cull tests occlusion against.
+     * The depth pyramid of the host's target, built at the view's first ask of the frame and shared by every renderer
+     * and every later firing of the view that frame that asks after ({@link CgGpuOps#depthPyramid}: each level the
+     * farthest eye depth it covers), as Unreal builds one furthest HZB a view a frame. What a GPU cull tests occlusion
+     * against.
      *
      * <pre>{@code
      * cull.view(view.view(), view.projection()).pyramid(frame.depthPyramid());
@@ -269,16 +287,21 @@ public final class CgStageFrame {
         }
         CgTextureDesc desc = pyramidDesc;
         if (rehearsing) {
+            // Its own target's depth, while the host frame still names the host's: never a view's pyramid
             if (pyramid == null || !desc.equals(pyramid.desc())) pyramid = CgGraphTexture.transientTexture("stage.pyramid", desc);
         } else {
-            CgGraphTexture shared = CgFrameScope.get(PYRAMID);
-            CgExternalTarget from = CgFrameScope.get(PYRAMID_HOST);   // the host's target it was built from
-            if (shared != null && from != null && from == host.target() && desc.equals(shared.desc())) {
-                return pyramid = shared;   // built by an earlier firing of this frame
+            Pyramid kept = view.state().get(PYRAMID);
+            boolean sized = kept.texture != null && desc.equals(kept.texture.desc());
+            if (sized && kept.frame == view.state().frame() && kept.host == host.target()) {
+                return pyramid = kept.texture;   // built by an earlier firing of this view's frame
             }
-            pyramid = CgFrameScope.texture(PYRAMID, desc, recording);
-            CgFrameScope.put(PYRAMID, pyramid);
-            CgFrameScope.put(PYRAMID_HOST, host.target());
+            if (!sized) {
+                if (kept.texture != null) recording.release(kept.texture);
+                kept.texture = CgGraphTexture.requested("stage.pyramid", desc);
+            }
+            kept.frame = view.state().frame();
+            kept.host = host.target();
+            pyramid = kept.texture;
         }
         CgGpuOps.depthPyramid(recording, depth(), constants(), pyramid);
         CgTrace.add(CgChannels.GL, PYRAMIDS, 1);
@@ -436,12 +459,14 @@ public final class CgStageFrame {
         target = null;
         depth = null;
         long frame = CgFrameRing.frame();
-        ordinal = frame == firingFrame ? ordinal + 1 : 0;
-        firingFrame = frame;
-        remember(host.camera());
+        // A view draws each stage once a frame: a second firing for it is nobody's view, and keeps nothing
+        CgView named = host.view();
+        view = named.state().get(previousKey).frame == frame ? CgView.unkept() : named;
+        view.state().begin(frame);
+        remember(host.camera(), frame);
     }
 
-    /** As {@link #begin} for a rehearsal's firing: the stage's history, kept for the real frames, is left alone. */
+    /** As {@link #begin} for a rehearsal's firing: it draws as {@link CgView#unkept()}, the real views left alone. */
     void beginRehearsal(CgHostFrame host) {
         this.host = host;
         recording.reset();
@@ -449,44 +474,47 @@ public final class CgStageFrame {
         rehearsing = true;
         target = null;
         depth = null;
+        view = CgView.unkept();
+        view.state().begin(CgFrameRing.frame());
         viewProjection.set(host.camera().projection()).mul(host.camera().view());
         historyValid = false;
     }
 
-    /** Compares this firing's view with last frame's of the same ordinal, then keeps it for the next. */
-    private void remember(CgCamera view) {
-        viewProjection.set(view.projection()).mul(view.view());
+    /** Compares this firing's camera with what this stage saw of its view last frame, then keeps it for the next. */
+    private void remember(CgCamera camera, long frame) {
+        viewProjection.set(camera.projection()).mul(camera.view());
         historyValid = false;
-        if (ordinal >= ORDINALS) return;
-        int at = ordinal;
-        double dx = view.x() - lastOrigin[at * 3], dy = view.y() - lastOrigin[at * 3 + 1], dz = view.z() - lastOrigin[at * 3 + 2];
-        Matrix4f last = lastViewProjection[at];
-        if (lastFrame[at] == firingFrame - 1 && lastTarget[at] == host.target()
-                && lastWidth[at] == host.width() && lastHeight[at] == host.height()
-                && dx * dx + dy * dy + dz * dz < TELEPORT * TELEPORT && sameLens(at, view)) {
-            // Last frame's view-projection of this frame's camera-relative points: moved by the camera's step.
-            previous.set(last).translate((float) dx, (float) dy, (float) dz);
-            historyValid = forward(last) >= TURN_COS;
+        Previous last = view.state().get(previousKey);
+        if (!view.state().keepsHistory()) {
+            last.frame = frame;
+            return;
         }
-        last.set(viewProjection);
-        lastLens[at * 3] = view.projection().m00();
-        lastLens[at * 3 + 1] = view.projection().m11();
-        lastLens[at * 3 + 2] = view.projection().m22();
-        lastOrigin[at * 3] = view.x();
-        lastOrigin[at * 3 + 1] = view.y();
-        lastOrigin[at * 3 + 2] = view.z();
-        lastTarget[at] = host.target();
-        lastWidth[at] = host.width();
-        lastHeight[at] = host.height();
-        lastFrame[at] = firingFrame;
+        double dx = camera.x() - last.x, dy = camera.y() - last.y, dz = camera.z() - last.z;
+        if (last.frame == frame - 1 && last.target == host.target() && last.width == host.width() && last.height == host.height()
+                && dx * dx + dy * dy + dz * dz < TELEPORT * TELEPORT && sameLens(last, camera)) {
+            // Last frame's view-projection of this frame's camera-relative points: moved by the camera's step.
+            previous.set(last.viewProjection).translate((float) dx, (float) dy, (float) dz);
+            historyValid = forward(last.viewProjection) >= TURN_COS;
+        }
+        last.viewProjection.set(viewProjection);
+        last.lens00 = camera.projection().m00();
+        last.lens11 = camera.projection().m11();
+        last.lens22 = camera.projection().m22();
+        last.x = camera.x();
+        last.y = camera.y();
+        last.z = camera.z();
+        last.target = host.target();
+        last.width = host.width();
+        last.height = host.height();
+        last.frame = frame;
     }
 
-    /** Whether last frame's lens at {@code at} is {@code view}'s within a zoom's step: its focal lengths and depth mapping. */
-    private boolean sameLens(int at, CgCamera view) {
-        float p00 = view.projection().m00(), p11 = view.projection().m11(), p22 = view.projection().m22();
-        return Math.abs(p00 - lastLens[at * 3]) < PROJECTION_JUMP * Math.abs(p00)
-                && Math.abs(p11 - lastLens[at * 3 + 1]) < PROJECTION_JUMP * Math.abs(p11)
-                && Math.signum(p22) == Math.signum(lastLens[at * 3 + 2]);
+    /** Whether {@code last}'s lens is {@code camera}'s within a zoom's step: its focal lengths and depth mapping. */
+    private static boolean sameLens(Previous last, CgCamera camera) {
+        float p00 = camera.projection().m00(), p11 = camera.projection().m11(), p22 = camera.projection().m22();
+        return Math.abs(p00 - last.lens00) < PROJECTION_JUMP * Math.abs(p00)
+                && Math.abs(p11 - last.lens11) < PROJECTION_JUMP * Math.abs(p11)
+                && Math.signum(p22) == Math.signum(last.lens22);
     }
 
     /** The cosine between {@code last}'s and this view's forward: the w row of a view-projection is the forward. */

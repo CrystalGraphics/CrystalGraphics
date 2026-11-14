@@ -1,7 +1,7 @@
 package com.crystalgraphics.animation;
 
 /**
- * Where {@link CgAnimInstance#cpuSkin} writes a posed submesh, a quad at a time: four calls to {@link #vertex} per quad,
+ * Where {@link CgCpuSkin#skin} (a skeletal mesh component's {@code cpuSkin}) writes a posed submesh, a quad at a time: four calls to {@link #vertex} per quad,
  * in winding order. For a host whose own vertex path must see the vertices, as a shader pack sees an entity's.
  *
  * <pre>{@code

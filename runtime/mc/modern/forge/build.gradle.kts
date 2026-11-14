@@ -16,6 +16,7 @@
 //   - There is no Gradle 9 property to suppress the exclusive-lock requirement.
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunProperties
 import cgbuildlogic.graphicsDevMixinArgs
 import cgbuildlogic.devRunSourceSet
 import cgbuildlogic.registerSrgReobf
@@ -89,6 +90,7 @@ legacyForge?.apply {
         create("client") {
             client()
             gameDirectory = project.file("runs/client")
+            devRunProperties().forEach { (key, value) -> systemProperty(key, value) }
             renderDocRun(this)
             shaderToolchainRun(this)
         }

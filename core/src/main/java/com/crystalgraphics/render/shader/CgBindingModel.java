@@ -21,7 +21,7 @@ import com.github.bsideup.jabel.Desugar;
  *
  * <table>
  *   <tr><th>Set</th><th>Holds</th><th>Made</th></tr>
- *   <tr><td>{@link #VIEW}</td><td>the view and environment blocks, scene depth and colour, the lightmap, the media, local lights</td><td>once a pass</td></tr>
+ *   <tr><td>{@link #VIEW}</td><td>the view and environment blocks, scene depth and colour, the lightmap, the media, local lights, the scene's records</td><td>once a pass</td></tr>
  *   <tr><td>{@link #PASS}</td><td>the object records and ids, the text block, bone palettes, the mesh's vertex words, engine buffers by {@code cg_use} token</td><td>once a pass</td></tr>
  *   <tr><td>{@link #MATERIAL}</td><td>its block, its {@code Buffers { }}, buffers attached to it, its textures where bound</td><td>persistent</td></tr>
  *   <tr><td>{@link #BINDLESS}</td><td>every texture view and sampler, by index</td><td>the device's</td></tr>
@@ -62,6 +62,15 @@ public final class CgBindingModel {
     public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
     /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
     public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
+    /** The view's textures a stage binds besides a material's: scene depth and colour, lightmap, media, local lights. */
+    public static final int VIEW_TEXTURES = 5;
+    /**
+     * {@code CgViewTextureBlock}: the view's textures' bindless indices (scene depth, scene colour, lightmap, media, local
+     * lights), written as the pass executes; bound only where the view's textures are read by index.
+     */
+    public static final Slot VIEW_TEXTURE_INDICES = new Slot(VIEW, 8);
+    /** {@code cg_SceneObjects}: the scene's persistent records ({@code CgGpuScene}); an empty buffer where none is. */
+    public static final Slot SCENE_OBJECTS = new Slot(VIEW, 7);
 
     /** A packed slot that names nothing. */
     public static final int NONE = -1;
@@ -87,17 +96,20 @@ public final class CgBindingModel {
     public static final int MATERIAL_BUFFER_COUNT = 4;
     /** The first buffer attached to a material at runtime; {@code CgMaterial.attach} allows {@link #ATTACHED_COUNT}. */
     public static final int FIRST_ATTACHED = 5, ATTACHED_COUNT = 8;
-    /** A material's textures where they are bound rather than read by index: property {@code i} at this plus {@code i}. */
-    public static final int FIRST_TEXTURE = 16;
-    /** How many textures a material binds at most, below the kernel buffers. */
-    public static final int MATERIAL_TEXTURES = 16;
-
     /**
      * A kernel's own resources are in {@link #MATERIAL}'s set, as a material's: its {@code Properties} block at
-     * {@link #MATERIAL_BLOCK}, its samplers from {@link #FIRST_TEXTURE}, its buffers from this (append counts and
-     * checked mode's report after them), images from {@link #FIRST_KERNEL_IMAGE}.
+     * {@link #MATERIAL_BLOCK}, its buffers from this (append counts and checked mode's report after them), images from
+     * {@link #FIRST_KERNEL_IMAGE}, samplers from {@link #FIRST_TEXTURE}.
      */
-    public static final int FIRST_KERNEL_BUFFER = 32, FIRST_KERNEL_IMAGE = 96;
+    public static final int FIRST_KERNEL_BUFFER = 16, FIRST_KERNEL_IMAGE = 80;
+
+    /**
+     * A material's or kernel's textures where they are bound rather than read by index: property {@code i} at this plus
+     * {@code i}. Last in the set and open-ended: the engine sets no count, the GPU's stage does
+     * ({@code CgRHI.Globals.Limits.maxTextureUnits}). A host's own unit tracking (Minecraft's {@code RenderSystem} keeps
+     * 12) binds only its draws: the device hands every unit back at its section's end.
+     */
+    public static final int FIRST_TEXTURE = 96;
 
     private CgBindingModel() {}
 

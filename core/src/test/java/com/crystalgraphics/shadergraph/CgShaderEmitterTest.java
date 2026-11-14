@@ -118,7 +118,7 @@ public class CgShaderEmitterTest {
         assertTrue(result.source().contains("#domain surface"));
         // Narrowed to .xyz: BaseColor is a vec3, Alpha a port of its own. @see CgShaderEmitter#adapted
         assertTrue("the colour reaches the output",
-                result.source().contains("s.baseColor = node_c_Out.xyz;"));
+                result.source().contains("s.emissive = node_c_Out.xyz;"));
     }
 
     /** The master's settings land in the file rather than being defaults nobody can change. */
@@ -158,7 +158,7 @@ public class CgShaderEmitterTest {
         assertTrue(String.join("\n", result.errors()), result.ok());
         assertNotNull(CgShaderSpec.read(result.source(), "test:graph.shader"));
         assertTrue("the master's own default is used",
-                result.source().contains("s.baseColor = vec3(1.0, 1.0, 1.0);"));
+                result.source().contains("s.emissive = vec3(1.0, 1.0, 1.0);"));
         assertFalse("and an unwired position is the factory's own", result.source().contains("v.world"));
     }
 

@@ -17,6 +17,56 @@ like this costs a dedicated server nothing.
 
 ---
 
+## How shaders reach your textures: bindless by default
+
+**You do not have to do anything.** This section says what the engine does with your textures behind the scenes, so the
+numbers you may meet in an error make sense.
+
+A shader cannot open a texture by itself: something has to hand it the textures it reads. There are two ways.
+
+- **Bound to units (the old way).** The GPU has a short row of numbered slots, *texture units*, and before each draw
+  the engine plugs each texture the shader reads into one. A shader can read only as many textures as there are units
+  for one stage, typically 32 on a desktop GPU's OpenGL, and every draw of a different texture plugs them in again.
+- **Bindless (the default).** The GPU keeps one large table of every texture the game has loaded, the *bindless heap*,
+  and a shader reads a texture by its number in that table. Nothing is plugged in per draw, there is no small limit,
+  and draws of materials whose textures differ can be drawn together.
+
+**The engine uses bindless wherever the GPU and driver have it**, and units otherwise. It decides once, as the game
+starts, and every shader compiles for that choice:
+
+| Running on | Path |
+|---|---|
+| Vulkan with descriptor indexing (nearly every desktop GPU, and Minecraft 26.x's Vulkan) | bindless |
+| OpenGL 4.6 with `ARB_bindless_texture` (NVIDIA, AMD) | bindless, except the two view textures that may be Minecraft's own (below) |
+| OpenGL without it (Intel's Windows driver) | units |
+
+What it means for you:
+
+- **Your code is the same on both paths.** You declare a texture property, set it from Java and sample it in GLSL
+  exactly as the rest of this page and [`SHADERS.md`](SHADERS.md) show; the engine writes whichever form the GPU takes.
+- **The engine sets no limit on how many textures a material reads.** On the bindless path the heap holds thousands.
+  On units the only limit is the GPU's: a material reading more textures than one stage binds, less the 5 the engine
+  binds for the view (scene depth, scene colour, lightmap, media, local lights), fails to load with an error naming
+  both numbers.
+- **A texture that changes keeps its place.** A texture that grows, reloads or is rebuilt (a glyph atlas filling up, a
+  resource reload) keeps its number in the heap; nothing that reads it is rewritten.
+- **Minecraft's own textures stay on units on OpenGL.** OpenGL freezes a texture once it is in the heap: it can never
+  be resized or change its sampling again. Minecraft resizes and reconfigures its own textures (its lightmap, its depth
+  target) whenever it likes, so the engine never puts them in the heap there: `cg_Lightmap` and `cg_DepthBuffer` stay
+  on units on OpenGL, and every other texture, the engine's and yours, is bindless. Vulkan has no such rule.
+
+To run on units on a GPU that has bindless, to test that path, start the game with
+`-Dcrystalgraphics.bindless=false`. It takes effect on the next start. From code, `CgBindless.active()` says which path
+the running device took.
+
+```java
+import com.crystalgraphics.render.shader.CgBindless;
+
+boolean bindless = CgBindless.active();   // false before a device is installed, or on units
+```
+
+---
+
 ## 1. Your first texture
 
 Load it, then hand it to a material.

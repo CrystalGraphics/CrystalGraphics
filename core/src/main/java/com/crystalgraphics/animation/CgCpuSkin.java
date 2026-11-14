@@ -14,12 +14,23 @@ import java.util.Map;
 import java.util.WeakHashMap;
 
 /**
- * An instance's skinning done on the CPU, for a host that must see the posed vertices: Unreal's
- * {@code FSkeletalMeshObjectCPUSkin} ({@code SkeletalRenderCPUSkin.cpp}, {@code SkinVertexSection}): each vertex's bone
- * matrices blended by its weights, the position through the blend, the normal through its 3×3 and normalised. Its
- * triangles leave as quads, a pair written {@code a b c, c d a} as one, any other as {@code a b c c}.
+ * Skinning done on the CPU, for a host that must see the posed vertices: Unreal's {@code FSkeletalMeshObjectCPUSkin}
+ * ({@code SkeletalRenderCPUSkin.cpp}, {@code SkinVertexSection}): each vertex's bone matrices blended by its weights,
+ * the position through the blend, the normal through its 3×3 and normalised. Its triangles leave as quads, a pair
+ * written {@code a b c, c d a} as one, any other as {@code a b c c}. A skeletal mesh component's {@code cpuSkin} is
+ * the way in; one of these is its scratch.
+ *
+ * <pre>{@code
+ * CgCpuSkin skin = new CgCpuSkin();                                   // one per caller, reused
+ * skin.skin(mesh.mesh(), submesh, anim.skinning(), placement, (x, y, z, u, v, argb, nx, ny, nz) -> ...);
+ * }</pre>
+ *
+ * <ul>
+ *   <li>The mesh must keep its CPU copy: never {@code dropCpuCopy()} a mesh drawn this way.</li>
+ *   <li>The mesh is decoded once and kept while its revision holds; a call allocates nothing after the first.</li>
+ * </ul>
  */
-final class CgCpuSkin {
+public final class CgCpuSkin {
 
     /** A mesh's vertices decoded once, by mesh, while its revision holds. */
     private static final Map<CgMesh, Source> SOURCES = Collections.synchronizedMap(new WeakHashMap<CgMesh, Source>());
@@ -27,7 +38,8 @@ final class CgCpuSkin {
     private float[] bones = new float[0];
     private final Matrix4f m = new Matrix4f();
 
-    void skin(CgMesh mesh, int submesh, Matrix4f[] skinning, Matrix4fc placement, CgPosedVertexSink sink) {
+    /** Writes submesh {@code submesh} of {@code mesh}, skinned by {@code skinning} then placed by {@code placement}, into {@code sink}. */
+    public void skin(CgMesh mesh, int submesh, Matrix4f[] skinning, Matrix4fc placement, CgPosedVertexSink sink) {
         Source s = source(mesh);
         int n = skinning.length;
         if (bones.length < n * 12) bones = new float[n * 12];
@@ -86,7 +98,7 @@ final class CgCpuSkin {
                 m02 * px + m12 * py + m22 * pz + m32, s.uvs[v * 2], s.uvs[v * 2 + 1], s.colours[v], nx, ny, nz);
     }
 
-    private static Source source(CgMesh mesh) {
+    static Source source(CgMesh mesh) {
         int revision = mesh.revision();
         Source s = SOURCES.get(mesh);
         if (s == null || s.revision != revision) {
@@ -97,7 +109,7 @@ final class CgCpuSkin {
     }
 
     /** One mesh's vertices as floats, read once from its CPU copy. */
-    private static final class Source {
+    static final class Source {
         final int revision;
         final float[] positions, normals, uvs, weights;
         final int[] colours, bones, indices, submeshes;

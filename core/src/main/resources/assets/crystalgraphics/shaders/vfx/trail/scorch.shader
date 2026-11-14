@@ -6,7 +6,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/strip.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color    ("The burnt ground; its alpha how dark", color) = (0.05, 0.04, 0.035, 0.85)
@@ -29,6 +29,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float u = i.trail.x, across = abs(i.trail.y), age = i.trail.w;
     vec3 p = vec3(i.trail.z * _Scale, i.trail.y * _Scale * 0.8, cg_Vfx.seed * 3.0);
     float ragged = 0.18 * fx_fbm(p * 1.6, 3);
@@ -42,7 +43,10 @@ void surface(in v2f i, inout CgSurface s) {
     float ember = crack * heat * (0.6 + 0.4 * fx_noise(p * 3.0 + vec3(0.0, 0.0, cg_Vfx.age * 2.0)));
     float alpha = burnt * _Color.a * pow(1.0 - u, 0.6) * cg_Particle.color.a;
     vec3 glow = mix(_Ember.rgb, _Hot.rgb, heat * heat) * ember * cg_Particle.color.a;
-    s.baseColor = _Color.rgb * alpha + glow;   // premultiplied
+    s.emissive = _Color.rgb * alpha + glow;   // premultiplied
     s.opacity = alpha;
-    s.emissive = glow;
+    glowLight = glow;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

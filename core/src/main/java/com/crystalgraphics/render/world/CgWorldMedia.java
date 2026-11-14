@@ -23,6 +23,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.variable.CgVar;
 import org.joml.Matrix4f;
@@ -137,12 +138,18 @@ public final class CgWorldMedia {
 
     private final List<Injector> injectors = new CopyOnWriteArrayList<>();
     private final Matrix4f unproject = new Matrix4f();
-    /** The last firing's renderer-relative world to clip, and that space's origin; this firing's eye to it. */
-    private final Matrix4f lastToClip = new Matrix4f(), reproject = new Matrix4f();
-    private double lastX, lastY, lastZ;
-    private boolean hadLast, reprojects;
-    /** Firings recorded, with or without anything in the air. */
-    private long firings;
+
+    /** A view's last frame of the air: its renderer-relative world to clip, that space's origin, and the host frame. */
+    private static final class Last {
+        final Matrix4f toClip = new Matrix4f();
+        double x, y, z;
+        long frame = Long.MIN_VALUE;
+    }
+
+    private static final CgViewState.Key<Last> LAST = new CgViewState.Key<>("world.media.last", Last::new);
+    /** This firing's eye to its view's last frame's clip space. */
+    private final Matrix4f reproject = new Matrix4f();
+    private boolean reprojects;
     private final Vector4f corner = new Vector4f();
     private final Vector3f ray = new Vector3f(), eye = new Vector3f();
     private final float[] rays = new float[12];
@@ -197,14 +204,9 @@ public final class CgWorldMedia {
         return height;
     }
 
-    /** Which firing this is, counted with or without anything in the air: a history kept across firings checks it. */
-    long firing() {
-        return firings;
-    }
-
     /**
-     * This firing's eye-relative points to the last firing's clip space, for a history of the grid read through
-     * {@code media.glsl}'s {@code media_uv}; null at the first firing, after one with nothing in the air, or a resize.
+     * This firing's eye-relative points to its view's last frame's clip space, for a history of the grid read through
+     * {@code media.glsl}'s {@code media_uv}; null where the view kept no frame of the air just before, or after a resize.
      */
     @Nullable
     Matrix4fc reproject() {
@@ -247,15 +249,11 @@ public final class CgWorldMedia {
      * at {@code CgBindingModel.MEDIA}, or null when nothing added any.
      */
     @Nullable
-    CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgCamera view, Matrix4fc toWorld,
+    CgGraphTexture record(CgRecording recording, CgPassConstants stage, CgViewState state, CgCamera view, Matrix4fc toWorld,
                           float targetWidth, float targetHeight, CgWorldLights lights) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
             lit = false;
-            firings++;
-            if (injectors.isEmpty()) {
-                hadLast = false;
-                return null;
-            }
+            if (injectors.isEmpty()) return null;
             int tile = PIXELS.get();
             int w = Math.max(1, (int) Math.ceil(targetWidth / tile)), h = Math.max(1, (int) Math.ceil(targetHeight / tile));
             boolean resized = a == null || w != width || h != height;
@@ -273,15 +271,16 @@ public final class CgWorldMedia {
             cameraX = view.x() + eye.x;
             cameraY = view.y() + eye.y;
             cameraZ = view.z() + eye.z;
-            reprojects = hadLast && !resized;
+            Last last = state.get(LAST);
+            reprojects = state.continuous() && last.frame == state.frame() - 1 && !resized;
             if (reprojects) {
-                reproject.set(lastToClip).translate((float) (cameraX - lastX), (float) (cameraY - lastY), (float) (cameraZ - lastZ));
+                reproject.set(last.toClip).translate((float) (cameraX - last.x), (float) (cameraY - last.y), (float) (cameraZ - last.z));
             }
-            toWorld.invert(lastToClip).mulLocal(view.projection());
-            lastX = view.x();
-            lastY = view.y();
-            lastZ = view.z();
-            hadLast = true;
+            toWorld.invert(last.toClip).mulLocal(view.projection());
+            last.x = view.x();
+            last.y = view.y();
+            last.z = view.z();
+            last.frame = state.frame();
             if (integrate == null) {
                 integrate = CgCompute.load(KERNELS).kernel("IntegrateColumns").precache();
             }
@@ -294,7 +293,7 @@ public final class CgWorldMedia {
             pass.end();
             if (added && current != null) {
                 CgComputePass scatter = recording.compute("world.mediaScatter", stage).timed(GPU_SCATTER);
-                CgGraphTexture scattered = lights.scatter(recording, scatter, this, current);
+                CgGraphTexture scattered = lights.scatter(recording, scatter, this, state, current);
                 scatter.end();
                 lit = scattered != null;
                 CgComputePass sum = recording.compute("world.mediaIntegrate", stage).timed(GPU_INTEGRATE);

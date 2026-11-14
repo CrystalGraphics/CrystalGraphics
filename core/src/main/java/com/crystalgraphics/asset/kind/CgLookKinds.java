@@ -81,6 +81,7 @@ public final class CgLookKinds {
             .property("order", INT).forms(CgValueForm.CONSTANT).range(0, 255)
             .property("sort_layer", CgValueType.enumOf("background", "default", "effects", "overlay"))
             .property("keywords", CgValueType.listOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
+            .property("layers", CgValueType.mapOf(STRING)).flags(CgPropertyFlag.STRUCTURAL)
             .property("values", mapOfValues())
             .property("textures", CgValueType.mapOf(CgValueType.struct(TEXTURE_BINDING)))
             .register();

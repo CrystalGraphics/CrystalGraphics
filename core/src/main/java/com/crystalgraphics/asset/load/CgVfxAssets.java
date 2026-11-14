@@ -681,7 +681,13 @@ public final class CgVfxAssets {
             }
             if (!d.ready) return false;
         }
-        if (!ref.plan.advance(budget)) return false;
+        try {
+            if (!ref.plan.advance(budget)) return false;
+        } catch (RuntimeException e) {
+            // A step that cannot finish (a face whose file is missing) fails the asset once, not every frame
+            fail(ref, String.valueOf(e.getMessage()));
+            return true;
+        }
         ref.ready = true;
         return true;
     }

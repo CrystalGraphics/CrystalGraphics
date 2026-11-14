@@ -194,22 +194,40 @@ CgAnimSequence wave = CgAnimSequence.builder("wave", 30, 31)       // 31 keys at
 CgSkeletalMesh mesh = CgSkeletalMesh.builder(sleeve, arm).material(0, "mymod:sleeve").sequence(wave).build();
 ```
 
-## Playing clips
+## A skinned mesh in the scene
 
-A `CgAnimInstance` is a skinned mesh posed by the engine: clips placed as sections on a timeline of its own,
-evaluated every frame in `POSE` on workers by `CgAnimation`, and its palette written for the draw.
+A `CgSkeletalMeshComponent` is a skinned mesh placed in a `CgScene`, Unreal's `USkeletalMeshComponent`: where it
+stands, its slots' materials, its overlay, which bones show. Spawned, it is posed and drawn every frame: nothing to
+submit. What it plays is its `CgAnimInstance` (`anim()`), Unreal's `UAnimInstance`.
 
 ```java
-CgAnimInstance kurama = CgAnimation.client().add(new CgAnimInstance(mesh));
-kurama.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());   // loops for ever
-kurama.play(CgAnimSection.of(mesh.sequence("roar")).at(2.0).easeIn(0.25f).easeOut(0.25f).build());
+CgSkeletalMeshComponent kurama = CgScene.client().skeletal(mesh)
+        .materials(slot -> CgMaterial.of(kitMaterial(slot)))       // a material a slot, in slot order
+        .at(x, y, z).rotation(facing).scale(2f)
+        .spawn();
+kurama.anim().play(CgAnimSection.of(mesh.sequence("idle")).loop().build());
+kurama.at(x + 1, y, z);                                             // moved
+kurama.remove();
+```
 
-// SUBMIT, the same frame: POSE has written this frame's palette
-world.draw(mesh.mesh(), skin).bones(kurama.palette()).at(x, y, z).submit();
+- **A slot with no material throws** at its draw, naming it: Unreal draws its default material there, and this engine
+  has none.
+- **Its bounds are its pose's**: each bone's reach (the farthest bind-pose vertex weighted most to it), found once a
+  mesh, around the posed bones. A pose reaching far past the bind pose is never culled, and nothing is padded by hand.
+  `bounds(box)` states its own instead.
+- The client scene poses it with `CgAnimation` in `POSE` and places it, and what rides it, in `ATTACH`.
 
-kurama.seek(3.25);              // the pose playing reaches at 3.25 s, exactly
-kurama.playing(false);          // held; kurama.rate(0.5f) plays at half speed
-CgAnimation.client().remove(kurama);
+## Playing clips
+
+Clips play as sections on the instance's timeline, evaluated every frame in `POSE` on workers by `CgAnimation`.
+
+```java
+CgAnimInstance anim = kurama.anim();
+anim.play(CgAnimSection.of(mesh.sequence("idle")).until(Double.POSITIVE_INFINITY).build());   // loops for ever
+anim.play(CgAnimSection.of(mesh.sequence("roar")).at(2.0).easeIn(0.25f).easeOut(0.25f).build());
+
+anim.seek(3.25);              // the pose playing reaches at 3.25 s, exactly
+anim.playing(false);          // held; anim.rate(0.5f) plays at half speed
 ```
 
 | Section setting | Does (Unreal's skeletal animation section) |
@@ -231,16 +249,19 @@ CgAnimation.client().remove(kurama);
   role (`sequences.md` § *Playing a sequence*).
 
 ```java
-goku.slot(roar, 0.4f, 1f);      // this pose: roar at 0.4 s over whatever his sections play
+anim.slot(roar, 0.4f, 1f);      // this pose: roar at 0.4 s over whatever its sections play
 ```
-- By hand, without `CgAnimation`: `instance.advance(dt).evaluate()`, then `instance.skinning()` into
-  `CgBonePalettes.write`. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
+
+- **A clip's material curves** set the component's material parameters each frame (`scalar`, below), and put a
+  parameter back when no clip keys it any more: Unreal's curves applied after evaluation.
+- By hand, for a tool or a test: `anim.evaluate()` poses it at its time; a scene of your own then needs `scene.update()`
+  for its palettes. Lower down, `clip.sample(pose, time)` into a `CgPose`, `pose.blend(...)`, `pose.resolve()`.
 - About 9 µs to pose a 228-bone puppet; past `crystalgraphics.animation.parallelAt` (8) instances, `POSE` splits them
   across workers.
-- `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, I/O rate,
-  K a Kamehameha charging on its right hand.
+- `--mode=skinned-play` shows them: Goku and Kurama, Tab to pick, N/B clips, P pause, `,` `.` a frame, U/I rate,
+  K a Kamehameha charging on its right hand, X its cut.
 - **While the game is paused** every instance holds its time and is still posed, so it still draws. A new level or
-  dimension drops the client's instances.
+  dimension clears the client scene.
 
 ## Layers, bone writes, mirroring and hiding
 
@@ -248,27 +269,28 @@ What plays on part of the body, what code moves after the clips, a clip played o
 drawn. In the order a frame applies them: sections and the slot, then each layer, then each bone write, then hiding.
 
 ```java
+CgAnimInstance anim = role.anim();
+
 // A layer over part of the body: branches (each ramping in over its depth), or a weight per bone
-CgAnimLayer arms = role.addLayer("Arms").branch("right_arm", 0).branch("left_arm", 0);
-CgAnimLayer lean = role.addLayer("Lean").bone("body", 0.5f).bone("head", 0.25f);
+CgAnimLayer arms = anim.addLayer("Arms").branch("right_arm", 0).branch("left_arm", 0);
+CgAnimLayer lean = anim.addLayer("Lean").bone("body", 0.5f).bone("head", 0.25f);
 arms.slot(holdSword, 0f, 1f);       // this frame, over the arms
 arms.weight(0.6f);                  // the whole layer's weight, scaling its mask
 
 // Code after the clips: Unreal's Transform (Modify) Bone
-CgBoneWrite look = role.write("head");
+CgBoneWrite look = anim.modify("head");
 look.rotation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, yawPitch);   // each frame
-CgBoneWrite drop = role.write("model");
+CgBoneWrite drop = anim.modify("model");
 drop.translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0f, -0.125f, 0f).alpha(crouch);
 
 // A clip authored for the right side, played on the left
 CgMirrorTable mirror = CgMirrorTable.byName(mesh.skeleton(), CgMirrorTable.Axis.X).self("body").build();
-role.slot(swing, phase, 1f, mirror);
+anim.slot(swing, phase, 1f, mirror);
 
-// Bones not drawn: their skinning collapses, never their pose
-role.hide("head", CgAnimInstance.Hide.BONE);          // the head's own vertices; a hat on a child bone stays
-role.hide("left_arm", CgAnimInstance.Hide.BRANCH);    // the arm and all below it, as Unreal's HideBone
-role.hideFromOwner("head", CgAnimInstance.Hide.BRANCH);
-world.draw(role, skin).bones(role.palette(ownerView)).submit();   // the owner's palette has the head collapsed
+// Bones not drawn: the component's; their skinning collapses, never their pose
+role.hideBone("head", CgBoneHide.BONE);              // the head's own vertices; a hat on a child bone stays
+role.hideBone("left_arm", CgBoneHide.BRANCH);        // the arm and all below it, as Unreal's HideBoneByName
+role.hideBoneFromOwner("head", CgBoneHide.BRANCH);   // the player does not see their own head
 ```
 
 - **A layer's mask** is Unreal's layered blend per bone: a branch gives a bone `d` levels below it `(d + 1) / depth`
@@ -282,93 +304,93 @@ world.draw(role, skin).bones(role.palette(ownerView)).submit();   // the owner's
 - **Mirroring** is Unreal's mirror data table: pairs by name (`r_`/`l_`, `_l`/`_r`, `right`/`left`, ...), centre
   bones (`spine`, `root`, `pelvis`, `neck`, `head` ...) onto themselves, and anything else left as it is, so name your
   other centre bones with `self(name)`. Sections, slot entries and layer entries each take a table.
-- **Hiding** keeps sockets and the bones below moving. `hideFromOwner` costs a second palette only while a bone is
-  hidden from the owner.
+- **Hiding** keeps sockets and the bones below moving. `hideBoneFromOwner` costs a second palette only while a bone is
+  hidden from the owner; the owner's view reads it with `palette(true)`.
 
 ### On a dedicated server
 
-The server poses its instances each game tick, for their bones and sockets, and draws nothing:
+The server poses instances each game tick, for their bones and sockets, and draws nothing: no component, no scene.
 
 ```java
 CgAnimInstance body = CgAnimation.server().add(new CgAnimInstance(mesh));   // CgMeshLoader.skeletal reads headless
 body.play(CgAnimSection.of(mesh.sequence("swing")).build());
-body.socket(body.socket("hand_r"), point, turn);   // this tick's pose
+Matrix4f hand = body.socket(body.socket("hand_r"), new Matrix4f());          // this tick's pose, in the mesh's space
 ```
 
 ## Sockets: attaching to a posed bone
 
-A socket is a named place on a bone (Unreal's `USkeletalMeshSocket`), and every bone is a socket by its own name. An
-effect following one rides the bone as `POSE` posed it that frame, so it never lags the mesh.
+A socket is a named place on a bone (Unreal's `USkeletalMeshSocket`), and every bone is a socket by its own name. What
+rides one is placed there in `ATTACH`, after `POSE`, so it never lags the mesh.
 
 ```java
 CgSkeletalMesh goku = CgMeshLoader.skeletal(path)
         .withSockets(List.of(CgSocket.of("right_hand", "hand_r", new Vector3f(0, -0.08f, 0.02f))));
-CgAnimInstance body = CgAnimation.client().add(new CgAnimInstance(goku)).place(x, y, z, turnAndScale);
+CgSkeletalMeshComponent body = CgScene.client().skeletal(goku).materials(skins::get).at(x, y, z).spawn();
 
-VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z).follow(body, "right_hand"));   // or "hand_r"
-world.draw(body, skin).pad(2f).submit();                                                         // SUBMIT
-
-int hand = body.socket("right_hand");          // looked up once
-body.socket(hand, point, turn);                // this frame's, after POSE: absolute place and turn
+VFX.play(CgEnergyWave.instance(CgEnergyWave.kamehameha(), x, y, z).follow(body.attachment("right_hand")));
+CgMeshComponent staff = CgScene.client().mesh(staffMesh, wood).attach(body, "hand_r").spawn();
 ```
 
 - **Found as Unreal finds one**: the mesh's socket of that name, else the bone of that name, ignoring case; a name
-  that is neither stands where the instance does.
-- **Where it is**: `place(x, y, z, transform) × bone × socket`, the instance's placement being Unreal's
-  component-to-world. `world.draw(instance, material)` draws it there.
+  that is neither stands where the component does (an attachment), or is refused (`attach`).
+- **Where it is**: the component's placement × bone × socket, Unreal's `GetSocketTransform`.
 - **An effect following a socket** takes its origin and turn each frame before it ticks; its named sockets
-  (`socket_location` spawning) are the instance's; it stops once the instance is removed from `CgAnimation`.
+  (`socket_location` spawning) are the component's; it stops once the component is removed.
 - **Late attach**: after the effects tick and before they draw (`LATE_ATTACH`), every followed point is read again, an
   entity's freshest mark included, so what draws at a point sits on it as it is drawn (Unreal's late update).
 - A loaded file carries no sockets: they come from the skeleton asset (`withSockets`) or `CgSkeletalMesh.Builder.socket`.
 
-### Attaching one skinned mesh to another
+### Attaching one primitive to another
 
-Hair, a tail, a hat or an ear is its own mesh hung from a body's bone: attach its instance to the body's socket
-(Unreal's `AttachToComponent`). It is posed after the body every frame and stands where the socket is that frame.
-
-```java
-CgAnimInstance body = CgAnimation.client().add(new CgAnimInstance(bodyMesh)).place(x, y, z, turnAndScale);
-CgAnimInstance hair = CgAnimation.client().add(new CgAnimInstance(hairMesh)).attachTo(body, "head");
-
-hair.write("strand_0").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, sway);   // its own bones, as usual
-world.draw(body);                                                                            // SUBMIT
-world.draw(hair);
-```
-
-A part that sits off the bone takes a relative place: while attached, `place` is the offset, turn and scale in the
-socket's space.
+Hair, a tail, a hat or a staff is its own primitive hung from a body's bone: attach it to the body's socket (Unreal's
+`AttachToComponent`). Any primitive attaches, to any primitive; only a skeletal one has sockets. While attached, `at`,
+`rotation` and `scale` are the offset, turn and scale in the socket's space.
 
 ```java
-CgAnimInstance hat = CgAnimation.client().add(new CgAnimInstance(hatMesh))
-        .attachTo(body, "head")
-        .place(0, 0.45, 0, new Matrix4f().rotateY((float) Math.PI).scale(1.1f));   // up the head, turned round
-hat.detach();                                                                      // stays where it last stood
+CgSkeletalMeshComponent hair = scene.skeletal(hairMesh).materials(hairSkins::get).attach(body, "head").spawn();
+hair.anim().modify("strand_0").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, sway);   // its own bones
+
+CgMeshComponent hat = scene.mesh(hatMesh, felt).attach(body, "head")
+        .at(0, 0.45, 0).rotation(new Quaternionf().rotateY((float) Math.PI)).scale(1.1f)   // up the head, turned round
+        .spawn();
+hat.detach();                                                                           // stays where it last stood
 ```
 
 - **A name the body has neither as a socket nor a bone is refused**, rather than placing the part at the body's feet;
-  `attachTo(body, null)` attaches to where the body stands.
-- **Attachments chain** (a ribbon on the hat on the head), parents always posed first. Attaching into a loop is
-  refused.
+  `attach(body, null)` rides where the body stands.
+- **Attachments chain** (a ribbon on the hat on the head), parents always placed first. Attaching into a loop is
+  refused. Removing a parent leaves what rode it where it stands.
 - **Hiding the body's bone does not hide what hangs from it**: hide the part itself, for instance from its owner in
-  first person with `hair.hideFromOwner("root", Hide.BRANCH)`.
-- Both instances are added to `CgAnimation`; `x()`, `y()`, `z()` and `transform()` answer where the part stood at the
-  last `POSE`.
+  first person with `hair.hideBoneFromOwner("root", CgBoneHide.BRANCH)`.
 
-## Drawing one
+### Sharing a pose
 
-A posed instance draws itself, each submesh in its slot's material, as Unreal's skinned mesh component draws its
-sections with `GetMaterial(slot)`:
+A second mesh on the same skeleton drawn in a leader's pose, bone by name (Unreal's leader pose): armour, an outline
+shell. It does not pose itself, and rides the leader's origin unless attached elsewhere.
 
 ```java
-for (int s = 0; s < goku.materialSlots(); s++) goku.material(s, CgMaterial.of(kitMaterial(s)));   // its prefab's, in slot order
-world.draw(goku);                       // SUBMIT: every slot, skinned by this frame's palette, where it stands
-world.draw(kurama, skin).submit();      // or the whole mesh in one material
-goku.boundsScale(1.5f);                 // Unreal's BoundsScale: culled by its bind pose's bounds grown about their centre
+CgSkeletalMeshComponent armour = scene.skeletal(armourMesh).materials(steel::get).followPose(goku).spawn();
 ```
 
-- **A slot with no material throws**, naming it: Unreal draws its default material there, and this engine has none.
-- Its bounds are the bind pose's, grown by `boundsScale` (1 unless set): a pose reaching far past them needs more.
+- A bone the leader lacks stays in its bind pose. `anim()` answers the leader's instance.
+
+## Materials, overlay and CustomDepth
+
+Each submesh draws in its slot's material, as Unreal's skinned mesh component draws its sections with
+`GetMaterial(slot)`. Parameters are set through each slot's own instance, Unreal's dynamic material instance:
+
+```java
+goku.material(0, hair).material(1, skin);       // or materials(slot -> ...)
+goku.scalar("OutlineColorType", 1f);            // on every slot whose material declares it
+goku.vector("_Tint", 1f, 0.5f, 0.2f, 1f);
+goku.resetScalar("OutlineColorType");           // back to each material's own value
+goku.dynamicMaterial(4).set1f("_Glow", 2f);     // slot 4's own instance, made the first time
+```
+
+- **A slot's own instance is made the first time a parameter its material declares is set** (Unreal's
+  `SetScalarParameterValueOnMaterials`); a name no slot declares makes none. A slot set to a `CgMaterialInstance` is
+  set as it is.
+- The shared material keeps its own values; `material(slot, m)` drops the slot's instance.
 
 An overlay and CustomDepth, Unreal's `OverlayMaterial` and `bRenderCustomDepth`:
 
@@ -376,12 +398,92 @@ An overlay and CustomDepth, Unreal's `OverlayMaterial` and `bRenderCustomDepth`:
 goku.overlay(outline);                  // every slot again in it; overlay(slot, m) for one slot's own
 goku.overlayMaxDistance(40f);           // beyond 40 blocks the overlay is not drawn (0: as far as the mesh)
 goku.customDepth(1, 0xFF);              // into CgFrameKeys.CUSTOM_DEPTH with stencil 1, even behind a wall
-world.draw(goku);
 ```
 
 - A slot's overlay replaces the mesh's for that slot; a slot with neither draws none.
 - CustomDepth is tested against itself, not the scene: a post material compares it with the scene's depth to outline
   what is hidden (`render/world/CLAUDE.md`, *CustomDepth*).
+
+**The engine's outline** (`CgOutline`) is a toon outline round what writes one stencil value: depth, normal and
+material-ID edges, widths and thresholds by distance (the technique of Dragon Ball Z: Kakarot's battle outline):
+
+```java
+CgOutline outline = CgOutline.add(1);          // round stencil 1, at the engine's look
+goku.customDepth(1);
+CgOutline.type(1).set(0xFFFFB030, 2.5f);       // a material writing outline type 1 is drawn in this
+outline.close();
+```
+
+- A look of your own is a material naming `crystalgraphics:shaders/post/outline.shader` with its values, added with
+  `CgOutline.add(material)`; `OutlinedModels` and `UntypedModels` say which shading models it outlines and which never
+  take a type colour.
+- What a material writes for it: `CG_CUSTOM_DATA_OUT(vec4(colour, id))` and `CG_SHADING_MODEL_OUT(model, type)`.
+- The type colours are the `crystalgraphics:outline` collection, keyed by a sequence's global track.
+
+## A host's own vertex path
+
+A host that must see the posed vertices, as a shader pack lights and fogs a Minecraft entity only when its renderer
+writes them, skins on the CPU (Unreal's CPU skinning):
+
+```java
+for (int s = 0; s < body.materialSlots(); s++) {
+    VertexConsumer out = buffers.getBuffer(RenderType.entityCutoutNoCull(textures[s]));
+    body.cpuSkin(s, firstPerson, (x, y, z, u, v, argb, nx, ny, nz) -> out.addVertex(...));   // quads, after ATTACH
+}
+```
+
+- Positions are relative to where it stands, turned and scaled by its placement. Its mesh must keep its CPU copy.
+
+## Entity actors
+
+An entity of a host's world is drawn by an actor, Unreal's `AActor` bound to it: components made when the entity
+enters, changed each frame, removed with it. Its root stands at the entity's interpolated pose before animation poses,
+so everything added rides it. Registered once by entity type, on every era and loader.
+
+```java
+public final class DragonActor extends CgEntityActor {
+    private CgSkeletalMeshComponent body;
+
+    @Override protected void onSpawn(CgEntity dragon) {
+        body = add(scene().skeletal(DRAGON_MESH).materials(DRAGON_SKINS::get).customDepth(1));
+        body.anim().play(CgAnimSection.of(IDLE).loop().build());
+    }
+
+    @Override protected void tick(CgEntity dragon, float dt) {
+        body.scalar("Glow", dragon.flag(CgEntityQuery.SPRINTING) ? 2f : 0f);
+    }
+}
+
+CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
+CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn beside the vanilla model
+```
+
+- **`add`** attaches a component to the root unless it rides something already, spawns it, and removes it with the
+  actor.
+- **The root** stands at the entity's feet, turned as Minecraft turns a living model (`180 - bodyYaw`); place a
+  component relative to it with `at`.
+- **`tick`** runs in `PLAYS`, before `POSE`: change components, draw nothing. An actor that throws is removed and its
+  entity left to the host.
+- **The type** is the entity's registry key, `CgEntityQuery.type(id)`: `minecraft:zombie`, `mymod:wyvern`. Below 1.11
+  it is Forge's string with the namespace split off (`minecraft:Zombie`, a mod's `mymod.wyvern` as `mymod:wyvern`); a
+  player is `minecraft:player` on every era.
+- **Only entities that enter after `register`** get an actor: register at load.
+- **In Minecraft** the entity's own renderer is swapped, inside the dispatcher's draw of that entity, for one that
+  draws everything but the model: the name tag (its renderer's own, a player's score line included) and leash, the
+  shadow at its renderer's radius, the fire and the hitbox. Every era from 1.7.10 to 26.3 and every loader, except
+  Forge 1.13.2 and 1.14.3, which load no mixins: there the actor draws beside the vanilla model.
+- **An inventory's player preview** draws through the same dispatcher, so a player with an actor shows there as its
+  name tag alone.
+- **An actor leaves with its entity**: the frame the client's entity query no longer finds it, or sooner where the
+  host has a leave event. `CgEntity.hostFrame()` is the frame the host's renderer last reached it: behind while the host
+  culls it.
+- **What a host does**: `CgEntityActors.entered(id, type)` when an entity joins the client's level, `left(id)` when it
+  leaves, and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
+  entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
+- **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
+  target, following it, its model left to the actor, and gone with it.
+
+## Drawing a palette yourself
 
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming
 where they start. Any material on the `Mesh` factory skins it with no code of its own: the mesh's format picks the material's skinned
@@ -398,7 +500,8 @@ CgMesh posed = CgSkinning.skin(kurama.mesh(), skinning);      // the same pose o
 - **A base is this frame's**: write the palette and submit the draw in the same frame, from the client world's
   schedule as any world draw.
 - **A skinned mesh must name its bones**, and only a skinned one may: either mistake throws at `submit()`.
-- **It is culled by its bind pose's bounds**: a pose reaching past them needs `.bounds(...)` or `.pad(r)`.
+- **It is culled by its bind pose's bounds**: a pose reaching past them needs `.bounds(...)`; `CgSkinBounds.posed` makes
+  them from the pose, as a component does.
 - In the shader, `cg_Position` and `cg_Normal` are the skinned vertex: position by the weighted sum of its bones' 3×4
   transforms, normal by the same matrix, renormalised. Then the draw's transform, as for any mesh.
 - About 0.1 ns a vertex a pass (RTX 4070 SUPER, Vulkan): a 30,000-vertex character costs microseconds.
@@ -426,13 +529,14 @@ world.draw(hero);
   fog. Translucent or double-sided is its `CgMaterialState`.
 - **`materials/entity_emissive.shader`**: the glowing layer, eyes and glowmasks: no shading and no lightmap, added over
   what is behind, faded by the fog.
-- **The material contract** rides on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the
-  texture by its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. A
-  sequence's `material` track keys them through the role's bindings:
+- **Their parameters** ride on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the texture by
+  its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. Code sets them on
+  every slot that declares them; a sequence's `material` track keys them by these names through the role's
+  `CgMaterialParameters`:
 
   ```java
-  CgRoleFlash flash = new CgRoleFlash(hero, "_Tint", null, "_Flash", null);         // tint, flash and their strengths
-  CgRoleRim rim = new CgRoleRim(hero, "_RimStrength", "_RimPower", "_RimColor");     // rim_strength, rim_power, rim
+  hero.vector("_Flash", 1f, 0f, 0f, 0.3f);      // the hurt flash
+  hero.resetVector("_Flash");                    // gone
   ```
 
 ### Under a shader pack

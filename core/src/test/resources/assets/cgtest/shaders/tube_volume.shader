@@ -2,4 +2,4 @@
 #domain surface
 Material { BlendMode Additive  ShadingModel Unlit  VertexFactory TubeVolume }
 
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(0.0); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(0.0); }

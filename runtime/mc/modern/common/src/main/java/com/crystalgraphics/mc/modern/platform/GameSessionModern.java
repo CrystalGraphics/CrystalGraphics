@@ -15,9 +15,9 @@ import net.minecraft.client.gui.screens.worldselection.WorldOpenFlows;
 //?}
 
 /**
- * {@link CgGameSession} on 1.13+. It loads a save and never makes one: a new level needs a {@code LevelSettings}, a
- * {@code WorldOptions} and a dimensions function whose signatures moved across versions, which a run avoids by being
- * given a save.
+ * {@link CgGameSession} on 1.13+. It loads a save; with none on disk it loads one {@link CgGameSession#makeSave} wrote,
+ * since making a level through Minecraft needs a {@code LevelSettings}, a {@code WorldOptions} and a dimensions function
+ * whose signatures moved across versions.
  */
 public final class GameSessionModern implements CgGameSession.Host {
 
@@ -50,7 +50,7 @@ public final class GameSessionModern implements CgGameSession.Host {
         if (mc.getCurrentServer() != null || System.getProperty("crystalgraphics.join") != null) return true;
         Path saves = mc.gameDirectory.toPath().resolve("saves");
         String name = CgGameSession.saveToEnter(saves, save);
-        if (name == null) throw new IllegalStateException("no save under " + saves + ", and this version cannot make one");
+        if (name == null) name = CgGameSession.makeSave(saves);
         LOGGER.info("[cg] loading world '{}'", name);
         // Compiled on each side of the break, never reflective: each thin jar is remapped as it is built, and a lookup by
         // Mojang name is a string no remapper rewrites. The Runnable is the give-up path, not a completion callback.

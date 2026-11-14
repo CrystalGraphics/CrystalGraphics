@@ -80,6 +80,11 @@ public interface CgRHI {
     CgVar.Text PRESENT_MODE = CgVar.text("crystalgraphics.vulkan.presentMode", "", CgVar.DEV | CgVar.RESTART,
             "immediate, mailbox or fifo: forces one the surface offers (an owned device); empty lets the host choose.");
 
+    CgVar.Bool BINDLESS = CgVar.bool("crystalgraphics.bindless", true, CgVar.DEV | CgVar.RESTART,
+            "Shaders read textures by index from the device's bindless heap wherever it has one (Vulkan's descriptor "
+                    + "indexing, GL's ARB_bindless_texture); false binds them to units, for testing that path on a GPU "
+                    + "with a heap.");
+
     /** The RHI installed now (Unreal's {@code GDynamicRHI}). */
     static CgRHI get() {
         CgRHI rhi = Current.rhi;
@@ -198,9 +203,55 @@ public interface CgRHI {
         return null;
     }
 
-    /** The heap's index of {@code view} read through {@code sampler}, made on the first ask. The texture needs {@code SAMPLED} usage. */
+    /**
+     * The heap's index of {@code view} read through {@code sampler}, made on the first ask: the texture's own handle, as
+     * Unreal's {@code FRHITexture::GetDefaultBindlessHandle}, given back as the texture is released. The texture needs
+     * {@code SAMPLED} usage.
+     */
     default int bindlessIndex(CgTextureView view, CgGpuSampler sampler) {
         throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
+    /**
+     * A heap slot of its own reading {@code view} through {@code sampler}, kept while what it reads is replaced: Unreal's
+     * {@code FRHITextureReference}. A texture whose storage moves keeps its slot, so a block naming the index is never
+     * rewritten for it.
+     *
+     * <pre>{@code
+     * int slot = rhi.bindlessReference(CgTextureView.whole(atlas), sampler);   // written into a material's block once
+     * rhi.updateBindlessReference(slot, CgTextureView.whole(grown), sampler);  // the atlas grew: the same index reads it
+     * rhi.releaseBindlessReference(slot);                                       // free once this frame retires
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The texture needs {@code SAMPLED} usage, and is read in its sampled layout.</li>
+     *   <li>A slot never outlives the texture it reads: update or release it before releasing that texture.</li>
+     * </ul>
+     */
+    default int bindlessReference(CgTextureView view, CgGpuSampler sampler) {
+        throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
+    /**
+     * Points {@code slot} at {@code view} through {@code sampler}: Unreal's {@code RHIUpdateTextureReference}. Frames in
+     * flight read either; what it read before is let go once this frame retires.
+     */
+    default void updateBindlessReference(int slot, CgTextureView view, CgGpuSampler sampler) {
+        throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
+    /** Gives {@code slot} back once this frame retires: no frame in flight reads it written again. */
+    default void releaseBindlessReference(int slot) {
+        throw new UnsupportedOperationException(globals().name() + " has no bindless heap");
+    }
+
+    /**
+     * Whether a texture read through the heap may never change its storage or sampling again: GL's
+     * {@code ARB_bindless_texture} freezes a texture once it has a handle. A host's own textures, which the host
+     * reallocates as it pleases (Minecraft's lightmap, its depth target), then stay bound to units.
+     */
+    default boolean bindlessFreezesTextures() {
+        return false;
     }
 
     // ── commands ──────────────────────────────────────────────────────────────
@@ -301,13 +352,18 @@ public interface CgRHI {
                    boolean asyncCompute, boolean drawParameters, boolean independentBlend, boolean bindless) {
 
         /**
+         * @param maxTextureUnits          sampled textures one stage of a program binds, where textures are bound: the
+         *                                 GPU's own ceiling ({@code GL_MAX_TEXTURE_IMAGE_UNITS}, Vulkan's per-stage
+         *                                 sampled images and samplers)
+         * @param maxBindlessTextures      slots of the bindless heap; 0 without one
          * @param maxDynamicUniformBuffers dynamic uniform slots a pipeline's sets may hold together (Vulkan's
          *                                 {@code maxDescriptorSetUniformBuffersDynamic}, at least 8)
          * @param maxDynamicStorageBuffers the same of storage slots ({@code maxDescriptorSetStorageBuffersDynamic}, at
          *                                 least 4)
          */
         public record Limits(int maxTextureSize, int max3DTextureSize, int maxArrayLayers, int maxColorAttachments,
-                             int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxUniformBlockSize,
+                             int maxSamples, int maxVertexAttributes, int maxTextureUnits, int maxBindlessTextures,
+                             int maxUniformBlockSize,
                              int maxUniformBufferBindings, int maxDynamicUniformBuffers, int maxStorageBufferBindings,
                              int maxDynamicStorageBuffers, int maxTexelBufferElements,
                              int uniformOffsetAlignment, int storageOffsetAlignment, int texelOffsetAlignment,

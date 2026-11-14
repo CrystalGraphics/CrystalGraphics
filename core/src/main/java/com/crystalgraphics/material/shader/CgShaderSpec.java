@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
@@ -110,6 +111,7 @@ public final class CgShaderSpec {
     final Lighting lighting;
     final ColorSpace colorSpace;
     final boolean fog, media, handedLights, handedSun, handedScene, writesCustomData, separateTranslucency;
+    final boolean templateReadsSceneColor;
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
     @Nullable final Tube tube;
@@ -140,6 +142,7 @@ public final class CgShaderSpec {
         this.handedLights = b.handedLights;
         this.handedSun = b.handedSun;
         this.handedScene = b.handedScene;
+        this.templateReadsSceneColor = b.templateReadsSceneColor;
         this.writesCustomData = b.writesCustomData;
         this.separateTranslucency = b.separateTranslucency;
         this.maskClip = b.maskClip;
@@ -173,6 +176,7 @@ public final class CgShaderSpec {
         this.handedLights = of.handedLights;
         this.handedSun = of.handedSun;
         this.handedScene = of.handedScene;
+        this.templateReadsSceneColor = of.templateReadsSceneColor;
         this.writesCustomData = of.writesCustomData;
         this.separateTranslucency = of.separateTranslucency;
         this.maskClip = of.maskClip;
@@ -189,6 +193,14 @@ public final class CgShaderSpec {
     }
 
     /** Reads {@code source}, a {@code .shader}; {@code path} names it in errors. */
+    /**
+     * The keyword a material asset's {@code layers:} entry turns on: {@code LAYER_MOSS_WET_MOSS} for slot {@code Moss}
+     * and its layer {@code wet_moss}, {@code LAYER_MOSS_HIDDEN} for {@code hidden} ({@code Layers { }}).
+     */
+    public static String layerKeyword(String slot, String choice) {
+        return "LAYER_" + slot.toUpperCase(Locale.ROOT) + "_" + choice.toUpperCase(Locale.ROOT);
+    }
+
     public static CgShaderSpec read(String source, String path) {
         return SpecReader.read(source, path);
     }
@@ -276,6 +288,15 @@ public final class CgShaderSpec {
     /** Whether it names the sun's shadow ({@code CG_DIRECTIONAL_SHADOW}): handed the map. */
     public boolean handedSun() {
         return handedSun;
+    }
+
+    /**
+     * Whether the code its domain writes around the material samples the scene's colour, whatever the material's own
+     * text names: a post step starting {@code s.color} from the scene, or blending onto it by {@code s.opacity}. With
+     * a source naming {@code CG_SCENE_COLOR}, what decides whether its draws are given a copy of the scene.
+     */
+    public boolean templateReadsSceneColor() {
+        return templateReadsSceneColor;
     }
 
     /** Whether it reads a scene texture a post material samples (custom stencil, world normal, custom data). */

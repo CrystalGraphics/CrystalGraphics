@@ -9,6 +9,7 @@ import com.crystalgraphics.mc.v1710.platform.world.Environment1710;
 import com.crystalgraphics.mc.v1710.platform.world.Textures1710;
 import com.crystalgraphics.mc.v1710.platform.world.WorldEvents1710;
 import com.crystalgraphics.render.stage.CgHostFrame;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgGraphicsLifecycle;
 import net.minecraft.client.Minecraft;
@@ -101,6 +102,8 @@ public class CgRenderHook {
     private static void crystalgraphics$fire(CgRenderStage stage, Minecraft mc, float partialTicks) {
         CgHostFrame frame = stage.host()
                 .set(partialTicks, mc.displayWidth, mc.displayHeight, mc.getFramebuffer().framebufferObject);
+        // Anaglyph draws the world once per eye: each eye a view, with histories of its own
+        frame.view(mc.gameSettings.anaglyph && EntityRenderer.anaglyphField == 1 ? HostCamera1710.RIGHT_EYE : CgView.main());
         HostCamera1710.capture(mc, partialTicks, frame.camera());
         if (stage == CgRenderStage.WORLD_OPAQUE) {
             Environment1710.capture(mc, partialTicks, frame.camera(), frame.environment());

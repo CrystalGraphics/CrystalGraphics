@@ -271,7 +271,8 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         // engine's and the materials'
         CgRHI.Globals.Limits limits = new CgRHI.Globals.Limits(l.maxImageDimension2D(), l.maxImageDimension3D(),
                 l.maxImageArrayLayers(), l.maxColorAttachments(), samples, Math.min(16, l.maxVertexInputAttributes()),
-                Math.min(32, l.maxPerStageDescriptorSamplers()), l.maxUniformBufferRange(),
+                Math.min(l.maxPerStageDescriptorSampledImages(), l.maxPerStageDescriptorSamplers()),
+                host.bindless() ? VulkanBindless.SLOTS : 0, l.maxUniformBufferRange(),
                 Math.min(24, l.maxPerStageDescriptorUniformBuffers()), l.maxDescriptorSetUniformBuffersDynamic(), 32,
                 l.maxDescriptorSetStorageBuffersDynamic(), l.maxTexelBufferElements(), (int) l.minUniformBufferOffsetAlignment(),
                 (int) l.minStorageBufferOffsetAlignment(), (int) l.minTexelBufferOffsetAlignment(),
@@ -866,6 +867,29 @@ public final class CgVulkanDevice implements CgRHI, AutoCloseable {
         if (t.unlaid || t.transferOnly) lay(t);
         return bindless.texture(view, sampler, t.view(device, view, false), t.sampledLayout(view),
                 ((VulkanSampler) sampler).sampler);
+    }
+
+    @Override
+    public int bindlessReference(CgTextureView view, CgGpuSampler sampler) {
+        if (bindless == null) throw new UnsupportedOperationException(info.name() + " has no bindless heap");
+        int slot = bindless.reference();
+        updateBindlessReference(slot, view, sampler);
+        return slot;
+    }
+
+    /** Rewritten in place: the heap is update-after-bind, so frames in flight read the old pair or the new. */
+    @Override
+    public void updateBindlessReference(int slot, CgTextureView view, CgGpuSampler sampler) {
+        if (bindless == null) throw new UnsupportedOperationException(info.name() + " has no bindless heap");
+        VulkanTexture t = (VulkanTexture) view.texture();
+        if (t.unlaid || t.transferOnly) lay(t);
+        bindless.write(slot, t.view(device, view, false), t.sampledLayout(view), ((VulkanSampler) sampler).sampler);
+    }
+
+    @Override
+    public void releaseBindlessReference(int slot) {
+        if (bindless == null) throw new UnsupportedOperationException(info.name() + " has no bindless heap");
+        host.whenFrameRetired(host.frameIndex(), () -> bindless.release(slot));
     }
 
     @Override

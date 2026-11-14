@@ -14,7 +14,7 @@ import com.crystalgraphics.sequence.CgSequenceTarget;
  *
  * <pre>{@code
  * final class Fighter implements CgSequenceRole {
- *     private final CgAnimInstance body;
+ *     private final CgSkeletalMeshComponent body;
  *     @Override public CgAttachment attachment(String socket) {
  *         return body.attachment(socket == null ? "root" : socket);   // a skinned mesh's sockets
  *     }

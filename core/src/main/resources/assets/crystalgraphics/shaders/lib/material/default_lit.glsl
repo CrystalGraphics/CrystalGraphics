@@ -1,14 +1,10 @@
-// Unreal's Default Lit shading model (ShadingModels.ush's DefaultLitBxDF) for a program carrying its own lighting:
-// Lambert diffuse and the GGX specular lobe (BRDF.ush's D_GGX, Vis_SmithJointApprox, F_Schlick) under the sun, the
-// four point lights nearest and the sky, whose specular is EnvBRDFApprox. Drawn as a solid in the transparent firing,
-// where the deferred apply has run and the sun's shadow map is bound:
+// Unreal's Default Lit and Subsurface shading models (ShadingModels.ush's DefaultLitBxDF and SubsurfaceBxDF) for a
+// forward surface: Lambert diffuse and the GGX specular lobe (BRDF.ush's D_GGX, Vis_SmithJointApprox, F_Schlick) under
+// the sun, the four point lights nearest and the sky, whose specular is EnvBRDFApprox. The template calls it after
+// surface() for ShadingModel DefaultLit and Subsurface; a material may call it too.
 //
-//     Tags { "RenderType" = "Transparent" "Lighting" = "Unlit" "ColorSpace" = "Linear" }
-//     Queue = "Transparent"
-//     Pass { RenderState { Blend OFF DepthWrite ON } ...
-//         vec3 lit;
-//         CG_DEFAULT_LIT(lit, base, metallic, 0.5, roughness, occlusion, normalWS, i.position);
-//         fragColor = vec4(CG_DEFAULT_LIT_OUTPUT(lit), 1.0);
+//     #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
+//     vec3 radiance = cg_default_lit(s, i.world, false);   // s's base colour, metallic, specular, roughness, AO, normal
 //
 // A light's colour here is what a white surface facing it shows, as the lightmap's and the world lights' are: Lambert
 // is the albedo times it, and the specular lobe times pi beside it, as Unreal's lights are irradiance and its Lambert
@@ -53,29 +49,45 @@ vec3 cg_default_lit_light(vec3 diffuse, vec3 f0, float roughness, vec3 n, vec3 v
     return (diffuse + 3.14159265 * specular) * color * nol;
 }
 
-// In a fragment stage, into radiance: base colour, metallic, specular (Unreal's, 0.5 its default), roughness and
-// occlusion (the sky's alone), world normal n and camera-relative position p. Macros, so they expand where they are
-// called: the lights they read are declared after a material's includes. Roughness is kept above 0.02, where D_GGX's
-// a2 would reach 0.
-#define CG_DEFAULT_LIT(radiance, baseColor, metallic, specular, roughness, occlusion, n, p) { \
-    vec3 dlBase = (baseColor); \
-    float dlMetal = (metallic), dlRough = max((roughness), 0.02); \
-    vec3 dlDiffuse = dlBase * (1.0 - dlMetal), dlF0 = mix(vec3(0.08 * (specular)), dlBase, dlMetal); \
-    vec3 dlN = normalize(n), dlP = (p), dlV = normalize(-dlP); \
-    float dlNoV = clamp(abs(dot(dlN, dlV)) + 1.0e-5, 0.0, 1.0); \
-    vec3 dlSky = cg_SceneDecode(CG_SKY_LIGHT_COLOR); \
-    radiance = (dlDiffuse + cg_default_lit_env(dlF0, dlRough, dlNoV)) * dlSky * (occlusion); \
-    radiance += cg_default_lit_light(dlDiffuse, dlF0, dlRough, dlN, dlV, CG_DIRECTIONAL_LIGHT_DIRECTION, \
-            cg_SceneDecode(CG_DIRECTIONAL_LIGHT_COLOR)) * CG_DIRECTIONAL_SHADOW(dlP); \
-    int dlIdx[4]; \
-    int dlCount = cg_NearestLights(dlP, dlIdx); \
-    for (int dlK = 0; dlK < min(dlCount, 4); dlK++) { \
-        int dlI = dlIdx[dlK]; \
-        vec3 dlAt = cg_LightPosition(dlI); \
-        float dlFall = cg_light_falloff(dlAt, cg_LightRadius(dlI), cg_LightFalloff(dlI), WORLD_LIGHTS(dlI).spotCos, \
-                WORLD_LIGHTS(dlI).segmentCone, dlP); \
-        radiance += cg_default_lit_light(dlDiffuse, dlF0, dlRough, dlN, dlV, normalize(dlAt - dlP), cg_LightColor(dlI) * dlFall); \
-    } }
+// Unreal's SubsurfaceBxDF transmission (ShadingModels.ush:793-814): light through the surface, scattered in where the
+// eye looks into the light and wrapped round where it does not; opacity 0 ignores the normal, 1 follows it. Unreal's
+// is not divided by pi, so ours, its light pi times as bright, is.
+vec3 cg_subsurface_transmission(vec3 subsurfaceColor, float opacity, float occlusion, vec3 n, vec3 v, vec3 l, vec3 color) {
+    vec3 h = normalize(v + l);
+    float inScatter = pow(clamp(dot(l, -v), 0.0, 1.0), 12.0) * mix(3.0, 0.1, opacity);
+    float normalContribution = clamp(dot(n, h) * opacity + 1.0 - opacity, 0.0, 1.0);
+    float backScatter = occlusion * normalContribution / (2.0 * 3.14159265);
+    return color / 3.14159265 * mix(backScatter, 1.0, inScatter) * subsurfaceColor;
+}
 
-// What a "ColorSpace" = "Linear" fragment writes: the radiance, which the generated main encodes onto the host's target.
-#define CG_DEFAULT_LIT_OUTPUT(radiance) (radiance)
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// The radiance s gives off toward the eye at camera-relative position p: its base colour, metallic, specular, roughness,
+// ambient occlusion (of the sky's light alone) and world normal; with subsurface, its subsurface colour through its
+// opacity too. Roughness is kept above 0.02, where D_GGX's a2 would reach 0.
+vec3 cg_default_lit(CgSurface s, vec3 p, bool subsurface) {
+    float metal = clamp(s.metallic, 0.0, 1.0), rough = max(clamp(s.roughness, 0.0, 1.0), 0.02);
+    float occlusion = clamp(s.ambientOcclusion, 0.0, 1.0), opacity = clamp(s.opacity, 0.0, 1.0);
+    vec3 diffuse = s.baseColor * (1.0 - metal), f0 = mix(vec3(0.08 * clamp(s.specular, 0.0, 1.0)), s.baseColor, metal);
+    vec3 n = normalize(s.normal), v = normalize(-p);
+    float nov = clamp(abs(dot(n, v)) + 1.0e-5, 0.0, 1.0);
+    vec3 radiance = (diffuse + cg_default_lit_env(f0, rough, nov)) * cg_SceneDecode(CG_SKY_LIGHT_COLOR) * occlusion;
+
+    vec3 sun = cg_SceneDecode(CG_DIRECTIONAL_LIGHT_COLOR) * CG_DIRECTIONAL_SHADOW(p);
+    radiance += cg_default_lit_light(diffuse, f0, rough, n, v, CG_DIRECTIONAL_LIGHT_DIRECTION, sun);
+    if (subsurface) {
+        radiance += cg_subsurface_transmission(s.subsurfaceColor, opacity, occlusion, n, v, CG_DIRECTIONAL_LIGHT_DIRECTION, sun);
+    }
+
+    int nearest[4];
+    int count = cg_NearestLights(p, nearest);
+    for (int k = 0; k < min(count, 4); k++) {
+        int i = nearest[k];
+        vec3 at = cg_LightPosition(i), l = normalize(at - p);
+        vec3 color = cg_LightColor(i) * cg_light_falloff(at, cg_LightRadius(i), cg_LightFalloff(i), WORLD_LIGHTS(i).spotCos,
+                WORLD_LIGHTS(i).segmentCone, p);
+        radiance += cg_default_lit_light(diffuse, f0, rough, n, v, l, color);
+        if (subsurface) radiance += cg_subsurface_transmission(s.subsurfaceColor, opacity, occlusion, n, v, l, color);
+    }
+    return radiance;
+}
+#endif

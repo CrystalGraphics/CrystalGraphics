@@ -4,7 +4,7 @@
 // a share of the sphere the streaks start on, z an intensity. _ShellHot is a streak, its alpha a strength; _Core its
 // hot head. Its light blooms. CgEnergyWave.
 #domain surface
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Ribbons  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Ribbons  PerDrawValues On }
 
 Properties {
     _ShellHot ("A streak; its alpha a strength", color) = (0.7, 0.95, 1.6, 1)
@@ -57,12 +57,16 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float along = i.streak.x, across = i.streak.y;
     // A white core line inside a cyan sheath, both soft across the ribbon, the tail fading to nothing.
     float core = exp(-across * across * 9.0);
     float sheath = exp(-across * across * 2.5) * 0.45;
     float lengthwise = pow(along, 1.5);
     vec3 col = (_ShellHot.rgb * sheath + _Core.rgb * core * along) * lengthwise;
-    s.baseColor = col * i.streak.z * _ShellHot.a * cg_Ribbon.values.z;
-    s.emissive = s.baseColor;
+    s.emissive = col * i.streak.z * _ShellHot.a * cg_Ribbon.values.z;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

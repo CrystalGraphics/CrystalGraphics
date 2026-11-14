@@ -32,6 +32,8 @@ public final class CgShader {
 
     /** {@link #sceneReads} bits: the program samples the scene depth, or the scene colour. */
     public static final int READS_DEPTH = 1, READS_COLOR = 2;
+    /** {@link #sceneReads} where its layout cannot say: the view's textures read by index. */
+    public static final int READS_BY_INDEX = -1;
 
     private final String vertexSource, fragmentSource, label;
     private final CgVertexFormat format;
@@ -100,7 +102,8 @@ public final class CgShader {
 
     /**
      * What it samples of the scene, as {@link #READS_DEPTH} bits: from its own layout, so a keyword variant answers for
-     * itself. 0 for a program that failed.
+     * itself. 0 for a program that failed; {@link #READS_BY_INDEX} where it reads the view's textures by index, whose
+     * one index block says nothing of which it reads.
      */
     public int sceneReads() {
         if (!isCompiled()) return 0;
@@ -108,6 +111,7 @@ public final class CgShader {
         if (sets.size() <= CgBindingModel.VIEW) return 0;
         int reads = 0;
         for (CgBindingLayout.Slot slot : sets.get(CgBindingModel.VIEW)) {
+            if (slot.binding() == CgBindingModel.VIEW_TEXTURE_INDICES.binding()) return READS_BY_INDEX;
             if (slot.binding() == CgBindingModel.SCENE_DEPTH.binding()) reads |= READS_DEPTH;
             if (slot.binding() == CgBindingModel.SCENE_COLOR.binding()) reads |= READS_COLOR;
         }

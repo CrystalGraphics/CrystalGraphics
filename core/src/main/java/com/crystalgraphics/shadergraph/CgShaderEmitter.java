@@ -423,7 +423,7 @@ public final class CgShaderEmitter {
         }
         if (!includes.isEmpty()) out.append('\n');
 
-        // Unlit: the graph's output is the colour drawn. The blend mode sorts it, as Unreal's does.
+        // Unlit: the graph's output is the colour drawn, its emissive, as Unreal's. The blend mode sorts it.
         boolean translucent = !master.blendMode().equals("Opaque");
         out.append("Material { ");
         if (translucent) out.append("BlendMode ").append(master.blendMode()).append("  ");
@@ -516,7 +516,7 @@ public final class CgShaderEmitter {
         if (lit) {
             appendPreviewLighting(out, baseColor);
         } else {
-            out.append("    s.baseColor = ").append(displayed(baseColor, preview)).append(";\n");
+            out.append("    s.emissive = ").append(displayed(baseColor, preview)).append(";\n");
         }
         // Only a translucent blend weighs by it, as Unreal's opacity: an opaque or added one ignores it.
         if (master.blendMode().equals("Translucent")) out.append("    s.opacity = cg_alpha;\n");
@@ -559,7 +559,7 @@ public final class CgShaderEmitter {
                 .append(" + ").append(PREVIEW_KEY).append(" * cg_ndl)\n");
         out.append("            + vec3(").append(PREVIEW_SPECULAR).append(") * pow(cg_ndh, ")
                 .append(PREVIEW_SHININESS).append(");\n");
-        out.append("    s.baseColor = ").append(displayed("cg_lit", true)).append(";\n");
+        out.append("    s.emissive = ").append(displayed("cg_lit", true)).append(";\n");
     }
 
     /**

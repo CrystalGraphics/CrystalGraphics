@@ -158,6 +158,8 @@ public final class CgMaterialProxy {
     /** The properties block as a capture copies it. */
     @Nullable
     private CgBufferWriter capturePacker;
+    /** {@link #capturePacker}'s layout: where its texture members sit. */
+    private CgBufferLayout captureFormat;
     private boolean capturePropsDirty = true;
     /** The properties block as captures last saw it: a new version only after a value moved. */
     @Nullable
@@ -407,6 +409,8 @@ public final class CgMaterialProxy {
             if (propStore.consumeBlockChanged()) {
                 capturePropsDirty = true;
             }
+            // The block's version holds each texture, its heap index written as it is placed
+            if (propStore.consumeTexturesChanged()) capturePropsDirty = true;
             propStore.consumeSamplerUnitChanged();
             return this;
         }
@@ -930,7 +934,7 @@ public final class CgMaterialProxy {
         if (building == null) building = CgMaterialBindings.builder();
         CgMaterialBindings.Builder made = building.reset();
         if (propStore != null) {
-            if (propStore.hasUboProps()) made.block(CgBindingModel.MATERIAL_BLOCK, blockVersion());
+            if (propStore.hasBlock()) made.block(CgBindingModel.MATERIAL_BLOCK, blockVersion());
             propStore.captureSamplers(made);
         }
         if (engineBlocks != null) {
@@ -1021,8 +1025,9 @@ public final class CgMaterialProxy {
         if (current != null && !capturePropsDirty && current.arena() == arena) return current;
         CgBufferWriter packer = capturePacker();
         if (current != null) current.supersede();
-        blockVersion = current = arena != null ? CgBlockVersion.in(arena, packer.rawData(), packer.rawCursor())
-                : CgBlockVersion.of(packer.rawData(), packer.rawCursor());
+        CgBlockVersion.Members members = propStore.textureMembers(captureFormat);
+        blockVersion = current = arena != null ? CgBlockVersion.in(arena, packer.rawData(), packer.rawCursor(), members)
+                : CgBlockVersion.of(packer.rawData(), packer.rawCursor(), members);
         CgTrace.add(CgChannels.GL, BLOCK_WRITES, 1);
         return current;
     }
@@ -1031,7 +1036,7 @@ public final class CgMaterialProxy {
     @Nullable
     private CgMaterialArena arena() {
         CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
-        if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasUboProps()) return null;
+        if (parsed == null || !parsed.valuesInArena() || propStore == null || !propStore.hasBlock()) return null;
         if (arenaFloats < 0) arenaFloats = propStore.buildUboFormat().getFloatCount();
         return cgMaterialShader.arena(arenaFloats);
     }
@@ -1042,7 +1047,7 @@ public final class CgMaterialProxy {
     /** The properties block packed as it is now, repacked only after a value moved. */
     private CgBufferWriter capturePacker() {
         if (capturePacker == null) {
-            CgBufferLayout format = propStore.buildUboFormat();
+            CgBufferLayout format = captureFormat = propStore.buildUboFormat();
             capturePacker = new CgBufferWriter(new CgStagingBuffer(format.getFloatCount()), format);
             capturePropsDirty = true;
         }

@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.v1710.platform.world;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityList;
 import net.minecraft.entity.EntityLivingBase;
 import net.minecraft.entity.IEntityMultiPart;
 import net.minecraft.entity.IProjectile;
@@ -239,6 +240,25 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         if (e instanceof IProjectile) return KIND_PROJECTILE;
         if (e instanceof EntityMinecart || e instanceof EntityBoat) return KIND_VEHICLE;
         return KIND_OTHER;
+    }
+
+    @Override
+    public String type(int id) {
+        Entity e = find(id);
+        return e == null ? null : typeOf(e);
+    }
+
+    /**
+     * An entity's type id: Forge's string with the namespace split off ({@code minecraft:Zombie}, a mod's
+     * {@code mymod.wyvern} as {@code mymod:wyvern}). A player, which no registry holds, is {@code minecraft:player};
+     * null for any other entity class the registry does not hold.
+     */
+    public static String typeOf(Entity e) {
+        if (e instanceof EntityPlayer) return "minecraft:player";
+        String name = EntityList.getEntityString(e);
+        if (name == null) return null;
+        int dot = name.indexOf('.');
+        return dot < 0 ? "minecraft:" + name : name.substring(0, dot) + ":" + name.substring(dot + 1);
     }
 
     @Override

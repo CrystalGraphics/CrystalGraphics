@@ -4,6 +4,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.resource.CgShaderBuffer;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -32,14 +33,12 @@ import java.util.Objects;
  *   <li>A texture is held, not its storage: one reallocated before the draw executes binds its new storage, which a
  *       growing glyph atlas needs. Its content is ordered by the frame graph's versions.</li>
  *   <li>{@link #with} is kept per texture, so a draw repeating one allocates nothing.</li>
- *   <li>At most {@value #MAX_TEXTURES} textures, {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers and
- *       {@value #MAX_STORAGE} storage buffers.</li>
+ *   <li>Any number of textures (the GPU's stage sets the count, checked as its shader loads); at most
+ *       {@value #MAX_BLOCKS} blocks, {@value #MAX_BUFFERS} buffers and {@value #MAX_STORAGE} storage buffers.</li>
  * </ul>
  */
 public final class CgMaterialBindings {
 
-    /** A version's cap; a material binds at most {@link CgBindingModel#MATERIAL_TEXTURES}, checked at compile. */
-    public static final int MAX_TEXTURES = 12;
     public static final int MAX_BLOCKS = 4;
     public static final int MAX_BUFFERS = 4;
     public static final int MAX_STORAGE = 4;
@@ -103,10 +102,23 @@ public final class CgMaterialBindings {
         for (int t = 0; t < textures.length; t++) if (textureSlots[t] != slot) b.put(textureSlots[t], textures[t], samplers[t]);
         b.put(slot, texture, sampler);
         b.rest(this);
+        // Bindless, the material block holds the texture's index: the override reads a version of its own
+        if (CgBindless.active()) b.swapTexture(index, texture, sampler);
         CgMaterialBindings made = b.build();
+        Over evicted = overs[oversNext];
+        if (evicted != null) evicted.made.supersedeOwnBlocks(this);
         overs[oversNext] = new Over(slot, texture, sampler, made);
         oversNext = (oversNext + 1) % KEPT_OVERS;
         return made;
+    }
+
+    /** Its blocks {@code base} does not hold, superseded: an override's own, no longer kept. */
+    private void supersedeOwnBlocks(CgMaterialBindings base) {
+        for (CgBlockVersion v : blocks) {
+            boolean shared = false;
+            for (CgBlockVersion w : base.blocks) shared |= v == w;
+            if (!shared) v.supersede();
+        }
     }
 
     public int textures() {
@@ -186,9 +198,9 @@ public final class CgMaterialBindings {
 
     /** Fills a version by slot; {@link #build} once. */
     public static final class Builder {
-        private final int[] textureSlots = new int[MAX_TEXTURES];
-        private final CgTexture[] textures = new CgTexture[MAX_TEXTURES];
-        private final CgSampler[] samplers = new CgSampler[MAX_TEXTURES];
+        private int[] textureSlots = new int[8];
+        private CgTexture[] textures = new CgTexture[8];
+        private CgSampler[] samplers = new CgSampler[8];
         private int textureCount;
         private final int[] blockSlots = new int[MAX_BLOCKS];
         private final CgBlockVersion[] blocks = new CgBlockVersion[MAX_BLOCKS];
@@ -212,7 +224,11 @@ public final class CgMaterialBindings {
         }
 
         private Builder put(int slot, CgTexture texture, @Nullable CgSampler sampler) {
-            if (textureCount == MAX_TEXTURES) throw new IllegalStateException("more than " + MAX_TEXTURES + " textures");
+            if (textureCount == textures.length) {
+                textureSlots = Arrays.copyOf(textureSlots, textureCount * 2);
+                textures = Arrays.copyOf(textures, textureCount * 2);
+                samplers = Arrays.copyOf(samplers, textureCount * 2);
+            }
             textureSlots[textureCount] = slot;
             textures[textureCount] = Objects.requireNonNull(texture, "texture");
             samplers[textureCount++] = sampler;
@@ -269,6 +285,15 @@ public final class CgMaterialBindings {
                 if (made.storageSlots[s] != storageSlots[s] || made.storage[s] != storage[s]) return false;
             }
             return true;
+        }
+
+        /** The material block's texture {@code index} read as {@code texture}: a version of its own. */
+        private void swapTexture(int index, CgTexture texture, @Nullable CgSampler sampler) {
+            int material = CgBindingModel.MATERIAL_BLOCK.packed();
+            for (int k = 0; k < blockCount; k++) {
+                if (blockSlots[k] != material || blocks[k].members == null || index >= blocks[k].members.count()) continue;
+                blocks[k] = blocks[k].withTexture(index, texture, sampler);
+            }
         }
 
         /** {@code from}'s blocks, buffers and storage: what {@link #with} keeps beside a new texture. */

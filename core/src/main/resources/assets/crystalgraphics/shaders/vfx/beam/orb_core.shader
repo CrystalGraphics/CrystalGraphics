@@ -5,7 +5,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/volume.glsl"
 #include "crystalgraphics:shaders/lib/vfx/depth.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Back  DepthTest Off  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Core     ("The white core; its alpha a strength", color) = (1, 1, 1, 1)
@@ -17,6 +17,7 @@ Properties {
 struct v2f { vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_POSITION;
     vec3 ray = normalize(i.world - eye);
     vec3 centre = CG_OBJECT_TO_WORLD[3].xyz;
@@ -34,6 +35,9 @@ void surface(in v2f i, inout CgSurface s) {
     float flicker = 0.85 + 0.3 * fx_noise(vec3((o + d * along) * 2.2) + vec3(0.0, 0.0, cg_Vfx.age * 3.1));
     float white = 1.0 - exp(-thickness * _Density * flicker);
     vec3 col = mix(_CoreRim.rgb, _Core.rgb, smoothstep(0.1, 0.6, thickness));
-    s.baseColor = col * white * 1.6 * _Core.a * cg_VfxMesh.values.z * seen;
-    s.emissive = s.baseColor;
+    s.emissive = col * white * 1.6 * _Core.a * cg_VfxMesh.values.z * seen;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

@@ -5,6 +5,7 @@ import org.junit.Test;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class CgShaderPreprocessorTest {
@@ -30,5 +31,16 @@ public class CgShaderPreprocessorTest {
         String result = preprocessor.process("void main(){}\n");
 
         assertTrue(result.startsWith("#define FOO\nvoid main(){}\n"));
+    }
+
+    @Test
+    public void anIncludeThatCannotBeRead_isNamed() {
+        String panner = "#include \"crystalgraphics:shaders/lib/material/panner.glsl\"\n";
+        String source = panner + "#include \"nosuch:shaders/missing.glsl\"\n";
+        CgShaderPreprocessor preprocessor = new CgShaderPreprocessor();
+        assertTrue("an unreadable include counts as a mention", preprocessor.mentions(source, "test:a.shader", "cg_SceneColor"));
+        String unread = preprocessor.unreadableInclude(source, "test:a.shader");
+        assertTrue(unread, unread != null && unread.endsWith("shaders/missing.glsl"));
+        assertNull(preprocessor.unreadableInclude(panner, "test:a.shader"));
     }
 }

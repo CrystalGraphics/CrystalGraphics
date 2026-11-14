@@ -8,6 +8,7 @@ import static com.crystalgraphics.platform.world.CgCameraManager.LOCK;
 import static com.crystalgraphics.platform.world.CgCameraManager.HIDES_PLAYER;
 import static com.crystalgraphics.platform.world.CgCameraManager.TRANSLATION;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.mc.v1710.mixins.early.impl.client.ActiveRenderInfoAccessor;
 import com.crystalgraphics.platform.world.CgHeldCamera;
 import com.crystalgraphics.platform.world.CgCameraManager;
@@ -48,6 +49,9 @@ public final class HostCamera1710 implements CgCameraManager.Host {
     /** The offset's translation, world blocks. */
     private static float offX, offY, offZ;
     private static int applied;
+
+    /** The second eye of anaglyph, which draws the world twice a frame: a view of its own, the first eye the main one. */
+    public static final CgView RIGHT_EYE = CgView.create("anaglyph.right");
 
     private static final CgHeldCamera HELD = new CgHeldCamera();
     /** orientCamera's eye: the view entity's position less its {@code yOffset}, plus 1.62. */

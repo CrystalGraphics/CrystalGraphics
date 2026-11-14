@@ -49,7 +49,8 @@ public final class CrystalGraphicsMixins implements IMixinConfigPlugin {
     private static final String[] CLIENT_MIXINS = {
             "client.MixinRenderGlobal", "client.MixinMinecraft", "client.CgRenderHook", "client.ActiveRenderInfoAccessor",
             "client.EntityRendererAccessor", "client.CameraHook", "client.ExplosionHook", "client.LevelEventHook",
-            "client.SoundVolumeHook", "client.LocaleHook",
+            "client.SoundVolumeHook", "client.LocaleHook", "client.RenderHook", "client.RendererLivingEntityHook",
+            "client.ActorRenderHook",
     };
 
     static {

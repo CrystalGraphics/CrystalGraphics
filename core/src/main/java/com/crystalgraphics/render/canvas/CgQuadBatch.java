@@ -22,6 +22,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
+import java.util.Arrays;
 
 /**
  * A canvas's quads: what {@link CgCanvas#quad} builds. One instance record per quad ({@link CgQuadRecord}), batched
@@ -133,7 +134,7 @@ public final class CgQuadBatch {
     }
 
     private static final CgTexture[] NO_TEXTURES = new CgTexture[0];
-    private static final CgSampler[] NO_SAMPLERS = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
+    private static final CgSampler[] NO_SAMPLERS = new CgSampler[1];
     /** Unit 0 of a run of baked records. */
     private final CgTexture[] recordTexture = new CgTexture[1];
 
@@ -155,8 +156,8 @@ public final class CgQuadBatch {
         private CgMaterialInterface material;
         @Nullable
         private CgRenderState state;
-        private final CgTexture[] textures = new CgTexture[CgMaterialBindings.MAX_TEXTURES];
-        private final CgSampler[] samplers = new CgSampler[CgMaterialBindings.MAX_TEXTURES];
+        private CgTexture[] textures = new CgTexture[4];
+        private CgSampler[] samplers = new CgSampler[4];
         private int textureUnits;
         private float x, y, z;
         private float width, height;
@@ -238,6 +239,10 @@ public final class CgQuadBatch {
          * }</pre>
          */
         public Quad texture(int unit, CgTexture texture, @Nullable CgSampler sampler) {
+            if (unit >= textures.length) {
+                textures = Arrays.copyOf(textures, Math.max(unit + 1, textures.length * 2));
+                samplers = Arrays.copyOf(samplers, textures.length);
+            }
             textures[unit] = texture;
             samplers[unit] = sampler;
             textureUnits = Math.max(textureUnits, unit + 1);

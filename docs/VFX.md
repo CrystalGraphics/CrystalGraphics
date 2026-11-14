@@ -1975,9 +1975,8 @@ Properties {
 
 void surface(in v2f i, inout CgSurface s) {
     float strength = _Color.a;              // an ending's fade is the factory's (cg_Vfx.presence), applied after
-    s.baseColor = _Color.rgb * strength;    // AlphaComposite: premultiplied
+    s.emissive = _Color.rgb * strength;     // Unlit: the colour; AlphaComposite: premultiplied; past 1 it blooms
     s.opacity = strength;
-    s.emissive = _Color.rgb * strength;     // what blooms
 }
 ```
 

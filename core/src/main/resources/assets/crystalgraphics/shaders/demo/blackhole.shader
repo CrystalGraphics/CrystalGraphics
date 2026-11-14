@@ -145,6 +145,6 @@ void surface(in v2f i, inout CgSurface s) {
         light += transmit * lensed * bh_sky(outWorld);
         alpha = 1.0 - transmit * (1.0 - lensed);
     }
-    s.baseColor = fx_aces(0.8 * light);
+    s.emissive = fx_aces(0.8 * light);
     s.opacity = clamp(alpha, 0.0, 1.0);
 }

@@ -31,7 +31,7 @@ import java.util.List;
  * }</pre>
  *
  * <pre>
- * "CGMS"  u16 version (1)  u16 flags (1 skinned, 2 morph targets)
+ * "CGMS"  u16 version (2: the vertex formats carry a tangent)  u16 flags (1 skinned, 2 morph targets)
  * string vertex format, u8 topology, u32 vertices, u32 indices, u32 submeshes
  * per submesh: u32 first index, u32 index count, u32 first vertex, u32 vertex count, string material
  * the vertices: vertices x the format's stride bytes; u8 index width (2 or 4), then the indices
@@ -51,7 +51,7 @@ import java.util.List;
  */
 public final class CgCookedMesh {
 
-    private static final int VERSION = 1, SKINNED = 1, MORPHS = 2, NO_PARENT = 0xFFFFFFFF;
+    private static final int VERSION = 2, SKINNED = 1, MORPHS = 2, NO_PARENT = 0xFFFFFFFF;
 
     private CgCookedMesh() {
     }

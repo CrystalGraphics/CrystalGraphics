@@ -163,6 +163,6 @@ void surface(in v2f i, inout CgSurface s) {
     // Nothing at the shell's edge, nothing from inside the heart.
     float edge = 1.0 - smoothstep(0.85, 1.0, pass.y / shell);
     float inside = smoothstep(heart * 0.95, heart * 1.3, length(camera - centre));
-    s.baseColor = color * CG_OBJECT_CUSTOM1.y * edge * inside;
+    s.emissive = color * CG_OBJECT_CUSTOM1.y * edge * inside;
     s.opacity = 1.0;
 }

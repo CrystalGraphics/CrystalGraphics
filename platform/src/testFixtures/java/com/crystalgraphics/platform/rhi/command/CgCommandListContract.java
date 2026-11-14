@@ -321,6 +321,52 @@ public abstract class CgCommandListContract {
         endFrame();
     }
 
+    /**
+     * A reference keeps its index while what it reads is replaced (Unreal's texture reference): drawn, pointed at another
+     * texture, drawn again by the same index; its slot free again once released and retired.
+     */
+    @Test
+    public void aBindlessReferenceKeepsItsIndexAcrossTextures() {
+        assumeTrue("no bindless heap", rhi().globals().bindless());
+        CgGpuTexture a = sampled("a"), b = sampled("b");
+        CgTextureView va = CgTextureView.whole(a), vb = CgTextureView.whole(b);
+        CgCommandList cmd = rhi().encoder();
+        cmd.transition(new CgTransition().texture(va, CgAccess.RESTING, CgAccess.SAMPLED_READ)
+                .texture(vb, CgAccess.RESTING, CgAccess.SAMPLED_READ));
+        CgGpuSampler sampler = rhi().createSampler(CgGpuSampler.Desc.DEFAULT);
+        int ref = rhi().bindlessReference(va, sampler), own = rhi().bindlessIndex(va, sampler);
+        assertNotEquals("a reference is not the texture's own index", own, ref);
+        CgBindingLayout none = rhi().createBindingLayout("none", List.of(), false);
+        CgRenderPass pass = surfacePass();
+        pass.setPipeline(pipeline(new CgPipelineLayout(List.of(none, none, none, rhi().bindlessLayout()), 4), BINDLESS));
+        pass.setBindingSet(CgRHI.BINDLESS_SET, rhi().bindlessSet());
+        pass.pushConstants(0, ref);
+        pass.draw(3, 1, 0, 0);
+        pass.end();
+        endFrame();
+        rhi().updateBindlessReference(ref, vb, sampler);
+        pass = surfacePass();
+        pass.setPipeline(pipeline(new CgPipelineLayout(List.of(none, none, none, rhi().bindlessLayout()), 4), BINDLESS));
+        pass.setBindingSet(CgRHI.BINDLESS_SET, rhi().bindlessSet());
+        pass.pushConstants(0, ref);
+        pass.draw(3, 1, 0, 0);
+        pass.end();
+        rhi().encoder().transition(new CgTransition().texture(va, CgAccess.SAMPLED_READ, CgAccess.RESTING)
+                .texture(vb, CgAccess.SAMPLED_READ, CgAccess.RESTING));
+        endFrame();
+        rhi().release(a);
+        rhi().releaseBindlessReference(ref);
+        framesUntil(() -> false);
+        CgGpuTexture c = sampled("c");
+        int reused = rhi().bindlessReference(CgTextureView.whole(c), sampler);
+        assertTrue("a slot given back once retired, the reference's or a's own", reused == ref || reused == own);
+        rhi().releaseBindlessReference(reused);
+        framesUntil(() -> false);
+        rhi().release(b);
+        rhi().release(c);
+        endFrame();
+    }
+
     /** Ends frames, never waiting, until {@code landed} holds: a few at most, as frames in flight retire. */
     private void framesUntil(BooleanSupplier landed) {
         for (int i = 0; i < 8 && !landed.getAsBoolean(); i++) rhi().endFrame();

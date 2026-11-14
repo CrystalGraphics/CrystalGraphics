@@ -41,7 +41,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.render.shader.CgBindingModel;
+import com.crystalgraphics.render.shader.CgBindless;
 
 /**
  * Shared shader asset compiled from a {@code .shader} file. Owned by {@link CgMaterialShaderRegistry}.
@@ -335,7 +337,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderQueue = parsed.queue();
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
-            this.sceneColor = sceneColorIn(source);
+            this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
             this.discards = discardsIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
@@ -479,7 +481,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderType = parsed.renderType();
             if (!source.equals(parsedSource)) {
                 this.sceneDepth = sceneDepthIn(source);
-                this.sceneColor = sceneColorIn(source);
+                this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
                 this.discards = discardsIn(source);
             }
             this.parsedSource = source;
@@ -1110,8 +1112,9 @@ public final class CgMaterialShader implements CgReloadable {
 
     /**
      * Whether {@code program}, one of this shader's, samples {@code cg_DepthBuffer}: read from the compiled program's
-     * layout ({@link CgShader#sceneReads}), so a keyword variant answers for itself. {@link #readsSceneDepth()} for a
-     * program that did not compile.
+     * layout ({@link CgShader#sceneReads}), so a keyword variant answers for itself. {@link #readsSceneDepth()}, the
+     * source's answer for every variant, for a program that did not compile or reads the view's textures by index, as
+     * Unreal goes by its material's own scene-texture flags.
      *
      * <pre>{@code
      * CgShader program = shader.getOrCompile("Pass0", keywords);
@@ -1119,12 +1122,14 @@ public final class CgMaterialShader implements CgReloadable {
      * }</pre>
      */
     public boolean readsSceneDepth(CgShader program) {
-        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_DEPTH) != 0 : readsSceneDepth();
+        int reads = program.sceneReads();
+        return program.isCompiled() && reads != CgShader.READS_BY_INDEX ? (reads & CgShader.READS_DEPTH) != 0 : readsSceneDepth();
     }
 
     /** As {@link #readsSceneDepth(CgShader)}, for {@code cg_SceneColor}. */
     public boolean readsSceneColor(CgShader program) {
-        return program.isCompiled() ? (program.sceneReads() & CgShader.READS_COLOR) != 0 : readsSceneColor();
+        int reads = program.sceneReads();
+        return program.isCompiled() && reads != CgShader.READS_BY_INDEX ? (reads & CgShader.READS_COLOR) != 0 : readsSceneColor();
     }
 
     /**
@@ -1141,7 +1146,10 @@ public final class CgMaterialShader implements CgReloadable {
                 "cg_DepthFade");
     }
 
-    /** As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}. */
+    /**
+     * As {@link #readsSceneDepth()}, for {@code cg_SceneColor} or {@code CG_SCENE_COLOR}, or the code its domain
+     * writes around it reading the scene ({@link CgShaderSpec#templateReadsSceneColor}).
+     */
     public boolean readsSceneColor() {
         return parsedSource == null || sceneColor;
     }
@@ -1155,24 +1163,38 @@ public final class CgMaterialShader implements CgReloadable {
         return parsed == null ? Float.NaN : parsed.sceneColorMargin();
     }
 
-    /** A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. */
+    /**
+     * A shader reading {@code cg_SceneColor} states how far past its geometry it samples, or does not parse. An include
+     * that cannot be read counts as a read, so it is named instead.
+     */
     private void requireMargin(CgShaderSpec parsed, String source) {
         if (Float.isNaN(parsed.sceneColorMargin()) && sceneColorIn(source)) {
+            String unread = new CgShaderPreprocessor().unreadableInclude(source, resourcePath);
+            if (unread != null) throw CgShaderError.of(resourcePath, "cannot read #include \"" + unread + "\"");
             throw CgShaderError.of(resourcePath, "samples the scene's colour without a SceneColorMargin: the share of the"
                     + " target's height it samples past its geometry, e.g. Material { SceneColorMargin 0.05 } (0.001 for its"
                     + " own pixel alone)");
         }
     }
 
-    /** A shader binds at most {@link CgBindingModel#MATERIAL_TEXTURES} textures: its set's room before a kernel's buffers. */
+    /**
+     * A shader's textures fit the installed GPU where they are bound: as many as one stage binds, less the view's own
+     * ({@link CgBindingModel#VIEW_TEXTURES}). The engine sets no count of its own. Nothing to check on the bindless
+     * path, where a material's textures are read by index and take no unit, nor before a device is installed: the
+     * compile there refuses what its driver cannot bind.
+     */
     private void requireUnits(CgShaderSpec parsed) {
         int samplers = 0;
         for (CgMaterialProperty property : parsed.properties()) {
             if (property.getType().isSampler()) samplers++;
         }
-        if (samplers > CgBindingModel.MATERIAL_TEXTURES) {
-            throw CgShaderError.of(resourcePath, "declares " + samplers + " samplers; a material binds at most "
-                    + CgBindingModel.MATERIAL_TEXTURES);
+        if (!CgRHI.installed() || CgBindless.active()) return;
+        CgRHI rhi = CgRHI.get();
+        int room = rhi.globals().limits().maxTextureUnits() - CgBindingModel.VIEW_TEXTURES;
+        if (samplers > room) {
+            throw CgShaderError.of(resourcePath, "declares " + samplers + " textures; this GPU binds " + room
+                    + " a material (" + rhi.globals().limits().maxTextureUnits() + " a stage, less the view's "
+                    + CgBindingModel.VIEW_TEXTURES + ")");
         }
     }
 

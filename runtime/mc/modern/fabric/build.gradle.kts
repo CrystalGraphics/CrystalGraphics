@@ -2,6 +2,7 @@
 // whose gradle.properties pins mc.version, the loader, fabric-api and Parchment).
 
 import cgbuildlogic.commonNode
+import cgbuildlogic.devRunProperties
 import cgbuildlogic.fabricRunsIntermediary
 import cgbuildlogic.loomPluginId
 import cgbuildlogic.registerThinRename
@@ -50,6 +51,7 @@ if (!stubMode) {
     loom.runs {
         named("client") {
             runDir("runs/client")
+            devRunProperties().forEach { (key, value) -> property(key, value) }
             renderDocDevRun().forEach(::vmArg)
             shaderToolchainVmArgs().forEach(::vmArg)
             renderDocEnvironment().forEach { (key, value) -> environmentVariable(key, value) }

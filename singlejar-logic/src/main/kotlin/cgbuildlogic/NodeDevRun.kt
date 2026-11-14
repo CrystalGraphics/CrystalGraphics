@@ -45,9 +45,7 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
                                descriptorsTask: String = "generateMergedDescriptors",
                                forwardProperties: List<String> = listOf("crystalgui.", "crystalgraphics.")) {
     if (stubMode) return
-    val forwarded = System.getProperties().stringPropertyNames()
-        .filter { name -> forwardProperties.any(name::startsWith) }
-        .associateWith { System.getProperty(it) }
+    val forwarded = devRunProperties(forwardProperties)
     warnUnforwarded(forwardProperties)
     val main = extensions.getByType(SourceSetContainer::class.java).getByName("main")
 
@@ -102,6 +100,18 @@ fun Project.registerNodeDevRun(descriptor: ModDescriptor, bundled: List<Project>
         }
     }
 }
+
+/**
+ * The `-D` properties on the Gradle command line a dev run hands the game: those starting with one of `prefixes`.
+ *
+ * ```kotlin
+ * runs.create("client") { devRunProperties().forEach { (k, v) -> systemProperty(k, v) } }
+ * ```
+ *
+ * Read from the build's start parameters: a reused daemon's `System` properties need not hold them.
+ */
+fun Project.devRunProperties(prefixes: List<String> = listOf("crystalgui.", "crystalgraphics.")): Map<String, String> =
+    gradle.startParameter.systemPropertiesArgs.filterKeys { name -> prefixes.any(name::startsWith) }
 
 /** The JVM's own properties, which Gradle passes on its command line itself. */
 private val JVM_OWN = listOf("file.", "user.", "java.", "jdk.", "sun.", "os.", "line.", "path.", "http.", "https.", "javax.", "org.gradle.")

@@ -5,7 +5,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/strip.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Bands    ("Its core, its middle band and its edge", color[3]) = (1, 1, 1, 1), (0.55, 0.9, 1.6, 1), (0.1, 0.45, 1.5, 1)
@@ -21,6 +21,7 @@ Properties {
 struct v2f { vec2 uv0; vec2 uv1; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 trail = fx_strip(i.uv0, i.uv1, cg_Particle.relativeTime);
     float u = trail.x, r = abs(trail.y);
     // Its tail breaks into streaks: each strand across it runs out at its own point along it.
@@ -40,7 +41,10 @@ void surface(in v2f i, inout CgSurface s) {
     float ink = _Ink.a * smoothstep(1.0 - _InkWidth - aa, 1.0 - _InkWidth + aa, r);
     colour = mix(colour, _Ink.rgb, ink);
     float alpha = cover * cg_Particle.color.a;
-    s.baseColor = colour * alpha;   // premultiplied
+    s.emissive = colour * alpha;   // premultiplied
     s.opacity = alpha;
-    s.emissive = _Bands(0).rgb * inCore * (1.0 - ink) * alpha * _GlowGain;
+    glowLight = _Bands(0).rgb * inCore * (1.0 - ink) * alpha * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

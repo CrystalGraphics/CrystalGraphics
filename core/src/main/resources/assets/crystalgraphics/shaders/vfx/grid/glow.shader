@@ -26,6 +26,7 @@ Properties {
 struct v2f { vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_WORLD_POS, ray = cg_PixelRay();
     CgGrid g = cg_Grid;
     vec2 t = fx_scatter_box(eye, ray, g.lo, g.hi);
@@ -82,7 +83,9 @@ void surface(in v2f i, inout CgSurface s) {
     s.volumeDepth = weight > 1.0e-4 ? FX_EYE_DEPTH(ray, depth / weight) : 0.0;
     float alpha = 1.0 - transmit;
     if (alpha < 1.0e-4 && max(emit.r, max(emit.g, emit.b)) < 1.0e-4) discard;
-    s.baseColor = emit;   // premultiplied
+    s.emissive = emit;   // premultiplied
     s.opacity = alpha;
-    s.emissive = emit;
+    glowLight = emit;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

@@ -265,7 +265,9 @@ final class SpecReader {
     /**
      * What a pass compiles at file scope: preprocessor lines hoisted ahead of the engine's environment, and code in
      * order, each piece in the stages it compiles into. A conditional holding code stays with it, whole: hoisted, its
-     * {@code #if} would leave the code unguarded.
+     * {@code #if} would leave the code unguarded. A material's {@code #include} stays in its place among its code, after
+     * the environment and the factory's declarations, so a library function reads the engine as the material does
+     * (Unreal's material function); a template's includes are hoisted, since the environment reads them.
      */
     static final class PassCode {
         final List<String> directives = new ArrayList<>();
@@ -286,7 +288,7 @@ final class SpecReader {
                     CgShaderSyntax.vocabulary(Set.of(), false));
             List<Piece> pieces = new ArrayList<>();
             for (CgShaderSyntax.Item i : decls.items()) pieces.add(new Piece(decls, i, decls.tokens().plain(i.first(), i.last()), CgShaderPass.BOTH));
-            lay(pieces);
+            lay(pieces, false);
         }
 
         /**
@@ -296,6 +298,12 @@ final class SpecReader {
          */
         void material(CgShaderSyntax file, List<CgShaderSyntax.Item> items, @Nullable CgShaderSyntax.Function first,
                       CgShaderSyntax.Function second, boolean rename) {
+            material(file, items, first, second, rename, null);
+        }
+
+        /** {@link #material} with {@code beforeSecond}, fragment code generated for it, written just before it. */
+        void material(CgShaderSyntax file, List<CgShaderSyntax.Item> items, @Nullable CgShaderSyntax.Function first,
+                      CgShaderSyntax.Function second, boolean rename, @Nullable String beforeSecond) {
             Map<String, List<CgShaderSyntax.Function>> functions = functions(items);
             Set<String> vertexReach = reach(file, functions, first), fragmentReach = reach(file, functions, second);
             CgShaderTokens t = file.tokens();
@@ -317,11 +325,23 @@ final class SpecReader {
                 }
                 pieces.add(new Piece(file, i, text, stages));
             }
-            lay(pieces);
+            int at = -1;
+            for (int k = 0; beforeSecond != null && k < pieces.size(); k++) if (pieces.get(k).item() == second) at = k;
+            if (at < 0) {
+                lay(pieces, true);
+                if (beforeSecond != null) code(beforeSecond, CgShaderPass.FRAGMENT);
+                return;
+            }
+            lay(pieces.subList(0, at), true);
+            code(beforeSecond, CgShaderPass.FRAGMENT);
+            lay(pieces.subList(at, pieces.size()), true);
         }
 
-        /** Hoists each directive outside a conditional holding code; the rest is code, in order. */
-        private void lay(List<Piece> pieces) {
+        /**
+         * Hoists each directive outside a conditional holding code; the rest is code, in order. With {@code includesInPlace},
+         * an {@code #include}, and a conditional holding one, stays in order among the code.
+         */
+        private void lay(List<Piece> pieces, boolean includesInPlace) {
             for (int k = 0; k < pieces.size(); k++) {
                 Piece p = pieces.get(k);
                 if (!(p.item() instanceof CgShaderSyntax.Directive d)) {
@@ -330,7 +350,8 @@ final class SpecReader {
                 }
                 CgShaderTokens t = p.file().tokens();
                 if (!t.isDirective(d.first(), "if") && !t.isDirective(d.first(), "ifdef") && !t.isDirective(d.first(), "ifndef")) {
-                    directive(p.text());
+                    if (includesInPlace && t.isDirective(d.first(), "include")) code(p.text(), CgShaderPass.BOTH);
+                    else directive(p.text());
                     continue;
                 }
                 int end = k, depth = 0;
@@ -344,6 +365,8 @@ final class SpecReader {
                             depth++;
                         } else if (u.isDirective(e.first(), "endif") && --depth == 0) {
                             break;
+                        } else if (includesInPlace && u.isDirective(e.first(), "include")) {
+                            holdsCode = true;
                         }
                     } else {
                         holdsCode = true;

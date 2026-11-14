@@ -25,6 +25,7 @@ import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
+import com.crystalgraphics.probe.CgActorProbe;
 import com.crystalgraphics.probe.CgCollisionProbe;
 import com.crystalgraphics.probe.CgContainersProbe;
 import com.crystalgraphics.probe.CgServerSmoke;
@@ -101,8 +102,8 @@ public final class CgGauntlet {
     private static int timeout;
     private static boolean heartbeatActive;
     private static String heartbeatStatus = "";
-    /** A test asked for a world, and whether the host has taken the request. */
-    private static boolean worldWanted, worldAsked;
+    /** A test asked for a world, whether the host has taken the request, and whether it is being asked now. */
+    private static boolean worldWanted, worldAsked, worldAsking;
 
     static {
         register("crystalgraphics:boot", CgGauntletBootTest::new);
@@ -110,6 +111,7 @@ public final class CgGauntlet {
         register("crystalgraphics:world", CgWorldProbe::test);
         register("crystalgraphics:collision", CgCollisionProbe::test);
         register("crystalgraphics:containers", CgContainersProbe::test);
+        register("crystalgraphics:actors", CgActorProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:server", CgServerSmoke::new);
         register("crystalgraphics:pipelines", CgDemoPipelinesTest::new);
@@ -161,17 +163,23 @@ public final class CgGauntlet {
     }
 
     /**
-     * Asks the game for a world, the run's named save or the first: asked again each tick on the title screen until the
-     * host takes it, since a host may not take it yet. True once one is on its way or loaded. Render thread.
-     *
-     * @throws IllegalStateException when the host has no save to load and cannot make one
+     * Asks the game for a world, the run's named save, else the first, else one the host makes: asked again each tick
+     * on the title screen until the host takes it, since a host may not take it yet. True once one is on its way or
+     * loaded. Render thread.
      */
     public static boolean enterWorld() {
         if (CgGameSession.inWorld()) return true;
         worldWanted = true;
-        if (!worldAsked) {
+        // A host may draw frames inside its own request (1.21's openWorld shows its loading screen at once), and each
+        // frame ticks the run: one asked from within that request would nest another inside it
+        if (!worldAsked && !worldAsking) {
             String save = WORLD.get();
-            worldAsked = CgGameSession.enterWorld(save.isEmpty() ? null : save);
+            worldAsking = true;
+            try {
+                worldAsked = CgGameSession.enterWorld(save.isEmpty() ? null : save);
+            } finally {
+                worldAsking = false;
+            }
         }
         return worldAsked;
     }

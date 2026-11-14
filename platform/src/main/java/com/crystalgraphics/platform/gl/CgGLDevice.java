@@ -47,6 +47,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -147,6 +148,22 @@ public final class CgGLDevice implements CgRHI {
     private final Map<HeapKey, Integer> heapIndex = new HashMap<>();
     private final List<HeapKey> heapKeys = new ArrayList<>();
     private long[] heapHandles = new long[0];
+    /** Slots that are references ({@link #bindlessReference}), not a texture's own. */
+    private final BitSet referenceSlots = new BitSet();
+    /**
+     * Each resident handle, by the texture it samples and how many hold it: a handle is one texture-sampler pair, which
+     * an index and a reference may share. Deleting the texture deletes its handles, so they leave here with it.
+     */
+    private final Map<Long, Resident> residents = new HashMap<>();
+
+    private static final class Resident {
+        final GLTexture texture;
+        int holders;
+
+        Resident(GLTexture texture) {
+            this.texture = texture;
+        }
+    }
     private int[] freeIndices = new int[16];
     private int freeCount, heapNext;
 
@@ -213,10 +230,14 @@ public final class CgGLDevice implements CgRHI {
             }
         }
         boolean gl46 = at >= 46;
+        boolean bindless = gl.hasExtension("GL_ARB_bindless_texture");
+        // A program's textures share its points across stages: the stage with the fewest bounds every one of them
+        int stageUnits = Math.min(gl.glGetInteger(GL_MAX_TEXTURE_IMAGE_UNITS),
+                Math.min(gl.glGetInteger(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS), gl.glGetInteger(GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS)));
         Globals.Limits limits = new Globals.Limits(gl.glGetInteger(GL_MAX_TEXTURE_SIZE),
                 gl.glGetInteger(GL_MAX_3D_TEXTURE_SIZE), gl.glGetInteger(GL_MAX_ARRAY_TEXTURE_LAYERS),
                 gl.glGetInteger(GL_MAX_COLOR_ATTACHMENTS), gl.glGetInteger(GL_MAX_SAMPLES),
-                gl.glGetInteger(GL_MAX_VERTEX_ATTRIBS), gl.glGetInteger(GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS),
+                gl.glGetInteger(GL_MAX_VERTEX_ATTRIBS), stageUnits, bindless ? HEAP_CAPACITY : 0,
                 gl.glGetInteger(GL_MAX_UNIFORM_BLOCK_SIZE), gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
                 // A dynamic offset is the bind's glBindBufferRange offset: as many as there are points of its kind
                 gl.glGetInteger(GL_MAX_UNIFORM_BUFFER_BINDINGS),
@@ -229,8 +250,7 @@ public final class CgGLDevice implements CgRHI {
                 compute(gl));
         globals = new Globals("OpenGL", gl.glGetString(GL_VENDOR) + " " + gl.glGetString(GL_RENDERER), version, limits,
                 true, limits.maxAnisotropy() > 1f, true, true, gl46 || gl.hasExtension("GL_ARB_indirect_parameters"),
-                true, false, gl46 || gl.hasExtension("GL_ARB_shader_draw_parameters"), true,
-                gl.hasExtension("GL_ARB_bindless_texture"));
+                true, false, gl46 || gl.hasExtension("GL_ARB_shader_draw_parameters"), true, bindless);
 
         if (host == null) conventions();
         framebuffers = new GLFramebuffers(gl);
@@ -445,6 +465,7 @@ public final class CgGLDevice implements CgRHI {
         } else if (o instanceof GLTexture t) {
             framebuffers.forget(t);
             dropHeapEntries(t);
+            residents.values().removeIf(r -> r.texture == t);   // a reference retargeted off it lets go after this
             t.delete(gl);
         } else if (o instanceof GLSampler s) gl.glDeleteSamplers(s.name);
         else if (o instanceof GLGraphicsPipeline p) p.delete(gl, programs);
@@ -485,18 +506,86 @@ public final class CgGLDevice implements CgRHI {
         HeapKey key = new HeapKey(view, (GLSampler) sampler);
         Integer known = heapIndex.get(key);
         if (known != null) return known;
-        int index = freeCount > 0 ? freeIndices[--freeCount] : heapNext++;
-        if (index >= HEAP_CAPACITY) throw new IllegalStateException("the bindless heap is full: " + HEAP_CAPACITY);
-        GLTexture t = (GLTexture) view.texture();
-        long handle = gl.glGetTextureSamplerHandleARB(t.sampled(gl, view), key.sampler().name);
-        gl.glMakeTextureHandleResidentARB(handle);
-        heap.mapped().putLong(index * 8, handle);
-        if (index >= heapHandles.length) heapHandles = Arrays.copyOf(heapHandles, Math.max(64, index * 2));
-        heapHandles[index] = handle;
+        int index = takeSlot();
+        write(index, retain(view, key.sampler()));
         while (heapKeys.size() <= index) heapKeys.add(null);
         heapKeys.set(index, key);
         heapIndex.put(key, index);
         return index;
+    }
+
+    /** {@code ARB_bindless_texture}: {@code TexImage*}, {@code TexStorage*} and {@code TexParameter*} fail on a texture with a handle. */
+    @Override
+    public boolean bindlessFreezesTextures() {
+        return true;
+    }
+
+    @Override
+    public int bindlessReference(CgTextureView view, CgGpuSampler sampler) {
+        if (bindlessLayout() == null) return CgRHI.super.bindlessReference(view, sampler);
+        int slot = takeSlot();
+        write(slot, retain(view, (GLSampler) sampler));
+        referenceSlots.set(slot);
+        return slot;
+    }
+
+    @Override
+    public void updateBindlessReference(int slot, CgTextureView view, CgGpuSampler sampler) {
+        if (!referenceSlots.get(slot)) throw new IllegalStateException("no reference " + slot);
+        long before = heapHandles[slot];
+        write(slot, retain(view, (GLSampler) sampler));
+        whenRetired(frame, () -> letGo(before));
+    }
+
+    @Override
+    public void releaseBindlessReference(int slot) {
+        if (!referenceSlots.get(slot)) throw new IllegalStateException("no reference " + slot);
+        long before = heapHandles[slot];
+        whenRetired(frame, () -> {
+            letGo(before);
+            referenceSlots.clear(slot);
+            freeSlot(slot);
+        });
+    }
+
+    private int takeSlot() {
+        int index = freeCount > 0 ? freeIndices[--freeCount] : heapNext++;
+        if (index >= HEAP_CAPACITY) throw new IllegalStateException("the bindless heap is full: " + HEAP_CAPACITY);
+        return index;
+    }
+
+    private void freeSlot(int index) {
+        if (freeCount == freeIndices.length) freeIndices = Arrays.copyOf(freeIndices, freeCount * 2);
+        freeIndices[freeCount++] = index;
+    }
+
+    private void write(int index, long handle) {
+        heap.mapped().putLong(index * 8, handle);
+        if (index >= heapHandles.length) heapHandles = Arrays.copyOf(heapHandles, Math.max(64, index * 2));
+        heapHandles[index] = handle;
+    }
+
+    /** {@code view} through {@code sampler}'s handle, resident while anything holds it. */
+    private long retain(CgTextureView view, GLSampler sampler) {
+        if (!view.texture().desc().usage().contains(CgGpuTexture.Usage.SAMPLED))
+            throw new IllegalStateException(view.texture().label() + " in the bindless heap without SAMPLED usage");
+        GLTexture t = (GLTexture) view.texture();
+        long handle = gl.glGetTextureSamplerHandleARB(t.sampled(gl, view), sampler.name);
+        Resident r = residents.get(handle);
+        if (r == null) {
+            residents.put(handle, r = new Resident(t));
+            gl.glMakeTextureHandleResidentARB(handle);
+        }
+        r.holders++;
+        return handle;
+    }
+
+    /** One holder of {@code handle} fewer; nothing where its texture was deleted first, which deleted the handle. */
+    private void letGo(long handle) {
+        Resident r = residents.get(handle);
+        if (r == null || --r.holders > 0) return;
+        residents.remove(handle);
+        gl.glMakeTextureHandleNonResidentARB(handle);
     }
 
     /** A deleted texture's handles go non-resident and their indices free: its frames have retired. */
@@ -504,11 +593,10 @@ public final class CgGLDevice implements CgRHI {
         for (int i = 0; i < heapKeys.size(); i++) {
             HeapKey k = heapKeys.get(i);
             if (k == null || k.view().texture() != t) continue;
-            gl.glMakeTextureHandleNonResidentARB(heapHandles[i]);
+            letGo(heapHandles[i]);
             heapKeys.set(i, null);
             heapIndex.remove(k);
-            if (freeCount == freeIndices.length) freeIndices = Arrays.copyOf(freeIndices, freeCount * 2);
-            freeIndices[freeCount++] = i;
+            freeSlot(i);
         }
     }
 

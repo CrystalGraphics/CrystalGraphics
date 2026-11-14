@@ -3,6 +3,7 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgHostFrame;
 import com.crystalgraphics.render.CgDepthConvention;
+import com.crystalgraphics.mc.modern.platform.actor.ActorsModern;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.EnvironmentModern;
@@ -313,11 +314,13 @@ public final class LifecycleModern {
      */
     public static void entityJoined(Entity entity) {
         WorldEventsModern.joined(entity);
+        ActorsModern.joined(entity);
     }
 
     /** An entity left the client level: {@link #entityJoined}'s pair, from the matching leave event. */
     public static void entityLeft(Entity entity) {
         WorldEventsModern.left(entity);
+        ActorsModern.left(entity);
     }
 
     /**

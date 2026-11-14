@@ -15,6 +15,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.stage.CgFrameKeys;
 import com.crystalgraphics.render.stage.CgStageFrame;
+import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
@@ -109,27 +110,38 @@ final class CgSceneTarget {
     private CgFormat sceneDepth;
     private boolean sceneBeside;
 
-    /** The opaque firing's scene, kept from its firing to the transparent one's, and its size and form. */
-    @Nullable
-    private CgGraphTexture opaque;
-    private int opaqueWidth, opaqueHeight;
-    @Nullable
-    private CgFormat opaqueDepth;
-    /** The opaque scene's depth where it has one of its own: released with it. */
-    @Nullable
-    private CgGraphTexture opaqueDepthTexture;
-    private boolean opaqueBeside;
-    /** Whether the opaque firing drew into {@link #opaque} since the last transparent firing's way in. */
-    private boolean kept;
+    /** A view's opaque scene, kept from its opaque firing to its transparent one's, and its size and form. */
+    private static final class Opaque {
+        @Nullable
+        CgGraphTexture scene;
+        int width, height;
+        @Nullable
+        CgFormat depth;
+        /** The opaque scene's depth where it has one of its own: released with it. */
+        @Nullable
+        CgGraphTexture depthTexture;
+        boolean beside;
+        /** Whether the view's opaque firing drew into {@link #scene} since its last transparent firing's way in. */
+        boolean kept;
+
+        /** The opaque scene's depth: the host's beside it, its own, or null for none. */
+        @Nullable
+        CgGraphTexture depthOf() {
+            return beside ? CgGraphTexture.current() : depthTexture;
+        }
+    }
+
+    private static final CgViewState.Key<Opaque> OPAQUE = new CgViewState.Key<>("world.opaqueScene", Opaque::new);
 
     void record(CgStageFrame stage) {
-        boolean keeping = kept;
-        kept = false;
+        Opaque opaque = stage.view().state().get(OPAQUE);
+        boolean keeping = opaque.kept;
+        opaque.kept = false;
         int w = Math.max(1, stage.host().width()), h = Math.max(1, stage.host().height());
         boolean beside = stage.host().target().lendsAttachments();
         CgFormat depth = beside ? null : stage.host().depthFormat();
         // The kept scene of another size or form is a stale one: decoded as though none were kept
-        keeping &= opaque != null && opaqueWidth == w && opaqueHeight == h && opaqueBeside == beside && opaqueDepth == depth;
+        keeping &= opaque.scene != null && opaque.width == w && opaque.height == h && opaque.beside == beside && opaque.depth == depth;
         Pass pass = keeping ? keep : in;
         CgPipeline pipeline = pass.pipeline(depth != null);
         if (pipeline == null) return;
@@ -141,7 +153,7 @@ final class CgSceneTarget {
         if (sceneDepthTexture != null) raster.depth(sceneDepthTexture, CgLoad.load(), CgDepthAccess.WRITE);
         if (depth != null) raster.readsDepth(CgGraphTexture.current());
         CgMaterialBindings bindings = CgMaterialProxy.of(pass.material(depth != null)).bindings();
-        if (keeping) bindings = bindings.with(0, opaque);
+        if (keeping) bindings = bindings.with(0, opaque.scene);
         fullscreen(recording, raster, pipeline, bindings);
 
         stage.resources().put(CgFrameKeys.SCENE, target);
@@ -161,28 +173,30 @@ final class CgSceneTarget {
         // Both or neither: a scene drawn into and never encoded back would lose the opaque draws
         if (decode == null || encode == null || keep.pipeline(depth != null) == null) return false;
         CgRecording recording = stage.recording();
-        CgGraphTexture target = opaque(recording, w, h, beside, depth);
+        Opaque opaque = stage.view().state().get(OPAQUE);
+        CgGraphTexture target = opaque(opaque, recording, w, h, beside, depth);
         CgRasterPass raster = recording.raster("world.opaqueIn").color(target, CgLoad.load()).constants(stage.constants()).timed(GPU_OPAQUE)
                 .readsColor(CgGraphTexture.current());
-        if (opaqueDepthOf() != null) raster.depth(opaqueDepthOf(), CgLoad.load(), CgDepthAccess.WRITE);
+        if (opaque.depthOf() != null) raster.depth(opaque.depthOf(), CgLoad.load(), CgDepthAccess.WRITE);
         if (depth != null) raster.readsDepth(CgGraphTexture.current());
         fullscreen(recording, raster, decode, CgMaterialProxy.of(in.material(depth != null)).bindings());
-        stage.retarget(target, opaqueDepthOf());
+        stage.retarget(target, opaque.depthOf());
         return true;
     }
 
-    /** After the opaque pass: the opaque scene encoded back into the host's target, kept for the transparent firing. */
+    /** After the opaque pass: the opaque scene encoded back into the host's target, kept for the view's transparent firing. */
     void recordOpaqueOut(CgStageFrame stage) {
         stage.retarget(null, null);
-        boolean depth = opaqueDepth != null;
+        Opaque opaque = stage.view().state().get(OPAQUE);
+        boolean depth = opaque.depth != null;
         CgPipeline encode = out.pipeline(depth);
         CgRecording recording = stage.recording();
         CgRasterPass raster = recording.raster("world.opaqueOut").color(CgGraphTexture.current(), CgLoad.load())
                 .depth(CgGraphTexture.current(), CgLoad.load(), CgDepthAccess.WRITE).constants(stage.constants()).timed(GPU_OUT);
-        if (depth) raster.readsDepth(opaqueDepthTexture);
-        CgMaterialBindings bindings = CgMaterialProxy.of(out.material(depth)).bindings().with(0, opaque);
+        if (depth) raster.readsDepth(opaque.depthTexture);
+        CgMaterialBindings bindings = CgMaterialProxy.of(out.material(depth)).bindings().with(0, opaque.scene);
         fullscreen(recording, raster, encode, bindings);
-        kept = true;
+        opaque.kept = true;
     }
 
     private static void fullscreen(CgRecording recording, CgRasterPass raster, CgPipeline pipeline, CgMaterialBindings bindings) {
@@ -210,37 +224,28 @@ final class CgSceneTarget {
         return scene;
     }
 
-    private CgGraphTexture opaque(CgRecording recording, int w, int h, boolean beside, @Nullable CgFormat depth) {
-        if (opaque != null && opaqueWidth == w && opaqueHeight == h && opaqueBeside == beside && opaqueDepth == depth) {
-            return opaque;
+    private static CgGraphTexture opaque(Opaque opaque, CgRecording recording, int w, int h, boolean beside, @Nullable CgFormat depth) {
+        if (opaque.scene != null && opaque.width == w && opaque.height == h && opaque.beside == beside && opaque.depth == depth) {
+            return opaque.scene;
         }
-        if (opaque != null) recording.release(opaque);
-        if (opaqueDepthTexture != null) recording.release(opaqueDepthTexture);
+        if (opaque.scene != null) recording.release(opaque.scene);
+        if (opaque.depthTexture != null) recording.release(opaque.depthTexture);
         CgTextureDesc colour = CgTextureDesc.of(w, h, SCENE);
-        opaqueDepthTexture = beside || depth == null ? null
+        opaque.depthTexture = beside || depth == null ? null
                 : CgGraphTexture.requested("cg_opaque_scene_depth", CgTextureDesc.of(w, h, depth));
-        opaque = CgGraphTexture.requested("cg_opaque_scene", colour);
-        opaqueWidth = w;
-        opaqueHeight = h;
-        opaqueBeside = beside;
-        opaqueDepth = depth;
-        return opaque;
+        opaque.scene = CgGraphTexture.requested("cg_opaque_scene", colour);
+        opaque.width = w;
+        opaque.height = h;
+        opaque.beside = beside;
+        opaque.depth = depth;
+        return opaque.scene;
     }
 
-    /** The opaque scene's depth: the host's beside it, its own, or null for none. */
-    @Nullable
-    private CgGraphTexture opaqueDepthOf() {
-        return opaqueBeside ? CgGraphTexture.current() : opaqueDepthTexture;
-    }
-
-    /** Forgets its materials, which the material registry frees with the context, and its textures. */
+    /** Forgets its materials, which the material registry frees with the context, and its transient scene. */
     void release() {
         in.release();
         keep.release();
         out.release();
         scene = null;
-        opaque = null;
-        opaqueDepthTexture = null;
-        kept = false;
     }
 }

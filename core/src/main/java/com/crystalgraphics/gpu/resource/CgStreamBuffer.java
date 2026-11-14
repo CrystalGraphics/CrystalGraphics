@@ -53,6 +53,8 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         MESH("mesh", CgGpuBuffer.Usage.STORAGE, CgGpuBuffer.Usage.INDEX),
         INDEX("index", CgGpuBuffer.Usage.INDEX),
         UNIFORM("ubo", CgGpuBuffer.Usage.UNIFORM),
+        /** A block of values read as a uniform block, or as a storage block (an arena material's one slot). */
+        BLOCKS("blocks", CgGpuBuffer.Usage.UNIFORM, CgGpuBuffer.Usage.STORAGE),
         STORAGE("ssbo", CgGpuBuffer.Usage.STORAGE),
         INDIRECT("indirect", CgGpuBuffer.Usage.INDIRECT, CgGpuBuffer.Usage.STORAGE),
         STAGING("staging", CgGpuBuffer.Usage.COPY_SRC);
@@ -256,6 +258,11 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
         return createFrameLocal(Use.UNIFORM, capacityBytes);
     }
 
+    /** {@link #createFrameLocal} for blocks bound as either uniform or storage blocks ({@link Use#BLOCKS}). */
+    public static CgStreamBuffer frameLocalBlocks(int capacityBytes) {
+        return createFrameLocal(Use.BLOCKS, capacityBytes);
+    }
+
     /** {@link #createFrameLocal} for storage buffers. */
     public static CgStreamBuffer frameLocalStorage(int capacityBytes) {
         return createFrameLocal(Use.STORAGE, capacityBytes);
@@ -276,10 +283,10 @@ public abstract class CgStreamBuffer implements CgObjectBuffer {
      * <p>Offsets are 256-aligned, the largest uniform and storage offset alignment GL or Vulkan allows.</p>
      */
     public static CgStreamBuffer createFrameLocal(Use use, int capacityBytes) {
-        if (use != Use.STORAGE && use != Use.UNIFORM) return createForShaderBuffer(use, capacityBytes);
+        if (use != Use.STORAGE && use != Use.UNIFORM && use != Use.BLOCKS) return createForShaderBuffer(use, capacityBytes);
         // Instance data starts sized for a frame's flushes. A UBO starts at its own block: there is one per material, and
         // hundreds at 256 KB a region would be hundreds of megabytes; a busy one grows.
-        int start = use == Use.UNIFORM ? capacityBytes : Math.max(capacityBytes, FRAME_LOCAL_START_BYTES);
+        int start = use != Use.STORAGE ? capacityBytes : Math.max(capacityBytes, FRAME_LOCAL_START_BYTES);
         return new FrameRingStreamBuffer(use, start);
     }
 

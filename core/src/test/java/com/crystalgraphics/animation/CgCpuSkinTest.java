@@ -6,6 +6,8 @@ import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -54,10 +56,13 @@ public class CgCpuSkinTest {
     public void aCpuSkinnedPoseIsTheGpusAndItsTrianglesLeaveAsQuads() {
         CgSkeletalMesh mesh = arm();
         Matrix4f placement = new Matrix4f().rotateY(0.7f).scale(2f);
-        CgAnimInstance arm = new CgAnimInstance(mesh).place(10, 64, -3, placement)
+        CgScene scene = new CgScene();
+        CgSkeletalMeshComponent component = scene.skeletal(mesh).at(10, 64, -3).transform(placement).spawn();
+        CgAnimInstance arm = component.anim()
                 .play(CgAnimSection.of(mesh.sequence("bend")).until(Double.POSITIVE_INFINITY).build()).seek(0.5).evaluate();
+        scene.update();
         List<float[]> out = new ArrayList<>();
-        arm.cpuSkin(0, false, (x, y, z, u, v, argb, nx, ny, nz) -> out.add(new float[]{x, y, z, u, v, argb, nx, ny, nz}));
+        component.cpuSkin(0, false, (x, y, z, u, v, argb, nx, ny, nz) -> out.add(new float[]{x, y, z, u, v, argb, nx, ny, nz}));
         assertEquals("one quad, then the triangle as a quad", 8, out.size());
 
         Matrix4f elbow = new Matrix4f(placement).mul(arm.skinning()[1]);

@@ -4,6 +4,7 @@ import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.util.io.CgIO;
 
+import javax.annotation.Nullable;
 import java.util.ArrayDeque;
 import java.util.Collections;
 import java.util.Deque;
@@ -219,6 +220,39 @@ public final class CgShaderPreprocessor {
      */
     public boolean mentions(String source, String sourcePath, String... tokens) {
         return mentions(source, sourcePath != null ? CgIO.normalizePath(sourcePath) : null, tokens, new HashSet<>());
+    }
+
+    /**
+     * The first include of {@code source}, at any depth, that cannot be read, resolved; null when every one reads. What
+     * {@link #mentions} counted as a match, for an error that names it.
+     *
+     * <pre>{@code
+     * String unread = new CgShaderPreprocessor().unreadableInclude(source, "mymod:shaders/water.shader");
+     * if (unread != null) throw CgShaderError.of(path, "cannot read #include \"" + unread + "\"");
+     * }</pre>
+     */
+    @Nullable
+    public String unreadableInclude(String source, String sourcePath) {
+        return unreadableInclude(source, sourcePath != null ? CgIO.normalizePath(sourcePath) : null, new HashSet<>());
+    }
+
+    @Nullable
+    private String unreadableInclude(String src, String norm, Set<String> seen) {
+        for (String line : src.split("\n")) {
+            Matcher m = INCLUDE_PATTERN.matcher(line.trim());
+            if (!m.matches()) continue;
+            String resolved = resolveIncludePath(m.group(1) != null ? m.group(1) : m.group(2), norm);
+            if (!seen.add(resolved)) continue;
+            String included;
+            try {
+                included = loadSource(resolved);
+            } catch (CgPreprocessorException e) {
+                return resolved;
+            }
+            String deeper = unreadableInclude(included, resolved, seen);
+            if (deeper != null) return deeper;
+        }
+        return null;
     }
 
     private boolean mentions(String src, String norm, String[] tokens, Set<String> seen) {

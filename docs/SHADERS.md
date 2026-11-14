@@ -7,6 +7,37 @@ Moved from [`AGENTS.md`](../AGENTS.md), which keeps the rules every session need
 > materials and the engine's own passes are precached for you. **[`PRECACHE.md`](PRECACHE.md)** says which is which.
 > Editing a shipped shader also stales the shipped pipeline list (`PRECACHE.md` § *The shipped pipeline list*).
 
+## Textures in a shader: bindless or bound
+
+**Write a texture the same way on every GPU.** Declare it as a property, sample it by its name:
+
+```glsl
+Properties {
+    _Albedo ("Albedo", sampler2D) = "white"
+}
+struct v2f { vec2 uv0; };
+void surface(in v2f i, inout CgSurface s) {
+    s.baseColor = texture(_Albedo, i.uv0).rgb;
+}
+```
+
+Where the GPU has a **bindless heap** (one table of every texture, read by number; Vulkan's descriptor indexing, OpenGL's
+`ARB_bindless_texture`), the engine compiles every program with `CG_BINDLESS` defined. Each texture property is then a
+`uint` in the material's block, its number in the heap, and `_Albedo` is a macro reading the heap at it
+(`CG_TEXTURE_sampler2D(_cgt_Albedo)`). Without one, the property is a `sampler2D` bound to a texture unit for the draw.
+Both are the default of their device: [`TEXTURES.md`](TEXTURES.md) § *How shaders reach your textures* says when each is
+used, in plain terms, and how to force units with `-Dcrystalgraphics.bindless=false`.
+
+- **Nothing in a `.shader` or `.compute` changes.** Sample, pass to a function and read `textureSize` of a texture
+  property as always; a kernel's `Properties` samplers work the same way.
+- **Never declare a sampler of your own with `CG_BIND`**, nor test `CG_BINDLESS` to work round a path: the engine
+  writes the declarations, and code that works on one path works on the other.
+- **No engine limit on how many textures a material reads.** On units, more than the GPU's stage binds, less the view's
+  five, fails to load naming both numbers.
+- The view's textures (`cg_DepthBuffer`, `cg_SceneColor`, `cg_Lightmap`, `cg_Media`, `cg_LocalLights`, below) keep their
+  names on both paths. On OpenGL `cg_DepthBuffer` and `cg_Lightmap` stay on units even where the rest is bindless,
+  since they may be Minecraft's own.
+
 ## Materials
 
 A `.shader` is a material. Its first line names its domain, and it says what the surface is, not how to draw it: the
@@ -70,13 +101,12 @@ Properties {
 }
 struct v2f { vec2 uv0; };                                    // no vertex(): uv0-3, color, normal, world, light filled
 void surface(in v2f i, inout CgSurface s) {
-    s.baseColor = _Tint.rgb;
+    s.emissive = _Tint.rgb * (1.0 + _Heat * i.uv0.x);        // Unlit: the emissive is the colour drawn
     s.opacity = _Tint.a;
-    s.emissive = _Tint.rgb * _Heat * i.uv0.x;                // naming emissive draws the glow
 }
 ```
 
-- **The outputs it names decide its passes**: `emissive` a glow, `refraction` a bend; a translucent material naming
+- **The outputs it names decide its passes**: `emissive` a lit surface's glow (an `Unlit` one's colour), `refraction` a bend; a translucent material naming
   neither `baseColor` nor `opacity` draws no colour ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 4.4).
 - **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
   `gl_Position`. `v.normal` is world-space. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns
@@ -136,16 +166,16 @@ shares (`CgPassConstants`):
 | `cg_PrevViewProj` | `mat4` | This pass's camera-relative points to last frame's clip space, for a temporal effect. Read through `cg_PreviousClip(p)` |
 | `cg_FrameParams` | `vec4` | `x` the host frame's index (0 to 65535), `y` 1 while last frame was one of this view, `w` 1 when the target is the host's own (`CG_ENCODED_TARGET`). Read through `CG_FRAME_INDEX`, `CG_HISTORY_VALID` |
 
-**Scene samplers**, bound by the engine for every draw; never declare or bind them yourself, nor bind a property to
-their units:
+**Scene samplers**, given by the engine to every draw, bound or read from the bindless heap (§ *Textures in a shader*);
+never declare or bind them yourself:
 
-| GLSL name | Type | Unit | Content |
+| GLSL name | Type | Slot | Content |
 |---|---|---|---|
 | `cg_DepthBuffer` | `sampler2D` | `CgBindingModel.SCENE_DEPTH` | The target's depth as it stands at the draw: a copy the frame graph takes before the first reader and again after a draw that wrote depth (`render/graph/CLAUDE.md` § *Reading the target*). An opaque material sees the host's world and the opaque draws sorted before it, a transparent one every opaque draw. **Raw values are the host's convention**, reversed-Z on 26.2, so compare eye distances: `CG_SCENE_EYE_DEPTH(uv)` against `cg_LinearEyeDepth(gl_FragCoord.z)`. Both stages |
 | `cg_SceneColor` | `sampler2D` | `CgBindingModel.SCENE_COLOR` | The target's colour as it stands at the draw, copied the same way: everything sorted before the reader, transparent draws included, but other readers in a row with it, which share its copy. Read through `CG_SCENE_COLOR(uv)`; a material reading it sets `SceneColorMargin` |
 | `cg_Lightmap` | `sampler2D` | `CgBindingModel.LIGHTMAP` | The host's lightmap in a world pass, block light along u and sky light along v; 1x1 white in any other pass. Read through `CG_LIGHTMAP(light)` |
 | `cg_Media` | `sampler3D` | `CgBindingModel.MEDIA` | The smoke and gas in front, a froxel volume over the screen (`CgWorldMedia`): rgb the light the world's lights scattered toward the eye, alpha what gets through; 1x1x1 white where nothing is in the air or the pass is not a world pass. Read through `cg_MediaTransmit(uv, eyeDepth)` and `cg_MediaLight(uv, eyeDepth)` |
-| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)`. The lowest unit the engine reserves: properties stay below it |
+| `cg_LocalLights` | `sampler3D` | `CgBindingModel.LOCAL_LIGHTS` | The world's lights on transparent surfaces, the translucency lighting volume (`CgWorldLights`, `docs/LIGHTS.md` §8) in a transparent world pass; 1x1x1 black in any other. Read through `cg_LocalLightAt(position)` |
 
 Convenience macros over the frame block:
 
@@ -217,6 +247,56 @@ void surface(in v2f i, inout CgSurface s) {
   direction (`cg_LocalLightDirectional`) at the normal, times the lightmap as `cg_Lit`. A firing drawing one fills the
   volume's direction too, at twice the volume's cost (`LIGHTS.md` §8).
 - `CgMaterial.surfaceLit()` says whether a material is one.
+
+#### Unreal's lit surfaces: `ShadingModel DefaultLit` and `Subsurface`
+
+A surface lit as Unreal's Default Lit model lights it: the material says what the surface is, and the engine lights it
+after `surface()` with Lambert diffuse and the GGX lobe under the sun, the four nearest point lights and the sky. A
+port of an Unreal material with a lit shading model is written this way; a block-like surface that should match
+Minecraft's terrain stays `WorldLit`.
+
+```glsl
+Material { ShadingModel DefaultLit }
+void surface(in v2f i, inout CgSurface s) {
+    vec3 orm = texture(_ORM, i.uv0).rgb;                 // occlusion, roughness, metallic
+    s.baseColor = texture(_Color, i.uv0).rgb;             // linear albedo
+    s.ambientOcclusion = orm.r;
+    s.roughness = orm.g;
+    s.metallic = orm.b;
+    s.normal = normalize(i.tangentToWorld * normalXy(texture(_Normal, i.uv0).xy));   // the mesh's normal if left
+}
+```
+
+| Output | Default | Is |
+|---|---|---|
+| `s.metallic` | 0 | a metal's base colour is its reflection; a dielectric's is its diffuse |
+| `s.specular` | 0.5 | a dielectric's reflectance, 0.08 times this: Unreal's Specular pin |
+| `s.roughness` | 0.5 | kept above 0.02 |
+| `s.ambientOcclusion` | 1 | of the sky's light alone |
+| `s.subsurfaceColor` | (1, 1, 1) | `Subsurface` only: the colour light takes through it |
+| `s.normal` | the mesh's, facing the eye on a back face | world space |
+
+- **`Subsurface`** adds Unreal's transmission: light through the surface, scattered in where the eye looks into the
+  light and wrapped round where it does not. `s.opacity` says how much the normal still counts (0 none, 1 fully),
+  in an opaque blend mode too, as Unreal's Opacity pin does under Subsurface.
+- **The base colour is linear**, as Unreal's is, and so is the light it gives off: `ColorSpace sRGB` is refused, and
+  the engine encodes the result for its target.
+- **A solid draws in the transparent firing**, after the world lights' deferred apply, which would otherwise light
+  it a second time; it still writes depth and is masked by `s.opacityMask` under `BlendMode Masked`. It does not
+  cast shadows yet: only opaque draws are casters.
+- `s.emissive` is added unlit, as before. `TranslucencyLighting` is refused: every pixel is lit by its own normal.
+- The outputs are refused under `WorldLit` and `Unlit`, where nothing reads them.
+- **A whole surface is a value**: a function may take and return a `CgSurface`, and
+  `cg_blend_material_attributes(a, b, alpha)` (`lib/material/blend_material_attributes.glsl`, Unreal's
+  BlendMaterialAttributes) mixes two by a mask:
+
+  ```glsl
+  #include "crystalgraphics:shaders/lib/material/blend_material_attributes.glsl"
+  CgSurface rock = s, moss = s;
+  rock.baseColor = texture(_Rock, i.uv0).rgb;   rock.roughness = 0.8;
+  moss.baseColor = texture(_Moss, i.uv0).rgb;   moss.roughness = 0.6;
+  s = cg_blend_material_attributes(rock, moss, smoothstep(0.6, 0.8, s.normal.y));
+  ```
 
 #### What a program carrying its own lighting reads
 
@@ -544,7 +624,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world = centre + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
     o.life = p.positionLife.w;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0, 0.6, 0.2) * clamp(i.life, 0.0, 1.0); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0, 0.6, 0.2) * clamp(i.life, 0.0, 1.0); }
 ```
 
 ```java
@@ -569,6 +649,9 @@ does:
 
 #### The glow: `s.emissive`
 
+**Under `ShadingModel Unlit` it is the material's colour**, drawn as a colour is, with no glow apart: Unreal's unlit
+draws its emissive alone, and `s.baseColor` is refused. The rest of this section is a lit surface's emissive.
+
 The light a material gives off. `CgWorldRenderer` adds it into the HDR scene, where bloom takes what passes white
 (`docs/ENGINE_API.md` § *CgWorldRenderer*): Unity's, Godot's and Unreal's emission, a material output added to an HDR
 scene colour.
@@ -583,7 +666,7 @@ scene colour.
   it.
 - **Hidden by the scene, not by a depth test**: the glow's target has no depth, so a fragment further than the scene's
   depth at its pixel is discarded, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`).
-- **A glow that draws nothing in the scene** writes only `emissive`.
+- **A glow that draws nothing in the scene** is a lit material writing only `emissive`.
 - `-Dcrystalgraphics.post.debug=level<N>` draws one stage of bloom over the frame (`docs/DEBUG_FLAGS.md`).
 
 #### The bend: `s.refraction`
@@ -700,7 +783,7 @@ CgWorldRenderer.get().draw(mesh, base).at(x, y, z).submit();
 CgWorldRenderer.get().draw(mesh, outline).at(x, y, z).submit();   // its own material, the same mesh
 ```
 
-A skinned instance names one for every slot: `CgAnimInstance.overlay(material)`.
+A skeletal mesh component names one for every slot: `CgSkeletalMeshComponent.overlay(material)`.
 
 ---
 
@@ -784,24 +867,34 @@ reads as its graph does. `--mode=material-library` checks each against Unreal's 
 
 | File | Function | Unreal |
 |---|---|---|
-| `depth_fade.glsl` | `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)`; in a fragment, `CG_DEPTH_FADE(opacity, fadeDistance, screenUv)` reads both depths itself | DepthFade |
+| `depth_fade.glsl` | In a fragment, `cg_depth_fade(opacity, fadeDistance)` reads the pixel's depth and the scene's under it; `cg_depth_fade(opacity, fadeDistance, sceneDepth, pixelDepth)` takes both | DepthFade |
 | `panner.glsl` | `cg_panner(uv, time, speed, fractional)` | Panner |
 | `rotator.glsl` | `cg_rotator(uv, center, time, speed)`: radians a second, counter-clockwise | Rotator |
-| `particle_sub_uv.glsl` | `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)`; on a particle factory, `CG_PARTICLE_SUB_UV(tex, cg_Particle, blend)` | ParticleSubUV |
+| `particle_sub_uv.glsl` | On a particle factory, `cg_particle_sub_uv(tex, cg_Particle, blend)`; anywhere, `cg_particle_sub_uv(tex, coords0, coords1, subUVLerp, blend)` | ParticleSubUV |
 | `rotate_about_axis.glsl` | `cg_rotate_about_axis(axisAndAngle, pivot, position)`: the offset to add, not the rotated position | RotateAboutAxis |
+| `blend_material_attributes.glsl` | `cg_blend_material_attributes(a, b, alpha)`: two `CgSurface`s, every output lerped, the shading model a's | BlendMaterialAttributes |
+| `default_lit.glsl` | In a fragment, `cg_default_lit(s, p, subsurface)`: the light `s` gives off at camera-relative `p`, which `ShadingModel DefaultLit` and `Subsurface` call for you | Default Lit, Subsurface |
+| `refraction.glsl` | In a fragment, `cg_refraction(worldNormal, refraction, refractionBias, unitsPerBlock)`: Unreal's distortion offset for `s.refraction`, 1 bending nothing, the bias in Unreal's units (centimetres: 100 a block) | Refraction (the distortion pass) |
+| `fresnel.glsl` | `cg_fresnel(normal, cameraVector, exponent, baseReflectFraction)`; in a fragment `cg_fresnel(normal, exponent, baseReflectFraction)` against the pixel's camera vector. Not `fresnel()` in `lib/vector.glsl`, which has no base reflectance | Fresnel |
+| `desaturation.glsl` | `cg_desaturation(color, fraction[, luminanceFactors])`: lerp toward the grey, factors (0.3, 0.59, 0.11). Not `desaturate()` in `lib/color.glsl` | Desaturation |
+| `unpack_normal_map.glsl` | `cg_unpack_normal_map(textureSample)`: a normal map's red and green decoded, z rebuilt | The Normal sampler type |
 
 ```glsl
 #include "crystalgraphics:shaders/lib/material/depth_fade.glsl"
 #include "crystalgraphics:shaders/lib/material/panner.glsl"
 
 vec2 uv = cg_panner(i.uv0, CG_TIME, vec2(0.0, 1.5), true);
-s.opacity = CG_DEPTH_FADE(texture(_Mask, uv).r, _FadeDistance, gl_FragCoord.xy / CG_RESOLUTION);
+s.opacity = cg_depth_fade(texture(_Mask, uv).r, _FadeDistance);
 ```
 
 - Distances are blocks. A material value in a kit's own unit (Kakarot's centimetres) is converted where the asset
   loads; a constant compiled into a port's code is the port's to convert.
-- `CG_DEPTH_FADE` and `CG_PARTICLE_SUB_UV` are macros: a material's `#include`s come before the engine's declarations,
-  so a function reading those would not compile.
+- A material's `#include` lines are compiled where they stand, after the engine's environment and its vertex factory's
+  declarations, so a library function reads anything a material reads (`CG_TIME`, the camera, the scene's depth,
+  `cg_Particle`), as Unreal's material functions do. Its `#define` and `#extension` lines go first, before the
+  environment, so a library can test a `#define` the material sets.
+- A function using a fragment-only built-in (`gl_FragCoord`, derivatives) is wrapped in
+  `#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)`: a material's includes compile into both stages.
 - RotateAboutAxis takes radians; Unreal's node takes periods, so a port multiplies by `2pi / Period` first.
 
 #### Adding to the library

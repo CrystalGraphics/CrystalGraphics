@@ -1,6 +1,7 @@
 package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.platform.rhi.CgDeviceNames;
+import com.crystalgraphics.render.draw.CgBindlessTextures;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
 import java.util.Set;
 import java.util.EnumSet;
@@ -109,6 +110,12 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
     @Override
     public CgSampler sampler() {
         return sampler;
+    }
+
+    /** Its storage is its own until {@link #delete()}: read bindless through references. */
+    @Override
+    public boolean keepsStorage() {
+        return true;
     }
 
     /**
@@ -281,6 +288,7 @@ public abstract class CgTextureAbstract implements CgTexture, CgBinaryAsset, CgR
         unloaded = false;
         gpu.clear();
         gpu.run(() -> {
+            CgBindlessTextures.forget(this);
             if (image != null) {
                 CgDeviceNames.forget(image);
                 CgRHI.get().release(image);

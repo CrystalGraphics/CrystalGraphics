@@ -147,7 +147,7 @@ public class CgMasterBlocksTest {
         // display is not, so a panel that is looked at writes what a display expects -- which is what
         // stopped the Main Preview coming out darker than the same graph's own node thumbnail.
         assertTrue("and the output goes through the lit colour, encoded for display",
-                source.contains("s.baseColor = linear_to_srgb(cg_lit);"));
+                source.contains("s.emissive = linear_to_srgb(cg_lit);"));
     }
 
     /**
@@ -215,7 +215,7 @@ public class CgMasterBlocksTest {
 
         String source = emit(graph, master).source();
         assertTrue(source, source.contains("float cg_alpha = node_a_Out;"));
-        assertTrue(source, source.contains("s.baseColor = node_c_Out;") && source.contains("s.opacity = cg_alpha;"));
+        assertTrue(source, source.contains("s.emissive = node_c_Out;") && source.contains("s.opacity = cg_alpha;"));
     }
 
     /**
@@ -283,7 +283,7 @@ public class CgMasterBlocksTest {
      * <p>The master is the one place a truncating swizzle is applied to a <em>user-drawn</em> edge.
      * Ordinary ports refuse it, deliberately — but the master never reaches that check at all, because it
      * emits no code and so has no inputs for the compiler to resolve. Without the carve-out this produces
-     * {@code s.baseColor = someVec4}, which the parser accepts and the driver does not.</p>
+     * {@code s.emissive = someVec4}, which the parser accepts and the driver does not.</p>
      */
     @Test
     public void aVec4IntoBaseColorKeepsItsRgb() {
@@ -295,7 +295,7 @@ public class CgMasterBlocksTest {
                 .output("out");
 
         String source = emit(graph, master).source();
-        assertTrue(source, source.contains("s.baseColor = node_c_Out.xyz;"));
+        assertTrue(source, source.contains("s.emissive = node_c_Out.xyz;"));
     }
 
     /**
@@ -305,7 +305,7 @@ public class CgMasterBlocksTest {
      * node is {@code VERTEX}-domain, so it is hoisted into the vertex stage and crosses as a varying —
      * meaning its variable is declared over <em>there</em>, and the fragment stage's own type map knows
      * nothing about it. {@link CgShaderEmitter} read that missing entry as "nothing to convert" and wrote
-     * the vec4 into {@code s.baseColor} whole, which is a GLSL error, so the material fell back
+     * the vec4 into {@code s.emissive} whole, which is a GLSL error, so the material fell back
      * to white.</p>
      *
      * <p>The symptom pointed the wrong way entirely: putting <em>any</em> fragment-stage node in between —
@@ -333,9 +333,9 @@ public class CgMasterBlocksTest {
 
         String source = result.source();
         assertTrue("the varying must be swizzled down to a vec3, not written whole: " + source,
-                source.contains("s.baseColor = i.v_uv_Out.xyz;"));
+                source.contains("s.emissive = i.v_uv_Out.xyz;"));
         assertFalse("a bare vec4 into a vec3 will not compile",
-                source.contains("s.baseColor = i.v_uv_Out;"));
+                source.contains("s.emissive = i.v_uv_Out;"));
     }
 
     /** The mirror: a scalar widens, exactly as it does into any other port. */
@@ -350,8 +350,8 @@ public class CgMasterBlocksTest {
 
         String source = emit(graph, master).source();
         assertTrue("a float must become a vec3 rather than being written bare",
-                source.contains("s.baseColor = vec3(node_s_Out)")
-                        || source.contains("s.baseColor = vec3(node_s_Out, node_s_Out, node_s_Out)"));
+                source.contains("s.emissive = vec3(node_s_Out)")
+                        || source.contains("s.emissive = vec3(node_s_Out, node_s_Out, node_s_Out)"));
     }
 
     // ── Multiple roots in one stage ─────────────────────────────────────────

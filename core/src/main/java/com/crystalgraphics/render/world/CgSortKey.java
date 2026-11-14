@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.world;
 
+import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import com.crystalgraphics.api.material.CgRenderQueue;
 
 /**

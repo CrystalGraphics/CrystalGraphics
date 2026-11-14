@@ -78,12 +78,8 @@ float cg_LightFalloff(int i) {
     return WORLD_LIGHTS(i).colorExponent.w;
 }
 
-// The draw's origin: its system's for a particle, else its object record's.
-#ifdef CG_OBJECT_POSITION
+// The draw's origin: its system's for a particle, else its object record's (CG_OBJECT_POSITION).
 #define CG_HANDED_ORIGIN CG_OBJECT_POSITION
-#else
-#define CG_HANDED_ORIGIN (CG_OBJECT_TO_WORLD[3].xyz)
-#endif
 
 // The four nearest the draw's origin, found once an invocation.
 int cg_handed[4];
