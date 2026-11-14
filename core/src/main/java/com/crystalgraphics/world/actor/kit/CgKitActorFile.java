@@ -1,6 +1,7 @@
 package com.crystalgraphics.world.actor.kit;
 
 import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -10,7 +11,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * The characters a dev install can wear, from {@code <game folder>/crystalgraphics/actors.yaml}: each key a name for
@@ -28,7 +31,11 @@ import java.util.Map;
  *   stencil: 1                        # and the custom depth stencil value it reads the character by
  * }</pre>
  *
- * <p>A malformed entry is logged and left out.</p>
+ * <ul>
+ *   <li>A malformed entry is logged and left out.</li>
+ *   <li>Every character in it loads behind the loading screen ({@link #preload}), so asking for one draws it at once;
+ *       one added while the game runs loads at its first ask.</li>
+ * </ul>
  */
 public final class CgKitActorFile {
 
@@ -36,6 +43,28 @@ public final class CgKitActorFile {
     private static final String[] KEYS = {"kit", "namespace", "shading", "mesh", "skeleton", "prefab"};
 
     private CgKitActorFile() {
+    }
+
+    /**
+     * Loads every character of the file as the load task {@code crystalgraphics:actors}: its files on a worker, then its
+     * kit's materials, until each is ready or failed. The engine's client start names it.
+     */
+    public static void preload(CgLoadPlan plan) {
+        AtomicReference<List<CgKitActor.Spec>> specs = new AtomicReference<>();
+        boolean[] started = {false};
+        plan.task("crystalgraphics:actors").work(() -> specs.set(List.copyOf(read().values()))).render(task -> {
+            List<CgKitActor.Spec> all = specs.get();
+            if (!started[0]) {
+                started[0] = true;
+                all.forEach(CgKitActor::preload);
+            }
+            int settled = 0;
+            for (CgKitActor.Spec s : all) if (CgKitActor.settled(s)) settled++;
+            if (settled == all.size()) return true;
+            task.progress(settled / (float) all.size());
+            task.nextFrame();
+            return false;
+        }).start();
     }
 
     /** The file's characters by name; empty where there is no file. */

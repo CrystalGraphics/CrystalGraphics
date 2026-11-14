@@ -6,6 +6,7 @@ import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.post.CgOutline;
+import com.crystalgraphics.render.world.CgPipelinePrecache;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.vfx.CgVfx;
@@ -33,6 +34,9 @@ import java.util.function.Supplier;
  * CgKitActor.Spec hero = new CgKitActor.Spec("hero", Paths.get("D:/kits/mykit"), "mykit", "mystudio",
  *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml");
  * CgEntityActors.bindLocalPlayer(hero.factory());        // the client's player, drawn as it
+ *
+ * CgKitActor.preload(hero);                               // ahead: drawn as soon as it spawns
+ * if (CgKitActor.settled(hero)) ...                       // a load task's poll: ready, or failed and logged
  * }</pre>
  *
  * <ul>
@@ -67,6 +71,42 @@ public final class CgKitActor extends CgEntityActor {
         volatile List<String> materials;
         volatile boolean failed;
         CgKitAssets kit;
+        /** The slots' skinned forms and the outline's pass, asked for once the materials are ready. */
+        CgPipelinePrecache.Request pipelines;
+
+        /**
+         * Moves the load along: the kit asked for once the files are read, then the pipelines its draws use. True once
+         * all are ready. Render thread.
+         */
+        boolean advance(Spec s) {
+            if (failed || mesh == null) return false;
+            if (kit == null) {
+                try {
+                    kit = CgKitAssets.load(CgVfx.world(), s.namespace(), s.kit(), List.of(), materials, List.of(), List.of(),
+                            s.shading());
+                } catch (RuntimeException e) {
+                    LOGGER.warn("[kit-actor] {}'s kit did not start loading: {}", s.name(), e.toString());
+                    failed = true;
+                    return false;
+                }
+            }
+            if (kit.failed()) {
+                LOGGER.warn("[kit-actor] {}'s kit failed to load: {}", s.name(), kit.failures());
+                failed = true;
+                return false;
+            }
+            if (!kit.declared()) return false;
+            for (int i = 0; i < materials.size(); i++) if (!kit.material(i).ready()) return false;
+            if (pipelines == null) {
+                // What the skeletal component and the outline ask for at the spawn, built now: else the first draw is held
+                int slots = mesh.mesh().submeshCount();
+                pipelines = CgPipelinePrecache.request(p -> {
+                    for (int i = 0; i < slots; i++) p.add(CgMaterial.of(kit.material(i).get()), false, true);
+                    if (s.outline() != null) p.addPass(CgMaterial.of(kit.material(slots).get()));
+                });
+            }
+            return pipelines.ready();
+        }
     }
 
     private final Spec spec;
@@ -79,9 +119,22 @@ public final class CgKitActor extends CgEntityActor {
         this.spec = spec;
     }
 
-    @Override
-    protected void onSpawn(CgEntity entity) {
-        loaded = LOADED.computeIfAbsent(spec, s -> {
+    /**
+     * Starts loading {@code spec}'s files and kit materials now, so its actors draw as they spawn rather than seconds
+     * later. Once a spec; render thread.
+     */
+    public static void preload(Spec spec) {
+        loaded(spec);
+    }
+
+    /** Whether {@code spec} is ready to draw, or failed: what a load waits on. Render thread; moves its load along. */
+    public static boolean settled(Spec spec) {
+        Loaded l = loaded(spec);
+        return l.advance(spec) || l.failed;
+    }
+
+    private static Loaded loaded(Spec spec) {
+        return LOADED.computeIfAbsent(spec, s -> {
             Loaded l = new Loaded();
             CgJob.run(() -> read(s, l)).named("kit-actor " + s.name()).onError(e -> {
                 LOGGER.warn("[kit-actor] {} failed to load: {}", s.name(), e.detail(), e.cause());
@@ -92,6 +145,11 @@ public final class CgKitActor extends CgEntityActor {
     }
 
     @Override
+    protected void onSpawn(CgEntity entity) {
+        loaded = loaded(spec);
+    }
+
+    @Override
     protected void onRemove(CgEntity entity) {
         if (outline != null) outline.close();
         outline = null;
@@ -99,39 +157,23 @@ public final class CgKitActor extends CgEntityActor {
 
     @Override
     protected void tick(CgEntity entity, float dt) {
-        if (body != null || loaded.failed || loaded.mesh == null || !entity.present()) return;
-        if (loaded.kit == null) {
-            loaded.kit = CgKitAssets.load(CgVfx.world(), spec.namespace(), spec.kit(), List.of(), loaded.materials, List.of(),
-                    List.of(), spec.shading());
-        }
+        if (body != null || !entity.present() || !loaded.advance(spec)) return;
         CgKitAssets kit = loaded.kit;
-        if (kit.failed()) {
-            LOGGER.warn("[kit-actor] {}'s kit failed to load: {}", spec.name(), kit.failures());
-            loaded.failed = true;
-            return;
-        }
-        if (!kit.declared() || !allReady(kit, loaded.materials.size())) return;
         int slots = loaded.mesh.mesh().submeshCount();
         double height = entity.pose(CgEntityQuery.HEIGHT);
         body = add(scene().skeletal(loaded.mesh).transform(fit(loaded.mesh, height > 0 ? (float) height : 1.8f))
                 .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f));
         if (spec.outline() != null) {
             body.customDepth(spec.stencil(), 0xFF);
-            outline = CgOutline.add(CgMaterial.of(kit.material(slots).get()));
-        }
+            outline = CgOutline.add(CgMaterial.of(kit.material(slots).get()));        }
         LOGGER.info("[kit-actor] {} drawn as {}{}", entity, spec.name(), outline != null ? ", outlined" : "");
     }
 
-    private static boolean allReady(CgKitAssets kit, int slots) {
-        for (int s = 0; s < slots; s++) if (!kit.material(s).ready()) return false;
-        return true;
-    }
-
-    /** The mesh scaled to {@code height}, feet on the root, centred; kit meshes face -z, so it is turned to Minecraft's +z. */
+    /** The mesh scaled to {@code height}, feet on the root, centred. */
     private static Matrix4f fit(CgSkeletalMesh mesh, float height) {
         CgAABB box = mesh.mesh().bounds(new CgAABB());
         float scale = height / (float) Math.max(box.maxY() - box.minY(), 1e-4);
-        return new Matrix4f().rotationY((float) Math.PI).scale(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
+        return new Matrix4f().scaling(scale).translate((float) -(box.minX() + box.maxX()) / 2f,
                 (float) -box.minY(), (float) -(box.minZ() + box.maxZ()) / 2f);
     }
 

@@ -4036,6 +4036,13 @@ com/crystalgraphics/collision/mirror/CgMirrorVersion
   method public entities ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public epoch ()J
   method public frozen ()Ljava/lang/Object;
+com/crystalgraphics/command/CgActorCommands
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/command/CgCommands$Contribution
+  method public <init> ()V
+  method public build (Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
+  method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)V
 com/crystalgraphics/command/CgCoreActions
   access public,final
   extends java/lang/Object
@@ -21308,6 +21315,8 @@ com/crystalgraphics/world/actor/CgEntityActors
   extends com/crystalgraphics/frame/CgWorldSubsystem
   method public <init> ()V
   method public,static actor (I)Lcom/crystalgraphics/world/actor/CgEntityActor;
+  method public,static bind (ILjava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
+  method public,static bindLocalPlayer (Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static entered (ILjava/lang/String;)V
   method public,static left (I)V
   method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
@@ -21321,3 +21330,50 @@ com/crystalgraphics/world/actor/CgEntityActors$Registration
   method public close ()V
   method public keepVanillaModel ()Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public type ()Ljava/lang/String;
+com/crystalgraphics/world/actor/kit/CgKitActor
+  access public,final
+  extends com/crystalgraphics/world/actor/CgEntityActor
+  method public,static preload (Lcom/crystalgraphics/world/actor/kit/CgKitActor$Spec;)V
+  method public,static settled (Lcom/crystalgraphics/world/actor/kit/CgKitActor$Spec;)Z
+com/crystalgraphics/world/actor/kit/CgKitActor$Spec
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V
+  method public factory ()Ljava/util/function/Supplier;
+  method public kit ()Ljava/nio/file/Path;
+  method public mesh ()Ljava/lang/String;
+  method public name ()Ljava/lang/String;
+  method public namespace ()Ljava/lang/String;
+  method public outline ()Ljava/lang/String;
+  method public prefab ()Ljava/lang/String;
+  method public shading ()Ljava/lang/String;
+  method public skeleton ()Ljava/lang/String;
+  method public stencil ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/world/actor/kit/CgKitActorFile
+  access public,final
+  extends java/lang/Object
+  method public,static preload (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
+  method public,static read ()Ljava/util/Map;
+com/crystalgraphics/world/actor/kit/CgKitAssets
+  access public,final
+  extends java/lang/Object
+  method public declared ()Z
+  method public failed ()Z
+  method public failures ()Ljava/lang/String;
+  method public id (I)Ljava/lang/String;
+  method public material (I)Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public ready ()Z
+  method public ref (I)Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public sequence (I)Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public size ()I
+  method public stage (I)Lcom/crystalgraphics/asset/load/CgAssetRef;
+  method public,static load (Lcom/crystalgraphics/vfx/CgVfxSystem;Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;)Lcom/crystalgraphics/world/actor/kit/CgKitAssets;
+  method public,static load (Lcom/crystalgraphics/vfx/CgVfxSystem;Ljava/lang/String;Ljava/nio/file/Path;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/util/List;Ljava/lang/String;)Lcom/crystalgraphics/world/actor/kit/CgKitAssets;
+com/crystalgraphics/world/actor/kit/CgKitModels
+  access public,final
+  extends java/lang/Object
+  method public,static prefabMaterials (Ljava/nio/file/Path;)Ljava/util/List;
+  method public,static withSockets (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;Ljava/nio/file/Path;Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;

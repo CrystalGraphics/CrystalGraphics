@@ -1,6 +1,7 @@
 package com.crystalgraphics.lifecycle;
 
 import com.crystalgraphics.command.CgActorCommands;
+import com.crystalgraphics.world.actor.kit.CgKitActorFile;
 import com.crystalgraphics.command.CgCoreCommands;
 import com.crystalgraphics.platform.command.CgBrigadier;
 import com.crystalgraphics.platform.command.CgCommands;
@@ -215,6 +216,7 @@ public final class CgEngineLifecycle {
     private static synchronized void load() {
         if (loaded) return;
         loaded = true;
+        CgKitActorFile.preload(CgLoadPlan.get());
         listeners.dispatch("onLoad", l -> l.onLoad(CgLoadPlan.get()));
         CgLoadPlan.get().seal();
     }
