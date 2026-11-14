@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import org.joml.Vector3f;
@@ -57,6 +58,8 @@ public final class CgAnimGraphCodec {
 
     private static final CgSkeleton STAND_IN = CgSkeleton.builder().bone("root", null, new Vector3f()).build();
     private static final CgAnimSequence STAND_IN_CLIP = CgAnimSequence.builder("stand-in", 30, 1).build();
+    /** Node kinds read through {@link CgAnimNodeKind}: those outside this package. */
+    private static final Map<String, CgAnimNodeKind> KINDS = new ConcurrentHashMap<>();
 
     private CgAnimGraphCodec() {
     }
@@ -65,6 +68,19 @@ public final class CgAnimGraphCodec {
     public static void register() {
         CgAssetCompiler.register(CgBodyKinds.ANIM_GRAPH, COMPILER);
     }
+
+    /**
+     * Reads node kind {@code kind} with {@code reader} from now on: a kind outside this package.
+     *
+     * @throws IllegalArgumentException where {@code kind} is one of this package's own
+     */
+    public static void registerKind(String kind, CgAnimNodeKind reader) {
+        if (BUILT_IN.contains(kind)) throw new IllegalArgumentException(kind + " is a built-in node kind");
+        KINDS.put(kind, reader);
+    }
+
+    private static final Set<String> BUILT_IN = Set.of("sequence_player", "ref_pose", "slot", "two_way_blend",
+            "blend_list_by_bool", "blend_list_by_int", "layered_blend", "apply_additive", "save_cached_pose", "use_cached_pose");
 
     /**
      * {@code asset}'s graph, resolved over its parent and checked.
@@ -99,9 +115,10 @@ public final class CgAnimGraphCodec {
         }
     }
 
-    private static final class Reader {
+    private static final class Reader implements CgAnimNodeKind.Context {
 
         final String id;
+        final Map<?, ?> tree;
         final Map<?, ?> nodes;
         final Function<String, CgAnimSequence> clips;
         final Map<String, CgAnimVariable<?>> variables = new LinkedHashMap<>();
@@ -110,6 +127,7 @@ public final class CgAnimGraphCodec {
 
         Reader(String id, Map<?, ?> tree, Function<String, CgAnimSequence> clips) {
             this.id = id;
+            this.tree = tree;
             this.clips = clips;
             if (!(tree.get("nodes") instanceof Map<?, ?> n)) throw new CgAssetException(id + ": nodes: none");
             this.nodes = n;
@@ -131,7 +149,8 @@ public final class CgAnimGraphCodec {
         }
 
         /** Node {@code name} read as a pose, once. */
-        CgAnimNode pose(String name) {
+        @Override
+        public CgAnimNode pose(String name) {
             String at = id + ": nodes." + name;
             if (!(nodes.get(name) instanceof Map<?, ?> m)) throw new CgAssetException(at + ": a node reads it; nodes lacks it");
             if ("save_cached_pose".equals(m.get("kind"))) {
@@ -202,7 +221,11 @@ public final class CgAnimGraphCodec {
                     }
                     yield CgCachedPoseNode.use(save);
                 }
-                default -> throw new CgAssetException(at + ".kind: " + kind + " is no anim graph node kind");
+                default -> {
+                    CgAnimNodeKind reader = KINDS.get(kind);
+                    if (reader == null) throw new CgAssetException(at + ".kind: " + kind + " is no anim graph node kind");
+                    yield reader.read(this, at, m);
+                }
             };
         }
 
@@ -249,6 +272,23 @@ public final class CgAnimGraphCodec {
             return typed(at, name, CgAnimVariable.Type.FLOAT);
         }
 
+        @Override
+        public <T> CgAnimVariable<T> variable(String at, String name, CgAnimVariable.Type type) {
+            return typed(at, name, type);
+        }
+
+        @Override
+        public CgAnimVariable<?> variable(String at, String name) {
+            CgAnimVariable<?> v = variables.get(name);
+            if (v == null) throw new CgAssetException(at + ": " + name + " is no declared variable");
+            return v;
+        }
+
+        @Override
+        public Map<?, ?> section(String key, String name) {
+            return tree.get(key) instanceof Map<?, ?> sec && sec.get(name) instanceof Map<?, ?> m ? m : null;
+        }
+
         @SuppressWarnings("unchecked")
         private <T> CgAnimVariable<T> typed(String at, String name, CgAnimVariable.Type type) {
             CgAnimVariable<?> v = variables.get(name);
@@ -260,12 +300,14 @@ public final class CgAnimGraphCodec {
             return (CgAnimVariable<T>) v;
         }
 
-        private static String string(String at, Map<?, ?> m, String key) {
+        @Override
+        public String string(String at, Map<?, ?> m, String key) {
             if (!(m.get(key) instanceof String s)) throw new CgAssetException(at + "." + key + ": none");
             return s;
         }
 
-        private static float number(String at, Object o) {
+        @Override
+        public float number(String at, Object o) {
             if (!(o instanceof Number n)) throw new CgAssetException(at + ": " + o + " is not a number");
             return n.floatValue();
         }
@@ -277,6 +319,7 @@ public final class CgAnimGraphCodec {
     private static final class Namer implements Function<CgAnimNode, String> {
 
         final Map<String, Object> nodes = new LinkedHashMap<>();
+        final Map<String, Object> sections = new LinkedHashMap<>();
         private final Map<CgAnimNode, String> names = new IdentityHashMap<>();
         private final Map<String, Integer> counts = new HashMap<>();
         private final Set<String> taken;
@@ -289,7 +332,7 @@ public final class CgAnimGraphCodec {
         public String apply(CgAnimNode node) {
             String known = names.get(node);
             if (known != null) return known;
-            CgAnimNodeWriter w = new CgAnimNodeWriter(this);
+            CgAnimNodeWriter w = new CgAnimNodeWriter(this, sections);
             node.write(w);
             String kind = String.valueOf(w.written().get("kind"));
             String n;
@@ -336,6 +379,7 @@ public final class CgAnimGraphCodec {
         }
         tree.put("output", output);
         tree.put("nodes", nodes);
+        tree.putAll(names.sections);
         return tree;
     }
 }

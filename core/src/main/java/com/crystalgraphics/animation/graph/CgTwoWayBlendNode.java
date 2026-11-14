@@ -54,20 +54,20 @@ public final class CgTwoWayBlendNode extends CgAnimNode {
             private float now;
 
             @Override
-            protected void initialize(CgAnimGraphInstance g) {
+            public void initialize(CgAnimGraphInstance g) {
                 ra.initialize(g);
                 rb.initialize(g);
             }
 
             @Override
-            protected void update(CgAnimGraphInstance g, float weight) {
+            public void update(CgAnimGraphInstance g, float weight) {
                 now = Math.max(0f, Math.min(1f, alphaVariable != null ? g.get(alphaVariable) : alpha));
                 if (1f - now > CgAnimPose.ZERO_WEIGHT) ra.update(g, weight * (1f - now));
                 if (now > CgAnimPose.ZERO_WEIGHT) rb.update(g, weight * now);
             }
 
             @Override
-            protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+            public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                 if (now <= CgAnimPose.ZERO_WEIGHT) {
                     ra.evaluate(g, out);
                 } else if (now >= 1f - CgAnimPose.ZERO_WEIGHT) {

@@ -190,14 +190,76 @@ public final class CgBodyKinds {
             .property("save", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    static final CgType ANIM_STATE_MACHINE = animNode("state_machine")
+            .property("machine", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANIM_INERTIALIZATION = animNode("inertialization")
+            .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    private static final CgValueType COMPARISON = CgValueType.enumOf("<", "<=", ">", ">=", "==", "!=");
+
+    /** A transition rule: {@code all}, {@code any}, {@code not}, a variable compared, a clock compared, an event. */
+    static final CgType ANIM_RULE = CgTypes.struct("crystalgraphics:anim_graph.rule")
+            .property("all", CgValueType.listOf(CgValueType.SELF)).flags(CgPropertyFlag.HEADLESS)
+            .property("any", CgValueType.listOf(CgValueType.SELF)).flags(CgPropertyFlag.HEADLESS)
+            .property("not", CgValueType.SELF).flags(CgPropertyFlag.HEADLESS)
+            .property("variable", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("op", COMPARISON).flags(CgPropertyFlag.HEADLESS)
+            .property("time_remaining", COMPARISON).flags(CgPropertyFlag.HEADLESS)
+            .property("time_remaining_fraction", COMPARISON).flags(CgPropertyFlag.HEADLESS)
+            .property("state_time", COMPARISON).flags(CgPropertyFlag.HEADLESS)
+            .property("value", CgValueType.oneOf(FLOAT, BOOL)).flags(CgPropertyFlag.HEADLESS)
+            .property("event", STRING).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** A state ({@code pose}) or a conduit ({@code entry_rule}). */
+    static final CgType ANIM_STATE = CgTypes.struct("crystalgraphics:anim_graph.state")
+            .property("pose", NODE_NAME).flags(CgPropertyFlag.HEADLESS)
+            .property("always_reset_on_entry", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("entry_rule", CgValueType.struct(ANIM_RULE)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    static final CgType ANIM_TRANSITION = CgTypes.struct("crystalgraphics:anim_graph.transition")
+            .property("from", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("to", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("rule", CgValueType.struct(ANIM_RULE)).flags(CgPropertyFlag.HEADLESS)
+            .property("automatic", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("crossfade", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).range(0, null).defaultValue(0.2)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("blend", CgValueType.enumOf("linear", "cubic", "hermite_cubic", "sinusoidal", "quadratic_in_out",
+                    "cubic_in_out", "quartic_in_out", "quintic_in_out", "circular_in", "circular_out", "circular_in_out",
+                    "exp_in", "exp_out", "exp_in_out")).defaultValue("hermite_cubic").flags(CgPropertyFlag.HEADLESS)
+            .property("logic", CgValueType.enumOf("standard", "inertialization")).defaultValue("standard").flags(CgPropertyFlag.HEADLESS)
+            .property("priority", INT).forms(CgValueForm.CONSTANT).defaultValue(1).flags(CgPropertyFlag.HEADLESS)
+            .property("trigger_time", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(-1.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("overshoot_correction", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("min_reentry", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(-1.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("inertialize_self", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code FBakedAnimationStateMachine}: its states in order, the first the initial by default. */
+    static final CgType ANIM_MACHINE = CgTypes.struct("crystalgraphics:anim_graph.machine")
+            .property("initial", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("max_transitions_per_frame", INT).forms(CgValueForm.CONSTANT).range(1, null).defaultValue(3)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("skip_first_update_transition", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("reinitialize_on_becoming_relevant", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("states", CgValueType.mapOf(CgValueType.struct(ANIM_STATE))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("transitions", CgValueType.listOf(CgValueType.struct(ANIM_TRANSITION))).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     /**
-     * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name and the
-     * one whose pose is the output.
+     * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name, the one
+     * whose pose is the output, and its state machines by name.
      */
     public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)
             .property("variables", CgValueType.mapOf(CgValueType.struct(ANIM_VARIABLE))).flags(CgPropertyFlag.HEADLESS)
             .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("machines", CgValueType.mapOf(CgValueType.struct(ANIM_MACHINE))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Springs ──────────────────────────────────────────────────────────────────────────

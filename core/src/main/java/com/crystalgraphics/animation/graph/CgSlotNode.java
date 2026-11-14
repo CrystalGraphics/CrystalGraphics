@@ -85,12 +85,12 @@ public final class CgSlotNode extends CgAnimNode {
         }
 
         @Override
-        protected void initialize(CgAnimGraphInstance g) {
+        public void initialize(CgAnimGraphInstance g) {
             source.initialize(g);
         }
 
         @Override
-        protected void update(CgAnimGraphInstance g, float weight) {
+        public void update(CgAnimGraphInstance g, float weight) {
             float total = slot.total();
             scale = (total > 1f ? 1f / total : 1f) * slot.kept();
             sourceWeight = Math.min(1f, Math.max(0f, 1f - total));
@@ -102,7 +102,7 @@ public final class CgSlotNode extends CgAnimNode {
         }
 
         @Override
-        protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+        public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
             if (slot.count == 0) {
                 source.evaluate(g, out);
                 return;

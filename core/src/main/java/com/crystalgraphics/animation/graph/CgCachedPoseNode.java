@@ -52,12 +52,12 @@ public final class CgCachedPoseNode {
             SaveRuntime save = g.save(name);
             return new Runtime() {
                 @Override
-                protected void update(CgAnimGraphInstance g, float weight) {
+                public void update(CgAnimGraphInstance g, float weight) {
                     save.request(weight);
                 }
 
                 @Override
-                protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+                public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                     save.evaluate(g, out);
                 }
             };

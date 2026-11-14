@@ -27,11 +27,11 @@ public final class CgRefPoseNode extends CgAnimNode {
     protected Runtime instantiate(CgAnimGraphInstance g) {
         return new Runtime() {
             @Override
-            protected void update(CgAnimGraphInstance g, float weight) {
+            public void update(CgAnimGraphInstance g, float weight) {
             }
 
             @Override
-            protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+            public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                 out.rest();
             }
         };

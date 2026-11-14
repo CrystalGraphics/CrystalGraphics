@@ -97,13 +97,13 @@ public final class CgLayeredBlendNode extends CgAnimNode {
             private final float[] now = new float[n];
 
             @Override
-            protected void initialize(CgAnimGraphInstance g) {
+            public void initialize(CgAnimGraphInstance g) {
                 baseRuntime.initialize(g);
                 for (Runtime r : runtimes) r.initialize(g);
             }
 
             @Override
-            protected void update(CgAnimGraphInstance g, float weight) {
+            public void update(CgAnimGraphInstance g, float weight) {
                 baseRuntime.update(g, weight);
                 for (int i = 0; i < n; i++) {
                     Layer l = layers.get(i);
@@ -116,7 +116,7 @@ public final class CgLayeredBlendNode extends CgAnimNode {
             }
 
             @Override
-            protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+            public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                 baseRuntime.evaluate(g, out);
                 for (int i = 0; i < n; i++) {
                     if (now[i] <= CgAnimPose.ZERO_WEIGHT) continue;

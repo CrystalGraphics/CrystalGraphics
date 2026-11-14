@@ -13,6 +13,7 @@ import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.state.CgStateMachineNode;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSocket;
@@ -182,6 +183,34 @@ public final class CgAnimInstance {
      */
     public CgAnimInstance onUpdate(Update update) {
         updates.add(Objects.requireNonNull(update, "update"));
+        return this;
+    }
+
+    /**
+     * Queues transition event {@code name} on every state machine of its graph for {@code timeToLive} seconds: Unreal's
+     * {@code RequestTransitionEvent}. A transition whose rule is {@code event: name} takes it, and the first to take it
+     * consumes it.
+     *
+     * <pre>{@code
+     * anim.requestTransitionEvent("jump", 0.25);   // a jump pressed this frame, honoured within a quarter second
+     * }</pre>
+     */
+    public CgAnimInstance requestTransitionEvent(String name, double timeToLive) {
+        return requestTransitionEvent(name, timeToLive, false, CgStateMachineNode.Replace.APPEND);
+    }
+
+    /**
+     * As {@link #requestTransitionEvent(String, double)}: {@code unique}, each transition may take it once (Unreal's
+     * Unique queue mode); {@code replace}, how it meets one of the name already queued.
+     */
+    public CgAnimInstance requestTransitionEvent(String name, double timeToLive, boolean unique, CgStateMachineNode.Replace replace) {
+        CgStateMachineNode.requestTransitionEvent(graph, name, timeToLive, unique, replace);
+        return this;
+    }
+
+    /** Drops every queued transition event named {@code name}. */
+    public CgAnimInstance clearTransitionEvents(String name) {
+        CgStateMachineNode.clearTransitionEvents(graph, name);
         return this;
     }
 

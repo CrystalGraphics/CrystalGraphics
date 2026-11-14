@@ -76,7 +76,7 @@ public final class CgBlendListNode extends CgAnimNode {
             private float remaining, elapsed;
 
             @Override
-            protected void initialize(CgAnimGraphInstance g) {
+            public void initialize(CgAnimGraphInstance g) {
                 for (Runtime c : children) c.initialize(g);
                 active = -1;
                 Arrays.fill(weight, 0f);
@@ -88,7 +88,7 @@ public final class CgBlendListNode extends CgAnimNode {
             }
 
             @Override
-            protected void update(CgAnimGraphInstance g, float w) {
+            public void update(CgAnimGraphInstance g, float w) {
                 int chosen = choice(g);
                 if (chosen != active) {
                     boolean first = active < 0;
@@ -116,7 +116,7 @@ public final class CgBlendListNode extends CgAnimNode {
             }
 
             @Override
-            protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+            public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                 int used = 0;
                 for (int i = 0; i < n; i++) {
                     if (weight[i] <= CgAnimPose.ZERO_WEIGHT) continue;

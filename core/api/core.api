@@ -10,6 +10,7 @@ com/crystalgraphics/animation/CgAnimInstance
   field public,static,final NO_SOCKET I
   method public <init> (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)V
   method public bone (Ljava/lang/String;)I
+  method public clearTransitionEvents (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public curveTarget (Lcom/crystalgraphics/animation/CgAnimCurveTarget;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public evaluate ()Lcom/crystalgraphics/animation/CgAnimInstance;
   method public evaluations ()J
@@ -30,6 +31,8 @@ com/crystalgraphics/animation/CgAnimInstance
   method public rate ()F
   method public rate (F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public remove (Lcom/crystalgraphics/animation/CgBoneWrite;)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public requestTransitionEvent (Ljava/lang/String;D)Lcom/crystalgraphics/animation/CgAnimInstance;
+  method public requestTransitionEvent (Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;I)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Z)Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -103,6 +106,35 @@ com/crystalgraphics/animation/CgSkinBounds
   access public,final
   extends java/lang/Object
   method public,static posed (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;[Lorg/joml/Matrix4fc;Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
+com/crystalgraphics/animation/blend/CgAlphaBlend
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CIRCULAR_IN Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final CIRCULAR_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final CIRCULAR_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final CUBIC Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final CUBIC_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final EXP_IN Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final EXP_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final EXP_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final HERMITE_CUBIC Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final LINEAR Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final QUADRATIC_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final QUARTIC_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final QUINTIC_IN_OUT Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  field public,static,final SINUSOIDAL Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  method public apply (F)F
+  method public id ()Ljava/lang/String;
+  method public inverse (F)F
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  method public,static values ()[Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+com/crystalgraphics/animation/blend/CgInertializationNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/blend/CgInertializationNode;
 com/crystalgraphics/animation/graph/CgAnimGraph
   access public,final
   extends java/lang/Object
@@ -130,6 +162,7 @@ com/crystalgraphics/animation/graph/CgAnimGraphCodec
   field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
   method public,static compile (Lcom/crystalgraphics/asset/tree/CgAssetData;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/animation/graph/CgAnimGraphDefinition;
   method public,static register ()V
+  method public,static registerKind (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;)V
   method public,static toTree (Lcom/crystalgraphics/animation/graph/CgAnimGraph;)Ljava/util/Map;
 com/crystalgraphics/animation/graph/CgAnimGraphDefinition
   access public,final,record
@@ -145,24 +178,36 @@ com/crystalgraphics/animation/graph/CgAnimGraphInstance
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/animation/graph/CgAnimGraph;Lcom/crystalgraphics/api/animation/CgSkeleton;)V
+  method public beginPlayerScope ()I
   method public borrow ()Lcom/crystalgraphics/api/animation/CgAnimPose;
   method public curveLayer ()I
   method public curveLayer (I)I
   method public delta ()F
+  method public endPlayerScope ()V
+  method public enterInertializer ()V
   method public evaluate (Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public exitInertializer ()V
+  method public forEachRuntime (Ljava/util/function/Consumer;)V
   method public frame ()J
   method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
   method public giveBack (Lcom/crystalgraphics/api/animation/CgAnimPose;)V
   method public graph ()Lcom/crystalgraphics/animation/graph/CgAnimGraph;
+  method public inertializer ()Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance$Inertializer;
+  method public inertializerAbove ()Z
   method public initialize ()V
   method public is (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Z
+  method public popInertializer ()V
   method public preUpdate ()V
+  method public pushInertializer (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance$Inertializer;)V
   method public runtime (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimNode$Runtime;
   method public sampleClip (I)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public sampleLayer (I)I
+  method public samplePlayer (I)Lcom/crystalgraphics/animation/graph/CgSequencePlayerNode$PlayerRuntime;
+  method public sampleScope (I)I
   method public sampleTime (I)F
   method public sampleWeight (I)F
   method public samples ()I
+  method public seconds ()D
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;F)Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;I)Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Z)Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;
@@ -172,6 +217,10 @@ com/crystalgraphics/animation/graph/CgAnimGraphInstance
   method public toString ()Ljava/lang/String;
   method public update (F)V
   method public value (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
+com/crystalgraphics/animation/graph/CgAnimGraphInstance$Inertializer
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract requestInertialization (F)V
 com/crystalgraphics/animation/graph/CgAnimNode
   access public,abstract
   extends java/lang/Object
@@ -180,13 +229,27 @@ com/crystalgraphics/animation/graph/CgAnimNode
   method protected,abstract children (Ljava/util/function/Consumer;)V
   method protected,abstract instantiate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)Lcom/crystalgraphics/animation/graph/CgAnimNode$Runtime;
   method public <init> ()V
+  method public,final forEachChild (Ljava/util/function/Consumer;)V
 com/crystalgraphics/animation/graph/CgAnimNode$Runtime
   access public,abstract
   extends java/lang/Object
-  method protected initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
-  method protected,abstract evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
-  method protected,abstract update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
   method public <init> ()V
+  method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
+  method public,abstract evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public,abstract update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
+com/crystalgraphics/animation/graph/CgAnimNodeKind
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract read (Lcom/crystalgraphics/animation/graph/CgAnimNodeKind$Context;Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/animation/graph/CgAnimNode;
+com/crystalgraphics/animation/graph/CgAnimNodeKind$Context
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract number (Ljava/lang/String;Ljava/lang/Object;)F
+  method public,abstract pose (Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimNode;
+  method public,abstract section (Ljava/lang/String;Ljava/lang/String;)Ljava/util/Map;
+  method public,abstract string (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)Ljava/lang/String;
+  method public,abstract variable (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimVariable;
+  method public,abstract variable (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;)Lcom/crystalgraphics/animation/graph/CgAnimVariable;
 com/crystalgraphics/animation/graph/CgAnimNodeWriter
   access public,final
   extends java/lang/Object
@@ -196,6 +259,7 @@ com/crystalgraphics/animation/graph/CgAnimNodeWriter
   method public node (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimNodeWriter;
   method public nodes (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/animation/graph/CgAnimNodeWriter;
   method public put (Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/animation/graph/CgAnimNodeWriter;
+  method public section (Ljava/lang/String;Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/animation/graph/CgAnimNodeWriter;
 com/crystalgraphics/animation/graph/CgAnimSlot
   access public,final
   extends java/lang/Object
@@ -283,11 +347,16 @@ com/crystalgraphics/animation/graph/CgSequencePlayerNode$PlayerRuntime
   access public,final
   extends com/crystalgraphics/animation/graph/CgAnimNode$Runtime
   method public clip ()Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
   method public loops ()Z
   method public play (Lcom/crystalgraphics/api/animation/CgAnimSequence;Z)Lcom/crystalgraphics/animation/graph/CgSequencePlayerNode$PlayerRuntime;
   method public position (F)Lcom/crystalgraphics/animation/graph/CgSequencePlayerNode$PlayerRuntime;
+  method public rate ()F
   method public rate (F)Lcom/crystalgraphics/animation/graph/CgSequencePlayerNode$PlayerRuntime;
   method public time ()F
+  method public update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
+  method public wrapped ()Z
 com/crystalgraphics/animation/graph/CgSlotNode
   access public,final
   extends com/crystalgraphics/animation/graph/CgAnimNode
@@ -301,6 +370,142 @@ com/crystalgraphics/animation/graph/CgTwoWayBlendNode
   method public toString ()Ljava/lang/String;
   method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Lcom/crystalgraphics/animation/graph/CgAnimNode;F)Lcom/crystalgraphics/animation/graph/CgTwoWayBlendNode;
   method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Lcom/crystalgraphics/animation/graph/CgAnimNode;Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/graph/CgTwoWayBlendNode;
+com/crystalgraphics/animation/state/CgAnimRule
+  access public,abstract
+  extends java/lang/Object
+  method public,abstract test (Lcom/crystalgraphics/animation/state/CgAnimRule$Context;)Z
+  method public,static all ([Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static always ()Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static any ([Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static event (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static isTrue (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static not (Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static read (Lcom/crystalgraphics/animation/graph/CgAnimNodeKind$Context;Ljava/lang/String;Ljava/lang/Object;)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static stateTime (Lcom/crystalgraphics/animation/state/CgAnimRule$Op;F)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static timeRemaining (Lcom/crystalgraphics/animation/state/CgAnimRule$Op;F)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static timeRemainingFraction (Lcom/crystalgraphics/animation/state/CgAnimRule$Op;F)Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public,static variable (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/animation/state/CgAnimRule$Op;F)Lcom/crystalgraphics/animation/state/CgAnimRule;
+com/crystalgraphics/animation/state/CgAnimRule$Context
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract event (Ljava/lang/String;)Z
+  method public,abstract get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
+  method public,abstract stateTime ()F
+  method public,abstract timeRemaining ()F
+  method public,abstract timeRemainingFraction ()F
+com/crystalgraphics/animation/state/CgAnimRule$Op
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final EQUAL Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  field public,static,final GREATER Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  field public,static,final GREATER_EQUAL Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  field public,static,final LESS Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  field public,static,final LESS_EQUAL Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  field public,static,final NOT_EQUAL Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+  method public,static values ()[Lcom/crystalgraphics/animation/state/CgAnimRule$Op;
+com/crystalgraphics/animation/state/CgAnimState
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;ZLcom/crystalgraphics/animation/state/CgAnimRule;)V
+  method public alwaysResetOnEntry ()Lcom/crystalgraphics/animation/state/CgAnimState;
+  method public conduit ()Z
+  method public entryRule ()Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public name ()Ljava/lang/String;
+  method public pose ()Lcom/crystalgraphics/animation/graph/CgAnimNode;
+  method public resetsOnEntry ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static conduit (Ljava/lang/String;Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimState;
+  method public,static of (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/state/CgAnimState;
+com/crystalgraphics/animation/state/CgAnimTransition
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/animation/state/CgAnimRule;ZFLcom/crystalgraphics/animation/blend/CgAlphaBlend;ZIFZFZ)V
+  method public automatic ()Z
+  method public blend ()Lcom/crystalgraphics/animation/blend/CgAlphaBlend;
+  method public blend (Lcom/crystalgraphics/animation/blend/CgAlphaBlend;)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public crossfade ()F
+  method public crossfade (F)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public from ()Ljava/lang/String;
+  method public inertialize ()Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public inertializeSelf ()Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public inertialized ()Z
+  method public inertializesSelf ()Z
+  method public minReentry ()F
+  method public minReentry (F)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public overshootCorrection ()Z
+  method public overshootCorrection (Z)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public priority ()I
+  method public priority (I)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public rule ()Lcom/crystalgraphics/animation/state/CgAnimRule;
+  method public to ()Ljava/lang/String;
+  method public triggerTime ()F
+  method public triggerTime (F)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static automatic (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+  method public,static of (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/animation/state/CgAnimRule;)Lcom/crystalgraphics/animation/state/CgAnimTransition;
+com/crystalgraphics/animation/state/CgStateMachine
+  access public,final
+  extends java/lang/Object
+  method public initial ()I
+  method public maxTransitionsPerFrame ()I
+  method public name ()Ljava/lang/String;
+  method public reinitializeOnBecomingRelevant ()Z
+  method public skipFirstUpdateTransition ()Z
+  method public state (Ljava/lang/String;)I
+  method public states ()Ljava/util/List;
+  method public toString ()Ljava/lang/String;
+  method public transitions ()Ljava/util/List;
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+com/crystalgraphics/animation/state/CgStateMachine$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/animation/state/CgStateMachine;
+  method public initial (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+  method public maxTransitionsPerFrame (I)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+  method public reinitializeOnBecomingRelevant (Z)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+  method public skipFirstUpdateTransition (Z)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+  method public state (Lcom/crystalgraphics/animation/state/CgAnimState;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+  method public transition (Lcom/crystalgraphics/animation/state/CgAnimTransition;)Lcom/crystalgraphics/animation/state/CgStateMachine$Builder;
+com/crystalgraphics/animation/state/CgStateMachineNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public in (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)Lcom/crystalgraphics/animation/state/CgStateMachineNode$Machine;
+  method public machine ()Lcom/crystalgraphics/animation/state/CgStateMachine;
+  method public toString ()Ljava/lang/String;
+  method public,static clearTransitionEvents (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;)V
+  method public,static of (Lcom/crystalgraphics/animation/state/CgStateMachine;)Lcom/crystalgraphics/animation/state/CgStateMachineNode;
+  method public,static requestTransitionEvent (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;)V
+com/crystalgraphics/animation/state/CgStateMachineNode$Machine
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode$Runtime
+  implements com/crystalgraphics/animation/state/CgAnimRule$Context
+  method public activeTransitions ()I
+  method public currentState ()Ljava/lang/String;
+  method public elapsed ()F
+  method public evaluate (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public event (Ljava/lang/String;)Z
+  method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
+  method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
+  method public stateTime ()F
+  method public stateWeight (Ljava/lang/String;)F
+  method public timeRemaining ()F
+  method public timeRemainingFraction ()F
+  method public update (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;F)V
+com/crystalgraphics/animation/state/CgStateMachineNode$Replace
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final APPEND Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
+  field public,static,final IGNORE Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
+  field public,static,final OVERWRITE Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
+  method public,static values ()[Lcom/crystalgraphics/animation/state/CgStateMachineNode$Replace;
 com/crystalgraphics/api/PoseStack
   access public
   extends java/lang/Object
@@ -5723,6 +5928,7 @@ com/crystalgraphics/easing/CgEasings
   field public,static,final OUT_QUART Lcom/crystalgraphics/easing/CgEasing;
   field public,static,final OUT_QUINT Lcom/crystalgraphics/easing/CgEasing;
   field public,static,final OUT_SINE Lcom/crystalgraphics/easing/CgEasing;
+  field public,static,final SMOOTH_STEP Lcom/crystalgraphics/easing/CgEasing;
   method public,static bake (Lcom/crystalgraphics/easing/CgEasing;I)Lcom/crystalgraphics/easing/CgEasing;
   method public,static bake (Lcom/crystalgraphics/easing/CgEasing;[D)Lcom/crystalgraphics/easing/CgEasing;
   method public,static byIndex (I)Lcom/crystalgraphics/easing/CgEasing;

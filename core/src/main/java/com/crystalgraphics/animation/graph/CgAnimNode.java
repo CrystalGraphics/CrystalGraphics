@@ -26,8 +26,8 @@ import com.crystalgraphics.api.animation.CgAnimPose;
  *     protected Runtime instantiate(CgAnimGraphInstance g) {
  *         Runtime src = g.runtime(source);
  *         return new Runtime() {
- *             protected void update(CgAnimGraphInstance g, float weight) { if (!g.is(frozen)) src.update(g, weight); }
- *             protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) { src.evaluate(g, out); }
+ *             public void update(CgAnimGraphInstance g, float weight) { if (!g.is(frozen)) src.update(g, weight); }
+ *             public void evaluate(CgAnimGraphInstance g, CgAnimPose out) { src.evaluate(g, out); }
  *         };
  *     }
  *     protected void children(Consumer<CgAnimNode> each) { each.accept(source); }
@@ -54,13 +54,13 @@ public abstract class CgAnimNode {
          * This frame's update, at {@code weight}: its children updated at their shares, a player's tick recorded.
          * Unreal's {@code Update_AnyThread}.
          */
-        protected abstract void update(CgAnimGraphInstance g, float weight);
+        public abstract void update(CgAnimGraphInstance g, float weight);
 
         /** Its local pose into {@code out}: Unreal's {@code Evaluate_AnyThread}. */
-        protected abstract void evaluate(CgAnimGraphInstance g, CgAnimPose out);
+        public abstract void evaluate(CgAnimGraphInstance g, CgAnimPose out);
 
         /** Back to its first frame: a clip to its start, a blend to its first choice. Unreal's {@code Initialize_AnyThread}. */
-        protected void initialize(CgAnimGraphInstance g) {
+        public void initialize(CgAnimGraphInstance g) {
         }
     }
 
@@ -69,6 +69,11 @@ public abstract class CgAnimNode {
 
     /** Each child this node reads, for the graph's walk at build: cycles and pose depth. */
     protected abstract void children(Consumer<CgAnimNode> each);
+
+    /** Each node it reads, in order: for a tool walking a graph. */
+    public final void forEachChild(Consumer<CgAnimNode> each) {
+        children(each);
+    }
 
     /** Each variable this node reads, so the graph can check it declares them. */
     protected void reads(Consumer<CgAnimVariable<?>> each) {

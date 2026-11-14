@@ -48,20 +48,20 @@ public final class CgApplyAdditiveNode extends CgAnimNode {
             private float now;
 
             @Override
-            protected void initialize(CgAnimGraphInstance g) {
+            public void initialize(CgAnimGraphInstance g) {
                 rb.initialize(g);
                 ra.initialize(g);
             }
 
             @Override
-            protected void update(CgAnimGraphInstance g, float weight) {
+            public void update(CgAnimGraphInstance g, float weight) {
                 rb.update(g, weight);
                 now = Math.max(0f, Math.min(1f, alphaVariable != null ? g.get(alphaVariable) : alpha));
                 if (now > CgAnimPose.ZERO_WEIGHT) ra.update(g, weight * now);
             }
 
             @Override
-            protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+            public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
                 rb.evaluate(g, out);
                 if (now <= CgAnimPose.ZERO_WEIGHT) return;
                 CgAnimPose delta = g.borrow();

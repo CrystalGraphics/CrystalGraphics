@@ -113,7 +113,7 @@ public final class CgSequencePlayerNode extends CgAnimNode {
         private final CgSequencePlayerNode node;
         @Nullable
         private CgAnimSequence clip;
-        private boolean loop;
+        private boolean loop, wrapped;
         private float rate, time;
 
         PlayerRuntime(CgSequencePlayerNode node) {
@@ -121,7 +121,7 @@ public final class CgSequencePlayerNode extends CgAnimNode {
         }
 
         @Override
-        protected void initialize(CgAnimGraphInstance g) {
+        public void initialize(CgAnimGraphInstance g) {
             clip = node.clip;
             loop = node.loop;
             rate = node.playRate;
@@ -161,17 +161,29 @@ public final class CgSequencePlayerNode extends CgAnimNode {
             return loop;
         }
 
+        /** Its play rate. */
+        public float rate() {
+            return rate;
+        }
+
+        /** Whether its last tick wrapped past an end of its looping clip: Unreal's looped-last-frame check. */
+        public boolean wrapped() {
+            return wrapped;
+        }
+
         @Override
-        protected void update(CgAnimGraphInstance g, float weight) {
+        public void update(CgAnimGraphInstance g, float weight) {
             if (clip != null && weight > CgAnimPose.ZERO_WEIGHT) g.tick(this, clip, weight);
         }
 
         /** {@code FAnimationRuntime::AdvanceTime}: wrapped by {@code fmod} when looping, else clamped to its length. */
         void tick(float delta) {
+            wrapped = false;
             if (clip == null) return;
             float length = clip.duration(), next = time + delta * rate;
             if (next < 0f || next > length) {
                 if (loop) {
+                    wrapped = true;
                     if (length != 0f) {
                         next %= length;
                         if (next < 0f) next += length;
@@ -186,7 +198,7 @@ public final class CgSequencePlayerNode extends CgAnimNode {
         }
 
         @Override
-        protected void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
+        public void evaluate(CgAnimGraphInstance g, CgAnimPose out) {
             if (clip == null) {
                 out.rest();
             } else if (clip.settings().additive().isAdditive()) {

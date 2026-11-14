@@ -29,9 +29,11 @@ public final class CgAnimNodeWriter {
 
     private final Map<String, Object> out = new LinkedHashMap<>();
     private final Function<CgAnimNode, String> names;
+    private final Map<String, Object> sections;
 
-    CgAnimNodeWriter(Function<CgAnimNode, String> names) {
+    CgAnimNodeWriter(Function<CgAnimNode, String> names, Map<String, Object> sections) {
         this.names = names;
+        this.sections = sections;
     }
 
     /** Its kind: the {@code anim_graph} node family's key. */
@@ -69,6 +71,20 @@ public final class CgAnimNodeWriter {
     public CgAnimNodeWriter alpha(String key, float constant, @Nullable CgAnimVariable<?> variable, float dflt) {
         if (variable != null) out.put(key, variable.name());
         else if (constant != dflt) out.put(key, (double) constant);
+        return this;
+    }
+
+    /**
+     * An entry {@code name} of the graph's section {@code key}, beside its nodes: a state machine's definition under
+     * {@code machines}.
+     *
+     * @throws IllegalArgumentException where another node wrote a different entry of that name
+     */
+    @SuppressWarnings("unchecked")
+    public CgAnimNodeWriter section(String key, String name, Map<String, Object> value) {
+        Map<String, Object> sec = (Map<String, Object>) sections.computeIfAbsent(key, k -> new LinkedHashMap<String, Object>());
+        Object had = sec.putIfAbsent(name, value);
+        if (had != null && !had.equals(value)) throw new IllegalArgumentException(key + "." + name + " is written twice, differently");
         return this;
     }
 

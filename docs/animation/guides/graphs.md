@@ -61,6 +61,8 @@ anim.graph(hero(mesh))
 | `CgLayeredBlendNode.of(base).layer(pose, mask[, weight])` `.curvesFromBase()` | Layered blend per bone | a pose over part of the skeleton |
 | `CgApplyAdditiveNode.of(base, additive, alpha)` | Apply Additive | an additive pose added over `base` |
 | `graph.save(name, source)`, `CgCachedPoseNode.use(name)` | Save / Use Cached Pose | one pose read in several places, evaluated once a frame |
+| `CgStateMachineNode.of(machine)` | State Machine | states and the transitions between them ([below](#state-machines)) |
+| `CgInertializationNode.of(source)` | Inertialization | smooths a switch below it away instead of crossfading |
 
 - **A node updates only while it shows**: a player under a blend at weight 0 does not advance, as in Unreal. Use
   `resetOnActivate()` to restart a pose each time it is chosen.
@@ -109,6 +111,82 @@ CgLayeredBlendNode.of(run).layer(aim, spine, AIM_WEIGHT);                     //
 - A mask naming a bone the skeleton lacks throws when an instance runs the graph.
 - A layer's material curves replace the base's (`MaxWeight`); `curvesFromBase()` keeps the base's (`UseBaseOnly`).
 
+## State machines
+
+A **state machine** (`CgStateMachine`, Unreal's) plays one state at a time and moves between states when a
+transition's rule holds, crossfading as it goes. States are poses (any node, another machine included); a **conduit** is
+a branch point with a rule of its own.
+
+```java
+static final CgAnimVariable<Float> SPEED = CgAnimVariable.floating("speed");
+static final CgAnimVariable<Boolean> GROUNDED = CgAnimVariable.bool("grounded", true);
+
+static final CgStateMachine LOCOMOTION = CgStateMachine.builder("locomotion")
+        .state(CgAnimState.of("idle", CgSequencePlayerNode.of(IDLE).loop()))
+        .state(CgAnimState.of("run", CgSequencePlayerNode.of(RUN).loop()))
+        .state(CgAnimState.of("fall", CgSequencePlayerNode.of(FALL).loop()))
+        .state(CgAnimState.of("land", CgSequencePlayerNode.of(LAND)).alwaysResetOnEntry())
+        .transition(CgAnimTransition.of("idle", "run", CgAnimRule.variable(SPEED, CgAnimRule.Op.GREATER, 0.1f)))
+        .transition(CgAnimTransition.of("run", "idle", CgAnimRule.variable(SPEED, CgAnimRule.Op.LESS_EQUAL, 0.1f)).crossfade(0.3f))
+        .transition(CgAnimTransition.of("idle", "fall", CgAnimRule.not(CgAnimRule.isTrue(GROUNDED))).priority(0))
+        .transition(CgAnimTransition.of("run", "fall", CgAnimRule.not(CgAnimRule.isTrue(GROUNDED))).priority(0))
+        .transition(CgAnimTransition.of("fall", "land", CgAnimRule.isTrue(GROUNDED)).crossfade(0.05f))
+        .transition(CgAnimTransition.automatic("land", "idle").crossfade(0.15f))      // when the landing clip runs out
+        .build();
+
+anim.graph(CgAnimGraph.builder("mymod:hero", mesh.skeleton()).variables(SPEED, GROUNDED)
+        .output(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(LOCOMOTION)))
+        .build());
+```
+
+| Rule | Holds when |
+|---|---|
+| `CgAnimRule.variable(v, op, value)`, `isTrue(bool)` | a variable compares so (`<`, `<=`, `>`, `>=`, `==`, `!=`) |
+| `timeRemaining(op, s)`, `timeRemainingFraction(op, f)` | the state's clip has so long left: its highest weighted clip |
+| `stateTime(op, s)` | the machine has been in the state so long |
+| `event(name)` | the game requested the event: `anim.requestTransitionEvent("jump", 0.25)` |
+| `all(...)`, `any(...)`, `not(r)`, `always()` | combinations; `always()` is an empty `all` |
+
+- **A state's exits are tried by priority**, lower first (Unreal's default is 1), then in the order made. The first
+  whose rule holds is taken; up to three a frame (`maxTransitionsPerFrame`), each from the state the last entered.
+- **A crossfade** runs its `crossfade` seconds (0.2 by default) along its `blend` curve (`HERMITE_CUBIC` by default, any
+  of Unreal's `EAlphaBlendOption`s). One taken while another runs blends over that one's result. Back into a state that
+  still shows, it is shortened by how much of it shows.
+- **A state restarts** when it is entered from no weight, or on every entry with `alwaysResetOnEntry()`.
+- **`automatic`** is Unreal's rule based on the state's clip: taken when the clip has `triggerTime` left (the crossfade
+  by default); the crossfade is then shortened by how far past that the frame went, unless
+  `overshootCorrection(false)` (Unreal 4's behaviour).
+- **On its first frame** a machine enters at once whatever its transitions reach, with no crossfade.
+- `minReentry(s)` keeps a state from being entered again within `s` seconds.
+- **Events** are queued for a time to live on the instance's clock; the first transition to take one consumes it, or
+  each transition once with `requestTransitionEvent(name, ttl, true, Replace.APPEND)`.
+
+For a tool or a test, `machineNode.in(anim.graph())` reads a machine's `currentState()`, `elapsed()`,
+`stateWeight(name)` and `activeTransitions()`.
+
+### Inertialization
+
+A transition marked `inertialize()` switches at once and hands its time to the nearest `CgInertializationNode` above
+the machine. That node carries each bone's offset and velocity from the old pose into the new one and decays it to zero
+along a curve that never overshoots (Unreal's inertialization). Only the target state runs, so it costs one pose where a
+crossfade costs two: the cheap choice for sudden moves such as a hit, a dodge or a cancel.
+
+```java
+CgStateMachine moves = CgStateMachine.builder("moves")
+        .state(CgAnimState.of("guard", guard)).state(CgAnimState.of("hit", hit).alwaysResetOnEntry())
+        .transition(CgAnimTransition.of("guard", "hit", CgAnimRule.event("hit")).crossfade(0.2f).inertialize())
+        .transition(CgAnimTransition.automatic("hit", "guard").inertialize())
+        .build();
+CgAnimGraph.builder("mymod:fighter", skeleton)
+        .output(CgInertializationNode.of(CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT, CgStateMachineNode.of(moves))))
+        .build();
+```
+
+- **A machine that inertializes with no inertialization node above it** fails when an instance runs the graph. A
+  machine reached through a cached pose cannot reach one.
+- **Offsets are in each bone's parent space**: a jump of the whole character is not smoothed, and material curves switch
+  at once.
+
 ## From a file
 
 The same graph, as `anim_graphs/mymod/hero.yaml`:
@@ -147,11 +225,45 @@ anim.graph(graph);                                // bind once per mesh and keep
 | `apply_additive` | `base`, `additive`, `alpha` |
 | `save_cached_pose` | `pose`: its own name is the cache's |
 | `use_cached_pose` | `save` |
+| `state_machine` | `machine`: a name under the graph's `machines` |
+| `inertialization` | `source` |
 
 - Nodes are a map by name, and a node reads others by name. An `alpha` or `weight` is a number or a declared float
   variable's name.
 - **It fails at load**, naming the file and the node: an unknown kind, a name no node has, a node read twice or by
   none, an undeclared or mistyped variable. A clip the mesh lacks fails when the graph is bound to it.
+- **Machines** sit beside the nodes, by name, their states' poses naming nodes:
+
+```yaml
+output: out
+nodes:
+  out: { kind: inertialization, source: body }   # what the inertialized transition needs above its machine
+  body: { kind: slot, source: loco }
+  loco: { kind: state_machine, machine: locomotion }
+  idle: { kind: sequence_player, clip: mymod:hero/idle, loop: true }
+  run: { kind: sequence_player, clip: mymod:hero/run, loop: true }
+  land: { kind: sequence_player, clip: mymod:hero/land }
+machines:
+  locomotion:
+    states:
+      idle: { pose: idle }
+      run: { pose: run }
+      land: { pose: land, always_reset_on_entry: true }
+      moving: { entry_rule: { variable: grounded, op: '==', value: true } }   # a conduit
+    transitions:
+      - { from: idle, to: moving, rule: { variable: speed, op: '>', value: 0.1 } }
+      - { from: moving, to: run, rule: { all: [] }, crossfade: 0.25, blend: cubic_in_out }
+      - { from: run, to: idle, rule: { variable: speed, op: '<=', value: 0.1 }, crossfade: 0.3 }
+      - { from: land, to: idle, automatic: true, crossfade: 0.15 }
+      - { from: run, to: land, rule: { event: land }, logic: inertialization, priority: 0 }
+```
+
+  A rule is `all`, `any`, `not`, `{ variable, op, value }`, `{ time_remaining | time_remaining_fraction | state_time:
+  <op>, value }` or `{ event }`. A transition's other keys, each with Unreal's default: `crossfade` 0.2, `blend`
+  hermite_cubic, `logic` standard, `priority` 1, `trigger_time` (the crossfade), `overshoot_correction` true,
+  `min_reentry` (none), `inertialize_self` false. A machine's: `initial` (its first state),
+  `max_transitions_per_frame` 3, `skip_first_update_transition` true, `reinitialize_on_becoming_relevant` true. Blend
+  profiles, custom curves and custom transition graphs fail at load.
 - **A child graph** names its `parent:` and overrides nodes by name, as any asset overrides its parent's keys:
 
 ```yaml

@@ -196,6 +196,10 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("kitRoots").orNull?.let { systemProperty("crystalgraphics.resourceOverrideDirs", it) }
     // GeckoLib models and animations, each folder's geo/ and animations/ loaded and converted: -PgeckoAssets=<dir>;...
     providers.gradleProperty("geckoAssets").orNull?.let { systemProperty("crystalgraphics.geckoAssets", it) }
+    // An imported anim_graph file checked against the census it was imported from: -PanimGraphFile= -PanimGraphCensus=
+    providers.gradleProperty("animGraphFile").orNull?.let { systemProperty("crystalgraphics.animGraph.file", it) }
+    providers.gradleProperty("animGraphCensus").orNull?.let { systemProperty("crystalgraphics.animGraph.census", it) }
+    providers.gradleProperty("animGraphParent").orNull?.let { systemProperty("crystalgraphics.animGraph.parent", it) }
     // The kits' shading models, registered before their materials compile: -PkitShading=<namespace>=<kit dir>;...
     providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
     // A move's materials, every one required to compile: -PkitMaterials=<file of ids, one a line>

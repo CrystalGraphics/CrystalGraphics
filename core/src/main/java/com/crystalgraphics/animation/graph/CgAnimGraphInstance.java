@@ -5,6 +5,7 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
@@ -47,14 +48,17 @@ public final class CgAnimGraphInstance {
     @Nullable
     private final CgSequencePlayerNode.PlayerRuntime single;
     private float delta;
+    private double seconds;
     private long frame;
-    private int curveLayer, curveLayers;
+    private int curveLayer, curveLayers, playerScope, inertializersAbove;
+    private Inertializer[] inertializers = new Inertializer[2];
+    private int inertializing;
 
     // This frame's ticks and samples: players to advance after the walk, and what each contributes to the curves
     private CgSequencePlayerNode.PlayerRuntime[] tickPlayers = new CgSequencePlayerNode.PlayerRuntime[8];
     private CgAnimSequence[] sampleClips = new CgAnimSequence[8];
     private float[] sampleTimes = new float[8], sampleWeights = new float[8];
-    private int[] sampleLayers = new int[8];
+    private int[] sampleLayers = new int[8], sampleScopes = new int[8];
     private int samples;
 
     private CgAnimPose[] pool = new CgAnimPose[4];
@@ -112,6 +116,11 @@ public final class CgAnimGraphInstance {
     /** A new curve layer's number, for a layered blend's layer at instantiate. */
     int newCurveLayer() {
         return ++curveLayers;
+    }
+
+    /** Each node's runtime, in no order: what a game-thread request to every node of a kind walks (a transition event). */
+    public void forEachRuntime(Consumer<CgAnimNode.Runtime> each) {
+        runtimes.values().forEach(each);
     }
 
     /** Every node back to its first frame: clips to their start, blends to their first choice. */
@@ -194,6 +203,7 @@ public final class CgAnimGraphInstance {
      */
     public void update(float delta) {
         this.delta = delta;
+        seconds += delta;
         frame++;
         samples = 0;
         curveLayer = 0;
@@ -222,6 +232,11 @@ public final class CgAnimGraphInstance {
         return delta;
     }
 
+    /** Its clock, seconds: the sum of its deltas. What a state's re-entry and an event's time to live count by. */
+    public double seconds() {
+        return seconds;
+    }
+
     /** How many frames it has updated: a cached pose evaluates once per frame by it. */
     public long frame() {
         return frame;
@@ -244,6 +259,7 @@ public final class CgAnimGraphInstance {
     /** A player's tick this frame at {@code weight}: advanced after the walk, its curves added at its new time. */
     void tick(CgSequencePlayerNode.PlayerRuntime player, CgAnimSequence clip, float weight) {
         int i = reserve();
+        sampleScopes[i] = playerScope;
         tickPlayers[i] = player;
         sampleClips[i] = clip;
         sampleWeights[i] = weight;
@@ -253,6 +269,7 @@ public final class CgAnimGraphInstance {
     /** A clip sampled at {@code time} this frame (a slot's entry): its curves added at {@code weight}. */
     void sampled(CgAnimSequence clip, float time, float weight) {
         int i = reserve();
+        sampleScopes[i] = playerScope;
         tickPlayers[i] = null;
         sampleClips[i] = clip;
         sampleTimes[i] = time;
@@ -268,6 +285,7 @@ public final class CgAnimGraphInstance {
             sampleTimes = Arrays.copyOf(sampleTimes, n);
             sampleWeights = Arrays.copyOf(sampleWeights, n);
             sampleLayers = Arrays.copyOf(sampleLayers, n);
+            sampleScopes = Arrays.copyOf(sampleScopes, n);
         }
         return samples++;
     }
@@ -291,6 +309,72 @@ public final class CgAnimGraphInstance {
 
     public int sampleLayer(int i) {
         return sampleLayers[i];
+    }
+
+    /** Sample {@code i}'s player, or null for a slot's entry. */
+    @Nullable
+    public CgSequencePlayerNode.PlayerRuntime samplePlayer(int i) {
+        return tickPlayers[i];
+    }
+
+    /** The player scope sample {@code i} was ticked in: which state machine's states it belongs to, 0 none. */
+    public int sampleScope(int i) {
+        return sampleScopes[i];
+    }
+
+    /**
+     * Opens a player scope one deeper, for a state machine updating its states: the players ticked until
+     * {@link #endPlayerScope} are its states' own (Unreal's {@code PlayerNodeIndices}), not an outer machine's.
+     * Answers the scope's depth.
+     */
+    public int beginPlayerScope() {
+        return ++playerScope;
+    }
+
+    public void endPlayerScope() {
+        playerScope--;
+    }
+
+    // ── inertialization ──────────────────────────────────────────────────────────────────
+
+    /** Where a transition's inertialization goes: the nearest inertialization node above it (Unreal's graph message). */
+    public interface Inertializer {
+
+        /** Inertializes the pose over {@code duration} seconds, from this frame's evaluation. */
+        void requestInertialization(float duration);
+    }
+
+    /** While an inertialization node updates its source: requests below go to it. */
+    public void pushInertializer(Inertializer inertializer) {
+        if (inertializing == inertializers.length) inertializers = Arrays.copyOf(inertializers, inertializing * 2);
+        inertializers[inertializing++] = inertializer;
+    }
+
+    public void popInertializer() {
+        inertializers[--inertializing] = null;
+    }
+
+    /** The nearest inertialization node above the node updating now, or null. */
+    @Nullable
+    public Inertializer inertializer() {
+        return inertializing == 0 ? null : inertializers[inertializing - 1];
+    }
+
+    /**
+     * While an inertialization node instantiates its source: a node made below it can request inertialization. A node
+     * that needs one checks {@link #inertializerAbove} as it instantiates.
+     */
+    public void enterInertializer() {
+        inertializersAbove++;
+    }
+
+    public void exitInertializer() {
+        inertializersAbove--;
+    }
+
+    /** Whether the node instantiating now has an inertialization node above it. */
+    public boolean inertializerAbove() {
+        return inertializersAbove > 0;
     }
 
     /** A scratch pose for a node's evaluate; give it back before returning. */
