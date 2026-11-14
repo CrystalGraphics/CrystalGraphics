@@ -49,8 +49,8 @@ public final class Character {
             .build();
 }
 
-tag.put("Character", CgFiles.toNbt(Character.CODEC, character));           // inside an entity's NBT
-CgFiles.fromNbt(Character.CODEC, tag.get("Character"), character);       // loaded into the live one
+tag.put("Character", CgNbt.toHost(Character.CODEC, character));            // inside an entity's NBT
+CgNbt.fromHost(Character.CODEC, tag.get("Character"), character);        // loaded into the live one
 CgFiles.TOML.write(file, Character.CODEC, character);                    // a file a person edits
 CgMessage<Character> SHOW = CgMessage.toClients("mymod:show", Character.CODEC);   // the wire
 ```
@@ -94,11 +94,12 @@ takes a codec from this page.
 | **Codec** | How a value of one Java type is written and read. Says what keys it has and each one's codec; nothing about bytes or files. | `CgCodec`, `CgCodecs` |
 | **Record codec** | A record's codec, declared as its keys and its constructor. | `CgCodecs.record` |
 | **Format** | What the value becomes: the wire's plain tree, JSON, TOML, YAML, NBT. A codec works with every one. | `CgDynamicOps` |
-| **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgFiles.nbt()` |
+| **Tag** | One NBT value as plain Java, the same on every version: a compound, a list, a string, a number, an array. Read and edit it without Minecraft. | `CgNbtTag`, `CgNbtCompound`, `CgNbtList`, `CgNbt` |
+| **Ops** | A format's handful of primitives: make a string, read a number, build a map. A codec talks only to these. | `CgPlainOps`, `CgJsonOps`, `CgNbtOps` |
 | **Tree** | A value in a format before it is bytes: maps, lists, strings, numbers. | — |
 | **Object codec** | A codec for a mutable class, each field declared once with how to read and set it. | `CgObjectCodec` |
 | **Target** | An object that already exists, decoded into in place instead of making a new one. | `decode(ops, in, target)` |
-| **File format** | Where a tree is stored: a compressed binary file, a JSON, TOML or YAML file. | `CgFiles.BINARY`, `JSON`, `TOML`, `YAML` |
+| **File format** | Where a tree is stored: a compressed binary file, a JSON, TOML, YAML or NBT file. | `CgFiles.BINARY`, `JSON`, `TOML`, `YAML`, `NBT`, `SNBT` |
 
 How they fit together:
 
@@ -108,7 +109,7 @@ How they fit together:
                                          CgJsonOps    (JSON)
                                          plain + TOML (TOML)
                                          plain + YAML (YAML)
-                                         CgFiles.nbt() (Minecraft's tags)
+                                         CgNbtOps     (NBT tags, then the game's own via CgNbt)
 ```
 
 ---
@@ -152,11 +153,11 @@ if (settings == null) CgFiles.TOML.write(file, Settings.CODEC, settings = new Se
 ```java
 @Override protected void addAdditionalSaveData(CompoundTag tag) {
     super.addAdditionalSaveData(tag);
-    tag.put("Spells", CgFiles.toNbt(SPELLS, this.spells));
+    tag.put("Spells", CgNbt.toHost(SPELLS, this.spells));
 }
 @Override protected void readAdditionalSaveData(CompoundTag tag) {
     super.readAdditionalSaveData(tag);
-    if (tag.contains("Spells")) this.spells = CgFiles.fromNbt(SPELLS, tag.get("Spells"));
+    if (tag.contains("Spells")) this.spells = CgNbt.fromHost(SPELLS, tag.get("Spells"));
 }
 static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 ```
@@ -342,6 +343,8 @@ public <T> void readState(CgStateMap<T> in) {
   payloads are): **fill and read that map**. You do not choose it; the framework that calls you did.
 - A value with a codec inside a state map: `out.putRaw("spell", Spell.CODEC.encode(out.ops(), spell))`, and
   `Spell.CODEC.decode(in.ops(), in.getRaw("spell"))` to read it.
+- **Over NBT** it is a `CgStateMap<CgNbtTag>`, from `CgNbt.state()` to fill and `CgNbt.state(compound)` to read: how an
+  entity or an item saves itself, in [`NBT.md`](NBT.md) §3.
 
 ### A value in terms of another: `xmap`
 
@@ -474,7 +477,7 @@ holder.title = CgCodecs.STRING.decode(ops, in, holder.title);    // a string: th
   it answers the target.
 
 Every way in has the target form: `CgFiles.read(file, codec, target)`, `CgFileFormat.read(...)`,
-`CgTextFormat.fromText(codec, text, target)`, `CgFiles.fromNbt(codec, tag, target)`.
+`CgTextFormat.fromText(codec, text, target)`, `CgNbt.decode(codec, tag, target)`, `CgNbt.fromHost(codec, hostTag, target)`.
 
 ---
 
@@ -487,6 +490,8 @@ Every way in has the target form: `CgFiles.read(file, codec, target)`, `CgFileFo
 | `CgFiles.TOML` | **config files players edit** | TOML 1.0, what Forge and NeoForge configs are: `[sections]` of `key = value`, no indentation to get wrong |
 | `CgFiles.YAML` | hand-edited data that nests deeply: lists of maps, presets | block-style YAML, through SnakeYAML (CrystalGraphics carries it) |
 | `CgFiles.JSONC` | a JSON-shaped file people edit and want to explain | JSON with `//` comments and trailing commas, as VS Code's `settings.json`. `.jsonc` |
+| `CgFiles.NBT` | Minecraft's own files: `level.dat`, structures | binary NBT, gzipped, every tag kept exactly (§7). `.nbt` |
+| `CgFiles.SNBT` | NBT a person reads and edits | Minecraft's text form, `{count:3b,id:"x"}`. `.snbt` |
 
 **Which for a config?** TOML. Players already know it from every other mod's config, a stray space cannot break it,
 and its values say their type: `language = "no"` is text, where YAML reads an unquoted `no` as `false`.
@@ -634,24 +639,96 @@ The next time the mod writes the file, **everything the player wrote stays**: `q
 
 ## 7. Minecraft's NBT
 
-Minecraft's own containers (an entity's saved data, a block entity's, an item's) take only its tags. `CgFiles` turns
-any codec's value into them and back, on every version, so your mod writes no NBT code.
+This is the short form; **[`NBT.md`](NBT.md) is the whole guide** to the tags, paths, SNBT, files and the game's own tags.
+
+NBT is Minecraft's data format: an entity's saved data, a block entity's, an item's components, `level.dat`, structure
+files, `/data`. **`CgNbt` gives you all of it with one API on every version**: tags as plain Java you build and read,
+your codecs written into them, SNBT and binary files, and a copy in and out of the game's own tags. Your code never
+names `CompoundTag`, `NBTTagCompound` or a version's spelling.
+
+### Tags as plain Java
 
 ```java
-tag.put("character", CgFiles.toNbt(Character.CODEC, character));            // typed as put takes it
-Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character"));
-CgFiles.fromNbt(Character.CODEC, tag.get("character"), this.character);     // into the live one
+CgNbtCompound tag = CgNbt.compound()
+        .put("name", "Goku")                          // a string
+        .put("level", 9)                              // an int; putByte, putShort, 5L, 5f, 5d for the others
+        .put("alive", true)                           // a byte, as Minecraft stores a boolean
+        .put("spell", Spell.CODEC, spell);            // anything with a codec
+
+int level = tag.getInt("level");                      // 0 when absent or not a number; getInt("level", 1) names the default
+Spell back = tag.get("spell", Spell.CODEC);           // null when absent
+String lore = tag.at("display.Lore.0").asString();    // a path through compounds and lists, null when it breaks
+tag.getOrCreateCompound("display").put("Name", "Sword");
+System.out.println(tag);                              // {name:"Goku",level:9,alive:1b,...}: SNBT, as /data get prints it
 ```
 
-- **`toNbt` answers the type you assign it to** (`Tag`, `CompoundTag`, `NBTBase`): no cast. Asking for a kind it
-  did not make is a `ClassCastException` there.
-- A map becomes a compound, a list a list tag, a number the tag of its width, `BYTES` a byte array; **a boolean is a
-  byte**, as in Minecraft's own `NbtOps`.
-- **NBT's own rules apply**: map keys must encode as text (`mapOf(CgCodecs.STRING, …)`), and a list holds one kind of
-  value.
-- `/data get` shows your values as real tags, readable and editable.
-- **NBT exists only inside Minecraft.** In the harness, `toNbt` throws, naming the `crystalgraphics:host_formats`
-  slot. A test installs `CgTestTags` for it (§10).
+- **Reads never throw** for a missing key or the wrong kind, and a number reads as any width.
+- A **list holds one kind of tag**, as Minecraft's do on every version before 1.21.5: adding another kind throws.
+- Tags are mutable and own what they hold. `copy()` is deep; `put` stores the tag itself.
+- **All of this runs with no game**: a unit test, a tool and the harness build, read and print tags the same way.
+
+### The game's tags
+
+```java
+// in a block entity, entity or item: your codec's value inside the game's container
+tag.put("character", CgNbt.toHost(Character.CODEC, character));              // typed as put takes it
+Character character = CgNbt.fromHost(Character.CODEC, tag.get("character"));
+CgNbt.fromHost(Character.CODEC, tag.get("character"), this.character);       // into the live one
+
+// the game's data as ours, edited, and put back
+CgNbtCompound data = CgNbt.of(entity.saveWithoutId(new CompoundTag()));          // typed by what you assign it to
+data.getOrCreateCompound("ForgeData").put("mymod:charge", 3);
+CgNbt.applyTo(compoundTag, data);                                            // into the game's compound, in place
+CompoundTag fresh = CgNbt.toHost(data);                                      // or a new one
+```
+
+- **`of`, `toHost` and `fromHost` copy**: a `CgNbtTag` never aliases a game tag, so editing one changes the game's only when you `applyTo` or `toHost`.
+- They throw outside Minecraft (the harness, a test), naming the `crystalgraphics:nbt` slot. Everything else on this page runs there.
+- `/data` shows your values as real tags, readable and editable.
+- A long array tag needs 1.13 or later; before it the call throws, naming that.
+
+### SNBT and files
+
+```java
+CgNbtCompound preset = CgNbt.parse("{style:3b,dyed:true,colors:[I;16711680,255]}");   // a preset kept as text
+Hair hair = preset.as(Hair.CODEC);
+
+// NBT is a file format like the rest of §6: binary (gzip detected) or SNBT, written beside and moved over
+CgNbtCompound level = CgFiles.NBT.read(Path.of("level.dat"), CgNbtCompound.CODEC);
+CgFiles.NBT.write(structure, CgNbtCompound.CODEC, tag);
+CgFiles.SNBT.write(preset, Hair.CODEC, hair);                     // a text file a person edits, every width kept
+
+// tags in any other format, through the dynamic codec
+CgFiles.JSON.write(export, CgNbtCompound.CODEC, tag);            // JSONC, TOML and YAML the same
+CgNbtCompound back = CgFiles.TOML.read(config, CgNbtCompound.CODEC);
+
+byte[] bytes = CgNbt.toBytes(tag);  CgNbtCompound again = CgNbt.fromBytes(bytes);   // or readBinary / writeBinary on a stream
+```
+
+- **`CgFiles.of(file)` picks `.nbt` and `.snbt`**; `.dat` stays `BINARY`, so name `NBT` for a `level.dat`.
+- **An NBT file's root is a compound**: a codec whose value is not a map (a number, a list) is refused, naming the kind.
+- **JSON, JSONC, TOML and YAML keep the structure and the values, not the widths**: `1b` and `1` are both a number, and
+  they read back as int, long or double. A byte, int or long array is Base64 text in those four, so use `NBT` or
+  `SNBT` where the exact tags matter.
+- A binary read refuses a damaged file by name: nested past 512, or a length no stream could hold.
+
+### The dynamic part of a shape
+
+A codec describes the part of a value that has a fixed shape. The part that does not (an item's custom data, a mod's own
+extras) is a tag, and a codec can carry one whole:
+
+```java
+record Loot(String table, CgNbtCompound extra) {
+    static final CgCodec<Loot> CODEC = CgCodecs.record(
+            CgCodecs.field("table", CgCodecs.STRING, Loot::table),
+            CgCodecs.optionalField("extra", CgNbtCompound.CODEC, Loot::extra, new CgNbtCompound()),
+            Loot::new);
+}
+```
+
+Through NBT every width survives; through JSON, TOML and YAML the structure does and numbers come back as int, long or double.
+A `CgStateMap` over a tag is `CgNbt.state(compound)` to read and `CgNbt.state()` to fill: the usual way an object saves itself
+into NBT, in [`NBT.md`](NBT.md) §3.
 
 Use NBT only where Minecraft owns the container. Your mod's own files are better as `CgFiles.BINARY`: smaller,
 faster, and no NBT rules.
@@ -669,7 +746,7 @@ something else wants the tree rather than bytes.
 |---|---|---|
 | `CgPlainOps.INSTANCE` | JDK maps, lists, strings, boxed numbers, `byte[]` | the wire and binary files; tests |
 | `CgJsonOps.INSTANCE` | Gson's `JsonElement` | anything that already speaks Gson |
-| `CgFiles.nbt()` | Minecraft's tags, as `Object` | a codec read or written into NBT by hand |
+| `CgNbtOps.INSTANCE` | `CgNbtTag`: NBT, with no game needed | a codec read or written into NBT by hand (`CgNbt.encode` and `decode` are these two lines) |
 
 ```java
 JsonElement json = Settings.CODEC.encode(CgJsonOps.INSTANCE, settings);
@@ -832,24 +909,20 @@ A codec runs in a plain JUnit test, no Minecraft:
 
 - Run a codec through `CgPlainOps`, `CgJsonOps` and a file: three formats, one codec, and a codec that secretly
   depends on one format shows itself.
-- **NBT in a test**: install `CgTestTags`. `CgFiles.toNbt` and `fromNbt` then work in a plain JUnit test, under
-  the game's own rules (a boolean is a byte, a list holds one kind of tag, keys are text), with no Minecraft.
+- **NBT in a test** needs nothing installed: `CgNbt.encode` and `decode` run on plain tags, under the game's own
+  rules (a boolean is a byte, a list holds one kind of tag, keys are text).
 
   ```java
-  private CgTestTags tags;
-  @Before public void tags() { tags = CgTestTags.install(); }
-  @After public void untag() { tags.close(); }                        // puts back what was there
-
   @Test public void aCharacterSavesAsNbt() {
-      Object tag = CgFiles.toNbt(Character.CODEC, character);
-      assertEquals("{name:\"Goku\",level:9}", CgTestTags.toSnbt(tag));   // what /data get would show
-      assertEquals(9, CgFiles.fromNbt(Character.CODEC, tag).level);
+      CgNbtTag tag = CgNbt.encode(Character.CODEC, character);
+      assertEquals("{name:\"Goku\",level:9}", tag.toString());              // what /data get would show
+      assertEquals(9, tag.as(Character.CODEC).level);
   }
   ```
 
   **SNBT**, the text form `/data get` prints, reads straight into tags, so presets and saves can live in a test as
-  text: `CgTestTags.parse("{style:3b,dyed:1b,colors:[I;16711680,255]}")`. Compounds, lists, `[B;...]`, `[I;...]`
-  and `[L;...]` arrays, quoted and bare strings, the `b s L f d` suffixes, and `true`/`false` as bytes.
+  text: `CgNbt.parse("{style:3b,dyed:1b,colors:[I;16711680,255]}")`. Compounds, lists, `[B;...]`, `[I;...]` and `[L;...]`
+  arrays, quoted and bare strings, the `b s L f d` suffixes, and `true`/`false` as bytes.
 
 - **A migration test keeps an old save as text** and checks it loads as today's value. Write one when you add a
   step, from a save the old version really wrote:
@@ -921,5 +994,5 @@ serde.
 ### Where is the code?
 
 `com.crystalgraphics.serialization` (codecs, records, versions), `.format` (`CgFiles`), `.format.file` (each file
-format) and `.format.nbt` (the NBT bridge and `CgTestTags`); the package guide is
+format) and `.nbt` (`CgNbt` and the tags); the package guide is
 `core/src/main/java/com/crystalgraphics/serialization/CLAUDE.md`.

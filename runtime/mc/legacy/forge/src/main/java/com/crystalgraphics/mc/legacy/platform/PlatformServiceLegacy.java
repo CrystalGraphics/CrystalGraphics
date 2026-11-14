@@ -18,7 +18,7 @@ import com.crystalgraphics.mc.legacy.platform.world.HostCameraLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostDebugLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.WorldEventsLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostDuckLegacy;
-import com.crystalgraphics.mc.legacy.platform.world.HostFormatsLegacy;
+import com.crystalgraphics.mc.legacy.platform.world.NbtLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostShapesLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.HostVolumeLegacy;
 import com.crystalgraphics.mc.legacy.platform.world.LevelsLegacy;
@@ -39,7 +39,7 @@ import com.crystalgraphics.platform.service.CgGameSession;
 import com.crystalgraphics.platform.service.CgServers;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
+import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -97,7 +97,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgServers.HOST, ServersLegacy.INSTANCE);
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesLegacy());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostLegacy());
-        CgPlatform.provide(CgHostFormats.HOST, new HostFormatsLegacy());
+        CgPlatform.provide(CgNbt.HOST, new NbtLegacy());
         // FML traps a mod's own Runtime.halt.
         CgPlatform.provide(CgProcessExit.HOST, status -> FMLCommonHandler.instance().exitJava(status, true));
         FMLCommonHandler.instance().bus().register(new TicksLegacy());

@@ -63,38 +63,42 @@ cues, a type each (`docs/VFX.md` § *Effects over the network: cues*). Hosts for
 router's correlation, timeout and cancel; a peer without the namespace answers `CgRequest.UNSUPPORTED`. Mods
 mostly push: a `CgMessage` unless the asker needs the answer.
 
-### Saving and NBT — `serialization.CgFiles`
+### Saving and NBT — `serialization.nbt.CgNbt`
 
 **A mod saves with the codecs it sends with, and writes no NBT.** Its own files are `CgFiles.write`/`read`:
 CrystalGraphics' binary format, compressed, in core, with no host involved. NBT comes in only where Minecraft owns the
-container (an entity's, block entity's or item's saved data), and there `CgFiles.toNbt`/`fromNbt` turn any codec's
-value into the running version's real tags and back, so `/data` reads it. Using it from a mod:
-[`docs/SERIALIZATION.md` § 7](SERIALIZATION.md#7-minecrafts-nbt).
+container (an entity's, block entity's or item's saved data), and there `CgNbt.toHost`/`fromHost` turn any codec's
+value into the running version's real tags and back, so `/data` reads it. Beyond codecs, `CgNbt.of(hostTag)` copies any
+of the game's tags into `CgNbtCompound`/`CgNbtList`/`CgNbtValue`, plain Java the same on every version, and `toHost` and
+`applyTo` put them back. Using it from a mod: [`docs/SERIALIZATION.md` § 7](SERIALIZATION.md#7-minecrafts-nbt).
 
 ```java
-tag.put("character", CgFiles.toNbt(Character.CODEC, character));             // typed as put takes it
-Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character"));
+tag.put("character", CgNbt.toHost(Character.CODEC, character));             // typed as put takes it
+Character character = CgNbt.fromHost(Character.CODEC, tag.get("character"));
+CgNbtCompound data = CgNbt.of(compoundTag);                                     // the game's, as ours
 ```
 
-The host answers one slot, `CgHostFormats` (`crystalgraphics:host_formats`): a dozen primitives to make, fill and read
-compounds, lists, strings, numbers and byte arrays. The format's rules live once, in core's `HostTagOps` (the shape
-of Mojang's `NbtOps`): a boolean is a byte, map keys are text, a list holds one kind of tag. Each host provides it
-beside its channel, both sides. Absent (a test, the harness), `toNbt` throws, naming the slot.
+The host answers one slot, `CgNbt.HOST` (`crystalgraphics:nbt`): the tags of its version as primitives (a kind id, and
+make and read each tag). **The tag model, the format's rules and the deep conversion are core's, once**
+(`CgNbtTag`, `CgNbtOps`, `CgNbt`): a host decides nothing and a new era is one class. Each host provides it beside its
+channel, both sides. Absent (a test, the harness), the calls that touch the game's tags throw, naming the slot; every
+other `CgNbt` call runs.
 
-| Touch point | Modern 1.13.2–26.3 (`HostFormatsModern`) | Legacy 1.8.9–1.12.2 (`HostFormatsLegacy`) | 1.7.10 (`HostFormats1710`) |
+| Touch point | Modern 1.13.2–26.3 (`NbtModern`) | Legacy 1.8.9–1.12.2 (`NbtLegacy`) | 1.7.10 (`Nbt1710`) |
 |---|---|---|---|
+| A tag's kind | `Tag.getId()` | `NBTBase.getId()` | `getId()` |
 | Compound put | `put(String, Tag)`; 1.13.2 still `a(String, Tag)` | `setTag` | `setTag` |
 | Compound keys | `getAllKeys()` to 1.21.4, `keySet()` from 1.21.5 | `getKeySet()` | `func_150296_c()` |
 | A list's tags | `ListTag` is a `List` | `get(i)` over `tagCount()` | no reader by index: taken off the end with `removeTag`, then put back |
 | Make a string or number | constructors before 1.15.2, `valueOf` after | constructors | constructors |
 | Read a string | `getAsString()` to 1.21.4, `value()` from 1.21.5's record tags | `getString()` | `func_150285_a_()` |
 | Read a number | each class's `getAs*` to 1.21.4, `NumericTag.box()` from 1.21.5 | `getByte()`, `getInt()`, … | `func_150290_f()` (byte) … `func_150286_g()` (double) |
-| Byte array | `ByteArrayTag(byte[])`, `getAsByteArray()` | `NBTTagByteArray`, `getByteArray()` | `NBTTagByteArray`, `func_150292_c()` |
+| Byte and int arrays | `ByteArrayTag`, `IntArrayTag`: `getAsByteArray()`, `getAsIntArray()` | `NBTTagByteArray`, `NBTTagIntArray`: `getByteArray()`, `getIntArray()` | `func_150292_c()`, `func_150302_c()` |
+| Long array | `LongArrayTag`, `getAsLongArray()` | none to read: 1.12.2's has no getter, earlier none exists. Throws, naming it | none. The same |
 
-**Proven**: `checkAllTargets` for every host; CrystalGUI's `serverSmoke` round-trips every kind of value (string,
-int, float, double, boolean, bytes, a list of longs, a map) through the running version's tags, read twice so a read
-is shown to leave the tag as it was: run on 1.7.10, legacy Forge 1.8.9 and 1.12.2 (the shipped jars, `server_smoke.py`), Forge 1.14.4 and 1.20.1,
-NeoForge 1.21.11 and Fabric 26.2.
+**Proven**: `checkAllTargets` for every host; CrystalGUI's `serverSmoke` round-trips a codec's every kind of value
+(string, int, float, double, boolean, bytes, a list of longs, a map) and one tag of each kind the version has through the
+running version's tags, read twice so a read is shown to leave the tag as it was.
 Forge 1.13.2's dev server does not load mods at all, so its `a(String, Tag)` is proven by compiling only.
 
 ### Collision — `collision`, `shape`

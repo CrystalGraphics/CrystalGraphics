@@ -37,8 +37,7 @@ public class WorldServiceReadersTest {
         READERS.put("CgProcessExit", Collections.emptyList());
         // Static owners in core: the owner alone, and a test's provider putting back what it replaced
         READERS.put("CgMirrorHost", Arrays.asList("collision/mirror/CgMirrorHost.java"));
-        READERS.put("CgHostFormats", Arrays.asList("serialization/format/nbt/CgHostFormats.java",
-                "serialization/format/nbt/CgTestTags.java"));
+        READERS.put("CgNbt", Arrays.asList("serialization/nbt/CgNbt.java"));
         // The older shape: one facade in core
         READERS.put("CgCameraManager", Arrays.asList("world/CgCameraManager.java"));
         READERS.put("CgModelSpace", Arrays.asList("world/CgEntityAttachments.java"));

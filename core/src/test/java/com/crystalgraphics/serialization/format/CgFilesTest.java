@@ -1,13 +1,13 @@
 package com.crystalgraphics.serialization.format;
 
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbt;
+import com.crystalgraphics.serialization.nbt.CgNbtTag;
 
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgCodecException;
 
-import com.crystalgraphics.platform.CgPlatform;
-import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -15,12 +15,9 @@ import org.junit.rules.TemporaryFolder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertArrayEquals;
@@ -46,11 +43,6 @@ public class CgFilesTest {
 
     @Rule
     public final TemporaryFolder folder = new TemporaryFolder();
-
-    @After
-    public void tearDown() {
-        CgPlatform.provide(CgHostFormats.HOST, null);
-    }
 
     private static Character goku() {
         Map<String, Integer> skills = new LinkedHashMap<>();
@@ -80,50 +72,27 @@ public class CgFilesTest {
     }
 
     @Test
-    public void aValueCrossesTheHostsTagsAndBack() {
-        CgPlatform.provide(CgHostFormats.HOST, new Tags());
-        Object tag = CgFiles.toNbt(Character.CODEC, goku());
-        assertTrue("a compound", tag instanceof Map);
-        assertEquals("a boolean is a byte", (byte) 1, ((Map<?, ?>) tag).get("ki"));
-        assertTrue("bytes stay bytes", ((Map<?, ?>) tag).get("seed") instanceof byte[]);
-        assertSame(goku(), CgFiles.fromNbt(Character.CODEC, tag));
+    public void aValueCrossesTagsAndBack() {
+        CgNbtTag tag = CgNbt.encode(Character.CODEC, goku());
+        CgNbtCompound compound = tag.asCompound();
+        assertEquals("a boolean is a byte", (byte) 1, compound.getByte("ki"));
+        assertEquals("bytes stay bytes", CgNbtTag.Type.BYTE_ARRAY, compound.get("seed").type());
+        assertSame(goku(), CgNbt.decode(Character.CODEC, tag));
     }
 
     @Test
-    public void withNoHostTheBridgeNamesItsSlot() {
-        IllegalStateException e = assertThrows(IllegalStateException.class,
-                () -> CgFiles.toNbt(CgCodecs.INT, 1));
-        assertTrue(e.getMessage(), e.getMessage().contains("crystalgraphics:host_formats"));
+    public void withNoHostTheGameCallsNameTheirSlot() {
+        IllegalStateException e = assertThrows(IllegalStateException.class, () -> CgNbt.toHost(CgNbt.compound()));
+        assertTrue(e.getMessage(), e.getMessage().contains("crystalgraphics:nbt"));
     }
 
     @Test
     public void anNbtKeyIsText() {
-        CgPlatform.provide(CgHostFormats.HOST, new Tags());
         Map<Integer, Integer> byNumber = new LinkedHashMap<>();
         byNumber.put(1, 2);
         CgCodec<Map<Integer, Integer>> ints = CgCodecs.mapOf(CgCodecs.INT, CgCodecs.INT);
-        assertEquals("an INT key is written as its text", byNumber, CgFiles.fromNbt(ints, CgFiles.toNbt(ints, byNumber)));
+        assertEquals("an INT key is written as its text", byNumber, CgNbt.decode(ints, CgNbt.encode(ints, byNumber)));
         assertThrows(CgCodecException.class,
-                () -> CgFiles.toNbt(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
-    }
-
-    /** Tags as Java values: a compound a map, a list a list, a string a string. */
-    static final class Tags implements CgHostFormats.Host {
-        @Override public Object compound() { return new LinkedHashMap<String, Object>(); }
-        @SuppressWarnings("unchecked")
-        @Override public void put(Object compound, String key, Object value) { ((Map<String, Object>) compound).put(key, value); }
-        @SuppressWarnings("unchecked")
-        @Override public Collection<String> keys(Object tag) { return tag instanceof Map ? ((Map<String, Object>) tag).keySet() : null; }
-        @Override public Object get(Object compound, String key) { return ((Map<?, ?>) compound).get(key); }
-        @Override public Object list() { return new ArrayList<>(); }
-        @SuppressWarnings("unchecked")
-        @Override public void add(Object list, Object value) { ((List<Object>) list).add(value); }
-        @Override public List<?> elements(Object tag) { return tag instanceof List<?> l ? l : null; }
-        @Override public Object string(String value) { return value; }
-        @Override public String stringOf(Object tag) { return tag instanceof String s ? s : null; }
-        @Override public Object number(Number value) { return value; }
-        @Override public Number numberOf(Object tag) { return tag instanceof Number n ? n : null; }
-        @Override public Object bytes(byte[] value) { return value.clone(); }
-        @Override public byte[] bytesOf(Object tag) { return tag instanceof byte[] b ? b : null; }
+                () -> CgNbt.encode(CgCodecs.mapOf(CgCodecs.DOUBLE, CgCodecs.INT), Collections.singletonMap(1.5, 2)));
     }
 }

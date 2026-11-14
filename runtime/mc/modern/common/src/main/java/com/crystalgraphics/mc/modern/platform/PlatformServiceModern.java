@@ -24,7 +24,7 @@ import com.crystalgraphics.mc.modern.platform.world.ClientModern;
 import com.crystalgraphics.mc.modern.platform.world.HostCameraModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDebugModern;
 import com.crystalgraphics.mc.modern.platform.world.HostDuckModern;
-import com.crystalgraphics.mc.modern.platform.world.HostFormatsModern;
+import com.crystalgraphics.mc.modern.platform.world.NbtModern;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
@@ -35,7 +35,7 @@ import com.crystalgraphics.mc.modern.platform.world.WorldStimulusModern;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
+import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.crystalgraphics.platform.service.CgCursorService;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -110,7 +110,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());
         CgPlatform.provide(CgMirrorHost.HOST, new MirrorHostModern());
-        CgPlatform.provide(CgHostFormats.HOST, new HostFormatsModern());
+        CgPlatform.provide(CgNbt.HOST, new NbtModern());
         CgPlatform.provide(CgCommands.HOST, CommandsModern.INSTANCE);
     }
 

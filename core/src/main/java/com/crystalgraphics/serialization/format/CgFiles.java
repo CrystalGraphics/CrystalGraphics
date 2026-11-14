@@ -1,15 +1,15 @@
 package com.crystalgraphics.serialization.format;
 
 import com.crystalgraphics.serialization.CgCodec;
-import com.crystalgraphics.serialization.CgDynamicOps;
 
 import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.serialization.format.file.BinaryFileFormat;
 import com.crystalgraphics.serialization.format.file.JsonFileFormat;
 import com.crystalgraphics.serialization.format.file.JsoncFileFormat;
+import com.crystalgraphics.serialization.format.file.NbtFileFormat;
+import com.crystalgraphics.serialization.format.file.SnbtFileFormat;
 import com.crystalgraphics.serialization.format.file.TomlFileFormat;
 import com.crystalgraphics.serialization.format.file.YamlFileFormat;
-import com.crystalgraphics.serialization.format.nbt.CgHostFormats;
 
 import javax.annotation.Nullable;
 import java.io.IOException;
@@ -19,8 +19,8 @@ import java.util.Locale;
 
 /**
  * Where a codec's value lives when it is not on the wire: a file of the mod's own, in CrystalGraphics' binary format,
- * JSON, TOML or YAML, or Minecraft's tags where Minecraft owns the container. A mod saves with the codecs it sends with, and
- * needs no NBT of its own.
+ * JSON, TOML, YAML, or NBT itself. A mod saves with the codecs it sends with; where Minecraft owns the container (an entity's, an item's
+ * saved data) {@link com.crystalgraphics.serialization.nbt.CgNbt} carries the same codecs into its tags.
  *
  * <pre>{@code
  * CgFiles.write(file, PlayerData.CODEC, data);                  // binary, compressed
@@ -31,19 +31,9 @@ import java.util.Locale;
  * Settings s = CgFiles.of(config).read(config, Settings.CODEC); // the format from the extension
  * }</pre>
  *
- * Inside an entity's, block entity's or item's saved data, which only takes Minecraft's tags:
- *
- * <pre>{@code
- * tag.put("character", CgFiles.toNbt(Character.CODEC, character));              // saving
- * Character character = CgFiles.fromNbt(Character.CODEC, tag.get("character")); // loading
- * }</pre>
- *
  * <ul>
  *   <li>A file is written whole beside itself then moved over the old one: a crash mid-save leaves the last save.</li>
- *   <li>Every format takes any codec. JSON, TOML, YAML and NBT take only text map keys; TOML's top is a map; NBT's lists hold one kind of value
- *       and its booleans are bytes.</li>
- *   <li>{@link #toNbt}, {@link #fromNbt} and {@link #nbt} need a host: in a test or the harness they throw, naming the
- *       {@link CgHostFormats} slot.</li>
+ *   <li>Every format takes any codec. JSON, TOML and YAML take only text map keys; TOML's top is a map.</li>
  * </ul>
  */
 public final class CgFiles {
@@ -66,12 +56,21 @@ public final class CgFiles {
      */
     public static final CgTextFormat JSONC = new JsoncFileFormat();
 
+    /**
+     * Minecraft's own binary NBT, gzipped: {@code level.dat}, structure files. Every tag keeps its exact type, so it is the
+     * format to read and write tags in ({@code CgFiles.NBT.read(file, CgNbtCompound.CODEC)}). A value must encode to a compound.
+     */
+    public static final CgFileFormat NBT = new NbtFileFormat();
+
+    /** NBT as Minecraft's text, SNBT: exact types ({@code 1b}, {@code 5L}), readable and editable. {@code .snbt}. */
+    public static final CgTextFormat SNBT = new SnbtFileFormat();
+
     private CgFiles() {
     }
 
     /**
-     * The format a file's extension names: {@code .json}, {@code .jsonc}, {@code .yml}, {@code .yaml} or {@code .toml},
-     * anything else binary.
+     * The format a file's extension names: {@code .json}, {@code .jsonc}, {@code .yml}, {@code .yaml}, {@code .toml},
+     * {@code .nbt} or {@code .snbt}, anything else binary.
      */
     public static CgFileFormat of(Path file) {
         String name = file.getFileName().toString().toLowerCase(Locale.ROOT);
@@ -79,6 +78,8 @@ public final class CgFiles {
         if (name.endsWith(".jsonc")) return JSONC;
         if (name.endsWith(".yml") || name.endsWith(".yaml")) return YAML;
         if (name.endsWith(".toml")) return TOML;
+        if (name.endsWith(".nbt")) return NBT;
+        if (name.endsWith(".snbt")) return SNBT;
         return BINARY;
     }
 
@@ -104,30 +105,5 @@ public final class CgFiles {
     /** {@link #BINARY}'s {@link CgFileFormat#read(Path, CgCodec, Object)}: into {@code target}. */
     public static <V> V read(Path file, CgCodec<V> codec, V target) throws IOException {
         return BINARY.read(file, codec, target);
-    }
-
-    /**
-     * {@code value} as the host's tags: a compound for a map, a string tag for a string, and so on. Typed as the caller
-     * takes it ({@code Tag}, {@code CompoundTag}, {@code NBTBase}): asking for a kind it did not make is a
-     * {@code ClassCastException} there.
-     */
-    @SuppressWarnings("unchecked")
-    public static <V, N> N toNbt(CgCodec<V> codec, V value) {
-        return (N) codec.encode(nbt(), value);
-    }
-
-    /** What {@link #toNbt} wrote, back through {@code codec}. */
-    public static <V> V fromNbt(CgCodec<V> codec, Object tag) {
-        return codec.decode(nbt(), tag);
-    }
-
-    /** What {@link #toNbt} wrote, decoded into {@code target}: an entity's live data refreshed from its tag. */
-    public static <V> V fromNbt(CgCodec<V> codec, Object tag, V target) {
-        return codec.decode(nbt(), tag, target);
-    }
-
-    /** The host's tags as a codec format, for a codec read or written by hand. */
-    public static CgDynamicOps<Object> nbt() {
-        return CgHostFormats.ops();
     }
 }

@@ -173,6 +173,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Send between client and server, or keep state in sync on the clients that see it | [`docs/NETWORKING.md`](docs/NETWORKING.md) | `net/CLAUDE.md` |
 | Add a command, or complete one, on every version | [`docs/COMMANDS.md`](docs/COMMANDS.md) | `platform/.../command` |
 | Write a codec, save to a file (binary, JSON, TOML, YAML) or NBT, or decode into a live object | [`docs/SERIALIZATION.md`](docs/SERIALIZATION.md) | `serialization/CLAUDE.md` |
+| Build, read, parse or edit NBT tags, read a `level.dat`, or move tags in and out of the game's | [`docs/NBT.md`](docs/NBT.md) | `serialization/CLAUDE.md` |
 | Ask what a shape hits, give something a hitbox, test shapes against each other | [`docs/COLLISION.md`](docs/COLLISION.md) | `collision/CLAUDE.md`, `shape/CLAUDE.md` |
 | Load, make, sample, draw into or read back a texture; a texture's settings file | [`docs/TEXTURES.md`](docs/TEXTURES.md) | `api/texture/CLAUDE.md`, `gpu/resource/CLAUDE.md` |
 | Load anything (files, textures, meshes, shaders, a kit), behind the loading screen or during play | **[`docs/LOADING.md`](docs/LOADING.md)** | `loading/CLAUDE.md`, `lifecycle/CLAUDE.md` |

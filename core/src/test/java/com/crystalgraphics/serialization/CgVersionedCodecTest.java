@@ -2,7 +2,8 @@ package com.crystalgraphics.serialization;
 
 import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.serialization.format.CgJsonOps;
-import com.crystalgraphics.serialization.format.nbt.CgTestTags;
+import com.crystalgraphics.serialization.nbt.CgNbt;
+import com.crystalgraphics.serialization.nbt.CgNbtTag;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -71,11 +72,9 @@ public class CgVersionedCodecTest {
         assertEquals(GOKU, SAVED.decode(CgJsonOps.INSTANCE,
                 CgJsonOps.fromText("{\"name\":\"Goku\",\"Level\":9,\"skills\":[\"kamehameha\"]}")));
 
-        try (CgTestTags tags = CgTestTags.install()) {
-            Object old = CgTestTags.parse("{name:\"Goku\",Level:9,skills:[\"kamehameha\"]}");
-            assertEquals(GOKU, CgFiles.fromNbt(SAVED, old));
-            assertEquals(GOKU, CgFiles.fromNbt(SAVED, CgFiles.toNbt(SAVED, GOKU)));
-        }
+        CgNbtTag old = CgNbt.parse("{name:\"Goku\",Level:9,skills:[\"kamehameha\"]}");
+        assertEquals(GOKU, CgNbt.decode(SAVED, old));
+        assertEquals(GOKU, CgNbt.decode(SAVED, CgNbt.encode(SAVED, GOKU)));
     }
 
     record Book(Map<String, Integer> skills) {

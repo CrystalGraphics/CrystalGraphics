@@ -44,6 +44,10 @@ import com.crystalgraphics.sequence.binding.CgSequenceLocator;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.event.CgSequenceEventListener;
 import com.crystalgraphics.serialization.CgCodec;
+import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbtList;
+import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.format.CgFiles;
@@ -307,15 +311,31 @@ public final class CgServerSmoke extends CgGauntletController {
         boolean ok = false;
         try {
             Map<String, Object> want = sample();
-            Object tag = CgFiles.toNbt(SAMPLE, want);
-            Map<String, Object> first = CgFiles.fromNbt(SAMPLE, tag);
-            Map<String, Object> second = CgFiles.fromNbt(SAMPLE, tag);
-            ok = same(want, first) && same(want, second);
-            detail = "tag " + tag.getClass().getSimpleName() + ": " + tag + (ok ? "" : ", read back as " + first + " then " + second);
+            Object tag = CgNbt.toHost(SAMPLE, want);
+            Map<String, Object> first = CgNbt.fromHost(SAMPLE, tag);
+            Map<String, Object> second = CgNbt.fromHost(SAMPLE, tag);
+            CgNbtCompound all = allKinds();
+            boolean kinds = CgNbt.<CgNbtCompound>of(CgNbt.toHost(all)).equals(all);
+            ok = same(want, first) && same(want, second) && kinds;
+            detail = "tag " + tag.getClass().getSimpleName() + ": " + tag + (ok ? "; every kind of tag crosses" : ", read back as " + first + " then " + second + ", kinds " + kinds);
         } catch (Throwable failed) {
             detail = String.valueOf(failed);
         }
         check("server.nbt", ok, detail);
+    }
+
+    /** One of every tag kind this version has, so a host that spells one wrongly shows: a long array only where the version has them. */
+    private static CgNbtCompound allKinds() {
+        CgNbtCompound all = CgNbt.compound().putByte("b", 1).putShort("s", 2).put("i", 3).put("l", 4L).put("f", 5f).put("d", 6d)
+                .put("str", "seven").put("bytes", new byte[]{1, -2}).put("ints", new int[]{3, 4})
+                .put("list", CgNbtList.of("a", "b")).put("compound", CgNbt.compound().put("x", 1));
+        try {
+            CgNbt.toHost(CgNbt.compound().put("probe", new long[]{1L}));
+            all.put("longs", new long[]{5L, 6L});
+        } catch (CgCodecException noLongArrays) {
+            // 1.8.9 to 1.11.2 and 1.7.10 have none
+        }
+        return all;
     }
 
     /** JSON through this Minecraft's own Gson, YAML through the SnakeYAML CrystalGraphics carries relocated. */

@@ -9166,6 +9166,7 @@ com/crystalgraphics/render/canvas/CgShapeTable$Shape
   method public <init> (Lcom/crystalgraphics/render/canvas/CgShapeTable;)V
   method public border (FFFFI)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
   method public border (FFFFIII)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
+  method public border (FFFFIIIII)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
   method public end ()I
   method public fill (I)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
   method public radii (FFFFFFFF)Lcom/crystalgraphics/render/canvas/CgShapeTable$Shape;
@@ -12526,15 +12527,13 @@ com/crystalgraphics/serialization/format/CgFiles
   field public,static,final BINARY Lcom/crystalgraphics/serialization/format/CgFileFormat;
   field public,static,final JSON Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final JSONC Lcom/crystalgraphics/serialization/format/CgTextFormat;
+  field public,static,final NBT Lcom/crystalgraphics/serialization/format/CgFileFormat;
+  field public,static,final SNBT Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final TOML Lcom/crystalgraphics/serialization/format/CgTextFormat;
   field public,static,final YAML Lcom/crystalgraphics/serialization/format/CgTextFormat;
-  method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
-  method public,static fromNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-  method public,static nbt ()Lcom/crystalgraphics/serialization/CgDynamicOps;
   method public,static of (Ljava/nio/file/Path;)Lcom/crystalgraphics/serialization/format/CgFileFormat;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
   method public,static read (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
-  method public,static toNbt (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
   method public,static write (Ljava/nio/file/Path;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)V
   method public,static writeAtomic (Ljava/nio/file/Path;[B)V
 com/crystalgraphics/serialization/format/CgJsonOps
@@ -12575,6 +12574,14 @@ com/crystalgraphics/serialization/format/file/JsoncFileFormat
   access public,final
   extends com/crystalgraphics/serialization/format/file/TextFileFormat
   method public <init> ()V
+com/crystalgraphics/serialization/format/file/NbtFileFormat
+  access public,final
+  extends com/crystalgraphics/serialization/format/file/FileFormat
+  method public <init> ()V
+com/crystalgraphics/serialization/format/file/SnbtFileFormat
+  access public,final
+  extends com/crystalgraphics/serialization/format/file/TextFileFormat
+  method public <init> ()V
 com/crystalgraphics/serialization/format/file/TomlFileFormat
   access public,final
   extends com/crystalgraphics/serialization/format/file/TextFileFormat
@@ -12604,76 +12611,229 @@ com/crystalgraphics/serialization/format/file/YamlFileFormat
   access public,final
   extends com/crystalgraphics/serialization/format/file/TextFileFormat
   method public <init> ()V
-com/crystalgraphics/serialization/format/nbt/CgHostFormats
+com/crystalgraphics/serialization/nbt/CgNbt
   access public,final
   extends java/lang/Object
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
-  method public,static ops ()Lcom/crystalgraphics/serialization/CgDynamicOps;
+  method public,static applyTo (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
+  method public,static compound ()Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static decode (Lcom/crystalgraphics/serialization/CgCodec;Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/lang/Object;
+  method public,static decode (Lcom/crystalgraphics/serialization/CgCodec;Lcom/crystalgraphics/serialization/nbt/CgNbtTag;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,static encode (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public,static fromBytes ([B)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static fromHost (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,static fromHost (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,static list ()Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public,static parse (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
   method public,static present ()Z
-com/crystalgraphics/serialization/format/nbt/CgHostFormats$Host
+  method public,static readBinary (Ljava/io/InputStream;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static state ()Lcom/crystalgraphics/serialization/CgStateMap;
+  method public,static state (Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)Lcom/crystalgraphics/serialization/CgStateMap;
+  method public,static toBytes (Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)[B
+  method public,static toHost (Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public,static toHost (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/lang/Object;
+  method public,static writeBinary (Ljava/io/OutputStream;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
+  method public,static writeBinary (Ljava/io/OutputStream;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;Z)V
+com/crystalgraphics/serialization/nbt/CgNbt$Host
   access public,abstract,interface
   extends java/lang/Object
-  field public,static,final NONE Lcom/crystalgraphics/serialization/format/nbt/CgHostFormats$Host;
+  field public,static,final NONE Lcom/crystalgraphics/serialization/nbt/CgNbt$Host;
   method public,abstract add (Ljava/lang/Object;Ljava/lang/Object;)V
   method public,abstract bytes ([B)Ljava/lang/Object;
   method public,abstract bytesOf (Ljava/lang/Object;)[B
   method public,abstract compound ()Ljava/lang/Object;
   method public,abstract elements (Ljava/lang/Object;)Ljava/util/List;
   method public,abstract get (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
+  method public,abstract ints ([I)Ljava/lang/Object;
+  method public,abstract intsOf (Ljava/lang/Object;)[I
   method public,abstract keys (Ljava/lang/Object;)Ljava/util/Collection;
+  method public,abstract kind (Ljava/lang/Object;)I
   method public,abstract list ()Ljava/lang/Object;
-  method public,abstract number (Ljava/lang/Number;)Ljava/lang/Object;
+  method public,abstract longs ([J)Ljava/lang/Object;
+  method public,abstract longsOf (Ljava/lang/Object;)[J
+  method public,abstract number (Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;Ljava/lang/Number;)Ljava/lang/Object;
   method public,abstract numberOf (Ljava/lang/Object;)Ljava/lang/Number;
   method public,abstract put (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V
   method public,abstract string (Ljava/lang/String;)Ljava/lang/Object;
   method public,abstract stringOf (Ljava/lang/Object;)Ljava/lang/String;
-com/crystalgraphics/serialization/format/nbt/CgTestTags
+com/crystalgraphics/serialization/nbt/CgNbtCompound
+  access public,final
+  extends com/crystalgraphics/serialization/nbt/CgNbtTag
+  field public,static,final CODEC Lcom/crystalgraphics/serialization/CgCodec;
+  method public <init> ()V
+  method public at (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public clear ()Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public copy ()Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public equals (Ljava/lang/Object;)Z
+  method public forEach (Ljava/util/function/BiConsumer;)V
+  method public get (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public get (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
+  method public get (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Ljava/lang/Object;
+  method public getBool (Ljava/lang/String;)Z
+  method public getBool (Ljava/lang/String;Z)Z
+  method public getByte (Ljava/lang/String;)B
+  method public getBytes (Ljava/lang/String;)[B
+  method public getCompound (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public getDouble (Ljava/lang/String;)D
+  method public getDouble (Ljava/lang/String;D)D
+  method public getFloat (Ljava/lang/String;)F
+  method public getFloat (Ljava/lang/String;F)F
+  method public getInt (Ljava/lang/String;)I
+  method public getInt (Ljava/lang/String;I)I
+  method public getInts (Ljava/lang/String;)[I
+  method public getList (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public getLong (Ljava/lang/String;)J
+  method public getLong (Ljava/lang/String;J)J
+  method public getLongs (Ljava/lang/String;)[J
+  method public getOrCreateCompound (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public getOrCreateList (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public getShort (Ljava/lang/String;)S
+  method public getString (Ljava/lang/String;)Ljava/lang/String;
+  method public getString (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  method public has (Ljava/lang/String;)Z
+  method public has (Ljava/lang/String;Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;)Z
+  method public hashCode ()I
+  method public isEmpty ()Z
+  method public keys ()Ljava/util/Set;
+  method public merge (Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;D)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;F)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;I)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;J)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;Lcom/crystalgraphics/serialization/CgCodec;Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;Z)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;[B)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;[I)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public put (Ljava/lang/String;[J)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public putAt (Ljava/lang/String;Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public putByte (Ljava/lang/String;I)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public putShort (Ljava/lang/String;I)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public remove (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public require (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public size ()I
+  method public type ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+com/crystalgraphics/serialization/nbt/CgNbtList
+  access public,final
+  extends com/crystalgraphics/serialization/nbt/CgNbtTag
+  implements java/lang/Iterable
+  method public <init> ()V
+  method public add (D)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public add (F)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public add (I)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public add (J)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public add (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public add (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public clear ()Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public copy ()Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public elementType ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public equals (Ljava/lang/Object;)Z
+  method public get (I)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public getCompound (I)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public getDouble (I)D
+  method public getInt (I)I
+  method public getList (I)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public getLong (I)J
+  method public getString (I)Ljava/lang/String;
+  method public hashCode ()I
+  method public isEmpty ()Z
+  method public iterator ()Ljava/util/Iterator;
+  method public remove (I)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public set (ILcom/crystalgraphics/serialization/nbt/CgNbtTag;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public size ()I
+  method public toList (Lcom/crystalgraphics/serialization/CgCodec;)Ljava/util/List;
+  method public type ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public view ()Ljava/util/List;
+  method public,static of (Lcom/crystalgraphics/serialization/CgCodec;Ljava/util/Collection;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public,static of ([I)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public,static of ([Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public,static of ([Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+com/crystalgraphics/serialization/nbt/CgNbtOps
   access public,final
   extends java/lang/Object
-  implements com/crystalgraphics/serialization/format/nbt/CgHostFormats$Host
-  implements java/lang/AutoCloseable
-  method public add (Ljava/lang/Object;Ljava/lang/Object;)V
-  method public bytes ([B)Ljava/lang/Object;
-  method public bytesOf (Ljava/lang/Object;)[B
-  method public close ()V
-  method public compound ()Ljava/lang/Object;
-  method public elements (Ljava/lang/Object;)Ljava/util/List;
-  method public get (Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/Object;
-  method public keys (Ljava/lang/Object;)Ljava/util/Collection;
-  method public list ()Ljava/lang/Object;
-  method public number (Ljava/lang/Number;)Ljava/lang/Object;
-  method public numberOf (Ljava/lang/Object;)Ljava/lang/Number;
-  method public put (Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V
-  method public string (Ljava/lang/String;)Ljava/lang/Object;
-  method public stringOf (Ljava/lang/Object;)Ljava/lang/String;
-  method public,static install ()Lcom/crystalgraphics/serialization/format/nbt/CgTestTags;
-  method public,static parse (Ljava/lang/String;)Ljava/lang/Object;
-  method public,static toSnbt (Ljava/lang/Object;)Ljava/lang/String;
-com/crystalgraphics/serialization/format/nbt/CgTestTags$Compound
-  access public,final
-  extends java/util/LinkedHashMap
-  method public <init> ()V
-com/crystalgraphics/serialization/format/nbt/CgTestTags$TagList
-  access public,final
-  extends java/util/ArrayList
-  method public <init> ()V
-com/crystalgraphics/serialization/format/nbt/HostTagOps
-  access public,final
-  extends java/lang/Object
+  field public,static,final INSTANCE Lcom/crystalgraphics/serialization/nbt/CgNbtOps;
   implements com/crystalgraphics/serialization/CgDynamicOps
-  method public createBoolean (Z)Ljava/lang/Object;
-  method public createBytes ([B)Ljava/lang/Object;
-  method public createList (Ljava/util/List;)Ljava/lang/Object;
-  method public createMap (Ljava/util/Map;)Ljava/lang/Object;
-  method public createNumber (Ljava/lang/Number;)Ljava/lang/Object;
-  method public createString (Ljava/lang/String;)Ljava/lang/Object;
-  method public empty ()Ljava/lang/Object;
-  method public getBooleanValue (Ljava/lang/Object;)Z
-  method public getBytesValue (Ljava/lang/Object;)[B
-  method public getListValue (Ljava/lang/Object;)Ljava/util/List;
-  method public getMapValue (Ljava/lang/Object;)Ljava/util/Map;
-  method public getNumberValue (Ljava/lang/Object;)Ljava/lang/Number;
-  method public getStringValue (Ljava/lang/Object;)Ljava/lang/String;
+  method public createBoolean (Z)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public createBytes ([B)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public createList (Ljava/util/List;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public createMap (Ljava/util/Map;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public createNumber (Ljava/lang/Number;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public createString (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public empty ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public getBooleanValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Z
+  method public getBytesValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)[B
+  method public getListValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/util/List;
+  method public getMapValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/util/Map;
+  method public getNumberValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/lang/Number;
+  method public getStringValue (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/lang/String;
+  method public toPlain (Lcom/crystalgraphics/serialization/nbt/CgNbtTag;)Ljava/lang/Object;
+com/crystalgraphics/serialization/nbt/CgNbtTag
+  access public,abstract
+  extends java/lang/Object
+  field public,static,final CODEC Lcom/crystalgraphics/serialization/CgCodec;
+  method public asString ()Ljava/lang/String;
+  method public,abstract copy ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag;
+  method public,abstract type ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public,final as (Lcom/crystalgraphics/serialization/CgCodec;)Ljava/lang/Object;
+  method public,final asCompound ()Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,final asList ()Lcom/crystalgraphics/serialization/nbt/CgNbtList;
+  method public,final asValue ()Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/serialization/nbt/CgNbtTag$Type
+  access public,final,enum
+  extends java/lang/Enum
+  field public,final id I
+  field public,static,final BYTE Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final BYTE_ARRAY Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final COMPOUND Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final DOUBLE Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final FLOAT Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final INT Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final INT_ARRAY Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final LIST Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final LONG Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final LONG_ARRAY Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final SHORT Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  field public,static,final STRING Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public isNumber ()Z
+  method public,static of (I)Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public,static values ()[Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+com/crystalgraphics/serialization/nbt/CgNbtValue
+  access public,final
+  extends com/crystalgraphics/serialization/nbt/CgNbtTag
+  method public asBool ()Z
+  method public asByte ()B
+  method public asDouble ()D
+  method public asFloat ()F
+  method public asInt ()I
+  method public asLong ()J
+  method public asShort ()S
+  method public asString ()Ljava/lang/String;
+  method public bytes ()[B
+  method public copy ()Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public ints ()[I
+  method public isNumber ()Z
+  method public isString ()Z
+  method public longs ()[J
+  method public number ()Ljava/lang/Number;
+  method public type ()Lcom/crystalgraphics/serialization/nbt/CgNbtTag$Type;
+  method public,static ofBool (Z)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofByte (B)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofBytes ([B)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofDouble (D)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofFloat (F)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofInt (I)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofInts ([I)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofLong (J)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofLongs ([J)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofNumber (Ljava/lang/Number;)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofShort (S)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
+  method public,static ofString (Ljava/lang/String;)Lcom/crystalgraphics/serialization/nbt/CgNbtValue;
 com/crystalgraphics/settings/CgGraphicsSettings
   access public,final
   extends java/lang/Object
