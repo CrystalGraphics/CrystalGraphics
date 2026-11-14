@@ -404,6 +404,22 @@ goku.customDepth(1, 0xFF);              // into CgFrameKeys.CUSTOM_DEPTH with st
 - CustomDepth is tested against itself, not the scene: a post material compares it with the scene's depth to outline
   what is hidden (`render/world/CLAUDE.md`, *CustomDepth*).
 
+**The engine's outline** (`CgOutline`) is a toon outline round what writes one stencil value: depth, normal and
+material-ID edges, widths and thresholds by distance (the technique of Dragon Ball Z: Kakarot's battle outline):
+
+```java
+CgOutline outline = CgOutline.add(1);          // round stencil 1, at the engine's look
+goku.customDepth(1);
+CgOutline.type(1).set(0xFFFFB030, 2.5f);       // a material writing outline type 1 is drawn in this
+outline.close();
+```
+
+- A look of your own is a material naming `crystalgraphics:shaders/post/outline.shader` with its values, added with
+  `CgOutline.add(material)`; `OutlinedModels` and `UntypedModels` say which shading models it outlines and which never
+  take a type colour.
+- What a material writes for it: `CG_CUSTOM_DATA_OUT(vec4(colour, id))` and `CG_SHADING_MODEL_OUT(model, type)`.
+- The type colours are the `crystalgraphics:outline` collection, keyed by a sequence's global track.
+
 ## A host's own vertex path
 
 A host that must see the posed vertices, as a shader pack lights and fogs a Minecraft entity only when its renderer
@@ -417,6 +433,40 @@ for (int s = 0; s < body.materialSlots(); s++) {
 ```
 
 - Positions are relative to where it stands, turned and scaled by its placement. Its mesh must keep its CPU copy.
+
+## Entity actors
+
+An entity of a host's world is drawn by an actor, Unreal's `AActor` bound to it: components made when the entity
+enters, changed each frame, removed with it. Its root stands at the entity's interpolated pose before animation poses,
+so everything added rides it. Registered once by entity type, on every era and loader.
+
+```java
+public final class DragonActor extends CgEntityActor {
+    private CgSkeletalMeshComponent body;
+
+    @Override protected void onSpawn(CgEntity dragon) {
+        body = add(scene().skeletal(DRAGON_MESH).materials(DRAGON_SKINS::get).customDepth(1));
+        body.anim().play(CgAnimSection.of(IDLE).loop().build());
+    }
+
+    @Override protected void tick(CgEntity dragon, float dt) {
+        body.scalar("Glow", dragon.flag(CgEntityQuery.SPRINTING) ? 2f : 0f);
+    }
+}
+
+CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
+CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn beside the vanilla model
+```
+
+- **`add`** attaches a component to the root unless it rides something already, spawns it, and removes it with the
+  actor.
+- **The root** stands at the entity's feet, turned as Minecraft turns a living model (`180 - bodyYaw`); place a
+  component relative to it with `at`.
+- **`tick`** runs in `PLAYS`, before `POSE`: change components, draw nothing. An actor that throws is removed and its
+  entity left to the host.
+- **What a host does**: `CgEntityActors.entered(id, type)` when an entity joins the client's level, `left(id)` when it
+  leaves, and `replacesModel(id)` in its entity renderer. A harness scene does the same for fake entities, served by a
+  `CgEntityQuery` it installs with `CgLevels.single(...)`.
 
 ## Drawing a palette yourself
 
@@ -464,13 +514,14 @@ world.draw(hero);
   fog. Translucent or double-sided is its `CgMaterialState`.
 - **`materials/entity_emissive.shader`**: the glowing layer, eyes and glowmasks: no shading and no lightmap, added over
   what is behind, faded by the fog.
-- **The material contract** rides on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the
-  texture by its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. A
-  sequence's `material` track keys them through the role's bindings:
+- **Their parameters** ride on top: `_Tint` multiplies by its alpha, `_Flash` is the overlay mixed over the texture by
+  its alpha (the hurt flash is red at 0.3), and `_RimColor`, `_RimStrength`, `_RimPower` add a rim. Code sets them on
+  every slot that declares them; a sequence's `material` track keys them by these names through the role's
+  `CgMaterialParameters`:
 
   ```java
-  CgRoleFlash flash = new CgRoleFlash(hero, "_Tint", null, "_Flash", null);         // tint, flash and their strengths
-  CgRoleRim rim = new CgRoleRim(hero, "_RimStrength", "_RimPower", "_RimColor");     // rim_strength, rim_power, rim
+  hero.vector("_Flash", 1f, 0f, 0f, 0.3f);      // the hurt flash
+  hero.resetVector("_Flash");                    // gone
   ```
 
 ### Under a shader pack

@@ -17,6 +17,7 @@ import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
 import com.crystalgraphics.render.scene.component.CgScenePrimitives;
+import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.view.CgView;
@@ -108,6 +109,11 @@ public final class CgScene {
     /** A skinned mesh posed by an animation instance of its own: give each slot a material before it spawns. */
     public CgSkeletalMeshComponent skeletal(CgSkeletalMesh mesh) {
         return primitives.skeletal(mesh);
+    }
+
+    /** A place that draws nothing, for others to attach to: an actor's root. */
+    public CgSceneRoot root() {
+        return primitives.root();
     }
 
     /** Many of one mesh, each instance its own record. */

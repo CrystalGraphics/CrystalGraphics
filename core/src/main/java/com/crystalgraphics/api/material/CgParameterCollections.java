@@ -46,7 +46,9 @@ import java.util.stream.Stream;
  *       {@code overrides} set any of their defaults by id.</li>
  *   <li>Compiled again with the same parameters in the same order (a reload), it answers the collection it declared.
  *       Parameters added, removed or reordered throw: a placed collection's layout cannot move.</li>
- *   <li>A namespace a Java collection already took throws, as a second {@link CgParameterCollection#of} does.</li>
+ *   <li>A namespace a Java collection already took answers that collection where the asset declares the same
+ *       parameters in the same order, so data can key an engine collection by its asset id
+ *       ({@code crystalgraphics:outline}); its defaults stay the Java ones. Any other layout throws.</li>
  * </ul>
  */
 public final class CgParameterCollections {
@@ -93,6 +95,16 @@ public final class CgParameterCollections {
         // Whole under the lock placing collections: a worker compiles this while the render thread's upload places
         // every collection defined, and one placed half-declared refuses the rest
         synchronized (CgParameterCollection.class) {
+            CgParameterCollection java = CgParameterCollection.named(namespace);
+            if (java != null) {
+                // An engine collection Java defined, described by an asset so data can key it: its parameters must match
+                if (!java.layout().equals(layout)) {
+                    throw new IllegalStateException(asset.id() + ": collection '" + namespace + "' is defined in code as "
+                            + java.layout() + ", and the asset declares " + layout);
+                }
+                DECLARED.put(namespace, new Declared(java, layout, params));
+                return java;
+            }
             collection = CgParameterCollection.of(namespace);
             for (Param p : params) {
                 float[] d = overrides.containsKey(p.id) ? Param.values(overrides.get(p.id)) : p.defaults;

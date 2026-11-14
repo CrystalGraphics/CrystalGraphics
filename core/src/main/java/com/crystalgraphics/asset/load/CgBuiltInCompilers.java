@@ -3,6 +3,7 @@ package com.crystalgraphics.asset.load;
 import com.crystalgraphics.api.animation.CgSkeletonDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
+import com.crystalgraphics.render.post.CgOutline;
 import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
@@ -35,6 +36,7 @@ public final class CgBuiltInCompilers {
     public static void register() {
         CgMaterialDefinitions.register();
         CgParameterCollections.register();
+        CgOutline.install();   // an engine collection shaders read: declared before any material compiles
         CgCurveDefinition.register();
         CgCameraRigDefinition.register();
         CgCameraShakeDefinition.register();

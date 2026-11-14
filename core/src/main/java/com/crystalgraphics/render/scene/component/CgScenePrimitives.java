@@ -78,6 +78,10 @@ public final class CgScenePrimitives {
         return new CgInstancedMeshComponent(this, mesh, material);
     }
 
+    public CgSceneRoot root() {
+        return new CgSceneRoot(this);
+    }
+
     public CgSkeletalMeshComponent skeletal(CgSkeletalMesh mesh) {
         return new CgSkeletalMeshComponent(this, Objects.requireNonNull(mesh, "mesh"));
     }

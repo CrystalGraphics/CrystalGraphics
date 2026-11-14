@@ -1,0 +1,9 @@
+_v: 1
+namespace: outline
+vectors:
+  - { id: outline_type1, name: Type1, default: [2.5, 1.73, 0.195, 1.0] }
+  - { id: outline_type2, name: Type2, default: [2.0, 2.0, 2.0, 1.0] }
+  - { id: outline_type3, name: Type3, default: [2.5, 1.73, 0.195, 1.0] }
+  - { id: outline_type4, name: Type4, default: [1.0, 1.0, 1.0, 1.0] }
+editor:
+  note: "The outline's type colours, linear rgb: a material writing outline type n (CG_SHADING_MODEL_OUT's second value) is outlined in Typen. Keyed by a sequence's global track; set in code through CgOutline.type(n)."

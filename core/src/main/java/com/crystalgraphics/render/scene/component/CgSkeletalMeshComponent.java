@@ -103,9 +103,11 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
     private final CgMaterialInterface[] materials;
     private final CgMaterialInstance[] dynamic;
     private final boolean[] made;
-    /** Per parameter name, each slot's default where its material declares it (NaN / null where not). */
-    private final Map<String, float[]> scalarDefaults = new HashMap<>();
-    private final Map<String, float[][]> vectorDefaults = new HashMap<>();
+    /** Per parameter name: how many numbers it is, and each slot's material's own value (null where not declared). */
+    private final Map<String, Declared> declared = new HashMap<>();
+
+    private record Declared(int components, float[][] bySlot) {
+    }
 
     /** Unreal's {@code OverlayMaterial}, {@code MaterialSlotsOverlayMaterial} and {@code OverlayMaterialMaxDrawDistance}. */
     @Nullable
@@ -158,8 +160,7 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
         materials[slot] = material;
         if (material instanceof CgMaterialInstance instance) dynamic[slot] = instance;
         precache(material);
-        scalarDefaults.clear();
-        vectorDefaults.clear();
+        declared.clear();
         return this;
     }
 
@@ -208,62 +209,68 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
      */
     @Override
     public void scalar(String name, float value) {
-        float[] defaults = declared(name);
-        for (int s = 0; s < materials.length; s++) if (!Float.isNaN(defaults[s])) dynamicMaterial(s).set1f(name, value);
+        float[][] own = declared(name).bySlot;
+        for (int s = 0; s < materials.length; s++) if (own[s] != null) dynamicMaterial(s).set1f(name, value);
     }
 
     /** Puts the scalar {@code name} back to each slot's material's own value. */
     @Override
     public void resetScalar(String name) {
-        float[] defaults = declared(name);
-        for (int s = 0; s < materials.length; s++) {
-            if (!Float.isNaN(defaults[s]) && dynamic[s] != null) dynamic[s].set1f(name, defaults[s]);
-        }
+        float[][] own = declared(name).bySlot;
+        for (int s = 0; s < materials.length; s++) if (own[s] != null && dynamic[s] != null) dynamic[s].set1f(name, own[s][0]);
     }
 
     /** Sets the vector {@code name} on every slot whose material declares it: Unreal's {@code SetVectorParameterValueOnMaterials}. */
     public void vector(String name, float x, float y, float z, float w) {
-        float[][] defaults = declaredVector(name);
-        for (int s = 0; s < materials.length; s++) if (defaults[s] != null) dynamicMaterial(s).vec4(name, x, y, z, w);
+        float[][] own = declared(name).bySlot;
+        for (int s = 0; s < materials.length; s++) if (own[s] != null) dynamicMaterial(s).vec4(name, x, y, z, w);
     }
 
     /** Puts the vector {@code name} back to each slot's material's own value. */
     public void resetVector(String name) {
-        float[][] defaults = declaredVector(name);
+        float[][] own = declared(name).bySlot;
         for (int s = 0; s < materials.length; s++) {
-            float[] d = defaults[s];
+            float[] d = own[s];
             if (d != null && dynamic[s] != null) dynamic[s].vec4(name, d[0], d[1], d[2], d[3]);
         }
     }
 
-    /** Each slot's material's value for {@code name}, NaN where it does not declare it: found once a name. */
-    private float[] declared(String name) {
-        float[] defaults = scalarDefaults.get(name);
-        if (defaults != null) return defaults;
-        defaults = new float[materials.length];
-        Arrays.fill(defaults, Float.NaN);
-        for (int s = 0; s < materials.length; s++) {
-            if (materials[s] == null) continue;
-            for (CgMaterialProperty p : materials[s].material().properties()) {
-                if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = p.getFloatValue()[0];
-            }
-        }
-        scalarDefaults.put(name, defaults);
-        return defaults;
+    /**
+     * How many numbers parameter {@code name} is (1 a scalar, up to 4 a vector or colour) on the first slot whose
+     * material declares it; 0 where none does. What a sequence's material track types its slot by.
+     */
+    public int parameterComponents(String name) {
+        return declared(name).components;
     }
 
-    private float[][] declaredVector(String name) {
-        float[][] defaults = vectorDefaults.get(name);
-        if (defaults != null) return defaults;
-        defaults = new float[materials.length][];
+    /** The first declaring slot's material's own value of {@code name} into {@code out} (four numbers); false where none declares it. */
+    public boolean parameterDefault(String name, float[] out) {
+        for (float[] own : declared(name).bySlot) {
+            if (own != null) {
+                System.arraycopy(own, 0, out, 0, 4);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** Each slot's material's own value for {@code name} (four numbers), null where it does not declare it: found once a name. */
+    private Declared declared(String name) {
+        Declared d = declared.get(name);
+        if (d != null) return d;
+        float[][] bySlot = new float[materials.length][];
+        int components = 0;
         for (int s = 0; s < materials.length; s++) {
             if (materials[s] == null) continue;
             for (CgMaterialProperty p : materials[s].material().properties()) {
-                if (p.getName().equals(name) && !p.getType().isSampler()) defaults[s] = Arrays.copyOf(p.getFloatValue(), 4);
+                if (!p.getName().equals(name) || p.getType().isSampler()) continue;
+                bySlot[s] = Arrays.copyOf(p.getFloatValue(), 4);
+                if (components == 0) components = p.getType().getComponents();
             }
         }
-        vectorDefaults.put(name, defaults);
-        return defaults;
+        d = new Declared(components, bySlot);
+        declared.put(name, d);
+        return d;
     }
 
     private void dropDynamic(int slot) {

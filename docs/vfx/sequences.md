@@ -287,15 +287,20 @@ is scanned, each animation becomes a notify sequence under the clip's id: the fi
 - Presentation only: each viewer translates its own playback, and nothing is sent. A span over a looping clip's end
   ends and begins again each loop, so pass `looped` when the clip passes its end.
 
-- **A role's outline colour** (the material contract's `outline`, a `material` track keying `colours.outline` on the
-  role) is a `CgRoleOutline` the role answers the slot through: a keyed colour sets the role's slot on its own materials
-  (`CgSkeletalMeshComponent.scalar`) and writes the colour into the outline post's slot; `restore_state` puts the materials' own
-  back.
+- **A role's material parameters** are keyed by their own names on the role (`scalars: { FresnelInfluence: ... }`,
+  `colours: { FresnelColor: ... }`): a role with a skeletal mesh answers its slots through a `CgMaterialParameters`,
+  which sets each on every material slot that declares it and, at `restore_state`, puts each back to its own
+  material's value (Unreal's component material parameter track).
 
 ```java
-outline = new CgRoleOutline(goku.instance(), battleOutline, 1, "OutlineColorType", "TypeColor1");
-@Override public int slot(String name) { return outline.slot(name); }   // set and get the same
+materials = new CgMaterialParameters(goku);                                  // goku: a CgSkeletalMeshComponent
+@Override public int slot(String name) { return materials.slot(name); }      // set and get the same
 ```
+
+- **An outline colour** keyed by a move (Kakarot's `ATAnimNotifyState_OutlineColor`) is two tracks: the role's
+  materials take outline type n (`scalars: { OutlineColorType: 1 }`), and the outline collection's `Typen` takes the
+  colour (`{ kind: global, collection: crystalgraphics:outline, ... colours: { Type1: ... } }`). `CgOutline` is the
+  outline; `prefabs.md` § *Materials, overlay and CustomDepth*.
 - **At its end a player holds its last frame** (`finished()`) until stopped; what its ended sections restored stays
   restored. A widget animation instead retires there, keeping what it wrote (`retiring()`), as UMG's does.
 - **A kind of your own** is a `CgSequenceEvaluator`, registered on the sequencer: it binds each section once, then
