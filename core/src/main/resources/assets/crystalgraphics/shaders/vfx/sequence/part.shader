@@ -4,7 +4,7 @@
 // Premultiplied over what is behind it.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh, Sequence  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory VfxMesh, Sequence  PerDrawValues On }
 
 Properties {
     _MainTex    ("Its texture", sampler2D) = "white"
@@ -39,11 +39,15 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec4 texel = texture(_MainTex, i.uv);
     float alpha = texel.a * _Color.a * i.opacity;
     if (alpha * cg_Vfx.presence <= i.clip || alpha <= 0.0) discard;
     vec3 colour = texel.rgb * _Color.rgb;
-    s.baseColor = colour * alpha;   // premultiplied
+    s.emissive = colour * alpha;   // premultiplied
     s.opacity = alpha;
-    s.emissive = colour * alpha * i.glare;
+    glowLight = colour * alpha * i.glare;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

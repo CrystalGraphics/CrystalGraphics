@@ -64,5 +64,5 @@ void surface(in v2f i, inout CgSurface s) {
     color = grid_over(color, vec3(0.95) * tint, grid_lines(xz * 0.1, deriv * 0.1, 0.015) * 0.6 * fade);
     color = grid_over(color, vec3(0.55, 0.86, 0.0), grid_axis(xz.x, deriv.x, 1.5) * fade);
     color = grid_over(color, vec3(1.0, 0.2, 0.32), grid_axis(xz.y, deriv.y, 1.5) * fade);
-    s.baseColor = color.rgb;
+    s.emissive = color.rgb;
 }

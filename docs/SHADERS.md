@@ -101,13 +101,12 @@ Properties {
 }
 struct v2f { vec2 uv0; };                                    // no vertex(): uv0-3, color, normal, world, light filled
 void surface(in v2f i, inout CgSurface s) {
-    s.baseColor = _Tint.rgb;
+    s.emissive = _Tint.rgb * (1.0 + _Heat * i.uv0.x);        // Unlit: the emissive is the colour drawn
     s.opacity = _Tint.a;
-    s.emissive = _Tint.rgb * _Heat * i.uv0.x;                // naming emissive draws the glow
 }
 ```
 
-- **The outputs it names decide its passes**: `emissive` a glow, `refraction` a bend; a translucent material naming
+- **The outputs it names decide its passes**: `emissive` a lit surface's glow (an `Unlit` one's colour), `refraction` a bend; a translucent material naming
   neither `baseColor` nor `opacity` draws no colour ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 4.4).
 - **`vertex(inout CgVertex v, out v2f o)`** moves `v.world` (camera-relative); the engine projects it. Never
   `gl_Position`. `v.normal` is world-space. `Material { VertexFactory Procedural }` draws no mesh: `vertex()` assigns
@@ -625,7 +624,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world = centre + vec3(CG_VERTEX_CORNER - 0.5, 0.0) * 0.1;
     o.life = p.positionLife.w;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0, 0.6, 0.2) * clamp(i.life, 0.0, 1.0); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0, 0.6, 0.2) * clamp(i.life, 0.0, 1.0); }
 ```
 
 ```java
@@ -650,6 +649,9 @@ does:
 
 #### The glow: `s.emissive`
 
+**Under `ShadingModel Unlit` it is the material's colour**, drawn as a colour is, with no glow apart: Unreal's unlit
+draws its emissive alone, and `s.baseColor` is refused. The rest of this section is a lit surface's emissive.
+
 The light a material gives off. `CgWorldRenderer` adds it into the HDR scene, where bloom takes what passes white
 (`docs/ENGINE_API.md` § *CgWorldRenderer*): Unity's, Godot's and Unreal's emission, a material output added to an HDR
 scene colour.
@@ -664,7 +666,7 @@ scene colour.
   it.
 - **Hidden by the scene, not by a depth test**: the glow's target has no depth, so a fragment further than the scene's
   depth at its pixel is discarded, with slack for the depth buffer's precision (`CG_EMISSIVE_DEPTH_SLACK`).
-- **A glow that draws nothing in the scene** writes only `emissive`.
+- **A glow that draws nothing in the scene** is a lit material writing only `emissive`.
 - `-Dcrystalgraphics.post.debug=level<N>` draws one stage of bloom over the frame (`docs/DEBUG_FLAGS.md`).
 
 #### The bend: `s.refraction`

@@ -16,7 +16,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/billow.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  DepthPrepass On  MaskClip _Clip  VertexFactory MeshParticles  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  DepthPrepass On  MaskClip _Clip  VertexFactory MeshParticles  PerDrawValues On }
 
 Properties {
     _Color ("The body: its hue sets the three tones", color) = (0.35, 0.36, 0.4, 1)
@@ -74,6 +74,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float life = cg_Particle.relativeTime, seed = cg_Particle.random, opacity = cg_Particle.color.a;
     float hot = cg_Particle.heat;
     vec3 n = normalize(i.normal);
@@ -126,7 +127,10 @@ void surface(in v2f i, inout CgSurface s) {
     // Backlit round its silhouette on the blast's side, through its thin edge.
     vec3 rim = glow * pow(1.0 - facing, 3.0) * hot * _Rim * smoothstep(-0.2, 0.5, faces);
     vec3 colour = cg_Particle.color.rgb;
-    s.baseColor = (col + light + rim) * colour * alpha;   // premultiplied
+    s.emissive = (col + light + rim) * colour * alpha;   // premultiplied
     s.opacity = alpha;
-    s.emissive = (glow * band * hot * hot * _Bloom + rim) * colour * alpha;
+    glowLight = (glow * band * hot * hot * _Bloom + rim) * colour * alpha;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

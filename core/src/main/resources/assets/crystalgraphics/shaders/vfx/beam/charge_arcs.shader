@@ -6,7 +6,7 @@
 // _Core the white core. Its light blooms. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/lightning.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Ribbons  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Ribbons  PerDrawValues On }
 
 Properties {
     _Spiral   ("The bolts' glow; its alpha a strength", color) = (0.5, 0.85, 1.6, 1)
@@ -83,8 +83,12 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 l = fx_bolt_profile(i.bolt.x, fwidth(i.bolt.x), _CoreWidth);
     vec3 col = _Core.rgb * l.x * 2.6 + _Spiral.rgb * (l.y * 0.55 + l.z * 0.3);
-    s.baseColor = col * i.bolt.y * _Spiral.a * cg_Ribbon.values.z;
-    s.emissive = s.baseColor;
+    s.emissive = col * i.bolt.y * _Spiral.a * cg_Ribbon.values.z;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

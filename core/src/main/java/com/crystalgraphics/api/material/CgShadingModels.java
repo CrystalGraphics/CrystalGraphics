@@ -38,8 +38,16 @@ public final class CgShadingModels {
     /** The largest index: the mask target holds a byte a pixel. */
     public static final int MAX_INDEX = 255;
 
-    /** The engine's own, at Unreal's numbers (DeferredShadingCommon.ush's SHADINGMODELID_*). */
+    /**
+     * Unlit, as Unreal's: the surface's colour is its {@code s.emissive} alone, and {@code s.baseColor} is refused.
+     *
+     * <pre>{@code
+     * Material { BlendMode Translucent  ShadingModel Unlit }
+     * void surface(in v2f i, inout CgSurface s) { s.emissive = _Tint.rgb * _Intensity; s.opacity = _Tint.a; }
+     * }</pre>
+     */
     public static final CgShadingModel UNLIT = new CgShadingModel("unlit", 0, "unlit", null, null);
+    /** Lit and subsurface, at Unreal's numbers (DeferredShadingCommon.ush's SHADINGMODELID_*), as unlit's 0. */
     public static final CgShadingModel LIT = new CgShadingModel("lit", 1, "lit", null, null);
     public static final CgShadingModel SUBSURFACE = new CgShadingModel("subsurface", 2, "subsurface", null, null);
 

@@ -6,7 +6,7 @@
 // streaks and filaments. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Tube  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Tube  PerDrawValues On }
 
 Properties {
     _Shell    ("The skin; its alpha a strength", color) = (0.15, 0.55, 1.6, 1)
@@ -39,6 +39,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 ray = normalize(i.world - CG_CAMERA_POSITION);
     vec3 t = normalize(cg_Tube.ring.tangent);
     vec3 rel = i.world - i.axis;
@@ -67,7 +68,10 @@ void surface(in v2f i, inout CgSurface s) {
     // triangle where the displaced skin turns edge-on, striping the rim with teeth.
     float far = smoothstep(-0.3, 0.3, dot(n, ray));
     float strength = alpha * _Shell.a * mix(1.0, 0.55, far);
-    s.baseColor = (skin + glow) * strength * pulse * flicker;   // premultiplied
+    s.emissive = (skin + glow) * strength * pulse * flicker;   // premultiplied
     s.opacity = _Cover * strength;
-    s.emissive = glow * strength * pulse * flicker * _GlowGain;
+    glowLight = glow * strength * pulse * flicker * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

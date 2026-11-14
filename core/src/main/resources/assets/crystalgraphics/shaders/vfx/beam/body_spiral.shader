@@ -3,7 +3,7 @@
 // the bands, its alpha a strength; _Core where they cross. Its light blooms. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Tube  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Tube  PerDrawValues On }
 
 Properties {
     _Spiral   ("The bands and bolts; its alpha a strength", color) = (0.5, 0.85, 1.6, 1)
@@ -23,6 +23,7 @@ float band(float u, float width, float aa) {
 struct v2f { vec2 uv0; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float arc = cg_Tube.ring.arc, angle = cg_Tube.angle, age = cg_Tube.header.w;
     float a = angle * 6.28318531;
     // Bands writhing as they race forward, torn open by ridged gaps.
@@ -36,6 +37,9 @@ void surface(in v2f i, inout CgSurface s) {
     // How far the head is beyond this ring
     float ends = smoothstep(1.0, 3.5, arc) * smoothstep(0.5, 2.5, cg_Tube.header.y - arc);
     vec3 col = _Spiral.rgb * (b1 + 0.7 * b2) * 1.6 + _Core.rgb * (b1 * b2 * 2.0 + b1 * 0.35);
-    s.baseColor = col * breakup * ends * fx_flicker(age, 0.71) * _Spiral.a * (gl_FrontFacing ? 1.0 : 0.4);
-    s.emissive = s.baseColor;
+    s.emissive = col * breakup * ends * fx_flicker(age, 0.71) * _Spiral.a * (gl_FrontFacing ? 1.0 : 0.4);
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

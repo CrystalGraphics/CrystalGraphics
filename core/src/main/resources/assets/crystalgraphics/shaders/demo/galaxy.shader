@@ -179,5 +179,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 glass = vfx_studio(i.worldPos, reflect(-v, n), 0.0, floorY)
             + vfx_direct(n, v, VFX_KEY_DIR, VFX_KEY_COLOR, vec3(1.0), 0.0, 0.03) * 2.0;
     color = color * (1.0 - fresnel) + glass * fresnel;
-    s.baseColor = fx_aces(0.8 * color);
+    s.emissive = fx_aces(0.8 * color);
 }

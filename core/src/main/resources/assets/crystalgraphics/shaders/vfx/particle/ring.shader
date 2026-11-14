@@ -9,7 +9,7 @@
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/depth.glsl"
 #include "crystalgraphics:shaders/lib/vfx/ring.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory MeshParticles  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory MeshParticles  PerDrawValues On }
 
 Properties {
     _Color ("The glow; its alpha a strength", color) = (1, 0.55, 0.2, 1)
@@ -35,6 +35,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float life = cg_Particle.relativeTime, seed = cg_Particle.random;
     vec3 eye = CG_CAMERA_POSITION;
     vec3 ray = normalize(i.world - eye);
@@ -53,6 +54,9 @@ void surface(in v2f i, inout CgSurface s) {
     float glow = (contact + veil) * whole * flash * cg_Particle.color.a * _Color.a;
     if (glow < 0.003) discard;
     vec3 col = mix(_Color.rgb, _Hot.rgb, contact * contact * contact) * cg_Particle.color.rgb * _Bright;
-    s.baseColor = col * glow;
-    s.emissive = s.baseColor;
+    s.emissive = col * glow;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

@@ -75,6 +75,6 @@ void surface(in v2f i, inout CgSurface s) {
     float front = distance(i.world, eye) - min(h, 1.0) * bb.size * edge;
     alpha *= clamp((FX_SCENE_DISTANCE(ray) - front) / (_Soft * bb.size), 0.0, 1.0);
     alpha *= bb.values.z * _Color.a;
-    s.baseColor = col * alpha;   // premultiplied
+    s.emissive = col * alpha;   // premultiplied
     s.opacity = alpha;
 }

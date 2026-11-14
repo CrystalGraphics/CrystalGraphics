@@ -86,6 +86,6 @@ void surface(in v2f i, inout CgSurface s) {
             + dots * vec3(0.55, 1.05, 1.45) * 1.25;
     color *= scan * flicker;
     if (!gl_FrontFacing) color *= 0.4;
-    s.baseColor = color;
+    s.emissive = color;
     s.opacity = 1.0;
 }

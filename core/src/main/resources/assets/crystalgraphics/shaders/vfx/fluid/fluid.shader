@@ -30,6 +30,7 @@ Properties {
 struct v2f { vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_WORLD_POS, ray = cg_PixelRay();
     CgFluid f = cg_Fluid;
     int fluid = f.index;
@@ -100,7 +101,9 @@ void surface(in v2f i, inout CgSurface s) {
     // Where its light came from, weighed by what each step took: what the resolve reprojects last frame by.
     s.volumeDepth = alpha > 0.01 ? FX_EYE_DEPTH(ray, nominal / alpha) : 0.0;
     if (alpha < 1.0e-4) discard;
-    s.baseColor = sum.rgb;   // premultiplied
+    s.emissive = sum.rgb;   // premultiplied
     s.opacity = alpha;
-    s.emissive = glow;
+    glowLight = glow;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

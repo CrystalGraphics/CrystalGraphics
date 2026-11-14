@@ -18,6 +18,6 @@ void vertex(inout CgVertex v, out v2f o) {
 void surface(in v2f i, inout CgSurface s) {
     vec4 c = texture(_MainTex, i.uv) * i.colour;
     c.rgb *= mix(vec3(1.0), _Tint.rgb, clamp(_Tint.a, 0.0, 1.0));
-    s.baseColor = c.rgb;
+    s.emissive = c.rgb;
     s.opacity = c.a;
 }

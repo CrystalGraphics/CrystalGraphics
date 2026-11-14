@@ -131,5 +131,5 @@ void surface(in v2f i, inout CgSurface s) {
     float sun = smoothstep(0.9990, 0.9996, toward) + pow(toward, 400.0) * 0.6 + pow(toward, 24.0) * 0.12;
     color += vec3(1.0) * sun * smoothstep(-0.02, 0.02, y);
     if (_Night > 0.0) color = mix(color, night_sky(d, max(length(dFdx(d)), length(dFdy(d))), CG_TIME), _Night);
-    s.baseColor = min(color, vec3(1.0));
+    s.emissive = min(color, vec3(1.0));
 }

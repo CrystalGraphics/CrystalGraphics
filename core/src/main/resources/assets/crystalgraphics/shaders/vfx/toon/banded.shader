@@ -10,7 +10,7 @@
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/volume.glsl"
 #include "crystalgraphics:shaders/lib/vfx/bands.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  VertexFactory VfxMesh, TubeClosed  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Back  VertexFactory VfxMesh, TubeClosed  PerDrawValues On }
 
 Properties {
     _Bands  ("Its bands' colours, innermost first, then the halo's; each alpha a strength", color[4]) = (1, 1, 1, 1), (0.4, 0.85, 1, 1), (0.1, 0.45, 1, 1), (0.2, 0.55, 1, 0.5)
@@ -23,6 +23,7 @@ Properties {
 struct v2f { vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_POSITION;
     vec3 ray = cg_PixelRay();
 #ifdef FX_ON_TUBE
@@ -55,7 +56,10 @@ void surface(in v2f i, inout CgSurface s) {
     vec4 halo = _Bands(3);
     float haloA = fx_band_halo(b, outer, _Soft) * halo.a;
     // The bands over their halo, premultiplied.
-    s.baseColor = band.rgb * band.a + halo.rgb * haloA * (1.0 - band.a);
+    s.emissive = band.rgb * band.a + halo.rgb * haloA * (1.0 - band.a);
     s.opacity = band.a + haloA * (1.0 - band.a);
-    s.emissive = band.rgb * band.a * glow + halo.rgb * haloA * (1.0 - band.a) * _Glows.w;
+    glowLight = band.rgb * band.a * glow + halo.rgb * haloA * (1.0 - band.a) * _Glows.w;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

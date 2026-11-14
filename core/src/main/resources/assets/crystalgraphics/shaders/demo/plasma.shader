@@ -76,5 +76,5 @@ void surface(in v2f i, inout CgSurface s) {
     light += vec3(1.3, 0.6, 1.5) * rays * exp(-pass * 3.0) * 0.9 * throb;
     // A deep violet haze behind it all, and a bright rim where the ball's light thickens.
     vec3 color = vec3(0.08, 0.0, 0.14) + light + vec3(0.9, 0.18, 1.3) * pow(1.0 - nv, 3.0) * 1.6 * throb;
-    s.baseColor = fx_aces(0.8 * color);
+    s.emissive = fx_aces(0.8 * color);
 }

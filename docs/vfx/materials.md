@@ -115,7 +115,7 @@ struct v2f { vec2 uv0; };                         // filled from the placed vert
 
 void surface(in v2f i, inout CgSurface s) {
     float a = texture(_Mask, i.uv0).r * cg_Particle.color.a;   // naming a field passes it to the pixel
-    s.baseColor = cg_Particle.color.rgb * a;
+    s.emissive = cg_Particle.color.rgb * a;
 }
 ```
 

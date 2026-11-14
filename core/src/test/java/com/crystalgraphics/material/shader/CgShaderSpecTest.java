@@ -72,7 +72,7 @@ public class CgShaderSpecTest {
     @Test
     public void settingsReachTheSpec() {
         assertTrue(surface("BlendMode Additive  TranslucencyPass Separate", "s.baseColor = vec3(1.0);").separateTranslucency());
-        assertTrue(surface("ShadingModel Unlit", "s.baseColor = vec3(1.0);").unlit());
+        assertTrue(surface("ShadingModel Unlit", "s.emissive = vec3(1.0);").unlit());
         assertEquals(CgShaderSpec.Lighting.SURFACE,
                 surface("BlendMode Translucent  TranslucencyLighting Surface", "s.opacity = 0.5; s.normal = vec3(0, 0, 1);")
                         .lighting());
@@ -236,6 +236,15 @@ public class CgShaderSpecTest {
 
         CgShaderSpec modulate = surface("BlendMode Modulate", "s.baseColor = vec3(1.0); s.emissive = vec3(2.0);");
         assertFalse(modulate.sceneFolds());
+    }
+
+    @Test
+    public void anUnlitSurfaceDrawsItsEmissiveAndRefusesABaseColour() {
+        CgShaderSpec beam = surface("BlendMode Translucent  ShadingModel Unlit", "s.emissive = vec3(4.0); s.opacity = 0.5;");
+        assertTrue(beam.pass(CgRenderPassVariant.FORWARD).fragmentBody().contains("fragColor = vec4(s.emissive, s.opacity);"));
+        assertNull("its emissive is its colour, not a glow beside it", beam.pass(CgRenderPassVariant.EMISSIVE));
+        refused("#domain surface\nMaterial { ShadingModel Unlit }\n" + V2F
+                + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }\n", "s.emissive");
     }
 
     // ── post, ui ─────────────────────────────────────────────────────────────

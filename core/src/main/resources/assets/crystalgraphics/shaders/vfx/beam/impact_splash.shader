@@ -3,7 +3,7 @@
 // its life ends; one burst at cg_Ribbon.values.w seconds ago when _Burst is 1. cg_Ribbon.values.z is an intensity.
 // _ShellHot is a spark's sheath, its alpha a strength; _Core its hot head. Its light blooms. CgEnergyWave.
 #domain surface
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Ribbons  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Ribbons  PerDrawValues On }
 
 Properties {
     _ShellHot ("A spark's sheath; its alpha a strength", color) = (0.7, 0.95, 1.6, 1)
@@ -62,10 +62,14 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float along = i.spark.x, across = i.spark.y;
     float core = exp(-across * across * 9.0);
     float sheath = exp(-across * across * 2.5) * 0.5;
     vec3 col = (_ShellHot.rgb * sheath + _Core.rgb * core * along) * pow(along, 1.3);
-    s.baseColor = col * i.spark.z * _ShellHot.a * cg_Ribbon.values.z;
-    s.emissive = s.baseColor;
+    s.emissive = col * i.spark.z * _ShellHot.a * cg_Ribbon.values.z;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

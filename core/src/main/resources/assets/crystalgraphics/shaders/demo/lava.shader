@@ -118,5 +118,5 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 plateColor = vec3(0.06, 0.02, 0.01) + vec3(1.2, 0.15, 0.01) * (1.0 - smoothstep(0.03, 0.14, skinCrack));
     vec3 sea = mix(molten, plateColor, plate);
     vec3 color = mix(crust, sea, flooded);
-    s.baseColor = fx_aces(0.8 * color);
+    s.emissive = fx_aces(0.8 * color);
 }

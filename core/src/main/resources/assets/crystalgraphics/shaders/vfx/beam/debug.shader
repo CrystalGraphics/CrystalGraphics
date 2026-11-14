@@ -21,5 +21,5 @@ void surface(in v2f i, inout CgSurface s) {
     float line = 1.0 - smoothstep(0.5, 0.5 + fwidth(seam) * 1.5, seam);
     vec3 col = _Shell.rgb * (0.25 + 0.35 * sector + 0.4 * bands);
     col = mix(col, _Core.rgb, line);
-    s.baseColor = col * (gl_FrontFacing ? 0.8 : 0.35);
+    s.emissive = col * (gl_FrontFacing ? 0.8 : 0.35);
 }

@@ -114,6 +114,6 @@ void surface(in v2f i, inout CgSurface s) {
     vec3 color = cyan * edge * lines + blue * (fill + bevel * (0.05 + cellsLit * 0.6 + scan * 0.1));
     color += vec3(1.3, 1.5, 1.9) * (ring * 1.4 + flash * 3.0) + vec3(2.2, 0.7, 0.12) * splash * 2.5;
     if (!gl_FrontFacing) color *= 0.45;
-    s.baseColor = color;
+    s.emissive = color;
     s.opacity = 1.0;
 }

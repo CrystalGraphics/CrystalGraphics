@@ -319,7 +319,7 @@ void vertex(inout CgVertex v, out v2f o) {
     o.life = p.positionLife.w;
     o.tint = CG_OBJECT_CUSTOM0;                    // this draw's own parameters
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = i.tint.rgb * clamp(i.life, 0.0, 1.0); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = i.tint.rgb * clamp(i.life, 0.0, 1.0); }
 ```
 
 | Use | Never | Why |

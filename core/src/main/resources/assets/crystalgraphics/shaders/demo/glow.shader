@@ -27,6 +27,6 @@ void surface(in v2f i, inout CgSurface s) {
     // Only the light in front of the scene, the glowing sphere included; none from inside that sphere.
     glow *= vfx_seen(pass.x, sqrt(max(pass.y, source) * source), VFX_SCENE_DISTANCE(ray)) * vfx_limb(pass.y, source);
     glow *= smoothstep(source * 0.95, source * 1.4, length(camera - centre));
-    s.baseColor = CG_OBJECT_CUSTOM1.rgb * CG_OBJECT_CUSTOM1.a * glow;
+    s.emissive = CG_OBJECT_CUSTOM1.rgb * CG_OBJECT_CUSTOM1.a * glow;
     s.opacity = 1.0;
 }

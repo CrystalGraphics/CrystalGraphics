@@ -94,7 +94,7 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 
 | Output | Type | Default | What it is |
 |---|---|---|---|
-| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour: lit by the world, or shown as written under `ShadingModel Unlit`; linear albedo under `DefaultLit` and `Subsurface` |
+| `baseColor` | `vec3` | `(1, 1, 1)` | Its colour, lit: by the world under `WorldLit`, as linear albedo under `DefaultLit` and `Subsurface`. **Not read under `ShadingModel Unlit`**, which refuses it: write `emissive` |
 | `metallic` | `float` | `0` | `DefaultLit` and `Subsurface`: 1 a metal, whose base colour is its reflection |
 | `specular` | `float` | `0.5` | `DefaultLit` and `Subsurface`: a non-metal's reflectance, 0.08 times this |
 | `roughness` | `float` | `0.5` | `DefaultLit` and `Subsurface`: 0 a mirror, 1 matte |
@@ -102,7 +102,7 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 | `subsurfaceColor` | `vec3` | `(1, 1, 1)` | `Subsurface`: the colour light takes through it |
 | `opacity` | `float` | `1` | How much it hides what is behind it (translucent blend modes); under `Subsurface`, how much the normal counts in the light through it |
 | `opacityMask` | `float` | `1` | Where it is solid: kept at or above `MaskClip` (`Masked`, `ClipDepth`, `DepthPrepass`) |
-| `emissive` | `vec3` | `(0, 0, 0)` | Light it gives off, linear and unlit; past 1, it blooms |
+| `emissive` | `vec3` | `(0, 0, 0)` | Light it gives off, linear and unlit; past 1, it blooms. **Under `ShadingModel Unlit` it is the whole colour drawn** |
 | `normal` | `vec3` | the mesh's, or `(0, 1, 0)` | World-space normal, lighting a `DefaultLit` or `Subsurface` surface (the mesh's by default, toward the eye on a back face) or a translucent one (`TranslucencyLighting Surface`) |
 | `refraction` | `vec2` | `(0, 0)` | How far it bends what is behind it, in screen UV (0.02 = 2% of the screen) |
 | `refractionSplit` | `float` | `0` | The bend split by colour: red bends `1 + split` as far, blue `1 - split` |
@@ -113,6 +113,19 @@ passes it draws in (§ 4.4), so writing nothing you do not need is also what kee
 | `light` | `vec2` | the draw's | The `(block, sky)` light it is lit by: for a particle, its own |
 | `volumeDepth` | `float` | `0` | A volume's eye distance, so what draws after it knows where smoke starts |
 | `depth` | `float` | the fragment's own | The eye depth it stands at: a volume traced inside its hull writes where the ray enters (`cg_EyeDepth(point)`), nearer or farther |
+
+> **An `Unlit` material's colour is `s.emissive`.** As in Unreal, `ShadingModel Unlit` draws the emissive alone and
+> reads no base colour: write the colour there, and how much it covers in `s.opacity`. Naming `s.baseColor` under
+> `Unlit` is a compile error, and an unlit surface writing nothing draws black. Past 1 it blooms, as any light does.
+>
+> ```glsl
+> Material { BlendMode Translucent  ShadingModel Unlit }
+> void surface(in v2f i, inout CgSurface s) {
+>     vec4 c = texture(_MainTex, i.uv0) * _Tint;
+>     s.emissive = c.rgb * _Intensity;     // the colour drawn
+>     s.opacity = c.a;
+> }
+> ```
 
 ```glsl
 // A glass pane that tints, bends a little, and glows where it is cracked
@@ -190,11 +203,13 @@ Worked out once, when the material loads, from what `surface()` names:
 | The material… | Draws in |
 |---|---|
 | is `Opaque` or `Masked` | the depth pass, the base pass, the world-normals target |
-| is translucent and writes `baseColor` or `opacity` | the translucent pass (or the separate one, or the overlay, by `TranslucencyPass`) |
-| writes `emissive` | the glow: folded into its colour's draw where it can, or a draw of its own |
+| is translucent and writes its colour (`baseColor`; `emissive` when `Unlit`) or `opacity` | the translucent pass (or the separate one, or the overlay, by `TranslucencyPass`) |
+| is lit and writes `emissive` | the glow: folded into its colour's draw where it can, or a draw of its own |
 | writes `refraction` | the distortion pass |
-| writes only `emissive` | the glow alone, no colour draw |
+| is lit and writes only `emissive` | the glow alone, no colour draw |
 | writes only `refraction` | the distortion pass alone: a pure heat haze is one draw |
+
+An `Unlit` material's `emissive` is its colour, not a glow: it draws where a colour does, with no glow of its own.
 
 "Writes" means `surface()` (or a helper it calls) names the output, even under a keyword: a keyword switches a value,
 not a pass.
@@ -206,7 +221,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | Property | Values (default first) | What it does |
 |---|---|---|
 | `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` ignore `opacity` and leave what is behind's alpha as it was |
-| `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; shown as written; or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
+| `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; drawn as its `emissive` alone (`Unlit`); or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |
 | `TranslucencyPass` | `Standard`, `AfterDistortion`, `Separate`, `Overlay` | When a translucent material draws: with the others, after the bend, after everything translucent, or over the world |
@@ -442,7 +457,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world = fx_ribbon_vertex(p, mat3(CG_OBJECT_TO_WORLD) * vec3(0.0, 0.0, 1.0), CG_CAMERA_POSITION, 0.05, r.side);
     o.side = r.side;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0 - abs(i.side)); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0 - abs(i.side)); }
 ```
 
 ```glsl
@@ -474,7 +489,7 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world += v.normal * 0.1 * cg_Tube.ring.intensity;
     o.along = cg_Tube.ring.arc;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(fract(i.along)); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(fract(i.along)); }
 ```
 
 **Only what `surface()` names reaches the pixel.** Reading `cg_Particle.color` in `surface()` passes the colour and

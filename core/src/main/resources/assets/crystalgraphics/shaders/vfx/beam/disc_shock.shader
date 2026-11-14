@@ -4,7 +4,7 @@
 // strength; _Shell the wake. Its light blooms. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _CoreRim  ("The leading edge; its alpha a strength", color) = (0.7, 0.95, 1, 1)
@@ -19,6 +19,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec2 p = i.local;
     float r = length(p);
     float progress = cg_VfxMesh.values.w;
@@ -30,6 +31,9 @@ void surface(in v2f i, inout CgSurface s) {
     float ring = (1.0 - smoothstep(-aa, aa, d)) * smoothstep(-wake, 0.0, d);
     float line = 1.0 - smoothstep(0.02 + aa, 0.02 + 2.0 * aa, abs(d));
     vec3 col = _Shell.rgb * ring * 0.7 + _CoreRim.rgb * line * 1.6;
-    s.baseColor = col * _CoreRim.a * cg_VfxMesh.values.z * (1.0 - smoothstep(0.98, 1.0, r));
-    s.emissive = s.baseColor;
+    s.emissive = col * _CoreRim.a * cg_VfxMesh.values.z * (1.0 - smoothstep(0.98, 1.0, r));
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

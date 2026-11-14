@@ -241,6 +241,11 @@ final class SurfaceDomain {
                         + (o.equals("subsurfaceColor") ? "Subsurface" : "DefaultLit or Subsurface") + ", not " + shading);
             }
         }
+        if (unlit && named.contains("baseColor")) {
+            // Unreal's unlit base pass draws Emissive alone (BasePassPixelShader.usf): base colour is no input of it
+            throw t.error(surface.first(), "'s.baseColor' is not drawn by ShadingModel Unlit: an unlit surface's colour"
+                    + " is s.emissive, as Unreal's");
+        }
         if (lit && m.containsKey("TranslucencyLighting")) {
             throw t.error(m.get("TranslucencyLighting").keyToken(), "'TranslucencyLighting' is WorldLit's: ShadingModel "
                     + shading + " lights every pixel by its own normal");
@@ -254,7 +259,7 @@ final class SurfaceDomain {
             throw t.error(factoryToken, "'VertexFactory " + factory.name() + "' supplies no vertices: write vertex(),"
                     + " assigning v.world");
         }
-        boolean color = !translucent || named.contains("baseColor") || named.contains("opacity");
+        boolean color = !translucent || named.contains(unlit ? "emissive" : "baseColor") || named.contains("opacity");
         if (!color && !named.contains("emissive") && !named.contains("refraction") && !named.contains("volumeDepth")
                 && !clipDepth) {
             throw t.error(surface.first(), "'surface(' names no output a translucent material draws: baseColor, opacity,"
@@ -390,13 +395,15 @@ final class SurfaceDomain {
             // Lit before the factory's fade, which weighs the light given off as it weighs an unlit colour
             lighting = "        s.baseColor = cg_default_lit(s, i." + litWorld + ", " + subsurface + ");\n";
         }
-        String run = "        " + SpecReader.MATERIAL_SURFACE + "(i, s);\n" + lighting + fade(factory.fade(), blendMode);
+        String run = "        " + SpecReader.MATERIAL_SURFACE + "(i, s);\n" + lighting + fade(factory.fade(), blendMode, unlit);
         StringBuilder fragmentBody = new StringBuilder("\n").append(passIn).append(start).append(run);
         if (named.contains("pixelDepthOffset")) fragmentBody.append("        CG_PIXEL_DEPTH_OFFSET(s.pixelDepthOffset);\n");
         if (named.contains("depth")) fragmentBody.append("        gl_FragDepth = cg_WindowDepth(s.depth);\n");
         if (clips && named.contains("opacityMask")) fragmentBody.append("        cg_Clip(s.opacityMask);\n");
         if (named.contains("light")) fragmentBody.append("        cg_Light = s.light;\n");
-        if (named.contains("emissive")) fragmentBody.append("        CG_GLOW(s.emissive);\n");
+        // An unlit surface's emissive is its colour, which bloom reads from the scene: no glow of its own
+        boolean glows = named.contains("emissive") && !unlit;
+        if (glows) fragmentBody.append("        CG_GLOW(s.emissive);\n");
         if (surfaceLit) fragmentBody.append("        CG_SURFACE_NORMAL(s.normal);\n");
         if (named.contains("customData")) fragmentBody.append("        CG_CUSTOM_DATA_OUT(s.customData);\n");
         if (named.contains("shadingModelId")) {
@@ -405,7 +412,8 @@ final class SurfaceDomain {
         if (named.contains("volumeDepth")) fragmentBody.append("        CG_VOLUME_DEPTH(s.volumeDepth);\n");
         // Added light leaves the target's alpha as it was, as Unreal's BLEND_Additive does (alpha Zero, One)
         boolean adds = blendMode.equals("Additive") || blendMode.equals("Subtract");
-        fragmentBody.append("        fragColor = vec4(s.baseColor, ").append(adds ? "0.0" : "s.opacity").append(");\n    ");
+        fragmentBody.append("        fragColor = vec4(").append(colour(unlit)).append(", ").append(adds ? "0.0" : "s.opacity")
+                .append(");\n    ");
 
         CgShaderPass forward = new CgShaderPass(CgRenderPassVariant.FORWARD, "Pass0", forwardState.build(), varyings,
                 passCode.directives, passCode.code, vertexBody.toString(), fragmentBody.toString(), "fragColor", false);
@@ -413,7 +421,7 @@ final class SurfaceDomain {
         spec.text.append(SpecReader.text(passCode, forward.vertexBody(), forward.fragmentBody()));
 
         // The glow: what the Forward pass draws, with its glow; adding, unless a straight-alpha blend weighs it
-        if (named.contains("emissive")) {
+        if (glows) {
             CgRenderStateGrammar.State glow = CgRenderStateGrammar.state();
             if (blendMode.equals("Translucent")) glow.blend(GLC.GL_SRC_ALPHA, GLC.GL_ONE_MINUS_SRC_ALPHA);
             else glow.blend(GLC.GL_ONE, GLC.GL_ONE);
@@ -436,20 +444,27 @@ final class SurfaceDomain {
         return spec.build();
     }
 
+    /** The output a surface's Forward pass draws as its colour: Unreal's unlit draws its emissive. */
+    private static String colour(boolean unlit) {
+        return unlit ? "s.emissive" : "s.baseColor";
+    }
+
     /**
      * A factory's fade of all the material adds, by its blend mode: a straight-alpha blend weighs its opacity, a
-     * premultiplied one its colour and opacity, an added one its colour; a multiplied one fades toward white. The glow
-     * and the bend always.
+     * premultiplied one its colour and opacity, an added one its colour; a multiplied one fades toward white. The bend
+     * always, and a lit surface's glow.
      */
-    private static String fade(@Nullable String expression, String blendMode) {
+    private static String fade(@Nullable String expression, String blendMode, boolean unlit) {
         if (expression == null) return "";
+        String c = colour(unlit);
         StringBuilder out = new StringBuilder("        float _cg_fade = ").append(expression).append(";\n")
-                .append("        s.emissive *= _cg_fade;\n        s.refraction *= _cg_fade;\n");
+                .append("        s.refraction *= _cg_fade;\n");
+        if (!unlit) out.append("        s.emissive *= _cg_fade;\n");
         switch (blendMode) {
             case "Translucent" -> out.append("        s.opacity *= _cg_fade;\n");
-            case "AlphaComposite" -> out.append("        s.baseColor *= _cg_fade;\n        s.opacity *= _cg_fade;\n");
-            case "Additive", "Subtract" -> out.append("        s.baseColor *= _cg_fade;\n");
-            case "Modulate" -> out.append("        s.baseColor = mix(vec3(1.0), s.baseColor, _cg_fade);\n");
+            case "AlphaComposite" -> out.append("        ").append(c).append(" *= _cg_fade;\n        s.opacity *= _cg_fade;\n");
+            case "Additive", "Subtract" -> out.append("        ").append(c).append(" *= _cg_fade;\n");
+            case "Modulate" -> out.append("        ").append(c).append(" = mix(vec3(1.0), ").append(c).append(", _cg_fade);\n");
             default -> { }
         }
         return out.toString();

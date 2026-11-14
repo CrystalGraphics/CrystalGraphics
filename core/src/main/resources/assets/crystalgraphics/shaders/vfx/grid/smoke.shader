@@ -95,6 +95,6 @@ void surface(in v2f i, inout CgSurface s) {
     s.volumeDepth = transmit < 0.99 ? FX_EYE_DEPTH(ray, depth / (1.0 - transmit)) : 0.0;
     float alpha = 1.0 - transmit;
     if (alpha < 1.0e-4) discard;
-    s.baseColor = light;   // premultiplied
+    s.emissive = light;   // premultiplied
     s.opacity = alpha;
 }

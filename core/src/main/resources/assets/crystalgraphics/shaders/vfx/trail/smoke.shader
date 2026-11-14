@@ -5,7 +5,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/strip.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color    ("The smoke; its alpha its density", color) = (0.42, 0.4, 0.38, 0.85)
@@ -33,6 +33,7 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float u = i.trail.x, across = i.trail.y, age = i.trail.w;
     vec3 p = vec3(i.trail.z * _Scale, across * 1.4 - age * 0.6, cg_Vfx.seed * 5.0) + vec3(0.0, 0.0, age * 0.35);
     float billow = 0.5 + 0.5 * fx_fbm(p, 4);
@@ -47,7 +48,10 @@ void surface(in v2f i, inout CgSurface s) {
     float sun = 0.55 + 0.45 * max(CG_SUN_DIRECTION.y, 0.0) * CG_DAYLIGHT;
     vec3 colour = mix(_Shadow.rgb, _Color.rgb, clamp(0.35 + 0.5 * billow * top + 0.25 * detail, 0.0, 1.0)) * sun;
     vec3 hot = _Glow.rgb * (_Glow.a * exp(-u * 7.0) * edge) * alpha;
-    s.baseColor = colour * alpha + hot;   // premultiplied
+    s.emissive = colour * alpha + hot;   // premultiplied
     s.opacity = alpha;
-    s.emissive = hot;
+    glowLight = hot;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

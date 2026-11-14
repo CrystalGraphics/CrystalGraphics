@@ -6,7 +6,7 @@
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/strip.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color      ("Its energy; its alpha a strength", color) = (0.25, 0.65, 1.8, 1)
@@ -36,11 +36,15 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     FxGlow g = FxGlow(_Color.rgb, _Core.rgb, _CoreWidth, _Softness, _Fade, _Tiling.xy, _Flow, _Erode);
     vec3 glow;
     vec3 light = fx_strip_glow(g, _Noise, i.trail, cg_Vfx.age, cg_Vfx.seed, glow);
     if (dot(light, light) == 0.0) discard;
     vec3 tint = cg_Particle.color.rgb * cg_Particle.color.a * _Color.a;
-    s.baseColor = light * tint;
-    s.emissive = glow * tint * _GlowGain;
+    s.emissive = light * tint;
+    glowLight = glow * tint * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

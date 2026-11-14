@@ -6,7 +6,7 @@
 // part behind the reveal fades (0 none), w unused.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory VfxMesh  PerDrawValues On }
 
 Properties {
     _Color    ("Its body; its alpha a strength", color) = (0.2, 0.6, 1.6, 1)
@@ -23,6 +23,7 @@ Properties {
 struct v2f { vec3 world; vec3 normal; vec2 uv0; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float age = cg_Vfx.age, seed = cg_Vfx.seed;
     float reveal = cg_VfxMesh.values.x, trail = cg_VfxMesh.values.z;
     float behind = reveal - i.uv0.x;
@@ -41,6 +42,9 @@ void surface(in v2f i, inout CgSurface s) {
     float hot = clamp(head + streak * 1.5, 0.0, 1.0);
     vec3 light = mix(_Color.rgb, _Hot.rgb, hot) * (1.0 + _Rim * rim);
     float strength = alpha * tail * across * cg_VfxMesh.values.y * _Color.a * fx_flicker(age, seed);
-    s.baseColor = light * strength;
-    s.emissive = _Hot.rgb * hot * strength * _GlowGain;
+    s.emissive = light * strength;
+    glowLight = _Hot.rgb * hot * strength * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

@@ -4,7 +4,7 @@
 // line. Added, and it blooms. An anim trail's material: its edge's first point the base, its second the tip.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color    ("Its sheet; its alpha a strength", color) = (0.35, 0.7, 1.8, 1)
@@ -22,6 +22,7 @@ Properties {
 struct v2f { vec2 uv0; vec3 normal; vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float u = cg_Particle.relativeTime, outward = i.uv0.y;
     float sheet = smoothstep(_Base, 1.0, outward);
     float edge = exp(-(1.0 - outward) * _Edge) * exp(-u * 4.0);
@@ -35,6 +36,9 @@ void surface(in v2f i, inout CgSurface s) {
     float facing = smoothstep(0.05, 0.4, abs(dot(normalize(i.normal), normalize(-i.world + vec3(1.0e-6)))));
     float strength = alpha * behind * facing * cg_Particle.color.a * _Color.a;
     float hot = clamp(edge * 1.5 + streak * 0.7 * (1.0 - u), 0.0, 1.0);
-    s.baseColor = mix(_Color.rgb * (0.6 + 0.6 * n), _Hot.rgb, hot) * strength;
-    s.emissive = (_Hot.rgb * hot + _Color.rgb * sheet * 0.3) * strength * _GlowGain;
+    s.emissive = mix(_Color.rgb * (0.6 + 0.6 * n), _Hot.rgb, hot) * strength;
+    glowLight = (_Hot.rgb * hot + _Color.rgb * sheet * 0.3) * strength * _GlowGain;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

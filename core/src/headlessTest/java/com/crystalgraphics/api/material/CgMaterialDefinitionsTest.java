@@ -83,7 +83,7 @@ public class CgMaterialDefinitionsTest {
         return String.join("\n",
                 "#domain surface",
                 "Material { BlendMode Translucent  ShadingModel Unlit  VertexFactory " + factory + " }",
-                "void surface(in v2f i, inout CgSurface s) { s.baseColor = cg_Particle.color.rgb; }");
+                "void surface(in v2f i, inout CgSurface s) { s.emissive = cg_Particle.color.rgb; }");
     }
 
     static final CgMaterialArchetypes ARCHETYPES = new CgMaterialArchetypes() {

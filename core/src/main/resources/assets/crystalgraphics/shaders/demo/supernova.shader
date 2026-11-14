@@ -66,5 +66,5 @@ void surface(in v2f i, inout CgSurface s) {
     // Violet lightning, white along its spine.
     float arcs = supernova_arcs(p, t, 1.0, 6.0) + supernova_arcs(p * 1.3, t, 2.0, 4.5) * 0.8;
     color += vec3(1.6, 0.5, 2.8) * arcs * 3.0 + vec3(1.0) * pow(arcs, 2.0) * 3.0;
-    s.baseColor = fx_aces(0.8 * color);
+    s.emissive = fx_aces(0.8 * color);
 }

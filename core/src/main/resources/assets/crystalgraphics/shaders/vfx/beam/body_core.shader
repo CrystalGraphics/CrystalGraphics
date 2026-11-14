@@ -9,7 +9,7 @@
 // layer's size is the hull's; the core is _CoreSize of it at rest, never past the hull. CgEnergyWave.
 #domain surface
 #include "crystalgraphics:shaders/lib/vfx/volume.glsl"
-Material { BlendMode AlphaComposite  ShadingModel Unlit  Faces Back  DepthTest Strict  DepthWrite On  VertexFactory TubeClosed  PerDrawValues On }
+Material { BlendMode AlphaComposite  ShadingModel Unlit  ColorSpace Linear  Faces Back  DepthTest Strict  DepthWrite On  VertexFactory TubeClosed  PerDrawValues On }
 
 Properties {
     _Core     ("The white; its alpha a strength", color) = (1, 1, 1, 1)
@@ -30,6 +30,7 @@ Properties {
 struct v2f { vec3 world; };
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     vec3 eye = CG_CAMERA_POSITION;
     vec3 ray = cg_PixelRay();
     int row = cg_Tube.row, first = cg_Tube.first;
@@ -71,10 +72,13 @@ void surface(in v2f i, inout CgSurface s) {
     float edge = 1.0 - smoothstep(0.9, 1.0, d);
     float surge = fx_flicker(age - arc * 0.02, 0.37);
     float light = edge * _Core.a * pulse * surge;
-    s.baseColor = col * light;   // premultiplied
+    s.emissive = col * light;   // premultiplied
     s.opacity = _Cover * band * edge * _Core.a;
     // Only a streak down the white's middle glows: a glowing band would pale toward white, and the whole white
     // blooms out over the band.
     float streak = 1.0 - smoothstep(0.0, _GlowCore, d);
-    s.emissive = hot * streak * (1.0 - band) * light;
+    glowLight = hot * streak * (1.0 - band) * light;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = s.opacity > 0.0 ? cg_SceneDecode(s.emissive / s.opacity) * s.opacity : cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }

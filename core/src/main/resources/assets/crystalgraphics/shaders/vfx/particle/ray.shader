@@ -8,7 +8,7 @@
 #include "crystalgraphics:shaders/lib/vfx/common.glsl"
 #include "crystalgraphics:shaders/lib/vfx/ribbon.glsl"
 #include "crystalgraphics:shaders/lib/vfx/particle.glsl"
-Material { BlendMode Additive  ShadingModel Unlit  Faces Both  VertexFactory Sprites  PerDrawValues On }
+Material { BlendMode Additive  ShadingModel Unlit  ColorSpace Linear  Faces Both  VertexFactory Sprites  PerDrawValues On }
 
 Properties {
     _Color ("The glow; its alpha a strength", color) = (1, 0.55, 0.2, 1)
@@ -45,11 +45,15 @@ void vertex(inout CgVertex v, out v2f o) {
 }
 
 void surface(in v2f i, inout CgSurface s) {
+    vec3 glowLight = vec3(0.0);
     float across = abs(i.stroke.x), along = i.stroke.y;
     float glow = exp(-across * across * 3.0) * (1.0 - smoothstep(0.75, 1.0, across));
     float core = exp(-across * across * 40.0);
     // Dying out down its tail.
     vec3 col = (_Color.rgb * glow + _Hot.rgb * core) * along * along * _Bright;
-    s.baseColor = col * i.tint * i.stroke.z * _Color.a;
-    s.emissive = s.baseColor;
+    s.emissive = col * i.tint * i.stroke.z * _Color.a;
+    glowLight = s.emissive;
+    // The glow it drew beside its colour is light it gives off: an unlit surface draws one colour
+    s.emissive = cg_SceneDecode(s.emissive);
+    s.emissive += glowLight * CG_EMISSION * CG_SCENE_GLOW;
 }
