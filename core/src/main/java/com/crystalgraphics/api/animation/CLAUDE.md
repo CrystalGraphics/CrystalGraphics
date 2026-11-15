@@ -17,7 +17,6 @@ The mesh that follows the bones is `api/mesh`'s `CgSkeletalMesh`; files load thr
 | `CgClipSettings` | What a clip carries beside its keys (`UAnimSequence`'s settings): `CgSyncMarker`s, `CgRootMotion`, `CgAdditive`, its notify sequence's id. On every sequence (`settings()`, `with(settings)`, the builders' `settings`); `NONE` by default. `markersPassed(from, to, moved, sink)` is `CollectMarkersInRange`; `sample(pose, t, extractRootMotion)` locks the root (`FRootMotionReset`); `extractRootMotion(skeleton, from, dt, looping, out)` is `ExtractRootMotion`; `sampleAdditive(out, base, t)` is `GetBonePose_Additive`. Using them: `docs/animation/guides/clips.md` |
 | `CgClipDefinition` | A `clip` asset compiled (`clips/<clip id>.yaml`); `settings(clips)` resolves its additive base clip. A mesh-space additive is an aim offset's sample. Gate: `CgClipDataTest` (headless) |
 | `CgAnimPose` | One skeleton's pose, mutable and reused: local TRS a bone, `sample` writes it, `blend` is Unreal's `BlendPosesTogether`, `convertToAdditive`/`accumulateAdditive` its additive pair (`ConvertPoseToAdditive`, `AccumulateLocalSpaceAdditivePoseInternal`), `accumulateMeshRotationAdditive` an aim offset's (with `toMeshRotation`/`fromMeshRotation`), `resolve()` composes component space, `skinning(mesh, out)` multiplies the inverse binds. Allocates nothing after construction |
-| `CgAnimSection` | A clip on a timeline, Unreal's skeletal animation section: `animationTime(t)` is `MakeTransform`'s mapping, `weight(t)` the weight times its easing (a `CgEasing`: Unreal's Cubic InOut is `CgEasings.IN_OUT_CUBIC`). Immutable |
 | `CgMirrorTable` | Unreal's `UMirrorDataTable`: bone pairs and an axis; `byName(skeleton, axis)` pairs by Unreal's default find-and-replace (`r_`/`l_`, `_l`/`_r`, `right`/`left`, infixes, centre bones onto themselves), `builder(...).pair(a, b)`, `self(bone)`. `CgAnimPose.mirror(table)` is `MirrorPose`; a bone outside the table is left as it is |
 | `CgSocket` | Unreal's `USkeletalMeshSocket`: a name, a bone, a relative transform; on `CgSkeletalMesh` (`Builder.socket`, `withSockets`), names compared ignoring case |
 | `CgSkeletonDefinition` | A `skeleton` asset compiled (`CgBuiltInCompilers`): its `from: bone` sockets in the host's units, a bone's own space converted as CUE4Parse and Unreal's exporter convert bones (`CgUnits.UNREAL`); `compile(id, tree, units)` for a file read by hand. Gate: `CgSkeletonDefinitionTest` (`-Pkits=kakarot_kit=<dir>` for Goku's) |
@@ -31,8 +30,9 @@ The mesh that follows the bones is `api/mesh`'s `CgSkeletalMesh`; files load thr
   from its own cook. Never divide by a length again elsewhere.
 - **Tracks bind by bone name, ignoring case** (Unreal's `FName`): `CgAnimSequence.sample` maps them once per
   skeleton and caches the last binding on the sequence.
-- **Sampling, blending and section time follow Unreal and cite it at the method** (`TimeToIndex`, `FTransform::Blend`,
-  `BlendPosesTogether`, `MakeTransform`, `EvaluateEasing`). The runtime that plays them is `com.crystalgraphics.animation`.
+- **Sampling and blending follow Unreal and cite it at the method** (`TimeToIndex`, `FTransform::Blend`,
+  `BlendPosesTogether`). The runtime that plays them is `com.crystalgraphics.animation`; a section's time on a
+  timeline is `sequence.animation.CgAnimSection`'s.
 - **What follows Unreal is cited at its method**: the thresholds (`UAnimCompress::FilterTrivialKeys`), the rate
   choice and bake (`CgGltfLoader`). A change to either reads the source first.
 - Gate: `CgSkeletalMeshTest` (`-PskinnedMeshes=<folder>,...` loads and cooks every `.glb` there).

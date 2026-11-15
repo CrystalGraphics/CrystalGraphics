@@ -449,6 +449,12 @@ public final class CgSequenceKinds {
             .property("play_rate", FLOAT).defaultValue(1.0)
             .property("loop", CgValueType.oneOf(BOOL, INT))   // a montage segment's LoopingCount
             .property("slot", STRING)
+            // The montage instance's: its slot group, BlendOutTriggerTime (ticks), bEnableAutoBlendOut, sync group, root motion
+            .property("slot_group", STRING)
+            .property("blend_out_trigger_time", INT)
+            .property("auto_blend_out", BOOL).defaultValue(true)
+            .property("sync_group", STRING)
+            .property("root_motion", BOOL)
             .property("stop", BOOL)   // no clip: the slot plays nothing, its source showing (StopSlotAnimation)
             .property("interpolation", CgValueType.enumOf("smooth", "step")).defaultValue("smooth")
             .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)   // the clip's own notify sequence

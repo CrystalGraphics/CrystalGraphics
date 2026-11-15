@@ -63,6 +63,11 @@ public final class CgAnimGraphInstance {
     private float[] recordWeights = new float[8];
     private int[] recordLayers = new int[8], recordScopes = new int[8];
     private int records;
+    /** Montages leading a sync group this frame, queued on the game thread. */
+    private CgAnimAssetPlayer[] montagePlayers = new CgAnimAssetPlayer[0];
+    private float[] montageWeights = new float[0];
+    private String[] montageGroups = new String[0];
+    private int montages;
     @Nullable
     private CgAnimAssetPlayer[] samplePlayers = new CgAnimAssetPlayer[8];
     private CgAnimSequence[] sampleClips = new CgAnimSequence[8];
@@ -219,6 +224,11 @@ public final class CgAnimGraphInstance {
         records = 0;
         curveLayer = 0;
         sync.begin();
+        for (int i = 0; i < montages; i++) {
+            sync.addMontage(montagePlayers[i], montageWeights[i], montageGroups[i]);
+            montagePlayers[i] = null;
+        }
+        montages = 0;
         for (CgCachedPoseNode.SaveRuntime s : saveArray) s.begin();
         root.update(this, 1f);
         // Each cached pose's source once, at its heaviest use; a save before those it reads, so their requests are in
@@ -303,6 +313,23 @@ public final class CgAnimGraphInstance {
         recordLayers[records] = curveLayer;
         recordScopes[records++] = playerScope;
         sync.add(player, weight, group, fullWeightOnce);
+    }
+
+    /**
+     * A montage leading {@code group} this frame at {@code weight}, from the game thread before the update: Unreal's
+     * {@code UpdateMontageSyncGroup}, its record added to the group as the frame's sync begins. It outranks every
+     * player of the graph.
+     */
+    public void syncMontage(CgAnimAssetPlayer montage, float weight, String group) {
+        if (montages == montagePlayers.length) {
+            int n = Math.max(2, montages * 2);
+            montagePlayers = Arrays.copyOf(montagePlayers, n);
+            montageWeights = Arrays.copyOf(montageWeights, n);
+            montageGroups = Arrays.copyOf(montageGroups, n);
+        }
+        montagePlayers[montages] = montage;
+        montageWeights[montages] = weight;
+        montageGroups[montages++] = group;
     }
 
     /** This frame's players recorded so far: a state machine finds its states' relevant player among them. */

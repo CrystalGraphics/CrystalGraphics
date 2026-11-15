@@ -386,8 +386,9 @@ final class CgSequenceCompiler {
         CgSequenceSection.Ease ease = null;
         if (s.get("ease") instanceof Map<?, ?> m) {
             ease = new CgSequenceSection.Ease(m.get("in") instanceof Number i ? i.intValue() : 0,
-                    m.get("out") instanceof Number o ? o.intValue() : 0, easing(m.get("in_fn"), path + ".ease.in_fn"),
-                    easing(m.get("out_fn"), path + ".ease.out_fn"), Boolean.TRUE.equals(m.get("auto")));
+                    m.get("out") instanceof Number o ? o.intValue() : 0,
+                    m.get("in_fn") == null ? null : easing(m.get("in_fn"), path + ".ease.in_fn"),
+                    m.get("out_fn") == null ? null : easing(m.get("out_fn"), path + ".ease.out_fn"), Boolean.TRUE.equals(m.get("auto")));
         }
         CgSequenceSection.Completion completion = "keep_state".equals(s.get("completion")) ? CgSequenceSection.Completion.KEEP_STATE
                 : "restore_state".equals(s.get("completion")) ? CgSequenceSection.Completion.RESTORE_STATE
@@ -431,7 +432,7 @@ final class CgSequenceCompiler {
             out = Math.max(0, Math.min(out, size));
             CgSequenceSection.Ease e = cur.ease();
             sections.set(i, new CgSequenceSection(cur.id(), cur.index(), cur.from(), cur.to(), cur.trigger(), cur.condition(),
-                    cur.row(), cur.overlapPriority(), cur.blend(), new CgSequenceSection.Ease(in, out, e.inFunction(), e.outFunction(), true),
+                    cur.row(), cur.overlapPriority(), cur.blend(), new CgSequenceSection.Ease(in, out, e.inFn(), e.outFn(), true),
                     cur.completion(), cur.preRoll(), cur.postRoll(), cur.active(), cur.channels(), cur.fields()));
         }
     }

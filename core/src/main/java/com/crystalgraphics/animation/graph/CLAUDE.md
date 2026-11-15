@@ -5,11 +5,11 @@
 | Type | Role |
 |---|---|
 | `CgAnimGraph` | The compiled graph, immutable and shared (an anim blueprint's generated class): variables, the output node, cached poses by name, the slots found; its build checks cycles, nodes read twice, unsaved uses, undeclared or mistyped variables, duplicate slots. `single(skeleton)` is the single node graph |
-| `CgAnimGraphInstance` | One character's run of a graph (the proxy): variables and their worker copy, each node's runtime, slots, a frame's asset player records (`record`, ticked by its `CgAnimSync` after the walk; a state machine's relevant player, each with its player scope) and samples (for the curves), the scratch pose pool, its clock (`seconds`), the inertializer stack (Unreal's graph message) |
+| `CgAnimGraphInstance` | One character's run of a graph (the proxy): variables and their worker copy, each node's runtime, slots, a frame's asset player records (`record`, ticked by its `CgAnimSync` after the walk; a montage leading a group, `syncMontage`, queued on the game thread; a state machine's relevant player, each with its player scope) and samples (for the curves), the scratch pose pool, its clock (`seconds`), the inertializer stack (Unreal's graph message) |
 | `CgAnimNode` | A node: `instantiate` its runtime, `children` (`forEachChild` for a tool), `reads`, `write` its data form. `Runtime`: `initialize`, `update(weight)`, `evaluate(out)`, public as `FAnimNode_Base`'s so a node in another package drives its children |
 | `CgAnimVariable` | A typed variable (float, bool, int) by name, with a default; a handle by name and type works on any graph declaring it |
 | `CgSequencePlayerNode`, `CgRefPoseNode`, `CgTwoWayBlendNode`, `CgBlendListNode`, `CgSlotNode`, `CgLayeredBlendNode`, `CgApplyAdditiveNode`, `CgCachedPoseNode` | Unreal's nodes, each citing its `AnimNode_*.cpp` |
-| `CgAnimSlot`, `CgBlendMask` | A slot's entries this frame (montage weights, a stop blending them out); a layer's per-bone weights from branches and bone entries |
+| `CgAnimSlot`, `CgBlendMask` | A slot's entries this frame (montage weights, a root held where the montage moves the character, a stop blending them out); a layer's per-bone weights from branches and bone entries |
 | `CgAnimGraphCodec`, `CgAnimGraphDefinition`, `CgAnimNodeWriter`, `CgAnimNodeKind` | The `anim_graph` kind's compiler and writer; the compiled file, bound to a skeleton and its clips by id, with the assets its nodes name (blend spaces) resolved at compile; where a node writes itself (and a graph-level section, a machine); how a kind outside this package is read (`registerKind`: `state_machine`, `inertialization`, `blend_space_player`, `aim_offset`), with clips, dependencies and sync groups through its context |
 
 ## Rules

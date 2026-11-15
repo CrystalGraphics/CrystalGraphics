@@ -97,6 +97,22 @@ public final class CgAnimSync {
      */
     public void add(CgAnimAssetPlayer player, float weight, @Nullable CgSyncGroup group, boolean fullWeightOnce) {
         if (group != null && group.role().transitional() && !fullWeightOnce) group = null;
+        Record r = add(player, weight, group == null ? null : group.name(), group == null ? CgAnimGroupRole.CAN_BE_LEADER : group.role());
+        r.score = r.role.leaderScore(weight);
+    }
+
+    /**
+     * A montage's record in {@code group}: {@code UpdateMontageSyncGroup}'s {@code AddTickRecord}, scored 3, above any
+     * always-leader ({@code TestTickRecordForLeadership}, AnimSync.cpp:63-65).
+     */
+    public void addMontage(CgAnimAssetPlayer montage, float weight, String group) {
+        add(montage, weight, group, CgAnimGroupRole.CAN_BE_LEADER).score = MONTAGE_SCORE;
+    }
+
+    /** A montage's leader score: above an always-leader's 2. */
+    private static final float MONTAGE_SCORE = 3f;
+
+    private Record add(CgAnimAssetPlayer player, float weight, @Nullable String group, CgAnimGroupRole role) {
         Record r;
         if (group == null) {
             if (ungroupedCount == ungrouped.length) ungrouped = Arrays.copyOf(ungrouped, ungroupedCount * 2);
@@ -105,22 +121,22 @@ public final class CgAnimSync {
             ungroupedCount++;
             r.role = CgAnimGroupRole.CAN_BE_LEADER;
         } else {
-            Group g = groups.get(group.name());
+            Group g = groups.get(group);
             if (g == null) {
-                groups.put(group.name(), g = new Group());
+                groups.put(group, g = new Group());
                 order.add(g);
             }
             State s = g.states[write];
             s.exists = true;
             r = s.add();
-            r.role = group.role();
+            r.role = role;
         }
         r.player = player;
         r.asset = player.asset();
         r.weight = weight;
-        r.score = r.role.leaderScore(weight);
         r.canUseMarkerSync = false;
         r.exclusive = r.role == CgAnimGroupRole.EXCLUSIVE_ALWAYS_LEADER;
+        return r;
     }
 
     /** {@code TickAssetPlayerInstances}: every group's leader then followers, then the ungrouped players; the buffers flip. */

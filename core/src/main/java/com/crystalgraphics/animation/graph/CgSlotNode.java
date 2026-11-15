@@ -117,7 +117,7 @@ public final class CgSlotNode extends CgAnimNode {
                 float w = Math.max(0f, slot.weights[i]) * scale;
                 if (w <= CgAnimPose.ZERO_WEIGHT) continue;
                 CgAnimPose p = g.borrow();
-                slot.clips[i].sample(p.rest(), slot.positions[i]);
+                slot.clips[i].sample(p.rest(), slot.positions[i], slot.rootMotion[i]);
                 if (slot.mirrors[i] != null) p.mirror(slot.mirrors[i]);
                 poses[used] = p;
                 shares[used++] = w;

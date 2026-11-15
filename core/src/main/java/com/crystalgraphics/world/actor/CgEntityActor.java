@@ -19,12 +19,12 @@ import java.util.List;
  *
  *     @Override protected void onSpawn(CgEntity dragon) {
  *         body = add(scene().skeletal(DRAGON_MESH).materials(DRAGON_SKINS::get).customDepth(1));
- *         body.anim().play(CgAnimSection.of(IDLE).loop().build());
+ *         body.anim().play(IDLE);
  *     }
  *
  *     @Override protected void tick(CgEntity dragon, float dt) {
  *         boolean charging = dragon.flag(CgEntityQuery.SPRINTING);
- *         if (charging && !wasCharging) body.anim().play(CgAnimSection.of(CHARGE).at(body.anim().time()).build());
+ *         if (charging != wasCharging) body.anim().play(charging ? CHARGE : IDLE);
  *         body.scalar("Glow", charging ? 2f : 0f);
  *         wasCharging = charging;
  *     }

@@ -88,6 +88,67 @@ anim.slot("FacialSlot").stop(1f);                // its entries blended out: the
 - An entry's clip is sampled over the rest pose, as a montage's track is: limit a slot to the bones its clips key with
   a layered blend.
 
+## Montages
+
+A **montage** is a sequence played on a character: its `animation` sections on that character play as one montage,
+Unreal's montage instance. It blends in when it starts, blends out by itself at its end or when it is stopped, stops
+the other montage of its slot group, and moves the character by its clips' root motion.
+
+```yaml
+# sequences/mymod/moves/punch.yaml: a strike chained into its recovery, or into a second strike on the combo input
+_v: 1
+tick_resolution: 60000
+range: [0, 96000]
+composite_sections:
+  - { id: q1, name: strike1, range: [0, 24000], next: q2 }
+  - { id: q2, name: recover1, range: [24000, 48000] }
+  - { id: q3, name: strike2, range: [48000, 72000], next: q4 }
+  - { id: q4, name: recover2, range: [72000, 96000] }
+roles: [ { id: b1, name: caster, kind: caster } ]
+tracks:
+  - id: t1
+    kind: animation
+    binding: { role: caster }
+    sections:
+      - { id: s1, range: [0, 24000], clip: mymod:hero/strike1, ease: { in: 6000 } }   # the montage's blend in: 0.1 s
+      - { id: s2, range: [24000, 48000], clip: mymod:hero/recover1 }
+      - { id: s3, range: [48000, 72000], clip: mymod:hero/strike2 }
+      - { id: s4, range: [72000, 96000], clip: mymod:hero/recover2, ease: { out: 12000 } }   # its blend out: 0.2 s
+  - { id: t2, kind: event, side: rpg, binding: { role: caster },
+      sections: [ { id: h1, range: [6000, 18000], event: mymod:hit_window } ] }
+```
+
+```java
+CgSequencePlayer punch = sequencer.play(PUNCH, Map.of("caster", hero));
+punch.jumpToSection("strike2");                // the combo input: a branch, the same montage
+punch.nextSection("strike1", "strike2");       // or: strike1 runs on into strike2 at its end
+punch.stop();                                  // interrupted: blends out over 0.2 s, its clip playing on
+
+hero.anim().montages().listen(new CgMontages.Listener() {
+    @Override public void ended(CgMontageInstance m, boolean interrupted) { ... }
+});
+Matrix4f step = new Matrix4f();
+if (hero.anim().montages().consumeRootMotion(1f, step)) mover.move(step);   // after the frame's pose
+```
+
+| Key (on the character's sections) | What it does |
+|---|---|
+| `ease.in` on its first section, `ease.out` on its last | its blend in and out, linear unless `in_fn` / `out_fn` name a curve |
+| `blend_out_trigger_time` | ticks before its end it starts blending out; unset, its blend-out time, blending over the time left |
+| `auto_blend_out: false` | it holds its last pose at its end until stopped |
+| `slot_group` | its group, `DefaultGroup` unless named: a montage played stops the others of its group, blending them out over its own blend in |
+| `root_motion` | whether its clips' root motion moves the character; unset, on where any clip has it |
+| `sync_group` | the graph's sync group it leads while it blends out, so a run under it picks up where the montage leaves its feet |
+
+- **Its end** is the end of a montage section that hands play to none, or of the sequence: a looping section
+  never blends out until gameplay relinks it.
+- **A branch is no new play**: `jumpToSection` and `nextSection` keep the montage at its weight. Over the network they
+  are `CgSequenceNet`'s jumps, predicted by their owner; a late joiner seeks to the server's time and its montage
+  blends in there.
+- **One montage moves the character at a time** (`CgRootMotionMode.FROM_MONTAGES_ONLY`, Unreal's default): a root-motion
+  montage played stops the one moving it. Its root is held at its clip's lock while it moves the character.
+- **Gameplay moments are `event` sections** of side `rpg` (a hit window above), heard as every sequence's events are.
+
 ## Layers and cached poses
 
 Kakarot's face is a slot over the face's bones, on top of a body pose read twice:
@@ -364,7 +425,8 @@ weight_speed: 5
 
 `CgAnimation` runs every instance of a world each frame, as Unreal does:
 
-1. **The game thread**: each instance's `onUpdate`, then its variables copied for the worker.
+1. **The game thread**: each instance's montages (their weights, their clips onto their slots), its `onUpdate`, then
+   its variables copied for the worker.
 2. **A worker** (split across workers past `crystalgraphics.animation.parallelAt` instances): the graph's update
    (weights, which nodes show, every clip's tick), its evaluation into the pose, bone writes, the skinning matrices.
 3. **The game thread**: the frame's material curves onto the component's materials.

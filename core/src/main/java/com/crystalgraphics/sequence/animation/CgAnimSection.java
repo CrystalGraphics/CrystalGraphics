@@ -1,16 +1,17 @@
-package com.crystalgraphics.api.animation;
-
-import com.crystalgraphics.easing.CgEasing;
-import com.crystalgraphics.easing.CgEasings;
+package com.crystalgraphics.sequence.animation;
 
 import java.util.Objects;
+
+import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
 
 /**
  * A clip placed on a timeline: when it plays, how fast, which part of it, and how its weight eases in and out.
  * Unreal's skeletal animation section ({@code FMovieSceneSkeletalAnimationParams}): the same fields, mapped to the
- * clip's time and weighted as Sequencer maps and weighs one. Its easings are {@link CgEasings}': Unreal's
- * {@code CubicInOut} is {@code IN_OUT_CUBIC}, {@code HermiteCubicInOut} is {@code cubicBezier(1/3, 0, 2/3, 1)}
- * (MovieSceneEasingCurves.cpp:55-100).
+ * clip's time and weighted as Sequencer maps and weighs one; what an {@code animation} section compiles to. Its easings
+ * are {@link CgEasings}': Unreal's {@code CubicInOut} is {@code IN_OUT_CUBIC}, {@code HermiteCubicInOut} is
+ * {@code cubicBezier(1/3, 0, 2/3, 1)} (MovieSceneEasingCurves.cpp:55-100).
  *
  * <pre>{@code
  * CgAnimSection roar = CgAnimSection.of(kurama.sequence("roar")).at(2.0).build();     // 2 s on, for its length
@@ -18,11 +19,11 @@ import java.util.Objects;
  *         .at(0.0).until(Double.POSITIVE_INFINITY)                                   // loops for ever
  *         .playRate(0.8f).easeOut(0.25f)
  *         .build();
- * instance.play(idle).play(roar);                                                     // roar cross-fades over idle
+ * float t = roar.animationTime(2.5);                                                  // 0.5 s into the clip
  * }</pre>
  *
  * <ul>
- *   <li>Immutable; any thread. Times are seconds on the timeline of whoever plays it ({@link CgAnimInstance}).</li>
+ *   <li>Immutable; any thread. Times are seconds on the timeline of whoever plays it.</li>
  *   <li>A section outlasting its clip loops, else it holds its last frame, as Unreal decides
  *       (MovieSceneSkeletalAnimationSection.cpp:68-72); {@link Builder#loop()} forces a loop.</li>
  *   <li>{@link #animationTime} and {@link #weight} are pure functions of time: a seek lands where playing reaches.</li>
@@ -80,6 +81,11 @@ public final class CgAnimSection {
 
     public boolean loops() {
         return loop;
+    }
+
+    /** Clip seconds a timeline second; negative plays backwards. */
+    public float playRate() {
+        return playRate;
     }
 
     /**

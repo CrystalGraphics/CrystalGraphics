@@ -33,6 +33,7 @@ public final class CgAnimSlot {
     CgAnimSequence[] clips = new CgAnimSequence[2];
     CgMirrorTable[] mirrors = new CgMirrorTable[2];
     float[] positions = new float[2], weights = new float[2];
+    boolean[] rootMotion = new boolean[2];
     int count;
     float stop;
 
@@ -51,16 +52,26 @@ public final class CgAnimSlot {
 
     /** As {@link #play(CgAnimSequence, float, float)}, its pose mirrored by {@code mirror} (null as authored). */
     public CgAnimSlot play(CgAnimSequence clip, float position, float weight, @Nullable CgMirrorTable mirror) {
+        return play(clip, position, weight, mirror, false);
+    }
+
+    /**
+     * As {@link #play(CgAnimSequence, float, float, CgMirrorTable)}, its root held at the clip's lock where
+     * {@code extractRootMotion} and the clip has root motion: a montage whose motion moves the character.
+     */
+    public CgAnimSlot play(CgAnimSequence clip, float position, float weight, @Nullable CgMirrorTable mirror, boolean extractRootMotion) {
         if (count == clips.length) {
             int n = count * 2;
             clips = Arrays.copyOf(clips, n);
             mirrors = Arrays.copyOf(mirrors, n);
             positions = Arrays.copyOf(positions, n);
             weights = Arrays.copyOf(weights, n);
+            rootMotion = Arrays.copyOf(rootMotion, n);
         }
         clips[count] = Objects.requireNonNull(clip, "clip");
         mirrors[count] = mirror;
         positions[count] = position;
+        rootMotion[count] = extractRootMotion;
         weights[count++] = weight;
         return this;
     }

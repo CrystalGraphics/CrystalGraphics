@@ -11,6 +11,7 @@
 | `CgBlendFilter` | `FFIRFilterTimeBased`: an axis's input smoothing (windowed, exponential, spring damper) |
 | `CgDelaunay` | Godot's `Delaunay2D` (MIT), what a 2D blend space bakes from |
 | `CgAlphaBlend` | `EAlphaBlendOption`: each option over `easing.CgEasings` (AlphaBlend.cpp:239-270, checked against UnrealMathUtility.h), `inverse` as `CalculateInverseAlpha`; `of(id)` reads a file's lowercase name |
+| `CgAlphaBlender` | `FAlphaBlend`: a value blended from where it is to where it is wanted over a time along a curve, its resets deferred to the next update as Unreal's; a montage's weight |
 | `CgInertializationNode` | `FAnimNode_Inertialization`: requests from below merged and shortened by the deficit, each bone's translation, rotation and scale offset and speed from the last two poses, decayed by `CalcInertialFloat`; the `inertialization` kind's reader (`KIND`) |
 
 ## Rules
