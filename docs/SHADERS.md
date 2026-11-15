@@ -80,7 +80,7 @@ Under `crystalgraphics:shaders/`, one folder per owner: a pass, its kernels and 
 | `vfx/` | The VFX materials, a folder a feature (`particle/`, `trail/`, `beam/`, `air/`…), each beside the kernels its feature runs; `vfx/sim/` the particle simulation's modules, a folder a kind (`forces/`, `motion/`, `collision/`, `occlusion/`, `beam/`, `gas/`, `grid/`) and `data/` what they read | Load the materials |
 | `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; the scene data any material reads, `globals.glsl` (parameter collections) and `rows.glsl` (per-draw values) | Never include |
 | `world/` | The world renderer's passes; `world/lights/` lighting and shadows, `world/media/` fog volumes | The engine's |
-| `post/` | The post stack's materials, its bloom and film kernels and the composite's includes | The engine's |
+| `post/` | The post chain's materials, its bloom and film kernels and the composite's includes | The engine's |
 | `canvas/` | The canvas's materials (`CgCanvasMaterials`); `canvas/primitives/` what draws a ui material (`Primitive Quad`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `shape`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
 | `compute/` | `compute/ops/`, the GPU ops' kernels (`CgGpuOps`), and the self test | The engine's |
 | `noise/` | The baked noise volumes (`CgNoiseVolumes`) | The engine's |
@@ -767,7 +767,7 @@ vec4 data = CG_CUSTOM_DATA(i.uv);                   // as written
 uvec2 model = CG_SHADING_MODEL_ID(i.uv);            // (model, type)
 ```
 
-- **Post materials only** (`Location BEFORE_TRANSLUCENCY`), which the post stack binds from the firing; a firing that
+- **Post materials only** (`Location SURFACES`), which the post chain binds from the view; a firing that
   published none reads 0 throughout. Each read is the pixel at `uv`, unfiltered.
 - `CG_CUSTOM_EYE_DEPTH` is not handed yet and fails to compile, naming the read.
 - Host-drawn pixels (terrain, entities, the sky) have no normal or data, and read as DefaultLit (model 1), as a lit
@@ -836,7 +836,7 @@ CgMaterial ink = CgMaterial.load("mymod:shaders/fx/ink.shader",
   `DepthPrepass` shader.
 - **`separateTranslucency()`** (Unreal's separate translucency, the shader's `TranslucencyPass Separate`) draws a
   translucent draw after every other translucent draw, still depth-tested. Under the HDR scene it draws apart, into
-  `CgSeparateTranslucency`, which the post stack lays over the scene after `BEFORE_SEPARATE_TRANSLUCENCY`.
+  `CgSeparateTranslucency`, which the post chain lays over the scene after `TRANSLUCENT`.
 
 ### GLSL Standard Library
 

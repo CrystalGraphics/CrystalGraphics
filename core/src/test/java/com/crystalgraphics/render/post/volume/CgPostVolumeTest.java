@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.post.volume;
 
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -7,8 +9,10 @@ import static org.junit.Assert.assertSame;
 
 public class CgPostVolumeTest {
 
+    private static final CgScene SCENE = new CgScene();
+
     private static CgPostVolume volume(int priority, CgPostSettings settings) {
-        return new CgPostVolume(priority, settings, v -> { });
+        return SCENE.postVolume(settings).priority(priority);
     }
 
     @Test

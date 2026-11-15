@@ -1,7 +1,7 @@
 // The harness's post_chain in the material format: the scene halved at half size, that plus a quarter at a quarter
 // size, and that over the scene; a step reading its input at a size other than its own draws magenta.
 #domain post
-Material { Location AFTER_COMPOSITE  SceneColorMargin 0.01 }
+Material { Location DISPLAY  SceneColorMargin 0.01 }
 Step Down {
     Target RGBA16_FLOAT  Scale 0.5
     void surface(in CgScreen i, inout CgPostSurface s) { s.color = CG_SCENE_COLOR(i.uv).rgb * 0.5; }

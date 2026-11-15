@@ -328,7 +328,7 @@ CgRasterPass pass = recording.raster("world.haze").color(target, CgLoad.load()).
 
 **Another target's depth** (`readsDepth(from, unit)`): a pass into a target of its own (a bloom target, any size)
 reads `from`'s depth as it stands after every write recorded before the call, copied once, whole, when the pass begins.
-Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The post stack's bloom is the user (`render/post/CLAUDE.md`).
+Readers sample by `gl_FragCoord.xy / CG_RESOLUTION`. The post chain's bloom is the user (`render/post/CLAUDE.md`).
 
 **One depth copy, shared.** The compile resolves a framebuffer's depth once per execution (`CgSceneCopies`' resolved
 half, the one `RESOLVE_DEPTH` copies and every `REUSE_DEPTH` reads), and every pass after it

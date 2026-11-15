@@ -1,6 +1,6 @@
 // docs/MATERIAL_FORMAT.md § 7.1
 #domain post
-Material { Location AFTER_WORLD }
+Material { Location SCENE }
 Properties { _Threshold ("Brightness that glows", float) = 1  _Strength ("Glow", float) = 0.5 }
 
 Step bright {

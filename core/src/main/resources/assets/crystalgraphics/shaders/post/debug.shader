@@ -1,4 +1,4 @@
-// The post stack's debug view: one texture bloom works from (the emission, or a level of the chain) over the whole
+// The post chain's debug view: one texture bloom works from (the emission, or a level of the chain) over the whole
 // frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp. The distortion view is
 // debug_distortion.shader. CgPostDebug draws it (-Dcrystalgraphics.post.debug); nothing else should.
 #domain global

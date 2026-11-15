@@ -189,7 +189,7 @@ runs on the splash screen's shared context (§ *GL objects during mod loading* b
 - **Before `sortAndRender(pass=1)`** in `renderWorld` — `CgStageHost.fire(CgStageHost.WORLD_OPAQUE)`, with the
   opaque world already in Minecraft's main FBO and its depth: the host frame filled, the client scene's opaque passes.
 - **Before `ForgeHooksClient.dispatchRenderLast`** — `CgStageHost.fire(CgStageHost.WORLD_TRANSPARENT)`, after
-  translucent terrain: the rest of the view, its post stack included.
+  translucent terrain: the rest of the view, its post chain included.
 - **`updateCameraAndRender` TAIL** — the frame tick, on every frame including a GUI with no world.
 
 `MixinMinecraft` covers resize, fullscreen, resource reload and shutdown. Package guide:

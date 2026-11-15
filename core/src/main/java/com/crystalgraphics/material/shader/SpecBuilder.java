@@ -66,7 +66,7 @@ final class SpecBuilder {
             _cg_SunEye ("The eye the map is placed from, camera-relative", vec4) = (0, 0, 0, 0)
             """;
 
-    /** The scene textures a post material reads, bound by {@code CgPostMaterial} from the firing's keys. */
+    /** The scene textures a post material reads, bound by {@code CgScreenPass} from the view's scene textures. */
     private static final String HANDED_SCENE_PROPERTIES = """
             _cg_CustomStencil ("CustomStencil, CustomDepth's stencil as an unsigned integer", usampler2D) = "zero"
             _cg_WorldNormal ("Our opaque surfaces' world normals, n * 0.5 + 0.5, alpha the eye depth", sampler2D) = "black"

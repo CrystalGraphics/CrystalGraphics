@@ -6,11 +6,11 @@ import java.util.List;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.render.post.CgPostMaterial;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPost;
 import com.crystalgraphics.render.post.volume.CgPostBlendable;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgHeightFogComponent;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
 /**
@@ -38,29 +38,26 @@ public final class CgStage implements AutoCloseable {
     private final List<CgPostVolume> volumes = new ArrayList<>();
     private final List<CgPostMaterial> materials = new ArrayList<>();
     private final List<CgPostBlendable> blendables = new ArrayList<>();
-    private final List<CgPostStack.Registration> registrations = new ArrayList<>();
     @Nullable
     private final CgHeightFogComponent fog;
     private float weight = 1f;
     private boolean closed;
 
     private CgStage(CgStageDefinition definition, double x, double y, double z) {
-        CgPostStack stack = CgPostStack.get();
+        CgScene scene = CgScene.client();
         for (CgStageDefinition.Volume v : definition.volumes()) {
-            CgPostVolume volume = stack.volume(v.priority(), v.settings());
+            CgPostVolume volume = scene.postVolume(v.settings()).priority(v.priority());
             if (!v.unbound()) volume.at(x + v.x(), y + v.y(), z + v.z()).radius(v.radius()).blend(v.blend());
-            volumes.add(volume);
+            volumes.add(volume.spawn());
             for (CgPostBlendable b : v.blendables()) {
                 if (b.material() == null) continue;
-                CgPostMaterial post = b.draw(v.priority());
-                materials.add(post);
+                materials.add(b.draw(CgPost.client(), v.priority()));
                 blendables.add(b);
-                registrations.add(stack.add(post));
             }
         }
         CgStageDefinition.Fog f = definition.fog();
         if (f != null) {
-            fog = CgScene.client().heightFog().at(x, y + f.height(), z).density(f.density()).heightFalloff(f.falloff())
+            fog = scene.heightFog().at(x, y + f.height(), z).density(f.density()).heightFalloff(f.falloff())
                     .colour(f.red(), f.green(), f.blue()).maxOpacity(f.maxOpacity()).startDistance(f.start())
                     .cutoffDistance(f.cutoff()).spawn();
         } else {
@@ -99,8 +96,8 @@ public final class CgStage implements AutoCloseable {
     public void close() {
         if (closed) return;
         closed = true;
-        for (CgPostVolume v : volumes) v.close();
-        for (CgPostStack.Registration r : registrations) r.close();
+        for (CgPostVolume v : volumes) v.remove();
+        for (CgPostMaterial m : materials) m.remove();
         if (fog != null) fog.remove();
     }
 }

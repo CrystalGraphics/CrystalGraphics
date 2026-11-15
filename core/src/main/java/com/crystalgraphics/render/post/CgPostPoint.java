@@ -1,33 +1,45 @@
 package com.crystalgraphics.render.post;
 
 /**
- * Where a {@link CgPostEffect} records, around the post stack's one composite pass: Unreal's blendable locations and
- * HDRP's injection points. Within a point, effects record by {@link CgPostEffect#order()}.
+ * Where a {@link CgPostEffect} runs in its view's frame, named for the phase it joins as the render stages are. Within a
+ * point, effects run by their order, ties in the order they were added.
  *
- * <p>The composite itself is the engine's and takes no effect, as Unreal's tonemapper takes none: a new screen-wide
- * look is a composite feature, asked of the engine.</p>
+ * <pre>{@code
+ * CgPost.client().add(CgPostPoint.HDR, (ctx, input) -> ...);          // after bloom is taken, before the tonemap
+ * CgPost.client().material("mymod:shaders/post/thermal.shader");      // at the Location its file names
+ * }</pre>
+ *
+ * <ul>
+ *   <li>At {@link #SURFACES} and {@link #TRANSLUCENT} an effect draws on the scene the renderer goes on drawing into: it
+ *       answers its input, drawn over.</li>
+ *   <li>A shader's {@code Material { Location ... }} takes the same names.</li>
+ * </ul>
  */
 public enum CgPostPoint {
 
-    // Declared in the order they record: CgPostStack sorts effects by ordinal and walks each point's run in turn, so a
-    // point out of order would have its effects skipped.
+    // Declared in the order they run: the chain walks each point's effects in turn.
 
     /**
-     * Onto the lit opaque scene, before any transparent draw (Unreal's {@code BL_BeforeTranslucency}): recorded by the
-     * world renderer where it stands, with custom depth, normals and custom data published. Without the HDR scene it
-     * records with {@link #AFTER_WORLD}.
+     * On the lit opaque scene, before anything translucent and before the {@code SURFACES} stage's registrations (Unreal
+     * 4's {@code BL_BeforeTranslucency}): custom depth, normals and custom data are ready. The height fog draws here
+     * (order 0, after the outlines). Without the HDR scene it runs with {@link #TRANSLUCENT}.
      */
-    BEFORE_TRANSLUCENCY,
+    SURFACES,
     /**
-     * Onto the scene before separate translucency is laid over it (Unreal's {@code PrePostProcessPass}, where its colour
-     * correct regions grade): what draws here never touches an effect whose material says {@code TranslucencyPass Separate}.
-     * Without the HDR scene that translucency is in the scene already.
+     * On the scene after our translucent draws and the {@code TRANSLUCENT} stage, before separate translucency is laid
+     * over it (Color Correct Regions' pre-post pass): what draws here never touches an effect whose material says
+     * {@code TranslucencyPass Separate}.
      */
-    BEFORE_SEPARATE_TRANSLUCENCY,
-    /** After the world, before anything of the stack's: a pass that reads the scene (its colour or depth). */
-    AFTER_WORLD,
-    /** Effects that make the composite's inputs: bloom's chain, a flash's level. */
-    BEFORE_COMPOSITE,
-    /** Over the final picture, after the composite: an outline, a CRT filter. */
-    AFTER_COMPOSITE
+    TRANSLUCENT,
+    /** The linear scene with every translucency composed, before bloom: what bloom sees, it blooms. */
+    SCENE,
+    /** After bloom is taken, before the tonemap: still linear, never bloomed. */
+    HDR,
+    /** The tonemapped, display-encoded picture, in the host's target. */
+    DISPLAY;
+
+    /** Whether an effect here draws on the scene the renderer goes on drawing into, and so answers its input. */
+    boolean onScene() {
+        return this == SURFACES || this == TRANSLUCENT;
+    }
 }

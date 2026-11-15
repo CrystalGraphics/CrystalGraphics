@@ -23,7 +23,7 @@ import java.util.Arrays;
 /**
  * Bends a side input of the scene by the firing's distortion ({@link CgDistortionField}), so a post effect reading
  * something besides the target (bloom's emission, a mask) sees it bent as the scene beneath was. Reached through
- * {@code CgPostContext.distorted(texture)}; one instance, the post stack's.
+ * {@code CgPostContext.distorted(texture)}; one instance a post chain.
  *
  * <ul>
  *   <li>A texture asked for twice in a firing is bent once.</li>
@@ -49,7 +49,7 @@ public final class CgPostDistortion {
     private final CgPassConstants constants = new CgPassConstants();
     private final float[] block = new float[CgPassConstants.FLOATS];
 
-    /** Forgets the last firing's bends. The post stack's, as each firing begins. */
+    /** Forgets the last firing's bends. The chain's, as each firing begins. */
     public void begin() {
         bent = 0;
     }

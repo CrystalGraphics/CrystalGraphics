@@ -40,6 +40,7 @@ static final CgPrefab LANTERN = CgPrefab.builder("mymod:lantern")
 | `play(clip)`, `followPose(leader)` | a skeletal node's clip at the spawn, or a leader node it is drawn in the pose of |
 | `parent(name, socket)` | its parent a skeletal node, riding that socket or bone |
 | `effect(system, auto)` | the node plays a VFX system following it: at the spawn if `auto`, else when told |
+| `post(settings, radius, blend, weight, priority)` | the node is a post volume where it stands: everywhere for an infinite radius |
 
 ### Skeletal meshes and effects
 
@@ -52,6 +53,7 @@ static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
         .node("armour").skeletal("mymod:geo/wyvern_armour.glb", List.of(STEEL)).followPose("body")
         .node("saddle").parent("body", "spine_02").part(LEATHER, "mymod:geo/saddle.glb")
         .node("breath").parent("body", "jaw").effect("mymod:vfx/fire_breath", false)
+        .node("breath_look").parent("body", "jaw").post(BREATH_LOOK, 20f, 12f, 0f, 0)   // weighed in by code
         .build();
 ```
 
@@ -59,8 +61,10 @@ static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
   `spawn()`, naming it. `followPose` names a skeletal node before it, `parent(name, socket)` one too.
 - **An effect node plays through `CgPrefabEffects.HOST`**, which `CgVfx.install` fills: the system plays in the world's
   VFX, following the node, and stops when the instance is removed. Without VFX installed it warns once and plays nothing.
-- **A VFX look draws neither**: a prefab with a skeletal or effect node is spawned in a scene, and an effect playing it
-  throws, naming the node.
+- **A post node is a `CgPostVolume`** riding the node: its look full within its radius of where the node stands and
+  fading over its blend, or everywhere for an infinite radius; `instance.post("breath_look").weight(w)` weighs it.
+- **A VFX look draws none of them**: a prefab with a skeletal, effect or post node is spawned in a scene, and an effect
+  playing it throws, naming the node.
 
 ## As a file
 
@@ -90,6 +94,7 @@ nodes:
   - { id: n1, name: body, skeletal: { mesh: mymod:geo/wyvern.glb, play: idle }, materials: [ mymod:wyvern_skin ] }
   - { id: n2, name: armour, skeletal: { mesh: mymod:geo/wyvern_armour.glb, follow_pose: body }, materials: [ mymod:steel ] }
   - { id: n3, name: breath, parent: "body#jaw", effect: { effect: mymod:vfx/fire_breath, auto: false } }
+  - { id: n4, name: breath_look, parent: "body#jaw", post: { settings: { bloom: 2.0, chromatic: 1.5 }, radius: 20, blend: 12, weight: 0 } }
 ```
 
 | Key | Means |
@@ -97,6 +102,7 @@ nodes:
 | `skeletal: { mesh, play, follow_pose }` | a skeletal node; `materials:` beside it lists its materials, one a section |
 | `parent: "node#socket"` | riding a skeletal node's socket or bone |
 | `effect: { effect, auto }` | an effect node; `auto` is true unless written |
+| `post: { settings, radius, blend, weight, priority }` | a post volume node: `settings` a post block (`CgPostBlock`), everywhere without a `radius`, `weight` 1 and `priority` 0 unless written |
 
 ```java
 Map<String, Object> tree = CgPrefabAssets.write(LANTERN);   // what CgAssetYaml writes as its file

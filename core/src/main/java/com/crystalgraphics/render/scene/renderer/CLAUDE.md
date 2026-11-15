@@ -12,7 +12,7 @@ Unreal's `FDeferredShadingSceneRenderer`, cut to a forward renderer inside a hos
 |------|------|
 | `CgSceneRenderer` | The scene's frame for a view: `opaque(firing)` then `translucent(firing)`, in Unreal's order (below). Its switches are `CgVar`s read through the view (`view.flag(MERGE_EMISSION)`, `HALF_RESOLUTION`, `SKIP_UNREADY`, `DISTORTION_SCALE`, `SCENE_EMISSION`, `GRADE_DRAWS`), overridable per view. It owns the scene's lights, media and labels until R13 splits them. `releaseAll()` at context teardown |
 | `CgScenePipelines` | Every program the renderer draws with, collected at install into the precache and booted behind the loading screen (`beginBoot`, `bootStep`, `booting`); `settle()` once a frame; `precache(material, half, skinned, settings)` a material's |
-| `CgSceneColour` | The HDR scene's colour: `sceneIn` decodes the host's colour into an RGBA16F with the host's depth (or a depth of its own where the host lends none, the window's), made the firing's target; `opaqueIn`/`opaqueOut` the opaque callback's, so the host's draws before the transparent one blend over ours. The post stack's composite encodes it back |
+| `CgSceneColour` | The HDR scene's colour: `sceneIn` decodes the host's colour into an RGBA16F with the host's depth (or a depth of its own where the host lends none, the window's), made the firing's target; `opaqueIn`/`opaqueOut` the opaque callback's, so the host's draws before the transparent one blend over ours. The post chain's composite encodes it back |
 | `feature/glow/CgSceneGlows` | Emissive passes into the HDR scene (`recordSceneGlows`), and the impact frame's subject (`recordSubject`, keyed `recordOwnedSubject`) |
 | `feature/translucency/CgHalfResolution` | Half-size draws and volumes: drawn small, upsampled by depth, volumes resolved against the view's history |
 | `feature/translucency/CgLayerPasses`, `CgGradeLayers`, `CgSeparateTranslucency` | Graded layers and separate translucency: the translucent rows drawn again into layers of their own |
@@ -27,7 +27,7 @@ Unreal's `FDeferredShadingSceneRenderer`, cut to a forward renderer inside a hos
 ## A view's frame
 
 **Opaque callback**: the client world's schedule once a frame (the scene's first view), the parameter collections,
-`CgScenePipelines.settle`; the post stack's volumes blended at the view's camera; **`PREPARE`**; the keyed subject; the
+`CgScenePipelines.settle`; the scene's post volumes blended at the view's camera (`CgPostRenderer.prepare`); **`PREPARE`**; the keyed subject; the
 opaque scene in; the GPU cull; the masked prepass; the base pass (normals beside it where asked); the opaque scene out;
 **`OPAQUE`**.
 
@@ -72,7 +72,7 @@ separate); the layers; the subject; the overdraw view; the labels; **`TRANSLUCEN
 - **Glows**: opaque and half-size rows' Emissive passes add into the scene before the translucent pass; a translucent
   row's Emissive pass follows its Forward draw at the same key, or is folded into it (`MERGE_EMISSION`): one draw, not
   two. Every Emissive pass is scaled by `SCENE_EMISSION` (0.5) under the scene. Gate: `--mode=bloom-occlusion`.
-- **The subject**, while the post stack shows a drawn impact frame (it asks at `prepare`): keyed rows
+- **The subject**, while the post chain shows a drawn impact frame (it asks at `prepare`): keyed rows
   (`subject(key)`, every VFX effect's) drawn at the top of the opaque callback into a quarter-size target; unkeyed, every
   visible Emissive pass after the translucent pass.
 - **Half resolution**: a translucent row marked `halfResolution()` draws into a half-size target, then a joint

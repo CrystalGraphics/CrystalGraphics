@@ -144,10 +144,10 @@ CgVfxSystemInstance<CgEnergyWave> beam = vfx.play(CgEnergyWave.instance(CgEnergy
 beam.set(CgEnergyWave.AIM, dx, dy, dz);                                                      // in this direction
 
 CgPostSettings bright = new CgPostSettings().flash(1.5f);       // brighten the picture (1 doubles it)
-CgPostVolume flash = CgPostStack.get().volume(10, bright);     // apply it now; 10 wins over lower-priority effects
-flash.at(hitX, hitY, hitZ).radius(24f);                        // only while the camera is within 24 blocks of the hit
+CgPostVolume flash = CgScene.client().postVolume(bright)       // a post volume: apply it from its spawn
+        .priority(10).at(hitX, hitY, hitZ).radius(24f).spawn();  // 10 wins over lower; only within 24 blocks of the hit
 
-flash.close();                                                 // later, when the moment is over
+flash.remove();                                                // later, when the moment is over
 ```
 
 Compute kernels, GPU culling and indirect drawing are a step further:

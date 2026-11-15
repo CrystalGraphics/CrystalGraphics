@@ -13,7 +13,7 @@
 // crystalgraphics:outline parameter collection, CG_GLOBAL_outline_Type1..4.
 #domain post
 
-Material { Location BEFORE_TRANSLUCENCY  ColorSpace Linear }
+Material { Location SURFACES  ColorSpace Linear }
 
 Properties {
     _Stencil ("The custom stencil value outlined", int) = 1

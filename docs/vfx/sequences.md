@@ -172,7 +172,7 @@ CgSequencer sequencer = CgVfxSequencer.install(CgWorld.client(), CgVfx.world());
 CgSequencer mine = CgVfxSequencer.install(world, vfx, cameras, id -> kit.cameraSequence(id));   // with cameras
 ```
 
-- **What it plays**: `system` and `prefab` spawnables on the VFX system, `post` spawnables on the post stack, `shake`
+- **What it plays**: `system` and `prefab` spawnables on the VFX system, `post` spawnables as post volumes in the client scene, `shake`
   tracks on the camera, and, given a camera system, `camera` spawnables, cuts and camera animations. A kind of your own
   is registered on what it returns.
 - **Without a camera system** (the game's, today) a `camera` spawnable fails as the play starts, naming it.

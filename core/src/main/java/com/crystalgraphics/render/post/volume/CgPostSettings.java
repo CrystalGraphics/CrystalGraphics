@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.volume;
 
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import java.util.Objects;
 
 /**
@@ -120,7 +121,7 @@ public final class CgPostSettings {
      * as the last thing the composite does: a cut to black, a white-out. Unreal's camera fade.
      *
      * <pre>{@code
-     * CgPostVolume black = CgPostStack.get().volume(100, new CgPostSettings().fade(0xFF000000, 1f));
+     * CgPostVolume black = scene.postVolume(new CgPostSettings().fade(0xFF000000, 1f)).priority(100).spawn();
      * black.weight(t);   // 0 to 1 over the fade
      * }</pre>
      */
@@ -148,7 +149,7 @@ public final class CgPostSettings {
      * table into the target's encoding, the vignette and fringe inside it, as its tonemap pass runs.
      *
      * <pre>{@code
-     * CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
+     * scene.postVolume(new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f)).spawn();   // a stage's look
      * }</pre>
      *
      * <ul>

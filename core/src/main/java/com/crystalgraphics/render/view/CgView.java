@@ -9,6 +9,7 @@ import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.render.host.CgHostTextures;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
+import com.crystalgraphics.render.post.CgPost;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.target.CgRenderTarget;
@@ -86,6 +87,12 @@ public final class CgView {
             showOnly = Collections.newSetFromMap(new IdentityHashMap<>());
     private int width, height;
     private long frame = Long.MIN_VALUE, draws;
+    /** Its own post chain, for a view of a scene of its own, made at first ask; the client's views share the client's. */
+    @Nullable
+    private CgPost post;
+    /** The unkept view's: the chain of the view it draws for. */
+    @Nullable
+    private CgPost borrowedPost;
 
     // Last frame's camera, which this frame's is compared with (Unreal's FPreviousViewInfo)
     private final Matrix4f previous = new Matrix4f(), viewProjection = new Matrix4f(), lastViewProjection = new Matrix4f();
@@ -144,6 +151,7 @@ public final class CgView {
         UNKEPT.overrides.clear();
         UNKEPT.overrides.putAll(named.overrides);
         UNKEPT.showFlags.set(named.showFlags);
+        UNKEPT.borrowedPost = named.post();
         return UNKEPT;
     }
 
@@ -154,6 +162,21 @@ public final class CgView {
     /** The scene it sees. */
     public CgScene scene() {
         return scene != null ? scene : CgScene.client();
+    }
+
+    /**
+     * Its post chain: the client's ({@link CgPost#client()}) for a view of the client scene, its own for a view of a scene
+     * of its own, so a lab's bloom leaves the game's alone.
+     *
+     * <pre>{@code
+     * viewport.post().bloom().intensity(2f);
+     * }</pre>
+     */
+    public CgPost post() {
+        if (borrowedPost != null) return borrowedPost;
+        if (scene == null) return CgPost.client();
+        if (post == null) post = new CgPost();
+        return post;
     }
 
     /** What it keeps across its firings and frames. */

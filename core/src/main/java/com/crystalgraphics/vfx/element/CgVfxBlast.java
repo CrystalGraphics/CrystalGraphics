@@ -7,7 +7,7 @@ import com.crystalgraphics.render.post.volume.CgImpact;
 import com.crystalgraphics.render.post.volume.CgImpactFrame;
 import com.crystalgraphics.render.post.volume.CgImpactSequence;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.shape.primitive.CgShell;
 import com.crystalgraphics.trace.CgTrace;
@@ -363,7 +363,7 @@ public final class CgVfxBlast extends CgVfxElement {
         return burst;
     }
 
-    /** Whether its impact frame showed when the post stack last weighed it. */
+    /** Whether its impact frame showed when the post chain last weighed it. */
     public boolean impactFrameShowing() {
         return showing;
     }

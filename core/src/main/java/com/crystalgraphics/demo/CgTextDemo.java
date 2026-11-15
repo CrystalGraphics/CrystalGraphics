@@ -212,7 +212,7 @@ public final class CgTextDemo {
         styles = new CgTextStyle[]{DAMAGE, NEON, HOLLOW, galaxyStyle, infernoStyle, rainbowStyle, electricStyle, EMBOSSED,
                 COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE, null};
         warm = CgMaterial.of(plasma).keyword("MSDF_MODE", true);
-        // After the world renderer's draws and before the post stack, as world text with additive layers is drawn.
+        // After the world renderer's draws and before the post chain, as world text with additive layers is drawn.
         drawing = CgRenderStage.TRANSLUCENT.register(10, this::draw);
     }
 

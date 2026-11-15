@@ -214,7 +214,7 @@ rows.perRecord(shard, crystal).counts(alive, CgIndirect.INDICES, 6).countAt(4L *
 #### Views
 
 The game's view is `CgView.main()`. A view of your own draws a scene through a camera of its own, into a target of
-its own, whole, with `renderInto`: the world stages, the scene renderer and the post stack, in one call.
+its own, whole, with `renderInto`: the world stages, the scene renderer and its post chain, in one call.
 
 ```java
 // An editor's viewport: its own scene, its own view, kept for its histories
@@ -269,7 +269,7 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
 - The opaque callback draws the opaque scene: `PREPARE`, a prepass (materials with a depth pass, and alpha-tested
   ones), the base pass, `OPAQUE`. The transparent callback draws the rest: the lights, the media, decals, the
   before-translucency post effects, `SURFACES`, late solids, half size and volumes, the bends, the translucent pass,
-  separate translucency, `TRANSLUCENT`, the post stack, `OVERLAY`. A translucent row writing depth in its own draw
+  separate translucency, `TRANSLUCENT`, the post chain, `OVERLAY`. A translucent row writing depth in its own draw
   (`"Depth" = "Clip"`) sorts first in its group (`docs/SHADERS.md` § *Depth from a translucent material*).
 - Shaders see **camera-relative** world space: `CG_CAMERA_WORLD_POS` is the origin, and `CG_ABSOLUTE_WORLD_POS(p)`
   adds `cg_WorldOrigin` back for an effect that must not move with the camera.
@@ -278,8 +278,8 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   it fully. Every pass binds the host's lightmap, and its constants carry the sun and the fog (`CgWorldAtmosphere`,
   from `CgHostEnvironment`).
 - **Emission**: a material with an Emissive pass (`docs/SHADERS.md` § *The glow*) glows: its glow is light added into
-  the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post stack blooms
-  the scene's light past white (§ *The post stack*). A row's `.emission(scale)` scales its glow (0 leaves it out),
+  the HDR scene (below), hidden by the scene's depth and covered by what draws in front, and the post chain blooms
+  the scene's light past white (§ *The post chain*). A row's `.emission(scale)` scales its glow (0 leaves it out),
   and a material's `_EmissionColor`/`_EmissionStrength` its material's, both through `CG_EMISSION`. A translucent row
   whose Emissive pass is codeless on its Forward pass's blend folds its glow into the same draw
   (`CgPipeline.sceneFold`); `MERGE_EMISSION` off draws every Emissive pass on its own.
@@ -290,7 +290,7 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   is written (`docs/SHADERS.md` § *Lighting and fog*). The opaque scene is linear too, as Unreal's base pass writes
   SceneColor: encoded back into the host's colour after the opaque callback, so what the host draws before the
   transparent one blends over it as before, and kept wherever the host drew nothing over it, so an unlit colour past
-  white reaches bloom. Bloom takes the scene's light past `CgPostStack.get().bloom().threshold(t)` (1). Until its
+  white reaches bloom. Bloom takes the scene's light past `CgPost.client().bloom().threshold(t)` (1). Until its
   programs are built, a view has no scene and draws no glow.
 - **Half resolution**: a translucent row marked `.halfResolution()` draws into a half-size target before the
   translucent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
@@ -398,25 +398,27 @@ frame, from tick functions of the client world's schedule ([below](#the-world-an
 scene it names (`vfx.scene(lab)`; the client's by default) by every view of it. Particles simulate on the GPU at every compute tier. Writing effects, emitters,
 events and modules: [`VFX.md`](VFX.md).
 
-### The post stack — what runs after the world
+### The post chain — what runs after the world
 
-`CgPostStack` (`render/post`, its own guide) records for each view whose show flags keep post, after its translucent
-passes and `TRANSLUCENT`, its volumes blended at that view's camera into its own settings: every active
-`CgPostEffect` at its `CgPostPoint` (`BEFORE_SEPARATE_TRANSLUCENCY`, `AFTER_WORLD`, `BEFORE_COMPOSITE`,
-`AFTER_COMPOSITE`), separate translucency laid over the scene after the first, and between the last two one composite
-pass laying the view's looks over the target. Bloom is its built-in effect.
+A view's post chain (`render/post`, its own guide; Unreal's post-processing passes) runs for each view whose show flags
+keep post: effects at `CgPostPoint`s, each given the picture so far and answering the picture after it, with the
+engine's bloom, tonemapper and looks between them, its last step writing the host's target. The points, in order:
+`SURFACES` (the lit opaque scene, before anything translucent), `TRANSLUCENT` (before separate translucency is laid
+over), `SCENE` (the linear scene: what draws here blooms), `HDR` (after bloom is taken, before the tonemap), `DISPLAY`
+(the final picture). The client's views share `CgPost.client()`; a view of a scene of its own has its own
+(`view.post()`). Looks are post volumes, scene components each view blends at its camera.
 
 ```java
-CgPostStack.get().bloom().intensity(1.5f);                          // 1 by default; 0 for none
-CgRenderStage.Registration fx = CgPostStack.get().add(myEffect);    // a mod's effect at its point
+CgPost.client().bloom().intensity(1.5f);                                     // 1 by default; 0 for none
+CgPost.Registration fx = CgPost.client().add(CgPostPoint.DISPLAY, (ctx, input) -> ctx.screen(tint).over(input));
 fx.close();
 
 // An effect's look for its moment: a volume, blended by priority and distance, weighed over its life
-CgPostVolume burst = CgPostStack.get().volume(10, new CgPostSettings().flash(1.5f).bloom(2f).chromatic(1.2f))
-        .at(x, y, z).radius(24f).blend(16f);
+CgPostVolume burst = scene.postVolume(new CgPostSettings().flash(1.5f).bloom(2f).chromatic(1.2f))
+        .priority(10).at(x, y, z).radius(24f).blend(16f).spawn();
 burst.weight(1f - age / life);
-burst.close();
-CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));   // an impact frame, everywhere
+burst.remove();
+scene.postVolume(new CgPostSettings().impact(CgImpact.LINES, 1f)).priority(20).spawn();   // an impact frame, everywhere
 ```
 
 - The looks: flash (exposure in stops), Unreal's vignette (`VignetteIntensity`), colour fringe toward the focus (Unreal's `SceneFringeIntensity`, in percent), impact frames, Unreal 4.21's tonemapper (`tonemap()`, below), and a fade to a
@@ -427,7 +429,7 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   volume turns it on, so Minecraft's frames stay byte for byte without one:
 
   ```java
-  CgPostStack.get().volume(0, new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f));   // a stage's look
+  scene.postVolume(new CgPostSettings().tonemap().filmHeal(0.18f).vignette(0.5f)).spawn();   // a stage's look
   ```
 
   Unreal 5.1's is `filmic()`: its ACES-fitted film curve (`filmCurve(slope, toe, shoulder, blackClip, whiteClip)`, at
@@ -436,8 +438,8 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   volume's weight fades the tonemapper in over the roll to white rather than switching it:
 
   ```java
-  CgPostVolume look = CgPostStack.get().volume(5, new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f)
-          .expandGamut(0f).displayGamma(2.7f)).at(x, y, z).radius(24f).blend(8f);   // around an effect alone
+  CgPostVolume look = scene.postVolume(new CgPostSettings().filmic().toneCurve(0f).blueCorrection(0f)
+          .expandGamut(0f).displayGamma(2.7f)).priority(5).at(x, y, z).radius(24f).blend(8f).spawn();   // around an effect
   ```
 - **Unreal's Gaussian bloom**: `gaussianBloom()` draws Unreal's own six layers and setup in place of the engine's (`CgBloom`'s
   layers, fitted to the chain they replaced, on each channel's excess; `bloomExcess()` gives a look that source too): the scene
@@ -446,8 +448,8 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   `bloomThreshold` (-1, the default, blooms the whole scene, as Unreal runs no setup then):
 
   ```java
-  CgPostStack.get().volume(0, new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f)
-          .bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f).bloomLayer(6, 64f, 0.0149f, 0.0149f, 0.0149f));
+  scene.postVolume(new CgPostSettings().gaussianBloom().bloom(1.25f).bloomSizeScale(4f)
+          .bloomLayer(1, 0.3f, 0.3466f, 0.3466f, 0.3466f).bloomLayer(6, 64f, 0.0149f, 0.0149f, 0.0149f)).spawn();
   ```
 
   A post block says the same with `bloom1` to `bloom6` (`{ size, tint }`), `bloom_size_scale` and `bloom_threshold`
@@ -458,17 +460,17 @@ CgPostStack.get().volume(20, new CgPostSettings().impact(CgImpact.LINES, 1f));  
   grade. A neutral grade switches the pass off, so a host's pixels stay byte for byte. Each control is its own field:
 
   ```java
-  CgPostStack.get().volume(0, new CgPostSettings()
+  scene.postVolume(new CgPostSettings()
           .grade(Region.SHADOWS, Control.GAIN, 0.8f, 0.9f, 1.2f, 1f)      // cool shadows
           .grade(Region.GLOBAL, Control.SATURATION, 1f, 1f, 1f, 0.7f)    // the whole picture less saturated
-          .whiteBalance(5500f, 0f).tint(0xFFFFF0E0, 1f));
+          .whiteBalance(5500f, 0f).tint(0xFFFFF0E0, 1f)).spawn();
   ```
 
   ```yaml
   post: { shadows: { gain: [0.8, 0.9, 1.2, 1] }, colour: { saturation: [1, 1, 1, 0.7], tint: [1, 0.94, 0.88] } }
   ```
 - **An impact frame is a `CgImpactFrame`**: a look from the picture alone (negative, black and white, focus lines over
-  it) or a drawn one: two-tone paper, the subject (what the effect glows with, the view's `textures().subject()`) filled in ink,
+  it) or a drawn one: two-tone paper, the subject (what the effect glows with, the view's `scene().subject()`) filled in ink,
   focus lines, hatching off its edge, a flash star with a cross, and a jitter that redraws it per beat. `CgImpact`
   names the presets (`SUBJECT`, `HATCHED`, `FOCUS_LINES`, `WHITE`, ...).
 - **It plays as beats, not a fade**: `CgImpactSequence` holds each look for whole frames at 24 a second and cuts, and
@@ -491,24 +493,26 @@ CgImpactFrame look = HIT.look(sinceHit);                 // each tick; null outs
 impact.weight(look != null ? 1f : 0f);
 if (look != null) settings.impact(look, HIT.amount(sinceHit), HIT.seed(sinceHit));
 ```
-- A volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise.
-- **A mod's effect** implements `CgPostEffect` (its javadoc has the example): a raster pass into `post.target()` at
-  `AFTER_WORLD` or `AFTER_COMPOSITE`, or composite inputs at `BEFORE_COMPOSITE`. `render/post/CLAUDE.md` § *Writing an
+- A placed volume's focus is where it stands on screen unless `CgPostSettings.focus(x, y)` says otherwise; a volume
+  attaches to a socket as any component does, and a prefab's `post:` node spawns one.
+- **A mod's effect** is a `CgPostEffect`, `(ctx, input) -> output`: `ctx.screen(material).over(input)` draws a material
+  over the picture, `.into(ctx.texture(name, input))` into a texture of its own the chain carries on; `ctx.recording()`
+  records anything else. At `SURFACES` and `TRANSLUCENT` it answers its input. `render/post/CLAUDE.md` § *Writing an
   effect* has the rules; `--mode=post-effects` is one at each point.
 - **An effect that is only a material** is a `CgPostMaterial` (Unreal's post-process material): its `.shader` drawn over
-  the screen at `AFTER_WORLD` or `AFTER_COMPOSITE`, at a weight its shader reads as `POST_WEIGHT`
-  (`env/material/post.glsl`); 0 draws nothing.
+  the picture at its `Location`, at a weight its shader reads as `POST_WEIGHT` (`env/material/post.glsl`); 0 draws
+  nothing.
 - **A post material of several steps** draws them in order: each `Step` but the last (`Target RGBA16_FLOAT  Scale 0.5`)
   draws into a texture of its own, that share of the screen, which every step after reads as `CG_STEP(name, uv)`; the
   last draws over the scene. `MATERIAL_FORMAT.md` § 7.1 and `CgPostMaterial`'s javadoc have the example.
-- **A cut's crossfade**: `CgPostStack.get().crossfade(seconds)` on the old shot's last frame holds what that firing
+- **A cut's crossfade**: `CgPost.client().crossfade(seconds)` on the old shot's last frame holds what that firing
   draws, and the frames after it show it over theirs, fading out linearly on the frame clock, before the HUD.
 
 ```java
-CgPostMaterial thermal = CgPostMaterial.of("mymod:shaders/post/thermal.shader", CgPostPoint.AFTER_COMPOSITE);
-CgRenderStage.Registration on = CgPostStack.get().add(thermal);
+CgPostMaterial thermal = CgPost.client().material("mymod:shaders/post/thermal.shader", CgPostPoint.DISPLAY);
 thermal.weight(0.8f);
-CgPostStack.get().crossfade(0.5f);
+thermal.remove();
+CgPost.client().crossfade(0.5f);
 ```
 
 `--mode=post-transitions` is the gate for all three.
@@ -1275,7 +1279,7 @@ CgEngineLifecycle.shutdown();
 | 6d | `CgReadback.releaseAll()` | Pooled staging buffers and the fences of readbacks still in flight; each pending sink is told it failed |
 | 7 | `CgShaderBufferRegistry.get().deleteAll()` | User SSBO/UBO resources |
 | 8 | `CgSceneRenderer.releaseAll()` | Every scene renderer's targets and depth snapshots; then `CgView.forgetAll()`, every view's kept state, and the client scene's GPU records |
-| 8a | `CgPostStack.get().release()` | Its materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
+| 8a | `CgPostRenderer.releaseAll()` | Every chain's materials' references (the registry freed them at step 6); its transients are the graph's. Volumes and registered effects stay, for the next context |
 | 8b | `CgPreviewPool.deleteAll()` | Shader-graph preview targets, thumbnails and main previews. **Context-owned, not renderer-owned** — their storage is made by the executor outside any registry, so nothing below reaches it. Its targets' textures go with it |
 
 > **The backend closes last, and not in `shutdown()`.** Every deletion above goes through it, and a

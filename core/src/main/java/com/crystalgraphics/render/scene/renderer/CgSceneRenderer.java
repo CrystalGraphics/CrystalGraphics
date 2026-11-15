@@ -35,7 +35,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
@@ -288,7 +288,7 @@ public final class CgSceneRenderer {
         beginFrame(view.camera());
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, OPAQUE_ZONE)) {
             CgViewPasses passes = passes(view);
-            if (view.showFlags().post()) CgPostStack.get().prepare(view);
+            if (view.showFlags().post()) CgPostRenderer.prepare(view);
             firing.run(CgRenderStage.PREPARE);
             CgSceneTextures textures = view.textures();
             CgMeshBatches rows = passes.visibility().batches();
@@ -384,7 +384,7 @@ public final class CgSceneRenderer {
             recordTranslucent(firing, view);
         }
         firing.run(CgRenderStage.TRANSLUCENT);
-        if (view.showFlags().post()) CgPostStack.get().record(firing);
+        if (view.showFlags().post()) CgPostRenderer.record(firing);
         firing.run(CgRenderStage.OVERLAY);
     }
 
@@ -435,7 +435,7 @@ public final class CgSceneRenderer {
             }
         }
         boolean post = view.showFlags().post();
-        if (post) CgPostStack.get().recordBeforeTranslucency(firing);
+        if (post) CgPostRenderer.surfaces(firing);
         firing.run(CgRenderStage.SURFACES);
 
         layered = linear && view.flag(GRADE_DRAWS) && layers.prepare(firing, passes, constants);

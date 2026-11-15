@@ -10,7 +10,7 @@ import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import java.util.Objects;
 
 /**
- * A toon outline round what is drawn into custom depth with one stencil value: one fullscreen pass after lighting and
+ * A toon outline round what is drawn into custom depth with one stencil value: one fullscreen pass at {@code SURFACES}, after lighting and
  * before translucency, finding depth, normal and material-ID edges ({@code crystalgraphics:shaders/post/outline.shader},
  * the technique of Dragon Ball Z: Kakarot's battle outline). Unreal has no outline of its own; games add this post
  * material over custom depth and stencil, and this is the engine's.
@@ -40,7 +40,7 @@ import java.util.Objects;
  *   <li>The type colours are one collection for every outline ({@code crystalgraphics:outline}), so a sequence keys
  *       them with a global track: {@code { kind: global, collection: crystalgraphics:outline, sections: [ { colours:
  *       { Type1: ... } } ] }}.</li>
- *   <li>It draws before every other post material at its point, as a game's outline draws after lighting.</li>
+ *   <li>It draws before every other effect at {@code SURFACES}, the height fog included, as a game's outline draws after lighting.</li>
  *   <li>Render thread.</li>
  * </ul>
  */
@@ -57,13 +57,11 @@ public final class CgOutline implements AutoCloseable {
 
     private final CgMaterialInstance material;
     private final CgPostMaterial post;
-    private final CgPostStack.Registration registration;
 
     private CgOutline(CgMaterialInstance material) {
         this.material = material;
         types();
-        this.post = CgPostMaterial.of(material, CgPostPoint.BEFORE_TRANSLUCENCY, ORDER);
-        this.registration = CgPostStack.get().add(post);
+        this.post = CgPost.client().material(material, CgPostPoint.SURFACES, ORDER);
     }
 
     /** The engine's outline round stencil value {@code stencil} (0 to 255). */
@@ -98,10 +96,10 @@ public final class CgOutline implements AutoCloseable {
         return this;
     }
 
-    /** Takes it off the post stack. */
+    /** Takes it out of the post chain. */
     @Override
     public void close() {
-        registration.close();
+        post.remove();
     }
 
     /**

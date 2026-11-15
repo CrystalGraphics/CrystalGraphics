@@ -3,7 +3,7 @@
 // along the ray from the eye, past the start distance, integrated through 2^(-falloff * height); the scene keeps the
 // transmittance, held above 1 - max opacity, and gains (1 - it) times the fog's colour. Nothing past the cutoff.
 #domain post
-Material { Location BEFORE_TRANSLUCENCY  SceneColorMargin 0.001 }
+Material { Location SURFACES  SceneColorMargin 0.001 }
 Properties {
     _Fog0      ("Density at the observer, falloff a block, eye above observer, start distance", vec4) = (0, 0, 0, 0)
     _Fog1      ("Density, observer above the fog height, cutoff or 0, least transmittance", vec4) = (0, 0, 0, 0)

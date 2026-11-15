@@ -196,7 +196,7 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     // The quad's colour tints rgb; its alpha scales the pane.
     c.rgb *= i.color.rgb;
     // Held to 0..1, as the screen's 8-bit target holds it: saturation above 1 and the highlight pass white, which the
-    // HDR scene keeps and the post stack rolls toward white and blooms.
+    // HDR scene keeps and the post chain rolls toward white and blooms.
     if (linearScene) c.rgb = srgb_to_linear(clamp(c.rgb, 0.0, 1.0));
     s.color = vec4(c.rgb, i.color.a);
     s.coverage = coverage;

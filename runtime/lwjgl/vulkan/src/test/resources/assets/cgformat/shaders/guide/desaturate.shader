@@ -1,6 +1,6 @@
 // docs/MATERIAL_FORMAT.md § 7
 #domain post
-Material { Location AFTER_WORLD }
+Material { Location SCENE }
 Properties { _Amount ("How grey", float, range(0, 1)) = 1 }
 void surface(in CgScreen i, inout CgPostSurface s) {
     vec3 c = s.color;

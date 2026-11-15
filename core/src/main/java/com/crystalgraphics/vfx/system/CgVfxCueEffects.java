@@ -39,9 +39,9 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostBlock;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.vfx.CgVfxEffect;
 import com.crystalgraphics.vfx.CgVfxSystem;
@@ -307,8 +307,8 @@ public final class CgVfxCueEffects implements CgCueEffects {
     }
 
     /** {@code lens}'s look over the whole screen, at full weight. */
-    static CgPostVolume openLens(CgPostStack stack, Lens lens) {
-        return stack.volume(0, CgPostBlock.settings(lens.post() == null ? Map.of() : lens.post()));
+    static CgPostVolume openLens(CgScene scene, Lens lens) {
+        return scene.postVolume(CgPostBlock.settings(lens.post() == null ? Map.of() : lens.post())).spawn();
     }
 
     /**
@@ -524,7 +524,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
             sequences(cue, cue.application(), at);
             sequences(cue, cue.looping(), at);
             Lens l = cue.looping().lens();
-            if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgPostStack.get(), l);
+            if (l != null && cues.spawns(l.where().condition(), at, 0) && lensPlays(l, at)) lens = openLens(CgScene.client(), l);
         }
 
         /** {@code block}'s sounds: looping ones kept to fade at removal. */
@@ -590,7 +590,7 @@ public final class CgVfxCueEffects implements CgCueEffects {
         }
 
         private void closeLens() {
-            if (lens != null) lens.close();
+            if (lens != null) lens.remove();
             lens = null;
         }
 

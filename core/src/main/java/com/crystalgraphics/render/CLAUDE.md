@@ -25,7 +25,7 @@ thread. The root holds what every recorder shares; each sub-package is one layer
 | `target/` | `CgRenderTarget`: a texture drawn into at run time, Unreal's `UTextureRenderTarget2D`: made in code or from a settings file's `render_target` block (`CgMaterialRegistry.texture` answers its texture by path), its ten formats, clear colour and generated mips; `clear()`, `drawMaterial(material)` over a canvas quad, `readback(sink)` async only. `CgView.renderPicture`'s picture is one |
 | `meshpass/` | Mesh passes, as Unreal's `EMeshPass` and `FMeshPassProcessor`: a `CgMeshPassType` (an id, a `CgPassLayout` of attachments, a `CgMeshPassProcessor` that turns a `CgMeshBatch` into commands through `CgMeshPassCommands`), registered once; `registerPerFrame` for a type whose answer changes each frame (velocity). `CgPrimitiveRelevance` (which engine passes a material reaches), `CgPrimitiveInfo` and `CgPrimitiveFlag` (a consumer's flag on a primitive, read by its processor), `CgCustomDepth` (named stencil values, allocated once). `engine/`: `CgEnginePasses`, the engine's own types: depth, base, translucent, emissive, distortion, custom depth, custom data, velocity, decal. Run a type from a stage with `CgStageFrame.meshPass(type)` |
 | `precache/` | `CgPipelinePrecache`, `CgPipelineList`: pipelines built ahead of use. Its own guide |
-| `post/` | `CgPostStack`: what the scene renderer runs after a view's translucent passes, effects at points and one composite; bloom is its built-in effect. Its own guide |
+| `post/` | The post chain: `CgPost` (a view's effects at points, each `(ctx, input) -> output`), `CgPostRenderer` (what the scene renderer runs, in the frame's order), bloom, the composite and the looks. Its own guide |
 
 ---
 

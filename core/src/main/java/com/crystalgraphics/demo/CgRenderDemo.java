@@ -26,7 +26,7 @@ import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPost;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
@@ -979,13 +979,13 @@ public final class CgRenderDemo {
 
     /** Bloom's intensity times {@code by}, while it is on. */
     private static void scaleBloom(float by) {
-        CgBloom bloom = CgPostStack.get().bloom();
+        CgBloom bloom = CgPost.client().bloom();
         if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
     }
 
     /** Off, its intensity put aside, or back on at the intensity it had. */
     private static void toggleBloom() {
-        CgBloom bloom = CgPostStack.get().bloom();
+        CgBloom bloom = CgPost.client().bloom();
         if (bloom.intensity() == 0f) {
             bloom.intensity(bloomIntensity);
         } else {
@@ -1048,7 +1048,7 @@ public final class CgRenderDemo {
     }
 
     private String hudText() {
-        CgBloom bloom = CgPostStack.get().bloom();
+        CgBloom bloom = CgPost.client().bloom();
         boolean waves = scenes[wanted] != null && scenes[wanted].waves();
         return String.format(Locale.ROOT, "FPS: %.1f", fps)
                 + "\nScene [N]: " + kinds[wanted].name() + " - Hide [H]"

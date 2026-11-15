@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.prefab;
 
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -19,7 +20,7 @@ import java.util.Map;
 /**
  * A {@link CgPrefab} spawned into a scene as components: a node a {@link CgSceneRoot} at its rest under its parent's
  * (a {@link CgSkeletalMeshComponent} where it is a skeletal mesh), a {@link CgMeshComponent} a part riding its node, and
- * an effect node's VFX play following it. Unreal's actor spawned from a Blueprint, its component tree made from the
+ * an effect node's VFX play following it, a post node's {@link CgPostVolume} riding it. Unreal's actor spawned from a Blueprint, its component tree made from the
  * template. Made by {@code scene.spawn(prefab)}.
  *
  * <pre>{@code
@@ -57,6 +58,8 @@ public final class CgPrefabInstance {
     private CgMeshComponent[] parts;
     @Nullable
     private CgPrefabEffects.Played[] effects;
+    @Nullable
+    private CgPostVolume[] looks;
 
     /** {@code prefab} for {@code scene}, unspawned: what {@code scene.spawn(prefab)} answers. */
     public CgPrefabInstance(CgScene scene, CgPrefab prefab) {
@@ -109,6 +112,7 @@ public final class CgPrefabInstance {
         CgPrimitiveComponent<?>[] made = new CgPrimitiveComponent<?>[n];
         CgMeshComponent[] drawn = new CgMeshComponent[prefab.firstPart(n)];
         CgPrefabEffects.Played[] played = new CgPrefabEffects.Played[n];
+        CgPostVolume[] volumes = new CgPostVolume[n];
         float[] rest = new float[CgPrefab.REST];
         Quaternionf turn = new Quaternionf();
         for (int i = 0; i < n; i++) {
@@ -131,10 +135,17 @@ public final class CgPrefabInstance {
                 played[i] = new CgPrefabEffects.Played(effect.effect(), node.attachment());
                 if (effect.auto()) played[i].play();
             }
+            CgPrefab.Post post = prefab.post(i);
+            if (post != null) {
+                CgPostVolume v = scene.postVolume(post.settings()).priority(post.priority()).weight(post.weight()).blend(post.blend());
+                if (!post.unbound()) v.radius(post.radius());
+                volumes[i] = v.attach(node, null).spawn();
+            }
         }
         nodes = made;
         parts = drawn;
         effects = played;
+        looks = volumes;
         return this;
     }
 
@@ -175,6 +186,14 @@ public final class CgPrefabInstance {
         return i < 0 ? null : effects[i];
     }
 
+    /** Node {@code name}'s post volume, to weigh or change, or null where it is none. */
+    @Nullable
+    public CgPostVolume post(String name) {
+        int i = prefab.node(name);
+        spawned();
+        return i < 0 ? null : looks[i];
+    }
+
     /** Node {@code name}'s first part, or null where it has none or draws nothing. */
     @Nullable
     public CgMeshComponent mesh(String name) {
@@ -193,10 +212,12 @@ public final class CgPrefabInstance {
     /** Stops its effects and removes every component it made, parts first, its root last. */
     public void remove() {
         if (effects != null) for (CgPrefabEffects.Played e : effects) if (e != null) e.stop();
+        if (looks != null) for (CgPostVolume v : looks) if (v != null) v.remove();
         if (parts != null) for (CgMeshComponent part : parts) part.remove();
         if (nodes != null) for (int i = nodes.length - 1; i >= 0; i--) nodes[i].remove();
         root.remove();
         effects = null;
+        looks = null;
         parts = null;
         nodes = null;
     }

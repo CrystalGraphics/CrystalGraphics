@@ -226,7 +226,7 @@ public class MaterialFormatTest {
 
     @Test
     public void aPostFileSaysWhereItDraws() {
-        assertEquals("BEFORE_TRANSLUCENCY", parse(path("crystalgraphics:shaders/post/height_fog")).postLocation());
+        assertEquals("SURFACES", parse(path("crystalgraphics:shaders/post/height_fog")).postLocation());
         assertEquals(CgMaterialDomain.POST, parse(path("post_chain")).domain());
     }
 

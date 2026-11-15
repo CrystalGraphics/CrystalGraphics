@@ -648,7 +648,7 @@ the engine draws the screen-covering triangle, holds depth off and blends nothin
 ```glsl
 // mymod:shaders/post/desaturate.shader
 #domain post
-Material { Location AFTER_WORLD }
+Material { Location SCENE }
 Properties { _Amount ("How grey", float, range(0, 1)) = 1 }
 void surface(in CgScreen i, inout CgPostSurface s) {
     vec3 c = s.color;
@@ -657,10 +657,9 @@ void surface(in CgScreen i, inout CgPostSurface s) {
 ```
 
 ```java
-CgPostMaterial grey = CgPostMaterial.of("mymod:shaders/post/desaturate.shader");   // at its Location
-CgRenderStage.Registration on = CgPostStack.get().add(grey);
+CgPostMaterial grey = CgPost.client().material("mymod:shaders/post/desaturate.shader");   // at its Location
 grey.weight(0.5f);                       // POST_WEIGHT in the shader; 0 draws nothing
-on.close();                              // removes it
+grey.remove();
 ```
 
 | `CgScreen` | Is |
@@ -673,14 +672,16 @@ on.close();                              // removes it
 | `color` | the scene's colour, where `surface()` reads it before writing | what the pixel becomes |
 | `opacity` | `1` | how much of `color` replaces the scene: naming it mixes over the scene |
 
-**`Location`** is where in the frame it draws (`CgPostPoint`); `CgPostMaterial.of(path, point)` puts it somewhere else.
+**`Location`** is where in the frame it draws (`CgPostPoint`); `CgPost.client().material(path, point)` puts it somewhere
+else.
 
 | `Location` | Draws onto |
 |---|---|
-| `BEFORE_TRANSLUCENCY` | the lit solid world, before anything see-through: reads custom depth, normals and custom data |
-| `BEFORE_SEPARATE_TRANSLUCENCY` | the world before the separate translucency is laid over it |
-| `AFTER_WORLD` | the finished world, linear HDR, before the engine's own looks |
-| `AFTER_COMPOSITE` | the final picture, in the screen's encoding: an outline, a CRT filter |
+| `SURFACES` | the lit solid world, before anything see-through: reads custom depth, normals and custom data |
+| `TRANSLUCENT` | the world before the separate translucency is laid over it |
+| `SCENE` | the finished world, linear HDR, before bloom: what it draws blooms |
+| `HDR` | the finished world after bloom is taken, before the tonemap: linear, never bloomed |
+| `DISPLAY` | the final picture, in the screen's encoding: an outline, a CRT filter |
 
 `Material { }` takes `Location`, `SceneColorMargin` and `ColorSpace`. `SceneColorMargin` is how far past its own pixel
 it samples the scene, 0.001 (its own pixel) by default; a blur reading its neighbours sets more. It reads the scene by
@@ -696,7 +697,7 @@ picture as shown, such as a negative.
 
 ```glsl
 #domain post
-Material { Location AFTER_COMPOSITE  ColorSpace Target }
+Material { Location DISPLAY  ColorSpace Target }
 void surface(in CgScreen i, inout CgPostSurface s) { s.color = mix(s.color, 1.0 - s.color, POST_WEIGHT); }
 ```
 
@@ -708,7 +709,7 @@ a texture of its own; each later step reads it; the last draws onto the screen.
 ```glsl
 // soft_glow.shader: the bright parts, blurred at half size, added back
 #domain post
-Material { Location AFTER_WORLD }
+Material { Location SCENE }
 Properties { _Threshold ("Brightness that glows", float) = 1  _Strength ("Glow", float) = 0.5 }
 
 Step bright {
@@ -994,7 +995,7 @@ CgDecalComponent crack = CgScene.client().decal(crackMaterial)
 | `cg_Tube` under `VertexFactory Sprites` | the factories that have it (an undeclared name, where none has been read yet) | a sprite has no tube |
 | `_FxPath` declared under a tube factory | remove it | the tube's draw binds it |
 | `VertexFactory mymod:X` with no file | the path it looked for | factories are found by name |
-| `Location BEFORE_COMPOSITE` | another location | that point feeds the engine's composite |
+| `Location AFTER_WORLD` (or any name not a `CgPostPoint`) | `SURFACES`, `TRANSLUCENT`, `SCENE`, `HDR` or `DISPLAY` | the points are named for the frame's phases |
 
 ### Where things live
 

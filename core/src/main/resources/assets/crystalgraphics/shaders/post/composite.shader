@@ -1,4 +1,4 @@
-// The post stack's composite, blend form: the one full-screen pass a frame that lays every screen-wide look over the
+// The post chain's composite, blend form: the one full-screen pass a frame that lays every screen-wide look over the
 // target, written as dst * (1 - alpha) + rgb so it needs no copy of the target. It adds in the target's own encoding.
 // Each look is a feature keyword, so a frame compiles and runs only what is active. One triangle over the screen.
 // CgPostComposite draws it; nothing else should. composite_copy.shader is the form that reads the target.

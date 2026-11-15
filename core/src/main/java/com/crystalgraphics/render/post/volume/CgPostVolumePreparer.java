@@ -3,7 +3,7 @@ package com.crystalgraphics.render.post.volume;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 import java.util.ArrayList;
@@ -17,7 +17,7 @@ import java.util.Set;
  * A sequence asset's post materials made ready before it is {@code READY}: every post volume it spawns, in it and in
  * every sequence it plays, its blendables' textures decoded on a worker ({@code plan.preload}) and their passes built
  * through the precache ({@code plan.pipelines}), and the composite's passes for its looks
- * ({@code CgPostStack.lookPasses}), so the frame its cut starts loads and compiles nothing. Unreal loads a level
+ * ({@code CgPostRenderer.lookPasses}), so the frame its cut starts loads and compiles nothing. Unreal loads a level
  * sequence's post-process materials with it.
  *
  * <pre>{@code
@@ -45,7 +45,7 @@ public final class CgPostVolumePreparer implements CgAssetPreparer {
         });
         // The composite's variant for each volume's looks: a chromatic fringe first shown at its cut compiled there.
         if (!looks.isEmpty()) plan.pipelines(p -> {
-            for (CgPostSettings s : looks) CgPostStack.get().lookPasses(s, p);
+            for (CgPostSettings s : looks) CgPostRenderer.lookPasses(s, p);
         });
         if (materials.isEmpty()) return;
         plan.preload(l -> {

@@ -5,6 +5,7 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import org.joml.Quaternionf;
 import org.junit.Test;
 
@@ -56,6 +57,27 @@ public class CgPrefabAssetsTest {
         assertEquals("body", loaded.skeletal(loaded.node("membranes")).followPose());
         assertEquals(List.of(GLOW, SKIN), loaded.skeletal(loaded.node("membranes")).materials());
         assertTrue(loaded.effect(loaded.node("aura")).auto());
+    }
+
+    @Test
+    public void aPostNode_bound_andUnbound_writesTheFileItLoadsFrom() {
+        CgPrefab built = CgPrefab.builder("test:breath")
+                .node("body").elementId("n1").skeletal("test:geo/wyvern.glb", List.of(SKIN))
+                .node("breath_look").elementId("n2").parent("body", "jaw")
+                .post(new CgPostSettings().bloom(2f).vignette(0.3f), 20f, 12f, 0f, 3)
+                .node("mood").elementId("n3").post(new CgPostSettings().chromatic(1f), Float.POSITIVE_INFINITY, 0f, 1f, 0)
+                .build();
+        Map<String, Object> written = CgPrefabAssets.write(built);
+        CgPrefab loaded = CgPrefabAssets.compile("test:breath", written, DEPS);
+        assertEquals(written, CgPrefabAssets.write(loaded));
+        CgPrefab.Post look = loaded.post(loaded.node("breath_look"));
+        assertEquals(20f, look.radius(), 0f);
+        assertEquals(12f, look.blend(), 0f);
+        assertEquals(0f, look.weight(), 0f);
+        assertEquals(3, look.priority());
+        assertEquals(2f, look.settings().bloom(), 0f);
+        assertTrue(loaded.post(loaded.node("mood")).unbound());
+        assertTrue(loaded.hasSceneNodes());
     }
 
     @Test

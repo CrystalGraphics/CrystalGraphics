@@ -26,7 +26,7 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  * The HDR scene's way in and, around the opaque pass, its way out: the one place the host's 8-bit colour is decoded
  * into linear light and encoded back. At the top of the translucent callback, once its programs are built, decodes the host's colour into an RGBA16F
  * scene beside the host's depth, makes it the view's scene colour ({@code textures().sceneColor()}) and the firing's
- * target, so every stage after draws into it in linear light. The post stack's composite encodes it back into the host's target.
+ * target, so every stage after draws into it in linear light. The post chain's composite encodes it back into the host's target.
  *
  * <p>An opaque firing with draws of ours draws them into a scene of its own the same way, as Unreal's base pass writes
  * SceneColor: {@link #opaqueIn} before the opaque pass, {@link #opaqueOut} after it, which encodes it back

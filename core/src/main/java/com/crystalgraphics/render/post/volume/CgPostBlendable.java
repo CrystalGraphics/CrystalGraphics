@@ -12,6 +12,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.render.post.CgPost;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
@@ -30,7 +31,8 @@ import com.crystalgraphics.sequence.definition.CgSequenceBinding;
  *
  * <pre>{@code
  * CgPostBlendable b = CgPostBlendable.of(entry, "mymod:arena: volumes[0].post.materials[0]", deps, null);
- * CgPostStack.Registration on = CgPostStack.get().add(b.draw(priority));   // drawn at its material's post.stage
+ * CgPostMaterial drawn = b.draw(CgPost.client(), priority);   // at its material's post.stage
+ * drawn.remove();
  * }</pre>
  *
  * <ul>
@@ -82,21 +84,22 @@ public record CgPostBlendable(String name, @Nullable CgMaterialDefinition materi
                 screen != null && Boolean.TRUE.equals(screen.get("clamp")));
     }
 
-    /** A post material of its own, at its material's point, {@code order} among that point's: a volume's priority. */
-    public CgPostMaterial draw(int order) {
+    /** A post material of its own added to {@code post}, at its material's point, {@code order} among that point's: a volume's priority. */
+    public CgPostMaterial draw(CgPost post, int order) {
         if (material == null) throw new IllegalStateException(name + ": no material compiled, so nothing to draw");
-        return CgPostMaterial.of(CgMaterial.of(material).instance(), point(), order);
+        return post.material(CgMaterial.of(material).instance(), point(), order);
     }
 
     /**
      * Where its material's {@code post.stage} draws (after 4.27 PostProcessing.cpp's chains): before translucency onto
-     * the lit opaque scene, before tonemapping after the transparent passes, the rest after the composite. Unreal's
-     * default is after tonemapping; {@code replacing_tonemapper} draws after the composite until the composite takes one.
+     * the lit opaque scene ({@code SURFACES}), before tonemapping after the transparent passes ({@code SCENE}), the rest
+     * over the display picture. Unreal's default is after tonemapping; {@code replacing_tonemapper} draws over the display
+     * picture until the composite takes one.
      */
     public CgPostPoint point() {
         Object stage = material == null || material.post() == null ? null : material.post().get("stage");
-        if ("before_translucency".equals(stage)) return CgPostPoint.BEFORE_TRANSLUCENCY;
-        if ("before_tonemapping".equals(stage)) return CgPostPoint.AFTER_WORLD;
-        return CgPostPoint.AFTER_COMPOSITE;
+        if ("before_translucency".equals(stage)) return CgPostPoint.SURFACES;
+        if ("before_tonemapping".equals(stage)) return CgPostPoint.SCENE;
+        return CgPostPoint.DISPLAY;
     }
 }

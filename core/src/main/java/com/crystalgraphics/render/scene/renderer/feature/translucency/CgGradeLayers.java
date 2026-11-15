@@ -9,7 +9,7 @@ import com.crystalgraphics.render.view.CgViewKey;
 /**
  * A firing's graded layers: the light each grade's draws ({@code Draw.grade}) added to the HDR scene, premultiplied, and
  * how much of what was behind they covered, one RGBA16F layer a grade. Published by the world renderer as
- * {@link #KEY}; the post stack blooms and tones each layer's light as its grade says and adds only
+ * {@link #KEY}; the post chain blooms and tones each layer's light as its grade says and adds only
  * that over the picture, so what no graded draw reached keeps the frame's own look.
  *
  * <pre>{@code

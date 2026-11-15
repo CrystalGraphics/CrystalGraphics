@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.prefab;
 
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -35,7 +36,7 @@ import java.util.function.Function;
  * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a component a part, a root a node
  * }</pre>
  *
- * <p>A node is a skeletal mesh or plays an effect, and rides a parent's socket:</p>
+ * <p>A node is a skeletal mesh, plays an effect or is a post volume, and rides a parent's socket:</p>
  * <pre>{@code
  * static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
  *         .node("body").skeletal("mymod:geo/wyvern.glb", List.of(SKIN)).play("idle")
@@ -77,10 +78,11 @@ public final class CgPrefab {
     private final int[] partStart;
     private final Part[] parts;
     private final Map<String, Integer> byName;
-    /** Per node: the socket of its parent it rides, its skeletal mesh, its effect; null for none. */
+    /** Per node: the socket of its parent it rides, its skeletal mesh, its effect, its post volume; null for none. */
     private final String[] sockets;
     private final Skeletal[] skeletal;
     private final Effect[] effects;
+    private final Post[] posts;
     private final Map<Class<?>, Object> derived = new ConcurrentHashMap<>(2);
 
     private CgPrefab(Builder b) {
@@ -97,6 +99,7 @@ public final class CgPrefab {
         this.sockets = b.sockets.toArray(new String[0]);
         this.skeletal = b.skeletal.toArray(new Skeletal[0]);
         this.effects = b.effects.toArray(new Effect[0]);
+        this.posts = b.posts.toArray(new Post[0]);
         List<Part> all = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             parents[i] = b.parents.get(i);
@@ -153,9 +156,15 @@ public final class CgPrefab {
         return effects[node];
     }
 
-    /** Whether any node is a skeletal mesh or plays an effect: what a scene spawns and a VFX look does not draw. */
+    /** The post volume {@code node} spawns, or null. */
+    @Nullable
+    public Post post(int node) {
+        return posts[node];
+    }
+
+    /** Whether any node is a skeletal mesh, plays an effect or is a post volume: what a scene spawns and a VFX look does not draw. */
     public boolean hasSceneNodes() {
-        for (int i = 0; i < names.length; i++) if (skeletal[i] != null || effects[i] != null) return true;
+        for (int i = 0; i < names.length; i++) if (skeletal[i] != null || effects[i] != null || posts[i] != null) return true;
         return false;
     }
 
@@ -329,6 +338,21 @@ public final class CgPrefab {
         }
     }
 
+    /**
+     * The post volume a node spawns where it stands (§ 10.2): its look, everywhere for an infinite {@code radius}, else
+     * full within it and fading over {@code blend}, at {@code weight} and {@code priority}.
+     */
+    public record Post(CgPostSettings settings, float radius, float blend, float weight, int priority) {
+        public Post {
+            Objects.requireNonNull(settings, "settings");
+        }
+
+        /** Whether it applies everywhere. */
+        public boolean unbound() {
+            return radius == Float.POSITIVE_INFINITY;
+        }
+    }
+
     /** A part's mesh: given, or a path loaded at its first draw. */
     private static final class Mesh {
         private final String path;
@@ -391,6 +415,7 @@ public final class CgPrefab {
         private final List<String> sockets = new ArrayList<>();
         private final List<Skeletal> skeletal = new ArrayList<>();
         private final List<Effect> effects = new ArrayList<>();
+        private final List<Post> posts = new ArrayList<>();
         private final Map<String, Integer> byName = new HashMap<>();
         private float[] rest = new float[16 * REST];
         private int at = -1;
@@ -415,6 +440,7 @@ public final class CgPrefab {
             sockets.add(null);
             skeletal.add(null);
             effects.add(null);
+            posts.add(null);
             if (rest.length < (at + 1) * REST) rest = Arrays.copyOf(rest, rest.length * 2);
             int o = at * REST;
             rest[o + 6] = 1f;
@@ -479,6 +505,19 @@ public final class CgPrefab {
         /** It plays the VFX system {@code effect} where it stands: from its spawn where {@code auto}, else when told. */
         public Builder effect(String effect, boolean auto) {
             effects.set(current(), new Effect(effect, auto));
+            return this;
+        }
+
+        /**
+         * It is a post volume of {@code settings} where it stands: everywhere for an infinite {@code radius}, else full
+         * within it and fading over {@code blend}; at {@code weight} and {@code priority}.
+         *
+         * <pre>{@code
+         * .node("breath_look").parent("body", "jaw").post(breath, 20f, 12f, 0f, 0)   // weighed in by code
+         * }</pre>
+         */
+        public Builder post(CgPostSettings settings, float radius, float blend, float weight, int priority) {
+            posts.set(current(), new Post(settings, Math.max(0f, radius), Math.max(0f, blend), Math.max(0f, Math.min(1f, weight)), priority));
             return this;
         }
 

@@ -35,8 +35,8 @@ final class PostDomain {
     private static final List<String> POINTS = new ArrayList<>();
 
     static {
-        // Where a post material may draw (CgPostMaterial): BEFORE_COMPOSITE feeds the composite
-        for (CgPostPoint p : CgPostPoint.values()) if (p != CgPostPoint.BEFORE_COMPOSITE) POINTS.add(p.name());
+        // Where a post material may draw (CgPostMaterial)
+        for (CgPostPoint p : CgPostPoint.values()) POINTS.add(p.name());
     }
 
     private PostDomain() {}
@@ -54,9 +54,7 @@ final class PostDomain {
         boolean linear = SpecReader.choice(file, m, "ColorSpace", "Linear", "Linear", "Target").equals("Linear");
         CgSettingsGrammar.Setting location = m.get("Location");
         if (location != null && !POINTS.contains(location.value())) {
-            throw t.error(location.valueToken(), "'Location " + location.value() + "' is one of " + POINTS
-                    + (location.value().equals(CgPostPoint.BEFORE_COMPOSITE.name()) ? ": BEFORE_COMPOSITE feeds the"
-                    + " composite, and takes the engine's own passes" : ""));
+            throw t.error(location.valueToken(), "'Location " + location.value() + "' is one of " + POINTS);
         }
         CgShaderSyntax.Block state = file.block("RenderState");
         if (state != null) throw t.error(state.first(), "'RenderState' is the engine's in a post material, which draws the whole screen");

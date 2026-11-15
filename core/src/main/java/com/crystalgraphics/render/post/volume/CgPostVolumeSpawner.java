@@ -18,7 +18,9 @@ import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.render.post.CgPostMaterial;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.sequence.CgSequenceTarget;
@@ -33,7 +35,7 @@ import com.crystalgraphics.world.CgAttachment;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 
 /**
- * Makes a sequence's {@code post} spawnables: a volume on the post stack, as Unreal's spawnable post process volume, its
+ * Makes a sequence's {@code post} spawnables: a post volume in a scene, as Unreal's spawnable post process volume, its
  * {@code weight} keyed by a property track ({@code BlendWeight}).
  *
  * <pre>{@code
@@ -55,9 +57,9 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
  *   <li>Otherwise it stands where its {@code at} places it, full within
  *       {@code radius} and fading over {@code blend_radius}, following that place each frame.</li>
  *   <li>Its weight starts at 1, as Unreal's; a track keys it from there.</li>
- *   <li>The stack orders volumes by whole priorities: a fractional {@code priority} fails at play, naming it.</li>
- *   <li>Its {@code post.materials} (Unreal's weighted blendables) each draw as a {@link CgPostMaterial} after the
- *       composite, at their weight times the volume's; a {@code material} track binds one by its name, and its
+ *   <li>Volumes order by whole priorities: a fractional {@code priority} fails at play, naming it.</li>
+ *   <li>Its {@code post.materials} (Unreal's weighted blendables) each draw as a {@link CgPostMaterial} on the chain
+ *       at their material's stage, at their weight times the volume's; a {@code material} track binds one by its name, and its
  *       {@code screen_point} writes where its target stands on screen each frame.</li>
  * </ul>
  */
@@ -66,31 +68,33 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
     /** The track kinds that give a sequence a camera of its own, whose post settings its unbound volumes are. */
     private static final Set<String> CAMERA_KINDS = Set.of("camera_animation", "camera_cut");
 
-    private final CgPostStack stack;
+    private final CgScene scene;
+    private final CgPost post;
     @Nullable
     private final CgCameraSystem cameras;
 
-    /** Over {@code stack}, with no camera system: every unbound volume applies everywhere. */
-    public CgPostVolumeSpawner(CgPostStack stack) {
-        this(stack, null);
+    /** Volumes in {@code scene}, materials on {@code post}, with no camera system: every unbound volume applies everywhere. */
+    public CgPostVolumeSpawner(CgScene scene, CgPost post) {
+        this(scene, post, null);
     }
 
-    public CgPostVolumeSpawner(CgPostStack stack, @Nullable CgCameraSystem cameras) {
-        this.stack = stack;
+    public CgPostVolumeSpawner(CgScene scene, CgPost post, @Nullable CgCameraSystem cameras) {
+        this.scene = scene;
+        this.post = post;
         this.cameras = cameras;
     }
 
-    /** Registers one for the {@code post} kind on {@code sequencer}, over the client's post stack, with no camera system. */
+    /** Registers one for the {@code post} kind on {@code sequencer}, over the client scene and chain, with no camera system. */
     public static void install(CgSequencer sequencer) {
         install(sequencer, null);
     }
 
     /**
-     * Registers one for the {@code post} kind on {@code sequencer}, over the client's post stack. A sequence with a
+     * Registers one for the {@code post} kind on {@code sequencer}, over the client scene and chain. A sequence with a
      * camera of its own makes its unbound volumes that camera's post settings, weighed by {@code cameras}.
      */
     public static void install(CgSequencer sequencer, @Nullable CgCameraSystem cameras) {
-        sequencer.spawner("post", new CgPostVolumeSpawner(CgPostStack.get(), cameras));
+        sequencer.spawner("post", new CgPostVolumeSpawner(CgScene.client(), CgPost.client(), cameras));
     }
 
     private static boolean hasCamera(CgSequenceDefinition d) {
@@ -104,7 +108,8 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         String path = player.definition().id() + ": spawnables." + spawnable.id();
         float priority = tree.get("priority") instanceof Number n ? n.floatValue() : 0f;
         if (priority != Math.rint(priority)) throw new CgAssetException(path + ".priority: " + priority + " is not a whole priority");
-        CgPostVolume volume = stack.volume((int) priority, CgPostBlock.settings(tree.get("post") instanceof Map<?, ?> m ? m : Map.of()));
+        CgPostVolume volume = scene.postVolume(CgPostBlock.settings(tree.get("post") instanceof Map<?, ?> m ? m : Map.of()))
+                .priority((int) priority);
         boolean bound = !Boolean.TRUE.equals(tree.get("unbound"));
         if (bound) {
             CgUnits units = player.definition().units();
@@ -112,15 +117,16 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         }
         double[] point = new double[3];
         if (bound && at.place(point, null)) volume.at(point[0], point[1], point[2]);
+        volume.spawn();
         List<Blend> blends = new ArrayList<>();
         if (spawnable.definition() instanceof List<?> list) {
             for (Object o : list) {
                 CgPostBlendable b = (CgPostBlendable) o;
                 if (b.material() == null) continue;
-                CgPostMaterial post = b.draw((int) priority);
+                CgPostMaterial drawn = b.draw(post, (int) priority);
                 CgAttachment screen = b.screen() == null ? null
                         : player.attachment(b.screen(), path + ".post.materials." + b.name() + ".screen_point.target");
-                blends.add(new Blend(b, post, stack.add(post), screen));
+                blends.add(new Blend(b, drawn, screen));
             }
         }
         // Unbound in a sequence with a camera: that camera's post settings (UCameraComponent::PostProcessSettings), in a
@@ -212,8 +218,8 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
 
         @Override
         public void destroy(boolean graceful) {
-            volume.close();
-            for (Blend b : blends) b.registration.close();
+            volume.remove();
+            for (Blend b : blends) b.post.remove();
         }
 
         @Override
@@ -230,7 +236,6 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
     private static final class Blend implements CgSequenceTarget {
         final CgPostBlendable blendable;
         final CgPostMaterial post;
-        final CgPostStack.Registration registration;
         @Nullable
         private final CgAttachment screen;
         private final List<String> names = new ArrayList<>();
@@ -241,11 +246,9 @@ public final class CgPostVolumeSpawner implements CgSequenceSpawner {
         private final Vector4f clip = new Vector4f();
         private final float[] uv = new float[4];
 
-        Blend(CgPostBlendable blendable, CgPostMaterial post, CgPostStack.Registration registration,
-              @Nullable CgAttachment screen) {
+        Blend(CgPostBlendable blendable, CgPostMaterial post, @Nullable CgAttachment screen) {
             this.blendable = blendable;
             this.post = post;
-            this.registration = registration;
             this.screen = screen;
         }
 

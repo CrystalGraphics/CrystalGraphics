@@ -1,4 +1,4 @@
-// The post stack's composite, copy form: reads the target as drawn (cg_SceneColor), decodes it from sRGB, lays every
+// The post chain's composite, copy form: reads the target as drawn (cg_SceneColor), decodes it from sRGB, lays every
 // active look over it in linear light, and writes it back encoded and dithered. The correct form, and the one a look
 // that brightens by multiplying or reads its neighbours needs; it costs a copy of the target. Each look is a feature
 // keyword, as in composite.shader.

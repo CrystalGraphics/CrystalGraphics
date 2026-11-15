@@ -8,6 +8,7 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
@@ -16,7 +17,9 @@ import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.joml.Intersectiond;
+import org.joml.Matrix4f;
 import org.joml.Vector2d;
+import org.joml.Vector4f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -63,6 +66,10 @@ public final class CgScenePrimitives {
     /** Its spawned haze, injected into each firing's air, and its height fogs, the first shown drawn. */
     final List<CgHazeComponent> hazes = new ArrayList<>();
     final List<CgHeightFogComponent> fogs = new ArrayList<>();
+    /** Its spawned post volumes, by priority ascending, ties in the order spawned. */
+    final List<CgPostVolume> postVolumes = new ArrayList<>();
+    private final Matrix4f viewProjection = new Matrix4f();
+    private final Vector4f clip = new Vector4f();
     /** Its spawned scene captures, and the ring frame they last ran in. */
     final List<CgSceneCaptureComponent> captures = new ArrayList<>();
     private long capturedFrame = Long.MIN_VALUE;
@@ -128,6 +135,45 @@ public final class CgScenePrimitives {
 
     public CgHeightFogComponent heightFog() {
         return new CgHeightFogComponent(this);
+    }
+
+    /** A look over the views of this scene, everywhere or round where it stands: {@code settings} blended by weight. */
+    public CgPostVolume postVolume(CgPostSettings settings) {
+        return new CgPostVolume(this, settings);
+    }
+
+    void addPostVolume(CgPostVolume v) {
+        int at = postVolumes.size();
+        while (at > 0 && postVolumes.get(at - 1).priority() > v.priority()) at--;
+        postVolumes.add(at, v);
+    }
+
+    void sortPostVolumes() {
+        postVolumes.sort((a, b) -> Integer.compare(a.priority(), b.priority()));   // stable: ties keep their order
+    }
+
+    /**
+     * Engine side, the post chain's at a view's opaque callback: every spawned volume blended into {@code settings} at
+     * {@code camera}, by priority, a placed one's focus where it stands on screen unless its settings set one.
+     */
+    public void blendPostVolumes(CgCamera camera, CgPostSettings settings) {
+        if (postVolumes.isEmpty()) return;
+        double cx = camera.x(), cy = camera.y(), cz = camera.z();
+        viewProjection.set(camera.projection()).mul(camera.view());
+        for (int i = 0, n = postVolumes.size(); i < n; i++) {
+            CgPostVolume v = postVolumes.get(i);
+            float w = v.weightAt(cx, cy, cz);
+            if (w <= 0f) continue;
+            float fx = v.settings().focusX(), fy = v.settings().focusY();
+            if (v.placed() && !v.settings().overrides(CgPostSettings.FOCUS)) {
+                viewProjection.transform((float) (v.x() - cx), (float) (v.y() - cy), (float) (v.z() - cz), 1f, clip);
+                if (clip.w > 0f) {
+                    fx = clip.x / clip.w * 0.5f + 0.5f;
+                    fy = clip.y / clip.w * 0.5f + 0.5f;
+                }
+            }
+            settings.blend(v.settings(), w, fx, fy);
+        }
     }
 
     /** Engine side, the media's: whether any spawned haze adds to the air. */

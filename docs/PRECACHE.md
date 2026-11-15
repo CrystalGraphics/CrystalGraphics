@@ -17,10 +17,10 @@ Read this before drawing with a shader of your own, adding a shader to the engin
 | A VFX look played with no cue (a hit spark, a trail, a projectile) | precached if you name it once | `VFX.precache(LOOK)` at your mod's init, any thread |
 | A VFX system asset, from a kit or a mounted pack | precached and rehearsed before it is READY | nothing |
 | A skinned mesh's material (`CgSkeletalMeshComponent.material`) | requested as it is set | nothing |
-| A post volume (`CgPostStack.volume(priority, settings)`) | its look's composite passes registered as it is made, built over the next frames | nothing; a look switched on later by changing its settings: `lookPasses(settings, p)` in a request |
+| A post volume (`scene.postVolume(settings).spawn()`) | its look's composite passes registered as it spawns, built over the next frames | nothing; a look switched on later by changing its settings: `CgPostRenderer.lookPasses(settings, p)` in a request |
 | A `CgPostMaterial` | built when first active, drawn once built (a few frames late) | nothing; add it at load if it must show on its first frame |
 | A CrystalGUI widget's paint material | registered at client init (`CgUiRenderer.precache`), built behind the loading screen | nothing |
-| The engine's own passes: the world renderer's, the post stack, bloom, text, the depth pyramid, the world's lights, media and haze, the VFX kernels (Range and Place, the grids' and the fluids') | registered by the engine, built at the graphics start | nothing |
+| The engine's own passes: the scene renderer's, the post chain, bloom, text, the depth pyramid, the world's lights, media and haze, the VFX kernels (Range and Place, the grids' and the fluids') | registered by the engine, built at the graphics start | nothing |
 
 **Everything else is yours to precache.**
 

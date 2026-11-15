@@ -9,8 +9,8 @@ import org.junit.Test;
 
 import com.crystalgraphics.cue.CgCueDefinition.Lens;
 import com.crystalgraphics.cue.CgCueDefinition.Where;
-import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.render.scene.CgScene;
 
 /** A looping cue's lens: who is within its reach as it starts, and the volume it opens for them. */
 public class CgVfxCueLensTest {
@@ -32,10 +32,13 @@ public class CgVfxCueLensTest {
     @Test
     public void aPlayingLens_isItsLookEverywhere_atFullWeight() {
         Lens lens = new Lens(Map.of("vignette", 0.5), true, 4f, 12f, Where.DEFAULT);
-        try (CgPostVolume v = CgVfxCueEffects.openLens(CgPostStack.get(), lens)) {
+        CgPostVolume v = CgVfxCueEffects.openLens(CgScene.client(), lens);
+        try {
             assertFalse(v.placed());
             assertEquals(0.5f, v.settings().vignette(), 1e-6f);
             assertEquals(1f, v.weightAt(1e6, 0, 0), 0f);
+        } finally {
+            v.remove();
         }
     }
 }

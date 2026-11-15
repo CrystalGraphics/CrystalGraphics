@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
  *
  * <pre>{@code
  * #domain surface    // drawn through the world renderer
- * #domain post       // drawn by the post stack at a point
+ * #domain post       // drawn by the post chain at a point
  * #domain ui         // a widget's brush, a retainer box's effect, or (Material { Primitive Text }) a text style's paint
  * #domain global     // one of the renderer's own passes: a raw vertex and fragment pair
  * }</pre>
@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 public enum CgMaterialDomain {
     /** Drawn through the world renderer. */
     SURFACE,
-    /** Drawn by the post stack at a point ({@code CgPostMaterial}); a material with a {@code post} block. */
+    /** Drawn by a post chain at a point ({@code CgPostMaterial}); a material with a {@code post} block. */
     POST,
     /** Projected onto what is behind it; no renderer draws one yet. */
     DECAL,

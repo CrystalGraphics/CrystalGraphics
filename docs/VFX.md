@@ -1933,7 +1933,7 @@ moment("impact", hitX, hitY, hitZ, radius);          // a named point in its lif
 
 - **A screen-wide moment is a post volume**, never a draw round the camera. A volume also fades to a colour
   (`new CgPostSettings().fade(0xFF000000, 1f)`); a look that is its own shader is a `CgPostMaterial`, and a cut's
-  dissolve is `CgPostStack.get().crossfade(seconds)` ([`ENGINE_API.md`](ENGINE_API.md) § *The post stack*).
+  dissolve is `CgPost.client().crossfade(seconds)` ([`ENGINE_API.md`](ENGINE_API.md) § *The post chain*).
 - **Shakes are parameters** (`SCHEMA.shake`), so looks can change them.
 - All three do nothing on a server and while fast-forwarding (`startAt`).
 - **Announce your moments** as constants and call `moment(...)` as the effect crosses each, so it can be photographed

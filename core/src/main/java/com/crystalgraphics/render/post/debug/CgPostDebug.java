@@ -1,36 +1,26 @@
 package com.crystalgraphics.render.post.debug;
 
-import com.crystalgraphics.material.CgMaterialProxy;
-import com.crystalgraphics.api.texture.CgTexture;
-import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.material.CgMaterial;
-import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.api.mesh.CgMeshTopology;
-import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgPipeline;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgRasterPass;
+import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
-import com.crystalgraphics.render.post.CgPostEffect;
-import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
-import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.variable.CgVar;
 
 /**
  * Draws what bloom works from over the whole frame, last: one stage of its layers. Set by
  * {@code -Dcrystalgraphics.post.debug=level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
  * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion field's offsets summed (|offset| x
- * 50 in red and green, the split in blue). The post stack adds it when the flag is set.
+ * 50 in red and green, the split in blue). Each post chain runs it as its last step when the flag is set.
  */
-public final class CgPostDebug implements CgPostEffect {
+public final class CgPostDebug {
 
     private static final String SHADER = "crystalgraphics:shaders/post/debug.shader";
     private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
-    private static final CgMesh FULLSCREEN = CgMesh.vertices(3, CgMeshTopology.TRIANGLES);
 
     private static final int OVERDRAW = -2, DISTORTION = -3;
 
@@ -66,34 +56,21 @@ public final class CgPostDebug implements CgPostEffect {
         throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": overdraw, distortion or level<N>");
     }
 
-    @Override
-    public CgPostPoint point() {
-        return CgPostPoint.AFTER_COMPOSITE;
-    }
-
-    @Override
-    public int order() {
-        return Integer.MAX_VALUE;
-    }
-
-    @Override
-    public boolean active(CgPostContext post) {
-        return level == DISTORTION ? (post.view().read(CgDistortionField.KEY) != null)
-                : level >= 0 ? post.view().read(CgBloom.LEVELS) != null : post.textures().overdraw() != null;
-    }
-
-    @Override
-    public void record(CgPostContext post) {
+    /** Draws its view over {@code picture} where there is one this frame; answers {@code picture}. */
+    public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture picture) {
         CgTexture source;
         int count = 0;
         if (level == DISTORTION) {
-            CgDistortionField field = post.view().read(CgDistortionField.KEY);
+            CgDistortionField field = ctx.view().read(CgDistortionField.KEY);
+            if (field == null) return picture;
             source = field.offsets();
             count = field.count();
         } else if (level < 0) {
-            source = post.textures().overdraw();
+            source = ctx.scene().overdraw();
+            if (source == null) return picture;
         } else {
-            CgGraphTexture[] stages = post.view().read(CgBloom.LEVELS);
+            CgGraphTexture[] stages = ctx.view().read(CgBloom.LEVELS);
+            if (stages == null) return picture;
             int k = Math.min(level, stages.length - 1);
             while (k > 0 && stages[k] == null) k--;
             source = stages[k];
@@ -108,14 +85,7 @@ public final class CgPostDebug implements CgPostEffect {
             bound = source;
             boundCount = count;
         }
-        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
-        if (pipeline == null) return;
-        CgRasterPass pass = post.recording().raster("postDebug.target").color(post.target(), CgLoad.load()).constants(post.constants());
-        CgChunkBuilder chunks = post.recording().chunks().begin();
-        chunks.draw(pipeline, CgMaterialProxy.of(material).bindings(), FULLSCREEN);
-        chunks.instance();
-        pass.add(chunks.end());
-        pass.end();
+        return ctx.screen(material).name("postDebug.target").reads(source).over(picture);
     }
 
     /** Forgets its material, which the material registry frees with the context. */

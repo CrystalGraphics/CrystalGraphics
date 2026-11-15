@@ -1263,7 +1263,7 @@ public final class CgMaterialProxy {
 
     /**
      * Says once that a scene row names this material, whose domain no mesh pass draws: the row draws nothing. A scene's
-     * rows draw {@code #domain surface} and {@code decal}; the others are a stage's, a post stack's or the canvas's.
+     * rows draw {@code #domain surface} and {@code decal}; the others are a stage's, a post chain's or the canvas's.
      */
     public void warnNoMeshPass(CgMaterialDomain domain) {
         if (warnedNoMeshPass) return;

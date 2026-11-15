@@ -21,7 +21,7 @@ import com.crystalgraphics.vfx.prefab.CgVfxPrefabSpawner;
 /**
  * A world's sequencer with the engine's kinds, so a sequence plays the same wherever it plays: in Minecraft, the
  * harness or a tool. Its {@code system} and {@code prefab} spawnables play on a VFX system, its {@code post} and
- * {@code colour_region} spawnables on the post stack, its {@code shake} tracks on the camera, and with a camera system
+ * {@code colour_region} spawnables on the post chain, its {@code shake} tracks on the camera, and with a camera system
  * its cameras, cuts and camera animations.
  *
  * <pre>{@code

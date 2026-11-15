@@ -7,6 +7,7 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.render.post.volume.CgPostBlock;
 import org.joml.Quaternionf;
 
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ import java.util.Map;
  * # a skeletal node, a node on its socket, an effect started by code
  *   - { id: n3, name: body, skeletal: { mesh: mymod:geo/wyvern.glb, play: idle }, materials: [ mymod:wyvern_skin ] }
  *   - { id: n4, name: flame, parent: "body#jaw", effect: { effect: mymod:vfx/breath, auto: false } }
+ *   - { id: n5, name: breath_look, parent: "body#jaw", post: { settings: { bloom: 2.0 }, radius: 20, blend: 12, weight: 0 } }
  * }</pre>
  *
  * <ul>
@@ -109,11 +111,25 @@ public final class CgPrefabAssets {
                 if (!(effect.get("effect") instanceof String system)) throw new CgAssetException(where + ".effect names no effect");
                 b.effect(system, !Boolean.FALSE.equals(effect.get("auto")));
             }
+            if (node.get("post") instanceof Map<?, ?> post) post(b, post, units, where);
             if (node.get("meshes") instanceof List<?> meshes) {
                 for (int k = 0; k < meshes.size(); k++) part(b, (Map<?, ?>) meshes.get(k), deps, where + ".meshes[" + k + "]");
             }
         }
         return b.build();
+    }
+
+    /** A post node: its look a post block, unbound without a radius, its lengths in the file's units. */
+    private static void post(CgPrefab.Builder b, Map<?, ?> post, CgUnits units, String where) {
+        if (!(post.get("settings") instanceof Map<?, ?> settings)) throw new CgAssetException(where + ".post has no settings block");
+        float priority = post.get("priority") instanceof Number p ? p.floatValue() : 0f;
+        if (priority != Math.rint(priority)) throw new CgAssetException(where + ".post.priority: " + priority + " is not a whole priority");
+        b.post(CgPostBlock.settings(settings), post.get("radius") == null ? Float.POSITIVE_INFINITY : length(units, post.get("radius")),
+                length(units, post.get("blend")), post.get("weight") instanceof Number w ? w.floatValue() : 1f, (int) priority);
+    }
+
+    private static float length(CgUnits units, Object v) {
+        return v instanceof Number ? ((Number) units.toHost(v, CgQuantity.LENGTH)).floatValue() : 0f;
     }
 
     private static void skeletal(CgPrefab.Builder b, Map<?, ?> node, Map<?, ?> skeletal, CgAssetCompiler.Dependencies deps,
@@ -200,6 +216,16 @@ public final class CgPrefabAssets {
                 e.put("effect", effect.effect());
                 if (!effect.auto()) e.put("auto", false);
                 node.put("effect", e);
+            }
+            CgPrefab.Post post = prefab.post(n);
+            if (post != null) {
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("settings", CgPostBlock.block(post.settings()));
+                if (!post.unbound()) p.put("radius", post.radius());
+                if (post.blend() != 0f) p.put("blend", post.blend());
+                if (post.weight() != 1f) p.put("weight", post.weight());
+                if (post.priority() != 0) p.put("priority", post.priority());
+                node.put("post", p);
             }
             List<Object> meshes = new ArrayList<>();
             for (int k = prefab.firstPart(n); k < prefab.firstPart(n + 1); k++) {

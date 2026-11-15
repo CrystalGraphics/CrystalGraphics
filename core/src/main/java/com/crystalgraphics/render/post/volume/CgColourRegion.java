@@ -19,7 +19,8 @@ import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.render.post.CgPostPoint;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -40,7 +41,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * CgColourRegion flash = new CgColourRegion().shape(CgColourRegion.Shape.SPHERE)
  *         .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 1f, 1f, 1f, 2f);   // twice as bright
  * flash.place(x, y, z, new Quaternionf(), 6f, 6f, 6f);            // each frame: a sphere 3 blocks round
- * CgPostStack.Registration on = flash.show();
+ * CgPost.Registration on = flash.show();               // on the game's chain, at TRANSLUCENT
  * on.close();                                                       // gone
  * }</pre>
  *
@@ -103,11 +104,11 @@ public final class CgColourRegion implements CgPostEffect {
     /** An instance per keyword set its shape and ranges draw with. */
     private final CgMaterialInstances materials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance material = materials.of(materials.material());
-    private final CgPostMaterial draw = CgPostMaterial.of(material, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
+    private final CgPostMaterial draw = CgPostMaterial.drawer(material);
     /** The same grade over a graded layer: its offsets by the layer's coverage ({@code _Coverage}). */
     private final CgMaterialInstances layerMaterials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance layerMaterial = layerMaterials.of(layerMaterials.material());
-    private final CgPostMaterial layerDraw = CgPostMaterial.of(layerMaterial, CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY, 0);
+    private final CgPostMaterial layerDraw = CgPostMaterial.drawer(layerMaterial);
     private final Matrix3f toLocal = new Matrix3f();
     private final float[] rows = new float[12], half = new float[3];
     /** The keyword set its program has: shape, advanced and temperature packed; -1 before the first. */
@@ -258,29 +259,15 @@ public final class CgColourRegion implements CgPostEffect {
         return tint;
     }
 
-    /** Shows it on the post stack until the registration closes. */
-    public CgPostStack.Registration show() {
-        return CgPostStack.get().add(this);
+    /** Shows it on the game's post chain at {@code TRANSLUCENT}, by its priority, until the registration closes. */
+    public CgPost.Registration show() {
+        return CgPost.client().add(CgPostPoint.TRANSLUCENT, priority, this);
     }
 
     @Override
-    public CgPostPoint point() {
-        return CgPostPoint.BEFORE_SEPARATE_TRANSLUCENCY;
-    }
-
-    @Override
-    public int order() {
-        return priority;
-    }
-
-    @Override
-    public boolean active(CgPostContext post) {
+    public CgScreenTexture apply(CgPostContext post, CgScreenTexture input) {
         keywords();
-        return intensity > 0f && draw.active(post);
-    }
-
-    @Override
-    public void record(CgPostContext post) {
+        if (intensity <= 0f || !draw.shows(post)) return input;
         CgCamera view = post.view().camera();
         // Camera-relative in doubles: the shader's points are the camera's
         float cx = (float) (x - view.x()), cy = (float) (y - view.y()), cz = (float) (z - view.z());
@@ -301,15 +288,16 @@ public final class CgColourRegion implements CgPostEffect {
         blockLight = CgSceneLight.block(light);
         skyLight = CgSceneLight.sky(light);
         write(material);
-        draw.record(post);
+        draw.draw(post, input);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
         CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
-        if (layers == null) return;
+        if (layers == null) return input;
         write(layerMaterial);
         layerMaterial.set1f("_Coverage", 1f);
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (layers.look(k) != null) layerDraw.recordOver(post, layers.layer(k));
+            if (layers.look(k) != null) layerDraw.drawOver(post, layers.layer(k));
         }
+        return input;
     }
 
     private void write(CgMaterialValues b) {

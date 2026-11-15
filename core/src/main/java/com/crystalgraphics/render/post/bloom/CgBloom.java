@@ -14,8 +14,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
-import com.crystalgraphics.render.post.CgPostEffect;
-import com.crystalgraphics.render.post.CgPostPoint;
+import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
 import com.crystalgraphics.trace.CgGpuTrace;
@@ -24,21 +23,22 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 
 /**
- * The post stack's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the HDR scene's ({@code textures().sceneColor()})
- * light past {@link #threshold}, halved, spread by six layers of separable Gaussians and added over the picture by the
- * composite, in linear light. Its settings are global, as every engine's are; {@code CgPostStack.get().bloom()} is the instance.
+ * A post chain's bloom, Unreal's Gaussian layers ({@code BloomMethod} Standard): the linear scene's light past
+ * {@link #threshold}, as the chain has it after {@code SCENE}, halved, spread by six layers of separable Gaussians and
+ * added over the picture by the composite, in linear light. Each chain has its own settings; {@code CgPost.client().bloom()}
+ * is the game's.
  *
  * <pre>{@code
- * CgPostStack.get().bloom().intensity(1.5f);   // a brighter glow round every emissive thing
- * CgPostStack.get().bloom().intensity(0f);     // none
+ * CgPost.client().bloom().intensity(1.5f);   // a brighter glow round every emissive thing
+ * CgPost.client().bloom().intensity(0f);     // none
  *
  * // Bevy's energy-conserving mode: the picture dimmed by the share the glow takes, so nothing gets brighter overall
- * CgPostStack.get().bloom().mode(CgBloom.Mode.ENERGY_CONSERVING).intensity(0.15f);
- * CgPostStack.get().bloom().tint(1f, 0.85f, 0.7f);   // a warm glow
- * CgPostStack.get().bloom().threshold(0.8f);         // light past 0.8 blooms, not past 1
+ * CgPost.client().bloom().mode(CgBloom.Mode.ENERGY_CONSERVING).intensity(0.15f);
+ * CgPost.client().bloom().tint(1f, 0.85f, 0.7f);   // a warm glow
+ * CgPost.client().bloom().threshold(0.8f);         // light past 0.8 blooms, not past 1
  *
  * // A look of Unreal's: its layers, sizes and threshold as Unreal reads them
- * CgPostStack.get().volume(5, new CgPostSettings().gaussianBloom().bloomLayer(4, 12f, 0.1f, 0.1f, 0.1f));
+ * scene.postVolume(new CgPostSettings().gaussianBloom().bloomLayer(4, 12f, 0.1f, 0.1f, 0.1f)).priority(5).spawn();
  * }</pre>
  *
  * <ul>
@@ -52,7 +52,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *   <li>Settings are read on the render thread and may be written from any: a float, read at most a frame late.</li>
  * </ul>
  */
-public final class CgBloom implements CgPostEffect {
+public final class CgBloom {
 
     /** How the glow meets the picture. */
     public enum Mode {
@@ -154,21 +154,13 @@ public final class CgBloom implements CgPostEffect {
         for (String k : Chain.NAMES) kernels.kernel(k).precache();
     }
 
-    @Override
-    public CgPostPoint point() {
-        return CgPostPoint.BEFORE_COMPOSITE;
+    /** Engine side, the chain's: whether it blooms this firing. */
+    public boolean shows(CgPostContext post) {
+        return intensity > 0f && ((post.view().read(CgGradeLayers.KEY) != null) || post.settings().bloom() > 0f);
     }
 
-    @Override
-    public boolean active(CgPostContext post) {
-        return intensity > 0f && ((post.view().read(CgGradeLayers.KEY) != null) || post.settings().bloom() > 0f
-                && post.textures().linear());
-    }
-
-    @Override
-    public void record(CgPostContext post) {
-        CgGraphTexture scene = post.textures().sceneColor();
-        if (scene == null) return;
+    /** Engine side, the chain's after {@code SCENE}: blooms {@code scene}, handing the glow to {@code composite}. */
+    public void record(CgPostContext post, CgGraphTexture scene, CgPostComposite composite) {
         CgGradeLayers graded = post.view().read(CgGradeLayers.KEY);
         Chain c = chain;
         c.begin(scene, graded);
@@ -185,11 +177,11 @@ public final class CgBloom implements CgPostEffect {
         if (!c.record(post.recording())) return;
         if (frame >= 0) {
             post.view().publish(LEVELS, c.levels(frame));
-            post.composite().bloom(c.glow(frame), intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
-            post.composite().linear();
+            composite.bloom(c.glow(frame), intensity, tintR, tintG, tintB, mode == Mode.ENERGY_CONSERVING);
+            composite.linear();
         }
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (layer[k] >= 0) post.composite().layerBloom(k, c.glow(layer[k]), intensity);
+            if (layer[k] >= 0) composite.layerBloom(k, c.glow(layer[k]), intensity);
         }
     }
 

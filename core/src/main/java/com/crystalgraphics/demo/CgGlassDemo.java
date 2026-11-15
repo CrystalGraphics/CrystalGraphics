@@ -56,7 +56,7 @@ public final class CgGlassDemo {
             panes[i] = new CgCanvasGlass(CgCanvasMaterials.WORLD);
             looks[i] = LOOKS[i].scaled(UNITS_PER_PIXEL);
         }
-        // After the world renderer's draws and before the post stack: the glass sees the world and lands in the scene.
+        // After the world renderer's draws and before the post chain: the glass sees the world and lands in the scene.
         drawing = CgRenderStage.TRANSLUCENT.register(10, this::draw);
     }
 

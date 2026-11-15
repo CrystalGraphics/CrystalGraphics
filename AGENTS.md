@@ -202,7 +202,7 @@ These rules apply everywhere. All agents must internalize them.
 **Precache every pipeline** — every shader variant and kernel a frame uses is named to `CgPipelinePrecache` before
 it draws. VFX looks behind a cue, the registry or a kit, skinned materials and the engine's passes are already. A new
 material, keyword set, renderer pass or kernel is not until you add it to a collector (the renderer's own, as
-`CgScenePipelines`' `crystalgraphics:world` and `CgPostStack`'s `crystalgraphics:post` do) or a request. Unprecached, it
+`CgScenePipelines`' `crystalgraphics:world` and `CgPostRenderer`'s `crystalgraphics:post` do) or a request. Unprecached, it
 draws late and counts `pipeline.missed`; check new content with `-Dcrystalgraphics.pipeline.logMisses=true`.
 **[`docs/PRECACHE.md`](docs/PRECACHE.md)** has both lists.
 

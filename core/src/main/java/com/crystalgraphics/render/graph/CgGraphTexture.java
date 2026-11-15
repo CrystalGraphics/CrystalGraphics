@@ -69,6 +69,9 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private Level[] levelViews = new Level[0];
     @Nullable
     private Stencil stencilView;
+    /** Its screen value ({@link CgScreenTexture#of}), made at first ask. */
+    @Nullable
+    CgScreenTexture screen;
 
     private CgGraphTexture(Kind kind, String name, @Nullable CgTextureDesc desc, @Nullable CgExternalTarget target,
                            @Nullable CgGraphTexture of) {

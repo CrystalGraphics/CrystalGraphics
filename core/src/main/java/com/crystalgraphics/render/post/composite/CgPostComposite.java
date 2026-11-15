@@ -24,16 +24,17 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
- * The post stack's one composite pass: every screen-wide look of the firing laid over the target in a single
- * full-screen triangle, as production engines compose bloom inside their tonemap or uber pass. Effects at
- * {@code BEFORE_COMPOSITE} set its inputs; the stack records it once, between that point and {@code AFTER_COMPOSITE}.
+ * A post chain's one composite pass: every screen-wide look of the firing laid over the target in a single
+ * full-screen triangle, as production engines compose bloom inside their tonemap or uber pass (Unreal's tonemapper).
+ * The chain sets its inputs from bloom and the blended looks after {@code HDR}, and records it once, before
+ * {@code DISPLAY}.
  *
  * <pre>{@code
- * // an effect, at BEFORE_COMPOSITE
- * post.composite().bloom(chain, 1.2f, 1f, 0.9f, 0.8f, false);   // a warm additive glow
- * post.composite().linear();                                     // this firing composites in linear light
- * post.composite().flash(2f).vignette(0.4f);                     // twice as bright, darker corners
- * post.composite().impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // focus lines from the centre
+ * // the chain's bloom and looks steps
+ * composite.bloom(chain, 1.2f, 1f, 0.9f, 0.8f, false);   // a warm additive glow
+ * composite.linear();                                     // this firing composites in linear light
+ * composite.flash(2f).vignette(0.4f);                     // twice as bright, darker corners
+ * composite.impact(CgImpact.LINES, 1f, 0.5f, 0.5f);       // focus lines from the centre
  * }</pre>
  *
  * <ul>
@@ -283,7 +284,7 @@ public final class CgPostComposite {
      * scene ({@link #scene}). Its bloom is {@link #layerBloom}.
      *
      * <pre>{@code
-     * post.composite().layer(k, layers.layer(k), lut.texture(post.recording(), layers.look(k)));   // at BEFORE_COMPOSITE
+     * composite.layer(k, layers.layer(k), lut.texture(post.recording(), layers.look(k)));   // the looks step
      * }</pre>
      */
     public CgPostComposite layer(int k, CgGraphTexture layer, @Nullable CgTexture lut) {

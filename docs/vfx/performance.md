@@ -109,7 +109,7 @@ With every program built and every texture loaded, a look's first play still ran
 interpreter until the JIT compiled each path. A hit spark's first frame was 57 ms where its later ones were 10. So
 before a first play the engine rehearses it: played in a hidden system ahead of the camera, its pools stepped and the
 world stages drawn into a scratch target, until a pass loads no class and compiles nothing. Nothing reaches the screen,
-the lights, the post stack or the camera.
+the lights, the post chain or the camera.
 
 | What | Rehearsed |
 |---|---|

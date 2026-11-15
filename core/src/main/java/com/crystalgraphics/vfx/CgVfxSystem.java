@@ -37,7 +37,7 @@ import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxPostLooks;
 import com.crystalgraphics.vfx.scalability.CgVfxBudget;
@@ -1171,7 +1171,7 @@ public final class CgVfxSystem {
         // The composite passes its effects' post volumes draw with: built at a volume's first look otherwise, mid-play
         if (!look.postLooks().isEmpty()) {
             steps.step(p -> {
-                for (CgVfxPostLooks posts : look.postLooks()) posts.looks(look, s -> CgPostStack.get().lookPasses(s, p));
+                for (CgVfxPostLooks posts : look.postLooks()) posts.looks(look, s -> CgPostRenderer.lookPasses(s, p));
             });
         }
         if (!rangeRequested) {

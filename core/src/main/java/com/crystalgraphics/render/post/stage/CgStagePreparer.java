@@ -7,7 +7,7 @@ import java.util.Set;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.load.CgAssetPreparer;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.render.post.fog.CgHeightFogPass;
 import com.crystalgraphics.render.post.volume.CgPostBlendable;
 
@@ -30,7 +30,7 @@ public final class CgStagePreparer implements CgAssetPreparer {
             for (CgPostBlendable b : v.blendables()) if (b.material() != null) materials.add(b.material());
         }
         plan.pipelines(p -> {
-            for (CgStageDefinition.Volume v : stage.volumes()) CgPostStack.get().lookPasses(v.settings(), p);
+            for (CgStageDefinition.Volume v : stage.volumes()) CgPostRenderer.lookPasses(v.settings(), p);
             if (stage.fog() != null) p.addPass(CgHeightFogPass.SHADER);
             for (CgMaterialDefinition m : materials) p.addPass(CgMaterial.of(m));
         });

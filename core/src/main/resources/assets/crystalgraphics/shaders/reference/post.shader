@@ -1,8 +1,8 @@
 // The reference post material (docs/SHADERS.md, docs/MATERIAL_FORMAT.md § 7): a soft glow over the finished world. A
 // half-size step keeps the bright part of the scene, blurred; the last step adds it back over the scene.
-// CgPostMaterial.of("crystalgraphics:shaders/reference/post.shader") draws it at its Location.
+// CgPost.client().material("crystalgraphics:shaders/reference/post.shader") draws it at its Location.
 #domain post
-Material { Location AFTER_WORLD  SceneColorMargin 0.01 }
+Material { Location SCENE  SceneColorMargin 0.01 }
 
 Properties {
     _Threshold ("What counts as bright, linear", float, range(0, 4)) = 1

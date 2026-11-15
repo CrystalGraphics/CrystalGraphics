@@ -9,9 +9,9 @@ import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.easing.CgEasing;
 import com.crystalgraphics.easing.CgKeyframes;
 import com.crystalgraphics.platform.world.CgEntityQuery;
-import com.crystalgraphics.render.post.CgPostStack;
 import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.util.CgRandom;
@@ -886,7 +886,7 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
             }
         }
         if (volumes != null) {
-            for (CgPostVolume v : volumes) v.close();
+            for (CgPostVolume v : volumes) v.remove();
             volumes = null;
         }
     }
@@ -964,8 +964,8 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
     }
 
     /**
-     * A post volume applying {@code settings} at {@code priority}, centred at {@code (x, y, z)} relative to the
-     * origin, at weight 0: size it, then give it a timeline. It closes when the effect dies.
+     * A post volume in its system's scene applying {@code settings} at {@code priority}, centred at {@code (x, y, z)}
+     * relative to the origin, at weight 0: size it, then give it a timeline. It is removed when the effect dies.
      *
      * <pre>{@code
      * flash = openVolume(10, new CgPostSettings().flash(1.5f), hitX, hitY, hitZ).radius(24f).blend(64f);
@@ -979,9 +979,10 @@ public abstract class CgVfxEffect<E extends CgVfxEffect<E>> {
      * </ul>
      */
     protected final CgPostVolume openVolume(int priority, CgPostSettings settings, float x, float y, float z) {
-        // On a server or in a rehearsal, one no stack applies: the effect weighs it as on a client.
-        CgPostVolume volume = (detached() ? new CgPostVolume(priority, settings, v -> { })
-                : CgPostStack.get().volume(priority, settings)).at(originX + x, originY + y, originZ + z).weight(0f);
+        // On a server or in a rehearsal, one never spawned: the effect weighs it as on a client, and no view sees it.
+        CgScene scene = system != null ? system.scene() : CgScene.client();
+        CgPostVolume volume = scene.postVolume(settings).priority(priority).at(originX + x, originY + y, originZ + z).weight(0f);
+        if (!detached()) volume.spawn();
         volumes = volumes == null ? new CgPostVolume[1] : Arrays.copyOf(volumes, volumes.length + 1);
         volumes[volumes.length - 1] = volume;
         return volume;

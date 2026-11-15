@@ -31,7 +31,7 @@ import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.render.canvas.CgCanvasMaterials;
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
@@ -260,7 +260,7 @@ public final class CgGraphicsLifecycle {
                 CgStartSteps.step("scene renderer");
             }
             case 4 -> {
-                CgPostStack.get().install();
+                CgPostRenderer.install();
                 CgRenderDemo.INSTANCE.install();
                 CgStartSteps.step("post and demo");
             }
@@ -593,7 +593,7 @@ public final class CgGraphicsLifecycle {
         CgVfx.release();
         CgCollisionDebug.release();
         CgSceneRenderer.releaseAll();
-        CgPostStack.get().release();
+        CgPostRenderer.releaseAll();
         CgView.forgetAll();
         CgScene.client().gpu().release();
 

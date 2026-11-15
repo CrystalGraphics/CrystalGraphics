@@ -1,6 +1,6 @@
 package com.crystalgraphics.render.post.volume;
 
-import com.crystalgraphics.render.post.CgPostStack;
+import com.crystalgraphics.render.post.CgPost;
 import java.util.Map;
 
 import org.joml.Quaternionf;
@@ -81,7 +81,7 @@ public final class CgColourRegionSpawner implements CgSequenceSpawner {
     private static final class Spawned implements CgSequenceSpawned {
         private final CgColourRegion region;
         private final CgAttachment at;
-        private final CgPostStack.Registration shown;
+        private final CgPost.Registration shown;
         private final double[] point = new double[3];
         private final Quaternionf turn = new Quaternionf();
         private final Vector3f scale = new Vector3f();

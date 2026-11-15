@@ -15,6 +15,8 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.render.scene.component.CgDecalComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
 import com.crystalgraphics.render.scene.component.CgHazeComponent;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.render.post.volume.CgPostSettings;
 import com.crystalgraphics.render.scene.component.CgHeightFogComponent;
 import com.crystalgraphics.render.scene.component.CgMeshCollector;
 import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
@@ -277,6 +279,11 @@ public final class CgScene {
     /** Fog thickest at and below the height it stands at: Unreal's exponential height fog. */
     public CgHeightFogComponent heightFog() {
         return primitives.heightFog();
+    }
+
+    /** A look over this scene's views, everywhere or round where it stands: Unreal's post process volume. */
+    public CgPostVolume postVolume(CgPostSettings settings) {
+        return primitives.postVolume(settings);
     }
 
     /**
