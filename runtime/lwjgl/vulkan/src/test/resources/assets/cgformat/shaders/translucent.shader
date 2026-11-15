@@ -7,7 +7,6 @@ Properties {
 }
 struct v2f { vec2 uv0; };
 void surface(in v2f i, inout CgSurface s) {
-    s.baseColor = _Tint.rgb;
+    s.emissive = _Tint.rgb + _Glow.rgb * i.uv0.x;
     s.opacity = _Tint.a;
-    s.emissive = _Glow.rgb * i.uv0.x;
 }

@@ -6,4 +6,4 @@ void vertex(inout CgVertex v, out v2f o) {
     v.world += v.normal * 0.1 * cg_Tube.ring.intensity;
     o.along = cg_Tube.ring.arc;
 }
-void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(fract(i.along)); }
+void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(fract(i.along)); }

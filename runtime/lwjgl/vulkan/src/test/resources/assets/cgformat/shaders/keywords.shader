@@ -15,9 +15,9 @@ void vertex(inout CgVertex v, out v2f o) {
     o.id = CG_VERTEX_ID;
 }
 void surface(in v2f i, inout CgSurface s) {
-    s.baseColor = _Tint.rgb * _Rough * CG_GLOBAL_directional_light_colour.rgb;
+    s.emissive = _Tint.rgb * _Rough * CG_GLOBAL_directional_light_colour.rgb;
 #ifdef MOSS
-    s.baseColor *= 0.5;
+    s.emissive *= 0.5;
 #endif
 #ifdef SHAPE_BOX
     s.opacity = float(i.id & 1);

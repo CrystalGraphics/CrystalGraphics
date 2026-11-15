@@ -11,6 +11,6 @@ void surface(in v2f i, inout CgSurface s) {
     float t = -b - sqrt(h);
     s.depth = cg_EyeDepth(eye + ray * t);
     float glow = fx_hash31(centre) * cg_DepthFade(0.5) * (0.5 + 0.5 * sin(cg_Vfx.age));
-    s.baseColor = vec3(glow);
+    s.emissive = vec3(glow);
     s.opacity = glow;
 }

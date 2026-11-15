@@ -19,6 +19,7 @@ import com.crystalgraphics.material.shader.syntax.CgShaderError;
 import com.crystalgraphics.platform.gl.CgCapabilities;
 import com.crystalgraphics.platform.rhi.nulldrv.CgNullRHI;
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.vulkan.ShippedPrograms;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -62,6 +63,7 @@ public class MaterialFormatTest {
         new CgNullRHI(64, 64).install(new ExplicitBindingCheck(compiler, bare));
         CgCapabilities.clearCache();
         CgFallbackTextures.init();
+        ShippedPrograms.engineStart();
     }
 
     @AfterClass
@@ -75,7 +77,7 @@ public class MaterialFormatTest {
         CgShaderPass forward = parse(path("faded")).passes().get(0);
         String body = forward.fragmentBody();
         assertTrue(body, body.contains("s.light = vec2(15.0, 15.0);"));                     // its defaults
-        assertTrue(body, body.contains("s.baseColor *= _cg_fade;") && body.contains("s.opacity *= _cg_fade;"));
+        assertTrue(body, body.contains("s.emissive *= _cg_fade;") && body.contains("s.opacity *= _cg_fade;"));
         assertTrue(body, body.contains("cg_Light = s.light;"));                              // the defaults' hook runs
         assertTrue(body, body.contains("gl_FragDepth = cg_WindowDepth(s.depth);"));
     }

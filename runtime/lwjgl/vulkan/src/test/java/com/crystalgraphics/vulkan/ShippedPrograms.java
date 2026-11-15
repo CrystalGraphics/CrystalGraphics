@@ -9,6 +9,7 @@ import com.crystalgraphics.material.shader.CgGlslProgram;
 import com.crystalgraphics.material.shader.CgEngineKeywords;
 import com.crystalgraphics.material.shader.CgShaderPass;
 import com.crystalgraphics.material.shader.CgShaderSpec;
+import com.crystalgraphics.render.post.CgOutline;
 
 import java.net.URI;
 import java.nio.file.FileSystem;
@@ -36,6 +37,14 @@ public final class ShippedPrograms {
         void accept(String path, CgMaterialShader shader, String pass, Set<String> keywords);
     }
 
+    /**
+     * What the engine's start declares that its shaders read and no shader file does: the outline's type colours
+     * ({@code CG_GLOBAL_outline_*}). Before compiling an engine shader outside the engine; idempotent.
+     */
+    public static void engineStart() {
+        CgOutline.install();
+    }
+
     /** Links every program; adds what failed to {@code failures} and answers how many it tried. */
     public static int linkEveryVariant(List<String> failures) throws Exception {
         return forEachVariant(failures, true, (path, shader, pass, keywords) -> {
@@ -49,6 +58,7 @@ public final class ShippedPrograms {
      * keywords one at a time rather than every subset of them. Answers how many it visited.
      */
     public static int forEachVariant(List<String> failures, boolean everySubset, Variant each) throws Exception {
+        engineStart();
         List<String> materials = materials();
         int programs = 0;
         for (String path : materials) {
