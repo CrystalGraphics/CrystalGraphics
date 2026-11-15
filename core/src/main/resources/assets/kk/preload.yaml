@@ -1,0 +1,2 @@
+# The animation demo's characters load when the demo shows them, not at startup.
+all: false

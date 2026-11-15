@@ -1,0 +1,16 @@
+_v: 1
+curves:
+  - name: blendOrient1
+    drives: none
+    keys: [[0.0, 1.0, cubic], [0.766667, 1.0, cubic], [0.8, 1.0, cubic, -0.514403, -0.514403], [0.833333, 0.965706, cubic, -1.893004, -1.893004], [0.866667, 0.8738, cubic, -3.374487, -3.374487], [0.9, 0.740741, cubic, -4.36214, -4.36214], [0.933333, 0.58299, cubic, -4.855967, -4.855967], [0.966667, 0.41701, cubic, -4.855968, -4.855968], [1.0, 0.259259, cubic, -4.362141, -4.362141], [1.033333, 0.1262, cubic, -3.374482, -3.374482], [1.066667, 0.034294, cubic, -1.893001, -1.893001], [1.1, 0.0, cubic, -0.514404, -0.514404], [1.133333, 0.0, cubic], [1.466667, 0.0, cubic]]
+  - name: blendPoint1
+    drives: none
+    keys: [[0.0, 1.0, cubic], [0.766667, 1.0, cubic], [0.8, 1.0, cubic, -0.514403, -0.514403], [0.833333, 0.965706, cubic, -1.893004, -1.893004], [0.866667, 0.8738, cubic, -3.374487, -3.374487], [0.9, 0.740741, cubic, -4.36214, -4.36214], [0.933333, 0.58299, cubic, -4.855967, -4.855967], [0.966667, 0.41701, cubic, -4.855968, -4.855968], [1.0, 0.259259, cubic, -4.362141, -4.362141], [1.033333, 0.1262, cubic, -3.374482, -3.374482], [1.066667, 0.034294, cubic, -1.893001, -1.893001], [1.1, 0.0, cubic, -0.514404, -0.514404], [1.133333, 0.0, cubic], [1.466667, 0.0, cubic]]
+  - { name: eye_l_u_offset, drives: material, keys: [[0.0, 0.06, cubic], [1.466667, 0.06, cubic]] }
+  - { name: eye_l_u_scale, drives: material, keys: [[0.0, 1.0, cubic], [1.466667, 1.0, cubic]] }
+  - { name: eye_l_v_offset, drives: material, keys: [[0.0, -0.02, cubic], [1.466667, -0.02, cubic]] }
+  - { name: eye_l_v_scale, drives: material, keys: [[0.0, 1.0, cubic], [1.466667, 1.0, cubic]] }
+  - { name: eye_r_u_offset, drives: material, keys: [[0.0, -0.06, cubic], [1.466667, -0.06, cubic]] }
+  - { name: eye_r_u_scale, drives: material, keys: [[0.0, 1.0, cubic], [1.466667, 1.0, cubic]] }
+  - { name: eye_r_v_offset, drives: material, keys: [[0.0, -0.02, cubic], [1.466667, -0.02, cubic]] }
+  - { name: eye_r_v_scale, drives: material, keys: [[0.0, 1.0, cubic], [1.466667, 1.0, cubic]] }

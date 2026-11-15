@@ -194,6 +194,9 @@ public class CgBibleGateTest {
         void value(String path, JsonObject s, CgValueType t, CgType owner, Set<String> seen) {
             s = resolve(s);
             if (t.kind() == CgValueType.Kind.SELF) {
+                // A struct holding itself (a rule's all/any/not): the schema leaves the recursion untyped, and the
+                // struct is checked where it is declared
+                if (s.entrySet().isEmpty()) return;
                 t = CgValueType.struct(owner);
             }
             if (s.entrySet().isEmpty() && ordered(t)) {

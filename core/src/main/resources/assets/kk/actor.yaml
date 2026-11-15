@@ -1,0 +1,12 @@
+# The animation demo's character: this folder is its kit (namespace kk).
+name: Goku
+namespace: kk
+shading: kk
+mesh: models/Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1.glb
+skeleton: skeletons/Art/MDL/Cpl/Cpl001/Model/Cpl001p1_Skeleton.yaml
+prefab: prefabs/Blueprints/Character/C001A/AT_Character_cpl001_BP.yaml
+clips:
+  - models/Art/ANM/cpl/C001A/BAS
+  - models/Art/ANM/cpl/C001A/FLD
+  - models/Art/ANM/cpl/C001A/BTL
+  - models/Art/ANM/cpl/C001A/BTL/CMB

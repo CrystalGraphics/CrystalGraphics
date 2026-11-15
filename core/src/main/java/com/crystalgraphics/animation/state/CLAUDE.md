@@ -21,6 +21,6 @@
 - **0 B a frame**: entries are pooled, the search is stamped, states' poses are made once; an event allocates only when
   it is requested, on the game thread.
 - **Not played, failing at load**: blend profiles, custom curves, custom transition graphs, state and transition
-  notifies (A5's).
+  notifies.
 - Gates: `CgAnimStateMachineTest` (headless, every number hand-worked), `CgAnimGraphCensusGateTest` (an imported file
   against its census, `-PanimGraphFile` `-PanimGraphCensus`, and `-PanimGraphParent` for a child graph).

@@ -6,6 +6,7 @@ import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.kind.CgStageKinds;
+import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgLoadHandle;
 import com.crystalgraphics.asset.load.CgLoadPriority;
@@ -18,6 +19,7 @@ import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.render.post.stage.CgStageDefinition;
+import com.crystalgraphics.util.io.CgIO;
 
 import javax.annotation.Nullable;
 
@@ -46,11 +48,12 @@ import java.util.List;
  *
  * <ul>
  *   <li>The kit is scanned on the workers: {@link #ref}, {@link #material} and {@link #sequence} answer null until
- *       {@link #declared()}, a frame or more later.</li>
+ *       {@link #declared()}, a frame or more later. A namespace the game mounted already (a mod's, the engine's own
+ *       {@code kk}) is not scanned again: its refs are declared at once.</li>
  *   <li>Made in a scene's {@code init}, its scan and load are the loading screen's tasks ({@code <namespace>:scan},
  *       {@code :load}), so the bundle is ready before the hide; what a scene asks for after the hide loads in play.</li>
- *   <li>The kit's textures resolve as {@code <namespace>:textures/...} only through a resource root holding
- *       {@code assets/<namespace>}: the harness's build adds the plan's {@code local/kitroot} when it is there.</li>
+ *   <li>The kit's folder answers for its namespace's files ({@code CgIO.mount}): {@code <namespace>:textures/...}
+ *       is read from its {@code textures} folder, wherever the kit is.</li>
  *   <li>A system's id is its path under the kit's {@code vfx/systems}, without {@code .yaml}; a material's and a
  *       sequence's are whole, as a prefab names them ({@code kakarot_kit:Art/MDL/...}).</li>
  * </ul>
@@ -74,6 +77,8 @@ public final class CgKitAssets {
         if (!Files.isDirectory(kit)) throw new IllegalStateException("no " + namespace + " at " + kit.toAbsolutePath());
         this.ids = List.copyOf(ids);
         if (shading != null) CgShadingModels.registerKit(shading, kit);
+        // Its textures and shaders read from its own folder, with no resource root holding assets/<namespace>
+        CgIO.mount(namespace, kit.toFile());
         CgVfxSystemAssets.register();
         CgPrefabAssets.register();
         // Mounted on the process's assets, as a mod's: the world's cue manager routes the kit's cues from that registry
@@ -84,18 +89,29 @@ public final class CgKitAssets {
         materials = new CgAssetRef[materialIds.size()];
         sequences = new CgAssetRef[sequenceIds.size()];
         stages = new CgAssetRef[stageIds.size()];
-        // Its thousands of files read on the workers while the loading screen draws; declared once registered
-        assets.registry().scanAsync(namespace, kit, CgAssetSource.DEV).then(() -> {
-            for (int i = 0; i < refs.length; i++) refs[i] = assets.declare(CgParticleKinds.SYSTEM, namespace + ":" + ids.get(i));
-            for (int i = 0; i < materials.length; i++) materials[i] = assets.declare(CgLookKinds.MATERIAL, materialIds.get(i));
-            for (int i = 0; i < sequences.length; i++) sequences[i] = assets.declare(CgSequenceKinds.SEQUENCE, sequenceIds.get(i));
-            for (int i = 0; i < stages.length; i++) stages[i] = assets.declare(CgStageKinds.STAGE, stageIds.get(i));
-            List<CgAssetRef<?>> all = new ArrayList<>(List.of(refs));
-            all.addAll(List.of(materials));
-            all.addAll(List.of(sequences));
-            all.addAll(List.of(stages));
-            handle = assets.load(all, CgLoadPriority.MOVE);
-        }).onError(e -> scanFailure = "scanning " + namespace + ": " + e.detail());
+        // A namespace the game mounted is registered already; any other's thousands of files are read on the workers
+        // while the loading screen draws, and declared once registered
+        if (CgAssetMounts.folder(namespace) != null) {
+            begin(assets, namespace, materialIds, sequenceIds, stageIds);
+        } else {
+            assets.registry().scanAsync(namespace, kit, CgAssetSource.DEV)
+                    .then(() -> begin(assets, namespace, materialIds, sequenceIds, stageIds))
+                    .onError(e -> scanFailure = "scanning " + namespace + ": " + e.detail());
+        }
+    }
+
+    /** Its refs declared and their bundle's load started. */
+    private void begin(CgVfxAssets assets, String namespace, List<String> materialIds, List<String> sequenceIds,
+                       List<String> stageIds) {
+        for (int i = 0; i < refs.length; i++) refs[i] = assets.declare(CgParticleKinds.SYSTEM, namespace + ":" + ids.get(i));
+        for (int i = 0; i < materials.length; i++) materials[i] = assets.declare(CgLookKinds.MATERIAL, materialIds.get(i));
+        for (int i = 0; i < sequences.length; i++) sequences[i] = assets.declare(CgSequenceKinds.SEQUENCE, sequenceIds.get(i));
+        for (int i = 0; i < stages.length; i++) stages[i] = assets.declare(CgStageKinds.STAGE, stageIds.get(i));
+        List<CgAssetRef<?>> all = new ArrayList<>(List.of(refs));
+        all.addAll(List.of(materials));
+        all.addAll(List.of(sequences));
+        all.addAll(List.of(stages));
+        handle = assets.load(all, CgLoadPriority.MOVE);
     }
 
     /** Starts loading {@code ids} of the kit at {@code kit} (its folder, holding {@code vfx/systems}). */

@@ -47,12 +47,12 @@ public final class CgAssetKinds {
                 CgParticleKinds.SYSTEM, CgParticleKinds.EMITTER, CgParticleKinds.MODULE, CgParticleKinds.EFFECT_TYPE,
                 CgParticleKinds.ENDING, CgFieldKinds.FIELD, CgLookKinds.MATERIAL, CgLookKinds.TEXTURE, CgLookKinds.MESH,
                 CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgLookKinds.TEXT_STYLE, CgLookKinds.WIDGET, CgBodyKinds.PREFAB,
-                CgBodyKinds.SKELETON, CgBodyKinds.CLIP, CgBodyKinds.ANIM_GRAPH,
+                CgBodyKinds.SKELETON, CgBodyKinds.CLIP, CgBodyKinds.ANIM_GRAPH, CgBodyKinds.BLEND_SPACE,
                 CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgSequenceKinds.SEQUENCE,
                 CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgStageKinds.STAGE));
     }
 
-    /** The 25 kinds, particles first. */
+    /** The 26 kinds, particles first. */
     public static List<CgType> all() {
         register();
         return all;

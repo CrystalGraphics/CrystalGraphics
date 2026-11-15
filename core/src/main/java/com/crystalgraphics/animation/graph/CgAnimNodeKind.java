@@ -2,6 +2,12 @@ package com.crystalgraphics.animation.graph;
 
 import java.util.Map;
 
+import javax.annotation.Nullable;
+
+import com.crystalgraphics.animation.sync.CgSyncGroup;
+import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.object.CgType;
+
 /**
  * Reads one node kind's data form in an {@code anim_graph} file: how a node kind outside this package (a state machine,
  * inertialization, a mod's) joins the format. Registered once with {@link CgAnimGraphCodec#registerKind}; the node
@@ -52,5 +58,18 @@ public interface CgAnimNodeKind {
 
         /** {@code o} as a number, failing at {@code at} when it is not one. */
         float number(String at, Object o);
+
+        /** The mesh's clip {@code id}, failing at {@code at} where the mesh has none. */
+        CgAnimSequence clip(String at, String id);
+
+        /**
+         * The compiled asset {@code id} of {@code kind} the node reads (a blend space): resolved when the graph compiles,
+         * kept with it for every bind. Fails at {@code at} where it does not resolve.
+         */
+        Object definition(String at, CgType kind, String id);
+
+        /** The node's {@code sync_group} and {@code group_role}, or null where it names no group. */
+        @Nullable
+        CgSyncGroup syncGroup(String at, Map<?, ?> m);
     }
 }

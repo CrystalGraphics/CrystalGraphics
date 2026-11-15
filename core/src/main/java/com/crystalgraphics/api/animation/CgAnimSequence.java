@@ -13,6 +13,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import javax.annotation.Nullable;
+
 /**
  * An animation clip: each animated bone's translation, rotation and scale at evenly spaced frames, and any float
  * curves (a morph target's weight) beside them. Mirrors Unreal's {@code UAnimSequence}: a frame rate, a number of
@@ -94,6 +96,7 @@ public final class CgAnimSequence {
     final CgRichCurve[][] keys;
     private final float keyedDuration;
     private final CgClipSettings settings;
+    private final String[] uniqueMarkers;
 
     CgAnimSequence(String name, double frameRate, int frameCount, String[] trackBones, float[][] translations,
                    float[][] rotations, float[][] scales, String[] curveNames, float[][] curves, int[] curveDrives) {
@@ -125,6 +128,16 @@ public final class CgAnimSequence {
             if (m.time() > length + 1e-4f) throw new IllegalArgumentException(name + ": sync marker " + m.name() + " at " + m.time()
                     + " s is past its end, " + length + " s");
         }
+        uniqueMarkers = settings.markers().stream().map(CgSyncMarker::name).distinct().toArray(String[]::new);
+    }
+
+    /**
+     * Its sync markers' names, each once, in the order first met: Unreal's {@code UniqueMarkerNames}
+     * ({@code RefreshSyncMarkerDataFromAuthored}). Null where it has none. Shared: never write into it.
+     */
+    @Nullable
+    public String[] uniqueMarkerNames() {
+        return uniqueMarkers.length == 0 ? null : uniqueMarkers;
     }
 
     /** Its sync markers, root motion, additive base and notify sequence ({@link CgClipSettings#NONE} unless given). */
@@ -376,14 +389,15 @@ public final class CgAnimSequence {
      * body.accumulateAdditive(delta, 0.8f);
      * }</pre>
      *
-     * @throws IllegalStateException for a clip that is not additive, or a mesh-space one (the aim offset node's)
+     * <p>A mesh-space clip (an aim offset's) takes both poses to the mesh's rotations first
+     * ({@code GetBonePose_AdditiveMeshRotationOnly}, AnimSequence.cpp:1976-2010): apply it with
+     * {@link CgAnimPose#accumulateMeshRotationAdditive}.</p>
+     *
+     * @throws IllegalStateException for a clip that is not additive
      */
     public void sampleAdditive(CgAnimPose out, CgAnimPose base, float time) {
         CgAdditive additive = settings.additive();
         if (!additive.isAdditive()) throw new IllegalStateException(name + " is not additive");
-        if (additive.type() == CgAdditive.Type.MESH_SPACE) {
-            throw new IllegalStateException(name + " is a mesh-space additive: an aim offset plays it");
-        }
         out.rest();
         sample(out, time);
         base.rest();
@@ -391,6 +405,10 @@ public final class CgAnimSequence {
             case FRAME -> sample(base, frameTime(this, additive.baseFrame()));
             case CLIP_FRAME -> additive.baseClip().sample(base, frameTime(additive.baseClip(), additive.baseFrame()));
             default -> { }
+        }
+        if (additive.type() == CgAdditive.Type.MESH_SPACE) {
+            out.toMeshRotation();
+            base.toMeshRotation();
         }
         out.convertToAdditive(base);
     }

@@ -132,6 +132,8 @@ registerSingleJarPipeline(SingleJarSpec(
         exclude("META-INF/services/com.fasterxml.jackson.*", "META-INF/maven/**")
         // SnakeYAML's Java 9 module-info, which would name an org.yaml module this jar does not have
         exclude("META-INF/versions/**")
+        // The animation demo's characters: dev runs and the harness read them from the source tree
+        exclude("assets/kk/**")
 
         // The notice for what THIS jar carries, in the jar: MIT, BSD, Apache 2.0 and the FTL each
         // require it to reach whoever receives the binary.

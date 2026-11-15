@@ -108,8 +108,8 @@ public final class CgSequencePlayer {
     private double seconds;
     /** Where play ends before the sequence's own end, in seconds; NaN for its end. */
     private double endAt = Double.NaN;
-    private float rate = 1f;
-    private int revision;
+    private float rate = 1f, frameSeconds;
+    private int revision, pass;
     private long seed;
     private CgSequencePlaybackSettings playbackSettings = CgSequencePlaybackSettings.DEFAULT;
     private boolean finished, stopped, killed, jump, seek;
@@ -507,6 +507,39 @@ public final class CgSequencePlayer {
     @Nullable
     public String section() {
         return composite < 0 ? null : definition.compositeSections().get(composite).name();
+    }
+
+    /**
+     * Seconds of play left before it stops: to the end of the montage section it is in where that section hands play to
+     * none ({@code GetRemainingPlayTimeToSectionEnd}), else to its end or {@link #endAt}; at its rate. Infinite where its
+     * section hands play on, or it does not move forwards. What a montage's auto blend-out reads.
+     */
+    public double timeToEnd() {
+        if (!(rate > 0)) return Double.POSITIVE_INFINITY;
+        double end;
+        if (composite >= 0) {
+            if (next[composite] >= 0) return Double.POSITIVE_INFINITY;
+            end = definition.seconds(definition.compositeSections().get(composite).to() - definition.start());
+        } else {
+            end = definition.seconds(definition.end() - definition.start());
+        }
+        if (endAt < end && seconds <= endAt) end = endAt;
+        return Math.max(0, end - seconds) / rate;
+    }
+
+    /** How many passes it has played: each frame's advance, and each pass a montage section's end hands on in. */
+    public int pass() {
+        return pass;
+    }
+
+    /** The seconds its sequencer advanced it this frame, before its rate. */
+    public float frameSeconds() {
+        return frameSeconds;
+    }
+
+    /** Whether this pass landed by a jump or a seek rather than by play: nothing in between was played. */
+    public boolean jumped() {
+        return jumped;
     }
 
     /** The first tick a jump's one-shots fire from: past its point for a jump, {@link #ONE_SHOT_WINDOW} before it for a seek. */
@@ -916,6 +949,8 @@ public final class CgSequencePlayer {
      */
     CgSequenceEvaluationRange advance(float dt) {
         inPass = true;
+        pass++;
+        frameSeconds = dt;
         jumped = jump;
         sought = seek;
         CgSequenceEvaluationRange r;
@@ -1100,6 +1135,7 @@ public final class CgSequencePlayer {
     /** The pass after a section's end: play from its next section's start for the seconds it handed on. */
     CgSequenceEvaluationRange resume() {
         inPass = true;
+        pass++;
         resumes = false;
         jumped = sought = false;
         if (resumeJumps) position.jumpToSeconds(seconds);

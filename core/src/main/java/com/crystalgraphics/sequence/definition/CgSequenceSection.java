@@ -6,6 +6,7 @@ import java.util.Map;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.easing.CgEasing;
+import com.crystalgraphics.easing.CgEasings;
 
 /**
  * A section of a track, compiled: Unreal's {@code UMovieSceneSection}, its range, row, priority, blend, ease and
@@ -63,9 +64,19 @@ public record CgSequenceSection(String id, int index, int from, int to, @Nullabl
 
     /**
      * {@code FMovieSceneEasingSettings}: ticks of ease in and out and their functions, or Unreal's automatic easing
-     * from overlaps. A function the file leaves out is Unreal's default, cubic in-out.
+     * from overlaps. {@code inFn} and {@code outFn} are the file's, null where it names none.
      */
-    public record Ease(int in, int out, CgEasing inFunction, CgEasing outFunction, boolean auto) {
+    public record Ease(int in, int out, @Nullable CgEasing inFn, @Nullable CgEasing outFn, boolean auto) {
+
+        /** The ease in's function: the file's, else Unreal's default, cubic in-out. */
+        public CgEasing inFunction() {
+            return inFn != null ? inFn : CgEasings.IN_OUT_CUBIC;
+        }
+
+        /** The ease out's function: the file's, else cubic in-out. */
+        public CgEasing outFunction() {
+            return outFn != null ? outFn : CgEasings.IN_OUT_CUBIC;
+        }
     }
 
     /**
@@ -73,13 +84,21 @@ public record CgSequenceSection(String id, int index, int from, int to, @Nullabl
      * channel. Unreal's {@code UMovieSceneSection::EvaluateEasing} times the manual weight. 1 with neither.
      */
     public float weight(float tick) {
+        return weight(tick, true, true);
+    }
+
+    /**
+     * As {@link #weight(float)}, its ease in applied only with {@code easeIn} and its ease out only with
+     * {@code easeOut}: a montage's first and last sections, whose outer eases are the montage's own blend.
+     */
+    public float weight(float tick, boolean easeIn, boolean easeOut) {
         double w = 1;
         if (ease != null) {
-            if (ease.in() > 0 && from != OPEN_START) {
+            if (easeIn && ease.in() > 0 && from != OPEN_START) {
                 double t = (tick - from) / ease.in();
                 w *= t < 0 ? 0 : t > 1 ? 1 : ease.inFunction().ease(t);
             }
-            if (ease.out() > 0 && to != OPEN_END) {
+            if (easeOut && ease.out() > 0 && to != OPEN_END) {
                 double t = (tick - to + ease.out()) / (double) ease.out();
                 w *= t < 0 ? 1 : t > 1 ? 0 : 1 - ease.outFunction().ease(t);
             }

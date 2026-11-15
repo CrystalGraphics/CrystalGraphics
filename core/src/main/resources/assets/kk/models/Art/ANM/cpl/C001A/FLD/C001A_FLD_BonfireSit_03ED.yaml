@@ -1,0 +1,10 @@
+_v: 1
+curves:
+  - { name: eye_l_u_offset, drives: material, keys: [[-2.433333, 0.1, cubic], [2.166667, 0.1, cubic]] }
+  - { name: eye_l_u_scale, drives: material, keys: [[-2.433333, 1.0, cubic], [2.166667, 1.0, cubic]] }
+  - { name: eye_l_v_offset, drives: material, keys: [[-2.433333, 0.01, cubic], [2.166667, 0.01, cubic]] }
+  - { name: eye_l_v_scale, drives: material, keys: [[-2.433333, 1.0, cubic], [2.166667, 1.0, cubic]] }
+  - { name: eye_r_u_offset, drives: material, keys: [[-2.433333, -0.1, cubic], [2.166667, -0.1, cubic]] }
+  - { name: eye_r_u_scale, drives: material, keys: [[-2.433333, 1.0, cubic], [2.166667, 1.0, cubic]] }
+  - { name: eye_r_v_offset, drives: material, keys: [[-2.433333, 0.01, cubic], [2.166667, 0.01, cubic]] }
+  - { name: eye_r_v_scale, drives: material, keys: [[-2.433333, 1.0, cubic], [2.166667, 1.0, cubic]] }

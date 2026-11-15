@@ -13,6 +13,7 @@ import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.montage.CgMontages;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgAnimSequence;
@@ -61,6 +62,7 @@ public final class CgAnimInstance {
     private final CgSkeletalMesh mesh;
     private boolean posed;
     private CgAnimGraphInstance graph;
+    private final CgMontages montages;
     private final CgAnimPose pose;
     private final Matrix4f[] skinning;
     private final Matrix4f socketScratch = new Matrix4f();
@@ -77,6 +79,7 @@ public final class CgAnimInstance {
     public CgAnimInstance(CgSkeletalMesh mesh) {
         this.mesh = Objects.requireNonNull(mesh, "mesh");
         this.pose = new CgAnimPose(mesh.skeleton());
+        this.montages = new CgMontages(mesh.skeleton());
         this.skinning = new Matrix4f[mesh.skeleton().boneCount()];
         for (int b = 0; b < skinning.length; b++) skinning[b] = new Matrix4f();
         this.graph = new CgAnimGraphInstance(CgAnimGraph.single(mesh.skeleton()), mesh.skeleton());
@@ -141,6 +144,55 @@ public final class CgAnimInstance {
     @Nullable
     public CgAnimSlot slot(String name) {
         return graph.slot(name);
+    }
+
+    /**
+     * Plays each layer {@code layers} declares through it, wherever its graph plays that layer: Unreal's
+     * {@code LinkAnimClassLayers}. A graph of sword arms over a hero's own; one group's layers share one run of it.
+     *
+     * <pre>{@code
+     * anim.linkLayers(SWORD_ARMS);       // blended over each layer's blend times, under the graph's inertialization
+     * anim.unlinkLayers(SWORD_ARMS);     // the graph's own layers again
+     * }</pre>
+     *
+     * <ul>
+     *   <li>On the game thread, between frames, as every change to what plays.</li>
+     *   <li>Its graph's own graph is refused: it would play itself.</li>
+     * </ul>
+     */
+    public CgAnimInstance linkLayers(CgAnimGraph layers) {
+        graph.linkLayers(layers);
+        return this;
+    }
+
+    /** Its graph's own layers again where {@code layers} played them: Unreal's {@code UnlinkAnimClassLayers}. */
+    public CgAnimInstance unlinkLayers(CgAnimGraph layers) {
+        graph.unlinkLayers(layers);
+        return this;
+    }
+
+    /**
+     * Runs {@code linked} in its graph's linked graph node tagged {@code tag}, null for none: Unreal's
+     * {@code LinkAnimGraphByTag}.
+     *
+     * @throws IllegalArgumentException where no linked graph node has the tag
+     */
+    public CgAnimInstance linkGraph(String tag, @Nullable CgAnimGraph linked) {
+        graph.linkGraph(tag, linked);
+        return this;
+    }
+
+    /**
+     * Its montages: those playing on its slots and blending out, its root motion, and their events. A sequence's
+     * {@code animation} track plays each of its plays as one.
+     *
+     * <pre>{@code
+     * anim.montages().rootMotionMode(CgRootMotionMode.FROM_MONTAGES_ONLY);
+     * if (anim.montages().consumeRootMotion(1f, step)) mover.move(step);
+     * }</pre>
+     */
+    public CgMontages montages() {
+        return montages;
     }
 
     /**
@@ -242,6 +294,8 @@ public final class CgAnimInstance {
      */
     public CgAnimInstance preUpdate(float seconds) {
         delta = playing ? seconds * rate : 0f;
+        // Montages before the native update, so it sees where they are (AnimInstance.cpp:766-777)
+        montages.preUpdate(delta, graph);
         for (int i = 0; i < updates.size(); i++) updates.get(i).update(this, delta);
         graph.preUpdate();
         return this;

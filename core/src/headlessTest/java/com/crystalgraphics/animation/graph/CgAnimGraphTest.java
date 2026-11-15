@@ -165,7 +165,7 @@ public class CgAnimGraphTest {
         assertTrue(bytes + " bytes over " + frames + " warm frames", bytes < frames);
     }
 
-    /** A graph with every kind A2 runs: a cached body under a slot, a blend list, a layer, an additive. */
+    /** A graph with every built-in kind: a cached body under a slot, a blend list, a layer, an additive. */
     private static CgAnimGraph everyKind(CgAnimSequence rise, CgAnimSequence b, CgAnimSequence c, CgAnimSequence lift) {
         return CgAnimGraph.builder("test:every", ARM).variables(ALPHA, CHOICE, CgAnimVariable.bool("grounded", true))
                 .save("body", CgSlotNode.of(CgAnimGraph.DEFAULT_SLOT,

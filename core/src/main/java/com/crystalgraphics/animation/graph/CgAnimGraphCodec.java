@@ -1,5 +1,6 @@
 package com.crystalgraphics.animation.graph;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -11,14 +12,19 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
+import javax.annotation.Nullable;
+
 import org.joml.Vector3f;
 
+import com.crystalgraphics.animation.sync.CgAnimGroupRole;
+import com.crystalgraphics.animation.sync.CgSyncGroup;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.object.CgType;
 
 /**
  * An {@code anim_graphs/} file and a {@link CgAnimGraph}, each way: {@link #compile} reads a resolved asset into a
@@ -80,28 +86,53 @@ public final class CgAnimGraphCodec {
     }
 
     private static final Set<String> BUILT_IN = Set.of("sequence_player", "ref_pose", "slot", "two_way_blend",
-            "blend_list_by_bool", "blend_list_by_int", "layered_blend", "apply_additive", "save_cached_pose", "use_cached_pose");
+            "blend_list_by_bool", "blend_list_by_int", "layered_blend", "apply_additive", "save_cached_pose", "use_cached_pose",
+            "linked_input_pose", "linked_anim_layer", "linked_anim_graph");
 
     /**
      * {@code asset}'s graph, resolved over its parent and checked.
      *
      * @throws CgAssetException a graph that cannot run, naming the asset and the node
      */
-    public static CgAnimGraphDefinition compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
-        CgAnimGraphDefinition definition = new CgAnimGraphDefinition(asset.id(), asset.resolved());
+    public static CgAnimGraphDefinition compile(CgAssetData asset, @Nullable CgAssetCompiler.Dependencies deps) {
+        Map<CgType, Map<String, Object>> found = new LinkedHashMap<>();
         // Everything but the clips and the mask's bones is checked here, so a bad file fails at load
-        definition.graph(STAND_IN, id -> STAND_IN_CLIP);
-        return definition;
+        build(asset.id(), asset.resolved(), STAND_IN, id -> STAND_IN_CLIP, (at, kind, id) -> {
+            Object d = deps == null ? null : deps.definition(kind, id);
+            if (d == null) throw new CgAssetException(at + ": " + id + " resolves to no " + kind);
+            found.computeIfAbsent(kind, k -> new LinkedHashMap<>()).put(id, d);
+            return d;
+        });
+        return new CgAnimGraphDefinition(asset.id(), asset.resolved(), found);
+    }
+
+    /** How a graph's reader finds a compiled dependency: through the pipeline at compile, from the definition at bind. */
+    @FunctionalInterface
+    interface Resolver {
+        Object definition(String at, CgType kind, String id);
     }
 
     // ── reading ──────────────────────────────────────────────────────────────────────────
 
-    static CgAnimGraph build(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips) {
-        Reader r = new Reader(id, tree, clips);
+    static CgAnimGraph build(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips, Resolver resolver) {
+        Reader r = new Reader(id, tree, skeleton, clips, resolver);
         CgAnimGraph.Builder b = CgAnimGraph.builder(id, skeleton);
         b.variables(r.variables.values().toArray(new CgAnimVariable<?>[0]));
+        if (tree.get("inputs") instanceof List<?> ins) for (Object in : ins) b.inputs(String.valueOf(in));
         if (!(tree.get("output") instanceof String output)) throw new CgAssetException(id + ": output: none");
         b.output(r.pose(output));
+        if (tree.get("layers") instanceof Map<?, ?> layers) {
+            for (Map.Entry<?, ?> e : layers.entrySet()) {
+                String name = String.valueOf(e.getKey()), at = id + ": layers." + name;
+                Map<?, ?> l = (Map<?, ?>) e.getValue();
+                List<String> ins = new ArrayList<>();
+                if (l.get("inputs") instanceof List<?> li) for (Object in : li) ins.add(String.valueOf(in));
+                b.layer(new CgAnimGraph.Layer(name, ins, r.pose(r.string(at, l, "output")),
+                        l.get("group") instanceof String g ? g : null,
+                        l.get("blend_in") == null ? 0f : r.number(at + ".blend_in", l.get("blend_in")),
+                        l.get("blend_out") == null ? 0f : r.number(at + ".blend_out", l.get("blend_out"))));
+            }
+        }
         for (Map.Entry<String, CgAnimNode> save : r.saves.entrySet()) b.save(save.getKey(), save.getValue());
         for (Object name : r.nodes.keySet()) {
             if (!r.reached.contains(String.valueOf(name))) {
@@ -121,14 +152,18 @@ public final class CgAnimGraphCodec {
         final Map<?, ?> tree;
         final Map<?, ?> nodes;
         final Function<String, CgAnimSequence> clips;
+        final Resolver resolver;
+        final CgSkeleton skeleton;
         final Map<String, CgAnimVariable<?>> variables = new LinkedHashMap<>();
         final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
         final Set<String> reached = new HashSet<>(), saving = new HashSet<>();
 
-        Reader(String id, Map<?, ?> tree, Function<String, CgAnimSequence> clips) {
+        Reader(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips, Resolver resolver) {
             this.id = id;
+            this.skeleton = skeleton;
             this.tree = tree;
             this.clips = clips;
+            this.resolver = resolver;
             if (!(tree.get("nodes") instanceof Map<?, ?> n)) throw new CgAssetException(id + ": nodes: none");
             this.nodes = n;
             if (tree.get("variables") instanceof Map<?, ?> vars) {
@@ -169,13 +204,13 @@ public final class CgAnimGraphCodec {
             return switch (kind) {
                 case "sequence_player" -> {
                     String clipId = string(at, m, "clip");
-                    CgAnimSequence clip = clips.apply(clipId);
-                    if (clip == null) throw new CgAssetException(at + ".clip: " + clipId + " names no clip of this mesh");
-                    CgSequencePlayerNode p = CgSequencePlayerNode.of(clip, clipId);
+                    CgSequencePlayerNode p = CgSequencePlayerNode.of(clip(at + ".clip", clipId), clipId);
                     if (Boolean.TRUE.equals(m.get("loop"))) p = p.loop();
-                    if (m.get("play_rate") instanceof Number n) p = p.playRate(n.floatValue());
+                    if (m.get("play_rate") instanceof String v) p = p.playRate(floatVariable(at + ".play_rate", v));
+                    else if (m.get("play_rate") != null) p = p.playRate(number(at + ".play_rate", m.get("play_rate")));
                     if (m.get("start_position") instanceof Number n) p = p.startPosition(n.floatValue());
-                    yield p;
+                    CgSyncGroup group = syncGroup(at, m);
+                    yield group == null ? p : p.sync(group);
                 }
                 case "ref_pose" -> CgRefPoseNode.create();
                 case "slot" -> CgSlotNode.of(m.get("slot_name") instanceof String s ? s : CgAnimGraph.DEFAULT_SLOT, pose(string(at, m, "source")));
@@ -220,6 +255,26 @@ public final class CgAnimGraphCodec {
                         saves.put(save, pose(source));
                     }
                     yield CgCachedPoseNode.use(save);
+                }
+                case "linked_input_pose" -> CgLinkedInputPoseNode.of(string(at, m, "name"));
+                case "linked_anim_layer" -> {
+                    CgLinkedAnimLayerNode node = CgLinkedAnimLayerNode.of(string(at, m, "layer"));
+                    if (m.get("inputs") instanceof Map<?, ?> ins) {
+                        for (Map.Entry<?, ?> e : ins.entrySet()) node = node.input(String.valueOf(e.getKey()), pose(String.valueOf(e.getValue())));
+                    }
+                    yield node;
+                }
+                case "linked_anim_graph" -> {
+                    String gid = string(at, m, "graph");
+                    if (!(definition(at + ".graph", CgBodyKinds.ANIM_GRAPH, gid) instanceof CgAnimGraphDefinition d)) {
+                        throw new CgAssetException(at + ".graph: " + gid + " is no anim_graph");
+                    }
+                    CgLinkedAnimGraphNode node = CgLinkedAnimGraphNode.of(d.graph(skeleton, clips));
+                    if (m.get("tag") instanceof String tag) node = node.tag(tag);
+                    if (m.get("inputs") instanceof Map<?, ?> ins) {
+                        for (Map.Entry<?, ?> e : ins.entrySet()) node = node.input(String.valueOf(e.getKey()), pose(String.valueOf(e.getValue())));
+                    }
+                    yield node;
                 }
                 default -> {
                     CgAnimNodeKind reader = KINDS.get(kind);
@@ -311,6 +366,32 @@ public final class CgAnimGraphCodec {
             if (!(o instanceof Number n)) throw new CgAssetException(at + ": " + o + " is not a number");
             return n.floatValue();
         }
+
+        @Override
+        public CgAnimSequence clip(String at, String clipId) {
+            CgAnimSequence clip = clips.apply(clipId);
+            if (clip == null) throw new CgAssetException(at + ": " + clipId + " names no clip of this mesh");
+            return clip;
+        }
+
+        @Override
+        public Object definition(String at, CgType kind, String did) {
+            return resolver.definition(at, kind, did);
+        }
+
+        @Override
+        @Nullable
+        public CgSyncGroup syncGroup(String at, Map<?, ?> m) {
+            if (m.get("sync_group") == null) return null;
+            String name = string(at, m, "sync_group");
+            Object role = m.get("group_role");
+            if (role == null) return CgSyncGroup.of(name);
+            try {
+                return CgSyncGroup.of(name, CgAnimGroupRole.valueOf(String.valueOf(role).toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                throw new CgAssetException(at + ".group_role: " + role + " is no group role");
+            }
+        }
     }
 
     // ── writing ──────────────────────────────────────────────────────────────────────────
@@ -377,9 +458,21 @@ public final class CgAnimGraphCodec {
             }
             tree.put("variables", vars);
         }
+        if (!graph.inputs().isEmpty()) tree.put("inputs", new ArrayList<>(graph.inputs()));
         tree.put("output", output);
+        Map<String, Object> layers = new LinkedHashMap<>();
+        for (CgAnimGraph.Layer l : graph.layers().values()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (!l.inputs().isEmpty()) m.put("inputs", new ArrayList<>(l.inputs()));
+            m.put("output", names.apply(l.output()));
+            if (l.group() != null) m.put("group", l.group());
+            if (l.blendIn() != 0f) m.put("blend_in", (double) l.blendIn());
+            if (l.blendOut() != 0f) m.put("blend_out", (double) l.blendOut());
+            layers.put(l.name(), m);
+        }
         tree.put("nodes", nodes);
         tree.putAll(names.sections);
+        if (!layers.isEmpty()) tree.put("layers", layers);
         return tree;
     }
 }

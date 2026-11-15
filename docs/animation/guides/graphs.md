@@ -53,7 +53,9 @@ anim.graph(hero(mesh))
 
 | Node | Unreal | Does |
 |---|---|---|
-| `CgSequencePlayerNode.of(clip)` `.loop()` `.playRate(r)` `.startPosition(s)` | Sequence Player | plays a clip on its own clock; an additive clip gives its differences |
+| `CgSequencePlayerNode.of(clip)` `.loop()` `.playRate(r or variable)` `.startPosition(s)` `.sync(group)` | Sequence Player | plays a clip on its own clock, or in step with its sync group; an additive clip gives its differences |
+| `CgBlendSpacePlayerNode.of(space, x[, y])` `.playRate(...)` `.sync(group)` `.once()` | Blend Space Player | clips blended by where an input falls among them ([below](#blend-spaces)) |
+| `CgAimOffsetNode.of(base, space, yaw, pitch)` `.alpha(...)` | Aim Offset | a mesh-space additive blend space turned onto `base` |
 | `CgRefPoseNode.create()` | Reference Pose | the skeleton's rest pose |
 | `CgTwoWayBlendNode.of(a, b, alpha)` | Blend | `a` and `b` by an alpha, a constant or a float variable |
 | `CgBlendListNode.byBool(v, t, f)`, `.byInt(v, poses...)` `.blendTimes(...)` `.resetOnActivate()` | Blend Poses by bool / int | one pose by a variable, easing into each over its blend time |
@@ -85,6 +87,67 @@ anim.slot("FacialSlot").stop(1f);                // its entries blended out: the
 - Past a total weight of 1 the entries are normalised and the source is gone (Unreal's `GetSlotWeight`).
 - An entry's clip is sampled over the rest pose, as a montage's track is: limit a slot to the bones its clips key with
   a layered blend.
+
+## Montages
+
+A **montage** is a sequence played on a character: its `animation` sections on that character play as one montage,
+Unreal's montage instance. It blends in when it starts, blends out by itself at its end or when it is stopped, stops
+the other montage of its slot group, and moves the character by its clips' root motion.
+
+```yaml
+# sequences/mymod/moves/punch.yaml: a strike chained into its recovery, or into a second strike on the combo input
+_v: 1
+tick_resolution: 60000
+range: [0, 96000]
+composite_sections:
+  - { id: q1, name: strike1, range: [0, 24000], next: q2 }
+  - { id: q2, name: recover1, range: [24000, 48000] }
+  - { id: q3, name: strike2, range: [48000, 72000], next: q4 }
+  - { id: q4, name: recover2, range: [72000, 96000] }
+roles: [ { id: b1, name: caster, kind: caster } ]
+tracks:
+  - id: t1
+    kind: animation
+    binding: { role: caster }
+    sections:
+      - { id: s1, range: [0, 24000], clip: mymod:hero/strike1, ease: { in: 6000 } }   # the montage's blend in: 0.1 s
+      - { id: s2, range: [24000, 48000], clip: mymod:hero/recover1 }
+      - { id: s3, range: [48000, 72000], clip: mymod:hero/strike2 }
+      - { id: s4, range: [72000, 96000], clip: mymod:hero/recover2, ease: { out: 12000 } }   # its blend out: 0.2 s
+  - { id: t2, kind: event, side: rpg, binding: { role: caster },
+      sections: [ { id: h1, range: [6000, 18000], event: mymod:hit_window } ] }
+```
+
+```java
+CgSequencePlayer punch = sequencer.play(PUNCH, Map.of("caster", hero));
+punch.jumpToSection("strike2");                // the combo input: a branch, the same montage
+punch.nextSection("strike1", "strike2");       // or: strike1 runs on into strike2 at its end
+punch.stop();                                  // interrupted: blends out over 0.2 s, its clip playing on
+
+hero.anim().montages().listen(new CgMontages.Listener() {
+    @Override public void ended(CgMontageInstance m, boolean interrupted) { ... }
+});
+Matrix4f step = new Matrix4f();
+if (hero.anim().montages().consumeRootMotion(1f, step)) mover.move(step);   // after the frame's pose
+```
+
+| Key (on the character's sections) | What it does |
+|---|---|
+| `ease.in` on its first section, `ease.out` on its last | its blend in and out, linear unless `in_fn` / `out_fn` name a curve |
+| `blend_out_trigger_time` | ticks before its end it starts blending out; unset, its blend-out time, blending over the time left |
+| `auto_blend_out: false` | it holds its last pose at its end until stopped |
+| `slot_group` | its group, `DefaultGroup` unless named: a montage played stops the others of its group, blending them out over its own blend in |
+| `root_motion` | whether its clips' root motion moves the character; unset, on where any clip has it |
+| `sync_group` | the graph's sync group it leads while it blends out, so a run under it picks up where the montage leaves its feet |
+
+- **Its end** is the end of a montage section that hands play to none, or of the sequence: a looping section
+  never blends out until gameplay relinks it.
+- **A branch is no new play**: `jumpToSection` and `nextSection` keep the montage at its weight. Over the network they
+  are `CgSequenceNet`'s jumps, predicted by their owner; a late joiner seeks to the server's time and its montage
+  blends in there.
+- **One montage moves the character at a time** (`CgRootMotionMode.FROM_MONTAGES_ONLY`, Unreal's default): a root-motion
+  montage played stops the one moving it. Its root is held at its clip's lock while it moves the character.
+- **Gameplay moments are `event` sections** of side `rpg` (a hit window above), heard as every sequence's events are.
 
 ## Layers and cached poses
 
@@ -187,6 +250,146 @@ CgAnimGraph.builder("mymod:fighter", skeleton)
 - **Offsets are in each bone's parent space**: a jump of the whole character is not smoothed, and material curves switch
   at once.
 
+## Blend spaces
+
+A **blend space** (`CgBlendSpace`, Unreal's) places clips on one or two axes and blends the ones nearest an input. One
+axis of speed turns an idle, a jog and a sprint into one locomotion; speed and direction make strafing.
+
+```java
+static final CgBlendSpace RUN = CgBlendSpace.oneD("mymod:hero_run", "speed", 0, 8)
+        .sample(IDLE, 0).sample(JOG, 4).sample(SPRINT, 8)
+        .weightSpeed(5)                                       // weights move toward their targets 5 a second
+        .build();
+
+static final CgBlendSpace STRAFE = CgBlendSpace.twoD("mymod:hero_strafe", "direction", -180, 180, "speed", 0, 6)
+        .sample(IDLE, 0, 0).sample(FORWARD, 0, 6).sample(LEFT, -90, 6).sample(RIGHT, 90, 6)
+        .sample(BACK, -180, 6).sample(BACK, 180, 6)
+        .wrap(0)                                              // -180 and 180 are one direction
+        .smoothing(1, 0.2f, CgBlendFilter.Type.SPRING_DAMPER) // the speed eases over 0.2 s
+        .build();
+
+CgBlendSpacePlayerNode.of(RUN, SPEED);                        // in a graph, by a variable
+CgBlendSpacePlayerNode.of(STRAFE, DIRECTION, SPEED);
+```
+
+- **Its time is shared**: every sample sits at the same fraction of its own clip, so a jog and a sprint of different
+  lengths stay in step. Where its clips carry sync markers (`foot_l`, `foot_r`), the heaviest marked clip leads and the
+  others follow its markers instead.
+- **Weights ease** toward each frame's targets at `weightSpeed` a second, eased by default; `weightEase(false)` moves them
+  at a constant speed (Unreal 4's).
+- **The lookup** is release Unreal's: between the nearest samples on one axis, by triangles on two.
+  `gridInterpolation(true)` uses Unreal 4's grid instead; `legacyLength(true)` its way of timing a blend. An importer of
+  an Unreal 4 game sets both.
+- **Past an axis's end** the input is clamped; `scaleAxis(X)` plays the clips faster instead, so a sprint past the
+  fastest sample does not slide its feet.
+- A sample outside its axes, or clips of mixed additive kinds, fails when the blend space is built.
+
+### Aim offsets
+
+An **aim offset** is a blend space of mesh-space additive clips (each the character aimed up, down, left, right, made
+with `CgAdditive.meshSpace`): the one at the look's angle is added over whatever plays, in the mesh's space, so the spine,
+arms and head turn together whatever the legs do.
+
+```java
+static final CgBlendSpace AIM = CgBlendSpace.twoD("mymod:hero_aim", "yaw", -90, 90, "pitch", -90, 90)
+        .sample(AIM_CENTRE, 0, 0).sample(AIM_LEFT, -90, 0).sample(AIM_RIGHT, 90, 0).sample(AIM_UP, 0, 90).sample(AIM_DOWN, 0, -90)
+        .build();
+
+CgAimOffsetNode.of(locomotion, AIM, YAW, PITCH).alpha(AIMING);    // only while aiming
+```
+
+### Sync groups
+
+Players in one **sync group** move together: the heaviest leads, the others follow its sync markers, or its fraction of
+its clip where they have none. A walk and a run blended by speed keep their feet in step.
+
+```java
+CgTwoWayBlendNode.of(
+        CgSequencePlayerNode.of(WALK).loop().sync(CgSyncGroup.of("feet")),
+        CgSequencePlayerNode.of(RUN).loop().sync(CgSyncGroup.of("feet")), SPEED);
+
+CgSequencePlayerNode.of(LIMP).loop().sync(CgSyncGroup.of("feet", CgAnimGroupRole.ALWAYS_FOLLOWER));
+```
+
+- A group's markers are those its leader and every marked member share; the rest are stepped over.
+- `TRANSITION_LEADER` and `TRANSITION_FOLLOWER` join only once fully blended in, as Unreal's.
+- Play rate by speed: `playRate(STRIDE)` reads a float variable each frame.
+
+## One graph, many characters
+
+A graph from a file names its clips by id and is bound to each mesh: **one graph, each character its own clips**.
+
+```java
+CgAnimGraphDefinition hero = (CgAnimGraphDefinition) load.definition();     // anim_graphs/mymod/hero.yaml
+goku.anim().graph(hero.graph(goku.mesh().skeleton(), id -> gokuClips.get(id)));
+vegeta.anim().graph(hero.graph(vegeta.mesh().skeleton(), id -> vegetaClips.get(id)));
+```
+
+A character whose graph differs only in some clips is a **child graph**: `parent:` and the nodes it changes, each
+merged field by field, so replacing a node's `clip` or `blend_space` keeps its `loop`, its inputs and its sync group
+(Unreal's child anim blueprint's asset overrides).
+
+```yaml
+# anim_graphs/mymod/goku.yaml
+_v: 1
+parent: mymod:hero
+nodes:
+  idle: { clip: mymod:goku/idle }
+  run:  { blend_space: mymod:goku/run }
+```
+
+## Linked layers and linked graphs
+
+A **layer** is a named part of a graph that another graph may play instead: a sword's arms over a hero's locomotion,
+swapped at runtime. The graph declares it, with the poses it takes; a `CgLinkedAnimLayerNode` plays it, the graph's
+own until a graph implementing it is linked.
+
+```java
+CgAnimGraph hero = CgAnimGraph.builder("mymod:hero", skeleton)
+        .layer(CgAnimGraph.Layer.of("arms", CgLinkedInputPoseNode.of("body"), "body").blend(0.2f, 0.2f))   // its own: the body through
+        .output(CgInertializationNode.of(CgLinkedAnimLayerNode.of("arms").input("body", locomotion)))
+        .build();
+CgAnimGraph swordArms = CgAnimGraph.builder("mymod:sword_arms", skeleton)
+        .layer(CgAnimGraph.Layer.of("arms", CgLayeredBlendNode.of(CgLinkedInputPoseNode.of("body"))
+                .layer(CgSequencePlayerNode.of(SWORD_IDLE).loop(), CgBlendMask.branch("clavicle_r", 0)), "body").blend(0.2f, 0.2f))
+        .output(CgRefPoseNode.create())
+        .build();
+
+anim.graph(hero);
+anim.linkLayers(swordArms);     // the sword's arms, blended in over 0.2 s
+anim.unlinkLayers(swordArms);   // the hero's own again
+```
+
+A **linked graph** runs another graph as a node; a tag lets the game swap it.
+
+```java
+CgAnimGraph face = CgAnimGraph.builder("mymod:face", skeleton).inputs("body")
+        .output(CgLayeredBlendNode.of(CgLinkedInputPoseNode.of("body")).layer(blink, CgBlendMask.branch("head", 0)))
+        .build();
+CgAnimGraph hero = CgAnimGraph.builder("mymod:hero", skeleton)
+        .output(CgLinkedAnimGraphNode.of(face).input("body", locomotion).tag("face"))
+        .build();
+anim.linkGraph("face", ANGRY_FACE);    // null: the body passes through
+```
+
+```yaml
+# the hero above, as a file
+layers:
+  arms: { inputs: [body], output: arms_own, blend_in: 0.2, blend_out: 0.2 }
+nodes:
+  arms_own: { kind: linked_input_pose, name: body }
+  arms:     { kind: linked_anim_layer, layer: arms, inputs: { body: locomotion } }
+  face:     { kind: linked_anim_graph, graph: mymod:face, tag: face, inputs: { body: arms } }
+```
+
+- **A linked graph plays inside its owner**: its variables are the owner's of the same name and type, its slots the
+  owner's (a montage plays there too), its players in the owner's sync groups.
+- **Layers of one `group`** linked from one graph share one run of it; an ungrouped layer has its own.
+- **A layer's blend times inertialize a swap**, and need an inertialization node above the layer node; a swap with
+  none fails as it is linked.
+- **Fails at build or load**: a layer node naming a layer its graph does not declare, an input no layer or graph
+  takes, a linked input pose naming an input its layer lacks, a `graph` that is no `anim_graph`.
+
 ## From a file
 
 The same graph, as `anim_graphs/mymod/hero.yaml`:
@@ -215,7 +418,9 @@ anim.graph(graph);                                // bind once per mesh and keep
 
 | Kind | Fields |
 |---|---|
-| `sequence_player` | `clip` (an id the mesh resolves), `loop`, `play_rate`, `start_position` |
+| `sequence_player` | `clip` (an id the mesh resolves), `loop`, `play_rate`, `start_position`, `sync_group`, `group_role` |
+| `blend_space_player` | `blend_space` (an id), `x`, `y`, `play_rate`, `loop` (true), `start_position`, `reset_on_change`, `sync_group`, `group_role` |
+| `aim_offset` | `base`, `blend_space`, `x`, `y`, `alpha` |
 | `ref_pose` | — |
 | `slot` | `slot_name` (`DefaultSlot`), `source` |
 | `two_way_blend` | `a`, `b`, `alpha` |
@@ -274,12 +479,29 @@ nodes:
   run: { clip: mymod:villain/run }
 ```
 - `CgAnimGraphCodec.toTree(graph)` writes a graph built in Java; read back and bound, it is the same graph.
+- **A blend space** is its own asset, `blend_spaces/mymod/hero_run.yaml`, which a graph's node names by id; its clips
+  bind with the graph's:
+
+```yaml
+_v: 1
+axes: [ { name: speed, min: 0, max: 8 } ]       # each: min, max, grid (4), smoothing: { time, type, damping, max_speed }, wrap
+samples:
+  - { clip: mymod:hero/idle, at: [0] }
+  - { clip: mymod:hero/jog, at: [4] }
+  - { clip: mymod:hero/sprint, at: [8], rate_scale: 1.1 }
+weight_speed: 5
+```
+
+  Its other keys, each with release Unreal's default: `weight_ease` true, `grid_interpolation` false, `legacy_length`
+  false, `scale_axis` none, and `grid`, the editor's cooked grid (per grid point `y·(nx+1)+x`, its `[sample, weight]`
+  pairs), played as given. `CgBlendSpaceCodec.toTree(space)` writes one built in Java.
 
 ## The frame
 
 `CgAnimation` runs every instance of a world each frame, as Unreal does:
 
-1. **The game thread**: each instance's `onUpdate`, then its variables copied for the worker.
+1. **The game thread**: each instance's montages (their weights, their clips onto their slots), its `onUpdate`, then
+   its variables copied for the worker.
 2. **A worker** (split across workers past `crystalgraphics.animation.parallelAt` instances): the graph's update
    (weights, which nodes show, every clip's tick), its evaluation into the pose, bone writes, the skinning matrices.
 3. **The game thread**: the frame's material curves onto the component's materials.

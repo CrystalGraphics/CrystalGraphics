@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * CgKitActor.Spec hero = new CgKitActor.Spec("hero", Paths.get("D:/kits/mykit"), "mykit", "mystudio",
- *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml");
+ *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml", null, 0, List.of());
  * CgEntityActors.bindLocalPlayer(hero.factory());        // the client's player, drawn as it
  *
  * CgKitActor.preload(hero);                               // ahead: drawn as soon as it spawns
@@ -53,10 +53,11 @@ public final class CgKitActor extends CgEntityActor {
      * A character's files, each path under {@code kit}: {@code namespace} is how the kit's assets are named,
      * {@code shading} the namespace its materials name their shading models by, {@code skeleton} the sockets' asset and {@code prefab} the one naming its materials.
      * {@code outline} is the id of a material of the kit drawn as the engine's outline over the character, marked by
-     * {@code stencil} (its custom depth stencil value); null and 0 for none.
+     * {@code stencil} (its custom depth stencil value); null and 0 for none. {@code clips} are folders under the kit
+     * whose {@code .glb} clips are its own, for what plays them (the animation demo); the actor poses none.
      */
     public record Spec(String name, Path kit, String namespace, String shading, String mesh, String skeleton,
-                       String prefab, @Nullable String outline, int stencil) {
+                       String prefab, @Nullable String outline, int stencil, List<String> clips) {
 
         /** An actor factory for this character, for {@code CgEntityActors.bind}. */
         public Supplier<CgKitActor> factory() {

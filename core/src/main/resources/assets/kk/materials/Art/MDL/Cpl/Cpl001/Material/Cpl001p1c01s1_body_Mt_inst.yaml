@@ -1,0 +1,66 @@
+_v: 1
+parent: kk:MasterMaterials/AT_Materials/CellShade_Tone
+keywords:
+  - SWITCH_USEAOMAP
+  - SWITCH_USEDIFFUSETEXTURE
+  - SWITCH_USEINSIDELINETEX
+  - SWITCH_USELIGHTMAP
+  - SWITCH_USEOUTLINETEXTURE
+  - SWITCH_USERIMLIGHT
+  - SWITCH_USESPECULARTEXTURE
+values:
+  MipLevel0: 0.0
+  MipLevel1: 320.0
+  MipLevel2: 800.0
+  MipLevel3: 900.0
+  MiddleGradPower: 1.0
+  RegionOffset: 0.2199999988079071
+  RegionOffset_Middle: 0.800000011920929
+  RimLightInfl_bright: 1.0
+  RimLightInfl_dark: 1.0
+  RimLightPow_bright: 3.0
+  RimLightPow_dark: 3.0
+  AffectedLight: 0.5
+  AOMult: 0.6000000238418579
+  AOPower: 1.0
+  CastShadowPower: 0.6000000238418579
+  TonePattern: 41.0
+  AmbientDFctor: [0.35499998927116394, 0.12070000171661377, 0.1246040016412735, 1.0]
+  AmbientDFctor2: [0.375, 0.18037499487400055, 0.2387620061635971, 1.0]
+  Specular: [1.0, 1.0, 1.0, 1.0]
+textures:
+  AmbientOcclusion_Texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/Diffuse/Goku_Body_AO.png }
+  InsideLine_Texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/Lines/line_02.png }
+  diffuse_texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_body_di.png }
+  outline_texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/post_01.png }
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal:
+        Blood: 0.0
+        Damage1: 0.0
+        Damage2: 0.0
+        Damage3: 0.0
+        BloomIntensity: 0.10000000149011612
+        A_Noise_Far: 0.0
+        A_Noise_Near: 0.15000000596046448
+        D_Noise_Far: 0.0
+        D_Noise_Near: 0.05000000074505806
+        M_Noise_Far: 0.0
+        M_Noise_Near: 0.15000000596046448
+        NoiseScale: 0.0
+        A_Uneven_Far: 0.0
+        A_Uneven_Near: 0.6000000238418579
+        D_Uneven_Far: 0.0
+        D_Uneven_Near: 0.20000000298023224
+        M_Uneven_Far: 0.0
+        M_Uneven_Near: 0.20000000298023224
+        UnevenScale: 0.0
+        RefractionDepthBias: 0.0
+        Blood_Color: [0.18000000715255737, 0.032999999821186066, 0.039000000804662704, 1.0]
+        ambient_texture: { texture: kk:textures/Engine/EngineMaterials/DefaultDiffuse.png }
+        Dm_Mask_Texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/cpl001p1c01s1_body_dm_msk.png }
+        InLineDesicion_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture02.png }
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_body_Mt_inst" }
+  note: "Cpl001p1c01s1_body_Mt_inst: an instance"

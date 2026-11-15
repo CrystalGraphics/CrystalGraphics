@@ -1,0 +1,67 @@
+_v: 1
+parent: kk:MasterMaterials/AT_Materials/CellShade_Tone
+keywords:
+  - SWITCH_USEDIFFUSETEXTURE
+  - SWITCH_USELIGHTMAP
+  - SWITCH_USENORMALTEXTURE
+  - SWITCH_USEOUTLINETEXTURE
+  - SWITCH_USERIMLIGHT
+values:
+  NomalPower: 1.0
+  MiddleGradPower: 1.0
+  RegionOffset: 0.2199999988079071
+  RegionOffset_Middle: 0.949999988079071
+  RimLightInfl_bright: 0.6000000238418579
+  RimLightPow_bright: 4.0
+  AffectedLight: 0.5
+  TonePattern: 43.0
+  AmbientDFctor: [0.0, 0.0, 0.0, 1.0]
+  AmbientDFctor2: [0.0, 0.0, 0.0, 1.0]
+  HightLightColor: [0.05000000074505806, 0.10000000149011612, 0.15000000596046448, 1.0]
+  Specular: [0.0, 0.0, 0.0, 1.0]
+textures:
+  InsideLine_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture.png }
+  Normal_Texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_hair_no.png }
+  diffuse_texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_hair_di.png }
+  outline_texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/post_01.png }
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal:
+        FresnelMaskInfluence: 0.633027970790863
+        FresnelMaskPower: 1.0
+        A_Noise_Far: 0.0
+        A_Noise_Near: 0.009999999776482582
+        D_Noise_Far: 0.0
+        D_Noise_Near: 0.009999999776482582
+        M_Noise_Far: 0.0
+        M_Noise_Near: 0.009999999776482582
+        NoiseScale: 5.0
+        A_Uneven_Far: 0.0
+        A_Uneven_Near: 0.30000001192092896
+        D_Uneven_Far: 0.0
+        D_Uneven_Near: 0.30000001192092896
+        M_Uneven_Far: 0.0
+        M_Uneven_Near: 0.30000001192092896
+        UnevenScale: 1.0
+        RefractionDepthBias: 0.0
+        RchAmbient: [0.6050000190734863, 0.4386250078678131, 0.4960249960422516, 1.0]
+        RchMiddleShadow: [0.5049999952316284, 0.15655000507831573, 0.27676698565483093, 1.0]
+        RGchAmbient: [0.6150000095367432, 0.6150000095367432, 0.6150000095367432, 1.0]
+        RGchMiddleShadow: [0.4050000011920929, 0.4050000011920929, 0.4050000011920929, 1.0]
+        GchAmbient: [0.6050000190734863, 0.4703879952430725, 0.3357749879360199, 1.0]
+        GchMiddleShadow: [0.1850000023841858, 0.13638199865818024, 0.08139300346374512, 1.0]
+        GBchAmbient: [0.0, 0.0, 0.0, 1.0]
+        GBchMiddleShadow: [0.019999999552965164, 0.019999999552965164, 0.019999999552965164, 1.0]
+        GBchSpecular: [0.0, 0.0, 0.0, 1.0]
+        BchAmbient: [0.6200000047683716, 0.40299999713897705, 0.5704429745674133, 1.0]
+        BchMiddleShadow: [0.4000000059604645, 0.12200000137090683, 0.3365130126476288, 1.0]
+        RBchAmbient: [0.0, 0.0, 0.0, 1.0]
+        RBchMiddleShadow: [0.0, 0.0, 0.0, 1.0]
+        RBchSpecular: [0.0, 0.0, 0.0, 1.0]
+        ColorMask: { texture: kk:textures/Engine/EngineMaterials/DefaultDiffuse.png }
+        Fresnelmask_normalTex: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/NormalTexture.png }
+        InLineDesicion_Texture: { texture: kk:textures/Engine/EngineMaterials/DefaultDiffuse.png }
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_hair_Mt_inst" }
+  note: "Cpl001p1c01s1_hair_Mt_inst: an instance"

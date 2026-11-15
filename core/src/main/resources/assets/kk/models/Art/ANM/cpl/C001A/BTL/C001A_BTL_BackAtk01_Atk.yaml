@@ -1,0 +1,18 @@
+_v: 1
+curves:
+  - name: eye_l_u_offset
+    drives: material
+    keys: [[0.0, 0.06, cubic], [0.9, 0.06, cubic], [0.933333, 0.06, cubic, 15.150002, 15.150002], [0.966667, 1.07, cubic, 15.150002, 15.150002], [1.0, 1.07, cubic], [3.4, 1.07, cubic]]
+  - { name: eye_l_v_offset, drives: material, keys: [[0.0, 1.0, cubic], [3.4, 1.0, cubic]] }
+  - name: eye_l_u_scale
+    drives: material
+    keys: [[0.0, -0.02, cubic], [0.9, -0.02, cubic], [0.933333, -0.02, cubic, 0.45, 0.45], [0.966667, 0.01, cubic, 0.45, 0.45], [1.0, 0.01, cubic], [3.4, 0.01, cubic]]
+  - { name: eye_l_v_scale, drives: material, keys: [[0.0, 1.0, cubic], [3.4, 1.0, cubic]] }
+  - name: eye_r_u_offset
+    drives: material
+    keys: [[0.0, -0.06, cubic], [0.9, -0.06, cubic], [0.933333, -0.06, cubic, 0.75, 0.75], [0.966667, -0.01, cubic, 0.75, 0.75], [1.0, -0.01, cubic, 1.95, 1.95], [1.033333, 0.12, cubic, 1.199999, 1.199999], [1.066667, 0.07, cubic, -0.749999, -0.749999], [1.1, 0.07, cubic], [3.4, 0.07, cubic]]
+  - { name: eye_r_u_scale, drives: material, keys: [[0.0, 1.0, cubic], [3.4, 1.0, cubic]] }
+  - name: eye_r_v_offset
+    drives: material
+    keys: [[0.0, -0.02, cubic], [0.966667, -0.02, cubic], [1.0, -0.02, cubic, -0.15, -0.15], [1.033333, -0.03, cubic, -0.3, -0.3], [1.066667, -0.04, cubic, -0.15, -0.15], [1.1, -0.04, cubic], [3.4, -0.04, cubic]]
+  - { name: eye_r_v_scale, drives: material, keys: [[0.0, 1.0, cubic], [3.4, 1.0, cubic]] }

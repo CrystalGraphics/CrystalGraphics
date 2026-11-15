@@ -2,12 +2,15 @@ package com.crystalgraphics.animation.graph;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+
+import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.animation.CgSkeleton;
 
@@ -62,10 +65,58 @@ public final class CgAnimGraph {
     private final List<String> saveOrder;
     private final CgSequencePlayerNode single;
 
+    private final List<String> inputs;
+    private final Map<String, Layer> layers;
+
+    /**
+     * A layer: a named part of the graph another graph may play instead, Unreal's anim layer function. Its output reads
+     * its input poses through {@link CgLinkedInputPoseNode}s; a {@link CgLinkedAnimLayerNode} plays it.
+     *
+     * <pre>{@code
+     * CgAnimGraph.Layer legs = CgAnimGraph.Layer.of("legs", CgLinkedInputPoseNode.of("body"), "body");   // passes through
+     * CgAnimGraph.Layer arms = CgAnimGraph.Layer.of("arms", aiming, "body").group("upper").blend(0.2f, 0.2f);
+     * }</pre>
+     *
+     * @param name      what a layer node calls it by
+     * @param inputs    its input poses' names
+     * @param output    its pose
+     * @param group     layers of one group linked from one graph share one run of it; null, each its own
+     * @param blendIn   seconds a swap to it is inertialized over
+     * @param blendOut  seconds a swap away from it is inertialized over
+     */
+    public record Layer(String name, List<String> inputs, CgAnimNode output, @Nullable String group, float blendIn, float blendOut) {
+
+        public Layer {
+            Objects.requireNonNull(name, "name");
+            inputs = List.copyOf(inputs);
+            Objects.requireNonNull(output, "output");
+        }
+
+        /** Layer {@code name} of {@code output}, reading {@code inputs}; ungrouped, swapped with no blend. */
+        public static Layer of(String name, CgAnimNode output, String... inputs) {
+            return new Layer(name, List.of(inputs), output, null, 0f, 0f);
+        }
+
+        public Layer group(@Nullable String group) {
+            return new Layer(name, inputs, output, group, blendIn, blendOut);
+        }
+
+        public Layer blend(float in, float out) {
+            return new Layer(name, inputs, output, group, in, out);
+        }
+    }
+
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
                         CgAnimNode output, CgSequencePlayerNode single) {
+        this(id, skeleton, variables, saves, output, single, List.of(), Map.of());
+    }
+
+    private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
+                        CgAnimNode output, CgSequencePlayerNode single, List<String> inputs, Map<String, Layer> layers) {
         this.id = id;
         this.skeleton = skeleton;
+        this.inputs = List.copyOf(inputs);
+        this.layers = Collections.unmodifiableMap(new LinkedHashMap<>(layers));
         this.variables = Collections.unmodifiableList(new ArrayList<>(variables));
         for (int i = 0; i < this.variables.size(); i++) {
             if (variableIndex.put(this.variables.get(i).name(), i) != null) {
@@ -77,8 +128,12 @@ public final class CgAnimGraph {
         this.single = single;
         List<String> found = new ArrayList<>();
         Set<CgAnimNode> seen = Collections.newSetFromMap(new IdentityHashMap<>());
-        walk(output, seen, Collections.newSetFromMap(new IdentityHashMap<>()), found);
-        for (CgAnimNode saved : saves.values()) walk(saved, seen, Collections.newSetFromMap(new IdentityHashMap<>()), found);
+        Set<String> called = new HashSet<>();
+        walk(output, seen, Collections.newSetFromMap(new IdentityHashMap<>()), found, this.inputs, called);
+        for (CgAnimNode saved : saves.values()) walk(saved, seen, Collections.newSetFromMap(new IdentityHashMap<>()), found, this.inputs, called);
+        for (Layer layer : this.layers.values()) {
+            walk(layer.output(), seen, Collections.newSetFromMap(new IdentityHashMap<>()), found, layer.inputs(), called);
+        }
         this.slots = Collections.unmodifiableList(found);
         for (String save : saves.keySet()) saveCycle(save, new ArrayList<>());
         List<String> order = new ArrayList<>();
@@ -116,13 +171,35 @@ public final class CgAnimGraph {
         node.children(child -> uses(child, out));
     }
 
-    /** Checks the tree and gathers its slots, cached poses and variables. */
-    private void walk(CgAnimNode node, Set<CgAnimNode> seen, Set<CgAnimNode> path, List<String> slots) {
+    /**
+     * Checks the tree and gathers its slots, cached poses and variables; {@code scope} is the input poses a linked
+     * input pose may name there (the layer's, or the graph's own), {@code called} the layers played so far.
+     */
+    private void walk(CgAnimNode node, Set<CgAnimNode> seen, Set<CgAnimNode> path, List<String> slots, List<String> scope,
+                      Set<String> called) {
         if (!path.add(node)) throw new IllegalArgumentException(id + ": a cycle through " + node);
         if (!seen.add(node)) throw new IllegalArgumentException(id + ": " + node + " is read twice; cache its pose instead");
         if (node instanceof CgSlotNode s) {
             if (slots.contains(s.name())) throw new IllegalArgumentException(id + ": slot " + s.name() + " twice");
             slots.add(s.name());
+        }
+        if (node instanceof CgLinkedInputPoseNode p && !scope.contains(p.name())) {
+            throw new IllegalArgumentException(id + ": input pose " + p.name() + " is none of " + scope);
+        }
+        if (node instanceof CgLinkedAnimLayerNode l) {
+            Layer layer = layers.get(l.layer());
+            if (layer == null) throw new IllegalArgumentException(id + ": " + node + " plays layer " + l.layer() + ", which the graph does not declare");
+            if (!called.add(l.layer())) throw new IllegalArgumentException(id + ": layer " + l.layer() + " is played by two nodes");
+            for (String in : l.inputs().keySet()) {
+                if (!layer.inputs().contains(in)) throw new IllegalArgumentException(id + ": " + node + " passes " + in + ", none of " + layer.inputs());
+            }
+        }
+        if (node instanceof CgLinkedAnimGraphNode g && g.graph() != null) {
+            for (String in : g.inputs().keySet()) {
+                if (!g.graph().inputs().contains(in)) {
+                    throw new IllegalArgumentException(id + ": " + node + " passes " + in + ", none of " + g.graph().inputs());
+                }
+            }
         }
         if (node instanceof CgCachedPoseNode.Use u && !saves.containsKey(u.name())) {
             throw new IllegalArgumentException(id + ": cached pose " + u.name() + " is used and never saved");
@@ -134,7 +211,7 @@ public final class CgAnimGraph {
                 throw new IllegalArgumentException(id + ": " + node + " reads " + v + ", declared " + variables.get(at));
             }
         });
-        node.children(child -> walk(child, seen, path, slots));
+        node.children(child -> walk(child, seen, path, slots, scope, called));
         path.remove(node);
     }
 
@@ -186,6 +263,16 @@ public final class CgAnimGraph {
         return saves;
     }
 
+    /** The input poses it reads when another graph plays it ({@link CgLinkedAnimGraphNode}). */
+    public List<String> inputs() {
+        return inputs;
+    }
+
+    /** Its layers by name: what it plays itself, and what it offers another graph's layer nodes. */
+    public Map<String, Layer> layers() {
+        return layers;
+    }
+
     /** The single node graph's player, else null. */
     CgSequencePlayerNode singlePlayer() {
         return single;
@@ -203,6 +290,8 @@ public final class CgAnimGraph {
         private final CgSkeleton skeleton;
         private final List<CgAnimVariable<?>> variables = new ArrayList<>();
         private final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
+        private final List<String> inputs = new ArrayList<>();
+        private final Map<String, Layer> layers = new LinkedHashMap<>();
         private CgAnimNode output;
 
         private Builder(String id, CgSkeleton skeleton) {
@@ -233,13 +322,25 @@ public final class CgAnimGraph {
             return this;
         }
 
+        /** The input poses its output reads when another graph plays it: Unreal's Input Pose nodes of the AnimGraph. */
+        public Builder inputs(String... inputs) {
+            Collections.addAll(this.inputs, inputs);
+            return this;
+        }
+
+        /** Declares {@code layer}: its own, and one a graph linking this one's layers may take. */
+        public Builder layer(Layer layer) {
+            if (layers.put(layer.name(), layer) != null) throw new IllegalArgumentException(id + " declares layer " + layer.name() + " twice");
+            return this;
+        }
+
         /**
-         * @throws IllegalArgumentException for no output, a cycle, a node read twice, an unsaved cached pose, or an
-         *                                  undeclared variable
+         * @throws IllegalArgumentException for no output, a cycle, a node read twice, an unsaved cached pose, an
+         *                                  undeclared variable, or a layer or input pose the graph does not declare
          */
         public CgAnimGraph build() {
             if (output == null) throw new IllegalArgumentException(id + " has no output");
-            return new CgAnimGraph(id, skeleton, variables, saves, output, null);
+            return new CgAnimGraph(id, skeleton, variables, saves, output, null, inputs, layers);
         }
     }
 }

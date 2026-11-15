@@ -14,6 +14,7 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.collision.CgCollisionWorld;
+import com.crystalgraphics.demo.anim.CgAnimDemo;
 import com.crystalgraphics.demo.collision.CgCollisionDemo;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
@@ -43,6 +44,8 @@ import com.crystalgraphics.vfx.CgVfxOwner;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.world.CgWorldQueries;
+import com.crystalgraphics.world.actor.kit.CgKitActor;
+import com.crystalgraphics.world.actor.kit.CgKitActorFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
@@ -75,6 +78,7 @@ import java.util.function.Supplier;
  * collision CgCollisionDemo: every collision shape, a cast, rays and a hitbox against the world, as debug lines
  * lights    CgLightsDemo: a light show of every kind of world light, particle lights and lightning; best at night
  * shadows   CgShadowsDemo: every caster on every receiver, our objects, the player, mobs and Minecraft's blocks and torches
+ * anim      CgAnimDemo: a station per animation feature, the bundled humanoids beside actors.yaml's kit characters
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -119,7 +123,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass, text) starts on it;"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass, text, anim) starts on it;"
                     + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
@@ -172,6 +176,11 @@ public final class CgRenderDemo {
         default String hud() {
             return "";
         }
+
+        /** A key of its own pressed; true when it took it. */
+        default boolean press(int key, boolean shift) {
+            return false;
+        }
     }
 
     /** A scene by name: {@code ahead} blocks from the eye to its anchor, along the view. */
@@ -190,6 +199,7 @@ public final class CgRenderDemo {
             new Kind("shadows", 22, this::shadows),
             new Kind("glass", 22, this::glass),
             new Kind("text", 14, this::text),
+            new Kind("anim", 6, this::anim),
     };
 
     private boolean installed;
@@ -230,7 +240,7 @@ public final class CgRenderDemo {
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
             CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X},
-            CgVfxDemoControls.KEYS);
+            CgVfxDemoControls.KEYS, CgAnimDemo.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
     private boolean hudShown = true;
@@ -702,6 +712,48 @@ public final class CgRenderDemo {
         };
     }
 
+    private Scene anim() {
+        List<CgKitActor.Spec> characters = new ArrayList<>(CgKitActorFile.read().values());
+        characters.addAll(CgAnimDemo.demoKits());
+        CgAnimDemo anim = new CgAnimDemo(characters);
+        return new Scene() {
+            @Override
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                anim.submit(view, x, y, z, seconds);
+            }
+
+            @Override
+            public void precache() {
+                anim.precache();
+            }
+
+            @Override
+            public boolean ready() {
+                return anim.ready();
+            }
+
+            @Override
+            public void clear() {
+                anim.clear();
+            }
+
+            @Override
+            public void delete() {
+                anim.delete();
+            }
+
+            @Override
+            public String hud() {
+                return anim.hud();
+            }
+
+            @Override
+            public boolean press(int key, boolean shift) {
+                return anim.press(key, shift);
+            }
+        };
+    }
+
     // ── frame ─────────────────────────────────────────────────────────────────
 
     private void frame(CgCamera view) {
@@ -887,9 +939,13 @@ public final class CgRenderDemo {
         }
     }
 
-    private static int[] keys(int[] own, int[] scenes) {
-        int[] all = Arrays.copyOf(own, own.length + scenes.length);
-        System.arraycopy(scenes, 0, all, own.length, scenes.length);
+    private static int[] keys(int[] own, int[]... scenes) {
+        int[] all = own;
+        for (int[] more : scenes) {
+            int at = all.length;
+            all = Arrays.copyOf(all, at + more.length);
+            System.arraycopy(more, 0, all, at, more.length);
+        }
         return all;
     }
 
@@ -912,7 +968,11 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_M -> CgShadowsDemo.cycleResolution();
             case CgKeyCodes.KEY_R -> CgShadowsDemo.cycleShadeScale();
             case CgKeyCodes.KEY_Z -> CgShadowsDemo.cycleQuality();
-            default -> CgVfxDemoControls.get().press(key, shift);
+            default -> {
+                if (current < 0 || scenes[current] == null || !scenes[current].press(key, shift)) {
+                    CgVfxDemoControls.get().press(key, shift);
+                }
+            }
         }
         hudDirty = true;
     }

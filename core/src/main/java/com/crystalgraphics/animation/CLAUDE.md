@@ -2,11 +2,11 @@
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../AGENTS.md) · using it:
 > `docs/animation/guides/graphs.md`. The data it plays is `api/animation`; the graph runtime is `graph/`, with its own
-> guide; where a mesh stands and what draws it is `render/scene/component/CgSkeletalMeshComponent`.
+> guide; montages are `montage/`; where a mesh stands and what draws it is `render/scene/component/CgSkeletalMeshComponent`.
 
 | Type | Role |
 |---|---|
-| `CgAnimInstance` | Unreal's `UAnimInstance` with its proxy: runs a `graph.CgAnimGraph` (one clip by default, `play(clip[, loop])`, `position`), `onUpdate` (the game thread's `NativeUpdateAnimation`, handed the frame's seconds), typed `set`, `slot(name)`, `rate`/`playing`, bone writes, `preUpdate` then `evaluate` (`tick` both), `skinning()`, `socket(name)` and `socket(handle, out)` in the mesh's space, `curveTarget`. Places nothing and draws nothing; headless on a server |
+| `CgAnimInstance` | Unreal's `UAnimInstance` with its proxy: runs a `graph.CgAnimGraph` (one clip by default, `play(clip[, loop])`, `position`), `linkLayers`/`unlinkLayers`/`linkGraph` (Unreal's linked layers and graphs), `montages()` (`montage.CgMontages`, updated first in `preUpdate`, as `UpdateMontage` precedes `NativeUpdateAnimation`), `onUpdate` (the game thread's `NativeUpdateAnimation`, handed the frame's seconds), typed `set`, `slot(name)`, `rate`/`playing`, bone writes, `preUpdate` then `evaluate` (`tick` both), `skinning()`, `socket(name)` and `socket(handle, out)` in the mesh's space, `curveTarget`. Places nothing and draws nothing; headless on a server |
 | `CgAnimCurveTarget` | Where an instance's material curves are set each frame: a skeletal mesh component's materials |
 | `CgMaterialCurves` | A frame's material curves: the graph's base clips summed by weight, each curve layer's over them (`MaxWeight`) |
 | `CgBoneWrite` | Unreal's modify bone: `instance.modify(bone)`, then translation, rotation and scale each `IGNORE`/`REPLACE`/`ADD` in `COMPONENT`, `PARENT` or `BONE` space, with an alpha; applied in order after the graph. Kept until the modify-bone node replaces it; no new callers |

@@ -14,7 +14,7 @@ import com.crystalgraphics.animation.graph.CgAnimNode;
 import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimNodeWriter;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
-import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.sync.CgAnimAssetPlayer;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.asset.tree.CgAssetException;
 
@@ -294,7 +294,7 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
         private final double[] lastEntry;
         private final boolean[] updated;
         private final int[] visited;
-        private final CgSequencePlayerNode.PlayerRuntime[] relevant;
+        private final CgAnimAssetPlayer[] relevant;
         private Entry[] active = new Entry[4];
         private boolean[] finished = new boolean[4];
         private int activeCount;
@@ -318,7 +318,7 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
             lastEntry = new double[n];
             updated = new boolean[n];
             visited = new int[n];
-            relevant = new CgSequencePlayerNode.PlayerRuntime[n];
+            relevant = new CgAnimAssetPlayer[n];
             statePoses = new CgAnimPose[n];
             statePoseStamp = new long[n];
             for (int i = 0; i < active.length; i++) active[i] = new Entry();
@@ -438,15 +438,14 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
         private void updateState(int s, float weight) {
             if (s < 0 || updated[s] || poses[s] == null) return;
             updated[s] = true;
-            int before = g.samples();
+            int before = g.records();
             poses[s].update(g, weight);
-            CgSequencePlayerNode.PlayerRuntime best = null;
+            CgAnimAssetPlayer best = null;
             float bestWeight = 0f;
-            for (int i = before; i < g.samples(); i++) {
-                CgSequencePlayerNode.PlayerRuntime p = g.samplePlayer(i);
-                if (p != null && g.sampleScope(i) == scope && g.sampleWeight(i) > bestWeight) {
-                    best = p;
-                    bestWeight = g.sampleWeight(i);
+            for (int i = before; i < g.records(); i++) {
+                if (g.recordScope(i) == scope && g.recordWeight(i) > bestWeight) {
+                    best = g.recordPlayer(i);
+                    bestWeight = g.recordWeight(i);
                 }
             }
             if (best != null) relevant[s] = best;
@@ -470,11 +469,12 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
                 boolean holds;
                 if (tr.automatic()) {
                     holds = false;
-                    CgSequencePlayerNode.PlayerRuntime player = relevant[s];
-                    if (player != null && player.clip() != null) {
-                        float remaining = player.clip().duration() - player.time();
-                        // Looped last frame: at its end (AnimNode_StateMachine.cpp:826-843)
-                        if (player.loops() && remaining > 0f && player.wrapped()) remaining = 0f;
+                    CgAnimAssetPlayer player = relevant[s];
+                    if (player != null && player.asset() != null) {
+                        float remaining = player.playLength() - player.accumulatedTime();
+                        // Looped last frame, its move against its delta: at its end (AnimNode_StateMachine.cpp:826-843)
+                        if (player.looping() && remaining > 0f
+                                && (player.accumulatedTime() - player.previousTime()) * player.lastDelta() < 0f) remaining = 0f;
                         boolean intoConduit = machine.states().get(next).conduit();
                         float crossfade = intoConduit && tr.overshootCorrection() ? 0f : tr.crossfade();
                         float trigger = tr.triggerTime() >= 0f ? tr.triggerTime() : crossfade;
@@ -621,18 +621,18 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
         }
 
         @Override
+        /** {@code GetRelevantAnimTimeRemaining} (AnimNode_StateMachine.cpp:658-669). */
         public float timeRemaining() {
-            CgSequencePlayerNode.PlayerRuntime p = relevant[checking];
-            if (p == null || p.clip() == null) return Float.MAX_VALUE;
-            float length = p.clip().duration();
-            return p.rate() < 0f ? p.time() : length - p.time();
+            CgAnimAssetPlayer p = relevant[checking];
+            if (p == null || p.asset() == null) return Float.MAX_VALUE;
+            return p.currentAssetLength() - p.currentAssetTimePlayRateAdjusted();
         }
 
         @Override
         public float timeRemainingFraction() {
-            CgSequencePlayerNode.PlayerRuntime p = relevant[checking];
-            if (p == null || p.clip() == null || p.clip().duration() <= 0f) return 1f;
-            return timeRemaining() / p.clip().duration();
+            CgAnimAssetPlayer p = relevant[checking];
+            if (p == null || p.asset() == null || p.currentAssetLength() <= 0f) return 1f;
+            return timeRemaining() / p.currentAssetLength();
         }
 
         @Override

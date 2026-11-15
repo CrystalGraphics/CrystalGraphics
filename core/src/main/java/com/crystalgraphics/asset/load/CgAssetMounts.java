@@ -298,6 +298,17 @@ public final class CgAssetMounts {
         }
     }
 
+    /** Every namespace mounted, in mount order; empty before {@link #mount()}. */
+    public static synchronized List<String> namespaces() {
+        return namespaces;
+    }
+
+    /** The folder namespace {@code namespace} mounted from, or null where it is not mounted. */
+    @Nullable
+    public static synchronized Path folder(String namespace) {
+        return ROOTS.get(namespace);
+    }
+
     /** Whether {@code ns} holds the format's content, by its root files and its kinds' folders. */
     static boolean holdsContent(Path ns, Set<String> kindFolders) {
         for (String f : ROOT_FILES) if (Files.isRegularFile(ns.resolve(f))) return true;

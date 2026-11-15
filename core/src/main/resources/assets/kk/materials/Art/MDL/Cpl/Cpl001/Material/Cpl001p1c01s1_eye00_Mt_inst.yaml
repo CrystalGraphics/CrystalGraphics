@@ -1,0 +1,23 @@
+_v: 1
+parent: kk:MasterMaterials/AT_Materials/CellShade_Tone_Eye
+keywords: [SWITCH_LEFTEYE]
+values:
+  eye_l_u_offset: 0.05999999865889549
+  eye_l_u_scale: 1.0
+  eye_l_v_offset: -0.014999999664723873
+  eye_l_v_scale: 1.0
+  Outline_Lenth_L: 0.6000000238418579
+  Outline_Lenth_R: 0.5
+  Outline_Slider_L: -0.10000000149011612
+  Outline_Slider_R: 0.0
+  AffectedLight: 0.20000000298023224
+  ShadowPower: 0.3700000047683716
+  TonePattern: 41.0
+  AmbientDFctor: [0.3499999940395355, 0.30000001192092896, 0.30000001192092896, 1.0]
+textures:
+  diffuse_texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_eye_di.png }
+  outline_texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/post_eye_01.png }
+unsupported: [ { what: "parameters its program does not declare", source: { unreal: { RefractionDepthBias: 0.0 } } } ]
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_eye00_Mt_inst" }
+  note: "Cpl001p1c01s1_eye00_Mt_inst: an instance"

@@ -17,8 +17,7 @@ import javax.annotation.Nullable;
  * }</pre>
  *
  * <ul>
- *   <li>{@link Type#MESH_SPACE} is an aim offset's, played by the aim offset node; the {@code clip} asset refuses it
- *       until that node exists, naming the clip.</li>
+ *   <li>{@link Type#MESH_SPACE} is an aim offset's sample, played by the aim offset node over a base pose.</li>
  *   <li>A frame past the base clip's last is clamped, as Unreal clamps it ({@code GetSequencePose}).</li>
  * </ul>
  *
@@ -64,6 +63,11 @@ public record CgAdditive(Type type, Base base, @Nullable CgAnimSequence baseClip
     /** A local-space additive against {@code base}. */
     public static CgAdditive local(Base base, @Nullable CgAnimSequence baseClip, int baseFrame) {
         return new CgAdditive(Type.LOCAL_SPACE, base, baseClip, baseFrame);
+    }
+
+    /** A mesh-space rotation additive against {@code base}: an aim offset's sample. */
+    public static CgAdditive meshSpace(Base base, @Nullable CgAnimSequence baseClip, int baseFrame) {
+        return new CgAdditive(Type.MESH_SPACE, base, baseClip, baseFrame);
     }
 
     public boolean isAdditive() {

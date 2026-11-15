@@ -1,0 +1,53 @@
+_v: 1
+shader: kk:shaders/cell_eye.shader
+state: { BlendMode: Masked, ShadingModel: kk:cell_tone, Faces: Front }
+values:
+  eye_r_v_offset: 0.0
+  eye_r_u_scale: 1.0
+  eye_l_u_scale: 1.0
+  eye_l_v_scale: 1.0
+  eye_l_u_offset: 0.0
+  eye_l_v_offset: 0.0
+  TonePattern: 0.0
+  AmbientPower: 0.800000011920929
+  LightDirectionPower: 0.0
+  LightDirection_Vertical: 0.0
+  LightDirection_Side: 1.0
+  ShadowPower: 0.5
+  CastShadowPower: 0.6000000238418579
+  Opacity_Threshold: 1.0
+  Outline_Slider_R: 0.0
+  Diffuse_Eye_Power: 1.0
+  WhiteScale: 1.100000023841858
+  WhiteEye: 0.0
+  DiffuseMaskPower: 0.5
+  CastShadowParamPower: 1.0
+  Diffuse_Power: 1.0
+  OutlineColorType: 0.0
+  Outline_Lenth_R: 0.5
+  AffectedLight: 0.0
+  Outline_Slider_L: 0.0
+  Outline_Lenth_L: 0.5
+  eye_r_u_offset: 0.0
+  eye_r_v_scale: 1.0
+  AmbientDFctor: [0.5, 0.5, 0.5, 1.0]
+textures:
+  TONE: { texture: kk:textures/Engine/EngineMaterials/Tone.png }
+  diffuse_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+  outline_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture.png }
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal:
+        OutlineID: 0.5
+        eye_t_u_scale: 1.0
+        eye_t_v_scale: 1.0
+        eye_t_u_offset: 0.0
+        eye_t_v_offset: 0.0
+        eye_f_u_scale: 1.0
+        eye_f_v_scale: 1.0
+        eye_f_u_offset: 0.0
+        eye_f_v_offset: 0.0
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/CellShade_Tone_Eye" }
+  note: "CellShade_Tone_Eye: a surface material, ported as cell_eye"

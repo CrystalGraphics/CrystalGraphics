@@ -1,0 +1,7 @@
+units:
+  length: cm
+  axes: unreal
+  angles: degrees
+  rotation: unreal_rotator
+  time: { seconds: true, frames: 30 }
+  colour: linear

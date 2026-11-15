@@ -1,0 +1,9 @@
+_v: 1
+shading:
+  cell_shade: { index: 10, base: lit, keyword: CELL_SHADE }
+  cell_hair: { index: 11, base: lit }
+  cell_ground: { index: 12, base: lit }
+  cell_tone: { index: 13, base: lit, keyword: CELL_TONE }
+  cell_tone_ground: { index: 14, base: lit, keyword: CELL_TONE_GROUND }
+  cell_reflection: { index: 15, base: lit }
+  cell_anisotropy: { index: 16, base: lit }

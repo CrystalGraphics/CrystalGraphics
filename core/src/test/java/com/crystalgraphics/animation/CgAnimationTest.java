@@ -1,6 +1,6 @@
 package com.crystalgraphics.animation;
 
-import com.crystalgraphics.api.animation.CgAnimSection;
+import com.crystalgraphics.sequence.animation.CgAnimSection;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
