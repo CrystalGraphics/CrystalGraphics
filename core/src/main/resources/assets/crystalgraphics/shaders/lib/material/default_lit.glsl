@@ -1,6 +1,7 @@
 // Unreal's Default Lit and Subsurface shading models (ShadingModels.ush's DefaultLitBxDF and SubsurfaceBxDF) for a
 // forward surface: Lambert diffuse and the GGX specular lobe (BRDF.ush's D_GGX, Vis_SmithJointApprox, F_Schlick) under
-// the sun, the four point lights nearest and the sky, whose specular is EnvBRDFApprox. The template calls it after
+// the sun, every light its grid cell lists (as ForwardLightingCommon.ush walks the cell) and the sky, whose specular is
+// EnvBRDFApprox. The template calls it after
 // surface() for ShadingModel DefaultLit and Subsurface; a material may call it too.
 //
 //     #include "crystalgraphics:shaders/lib/material/default_lit.glsl"
@@ -78,16 +79,21 @@ vec3 cg_default_lit(CgSurface s, vec3 p, bool subsurface) {
         radiance += cg_subsurface_transmission(s.subsurfaceColor, opacity, occlusion, n, v, CG_DIRECTIONAL_LIGHT_DIRECTION, sun);
     }
 
-    int nearest[4];
-    int count = cg_NearestLights(p, nearest);
-    for (int k = 0; k < min(count, 4); k++) {
-        int i = nearest[k];
-        vec3 at = cg_LightPosition(i), l = normalize(at - p);
-        vec3 color = cg_LightColor(i) * cg_light_falloff(at, cg_LightRadius(i), cg_LightFalloff(i), WORLD_LIGHTS(i).spotCos,
-                WORLD_LIGHTS(i).segmentCone, p);
-        radiance += cg_default_lit_light(diffuse, f0, rough, n, v, l, color);
-        if (subsurface) radiance += cg_subsurface_transmission(s.subsurfaceColor, opacity, occlusion, n, v, l, color);
+    // Every light of the cell, those that leave transparent surfaces unlit aside; past the walk's cap its sample stands
+    // for the rest
+    ivec2 run = cg_LightRun(p);
+    vec3 local = vec3(0.0);
+    for (int k = 0, walked = min(run.y, CG_LIGHT_CANDIDATES); k < walked; k++) {
+        int i = cg_LightOfRun(run, k);
+        CgLight light = WORLD_LIGHTS(i);
+        if (CG_LIGHT_OPAQUE_ONLY(light)) continue;
+        vec3 at = cg_LightPosition(i);
+        float falloff = cg_light_falloff(at, light.positionRadius.w, light.colorExponent.w, light.spotCos, light.segmentCone, p);
+        if (falloff <= 0.0) continue;
+        vec3 color = light.colorExponent.rgb * falloff, l = normalize(cg_LightNearest(i, p) - p);
+        local += cg_default_lit_light(diffuse, f0, rough, n, v, l, color);
+        if (subsurface) local += cg_subsurface_transmission(s.subsurfaceColor, opacity, occlusion, n, v, l, color);
     }
-    return radiance;
+    return radiance + local * CG_LIGHT_STRIDE(run.y);
 }
 #endif

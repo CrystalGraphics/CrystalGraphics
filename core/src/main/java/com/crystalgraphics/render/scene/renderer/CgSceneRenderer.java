@@ -26,6 +26,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
+import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -43,6 +44,7 @@ import com.crystalgraphics.render.scene.pass.CgViewPasses;
 import com.crystalgraphics.render.scene.renderer.feature.debug.CgOverdraw;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortion;
 import com.crystalgraphics.render.scene.renderer.feature.glow.CgSceneGlows;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgHalfResolution;
@@ -138,7 +140,7 @@ public final class CgSceneRenderer {
 
     private final CgScene scene;
     private final CgSceneColour colour = new CgSceneColour();
-    private final CgSceneLights lights = new CgSceneLights();
+    private final CgSceneLights lights = new CgSceneLights(this::sceneLights);
     private final CgSceneMedia media = new CgSceneMedia();
     private final CgSceneGlows glows = new CgSceneGlows(this);
     private final CgHalfResolution half = new CgHalfResolution(this);
@@ -198,9 +200,25 @@ public final class CgSceneRenderer {
     /** Engine side: the scene's. */
     public CgSceneRenderer(CgScene scene) {
         this.scene = scene;
+        media.add(new CgSceneMedia.Injector() {
+            @Override
+            public boolean inject(CgComputePass pass, CgSceneMedia m) {
+                return scene.primitives().injectHaze(pass, m);
+            }
+
+            @Override
+            public boolean holds() {
+                return scene.primitives().holdsHaze();
+            }
+        });
         synchronized (ALL) {
             ALL.add(this);
         }
+    }
+
+    /** The scene's light components, written into each frame's lights. */
+    private void sceneLights(CgView view, CgLightCollector out) {
+        scene.primitives().writeLights(out);
     }
 
     /** Engine side, once at the engine's start: the client world begins its frame at the host's camera hook. */

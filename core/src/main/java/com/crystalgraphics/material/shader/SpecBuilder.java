@@ -40,7 +40,7 @@ final class SpecBuilder {
     /** The most keywords a shader declares: a material's keyword mask is an int's 31 bits. */
     static final int MAX_FEATURES = 31;
 
-    private static final String[] HANDED_LIGHTS = {"cg_NearestLights", "CG_DRAW_POINT_LIGHT_"};
+    private static final String[] HANDED_LIGHTS = {"cg_LightRun", "cg_NearestLights", "CG_DRAW_POINT_LIGHT_"};
     private static final String[] HANDED_SUN = {"CG_DIRECTIONAL_SHADOW"};
     private static final String[] HANDED_SCENE = {"CG_CUSTOM_STENCIL(", "CG_SCENE_WORLD_NORMAL(", "CG_CUSTOM_DATA(",
             "CG_SHADING_MODEL_ID("};
@@ -366,7 +366,7 @@ final class SpecBuilder {
     /** Its buffers followed by the light grid's three, for a program handed the world's lights. */
     private void withHandedLights() {
         if (bufferStructs.contains("struct CgLight")) {
-            throw CgShaderError.of(path, "declares a struct CgLight, which the world's lights it reads (cg_NearestLights,"
+            throw CgShaderError.of(path, "declares a struct CgLight, which the world's lights it reads (cg_LightRun, cg_NearestLights,"
                     + " CG_DRAW_POINT_LIGHT_*) declare");
         }
         List<CgBufferDecl> out = new ArrayList<>(buffers);

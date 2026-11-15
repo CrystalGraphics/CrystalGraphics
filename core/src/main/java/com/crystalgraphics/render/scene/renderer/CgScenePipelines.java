@@ -14,9 +14,9 @@ import com.crystalgraphics.render.draw.CgPipelineForm;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
+import com.crystalgraphics.render.scene.component.CgHazeComponent;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortion;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
-import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneHaze;
 import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgHalfResolution;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgLayerPasses;
@@ -89,7 +89,7 @@ public final class CgScenePipelines {
         CgInstanceCulling.precache();
         CgSceneLights.precacheKernels();
         CgSceneMedia.precacheKernels();
-        CgSceneHaze.precacheKernels();
+        CgHazeComponent.precacheKernels();
     }
 
     /**

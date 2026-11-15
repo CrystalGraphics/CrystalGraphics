@@ -7,9 +7,12 @@ import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
+import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneMedia;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABBc;
 import org.joml.Intersectiond;
@@ -55,6 +58,11 @@ public final class CgScenePrimitives {
     private final List<CgPrimitiveComponent<?>> attached = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletal = new ArrayList<>();
     private final List<CgDecalComponent> decals = new ArrayList<>();
+    /** Its spawned lights, written into each frame's light list. */
+    final List<CgLightComponent<?>> lights = new ArrayList<>();
+    /** Its spawned haze, injected into each firing's air, and its height fogs, the first shown drawn. */
+    final List<CgHazeComponent> hazes = new ArrayList<>();
+    final List<CgHeightFogComponent> fogs = new ArrayList<>();
     /** Its spawned scene captures, and the ring frame they last ran in. */
     final List<CgSceneCaptureComponent> captures = new ArrayList<>();
     private long capturedFrame = Long.MIN_VALUE;
@@ -104,6 +112,51 @@ public final class CgScenePrimitives {
 
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return new CgDynamicComponent(this, Objects.requireNonNull(primitive, "primitive"));
+    }
+
+    public CgPointLight pointLight() {
+        return new CgPointLight(this);
+    }
+
+    public CgSpotLight spotLight() {
+        return new CgSpotLight(this);
+    }
+
+    public CgHazeComponent haze() {
+        return new CgHazeComponent(this);
+    }
+
+    public CgHeightFogComponent heightFog() {
+        return new CgHeightFogComponent(this);
+    }
+
+    /** Engine side, the media's: whether any spawned haze adds to the air. */
+    public boolean holdsHaze() {
+        for (int i = 0; i < hazes.size(); i++) if (hazes.get(i).holds()) return true;
+        return false;
+    }
+
+    /** Engine side, the media's injector: every spawned haze into this firing's air; whether any added. */
+    public boolean injectHaze(CgComputePass pass, CgSceneMedia media) {
+        boolean added = false;
+        for (int i = 0; i < hazes.size(); i++) added |= hazes.get(i).inject(pass, media);
+        return added;
+    }
+
+    /** Engine side, the height fog pass's: the fog its views draw, the first spawned that shows; null for none. */
+    @Nullable
+    public CgHeightFogComponent shownFog() {
+        for (int i = 0; i < fogs.size(); i++) if (fogs.get(i).shows()) return fogs.get(i);
+        return null;
+    }
+
+    public CgTubeLight tubeLight() {
+        return new CgTubeLight(this);
+    }
+
+    /** Engine side, the scene renderer's once a frame: every spawned light into {@code out}, where it stands. */
+    public void writeLights(CgLightCollector out) {
+        for (int i = 0; i < lights.size(); i++) lights.get(i).write(out);
     }
 
     /** A camera drawing {@code scene}, whose primitives these are, into a render target. */

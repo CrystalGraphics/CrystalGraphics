@@ -279,8 +279,8 @@ public final class CgVfxShowcase {
             // Each glowing sphere lights the world round it: the ground below lit to about its strength times its colour,
             // twice over (π for Unreal's Lambert). Unshadowed: it sits inside its own sphere, which casts.
             float light = strength * above * above * 2f * (float) Math.PI;
-            scene.lights().addLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light, GLOW[k][2] * light, 0f)
-                    .shadowed(false);
+            scene.onceLights().pointLinear(cx, cy, cz, LIGHT_RADIUS, GLOW[k][0] * light, GLOW[k][1] * light,
+                    GLOW[k][2] * light).castsShadow(false);
             // The black hole has no ball to glow round: its disk lights the floor alone.
             if (k == BLACK_HOLE) continue;
             transform.identity().scale(GLOW_REACH[k]);

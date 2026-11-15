@@ -13,6 +13,7 @@ import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.scene.component.CgMeshCollector;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
 import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxArcRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxBeamRendererProperties;
@@ -461,12 +462,13 @@ public final class CgVfxFrame {
         float reach = light[3] * s, k = strength * effect.presence() * s * s;
         if (reach <= 0f || k <= 0f) return;
         effect.bound(x, y, z, reach);
-        system.scene().lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                light[1] * k, light[2] * k, 0f).source(light[4] * s).shadowed(def.castShadows());
+        CgLightCollector.Light at = system.scene().onceLights().pointLinear(effect.originX + x, effect.originY + y,
+                effect.originZ + z, reach, light[0] * k, light[1] * k, light[2] * k).source(light[4] * s)
+                .castsShadow(def.castShadows());
         float ax = transform.m10(), ay = transform.m11(), az = transform.m12();
         if (ax * ax + ay * ay + az * az > 0f) {
-            if (light[5] > 0f) system.scene().lights().tube(ax, ay, az, light[5] * s);
-            if (def.spot()) system.scene().lights().spot(ax, ay, az, light[6], light[7]);
+            if (light[5] > 0f) at.tube(ax, ay, az, light[5] * s);
+            if (def.spot()) at.spot(ax, ay, az, light[6], light[7]);
         }
         CgVfxTrace.count(LIGHTS, 1);
     }
@@ -493,8 +495,8 @@ public final class CgVfxFrame {
             from = i;
             if (chord <= 0f) continue;
             effect.bound(x, y, z, reach);
-            system.scene().lights().addLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach, light[0] * k,
-                    light[1] * k, light[2] * k, 0f).tube(dx, dy, dz, chord).source(light[4] * s).shadowed(shadows);
+            system.scene().onceLights().pointLinear(effect.originX + x, effect.originY + y, effect.originZ + z, reach,
+                    light[0] * k, light[1] * k, light[2] * k).tube(dx, dy, dz, chord).source(light[4] * s).castsShadow(shadows);
             CgVfxTrace.count(LIGHTS, 1);
         }
     }

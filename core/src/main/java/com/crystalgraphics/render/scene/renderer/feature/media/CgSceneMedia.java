@@ -118,6 +118,11 @@ public final class CgSceneMedia {
 
         /** Adds what it holds in the air: {@link #dispatch} once per kernel; false when it adds nothing this firing. */
         boolean inject(CgComputePass pass, CgSceneMedia media);
+
+        /** Whether it may add anything now: while none does, the air is not recorded at all. */
+        default boolean holds() {
+            return true;
+        }
     }
 
     private static final String KERNELS = "crystalgraphics:shaders/world/media/media.compute";
@@ -178,9 +183,10 @@ public final class CgSceneMedia {
         injectors.remove(injector);
     }
 
-    /** Whether any injector is added: the air may hold something to dim or to light. */
+    /** Whether any injector holds anything: the air may hold something to dim or to light. */
     public boolean holdsAny() {
-        return !injectors.isEmpty();
+        for (Injector injector : injectors) if (injector.holds()) return true;
+        return false;
     }
 
     /** Where the firing's eye is, absolute: what an injector subtracts to place what it holds as froxels are placed. */
@@ -254,7 +260,7 @@ public final class CgSceneMedia {
                           float targetWidth, float targetHeight, CgSceneLights lights) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_RECORD)) {
             lit = false;
-            if (injectors.isEmpty()) return null;
+            if (!holdsAny()) return null;
             int tile = PIXELS.get();
             int w = Math.max(1, (int) Math.ceil(targetWidth / tile)), h = Math.max(1, (int) Math.ceil(targetHeight / tile));
             boolean resized = a == null || w != width || h != height;

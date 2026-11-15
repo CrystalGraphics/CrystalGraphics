@@ -53,13 +53,15 @@ CgStageDefinition.Builder arena = CgStageDefinition.builder("mymod:arena").ancho
 String yaml = CgAssetYaml.write(arena.tree(), CgStageKinds.STAGE);
 ```
 
-A height fog of your own, without a stage, is `CgHeightFog`, in blocks:
+A height fog of your own, without a stage, is a scene component, in blocks, its height where it stands:
 
 ```java
-CgRenderStage.Registration fog = new CgHeightFog().density(0.2f).heightFalloff(10f).height(64)
-        .colour(0.41f, 0.89f, 1f).maxOpacity(0.65f).show();
-fog.close();
+CgHeightFogComponent fog = CgScene.client().heightFog().at(0, 64, 0).density(0.2f).heightFalloff(10f)
+        .colour(0.41f, 0.89f, 1f).maxOpacity(0.65f).spawn();
+fog.remove();
 ```
+
+A scene draws one height fog, the first spawned that shows; a stage's fog is spawned into the client scene for it.
 
 - **The anchor is where the stage sits.** Every place in it (a bounded volume's `at`, the fog's `height`) keeps its
   distance from the anchor, so placing the anchor on the fight's ground puts the game's fog at the height it had over

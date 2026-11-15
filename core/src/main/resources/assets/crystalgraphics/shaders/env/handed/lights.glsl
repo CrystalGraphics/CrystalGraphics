@@ -1,8 +1,15 @@
 #pragma once
 // The world's lights handed to a program carrying its own lighting (CgWorldLights): the light grid, read from the cell
-// a point falls in. Included by the compiler after a material's buffers wherever its source names cg_NearestLights or
-// CG_DRAW_POINT_LIGHT_*, which then binds WORLD_LIGHTS, WORLD_LIGHT_CELLS, WORLD_LIGHT_INDICES and the _cg_Light*
-// properties. In a transparent firing the grid is this frame's; in an opaque one, the last frame's.
+// a point falls in. Included by the compiler after a material's buffers wherever its source names cg_LightRun,
+// cg_NearestLights or CG_DRAW_POINT_LIGHT_*, which then binds WORLD_LIGHTS, WORLD_LIGHT_CELLS, WORLD_LIGHT_INDICES and
+// the _cg_Light* properties. In a transparent firing the grid is this frame's; in an opaque one, the last frame's.
+//
+//     ivec2 run = cg_LightRun(p);                       // every light of p's cell, as a surface is lit
+//     for (int k = 0, walked = min(run.y, CG_LIGHT_CANDIDATES); k < walked; k++) {
+//         int i = cg_LightOfRun(run, k);
+//         lit += cg_LightColor(i) * ... (cg_LightNearest(i, p) - p) ...;
+//     }
+//     lit *= CG_LIGHT_STRIDE(run.y);
 //
 //     int idx[4];
 //     int n = cg_NearestLights(p, idx);                 // camera-relative p
@@ -10,6 +17,11 @@
 //     vec3 at = CG_DRAW_POINT_LIGHT_POSITION(0);        // the light nearest the draw's origin, either stage
 
 #include "crystalgraphics:shaders/world/lights/lights.glsl"
+
+// Light i's camera-relative position.
+vec3 cg_LightPosition(int i) {
+    return WORLD_LIGHTS(i).positionRadius.xyz + _cg_LightEye.xyz;
+}
 
 // A point off screen reads the cell nearest it on screen: the grid covers the view alone.
 int cg_light_cell_at(vec3 p) {
@@ -21,6 +33,27 @@ int cg_light_cell_at(vec3 p) {
     ivec3 cell = cg_light_cell(q, _cg_LightZ.xyz, _cg_LightRays.xy, _cg_LightRays.zw, _cg_LightTile.xy,
             ivec2(_cg_LightGrid.xy));
     return (cell.z * int(_cg_LightGrid.y) + cell.y) * int(_cg_LightGrid.x) + cell.x;
+}
+
+// The lights the grid listed for camera-relative p's cell, as Unreal's GetCulledLightDataGrid answers them: where its
+// run starts in WORLD_LIGHT_INDICES, then how many; none while the grid holds no light.
+ivec2 cg_LightRun(vec3 p) {
+    if (_cg_LightGrid.w < 0.5) return ivec2(0);
+    int e = cg_light_cell_at(p);
+    return ivec2(int(WORLD_LIGHT_CELLS(e * 4 + 1)), int(WORLD_LIGHT_CELLS(e * 4)));
+}
+
+// The k-th light of a walk of run, of min(run.y, CG_LIGHT_CANDIDATES): past the cap, evenly strided candidates, whose
+// sum times CG_LIGHT_STRIDE(run.y) stands for the run's.
+int cg_LightOfRun(ivec2 run, int k) {
+    return int(WORLD_LIGHT_INDICES(run.x + CG_LIGHT_CANDIDATE(k, run.y, 0.5)));
+}
+
+// Light i's point nearest camera-relative p: its centre, or for a tube the nearest of its line (CapsuleLight.ush).
+vec3 cg_LightNearest(int i, vec3 p) {
+    vec3 at = cg_LightPosition(i), line = WORLD_LIGHTS(i).segmentCone.xyz;
+    float length2 = dot(line, line);
+    return length2 > 0.0 ? at + line * clamp(dot(p - at, line) / length2, -0.5, 0.5) : at;
 }
 
 // The lights reaching camera-relative p, at most four, nearest first, as indices for the readers below; how many. The
@@ -53,10 +86,6 @@ int cg_NearestLights(vec3 p, out int idx[4]) {
     return min(found, 4);
 }
 
-// Light i's camera-relative position.
-vec3 cg_LightPosition(int i) {
-    return WORLD_LIGHTS(i).positionRadius.xyz + _cg_LightEye.xyz;
-}
 
 // Its linear colour times its intensity.
 vec3 cg_LightColor(int i) {

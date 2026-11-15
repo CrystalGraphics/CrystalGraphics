@@ -5,7 +5,8 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
-import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightSettings;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -94,10 +95,10 @@ public final class CgShadowsDemo {
         mode.set((Math.round(mode.get()) + 1) % 3);
     }
 
-    /** The shadowed lights' shading at full, half and quarter resolution ({@code CgSceneLights.SHADE_SCALE}). */
+    /** The shadowed lights' shading at full, half and quarter resolution ({@code CgLightSettings.SHADE_SCALE}). */
     public static void cycleShadeScale() {
-        int at = Integer.highestOneBit(CgSceneLights.SHADE_SCALE.get());
-        CgSceneLights.SHADE_SCALE.set(at >= 4 ? 1 : at * 2);
+        int at = Integer.highestOneBit(CgLightSettings.SHADE_SCALE.get());
+        CgLightSettings.SHADE_SCALE.set(at >= 4 ? 1 : at * 2);
     }
 
     /** The effects quality, Low to Ultra and round again: what each tier draws (the player's setting, saved). */
@@ -109,7 +110,7 @@ public final class CgShadowsDemo {
     /** The HUD's line for the switches every lit scene shares. */
     public static String lightingLine() {
         return "\nShadows [O]: " + (shadowsOn() ? "on" : "off")
-                + " | MegaLights resolution [R]: " + switch (Integer.highestOneBit(CgSceneLights.SHADE_SCALE.get())) {
+                + " | MegaLights resolution [R]: " + switch (Integer.highestOneBit(CgLightSettings.SHADE_SCALE.get())) {
                     case 1 -> "full";
                     case 2 -> "half";
                     default -> "quarter";
@@ -138,7 +139,7 @@ public final class CgShadowsDemo {
         if (material == null) return;
         float t = (float) (seconds % 3600.0);
         CgMesh cube = CgMeshShapes.cube(), ball = CgMeshShapes.sphere(24, 32);
-        CgSceneLights lights = scene.lights();
+        CgLightCollector lights = scene.onceLights();
 
         // The plaza, a slab of ours laid on the ground, and what stands on it.
         box(scene, cube, x, y + 0.125, z, PLAZA * 2, 0.25, PLAZA * 2, 0.82f, 0.82f, 0.8f);
@@ -152,7 +153,7 @@ public final class CgShadowsDemo {
         double a = t * 0.35;
         double lx = x + Math.cos(a) * 4, ly = top + 5, lz = z + Math.sin(a) * 4;
         CgCollisionDebug.shape(MARK, pose.at(lx, ly, lz), 0xFFFFE0B0);
-        lights.add(lx, ly, lz, 16f, 0xFFFFE0B0, lit(2.5f, 5f), 0f).source(0.15f);
+        lights.point(lx, ly, lz, 16f, 0xFFFFE0B0, lit(2.5f, 5f)).source(0.15f);
 
         // West: a cube floating over Minecraft's ground, for the sun's shadow of our objects on it.
         box(scene, cube, x - STATION - 2, y + 3, z, 2, 2, 2, 0.9f, 0.9f, 0.9f);
@@ -162,7 +163,7 @@ public final class CgShadowsDemo {
         box(scene, cube, x + STATION + 2, y + 1.5, z, 1, 3, 1, 0.6f, 0.6f, 0.65f);
         double px = x + STATION + 2, pz = z - 3;
         CgCollisionDebug.shape(MARK, pose.at(px, y + 1.2, pz), 0xFFB0D0FF);
-        lights.add(px, y + 1.2, pz, 12f, 0xFFB0D0FF, lit(2.5f, 3f), 0f).source(0.1f);
+        lights.point(px, y + 1.2, pz, 12f, 0xFFB0D0FF, lit(2.5f, 3f)).source(0.1f);
     }
 
     /** An intensity lighting a surface it faces {@code d} blocks off to {@code peak} times its colour, as Unreal's simple light. */

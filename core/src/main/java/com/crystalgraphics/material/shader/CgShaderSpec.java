@@ -284,7 +284,7 @@ public final class CgShaderSpec {
         return media;
     }
 
-    /** Whether it names the world's lights ({@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}): handed the grid. */
+    /** Whether it names the world's lights ({@code cg_LightRun}, {@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}): handed the grid. */
     public boolean handedLights() {
         return handedLights;
     }

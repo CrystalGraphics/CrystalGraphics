@@ -2,6 +2,7 @@ package com.crystalgraphics.render.post;
 
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.render.post.fog.CgHeightFogPass;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.post.bloom.CgBloom;
@@ -74,11 +75,13 @@ public final class CgPostStack {
     private final CgPostLooks looks = new CgPostLooks();
     private final CgPostCrossfade crossfade = new CgPostCrossfade();
     private final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
+    /** The height fog of the scene each view draws. */
+    private final CgHeightFogPass fog = new CgHeightFogPass();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     private final CgPostDebug debug = CgPostDebug.fromProperty();
     /** Every effect, by point then order then when it was added: replaced whole, so recording reads a snapshot. */
-    private volatile CgPostEffect[] effects = debug == null ? new CgPostEffect[]{bloom, looks, crossfade}
-            : new CgPostEffect[]{bloom, looks, crossfade, debug};
+    private volatile CgPostEffect[] effects = debug == null ? new CgPostEffect[]{fog, bloom, looks, crossfade}
+            : new CgPostEffect[]{fog, bloom, looks, crossfade, debug};
     /** Every volume, by priority ascending then when it was made: replaced whole, as the effects are. */
     private volatile CgPostVolume[] volumes = new CgPostVolume[0];
     /** The volumes blended at the camera, this firing. */

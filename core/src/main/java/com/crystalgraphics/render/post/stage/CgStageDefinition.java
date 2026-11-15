@@ -87,7 +87,7 @@ public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog f
     }
 
     /**
-     * Its height fog in the host's units: {@code CgHeightFog}'s values.
+     * Its height fog in the host's units: {@code CgHeightFogComponent}'s values, its height from the anchor.
      *
      * @param density per block: the component's {@code FogDensity} over 1000, as Unreal divides it
      * @param falloff per block: the component's {@code FogHeightFalloff} over 1000
@@ -290,7 +290,7 @@ public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog f
                 length(units, v.get("radius")), length(units, v.get("blend_radius")), List.copyOf(blendables));
     }
 
-    /** The component's fields to {@code CgHeightFog}'s: Unreal's / 1000 (SceneCore.cpp), then per block. */
+    /** The component's fields to {@code CgHeightFogComponent}'s: Unreal's / 1000 (SceneCore.cpp), then per block. */
     private static Fog fog(Map<?, ?> f, double[] anchor, CgUnits units) {
         float density = (float) perLength(units, number(f.get("density"), 0.02f) / 1000.0);
         float falloff = (float) perLength(units, number(f.get("height_falloff"), 0.2f) / 1000.0);

@@ -7,9 +7,10 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.render.post.CgPostMaterial;
 import com.crystalgraphics.render.post.CgPostStack;
-import com.crystalgraphics.render.post.fog.CgHeightFog;
 import com.crystalgraphics.render.post.volume.CgPostBlendable;
 import com.crystalgraphics.render.post.volume.CgPostVolume;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgHeightFogComponent;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
 /**
@@ -39,7 +40,7 @@ public final class CgStage implements AutoCloseable {
     private final List<CgPostBlendable> blendables = new ArrayList<>();
     private final List<CgPostStack.Registration> registrations = new ArrayList<>();
     @Nullable
-    private final CgHeightFog fog;
+    private final CgHeightFogComponent fog;
     private float weight = 1f;
     private boolean closed;
 
@@ -59,10 +60,9 @@ public final class CgStage implements AutoCloseable {
         }
         CgStageDefinition.Fog f = definition.fog();
         if (f != null) {
-            fog = new CgHeightFog().density(f.density()).heightFalloff(f.falloff()).height(y + f.height())
+            fog = CgScene.client().heightFog().at(x, y + f.height(), z).density(f.density()).heightFalloff(f.falloff())
                     .colour(f.red(), f.green(), f.blue()).maxOpacity(f.maxOpacity()).startDistance(f.start())
-                    .cutoffDistance(f.cutoff());
-            registrations.add(fog.show());
+                    .cutoffDistance(f.cutoff()).spawn();
         } else {
             fog = null;
         }
@@ -101,5 +101,6 @@ public final class CgStage implements AutoCloseable {
         closed = true;
         for (CgPostVolume v : volumes) v.close();
         for (CgPostStack.Registration r : registrations) r.close();
+        if (fog != null) fog.remove();
     }
 }

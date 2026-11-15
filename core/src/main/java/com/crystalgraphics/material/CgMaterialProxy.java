@@ -1326,7 +1326,7 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * Whether its shader reads the world's lights it is handed ({@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}):
+     * Whether its shader reads the world's lights it is handed ({@code cg_LightRun}, {@code cg_NearestLights}, {@code CG_DRAW_POINT_LIGHT_*}):
      * the world renderer binds the light grid to its draws. Parses it if nothing has: its first draw's capture needs
      * the grid bound. False for a shader that cannot be parsed.
      */

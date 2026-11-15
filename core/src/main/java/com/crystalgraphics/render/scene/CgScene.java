@@ -14,11 +14,18 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 
 import com.crystalgraphics.render.scene.component.CgDecalComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
+import com.crystalgraphics.render.scene.component.CgHazeComponent;
+import com.crystalgraphics.render.scene.component.CgHeightFogComponent;
 import com.crystalgraphics.render.scene.component.CgMeshCollector;
 import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
+import com.crystalgraphics.render.scene.component.CgDynamicLights;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
+import com.crystalgraphics.render.scene.component.CgPointLight;
+import com.crystalgraphics.render.scene.component.CgSpotLight;
+import com.crystalgraphics.render.scene.component.CgTubeLight;
 import com.crystalgraphics.render.scene.component.CgSceneCaptureComponent;
 import com.crystalgraphics.render.scene.component.CgScenePrimitives;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
@@ -234,6 +241,65 @@ public final class CgScene {
         return primitives.dynamic(primitive);
     }
 
+    /**
+     * What {@link #dynamicLights} and {@link #gpuLights} answer: closed, the source is collected no more.
+     *
+     * <pre>{@code
+     * CgScene.Registration embers = scene.dynamicLights(source);
+     * embers.close();
+     * }</pre>
+     */
+    public interface Registration extends AutoCloseable {
+        @Override
+        void close();
+    }
+
+    /** A light shining every way from a point: Unreal's point light. */
+    public CgPointLight pointLight() {
+        return primitives.pointLight();
+    }
+
+    /** A light limited to a cone along its +x: Unreal's spot light. */
+    public CgSpotLight spotLight() {
+        return primitives.spotLight();
+    }
+
+    /** A light coming from a line along its +x: Unreal's point light with a source length. */
+    public CgTubeLight tubeLight() {
+        return primitives.tubeLight();
+    }
+
+    /** A box of haze its lights glow in and cut shafts through: Unreal's local fog volume in role. */
+    public CgHazeComponent haze() {
+        return primitives.haze();
+    }
+
+    /** Fog thickest at and below the height it stands at: Unreal's exponential height fog. */
+    public CgHeightFogComponent heightFog() {
+        return primitives.heightFog();
+    }
+
+    /**
+     * Many short-lived lights, collected from {@code source} each frame until closed: sparks, embers, a demo's moving
+     * lamps. Unreal's simple lights.
+     *
+     * <pre>{@code
+     * CgScene.Registration on = scene.dynamicLights((view, out) -> out.point(x, y, z, 2f, 0xFFFF8030, 6f));
+     * }</pre>
+     */
+    public Registration dynamicLights(CgDynamicLights source) {
+        CgSceneLights lights = renderer.lights();
+        lights.add(source);
+        return () -> lights.remove(source);
+    }
+
+    /** A kernel's lights, appended into the frame's list each transparent firing until closed: a light per particle. */
+    public Registration gpuLights(CgSceneLights.Appender appender) {
+        CgSceneLights lights = renderer.lights();
+        lights.add(appender);
+        return () -> lights.remove(appender);
+    }
+
     /** A camera drawing this scene into a render target a material samples: a mirror, a portal, a monitor. */
     public CgSceneCaptureComponent capture() {
         return primitives.capture(this);
@@ -260,6 +326,24 @@ public final class CgScene {
      */
     public CgMeshCollector once() {
         return primitives.once();
+    }
+
+    /**
+     * Lights shining in this frame only (the ring frame they are added in), Unreal's simple lights: a demo's lamps
+     * moved each frame, an effect's flash. For a light that stays, a {@link #pointLight()} component is cheaper to
+     * keep; for many a frame from one owner, {@link #dynamicLights}.
+     *
+     * <pre>{@code
+     * scene.onceLights().point(x, y + 2, z, 8f, 0xFFFFB060, 30f);
+     * scene.onceLights().point(x, y + 6, z, 12f, 0xFFFFFFFF, 300f).spot(0f, -1f, 0f, 20f, 35f).castsShadow(false);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Render thread, before the frame's first world firing: one added after it shines from the next view on.</li>
+     * </ul>
+     */
+    public CgLightCollector onceLights() {
+        return renderer.lights().frame();
     }
 
     /**

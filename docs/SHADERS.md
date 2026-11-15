@@ -251,7 +251,8 @@ void surface(in v2f i, inout CgSurface s) {
 #### Unreal's lit surfaces: `ShadingModel DefaultLit` and `Subsurface`
 
 A surface lit as Unreal's Default Lit model lights it: the material says what the surface is, and the engine lights it
-after `surface()` with Lambert diffuse and the GGX lobe under the sun, the four nearest point lights and the sky. A
+after `surface()` with Lambert diffuse and the GGX lobe under the sun, every light its grid cell lists (as Unreal's
+forward lighting walks the cell) and the sky. A
 port of an Unreal material with a lit shading model is written this way; a block-like surface that should match
 Minecraft's terrain stays `WorldLit`.
 
@@ -310,12 +311,13 @@ the engine hands each draw, in world passes, in both stages unless said:
 | `CG_ENTITY_LIGHT0`, `CG_ENTITY_LIGHT1` | Minecraft's two fixed lights on entities, in world axes, normalised; the second from below where the host says the dimension lights entities as the Nether does (`CgHostEnvironment.netherLighting()`). Vanilla's shading is `min(1, (max(0, n·L0) + max(0, n·L1)) * 0.6 + 0.4)` |
 | `CG_DRAW_POINT_LIGHT_POSITION(i)`, `_COLOR(i)`, `_PARAMS(i)` | the four point lights nearest the draw's origin, `i` 0 to 3, nearest first, camera-relative; `COLOR` is linear times intensity, and `PARAMS` is (1, inner radius, radius, falloff: 0 linear, 1 inverse square); `PARAMS.x` 0 where there are fewer |
 | `int cg_NearestLights(vec3 p, out int idx[4])` | the same at any camera-relative `p`, as indices for `cg_LightPosition(i)`, `cg_LightColor(i)`, `cg_LightInnerRadius(i)`, `cg_LightRadius(i)` and `cg_LightFalloff(i)` (0 inverse square, else Unreal's exponent); answers how many, the rest of `idx` -1 |
+| `ivec2 cg_LightRun(vec3 p)`, `int cg_LightOfRun(ivec2 run, int k)`, `vec3 cg_LightNearest(int i, vec3 p)` | every light of the grid cell camera-relative `p` falls in, as Unreal's forward lighting walks it: the run's start and count; its `k`-th light, walking `min(run.y, CG_LIGHT_CANDIDATES)` and weighing the sum by `CG_LIGHT_STRIDE(run.y)` past the cap; a light's point nearest `p`, on its line for a tube. DefaultLit lights this way |
 | `CG_DIRECTIONAL_SHADOW(p)`, `_COLOR`, `_WRAP` | fragment only: the casting directional's visibility at `p`, 1 lit; the colour a shadow tints toward; a wrap of N.L |
 
 - The directional and the sky split the lightmap at the draw's light (`CG_OBJECT_LIGHT`) as the world's lights split
   it for the sun's shadow: the sun takes `CG_SUN_SHARE` of what sky light adds by day (`CG_DAYLIGHT`), and the sky
   keeps the rest, block light included. By night the directional is black.
-- **The point lights are the world's light grid** (`env/handed/lights.glsl`): a program naming `cg_NearestLights` or
+- **The point lights are the world's light grid** (`env/handed/lights.glsl`): a program naming `cg_LightRun`, `cg_NearestLights` or
   `CG_DRAW_POINT_LIGHT_*`, itself or in a file it includes, is handed the grid's three buffers after its own
   `Buffers { }` (leaving it one) and the grid's placement as `_cg_Light*` properties. A transparent firing reads this
   frame's grid, an opaque one the last frame's: the grid is binned in the transparent firing. A particle's origin is

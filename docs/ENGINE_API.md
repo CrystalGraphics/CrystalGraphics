@@ -152,6 +152,11 @@ CgSceneCaptureComponent mirror = scene.capture().target(mirrorTarget).at(x, y, z
 mirror.view().hide(player.root());                                     // a view like any: hidden and show-only lists
 frozen.copyCamera(CgView.main()).captureScene();                       // the game's view, copied, captured once
 
+// Lights, haze and height fog: Unreal's light components, local fog volume and exponential height fog (LIGHTS.md)
+CgPointLight torch = scene.pointLight().at(x, y + 1.5, z).radius(6f).color(0xFFFF9030).intensity(40f).spawn();
+CgHazeComponent haze = scene.haze().box(x - 20, y, z - 20, x + 20, y + 12, z + 20).density(0.03f, 3f).spawn();
+CgHeightFogComponent fog = scene.heightFog().at(0, 64, 0).density(0.2f).heightFalloff(10f).spawn();
+
 // The engine's base surface material, for a model with no shader of its own: a texture and Unreal's base properties
 CgMaterial cloth = CgSurfaceMaterial.of("mymod:cloth", "mymod:textures/cloth.png").blend(CgBlendMode.ALPHA).twoSided().build();
 
@@ -300,7 +305,7 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   extinction into a froxel grid over the view (`CgSceneMedia`: 16 pixels across, 128 slices to 256 blocks spaced as
   Unreal's volumetric fog spaces them), which is summed from the eye out into what gets through, bound as `cg_Media`
   to every translucent pass. The fluids and lit grids inject themselves. The world's lights glow in what is there
-  (`CgSceneHaze` is a box of haze to see them in; `LIGHTS.md` § *In the air*). GPU zones `world.mediaInject`,
+  (`scene.haze()`, a `CgHazeComponent`, is a box of haze to see them in; `LIGHTS.md` § *In the air*). GPU zones `world.mediaInject`,
   `world.mediaScatter` and `world.mediaIntegrate`; a view with nothing in the air records nothing.
 
 ```java
@@ -313,20 +318,21 @@ CgScene.client().media().add((pass, media) -> {                 // a volume of y
 
   An injector with rows of its own placed from the view's eye (camera-relative corners, as the fluids') uploads them
   in `Injector.upload(recording, media)`, which runs before the view's pass opens, and binds them in `inject`.
-- **Lights** (`scene.lights()`, `CgSceneLights`): **[`LIGHTS.md`](LIGHTS.md)**. Unreal's local lights (points, spots
-  and tubes, with a source radius) from the CPU or appended by kernels, binned into Unreal 5's light grid and lit
+- **Lights** (`scene.pointLight()`, `spotLight()`, `tubeLight()`; `CgSceneLights`): **[`LIGHTS.md`](LIGHTS.md)**.
+  Unreal's local lights (points, spots and tubes, with a source radius) as scene components, as one-frame lights
+  (`scene.onceLights()`), collected each frame (`scene.dynamicLights(source)`) or appended by kernels
+  (`scene.gpuLights(appender)`), binned into Unreal 5's light grid and lit
   **deferred**: one full-screen pass after the level, its G-buffer rebuilt from Minecraft's depth and colour, so no
   draw of Minecraft's changes. They only add light, inverse-squared by default; 30,000 cost 0.43 ms. Blocks and
-  entities shadow them (MegaLights' rays, through `CgVoxelWindow` and `CgEntityBoxes`); `.shadowed(false)`
+  entities shadow them (MegaLights' rays, through `CgVoxelWindow` and `CgEntityBoxes`); `castsShadow(false)`
   opts a light out.
 
 ```java
-CgSceneLights lights = CgScene.client().lights();                                    // each frame, before the views draw
-lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                // a point
-lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);    // a spot, pointing down
-lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
-lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                    // a glowing ball on the ground
-lights.add(x, y, z, 4f, 0xFFFFC080, 10f, 0f).shadowed(false);                       // casts no shadow
+CgPointLight torch = scene.pointLight().at(x, y + 1.5, z).radius(6f).color(0xFFFF9030).intensity(40f).spawn();
+scene.spotLight().at(x, y + 6, z).direction(0f, -1f, 0f).cone(20f, 35f).radius(12f).intensity(300f).spawn();
+scene.tubeLight().between(ax, ay, az, bx, by, bz).radius(24f).color(0xFF60A0FF).intensity(40f).spawn();
+scene.pointLight().at(x, y, z).radius(4f).color(0xFFFFC080).intensity(10f).castsShadow(false).spawn();  // no shadow
+scene.onceLights().point(x, y, z, 8f, 0xFFFFFFFF, 60f);                            // this frame only: a flash
 ```
 - **Distortion**: a translucent row whose material has a Distortion pass (`docs/SHADERS.md` § *The bend*) adds an
   offset into a layer of an RGBA16F array, `DISTORTION_SCALE` of the view's size, after the translucent pass, hidden

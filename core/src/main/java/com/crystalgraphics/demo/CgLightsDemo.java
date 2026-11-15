@@ -1,6 +1,7 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgHazeComponent;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.api.material.CgBlendMode;
@@ -11,7 +12,7 @@ import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
 import com.crystalgraphics.easing.CgEasings;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.render.scene.renderer.feature.media.CgSceneHaze;
+import com.crystalgraphics.render.scene.renderer.feature.light.CgLightCollector;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.shape.CgPose;
@@ -27,6 +28,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxRenderers;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
+import javax.annotation.Nullable;
 import org.joml.Matrix4f;
 
 /**
@@ -93,9 +95,9 @@ public final class CgLightsDemo {
      */
     private static final int SWEEP = Integer.getInteger("crystalgraphics.demo.lightsSweep", 0);
     private static final String SWEEP_KIND = System.getProperty("crystalgraphics.demo.lightsSweepKind", "exact");
-    /** The haze over the arena, added to the world's media while the show plays. */
-    private final CgSceneHaze haze = new CgSceneHaze();
-    private boolean hazing;
+    /** The haze over the arena, spawned while the show plays. */
+    @Nullable
+    private CgHazeComponent haze;
     private final CgPose pose = new CgPose();
     private CgVfxSystemInstance<?> playing;
     private double playingX = Double.NaN, playingY, playingZ;
@@ -173,13 +175,10 @@ public final class CgLightsDemo {
     /** The show round a ground point {@code (x, y, z)} as it is at {@code seconds}. */
     public void submit(CgScene scene, double x, double y, double z, double seconds) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, ZONE_SUBMIT)) {
-            CgSceneLights lights = scene.lights();
+            CgLightCollector lights = scene.onceLights();
             float t = (float) (seconds % 3600.0);
-            haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).density(HAZE, 4f);
-            if (!hazing) {
-                scene.media().add(haze);
-                hazing = true;
-            }
+            if (haze == null) haze = scene.haze().density(HAZE, 4f).box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20).spawn();
+            else haze.box(x - 24, y - 1, z - 20, x + 24, y + 18, z + 20);
             mirrorBall(lights, x, y + 10, z - 2, t);
             searchlights(lights, x, y, z, t);
             carousel(lights, x, y, z + 4, t);
@@ -201,36 +200,36 @@ public final class CgLightsDemo {
     }
 
     /** Sixteen narrow spots round a turning ball, each its own colour, sweeping circles over the ground. */
-    private void mirrorBall(CgSceneLights lights, double x, double y, double z, float t) {
+    private void mirrorBall(CgLightCollector lights, double x, double y, double z, float t) {
         CgCollisionDebug.shape(BALL_MARK, pose.at(x, y, z), 0xFFFFFFFF);
         for (int i = 0; i < BALL; i++) {
             double turn = i * 2 * Math.PI / BALL + t * 0.7, tilt = Math.toRadians(30 + 35 * ((i * 7) % BALL) / (double) BALL);
             float dx = (float) (Math.cos(turn) * Math.sin(tilt)), dy = (float) -Math.cos(tilt);
             float dz = (float) (Math.sin(turn) * Math.sin(tilt));
-            lights.add(x, y, z, 30f, hue(i / (float) BALL + t * 0.05f), lit(4f, 14f), 0f).spot(dx, dy, dz, 3f, 7f)
-                    .scattering(BEAM_SCATTERING);
+            lights.point(x, y, z, 30f, hue(i / (float) BALL + t * 0.05f), lit(4f, 14f)).spot(dx, dy, dz, 3f, 7f)
+                    .volumetric(BEAM_SCATTERING);
         }
     }
 
     /** Two white searchlights from the arena's front corners, crossing and parting over it. */
-    private void searchlights(CgSceneLights lights, double x, double y, double z, float t) {
+    private void searchlights(CgLightCollector lights, double x, double y, double z, float t) {
         for (int side = -1; side <= 1; side += 2) {
             double sx = x + side * 15, sz = z + 12, sweep = Math.sin(t * 0.45 + side) * 0.9;
             float dx = (float) (-side * Math.cos(sweep) * 0.7), dz = (float) (-Math.cos(sweep * 0.7) * 0.9 + Math.sin(sweep) * 0.3);
             CgCollisionDebug.shape(MARK, pose.at(sx, y + 3, sz), 0xFFFFF4E0);
-            lights.add(sx, y + 3, sz, 45f, 0xFFFFF4E0, lit(4f, 12f), 0f).spot(dx, -0.3f, dz, 5f, 10f)
-                    .scattering(BEAM_SCATTERING);
+            lights.point(sx, y + 3, sz, 45f, 0xFFFFF4E0, lit(4f, 12f)).spot(dx, -0.3f, dz, 5f, 10f)
+                    .volumetric(BEAM_SCATTERING);
         }
     }
 
     /** Twelve rainbow lights wheeling round the arena's middle, bobbing as they go. */
-    private void carousel(CgSceneLights lights, double x, double y, double z, float t) {
+    private void carousel(CgLightCollector lights, double x, double y, double z, float t) {
         for (int i = 0; i < CAROUSEL; i++) {
             double a = i * 2 * Math.PI / CAROUSEL + t * 0.9;
             double lx = x + Math.cos(a) * 6, lz = z + Math.sin(a) * 6, ly = y + 1.4 + 0.6 * Math.sin(t * 2.2 + i);
             int colour = hue(i / (float) CAROUSEL + t * 0.08f);
             CgCollisionDebug.shape(MARK, pose.at(lx, ly, lz), colour);
-            lights.add(lx, ly, lz, 7f, colour, lit(3f, 1.4f), 0f);
+            lights.point(lx, ly, lz, 7f, colour, lit(3f, 1.4f));
         }
     }
 
@@ -246,7 +245,7 @@ public final class CgLightsDemo {
     }
 
     /** A neon arch of tubes, a pulse of brightness chasing round it as its colours turn. */
-    private void arch(CgSceneLights lights, double x, double y, double z, float t) {
+    private void arch(CgLightCollector lights, double x, double y, double z, float t) {
         double radius = 6;
         for (int i = 0; i < ARCH; i++) {
             double a0 = Math.PI * i / ARCH, a1 = Math.PI * (i + 1) / ARCH;
@@ -255,13 +254,13 @@ public final class CgLightsDemo {
             float pulse = 0.35f + 0.65f * (float) Math.pow(0.5 + 0.5 * Math.cos((i / (float) ARCH - t * 0.6) * 2 * Math.PI), 4);
             int colour = hue(0.75f + 0.25f * i / ARCH + t * 0.1f);
             CgCollisionDebug.line(x0, y0, z, x1, y1, z, colour);
-            lights.add((x0 + x1) / 2, (y0 + y1) / 2, z, 14f, colour, lit(3f * pulse, 5f), 0f)
+            lights.point((x0 + x1) / 2, (y0 + y1) / 2, z, 14f, colour, lit(3f * pulse, 5f))
                     .tube((float) (x1 - x0), (float) (y1 - y0), 0f, (float) Math.hypot(x1 - x0, y1 - y0));
         }
     }
 
     /** A red and a blue saber swinging at each other; where they meet, a white flash. */
-    private void duel(CgSceneLights lights, double x, double y, double z, float t) {
+    private void duel(CgLightCollector lights, double x, double y, double z, float t) {
         float swing = (float) Math.sin(t * 2.6);
         float clash = (float) Math.pow(Math.max(0, Math.sin(t * 2.6 + Math.PI / 2)), 12);
         for (int side = -1; side <= 1; side += 2) {
@@ -269,29 +268,30 @@ public final class CgLightsDemo {
             float dx = (float) (Math.cos(a) * -side), dy = (float) Math.sin(a);
             int colour = side < 0 ? 0xFFFF3030 : 0xFF3060FF;
             CgCollisionDebug.line(hx, hy, z, hx + dx * 1.8, hy + dy * 1.8, z, colour);
-            lights.add(hx + dx * 0.9, hy + dy * 0.9, z, 10f, colour, lit(5f, 2f), 0f).tube(dx, dy, 0f, 1.8f);
+            lights.point(hx + dx * 0.9, hy + dy * 0.9, z, 10f, colour, lit(5f, 2f)).tube(dx, dy, 0f, 1.8f);
         }
-        if (clash > 0.05f) lights.add(x, y + 2.6, z, 16f, 0xFFFFFFFF, lit(8f * clash, 4f), 0f);
+        if (clash > 0.05f) lights.point(x, y + 2.6, z, 16f, 0xFFFFFFFF, lit(8f * clash, 4f));
     }
 
     /** Lightning far overhead every {@link #STORM} seconds: three flashes flooding the whole arena. */
-    private void lightning(CgSceneLights lights, double x, double y, double z, float t) {
+    private void lightning(CgLightCollector lights, double x, double y, double z, float t) {
         float at = t % STORM, strength = 0f;
         for (float[] flash : FLASHES) {
             if (at >= flash[0] && at < flash[0] + flash[1]) strength = Math.max(strength, 1f - (at - flash[0]) / flash[1] * 0.6f);
         }
-        if (strength > 0f) lights.add(x - 6, y + 40, z - 10, 90f, 0xFFD8E4FF, lit(2.5f * strength, 40f), 0f);
+        if (strength > 0f) lights.point(x - 6, y + 40, z - 10, 90f, 0xFFD8E4FF, lit(2.5f * strength, 40f));
     }
 
     /** {@link #SWEEP}'s lights, on a golden-angle disc so any count covers it evenly. */
-    private static void sweep(CgSceneLights lights, double x, double y, double z) {
+    private static void sweep(CgLightCollector lights, double x, double y, double z) {
         for (int i = 0; i < SWEEP; i++) {
             double r = 16 * Math.sqrt((i + 0.5) / SWEEP), a = i * 2.399963;
-            lights.add(x + Math.cos(a) * r, y + 1.5, z + Math.sin(a) * r, 7f, hue(i * 0.618f), lit(3f, 1.4f), 0f);
+            CgLightCollector.Light light = lights.point(x + Math.cos(a) * r, y + 1.5, z + Math.sin(a) * r, 7f,
+                    hue(i * 0.618f), lit(3f, 1.4f));
             switch (SWEEP_KIND) {
-                case "exact" -> lights.shadowed(false).sampled(false).scattering(0f);
-                case "shadowed" -> lights.scattering(0f);
-                case "scatter" -> lights.shadowed(false).sampled(false);
+                case "exact" -> light.castsShadow(false).sampled(false).volumetric(0f);
+                case "shadowed" -> light.volumetric(0f);
+                case "scatter" -> light.castsShadow(false).sampled(false);
                 default -> throw new IllegalArgumentException("crystalgraphics.demo.lightsSweepKind: " + SWEEP_KIND
                         + ", not exact, shadowed or scatter");
             }
@@ -313,8 +313,8 @@ public final class CgLightsDemo {
     public void clear() {
         if (playing != null) playing.kill();
         playing = null;
-        if (hazing) CgScene.client().media().remove(haze);
-        hazing = false;
+        if (haze != null) haze.remove();
+        haze = null;
     }
 
     public void delete() {

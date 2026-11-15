@@ -25,38 +25,64 @@ must light Minecraft's world.
 
 ## 1. Adding lights
 
-Add every light every frame it shines, before the world records (a tick function in `CgTickGroup.SUBMIT`, or the
-same place a draw is submitted):
+A light is a scene component, kept until removed: Unreal's point and spot lights, and its point light with a source
+length (a tube). Spawn it once; move it, recolour it or dim it whenever you like, and each frame draws it as it stands.
 
 ```java
-CgSceneLights lights = CgScene.client().lights();
-lights.add(x, y + 1.5, z, 6f, 0xFFFF9030, 40f, 0f);                                 // a point
-lights.add(x, y + 6, z, 12f, 0xFFFFF0D0, 300f, 0f).spot(0f, -1f, 0f, 20f, 35f);     // a spot, pointing down
-lights.add(midX, midY, midZ, 24f, 0xFF60A0FF, 40f, 0f).tube(dirX, dirY, dirZ, 30f); // a tube, 30 blocks long
-lights.add(x, y + 0.1, z, 3f, 0xFFFFB040, 2f, 0f).source(0.1f);                     // a glowing ball on the ground
+CgScene scene = CgScene.client();
+CgPointLight torch = scene.pointLight().at(x, y + 1.5, z).radius(6f).color(0xFFFF9030).intensity(40f).spawn();
+CgSpotLight lamp = scene.spotLight().at(x, y + 6, z).direction(0f, -1f, 0f).cone(20f, 35f)       // a spot, pointing down
+        .radius(12f).color(0xFFFFF0D0).intensity(300f).spawn();
+CgTubeLight beam = scene.tubeLight().between(ax, ay, az, bx, by, bz)                              // a line from a to b
+        .radius(24f).color(0xFF60A0FF).intensity(40f).spawn();
+CgPointLight ember = scene.pointLight().at(x, y + 0.1, z).radius(3f).color(0xFFFFB040).intensity(2f)
+        .sourceRadius(0.1f).spawn();                                                              // a glowing ball on the ground
+
+torch.at(nx, ny, nz);          // moved
+torch.intensity(flicker);      // dimmed
+torch.remove();                // gone
 ```
 
-`add(x, y, z, radius, argb, intensity, exponent)`:
-
-| Argument | Means |
+| Every light | Means |
 |---|---|
-| `x, y, z` | absolute world position, in doubles |
-| `radius` | blocks to where it reaches nothing (Unreal's AttenuationRadius) |
-| `argb` | its colour, `0xAARRGGBB` in sRGB; alpha multiplies it |
-| `intensity` | its brightness: under the inverse square, the surface colour it adds one block away facing it is `colour × intensity / π` |
-| `exponent` | 0 for the inverse square (physical, the default everywhere); any other is Cascade's `(1 - d²/r²)^exponent` (§ 3) |
+| `at(x, y, z)` | where it stands, absolute, in doubles; `attach(parent, socket)` carries it on a mesh or a bone |
+| `radius(blocks)` | blocks to where it reaches nothing (Unreal's AttenuationRadius); 10 unless set |
+| `color(argb)` | its colour, `0xAARRGGBB` in sRGB; alpha multiplies it. White unless set |
+| `intensity(i)` | its brightness: under the inverse square, the surface colour it adds one block away facing it is `colour × intensity / π` |
+| `exponent(e)` | 0, the default, for the inverse square (physical); any other is Cascade's `(1 - d²/r²)^exponent` (§ 3) |
+| `sourceRadius(blocks)` | a ball that size (Unreal's SourceRadius), so a surface it touches or half sinks into is lit |
+| `castsShadow(on)`, `sampled(on)` | whether it is shadowed, and how (§ 7); both on unless set |
+| `volumetric(i)` | how strongly it lights the air (§ 9); 1 unless set |
+| `visible(false)` | it lights nothing until shown again |
 
-| Then | Makes the light added last |
+| Kind | Its shape |
 |---|---|
-| `.spot(dx, dy, dz, inner, outer)` | a spot along the direction, full within `inner` degrees, nothing past `outer` (half angles, Unreal's InnerConeAngle and OuterConeAngle, clamped as SpotLightComponent clamps them) |
-| `.tube(dx, dy, dz, length)` | a line `length` blocks long along the direction, centred where it was added (Unreal's SourceLength) |
-| `.source(radius)` | a ball `radius` blocks across (Unreal's SourceRadius), so a surface it touches or half sinks into is lit |
+| `CgPointLight` | every way from where it stands |
+| `CgSpotLight` | a cone along its +x: `direction(dx, dy, dz)` turns it there, or give it a turn. `cone(inner, outer)` is full within `inner` degrees and nothing past `outer` (half angles, Unreal's InnerConeAngle and OuterConeAngle; 0 and 44 unless set) |
+| `CgTubeLight` | a line `length(blocks)` long along its +x, centred where it stands (Unreal's SourceLength); `between(a, b)` places, turns and sizes it at once |
 
-- **A light lives one frame.** Add it again each frame it shines.
-- `addLinear(x, y, z, radius, r, g, b, exponent)` takes a linear colour already times its intensity: what code that
-  works out its colour adds.
+**Lights that live one frame** (a flash, a demo's lamps placed by hand each frame) and **many short-lived ones** (a
+spray of sparks) take no component:
+
+```java
+scene.onceLights().point(x, y, z, 8f, 0xFFFFFFFF, 60f);                                 // this frame only
+scene.onceLights().point(x, y + 6, z, 12f, 0xFFFFF0D0, 300f).spot(0f, -1f, 0f, 20f, 35f).castsShadow(false);
+
+CgScene.Registration sparks = scene.dynamicLights((view, out) -> {                        // asked every frame
+    for (Spark s : live) out.point(s.x, s.y, s.z, 2f, 0xFFFF8030, 6f).castsShadow(false);
+});
+sparks.close();                                                                           // asked no more
+```
+
+- `point(x, y, z, radius, argb, intensity)` answers the light it wrote, to shape: `.spot(...)`, `.tube(dx, dy, dz,
+  length)`, `.source(radius)`, `.exponent(e)`, `.castsShadow(on)`, `.sampled(on)`, `.volumetric(i)`.
+- `pointLinear(x, y, z, radius, r, g, b)` takes a linear colour already times its intensity: what code that works out
+  its colour adds.
+- Add a once light before the frame's first world firing (a tick function in `CgTickGroup.SUBMIT`, or where a draw is
+  submitted); one added later shines from the next view on.
+- A `dynamicLights` source runs every frame on the render thread: allocate nothing in it.
 - Past `CAPACITY` (65,536, `-Dcrystalgraphics.world.lights`) lights a frame, the rest are dropped and counted.
-- A kernel's lights: an `Appender` (`world.lights().add(appender)`), its positions from the firing's eye
+- A kernel's lights: `scene.gpuLights(appender)`, a `CgSceneLights.Appender`, its positions from the firing's eye
   (`cameraX()`, `_LightEye`); `CgSceneLights`' javadoc has the example.
 
 ## 2. How they light Minecraft: deferred, from what Minecraft drew
@@ -156,14 +182,16 @@ Effects add lights without calling `add`:
 
 ## 7. Shadows
 
-A light added from the CPU casts shadows: the blocks and entities between it and a surface withhold it. Nothing is
+A light casts shadows unless told not to: the blocks and entities between it and a surface withhold it. Nothing is
 drawn from the light's side, so there are no shadow maps and no caster passes: each pixel traces rays to its lights,
 as Unreal 5's **MegaLights** does, ported from its shaders pass by pass.
 
 ```java
-lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f);                    // casts shadows
-lights.add(x, y, z, 8f, 0xFFFF9030, 40f, 0f).shadowed(false);    // Unreal's bCastShadows off: sampled, no rays
-lights.add(x, y, z, 2f, 0xFFFFE080, 4f, 0f).shadowed(false).sampled(false);   // bAllowMegaLights off: shaded exactly
+scene.pointLight().at(x, y, z).radius(8f).color(0xFFFF9030).intensity(40f).spawn();             // casts shadows
+scene.pointLight().at(x, y, z).radius(8f).color(0xFFFF9030).intensity(40f)
+        .castsShadow(false).spawn();                                     // Unreal's bCastShadows off: sampled, no rays
+scene.pointLight().at(x, y, z).radius(2f).color(0xFFFFE080).intensity(4f)
+        .castsShadow(false).sampled(false).spawn();                      // bAllowMegaLights off: shaded exactly
 ```
 
 | Pass | Unreal (MegaLights) | Here |
@@ -283,7 +311,8 @@ vec3 extra = cg_LocalLightAt(cg_FragmentPosition());     // the same light by ha
   (two Surface panes, one facing the light). `CgLightsDemo` shows it: glass round the carousel.
 
 - **Handed to a program carrying its own lighting** (`SHADERS.md` § *What a program carrying its own lighting
-  reads*): the four lights nearest a draw, or a point, read from the grid cell it falls in (`env/handed/lights.glsl`),
+  reads*): every light of the grid cell a point falls in (`cg_LightRun`, as Unreal's forward lighting walks its cell;
+  DefaultLit lights from them all), or the four nearest a draw or a point (`env/handed/lights.glsl`),
   the grid bound to its draws by `CgSceneLights.hand`. `--mode=lights-volume` checks a pane handed the light.
 
 ## 9. In the air
@@ -292,8 +321,8 @@ Smoke, gas and haze in the world's media (`CgSceneMedia`'s froxels: whatever an 
 lights, with shafts where the lights' shadows cut them: Unreal's volumetric fog lighting its froxels.
 
 ```java
-CgSceneHaze haze = new CgSceneHaze().box(x - 24, y, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f);
-CgScene.client().media().add(haze);           // a haze to see the lights in; VFX smoke lights the same way
+CgHazeComponent haze = scene.haze().box(x - 24, y, z - 20, x + 24, y + 18, z + 20).density(0.03f, 4f).spawn();
+haze.remove();                                // a haze to see the lights in; VFX smoke lights the same way
 ```
 
 - **Scattering** (`world/lights/volume.compute`'s `Scatter`, between the injectors and the integration): each froxel holding
@@ -302,13 +331,14 @@ CgScene.client().media().add(haze);           // a haze to see the lights in; VF
   scattering (its extinction, albedo white). A shadowed light is traced from the froxel, at most
   `crystalgraphics.world.lightsAirShadowRays` (1) a froxel; past them a froxel's lights are unshadowed. At 4 in the lights
   demo at 2560x1440 in game the air took 1.5 ms to light, at 1 0.6.
-- **A light's strength in the air** is its intensity times its `scattering` (Unreal's VolumetricScatteringIntensity,
+- **A light's strength in the air** is its intensity times its `volumetric` (Unreal's VolumetricScatteringIntensity,
   VolumetricFog.usf:554; 1 unless set, 0 for none), apart from how it lights surfaces. At 1, in the demo's thin haze,
   a searchlight's beam eight blocks from its source adds 2 of 255 to the haze: a light meant to show its beam takes
   more, as an artist raises it in Unreal (`CgLightsDemo`'s beams take 8).
 
 ```java
-lights.add(x, y, z, 45f, 0xFFFFF4E0, 1800f, 0f).spot(dx, -0.3f, dz, 5f, 10f).scattering(8f);
+scene.spotLight().at(x, y, z).direction(dx, -0.3f, dz).cone(5f, 10f).radius(45f).color(0xFFFFF4E0).intensity(1800f)
+        .volumetric(8f).spawn();
 ```
 
 - **History** (Unreal's temporal reprojection, VolumetricFog.usf:856-921, :1173-1180): each firing lights a froxel at a

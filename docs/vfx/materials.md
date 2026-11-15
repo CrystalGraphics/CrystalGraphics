@@ -233,7 +233,7 @@ float a = cg_depth_fade(i.colour.a, 0.5);
 
 A particle lit as Unreal's Default Lit shading model lights it, for a ported material whose game lit it so (stage
 debris): the material writes what the surface is, and the engine lights it after `surface()`, Lambert and the GGX
-lobe under the sun, the four nearest point lights and the sky
+lobe under the sun, every light its grid cell lists and the sky
 ([`../SHADERS.md`](../SHADERS.md) § *Unreal's lit surfaces*).
 
 ```glsl

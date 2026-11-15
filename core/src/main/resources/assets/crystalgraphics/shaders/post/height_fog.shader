@@ -1,4 +1,4 @@
-// Unreal's exponential height fog (CgHeightFog): one layer, no directional inscattering, cubemap or volumetric fog.
+// Unreal's exponential height fog (CgHeightFogPass): one layer, no directional inscattering, cubemap or volumetric fog.
 // HeightFogCommon.ush's GetExponentialHeightFog, read for its behaviour, in the host's blocks with Y up: the density
 // along the ray from the eye, past the start distance, integrated through 2^(-falloff * height); the scene keeps the
 // transmittance, held above 1 - max opacity, and gains (1 - it) times the fog's colour. Nothing past the cutoff.

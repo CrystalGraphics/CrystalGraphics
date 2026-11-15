@@ -90,7 +90,7 @@ public class KitProgramsLinkTest {
 
             void surface(in v2f i, inout CgSurface s) {
                 float a = cg_particle_sub_uv(_Mask, i.uv0, i.uv1, i.frames, true).r * i.colour.a * i.dynamic.x;
-                s.baseColor = i.colour.rgb;
+                s.emissive = i.colour.rgb;
                 s.opacity = cg_depth_fade(a, _Fade);
             }
             """;
@@ -149,7 +149,7 @@ public class KitProgramsLinkTest {
             }
 
             void surface(in v2f i, inout CgSurface s) {
-                s.baseColor = i.colour.rgb * texture(_Mask, i.uv).r * (1.0 + i.heat);
+                s.emissive = i.colour.rgb * texture(_Mask, i.uv).r * (1.0 + i.heat);
             }
             """;
 
@@ -167,7 +167,7 @@ public class KitProgramsLinkTest {
             void surface(in v2f i, inout CgSurface s) {
                 s.opacityMask = i.colour.a;
                 s.pixelDepthOffset = i.colour.a * 0.25;
-                s.baseColor = i.colour.rgb;
+                s.emissive = i.colour.rgb;
             }
             """;
 
@@ -236,7 +236,7 @@ public class KitProgramsLinkTest {
             void surface(in v2f i, inout CgSurface s) {
                 vec4 macro = CG_PARTICLE_MACRO_UV;
                 vec2 uv = (gl_FragCoord.xy / CG_RESOLUTION * 2.0 - 1.0 - macro.xy) * macro.zw + 0.5;
-                s.baseColor = i.colour.rgb * texture(_Mask, uv).r;
+                s.emissive = i.colour.rgb * texture(_Mask, uv).r;
             }
             """;
 
@@ -245,7 +245,7 @@ public class KitProgramsLinkTest {
             #domain surface
             Material { BlendMode Additive  ShadingModel Unlit  VertexFactory Nowhere }
 
-            void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }
+            void surface(in v2f i, inout CgSurface s) { s.emissive = vec3(1.0); }
             """;
 
     /** Whether failure {@code f} is a particle usage's variant, with or without other keywords, stopped by the port's own {@code #error}. */
