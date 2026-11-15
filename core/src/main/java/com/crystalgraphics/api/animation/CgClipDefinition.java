@@ -30,6 +30,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
  * _v: 1
  * root_motion: { enabled: true, lock: ref_pose }
  * sync_markers: [ { name: foot_l, at: 0.1 }, { name: foot_r, at: 0.45 } ]
+ * warp_windows: [ { target: opponent, start: 0.2, end: 0.9 } ]       # a rush that lands on its opponent
  * }</pre>
  *
  * <ul>
@@ -47,14 +48,17 @@ import com.crystalgraphics.asset.tree.CgAssetException;
  * @param baseClip       {@code clip_frame}'s clip id, else null
  * @param baseFrame      the base frame
  * @param notifies       its notify sequence's id, else null for the default
+ * @param warpWindows    its warp windows
  */
 public record CgClipDefinition(String id, List<CgSyncMarker> markers, CgRootMotion rootMotion, CgAdditive.Type additiveType,
-                               CgAdditive.Base additiveBase, @Nullable String baseClip, int baseFrame, @Nullable String notifies) {
+                               CgAdditive.Base additiveBase, @Nullable String baseClip, int baseFrame, @Nullable String notifies,
+                               List<CgWarpWindow> warpWindows) {
 
     public static final CgAssetCompiler<CgClipDefinition> COMPILER = (asset, deps) -> compile(asset.id(), asset.resolved());
 
     public CgClipDefinition {
         markers = Collections.unmodifiableList(new ArrayList<>(markers));
+        warpWindows = List.copyOf(warpWindows);
     }
 
     /** Registers {@link #COMPILER} as the clip kind's. */
@@ -77,7 +81,7 @@ public record CgClipDefinition(String id, List<CgSyncMarker> markers, CgRootMoti
             }
             additive = new CgAdditive(additiveType, additiveBase, base, baseFrame);
         }
-        return new CgClipSettings(markers, rootMotion, additive, notifies);
+        return new CgClipSettings(markers, rootMotion, additive, notifies, warpWindows);
     }
 
     /** {@code tree}'s settings. */
@@ -110,6 +114,24 @@ public record CgClipDefinition(String id, List<CgSyncMarker> markers, CgRootMoti
             }
         }
         String notifies = tree.get("notifies") == null ? null : String.valueOf(tree.get("notifies"));
-        return new CgClipDefinition(id, markers, rootMotion, type, base, baseClip, baseFrame, notifies);
+        List<CgWarpWindow> windows = new ArrayList<>();
+        if (tree.get("warp_windows") instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) windows.add(window(id + ".warp_windows[" + i + "]", (Map<?, ?>) list.get(i)));
+        }
+        return new CgClipDefinition(id, markers, rootMotion, type, base, baseClip, baseFrame, notifies, windows);
+    }
+
+    private static CgWarpWindow window(String at, Map<?, ?> w) {
+        if (!(w.get("target") instanceof String target)) throw new CgAssetException(at + ".target: a warp target's name");
+        CgWarpWindow.Rotation method = CgWarpWindow.Rotation.valueOf(String.valueOf(w.get("method") == null ? "slerp" : w.get("method"))
+                .toUpperCase(Locale.ROOT));
+        return new CgWarpWindow(target, number(w, "start", 0f), number(w, "end", 0f), !Boolean.FALSE.equals(w.get("translation")),
+                !Boolean.FALSE.equals(w.get("ignore_height")), !Boolean.FALSE.equals(w.get("rotation")), Boolean.TRUE.equals(w.get("facing")),
+                method, number(w, "rotation_time", 1f), number(w, "max_rotation_rate", 0f), number(w, "max_speed_ratio", 0f),
+                number(w, "yaw_offset", 0f));
+    }
+
+    private static float number(Map<?, ?> m, String key, float dflt) {
+        return m.get(key) instanceof Number n ? n.floatValue() : dflt;
     }
 }

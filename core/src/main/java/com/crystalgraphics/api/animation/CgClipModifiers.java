@@ -173,6 +173,75 @@ public final class CgClipModifiers {
     }
 
     /**
+     * {@code clip} with its travel moved onto its root: each frame the root goes horizontally where {@code source}
+     * (the pelvis, usually) is, keeping its own height and turn, and the root's children are placed back where they
+     * were, so the pose is unchanged and the travel becomes root motion. For a clip whose author moved the pelvis
+     * instead of the root: a rush, a dash, a teleport strike.
+     *
+     * <pre>{@code
+     * CgAnimSequence rush = CgClipModifiers.encodeRootBone(rawRush, goku, "root", "pelvis");
+     * float covered = rush.extractRootMotion(goku, 0f, rush.duration(), false, new Matrix4f()).getTranslation(new Vector3f()).length();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>The root's direct children are given a track each, every frame keyed.</li>
+     *   <li>Root motion is turned on, locked at the root's rest.</li>
+     * </ul>
+     *
+     * @throws IllegalArgumentException where a bone is not in the skeleton
+     */
+    public static CgAnimSequence encodeRootBone(CgAnimSequence clip, CgSkeleton skeleton, String rootBone, String source) {
+        int root = bone(skeleton, rootBone, clip), from = bone(skeleton, source, clip), parent = skeleton.parent(root);
+        List<Integer> children = new ArrayList<>();
+        for (int b = 0; b < skeleton.boneCount(); b++) if (skeleton.parent(b) == root) children.add(b);
+        int n = clip.frameCount();
+        float[] rootT = new float[n * 3], rootR = new float[n * 4], rootS = new float[n * 3];
+        float[][] childT = new float[children.size()][n * 3], childR = new float[children.size()][n * 4], childS = new float[children.size()][n * 3];
+        CgAnimPose pose = new CgAnimPose(skeleton);
+        Matrix4f rootNew = new Matrix4f(), m = new Matrix4f(), inv = new Matrix4f();
+        Vector3f t = new Vector3f(), p = new Vector3f(), s = new Vector3f();
+        Quaternionf q = new Quaternionf();
+        float dt = (float) (1.0 / clip.frameRate());
+        for (int f = 0; f < n; f++) {
+            pose.rest();
+            clip.sample(pose, Math.min(f * dt, clip.duration()));
+            pose.resolve();
+            pose.component(from, m).getTranslation(p);
+            rootNew.set(pose.component(root));
+            rootNew.getTranslation(t);
+            rootNew.setTranslation(p.x, t.y, p.z);
+            // the root's local: under its parent as posed
+            if (parent >= 0) m.set(pose.component(parent)).invertAffine().mul(rootNew);
+            else m.set(rootNew);
+            write(m, f, rootT, rootR, rootS, t, q, s);
+            rootNew.invertAffine(inv);
+            for (int c = 0; c < children.size(); c++) {
+                m.set(inv).mul(pose.component(children.get(c)));
+                write(m, f, childT[c], childR[c], childS[c], t, q, s);
+            }
+        }
+        CgAnimSequence out = clip.withTrack(skeleton.name(root), rootT, rootR, rootS);
+        for (int c = 0; c < children.size(); c++) out = out.withTrack(skeleton.name(children.get(c)), childT[c], childR[c], childS[c]);
+        return out.with(out.settings().withRootMotion(new CgRootMotion(true, skeleton.name(root), CgRootMotion.Lock.REF_POSE, false)));
+    }
+
+    private static void write(Matrix4f m, int f, float[] t, float[] r, float[] s, Vector3f tv, Quaternionf q, Vector3f sv) {
+        m.getTranslation(tv);
+        m.getNormalizedRotation(q);
+        m.getScale(sv);
+        t[f * 3] = tv.x;
+        t[f * 3 + 1] = tv.y;
+        t[f * 3 + 2] = tv.z;
+        r[f * 4] = q.x;
+        r[f * 4 + 1] = q.y;
+        r[f * 4 + 2] = q.z;
+        r[f * 4 + 3] = q.w;
+        s[f * 3] = sv.x;
+        s[f * 3 + 1] = sv.y;
+        s[f * 3 + 2] = sv.z;
+    }
+
+    /**
      * {@code clip} with a distance curve named {@code curve}: each frame's horizontal root motion distance from the
      * clip's stop, negative before it (approaching) and positive after (leaving). The stop is the clip's end where
      * {@code stopAtEnd} (a stop clip), else its slowest moment (a pivot; a start's is its first frame).

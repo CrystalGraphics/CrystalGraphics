@@ -107,12 +107,30 @@ public final class CgBodyKinds {
             .property("base_frame", INT).forms(CgValueForm.CONSTANT).defaultValue(0).flags(CgPropertyFlag.HEADLESS)
             .register();
 
-    /** {@code clips/}: a clip's settings ({@code UAnimSequence}'s): sync markers, root motion, additive, notifies. */
+    /** A span of a clip whose root motion is bent so the character ends it at a named target. */
+    static final CgType WARP_WINDOW = CgTypes.struct("crystalgraphics:clip.warp_window")
+            .property("target", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("start", FLOAT).forms(CgValueForm.CONSTANT).required().quantity(CgQuantity.TIME).flags(CgPropertyFlag.HEADLESS)
+            .property("end", FLOAT).forms(CgValueForm.CONSTANT).required().quantity(CgQuantity.TIME).flags(CgPropertyFlag.HEADLESS)
+            .property("translation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("ignore_height", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("facing", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("method", CgValueType.enumOf("slerp", "slerp_with_clamped_rate", "constant_rate", "scale")).defaultValue("slerp")
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_time", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_rotation_rate", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_speed_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("yaw_offset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code clips/}: a clip's settings ({@code UAnimSequence}'s): sync markers, root motion, additive, notifies, warp windows. */
     public static final CgType CLIP = CgTypes.kind("crystalgraphics:clip").folder("clips").version(1)
             .property("sync_markers", CgValueType.listOf(CgValueType.struct(SYNC_MARKER))).flags(CgPropertyFlag.HEADLESS)
             .property("root_motion", CgValueType.struct(ROOT_MOTION)).flags(CgPropertyFlag.HEADLESS)
             .property("additive", CgValueType.struct(ADDITIVE)).flags(CgPropertyFlag.HEADLESS)
             .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)
+            .property("warp_windows", CgValueType.listOf(CgValueType.struct(WARP_WINDOW))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Anim graph ───────────────────────────────────────────────────────────────────────

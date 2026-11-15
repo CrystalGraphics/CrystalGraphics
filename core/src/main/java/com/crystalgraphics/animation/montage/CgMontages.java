@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation.montage;
 
 import java.util.ArrayList;
+import com.crystalgraphics.animation.warping.CgMotionWarping;
 import com.crystalgraphics.animation.graph.CgRootMotionParams;
 import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.Arrays;
@@ -66,6 +67,7 @@ public final class CgMontages {
     private CgMontageInstance rootMotionMontage;
     private CgRootMotionMode mode = CgRootMotionMode.FROM_MONTAGES_ONLY;
     private final CgRootMotionParams rootMotion = new CgRootMotionParams();
+    private final CgMotionWarping warping = new CgMotionWarping();
     private long frame;
     private int[] eventKinds = new int[4];
     private CgMontageInstance[] eventMontages = new CgMontageInstance[4];
@@ -75,6 +77,14 @@ public final class CgMontages {
     /** A character of {@code skeleton}'s; its anim instance makes it. */
     public CgMontages(CgSkeleton skeleton) {
         this.skeleton = Objects.requireNonNull(skeleton, "skeleton");
+    }
+
+    /**
+     * Its motion warping: the targets its root-motion montage's warp windows aim at. {@code anim.motionWarping()}
+     * hands out the same.
+     */
+    public CgMotionWarping motionWarping() {
+        return warping;
     }
 
     CgSkeleton skeleton() {

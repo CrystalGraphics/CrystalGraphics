@@ -17,6 +17,7 @@ import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.warping.CgMotionWarping;
 import com.crystalgraphics.animation.montage.CgMontages;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgAnimPose;
@@ -200,6 +201,18 @@ public final class CgAnimInstance {
      */
     public CgMontages montages() {
         return montages;
+    }
+
+    /**
+     * Its motion warping: where the targets its moves' warp windows aim at stand. Set them on the game thread before
+     * and while a window plays.
+     *
+     * <pre>{@code
+     * anim.motionWarping().target("opponent", x, y, z, yaw);
+     * }</pre>
+     */
+    public CgMotionWarping motionWarping() {
+        return montages.motionWarping();
     }
 
     /**
@@ -398,6 +411,7 @@ public final class CgAnimInstance {
      */
     public CgAnimInstance placedBy(@Nullable Consumer<Matrix4d> placedBy) {
         this.placedBy = placedBy;
+        montages.motionWarping().placedBy(placedBy);
         return this;
     }
 

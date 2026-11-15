@@ -21,6 +21,7 @@ com/crystalgraphics/animation/CgAnimInstance
   method public linkLayers (Lcom/crystalgraphics/animation/graph/CgAnimGraph;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public montages ()Lcom/crystalgraphics/animation/montage/CgMontages;
+  method public motionWarping ()Lcom/crystalgraphics/animation/warping/CgMotionWarping;
   method public onUpdate (Lcom/crystalgraphics/animation/CgAnimInstance$Update;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public placedBy (Ljava/util/function/Consumer;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public play (Lcom/crystalgraphics/api/animation/CgAnimSequence;)Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -1447,6 +1448,7 @@ com/crystalgraphics/animation/montage/CgMontages
   method public active ()Ljava/util/List;
   method public consumeRootMotion (FLorg/joml/Matrix4f;)Z
   method public listen (Lcom/crystalgraphics/animation/montage/CgMontages$Listener;)Lcom/crystalgraphics/animation/montage/CgMontages;
+  method public motionWarping ()Lcom/crystalgraphics/animation/warping/CgMotionWarping;
   method public play (Lcom/crystalgraphics/animation/montage/CgMontage;Ljava/lang/Object;)Lcom/crystalgraphics/animation/montage/CgMontageInstance;
   method public preUpdate (FLcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
   method public rootMotionMode ()Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
@@ -1926,6 +1928,16 @@ com/crystalgraphics/animation/sync/CgSyncGroup
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/animation/sync/CgSyncGroup;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/animation/sync/CgAnimGroupRole;)Lcom/crystalgraphics/animation/sync/CgSyncGroup;
+com/crystalgraphics/animation/warping/CgMotionWarping
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public hasTarget (Ljava/lang/String;)Z
+  method public open ()Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public placedBy (Ljava/util/function/Consumer;)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
+  method public process (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;FFFLorg/joml/Matrix4f;)V
+  method public removeTarget (Ljava/lang/String;)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
+  method public target (Ljava/lang/String;DDDF)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
 com/crystalgraphics/api/PoseStack
   access public
   extends java/lang/Object
@@ -2065,7 +2077,7 @@ com/crystalgraphics/api/animation/CgClipDefinition
   access public,final,record
   extends java/lang/Record
   field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
-  method public <init> (Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive$Type;Lcom/crystalgraphics/api/animation/CgAdditive$Base;Ljava/lang/String;ILjava/lang/String;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive$Type;Lcom/crystalgraphics/api/animation/CgAdditive$Base;Ljava/lang/String;ILjava/lang/String;Ljava/util/List;)V
   method public additiveBase ()Lcom/crystalgraphics/api/animation/CgAdditive$Base;
   method public additiveType ()Lcom/crystalgraphics/api/animation/CgAdditive$Type;
   method public baseClip ()Ljava/lang/String;
@@ -2075,6 +2087,7 @@ com/crystalgraphics/api/animation/CgClipDefinition
   method public notifies ()Ljava/lang/String;
   method public rootMotion ()Lcom/crystalgraphics/api/animation/CgRootMotion;
   method public settings (Ljava/util/function/Function;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public warpWindows ()Ljava/util/List;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -2086,6 +2099,7 @@ com/crystalgraphics/api/animation/CgClipModifiers
   field public,static,final DISTANCE Ljava/lang/String;
   field public,static,final STOP_SPEED F
   method public,static distanceCurve (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;Ljava/lang/String;Z)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static encodeRootBone (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,static footSyncMarkers (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,static rootMotionFromFeet (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;ZLjava/lang/String;[Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,static speed (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;)F
@@ -2094,14 +2108,17 @@ com/crystalgraphics/api/animation/CgClipSettings
   extends java/lang/Record
   field public,static,final NONE Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public <init> (Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive;Ljava/lang/String;)V
+  method public <init> (Ljava/util/List;Lcom/crystalgraphics/api/animation/CgRootMotion;Lcom/crystalgraphics/api/animation/CgAdditive;Ljava/lang/String;Ljava/util/List;)V
   method public additive ()Lcom/crystalgraphics/api/animation/CgAdditive;
   method public markers ()Ljava/util/List;
   method public notifies ()Ljava/lang/String;
   method public rootMotion ()Lcom/crystalgraphics/api/animation/CgRootMotion;
+  method public warpWindows ()Ljava/util/List;
   method public withAdditive (Lcom/crystalgraphics/api/animation/CgAdditive;)Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public withMarkers (Ljava/util/List;)Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public withNotifies (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public withRootMotion (Lcom/crystalgraphics/api/animation/CgRootMotion;)Lcom/crystalgraphics/api/animation/CgClipSettings;
+  method public withWarpWindows (Ljava/util/List;)Lcom/crystalgraphics/api/animation/CgClipSettings;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -2262,6 +2279,41 @@ com/crystalgraphics/api/animation/CgVirtualBone
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/animation/CgWarpWindow
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;FFZZZZLcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;FFFF)V
+  method public end ()F
+  method public facing ()Z
+  method public facing (Z)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public ignoreHeight ()Z
+  method public maxRotationRate ()F
+  method public maxSpeedRatio ()F
+  method public maxSpeedRatio (F)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public method ()Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  method public noRotation ()Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public rotation ()Z
+  method public rotation (Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;FF)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public rotationTime ()F
+  method public start ()F
+  method public target ()Ljava/lang/String;
+  method public translation ()Z
+  method public translation (ZZ)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public yawOffset ()F
+  method public yawOffset (F)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Ljava/lang/String;FF)Lcom/crystalgraphics/api/animation/CgWarpWindow;
+com/crystalgraphics/api/animation/CgWarpWindow$Rotation
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CONSTANT_RATE Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  field public,static,final SCALE Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  field public,static,final SLERP Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  field public,static,final SLERP_WITH_CLAMPED_RATE Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
+  method public,static values ()[Lcom/crystalgraphics/api/animation/CgWarpWindow$Rotation;
 com/crystalgraphics/api/buffer/CgBuffer
   access public,final
   extends java/lang/Object
