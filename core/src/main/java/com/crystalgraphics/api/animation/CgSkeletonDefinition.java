@@ -29,6 +29,7 @@ import java.util.Map;
  *   <li>A socket's offset and turn are in its bone's own space, converted as the bones were: Unreal's in a glTF from
  *       Unreal's or CUE4Parse's exporter, whose bone frames are Unreal's through {@link CgUnits#UNREAL}'s axes
  *       ({@code Gltf.cs:130-132, 274-280}).</li>
+ *   <li>A file naming {@code virtual_bones} fails to compile: they are not added to a mesh yet.</li>
  *   <li>Only {@code from: bone} sockets are a mesh's. {@code entity} and {@code derived} ones are points on whatever
  *       plays the role, not on the model, and are left to their reader.</li>
  * </ul>
@@ -64,6 +65,10 @@ public record CgSkeletonDefinition(String id, List<CgSocket> sockets) {
     public static CgSkeletonDefinition compile(String id, Map<?, ?> tree, CgUnits units) {
         if (!"unreal_rotator".equals(units.rotation()) && !"quaternion".equals(units.rotation())) {
             throw new IllegalArgumentException(id + ": sockets read rotators or quaternions, not " + units.rotation());
+        }
+        if (tree.get("virtual_bones") instanceof List<?> vb && !vb.isEmpty()) {
+            // a mesh would need the bones added and its clips' baked tracks bound to them; until then, refuse by name
+            throw new IllegalArgumentException(id + ".virtual_bones: not supported yet, so its clips could not reach them");
         }
         List<CgSocket> out = new ArrayList<>();
         Object list = tree.get("sockets");

@@ -69,10 +69,21 @@ public final class CgBodyKinds {
             .register();
 
     /** {@code skeletons/}: a model's sockets ({@code USkeleton}'s). */
+    /**
+     * {@code FVirtualBone}: a bone the skeleton adds under {@code source}, following {@code target} in every clip, as
+     * Unreal's virtual bones do (an IK foot that tracks its foot). Baked into each clip at import.
+     */
+    static final CgType VIRTUAL_BONE = CgTypes.struct("crystalgraphics:skeleton.virtual_bone")
+            .property("name", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("source", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("target", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     public static final CgType SKELETON = CgTypes.kind("crystalgraphics:skeleton").folder("skeletons").version(1)
             .property("model", CgValueType.binaryRef("models")).flags(CgPropertyFlag.HEADLESS)
             .property("sockets", CgValueType.idList(SOCKET)).required().flags(CgPropertyFlag.HEADLESS)
             .property("fallbacks", CgValueType.mapOf(CgValueType.struct(FALLBACK))).flags(CgPropertyFlag.HEADLESS)
+            .property("virtual_bones", CgValueType.listOf(CgValueType.struct(VIRTUAL_BONE))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Clip ─────────────────────────────────────────────────────────────────────────────

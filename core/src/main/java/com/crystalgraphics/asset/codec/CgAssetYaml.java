@@ -238,6 +238,7 @@ public final class CgAssetYaml {
             }
             return maps ? "[ " + b + " ]" : "[" + b + "]";
         }
+        if (type != null && type.hex() && v instanceof Number && !(v instanceof Double) && !(v instanceof Float)) return hex(v);
         return scalar(v, key);
     }
 

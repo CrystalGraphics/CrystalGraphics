@@ -185,7 +185,7 @@ public final class CgLookKinds {
     /** One layer of a text style: a fill, an outline or a shadow, and its paint. */
     static final CgType TEXT_LAYER = CgTypes.element("crystalgraphics:text_style.layer")
             .property("kind", CgValueType.enumOf("fill", "outline", "shadow"))
-            .property("paint", CgValueType.oneOf(INT, CgValueType.struct(TEXT_GRADIENT_PAINT),
+            .property("paint", CgValueType.oneOf(CgValueType.ARGB, CgValueType.struct(TEXT_GRADIENT_PAINT),
                     CgValueType.struct(TEXT_MATERIAL_PAINT)))
             .property("opacity", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1)
             .property("blend", CgValueType.enumOf("alpha", "additive"))

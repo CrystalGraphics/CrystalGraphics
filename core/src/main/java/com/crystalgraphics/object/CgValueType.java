@@ -65,6 +65,12 @@ public final class CgValueType {
     public static final CgValueType VEC3 = new CgValueType(Kind.VEC3);
     /** Four numbers. */
     public static final CgValueType VEC4 = new CgValueType(Kind.VEC4);
+    /**
+     * A colour as one whole number, {@code 0xAARRGGBB}: an integer to everything but the writer, which spells it in hex.
+     * A text style's flat paint.
+     */
+    public static final CgValueType ARGB = new CgValueType(Kind.INT, Collections.<String>emptyList(), null, null, null,
+            null, null, Collections.<CgValueType>emptyList(), null, true);
     /** Floats in the declared space, or {@code { argb, intensity }}. */
     public static final CgValueType COLOUR = new CgValueType(Kind.COLOUR);
     /** A rotation in the asset's convention: its {@code units}' {@code rotation} and {@code angles}. */
@@ -107,6 +113,7 @@ public final class CgValueType {
     private final CgValueType key;
     private final List<CgValueType> alternatives;
     private final String pattern;
+    private final boolean hex;
 
     private CgValueType(Kind kind) {
         this(kind, Collections.<String>emptyList(), null, null, null, null, null);
@@ -124,6 +131,12 @@ public final class CgValueType {
 
     private CgValueType(Kind kind, List<String> enumValues, String refKind, Strength strength, CgType type,
                         CgValueType element, CgValueType key, List<CgValueType> alternatives, String pattern) {
+        this(kind, enumValues, refKind, strength, type, element, key, alternatives, pattern, false);
+    }
+
+    private CgValueType(Kind kind, List<String> enumValues, String refKind, Strength strength, CgType type,
+                        CgValueType element, CgValueType key, List<CgValueType> alternatives, String pattern, boolean hex) {
+        this.hex = hex;
         this.pattern = pattern;
         this.alternatives = alternatives;
         this.kind = kind;
@@ -262,6 +275,13 @@ public final class CgValueType {
         return alternatives;
     }
 
+    /** Whether the writer spells a whole number of this type in hex: {@link #ARGB}, alone or among a one-of's types. */
+    public boolean hex() {
+        if (hex) return true;
+        for (CgValueType alt : alternatives) if (alt.hex) return true;
+        return false;
+    }
+
     /**
      * Whether a property of this type takes every value form unless its declaration narrows it: a number, a vector,
      * a curve, or a value typed elsewhere.
@@ -282,13 +302,14 @@ public final class CgValueType {
         CgValueType t = (CgValueType) o;
         return kind == t.kind && enumValues.equals(t.enumValues) && Objects.equals(refKind, t.refKind)
                 && strength == t.strength && type == t.type && Objects.equals(element, t.element)
-                && Objects.equals(key, t.key) && alternatives.equals(t.alternatives) && Objects.equals(pattern, t.pattern);
+                && Objects.equals(key, t.key) && alternatives.equals(t.alternatives) && Objects.equals(pattern, t.pattern)
+                && hex == t.hex;
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(kind, enumValues, refKind, strength, type == null ? 0 : System.identityHashCode(type), element,
-                alternatives, pattern);
+                alternatives, pattern, hex);
     }
 
     @Override

@@ -9966,6 +9966,7 @@ com/crystalgraphics/object/CgTypes
 com/crystalgraphics/object/CgValueType
   access public,final
   extends java/lang/Object
+  field public,static,final ARGB Lcom/crystalgraphics/object/CgValueType;
   field public,static,final ARRAY Lcom/crystalgraphics/object/CgValueType;
   field public,static,final BOOL Lcom/crystalgraphics/object/CgValueType;
   field public,static,final COLOUR Lcom/crystalgraphics/object/CgValueType;
@@ -9995,6 +9996,7 @@ com/crystalgraphics/object/CgValueType
   method public enumValues ()Ljava/util/List;
   method public equals (Ljava/lang/Object;)Z
   method public hashCode ()I
+  method public hex ()Z
   method public key ()Lcom/crystalgraphics/object/CgValueType;
   method public kind ()Lcom/crystalgraphics/object/CgValueType$Kind;
   method public pattern ()Ljava/lang/String;

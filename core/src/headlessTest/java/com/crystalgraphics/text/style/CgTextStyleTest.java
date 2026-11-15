@@ -52,6 +52,7 @@ public class CgTextStyleTest {
         CgValidation v = read.validate(CgValidation.Usecase.LOAD);
         assertTrue(yaml + "\n" + v.issues(), v.valid());
         assertEquals(yaml, built, compile(read));
+        assertTrue("a flat paint is spelled as a colour:\n" + yaml, yaml.contains("paint: 0xFF3A1E08"));
     }
 
     @Test
