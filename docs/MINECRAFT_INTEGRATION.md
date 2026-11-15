@@ -335,7 +335,7 @@ does not stop the next:
 
 The GL device keeps its own state (`GLContextState`) and drops a call setting what the context already has
 (`GLStateFilter`). What Minecraft caches is read as each host section opens and set back as it closes
-(`GLHostState`: `HostStateModern` from `GlStateManager`'s fields, `HostStateLegacy` likewise, 1.7.10 by query).
+(`GLHostState`: `HostStateModern` from `GlStateManager`'s fields, `HostStateLegacy` likewise, 1.7.10 by query and the attribute stack).
 A domain the host caches that the reader does not cover is a **missing GL call** on the host's next draw, not an
 exception: `-Dcrystalgraphics.host.verify=true` names it. [`RENDER_STATE.md`](RENDER_STATE.md) has the whole account.
 

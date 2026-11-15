@@ -10,7 +10,6 @@ import com.crystalgraphics.lwjgl2.Lwjgl2GLDriver;
 import com.crystalgraphics.platform.gl.CgGLDevice;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeGlslCompiler;
 import com.crystalgraphics.platform.gl.pipeline.GLNativeTranslator;
-import com.crystalgraphics.platform.gl.state.GLHostState;
 import com.crystalgraphics.render.shader.CgToolchainDevice;
 import com.crystalgraphics.vulkan.toolchain.CgShaderToolchain;
 
@@ -34,9 +33,8 @@ public final class GLDevice1710 extends CgToolchainDevice {
     @Override
     protected void start() {
         Minecraft mc = Minecraft.getMinecraft();
-        // No state cache to read (Angelica answers glGet from its own mirror where it runs)
         Lwjgl2GLDriver driver = new Lwjgl2GLDriver();
-        device = new CgGLDevice(driver, translator, mc.displayWidth, mc.displayHeight, false, GLHostState.byQuery(driver));
+        device = new CgGLDevice(driver, translator, mc.displayWidth, mc.displayHeight, false, HostState1710.create(driver));
         device.install(new GLNativeGlslCompiler(device.driver()));
         LOGGER.info("[device] the GL device draws in Minecraft's context: {}, {}", device.globals().vendor(),
                 device.globals().driver());

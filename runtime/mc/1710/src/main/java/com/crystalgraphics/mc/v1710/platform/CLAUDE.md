@@ -9,7 +9,7 @@ with legacy Forge; the device is `gl/GLDevice1710`.
 | Class | Implements | What it does |
 |---|---|---|
 | `PlatformService1710` | `CgPlatformService` | The bundle: `startDevice()` adds `GLDevice1710`. `install(client)` registers it, fills every slot (the world slots and process exit on both sides; input devices, the clipboard, the resources, the cursor and the rest on a client) and registers `Ticks1710`; `onInit()` checks GL requirements and attaches the reload listener, client only |
-| `gl/GLDevice1710` | `CgToolchainDevice` | The GL device in Minecraft's context, on `Lwjgl2GLDriver`, its host state read by query at each section (`GLHostState.byQuery`). Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
+| `gl/GLDevice1710` | `CgToolchainDevice` | The GL device in Minecraft's context, on `Lwjgl2GLDriver`, its host state `HostState1710`: the bindings from Minecraft, checked, the rest kept by the attribute stack at each section. Under lwjgl3ify it still runs, through lwjgl3ify's LWJGL 2 layer |
 | `service/HostResources1710` | `CgHostResources.Host` | `open(namespace, path)` over `IResourceManager`, null on not-found, never throws; `listenForReloads()` sends F3+T and a pack change to `CgAssetReloader` |
 
 ## Registration

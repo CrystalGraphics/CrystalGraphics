@@ -47,14 +47,37 @@ public interface GLHostState {
     /** The section closed and the context went back to the host. */
     default void left() {}
 
-    /** Reads every field from GL by {@code glGet}: exact, and a stall on a threaded driver, so for hosts with no cache. */
+    /**
+     * The host's state with no cache to read it from. On a compatibility context (1.7.10, legacy Forge without its
+     * cache) the attribute stack keeps every domain it holds, pushed as the section opens and popped as it closes, and
+     * only the program, the framebuffers and the vertex array are read with {@code glGet}; what no domain holds goes back
+     * to GL's defaults, as for a cached host. On a core context every field is read with {@code glGet}: exact, and a
+     * stall on a threaded driver.
+     *
+     * <pre>{@code
+     * CgGLDevice device = new CgGLDevice(driver, translator, w, h, false, GLHostState.byQuery(driver));
+     * }</pre>
+     */
     static GLHostState byQuery(CgGLDriver gl) {
         GLStateQuery query = new GLStateQuery(gl);
+        if (!query.compatibility) {
+            return new GLHostState() {
+                @Override
+                public void read(GLContextState into) {
+                    for (Domain d : Domain.values()) query.read(d, into);
+                    query.rest(into);
+                }
+            };
+        }
         return new GLHostState() {
             @Override
             public void read(GLContextState into) {
-                for (Domain d : Domain.values()) query.read(d, into);
-                query.rest(into);
+                into.invalidate();
+                for (Domain d : Domain.values()) {
+                    if (query.attribBits(d) != 0) query.carry(d, into);
+                    else query.read(d, into);
+                }
+                query.push();
             }
 
             @Override
@@ -64,6 +87,8 @@ public interface GLHostState {
 
             @Override
             public void conventions(CgGLDriver through) {
+                GLStateQuery.defaults(through, false);
+                query.pop();
                 query.alphaBack(through);
             }
         };

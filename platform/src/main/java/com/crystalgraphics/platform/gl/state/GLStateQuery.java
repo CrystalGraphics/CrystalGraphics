@@ -2,6 +2,8 @@ package com.crystalgraphics.platform.gl.state;
 
 import com.crystalgraphics.platform.gl.driver.CgGLDriver;
 
+import java.util.Arrays;
+
 import static com.crystalgraphics.platform.gl.driver.GLC.*;
 
 /**
@@ -12,6 +14,10 @@ import static com.crystalgraphics.platform.gl.driver.GLC.*;
 final class GLStateQuery {
 
     private static final int GL_ALPHA_TEST = 0x0BC0, GL_CONTEXT_PROFILE_MASK = 0x9126, GL_CONTEXT_CORE_PROFILE_BIT = 1;
+    /** The attribute groups of a compatibility context's attribute stack, and its client stack's pixel store. */
+    private static final int GL_POLYGON_BIT = 0x8, GL_DEPTH_BUFFER_BIT = 0x100, GL_STENCIL_BUFFER_BIT = 0x400,
+            GL_VIEWPORT_BIT = 0x800, GL_ENABLE_BIT = 0x2000, GL_COLOR_BUFFER_BIT = 0x4000, GL_TEXTURE_BIT = 0x40000,
+            GL_SCISSOR_BIT = 0x80000, GL_CLIENT_PIXEL_STORE_BIT = 0x1;
 
     private static final int[][] STENCIL = {
             {GL_STENCIL_FUNC, GL_STENCIL_REF, GL_STENCIL_VALUE_MASK, GL_STENCIL_FAIL, GL_STENCIL_PASS_DEPTH_FAIL,
@@ -27,10 +33,118 @@ final class GLStateQuery {
     private final int[] one = new int[1], two = new int[2], four = new int[4];
     private final float[] f2 = new float[2], f4 = new float[4];
     private boolean alphaOff;
+    /** The attribute groups {@link #carry} has asked for this section, then the ones pushed; 0 for none. */
+    private int carrying, pushed;
+    private boolean pushedPixelStore;
 
     GLStateQuery(CgGLDriver gl) {
         this.gl = gl;
         compatibility = (gl.glGetInteger(GL_CONTEXT_PROFILE_MASK) & GL_CONTEXT_CORE_PROFILE_BIT) == 0;
+    }
+
+    /**
+     * The attribute groups that hold {@code domain} on a compatibility context, 0 where none does (the program, the
+     * framebuffers and the vertex array), or on a core context.
+     */
+    int attribBits(GLHostState.Domain domain) {
+        if (!compatibility) return 0;
+        switch (domain) {
+            case BLEND: return GL_COLOR_BUFFER_BIT | GL_ENABLE_BIT;
+            case COLOR_MASK: return GL_COLOR_BUFFER_BIT;
+            case DEPTH: return GL_DEPTH_BUFFER_BIT | GL_ENABLE_BIT;
+            case CULL:
+            case POLYGON: return GL_POLYGON_BIT | GL_ENABLE_BIT;
+            case STENCIL: return GL_STENCIL_BUFFER_BIT | GL_ENABLE_BIT;
+            case VIEWPORT: return GL_VIEWPORT_BIT;
+            case SCISSOR: return GL_SCISSOR_BIT | GL_ENABLE_BIT;
+            case TEXTURES: return GL_TEXTURE_BIT;
+            default: return 0;
+        }
+    }
+
+    /**
+     * Leaves {@code domain} unknown in {@code s} and has the attribute stack keep it instead: pushed by {@link #push}
+     * as the section opens, popped by {@link #pop} as it closes. No driver round trip; the device sets each field before
+     * relying on it. Only where {@link #attribBits} holds the domain.
+     */
+    void carry(GLHostState.Domain domain, GLContextState s) {
+        carrying |= attribBits(domain);
+        unknown(domain, s);
+    }
+
+    /** Pushes what {@link #carry} asked for this section, and the pixel store with it; nothing where nothing was. */
+    void push() {
+        if (carrying == 0) return;
+        if (pushed != 0) throw new IllegalStateException("a host section opened with the last one's attributes still pushed");
+        gl.glPushAttrib(carrying);
+        gl.glPushClientAttrib(GL_CLIENT_PIXEL_STORE_BIT);
+        pushed = carrying;
+        pushedPixelStore = true;
+        carrying = 0;
+    }
+
+    /** Pops what {@link #push} pushed: every carried field back to the host's, as it was when the section opened. */
+    void pop() {
+        if (pushedPixelStore) gl.glPopClientAttrib();
+        if (pushed != 0) gl.glPopAttrib();
+        pushed = 0;
+        pushedPixelStore = false;
+    }
+
+    /** {@code domain}'s fields of {@code s} unknown. */
+    private static void unknown(GLHostState.Domain domain, GLContextState s) {
+        final int u = GLContextState.UNKNOWN;
+        switch (domain) {
+            case BLEND:
+                Arrays.fill(s.blendEnabled, u);
+                Arrays.fill(s.blendSrcRgb, u);
+                Arrays.fill(s.blendDstRgb, u);
+                Arrays.fill(s.blendSrcAlpha, u);
+                Arrays.fill(s.blendDstAlpha, u);
+                Arrays.fill(s.blendEqRgb, u);
+                Arrays.fill(s.blendEqAlpha, u);
+                return;
+            case COLOR_MASK:
+                Arrays.fill(s.colorMask, u);
+                return;
+            case DEPTH:
+                s.caps[GLContextState.cap(GL_DEPTH_TEST)] = u;
+                s.depthFunc = s.depthMask = u;
+                return;
+            case CULL:
+                s.caps[GLContextState.cap(GL_CULL_FACE)] = u;
+                s.cullFace = s.frontFace = u;
+                return;
+            case STENCIL:
+                s.caps[GLContextState.cap(GL_STENCIL_TEST)] = u;
+                Arrays.fill(s.stencilFunc, u);
+                Arrays.fill(s.stencilRef, u);
+                Arrays.fill(s.stencilValueMask, u);
+                Arrays.fill(s.stencilFail, u);
+                Arrays.fill(s.stencilDepthFail, u);
+                Arrays.fill(s.stencilPass, u);
+                Arrays.fill(s.stencilWriteMask, u);
+                return;
+            case POLYGON:
+                s.caps[GLContextState.cap(GL_POLYGON_OFFSET_FILL)] = u;
+                s.caps[GLContextState.cap(GL_POLYGON_OFFSET_LINE)] = u;
+                s.caps[GLContextState.cap(GL_POLYGON_OFFSET_POINT)] = u;
+                s.polygonMode = u;
+                s.offsetFactor = s.offsetUnits = Float.NaN;
+                return;
+            case VIEWPORT:
+                s.viewportX = s.viewportY = s.viewportW = s.viewportH = Float.NaN;
+                return;
+            case SCISSOR:
+                s.caps[GLContextState.cap(GL_SCISSOR_TEST)] = u;
+                s.scissorX = s.scissorY = s.scissorW = s.scissorH = u;
+                return;
+            case TEXTURES:
+                Arrays.fill(s.unitTexture, u);
+                return;
+            default:
+                throw new IllegalArgumentException(domain + " has no attribute group");
+        }
     }
 
     void read(GLHostState.Domain domain, GLContextState s) {
@@ -154,6 +268,12 @@ final class GLStateQuery {
      */
     void alphaOff(int on) {
         if (!compatibility) return;
+        if ((pushed & GL_ENABLE_BIT) != 0) {
+            // The enable group is on the stack: the pop turns it back on where it was, so no need to ask
+            gl.glDisable(GL_ALPHA_TEST);
+            alphaOff = false;
+            return;
+        }
         alphaOff = on == GLContextState.UNKNOWN ? gl.glIsEnabled(GL_ALPHA_TEST) : on == 1;
         if (alphaOff) gl.glDisable(GL_ALPHA_TEST);
     }

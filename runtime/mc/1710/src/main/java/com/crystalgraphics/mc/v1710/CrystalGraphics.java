@@ -28,7 +28,7 @@ import org.apache.logging.log4j.Logger;
  *
  * <p>There is <strong>no coremod</strong> any more. The ASM transformer that used to redirect GL call sites
  * process-wide was deleted along with the state mirror it fed: the GL device reads the host's state at each host
- * section by query ({@code GLHostState.byQuery}).</p>
+ * section ({@code HostState1710}).</p>
  */
 @Mod(
     modid = CrystalGraphics.MODID,

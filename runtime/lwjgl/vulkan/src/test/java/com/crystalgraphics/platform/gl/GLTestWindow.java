@@ -24,13 +24,18 @@ final class GLTestWindow implements AutoCloseable {
     private final long compiler;
 
     GLTestWindow() {
+        this(false);
+    }
+
+    /** A hidden window's GL 4.6 context: a compatibility profile's where {@code compatibility}, as 1.7.10's is. */
+    GLTestWindow(boolean compatibility) {
         assumeTrue("no GLFW here", glfwInit());
         glfwDefaultWindowHints();
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
         glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 6);
-        glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+        glfwWindowHint(GLFW_OPENGL_PROFILE, compatibility ? GLFW_OPENGL_COMPAT_PROFILE : GLFW_OPENGL_CORE_PROFILE);
+        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, compatibility ? GLFW_FALSE : GLFW_TRUE);
         glfwWindowHint(GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE);
         window = glfwCreateWindow(64, 64, "GL device test", NULL, NULL);
         assumeTrue("no GL 4.6 context here", window != NULL);

@@ -80,9 +80,18 @@ The record is filled three ways:
 |---|---|---|
 | Inside a section | the filter's own writes | nothing |
 | `fromHost`, a host with a state cache (Minecraft) | the host's belief, read from its cache (`GLCheckedHostState`) | a Java read |
-| `fromHost`, a host with none (`GLHostState.byQuery`) | every field by `glGet*` | one stall a section, never a draw |
+| `fromHost`, a host with none on a compatibility context (`GLHostState.byQuery`) | the program, framebuffers and vertex array by `glGet*`; the rest left `UNKNOWN`, kept by `glPushAttrib` and popped at `toHost` | four reads a section: still one stall |
+| `fromHost`, a host with none on a core context (`GLHostState.byQuery`: 26.3) | every field by `glGet*` | one stall a section, never a draw |
 
 A field no source can say stays `UNKNOWN`, so its first call reaches GL and the filter knows it from then on.
+
+**The attribute stack is for a compatibility context with no cache.** Every `glGet` waits for a threaded driver to
+drain what is queued ahead of it: 1.7.10's ~180 reads a section cost 36 ms a frame on a busy scene (7.6 ms on a quiet
+one). `glPushAttrib` is a command, so the domains its groups hold (blend, colour mask, depth, cull, stencil, polygon,
+viewport, scissor, texture bindings, and the pixel store by `glPushClientAttrib`) cost nothing to keep. A domain a host's
+cache does not answer goes the same way (`GLCheckedHostState`'s fallback). The program, the framebuffers and the vertex
+array belong to no group: a host answers them as at every hook (`HostState1710`), or they are read, and the first read
+of a section is still the whole stall.
 
 ## The host boundary: a device section
 
@@ -121,8 +130,9 @@ CgDeviceSection.end();     // CgRHI.toHost: what the section changed set back to
 | Host | `GLHostState` | `glGet` per section |
 |---|---|---|
 | Minecraft 1.13–26.2 on GL | `HostStateModern`: `GlStateManager` through `GLHostCache`, plus the program (0 below 1.21.5; its encoder's from 1.21.5), the framebuffers (the main target below 1.21.5; `GlStateManager`'s pair from 1.21.5) and the vertex array (none; `BufferUploader`'s record 1.17–1.19.1). Every texture unit by `glGet` while an Iris/Oculus pack runs, since a pack samples above Blaze3D's table. The first section turns Minecraft's `GL_DEBUG_OUTPUT` off; 1.19.2–1.21.4 forget `BufferUploader`'s vertex array as each closes; 26.2's 0..1 clip range is put back | none, past the checks |
-| Forge 1.8.9–1.12.2 | `HostStateLegacy`: the same cache; blend by `glGet` (`blendFunc` sets the alpha pair it does not record); program 0, no vertex array, the main framebuffer and the display's viewport, as at every hook | blend |
-| 1.7.10, 26.3 | `GLHostState.byQuery`: no cache to read (on 1.7.10 Angelica answers it from its mirror) | every field |
+| Forge 1.8.9–1.12.2 | `HostStateLegacy`: the same cache; blend kept by the attribute stack (`blendFunc` sets the alpha pair it does not record); program 0, no vertex array, the main framebuffer and the display's viewport, as at every hook | none, past the checks |
+| 1.7.10 | `HostState1710`: no cache to read, so every domain an attribute group holds is pushed at `fromHost` and popped at `toHost`; program 0, no vertex array and the main framebuffer answered from Minecraft, as at every hook | none, past the checks |
+| 26.3 | `GLHostState.byQuery` on a core context: no cache, no attribute stack | every field |
 | the harness | none: the device owns its context | — |
 
 **Over `GlStateManager`** (`GLHostCache`): its fields by shape, as SRG, intermediary and MCP rename them

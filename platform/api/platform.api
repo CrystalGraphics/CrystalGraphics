@@ -530,9 +530,13 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glPixelStorei (II)V
   method public,abstract glPolygonMode (II)V
   method public,abstract glPolygonOffset (FF)V
+  method public,abstract glPopAttrib ()V
+  method public,abstract glPopClientAttrib ()V
   method public,abstract glPopDebugGroup ()V
   method public,abstract glProgramBinary (IILjava/nio/ByteBuffer;)V
   method public,abstract glProgramParameteri (III)V
+  method public,abstract glPushAttrib (I)V
+  method public,abstract glPushClientAttrib (I)V
   method public,abstract glPushDebugGroup (Ljava/lang/String;)V
   method public,abstract glQueryCounter (II)V
   method public,abstract glSamplerParameterf (IIF)V
@@ -1361,9 +1365,13 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glPixelStorei (II)V
   method public glPolygonMode (II)V
   method public glPolygonOffset (FF)V
+  method public glPopAttrib ()V
+  method public glPopClientAttrib ()V
   method public glPopDebugGroup ()V
   method public glProgramBinary (IILjava/nio/ByteBuffer;)V
   method public glProgramParameteri (III)V
+  method public glPushAttrib (I)V
+  method public glPushClientAttrib (I)V
   method public glPushDebugGroup (Ljava/lang/String;)V
   method public glQueryCounter (II)V
   method public glSamplerParameterf (IIF)V
