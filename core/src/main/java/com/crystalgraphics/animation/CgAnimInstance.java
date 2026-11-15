@@ -3,9 +3,11 @@ package com.crystalgraphics.animation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
+import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraph;
@@ -66,6 +68,9 @@ public final class CgAnimInstance {
     private final CgAnimPose pose;
     private final Matrix4f[] skinning;
     private final Matrix4f socketScratch = new Matrix4f();
+    @Nullable
+    private Consumer<Matrix4d> placedBy;
+    private final Matrix4d placement = new Matrix4d();
     private final List<CgBoneWrite> writes = new ArrayList<>();
     private final List<Update> updates = new ArrayList<>();
     private float rate = 1f, delta;
@@ -297,6 +302,10 @@ public final class CgAnimInstance {
         // Montages before the native update, so it sees where they are (AnimInstance.cpp:766-777)
         montages.preUpdate(delta, graph);
         for (int i = 0; i < updates.size(); i++) updates.get(i).update(this, delta);
+        if (placedBy != null) {
+            placedBy.accept(placement);
+            graph.placement(placement);
+        }
         graph.preUpdate();
         return this;
     }
@@ -400,6 +409,20 @@ public final class CgAnimInstance {
      * Where its clips' material curves are set each frame: its component's materials (a {@code CgSkeletalMeshComponent}
      * sets itself). Null, as on a server, evaluates them and sets nothing.
      */
+    /**
+     * Where its component stands in the world, asked on the game thread each frame before the graph runs (Unreal's
+     * proxy copies the component's transform there): what world-space targets and foot traces read. The skeletal mesh
+     * component that makes it sets this; an instance with none stands at the origin.
+     *
+     * <pre>{@code
+     * new CgAnimInstance(mesh).placedBy(out -> out.translation(x, y, z));
+     * }</pre>
+     */
+    public CgAnimInstance placedBy(@Nullable Consumer<Matrix4d> placedBy) {
+        this.placedBy = placedBy;
+        return this;
+    }
+
     public CgAnimInstance curveTarget(@Nullable CgAnimCurveTarget target) {
         curveTarget = target;
         return this;
