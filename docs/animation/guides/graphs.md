@@ -147,6 +147,8 @@ if (hero.anim().montages().consumeRootMotion(1f, step)) mover.move(step);   // a
   blends in there.
 - **One montage moves the character at a time** (`CgRootMotionMode.FROM_MONTAGES_ONLY`, Unreal's default): a root-motion
   montage played stops the one moving it. Its root is held at its clip's lock while it moves the character.
+  `FROM_EVERYTHING` adds every playing clip's motion at its weight: what locomotion warping reads
+  ([locomotion.md](locomotion.md)).
 - **Gameplay moments are `event` sections** of side `rpg` (a hit window above), heard as every sequence's events are.
 
 ## Layers and cached poses

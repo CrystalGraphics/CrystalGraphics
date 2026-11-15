@@ -488,7 +488,7 @@ public final class CgBlendSpacePlayerNode extends CgAnimNode {
                 float t = Math.max(0f, Math.min(clip.duration(), sTime[idx[i]]));
                 if (space.additive() == CgAdditive.Type.NONE) {
                     p.rest();
-                    clip.sample(p, t);
+                    clip.sample(p, t, g.extractsRootMotion());
                 } else {
                     CgAnimPose base = g.borrow();
                     clip.sampleAdditive(p, base, t);
@@ -511,7 +511,13 @@ public final class CgBlendSpacePlayerNode extends CgAnimNode {
         @Override
         public void forEachSample(float weight, SampleSink sink) {
             for (int i = 0; i < count; i++) {
-                if (w[i] > CgAnimPose.ZERO_WEIGHT) sink.sample(space.samples().get(idx[i]).clip(), sTime[idx[i]], weight * w[i]);
+                if (w[i] <= CgAnimPose.ZERO_WEIGHT) continue;
+                int s = idx[i];
+                CgAnimSequence clip = space.samples().get(s).clip();
+                float moved = sTime[s] - sPrev[s];
+                // against the play rate: it wrapped
+                if (moved * rateNow < 0f && loop) moved += Math.signum(rateNow) * clip.duration();
+                sink.sample(clip, sTime[s], moved, weight * w[i]);
             }
         }
 

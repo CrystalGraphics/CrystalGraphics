@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation;
 
 import java.util.ArrayList;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -68,7 +69,7 @@ public final class CgAnimInstance {
     private final CgMontages montages;
     private final CgAnimPose pose;
     private final Matrix4f[] skinning;
-    private final Matrix4f socketScratch = new Matrix4f();
+    private final Matrix4f socketScratch = new Matrix4f(), rootMotionStep = new Matrix4f();
     @Nullable
     private Consumer<Matrix4d> placedBy;
     private final Matrix4d placement = new Matrix4d();
@@ -308,6 +309,7 @@ public final class CgAnimInstance {
             graph.placement(placement);
         }
         graph.ground(ground);
+        graph.rootMotionMode(montages.rootMotionMode());
         graph.preUpdate();
         return this;
     }
@@ -320,6 +322,8 @@ public final class CgAnimInstance {
         graph.update(delta);
         gatherCurves();
         graph.evaluate(pose);
+        // the players' root motion, as the graph's warping nodes left it, joins the montages' for the mover
+        if (graph.rootMotion().hasRootMotion()) montages.accumulateRootMotion(graph.rootMotion().get(rootMotionStep));
         pose.resolve();
         pose.skinning(mesh, skinning);
         evaluations++;

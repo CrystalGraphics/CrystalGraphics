@@ -1,6 +1,8 @@
 package com.crystalgraphics.animation.montage;
 
 import java.util.ArrayList;
+import com.crystalgraphics.animation.graph.CgRootMotionParams;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -142,8 +144,12 @@ public final class CgMontages {
     /** {@code ZERO_ANIMWEIGHT_THRESH}. */
     private static final float ZERO_WEIGHT = 0.00001f;
 
-    void accumulateRootMotion(Matrix4f step) {
-        if (mode == CgRootMotionMode.FROM_MONTAGES_ONLY) rootMotion.accumulate(step);
+    /**
+     * {@code step} added to the root motion the mover consumes, where the mode extracts any: a montage's step, or the
+     * graph's players' under {@link CgRootMotionMode#FROM_EVERYTHING}. Its instance calls it.
+     */
+    public void accumulateRootMotion(Matrix4f step) {
+        if (mode == CgRootMotionMode.FROM_MONTAGES_ONLY || mode == CgRootMotionMode.FROM_EVERYTHING) rootMotion.accumulate(step);
     }
 
     /** Hears its montages blend in, blend out and end. */

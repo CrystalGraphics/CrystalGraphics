@@ -12,6 +12,7 @@ import java.util.function.Consumer;
 import javax.annotation.Nullable;
 
 import org.joml.Matrix4d;
+import org.joml.Matrix4f;
 import org.joml.Matrix4dc;
 
 import com.crystalgraphics.animation.sync.CgAnimAssetPlayer;
@@ -80,6 +81,10 @@ public final class CgAnimGraphInstance {
     private int[] sampleLayers = new int[8], sampleScopes = new int[8];
     private int samples;
     private final Sink sink = new Sink();
+    /** Where its root motion comes from, and this frame's from its players: what warping nodes read and bend. */
+    private CgRootMotionMode rootMotionMode = CgRootMotionMode.FROM_MONTAGES_ONLY;
+    private final CgRootMotionParams rootMotion = new CgRootMotionParams();
+    private final Matrix4f step = new Matrix4f();
 
     private CgAnimPose[] pool = new CgAnimPose[4];
     private int pooled, borrowed;
@@ -439,6 +444,7 @@ public final class CgAnimGraphInstance {
         frame++;
         samples = 0;
         records = 0;
+        rootMotion.clear();
         curveLayer = 0;
         sync.begin();
         for (int i = 0; i < montages; i++) {
@@ -461,6 +467,36 @@ public final class CgAnimGraphInstance {
             sink.scope = recordScopes[i];
             recordPlayers[i].forEachSample(recordWeights[i], sink);
         }
+        rootMotion.makeUpToFullWeight();
+    }
+
+    /**
+     * Where its root motion comes from: the instance's montages' mode, handed over in {@code preUpdate}. With
+     * {@link CgRootMotionMode#FROM_EVERYTHING} each player's clips give theirs at their weights ({@link #rootMotion}),
+     * and with it or {@link CgRootMotionMode#IGNORE} every player holds its clip's root.
+     */
+    public CgAnimGraphInstance rootMotionMode(CgRootMotionMode mode) {
+        rootMotionMode = mode;
+        return this;
+    }
+
+    /** Whether its players hold their clips' roots: Unreal's {@code ShouldExtractRootMotion}. */
+    public boolean extractsRootMotion() {
+        CgRootMotionMode mode = main != this ? main.rootMotionMode : rootMotionMode;
+        return mode == CgRootMotionMode.FROM_EVERYTHING || mode == CgRootMotionMode.IGNORE;
+    }
+
+    /**
+     * This frame's root motion from its players at their weights, in the mesh's space, after {@link #update}: what a
+     * warping node reads and replaces ({@link CgRootMotionParams#set}) as it evaluates. Empty unless the mode is
+     * {@link CgRootMotionMode#FROM_EVERYTHING}; slot entries (montages) give theirs to the montages instead.
+     *
+     * <pre>{@code
+     * if (g.rootMotion().hasRootMotion()) speed = g.rootMotion().get(m).getTranslation(t).length() / g.delta();
+     * }</pre>
+     */
+    public CgRootMotionParams rootMotion() {
+        return main != this ? main.rootMotion : rootMotion;
     }
 
     /** Where a player's clips land after its tick, each with its record's curve layer and scope. */
@@ -469,7 +505,16 @@ public final class CgAnimGraphInstance {
         int layer, scope;
 
         @Override
-        public void sample(CgAnimSequence clip, float time, float weight) {
+        public void sample(CgAnimSequence clip, float time, float moved, float weight) {
+            if (rootMotionMode == CgRootMotionMode.FROM_EVERYTHING && moved != 0f && clip.settings().rootMotion().enabled()) {
+                float length = clip.duration(), from = time - moved;
+                if (player.looping() && length > 0f) {
+                    from %= length;
+                    if (from < 0f) from += length;
+                }
+                clip.extractRootMotion(skeleton, from, moved, player.looping(), step);
+                rootMotion.accumulateWithBlend(step, weight);
+            }
             int i = reserve();
             samplePlayers[i] = player;
             sampleClips[i] = clip;

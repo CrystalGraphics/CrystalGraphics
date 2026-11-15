@@ -7,9 +7,7 @@
 |---|---|
 | `CgMontage` | `UAnimMontage`'s properties its instance reads: slot group, blend in and out with their curves, `BlendOutTriggerTime`, `bEnableAutoBlendOut`, root motion, sync group. Withers off `DEFAULT` |
 | `CgMontageInstance` | `FAnimMontageInstance`: `Play`, `Stop`, `UpdateWeight` once a frame, `Terminate`; its slot entries by pass (the last pass of a frame wins); played on alone once `release`d (interrupted, blending out); root motion and markers from its first entry; `UAnimMontage::TickAssetPlayer` as its sync group's leader while blending out |
-| `CgMontages` | a character's montages (`anim.montages()`): `play` stops its group's others over its blend in and the root-motion one where it moves the character; `preUpdate` is `UpdateMontage` (weights, released montages advanced, the blended out terminated, entries onto slots, sync records); listeners for blended in, blending out, ended; `consumeRootMotion` |
-| `CgRootMotionParams` | `FRootMotionMovementParams`: `Accumulate`, `Clear`, `ConsumeRootMotion` |
-| `CgRootMotionMode` | `ERootMotionMode` less `RootMotionFromEverything` |
+| `CgMontages` | a character's montages (`anim.montages()`): `play` stops its group's others over its blend in and the root-motion one where it moves the character; `preUpdate` is `UpdateMontage` (weights, released montages advanced, the blended out terminated, entries onto slots, sync records); listeners for blended in, blending out, ended; `consumeRootMotion` (the mode and the params are `graph`'s `CgRootMotionMode` and `CgRootMotionParams`; under `FROM_EVERYTHING` the graph's players' motion joins the montages' after the pose, `accumulateRootMotion`) |
 
 ## Rules
 

@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation.montage;
 
 import java.util.Arrays;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.Objects;
 
 import javax.annotation.Nullable;

@@ -442,6 +442,7 @@ com/crystalgraphics/animation/graph/CgAnimGraphInstance
   method public enterInertializer ()V
   method public evaluate (Lcom/crystalgraphics/api/animation/CgAnimPose;)V
   method public exitInertializer ()V
+  method public extractsRootMotion ()Z
   method public forEachRuntime (Ljava/util/function/Consumer;)V
   method public frame ()J
   method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
@@ -465,6 +466,8 @@ com/crystalgraphics/animation/graph/CgAnimGraphInstance
   method public recordScope (I)I
   method public recordWeight (I)F
   method public records ()I
+  method public rootMotion ()Lcom/crystalgraphics/animation/graph/CgRootMotionParams;
+  method public rootMotionMode (Lcom/crystalgraphics/animation/graph/CgRootMotionMode;)Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;
   method public runtime (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimNode$Runtime;
   method public sampleClip (I)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public sampleLayer (I)I
@@ -641,6 +644,27 @@ com/crystalgraphics/animation/graph/CgRefPoseNode
   extends com/crystalgraphics/animation/graph/CgAnimNode
   method public toString ()Ljava/lang/String;
   method public,static create ()Lcom/crystalgraphics/animation/graph/CgRefPoseNode;
+com/crystalgraphics/animation/graph/CgRootMotionMode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FROM_EVERYTHING Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  field public,static,final FROM_MONTAGES_ONLY Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  field public,static,final IGNORE Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  field public,static,final NO_EXTRACTION Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  method public,static values ()[Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+com/crystalgraphics/animation/graph/CgRootMotionParams
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public accumulate (Lorg/joml/Matrix4f;)V
+  method public accumulateWithBlend (Lorg/joml/Matrix4f;F)V
+  method public clear ()V
+  method public consume (FLorg/joml/Matrix4f;)Z
+  method public get (Lorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
+  method public hasRootMotion ()Z
+  method public makeUpToFullWeight ()V
+  method public set (Lorg/joml/Matrix4f;)V
 com/crystalgraphics/animation/graph/CgSequencePlayerNode
   access public,final
   extends com/crystalgraphics/animation/graph/CgAnimNode
@@ -1192,6 +1216,47 @@ com/crystalgraphics/animation/ik/CgModifyBoneNode$Mode
   field public,static,final REPLACE Lcom/crystalgraphics/animation/ik/CgModifyBoneNode$Mode;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgModifyBoneNode$Mode;
   method public,static values ()[Lcom/crystalgraphics/animation/ik/CgModifyBoneNode$Mode;
+com/crystalgraphics/animation/ik/CgOffsetRootBoneNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public clampToVelocity (FF)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+  method public onGround (Z)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+  method public rotation (Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;FF)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+  method public teleportDistance (F)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+  method public toString ()Ljava/lang/String;
+  method public translation (Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;FF)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode;
+com/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ACCUMULATE Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  field public,static,final HOLD Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  field public,static,final HOLD_AND_CONSUME Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  field public,static,final HOLD_SHRINK_AND_CONSUME Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  field public,static,final INTERPOLATE Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  field public,static,final RELEASE Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+  method public,static values ()[Lcom/crystalgraphics/animation/ik/CgOffsetRootBoneNode$Mode;
+com/crystalgraphics/animation/ik/CgOrientationWarpingNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public alpha (Lcom/crystalgraphics/animation/ik/CgControlAlpha;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public distribution (F)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public flipBeyond (F)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public ikFeet (Ljava/util/List;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public ikFeet ([Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public interp (FF)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public locomotionAngle (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public locomotionAngle (Lcom/crystalgraphics/animation/ik/CgWarpInput;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public manual (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public manual (Lcom/crystalgraphics/animation/ik/CgWarpInput;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public minRootMotionSpeed (F)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public spine (Ljava/util/List;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public spine ([Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgOrientationWarpingNode;
 com/crystalgraphics/animation/ik/CgSkeletalControlNode
   access public,abstract
   extends com/crystalgraphics/animation/graph/CgAnimNode
@@ -1227,6 +1292,35 @@ com/crystalgraphics/animation/ik/CgSpringBoneNode
   method public toString ()Ljava/lang/String;
   method public translate (ZZZ)Lcom/crystalgraphics/animation/ik/CgSpringBoneNode;
   method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgSpringBoneNode;
+com/crystalgraphics/animation/ik/CgStrideWarpingNode
+  access public,final
+  extends com/crystalgraphics/animation/ik/CgSkeletalControlNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public alpha (Lcom/crystalgraphics/animation/ik/CgControlAlpha;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public compensateThighs (ZZ)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public foot (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public locomotionSpeed (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public locomotionSpeed (Lcom/crystalgraphics/animation/ik/CgWarpInput;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public manual (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public manual (Lcom/crystalgraphics/animation/ik/CgWarpInput;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public minRootMotionSpeed (F)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public orientToFloor (Z)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public pelvis (FFFF)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public scaleClamp (FF)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public scaleInterp (FF)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public strideDirection (FFF)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgStrideWarpingNode;
+com/crystalgraphics/animation/ik/CgStrideWarpingNode$Foot
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public fkFoot ()Ljava/lang/String;
+  method public ikFoot ()Ljava/lang/String;
+  method public thigh ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/animation/ik/CgTwoBoneIkNode
   access public,final
   extends com/crystalgraphics/animation/ik/CgSkeletalControlNode
@@ -1238,6 +1332,55 @@ com/crystalgraphics/animation/ik/CgTwoBoneIkNode
   method public stretch (FF)Lcom/crystalgraphics/animation/ik/CgTwoBoneIkNode;
   method public toString ()Ljava/lang/String;
   method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;Ljava/lang/String;Lcom/crystalgraphics/animation/ik/CgIkTarget;Lcom/crystalgraphics/animation/ik/CgIkTarget;)Lcom/crystalgraphics/animation/ik/CgTwoBoneIkNode;
+com/crystalgraphics/animation/ik/CgWarpInput
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (FLcom/crystalgraphics/animation/graph/CgAnimVariable;)V
+  method public constant ()F
+  method public get (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)F
+  method public variable ()Lcom/crystalgraphics/animation/graph/CgAnimVariable;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (F)Lcom/crystalgraphics/animation/ik/CgWarpInput;
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/ik/CgWarpInput;
+com/crystalgraphics/animation/ik/CgWarpingMode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final GRAPH Lcom/crystalgraphics/animation/ik/CgWarpingMode;
+  field public,static,final MANUAL Lcom/crystalgraphics/animation/ik/CgWarpingMode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/ik/CgWarpingMode;
+  method public,static values ()[Lcom/crystalgraphics/animation/ik/CgWarpingMode;
+com/crystalgraphics/animation/locomotion/CgDistanceMatching
+  access public,final
+  extends java/lang/Object
+  method public,static playRateToMatchSpeed (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;FFF)F
+  method public,static timeAfterDistanceTravelled (Lcom/crystalgraphics/api/animation/CgAnimSequence;FFLjava/lang/String;Z)F
+  method public,static timeAtDistance (Lcom/crystalgraphics/api/animation/CgAnimSequence;FLjava/lang/String;)F
+com/crystalgraphics/animation/locomotion/CgMovementPrediction
+  access public,final
+  extends java/lang/Object
+  method public,static pivotLocation (Lorg/joml/Vector3fc;Lorg/joml/Vector3fc;FLorg/joml/Vector3f;)Lorg/joml/Vector3f;
+  method public,static stopLocation (Lorg/joml/Vector3fc;FFLorg/joml/Vector3f;)Lorg/joml/Vector3f;
+com/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode
+  access public,final
+  extends com/crystalgraphics/animation/graph/CgAnimNode
+  field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
+  method public advanceByDistance (Lcom/crystalgraphics/animation/graph/CgAnimVariable;FF)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+  method public curve (Ljava/lang/String;)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+  method public explicitTime (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+  method public loop ()Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+  method public matchToTarget (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+  method public toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/api/animation/CgAnimSequence;)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode;
+com/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ADVANCE_BY_DISTANCE Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode;
+  field public,static,final EXPLICIT Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode;
+  field public,static,final MATCH_TO_TARGET Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode;
+  method public,static values ()[Lcom/crystalgraphics/animation/locomotion/CgSequenceEvaluatorNode$Mode;
 com/crystalgraphics/animation/montage/CgMontage
   access public,final,record
   extends java/lang/Record
@@ -1300,13 +1443,14 @@ com/crystalgraphics/animation/montage/CgMontages
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/api/animation/CgSkeleton;)V
+  method public accumulateRootMotion (Lorg/joml/Matrix4f;)V
   method public active ()Ljava/util/List;
   method public consumeRootMotion (FLorg/joml/Matrix4f;)Z
   method public listen (Lcom/crystalgraphics/animation/montage/CgMontages$Listener;)Lcom/crystalgraphics/animation/montage/CgMontages;
   method public play (Lcom/crystalgraphics/animation/montage/CgMontage;Ljava/lang/Object;)Lcom/crystalgraphics/animation/montage/CgMontageInstance;
   method public preUpdate (FLcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
-  method public rootMotionMode ()Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-  method public rootMotionMode (Lcom/crystalgraphics/animation/montage/CgRootMotionMode;)Lcom/crystalgraphics/animation/montage/CgMontages;
+  method public rootMotionMode ()Lcom/crystalgraphics/animation/graph/CgRootMotionMode;
+  method public rootMotionMode (Lcom/crystalgraphics/animation/graph/CgRootMotionMode;)Lcom/crystalgraphics/animation/montage/CgMontages;
   method public rootMotionMontage ()Lcom/crystalgraphics/animation/montage/CgMontageInstance;
   method public stopGroup (Ljava/lang/String;FLcom/crystalgraphics/easing/CgEasing;)V
   method public unlisten (Lcom/crystalgraphics/animation/montage/CgMontages$Listener;)Lcom/crystalgraphics/animation/montage/CgMontages;
@@ -1316,23 +1460,6 @@ com/crystalgraphics/animation/montage/CgMontages$Listener
   method public blendedIn (Lcom/crystalgraphics/animation/montage/CgMontageInstance;)V
   method public blendingOut (Lcom/crystalgraphics/animation/montage/CgMontageInstance;Z)V
   method public ended (Lcom/crystalgraphics/animation/montage/CgMontageInstance;Z)V
-com/crystalgraphics/animation/montage/CgRootMotionMode
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final FROM_MONTAGES_ONLY Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-  field public,static,final IGNORE Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-  field public,static,final NO_EXTRACTION Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-  method public,static values ()[Lcom/crystalgraphics/animation/montage/CgRootMotionMode;
-com/crystalgraphics/animation/montage/CgRootMotionParams
-  access public,final
-  extends java/lang/Object
-  method public <init> ()V
-  method public accumulate (Lorg/joml/Matrix4f;)V
-  method public clear ()V
-  method public consume (FLorg/joml/Matrix4f;)Z
-  method public get (Lorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
-  method public hasRootMotion ()Z
 com/crystalgraphics/animation/retarget/CgClipResolver
   access public,final
   extends java/lang/Object
@@ -1704,7 +1831,7 @@ com/crystalgraphics/animation/sync/CgAnimAssetPlayer
 com/crystalgraphics/animation/sync/CgAnimAssetPlayer$SampleSink
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract sample (Lcom/crystalgraphics/api/animation/CgAnimSequence;FF)V
+  method public,abstract sample (Lcom/crystalgraphics/api/animation/CgAnimSequence;FFF)V
 com/crystalgraphics/animation/sync/CgAnimGroupRole
   access public,final,enum
   extends java/lang/Enum
@@ -1913,6 +2040,7 @@ com/crystalgraphics/api/animation/CgAnimSequence
   method public uniqueMarkerNames ()[Ljava/lang/String;
   method public with (Lcom/crystalgraphics/api/animation/CgClipSettings;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public withCurve (Ljava/lang/String;[FI)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public withTrack (Ljava/lang/String;[F[F[F)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,static builder (Ljava/lang/String;DI)Lcom/crystalgraphics/api/animation/CgAnimSequence$Builder;
   method public,static keyed (Ljava/lang/String;F)Lcom/crystalgraphics/api/animation/CgAnimSequence$KeyedBuilder;
 com/crystalgraphics/api/animation/CgAnimSequence$Builder
@@ -1952,6 +2080,15 @@ com/crystalgraphics/api/animation/CgClipDefinition
   method public,final toString ()Ljava/lang/String;
   method public,static compile (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/api/animation/CgClipDefinition;
   method public,static register ()V
+com/crystalgraphics/api/animation/CgClipModifiers
+  access public,final
+  extends java/lang/Object
+  field public,static,final DISTANCE Ljava/lang/String;
+  field public,static,final STOP_SPEED F
+  method public,static distanceCurve (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;Ljava/lang/String;Z)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static footSyncMarkers (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static rootMotionFromFeet (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;ZLjava/lang/String;[Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static speed (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;)F
 com/crystalgraphics/api/animation/CgClipSettings
   access public,final,record
   extends java/lang/Record

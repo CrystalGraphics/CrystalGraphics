@@ -330,6 +330,27 @@ public final class CgAnimSequence {
                 b.curveNames.toArray(new String[0]), k, d, null, 0f, settings);
     }
 
+    /**
+     * This sequence with bone {@code bone}'s track replaced, or added where it had none: channels as
+     * {@link Builder#track} takes them. What a clip modifier writes ({@link CgClipModifiers}).
+     *
+     * <pre>{@code
+     * CgAnimSequence moved = run.withTrack("root", rootKeys, new float[]{0f, 0f, 0f, 1f}, new float[]{1f, 1f, 1f});
+     * }</pre>
+     *
+     * @throws IllegalStateException for a keyed sequence
+     */
+    public CgAnimSequence withTrack(String bone, float[] translations, float[] rotations, float[] scales) {
+        framed();
+        Builder b = new Builder(name, frameRate, frameCount);
+        for (int t = 0; t < trackBones.length; t++) {
+            if (!trackBones[t].equalsIgnoreCase(bone)) b.track(trackBones[t], this.translations[t], this.rotations[t], this.scales[t]);
+        }
+        b.track(bone, translations, rotations, scales);
+        for (int c = 0; c < curveNames.length; c++) b.curve(curveNames[c], curves[c], curveDrives[c]);
+        return b.settings(settings).build();
+    }
+
     /** The curve's value at {@code time} seconds: between its keys as {@link #sample} takes a bone's, clamped to its ends. */
     public float curveAt(int curve, float time) {
         float[] k = curves[curve];
