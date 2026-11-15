@@ -3,8 +3,7 @@ package com.crystalgraphics.api.animation;
 import java.util.Objects;
 
 /**
- * A bone a skeleton gains under {@code source} that follows {@code target} in every clip: Unreal's virtual bone
- * ({@code FVirtualBone}, Skeleton.h). It gives a skeleton exported without them the bones an anim graph reads, an IK foot
+ * A bone a skeleton gains under {@code source} that follows {@code target} in every clip: a virtual bone. It gives a skeleton exported without them the bones an anim graph reads, an IK foot
  * that tracks its foot, without touching the mesh or any clip.
  *
  * <pre>{@code
@@ -15,8 +14,8 @@ import java.util.Objects;
  * }</pre>
  *
  * <ul>
- *   <li>Each frame a clip is sampled, the bone is set to {@code target}'s place relative to {@code source}: Unreal bakes
- *       the same tracks into each clip as it cooks, so the pose is the same.</li>
+ *   <li>Each frame a clip is sampled, the bone is set to {@code target}'s place relative to {@code source}, as a track
+ *       baked into each clip would hold it.</li>
  *   <li>A clip that carries a track for it (an export from a skeleton that had it) plays that track instead.</li>
  *   <li>{@code source} may be another virtual bone declared before it; {@code target} is a real bone.</li>
  * </ul>

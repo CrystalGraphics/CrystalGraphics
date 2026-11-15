@@ -78,7 +78,7 @@ public final class CgSkeleton {
     }
 
     /**
-     * This skeleton with {@code bones} added after its own: Unreal's virtual bones, each under its source and following
+     * This skeleton with {@code bones} added after its own, virtual bones each under its source and following
      * its target, its rest the target's rest relative to the source.
      *
      * <pre>{@code

@@ -45,8 +45,8 @@ import com.crystalgraphics.util.io.CgIO;
  * <ul>
  *   <li>A bone's rest is GeckoLib's: its pivot from its parent's, in blocks, its rotation {@code Rz·Ry·Rx} of the file's
  *       degrees with x and y negated.</li>
- *   <li>Bone 0 is a root at the model's origin, named by the geometry's identifier, over every top-level bone: Unreal's
- *       one root at the component's origin, on the floor where the entity stands.</li>
+ *   <li>Bone 0 is a root at the model's origin, named by the geometry's identifier, over every top-level bone: one root at
+ *       the component's origin, on the floor where the entity stands, which an IK root follows.</li>
  *   <li>Animations are this model's: GeckoLib adds a clip's rotations to each bone's rest angles, so a clip converted
  *       for one model is not another's.</li>
  *   <li>What fails at load, naming the file and where: no geometry, a bone whose parent is not in the file, two bones
@@ -229,7 +229,7 @@ public final class CgGeckoModel {
 
             CgSkeleton.Builder skeleton = CgSkeleton.builder();
             List<float[]> pivotList = new ArrayList<>(), eulerList = new ArrayList<>();
-            // the root at the model's origin, as Unreal's skeletons have one: what stands on the floor, an IK root's source
+            // the root at the model's origin: what stands on the floor, an IK root's source
             if (byName.containsKey(identifier)) throw new IllegalArgumentException(file + ": a bone shares the geometry's name " + identifier);
             skeleton.bone(identifier, -1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1);
             index.put(identifier, 0);

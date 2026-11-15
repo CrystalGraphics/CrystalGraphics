@@ -81,7 +81,7 @@ public final class CgSkeletalMesh {
     }
 
     /**
-     * This mesh over its skeleton with {@code bones} added: Unreal's virtual bones, which no vertex is bound to and every
+     * This mesh over its skeleton with {@code bones} added: virtual bones, which no vertex is bound to and every
      * clip moves with their targets. What an anim graph needs from a skeleton exported without them (IK foot bones for
      * a foot placement and a leg IK).
      *

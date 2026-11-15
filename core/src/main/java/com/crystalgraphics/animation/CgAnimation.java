@@ -106,7 +106,7 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     private void updateAndEvaluate(float dt) {
         int n = instances.size();
-        // the world's time dilation scales every instance's seconds, as Unreal's world delta does
+        // the world's time dilation scales every instance's seconds, as it scales every system's
         float seconds = world().paused() ? 0f : dt * world().timeDilation();
         // The game thread's half first (variables set, handed over), as Unreal's PreUpdate and NativeUpdateAnimation
         for (int i = 0; i < n; i++) instances.get(i).preUpdate(seconds);

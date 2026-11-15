@@ -272,8 +272,8 @@ public final class CgFootPlacementNode extends CgSkeletalControlNode {
                 d.hip = b;
                 d.footLength = skeleton.restTranslation(d.ball, t).length();
             }
-            // Unreal's IK root up is its local Z, the component's up at rest; an import keeping Unreal's bone frames
-            // under a converting root puts that on another local axis, so take the one that is up at rest
+            // the IK root's up is whichever of its axes is the component's up at rest: an import that keeps another
+            // engine's bone frames under a converting root puts it on another local axis
             Matrix4f[] rest = new Matrix4f[skeleton.boneCount()];
             for (int b = 0; b < rest.length; b++) rest[b] = new Matrix4f();
             skeleton.restGlobal(rest);

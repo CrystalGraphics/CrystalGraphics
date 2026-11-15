@@ -31,7 +31,7 @@ import java.util.Locale;
  * IK on Goku and RPG-Core's humanoid, in three rows going back from the station's front.
  *
  * <ul>
- *   <li><b>Feet</b>, a row each: on a slab's edge, a stair and the floor. Unreal's feet setup: a foot placement plants
+ *   <li><b>Feet</b>, a row each: on a slab's edge, a stair and the floor. A foot placement plants
  *       IK feet on the set's blocks and lowers the pelvis, then a leg IK bends each leg to its IK foot.</li>
  *   <li><b>Punches</b>: a wall, and before it each character twice, 0.5 m and 0.25 m from it, punching. Each frame the
  *       game thread reads where the clip puts each fist, and once it would pass the wall a modify bone moves the IK hand
@@ -53,12 +53,12 @@ final class IkStation implements AnimDemoStation {
     private static final float PUNCH_GAP = 1.0f;
 
     /**
-     * A character's bones as the station needs them: Unreal's names for an Unreal skeleton, its own for another. A
+     * A character's bones as the station needs them: the standard humanoid names, or its own. A
      * {@code root} that is null is bone 0; a {@code ball} that is null is made a virtual bone on the foot, a foot with
      * no toe bone of its own.
      *
      * <p>Leg IK keeps the bend a limb has in its clips, so it cannot bend one its clips hold straight. Such a rig
-     * names poles: each limb then takes Unreal's Two Bone IK, its joint bending toward a point that far along the
+     * names poles: each limb then takes two-bone IK, its joint bending toward a point that far along the
      * joint bone's own z.</p>
      */
     private record Rig(@Nullable String root, String pelvis, String footL, String footR, @Nullable String ballL, @Nullable String ballR,
@@ -69,7 +69,7 @@ final class IkStation implements AnimDemoStation {
             return b != null ? b : left ? "ball_l" : "ball_r";
         }
 
-        /** Unreal's mannequin IK bones, and the clip's own hands, as virtual bones of {@code skeleton}. */
+        /** The standard IK bones, and the clip's own hands, as virtual bones of {@code skeleton}. */
         List<CgVirtualBone> virtualBones(CgSkeleton skeleton) {
             String root = this.root != null ? this.root : skeleton.name(0);
             List<CgVirtualBone> out = new ArrayList<>(List.of(
@@ -88,7 +88,7 @@ final class IkStation implements AnimDemoStation {
         }
     }
 
-    private static final Rig UNREAL = new Rig("root", "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "hand_l", "hand_r",
+    private static final Rig STANDARD = new Rig("root", "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "hand_l", "hand_r",
             "FLD_Stand", "FLD_Punch", 0f, 0f);
     // its legs hang off "model", the body's pivot: that is its pelvis
     private static final Rig HUMANOID = new Rig(null, "model", "left_foot_locator", "right_foot_locator", null, null,
@@ -227,10 +227,10 @@ final class IkStation implements AnimDemoStation {
         dynamicsOn = true;
         List<AnimDemoCast> rigged = new ArrayList<>();
         List<Rig> rigs = new ArrayList<>();
-        AnimDemoCast goku = rigged(casts.kitCasts(), UNREAL);
+        AnimDemoCast goku = rigged(casts.kitCasts(), STANDARD);
         if (goku != null) {
             rigged.add(goku);
-            rigs.add(UNREAL);
+            rigs.add(STANDARD);
         }
         AnimDemoCast humanoid = casts.humanoid() != null ? rigged(List.of(casts.humanoid()), HUMANOID) : null;
         if (humanoid != null) {
