@@ -1648,6 +1648,7 @@ com/crystalgraphics/api/animation/CgAnimPose
   method public component (I)Lorg/joml/Matrix4fc;
   method public component (ILorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
   method public convertToAdditive (Lcom/crystalgraphics/api/animation/CgAnimPose;)Lcom/crystalgraphics/api/animation/CgAnimPose;
+  method public deriveVirtualBones ([I)Lcom/crystalgraphics/api/animation/CgAnimPose;
   method public fromMeshRotation ()Lcom/crystalgraphics/api/animation/CgAnimPose;
   method public mirror (Lcom/crystalgraphics/api/animation/CgMirrorTable;)Lcom/crystalgraphics/api/animation/CgAnimPose;
   method public resolve ()Lcom/crystalgraphics/api/animation/CgAnimPose;
@@ -1841,6 +1842,8 @@ com/crystalgraphics/api/animation/CgSkeleton
   method public restScale (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public restTranslation (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public toString ()Ljava/lang/String;
+  method public virtualTarget (I)I
+  method public withVirtualBones (Ljava/util/List;)Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public,static builder ()Lcom/crystalgraphics/api/animation/CgSkeleton$Builder;
 com/crystalgraphics/api/animation/CgSkeleton$Builder
   access public,final
@@ -1854,10 +1857,11 @@ com/crystalgraphics/api/animation/CgSkeletonDefinition
   access public,final,record
   extends java/lang/Record
   field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
-  method public <init> (Ljava/lang/String;Ljava/util/List;)V
+  method public <init> (Ljava/lang/String;Ljava/util/List;Ljava/util/List;)V
   method public id ()Ljava/lang/String;
   method public sockets ()Ljava/util/List;
   method public socketsOn (Lcom/crystalgraphics/api/animation/CgSkeleton;)Ljava/util/List;
+  method public virtualBones ()Ljava/util/List;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -1891,6 +1895,16 @@ com/crystalgraphics/api/animation/CgSyncMarker
   method public <init> (Ljava/lang/String;F)V
   method public name ()Ljava/lang/String;
   method public time ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/animation/CgVirtualBone
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public name ()Ljava/lang/String;
+  method public source ()Ljava/lang/String;
+  method public target ()Ljava/lang/String;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -3068,6 +3082,7 @@ com/crystalgraphics/api/mesh/CgSkeletalMesh
   method public sockets ()Ljava/util/List;
   method public toString ()Ljava/lang/String;
   method public withSockets (Ljava/util/List;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
+  method public withVirtualBones (Ljava/util/List;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public,static builder (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/animation/CgSkeleton;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh$Builder;
 com/crystalgraphics/api/mesh/CgSkeletalMesh$Builder
   access public,final

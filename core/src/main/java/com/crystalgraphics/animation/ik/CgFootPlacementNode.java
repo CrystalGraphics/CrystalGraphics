@@ -272,7 +272,16 @@ public final class CgFootPlacementNode extends CgSkeletalControlNode {
                 d.hip = b;
                 d.footLength = skeleton.restTranslation(d.ball, t).length();
             }
+            // Unreal's IK root up is its local Z, the component's up at rest; an import keeping Unreal's bone frames
+            // under a converting root puts that on another local axis, so take the one that is up at rest
+            Matrix4f[] rest = new Matrix4f[skeleton.boneCount()];
+            for (int b = 0; b < rest.length; b++) rest[b] = new Matrix4f();
+            skeleton.restGlobal(rest);
+            rest[ikRootIndex].getNormalizedRotation(new Quaternionf()).transformInverse(ikRootUp.set(0, 1, 0)).normalize();
         }
+
+        /** The IK root's local axis that is the component's up at rest. */
+        private final Vector3f ikRootUp = new Vector3f();
 
         @Override
         protected void initialize(CgAnimGraphInstance g) {
@@ -403,7 +412,7 @@ public final class CgFootPlacementNode extends CgSkeletalControlNode {
 
         /** {@code CalcTargetPlantPlaneDistance}: the nearer of the foot and the ball to the IK root's plane. */
         private float targetPlantPlaneDistance(LegData d) {
-            Vector3f n = ikRoot.transformDirection(v1.set(0, 1, 0)).normalize();
+            Vector3f n = ikRoot.transformDirection(v1.set(ikRootUp)).normalize();
             float w = n.dot(ikRoot.getTranslation(v2));
             float foot = distanceAlong(d.foot.getTranslation(v3), n, w, approachCS);
             float ball = distanceAlong(d.ballTm.getTranslation(v4), n, w, approachCS);
@@ -657,7 +666,7 @@ public final class CgFootPlacementNode extends CgSkeletalControlNode {
         private void alignToGround(LegData d, Matrix4f footWorld) {
             Matrix4f inputWS = m3.set(ctw).mul(d.foot);
             Matrix4f rootWS = m1.set(ctw).mul(ikRoot);
-            Vector3f rootN = rootWS.transformDirection(v0.set(0, 1, 0)).normalize();
+            Vector3f rootN = rootWS.transformDirection(v0.set(ikRootUp)).normalize();
             float rootW = rootN.dot(rootWS.getTranslation(v1));
             float above = distanceAlong(inputWS.getTranslation(v2), rootN, rootW, approachWS);
             Vector3f corrected = planeIntersection(footWorld.getTranslation(v3), approachWS, planeN, planeN.dot(planeP), v3)
@@ -862,23 +871,26 @@ public final class CgFootPlacementNode extends CgSkeletalControlNode {
         return out.set(p).fma(-(p.dot(n) - w), n);
     }
 
-    /** {@code FMath::SphereDistToLine}: the point on the line nearest the sphere, or where the line enters it. */
+    /**
+     * {@code FMath::SphereDistToLine} (UnrealMath.cpp): where a line along the unit {@code dir} meets the sphere, the
+     * crossing nearer its origin; missing it, the sphere's point nearest the line.
+     */
     static Vector3f sphereDistToLine(Vector3f origin, float radius, Vector3f lineOrigin, Vector3f dir, Vector3f out) {
-        float a = dir.dot(dir);
-        float bx = lineOrigin.x - origin.x, by = lineOrigin.y - origin.y, bz = lineOrigin.z - origin.z;
-        float b = 2f * (dir.x * bx + dir.y * by + dir.z * bz);
-        float c = bx * bx + by * by + bz * bz - radius * radius;
-        float disc = b * b - 4f * a * c;
-        if (disc >= 0f && a > 1e-12f) {
-            float t = (-b + (float) Math.sqrt(disc)) / (2f * a);
-            return out.set(lineOrigin).fma(t, dir);
+        float ox = origin.x - lineOrigin.x, oy = origin.y - lineOrigin.y, oz = origin.z - lineOrigin.z;
+        float b = -2f * (dir.x * ox + dir.y * oy + dir.z * oz);
+        float c = ox * ox + oy * oy + oz * oz - radius * radius;
+        float d = b * b - 4f * c;
+        if (d <= 1e-8f) {   // Unreal's KINDA_SMALL_NUMBER, cm² to m²
+            float px = lineOrigin.x - b * 0.5f * dir.x - origin.x, py = lineOrigin.y - b * 0.5f * dir.y - origin.y,
+                    pz = lineOrigin.z - b * 0.5f * dir.z - origin.z;
+            float len = (float) Math.sqrt(px * px + py * py + pz * pz);
+            if (len <= 1e-8f) return out.set(origin);
+            return out.set(origin).add(px * radius / len, py * radius / len, pz * radius / len);
         }
-        // no intersection: the point of the sphere's surface nearest the line
-        float t = a > 1e-12f ? -(dir.x * bx + dir.y * by + dir.z * bz) / a : 0f;
-        float nx = lineOrigin.x + dir.x * t - origin.x, ny = lineOrigin.y + dir.y * t - origin.y, nz = lineOrigin.z + dir.z * t - origin.z;
-        float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
-        if (len <= 1e-12f) return out.set(lineOrigin).fma(t, dir);
-        return out.set(origin).add(nx * radius / len, ny * radius / len, nz * radius / len);
+        float e = (float) Math.sqrt(d), t1 = (-b + e) * 0.5f, t2 = (-b - e) * 0.5f;
+        // both as far: the one along dir
+        float t = Math.abs(t1) == Math.abs(t2) ? Math.abs(t1) : Math.abs(t1) < Math.abs(t2) ? t1 : t2;
+        return out.set(lineOrigin).fma(t, dir);
     }
 
     /** Bones ascending, as Unreal sorts its bone transforms. */

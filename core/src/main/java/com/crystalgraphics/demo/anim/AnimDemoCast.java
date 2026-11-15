@@ -81,6 +81,11 @@ final class AnimDemoCast {
         return new Body(this);
     }
 
+    /** This character drawn from {@code mesh}: its own mesh with bones added ({@code withVirtualBones}). */
+    AnimDemoCast withMesh(CgSkeletalMesh mesh) {
+        return new AnimDemoCast(name, family, mesh, clips, fit, materials);
+    }
+
     /** The first clip whose name contains {@code part}, ignoring case; null for none. */
     @Nullable
     Clip clip(String part) {

@@ -19,7 +19,9 @@ import java.util.Map;
  * <pre>{@code
  * CgSkeletonDefinition.register();                                            // once, at init
  * CgAssetLoad load = pipeline.request(CgBodyKinds.SKELETON, "kakarot_kit:Art/MDL/Cpl/Cpl001/Model/Cpl001p1_Skeleton");
- * CgSkeletalMesh goku = mesh.withSockets(((CgSkeletonDefinition) load.definition()).socketsOn(mesh.skeleton()));
+ * CgSkeletonDefinition d = (CgSkeletonDefinition) load.definition();
+ * CgSkeletalMesh withBones = mesh.withVirtualBones(d.virtualBones());           // its virtual bones first
+ * CgSkeletalMesh goku = withBones.withSockets(d.socketsOn(withBones.skeleton())); // then its sockets, on any bone
  *
  * // a file read by hand, in its kit's units:
  * CgSkeletonDefinition d = CgSkeletonDefinition.compile(id, tree, CgUnits.of(unitsYaml.get("units"), CgUnits.HOST));
@@ -29,21 +31,24 @@ import java.util.Map;
  *   <li>A socket's offset and turn are in its bone's own space, converted as the bones were: Unreal's in a glTF from
  *       Unreal's or CUE4Parse's exporter, whose bone frames are Unreal's through {@link CgUnits#UNREAL}'s axes
  *       ({@code Gltf.cs:130-132, 274-280}).</li>
- *   <li>A file naming {@code virtual_bones} fails to compile: they are not added to a mesh yet.</li>
+ *   <li>Its {@code virtual_bones} are added to a mesh before its sockets, so a socket may sit on one.</li>
  *   <li>Only {@code from: bone} sockets are a mesh's. {@code entity} and {@code derived} ones are points on whatever
  *       plays the role, not on the model, and are left to their reader.</li>
  * </ul>
  *
- * @param id      its asset id
- * @param sockets its bone sockets, in file order
+ * @param id           its asset id
+ * @param sockets      its bone sockets, in file order
+ * @param virtualBones its virtual bones, in file order: a mesh takes them with
+ *                     {@link com.crystalgraphics.api.mesh.CgSkeletalMesh#withVirtualBones}
  */
-public record CgSkeletonDefinition(String id, List<CgSocket> sockets) {
+public record CgSkeletonDefinition(String id, List<CgSocket> sockets, List<CgVirtualBone> virtualBones) {
 
     public static final CgAssetCompiler<CgSkeletonDefinition> COMPILER =
             (asset, deps) -> compile(asset.id(), asset.resolved(), deps.units());
 
     public CgSkeletonDefinition {
         sockets = Collections.unmodifiableList(new ArrayList<>(sockets));
+        virtualBones = Collections.unmodifiableList(new ArrayList<>(virtualBones));
     }
 
     /**
@@ -66,9 +71,12 @@ public record CgSkeletonDefinition(String id, List<CgSocket> sockets) {
         if (!"unreal_rotator".equals(units.rotation()) && !"quaternion".equals(units.rotation())) {
             throw new IllegalArgumentException(id + ": sockets read rotators or quaternions, not " + units.rotation());
         }
-        if (tree.get("virtual_bones") instanceof List<?> vb && !vb.isEmpty()) {
-            // a mesh would need the bones added and its clips' baked tracks bound to them; until then, refuse by name
-            throw new IllegalArgumentException(id + ".virtual_bones: not supported yet, so its clips could not reach them");
+        List<CgVirtualBone> virtual = new ArrayList<>();
+        if (tree.get("virtual_bones") instanceof List<?> vb) {
+            for (Object o : vb) {
+                Map<?, ?> v = (Map<?, ?>) o;
+                virtual.add(new CgVirtualBone(String.valueOf(v.get("name")), String.valueOf(v.get("source")), String.valueOf(v.get("target"))));
+            }
         }
         List<CgSocket> out = new ArrayList<>();
         Object list = tree.get("sockets");
@@ -82,7 +90,7 @@ public record CgSkeletonDefinition(String id, List<CgSocket> sockets) {
                         rotation(s.get("rotation"), units), scale));
             }
         }
-        return new CgSkeletonDefinition(id, out);
+        return new CgSkeletonDefinition(id, out, virtual);
     }
 
     private static Vector3f vector(Object v, float absent) {

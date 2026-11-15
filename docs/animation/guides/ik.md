@@ -132,9 +132,30 @@ nodes:
       - { ik_foot_bone: ik_foot_r, fk_foot_bone: foot_r }
 ```
 
-**A skeleton with no IK foot bones** (a character exported without them) plants its feet the older way: trace under
-each foot in `onUpdate`, lower the pelvis to the lower foot with a modify bone node, and land each foot with a
-two-bone IK whose target comes from variables. The animation demo's IK station does exactly that.
+**A skeleton with no IK foot bones** (a character exported without them) gains them as virtual bones (Unreal's): each
+follows its foot in every clip, under an IK root that follows the root, and the graph above runs unchanged. Nothing
+in the mesh or the clips changes. The animation demo's IK station plants Goku this way.
+
+```java
+CgSkeletalMesh goku = mesh.withVirtualBones(List.of(
+        new CgVirtualBone("ik_foot_root", "root", "root"),
+        new CgVirtualBone("ik_foot_l", "ik_foot_root", "foot_l"),
+        new CgVirtualBone("ik_foot_r", "ik_foot_root", "foot_r")));
+// build the graph on goku.skeleton(): it has the IK bones now
+```
+
+```yaml
+# or in the skeleton asset, which every mesh built on it takes
+virtual_bones:
+  - { name: ik_foot_root, source: root, target: root }
+  - { name: ik_foot_l, source: ik_foot_root, target: foot_l }
+  - { name: ik_foot_r, source: ik_foot_root, target: foot_r }
+```
+
+- The IK root's up is whichever of its axes points up at rest, so an import that keeps Unreal's bone frames under a
+  turned root plants the same as one that converts them.
+- Make the IK root follow the bone that stands on the floor at rest (`root`), not the pelvis: the feet keep their
+  height above it.
 
 ## Things that swing
 

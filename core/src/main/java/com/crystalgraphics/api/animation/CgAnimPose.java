@@ -1,6 +1,9 @@
 package com.crystalgraphics.api.animation;
 
+import javax.annotation.Nullable;
+
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
@@ -50,6 +53,8 @@ public final class CgAnimPose {
     private final boolean[] moved;
     private final Vector3f blendT = new Vector3f(), blendS = new Vector3f();
     private final Quaternionf blendQ = new Quaternionf();
+    /** deriveVirtualBones': the source's and target's component transforms, a local on the way. */
+    private final Matrix4f virtualSource = new Matrix4f(), virtualTarget = new Matrix4f(), virtualLocal = new Matrix4f();
 
     public CgAnimPose(CgSkeleton skeleton) {
         this.skeleton = skeleton;
@@ -69,6 +74,42 @@ public final class CgAnimPose {
         float[] rest = skeleton.rest();
         System.arraycopy(rest, 0, local, 0, rest.length);
         return this;
+    }
+
+    /**
+     * Sets each virtual bone ({@link CgSkeleton#withVirtualBones}) to its target's place under its source, as the local
+     * pose stands: what a clip's baked virtual bone track would hold. Bones in {@code tracked} (a clip's own tracks)
+     * are left as sampled. A clip calls it after sampling; call it after writing locals by hand.
+     */
+    public CgAnimPose deriveVirtualBones(@Nullable int[] tracked) {
+        int[] virtual = skeleton.virtualBones();
+        for (int b : virtual) {
+            if (tracked != null && contains(tracked, b)) continue;
+            componentOf(skeleton.parent(b), virtualSource);
+            componentOf(skeleton.virtualTarget(b), virtualTarget);
+            virtualSource.invertAffine().mul(virtualTarget);
+            virtualSource.getTranslation(blendT);
+            virtualSource.getNormalizedRotation(blendQ);
+            virtualSource.getScale(blendS);
+            set(b, blendT.x, blendT.y, blendT.z, blendQ.x, blendQ.y, blendQ.z, blendQ.w, blendS.x, blendS.y, blendS.z);
+        }
+        return this;
+    }
+
+    private static boolean contains(int[] bones, int b) {
+        for (int x : bones) if (x == b) return true;
+        return false;
+    }
+
+    /** {@code bone}'s transform in the skeleton's space from the local pose alone, up its own chain. */
+    private Matrix4f componentOf(int bone, Matrix4f out) {
+        out.identity();
+        for (int p = bone; p >= 0; p = skeleton.parent(p)) {
+            int at = p * REST;
+            virtualLocal.translationRotateScale(local[at], local[at + 1], local[at + 2], local[at + 3], local[at + 4],
+                    local[at + 5], local[at + 6], local[at + 7], local[at + 8], local[at + 9]).mul(out, out);
+        }
+        return out;
     }
 
     /** {@code from}'s local pose, of the same skeleton. */

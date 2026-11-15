@@ -4,6 +4,7 @@ import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgMorphTargets;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.animation.CgVirtualBone;
 import com.crystalgraphics.api.vertex.CgVertexFormat;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
@@ -77,6 +78,39 @@ public final class CgSkeletalMesh {
      */
     public CgSkeletalMesh withSockets(List<CgSocket> sockets) {
         return new CgSkeletalMesh(mesh, skeleton, inverseBinds, materials, morphTargets, sequences, checkSockets(skeleton, sockets));
+    }
+
+    /**
+     * This mesh over its skeleton with {@code bones} added: Unreal's virtual bones, which no vertex is bound to and every
+     * clip moves with their targets. What an anim graph needs from a skeleton exported without them (IK foot bones for
+     * a foot placement and a leg IK).
+     *
+     * <pre>{@code
+     * CgSkeletalMesh withIk = goku.withVirtualBones(List.of(
+     *         new CgVirtualBone("ik_foot_root", "root", "root"),
+     *         new CgVirtualBone("ik_foot_l", "ik_foot_root", "foot_l"),
+     *         new CgVirtualBone("ik_foot_r", "ik_foot_root", "foot_r")));
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A new mesh: an instance made over the old one keeps the old skeleton.</li>
+     *   <li>Its sockets and clips are kept; a clip binds the new bones by name, as any.</li>
+     * </ul>
+     */
+    public CgSkeletalMesh withVirtualBones(List<CgVirtualBone> bones) {
+        if (bones.isEmpty()) return this;
+        CgSkeleton next = skeleton.withVirtualBones(bones);
+        float[] binds = Arrays.copyOf(inverseBinds, next.boneCount() * 16);
+        Matrix4f[] global = next.restGlobal(newMatrices(next.boneCount()));
+        // no vertex is bound to a virtual bone: its inverse bind is only kept consistent with its rest
+        for (int b = skeleton.boneCount(); b < next.boneCount(); b++) global[b].invertAffine().get(binds, b * 16);
+        return new CgSkeletalMesh(mesh, next, binds, materials, morphTargets, sequences, sockets);
+    }
+
+    private static Matrix4f[] newMatrices(int n) {
+        Matrix4f[] out = new Matrix4f[n];
+        for (int i = 0; i < n; i++) out[i] = new Matrix4f();
+        return out;
     }
 
     /** Its sockets, in the order given. */

@@ -49,13 +49,90 @@ public final class CgSkeleton {
     private final int[] parents;
     private final float[] rest;
     private final Map<String, Integer> index;
+    /** Per bone, the bone a virtual one follows, or -1 for a real bone. */
+    private final int[] virtualTargets;
+    /** The virtual bones, in index order. */
+    private final int[] virtualBones;
 
     private CgSkeleton(String[] names, int[] parents, float[] rest) {
+        this(names, parents, rest, filled(names.length));
+    }
+
+    private CgSkeleton(String[] names, int[] parents, float[] rest, int[] virtualTargets) {
         this.names = names;
         this.parents = parents;
         this.rest = rest;
+        this.virtualTargets = virtualTargets;
         this.index = new HashMap<>(names.length * 2);
         for (int i = 0; i < names.length; i++) index.put(names[i], i);
+        int n = 0;
+        for (int t : virtualTargets) if (t >= 0) n++;
+        this.virtualBones = new int[n];
+        for (int b = 0, i = 0; b < virtualTargets.length; b++) if (virtualTargets[b] >= 0) virtualBones[i++] = b;
+    }
+
+    private static int[] filled(int n) {
+        int[] out = new int[n];
+        Arrays.fill(out, -1);
+        return out;
+    }
+
+    /**
+     * This skeleton with {@code bones} added after its own: Unreal's virtual bones, each under its source and following
+     * its target, its rest the target's rest relative to the source.
+     *
+     * <pre>{@code
+     * CgSkeleton withIk = skeleton.withVirtualBones(List.of(new CgVirtualBone("ik_foot_l", "root", "foot_l")));
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a name the skeleton has, or a source or target it lacks (a target must be a
+     *                                  real bone)
+     */
+    public CgSkeleton withVirtualBones(List<CgVirtualBone> bones) {
+        if (bones.isEmpty()) return this;
+        int n = names.length, total = n + bones.size();
+        String[] nn = Arrays.copyOf(names, total);
+        int[] np = Arrays.copyOf(parents, total), nt = Arrays.copyOf(virtualTargets, total);
+        float[] nr = Arrays.copyOf(rest, total * REST);
+        Matrix4f[] global = new Matrix4f[total];
+        for (int b = 0; b < total; b++) global[b] = new Matrix4f();
+        restGlobal(global);
+        Map<String, Integer> at = new HashMap<>(index);
+        Matrix4f rel = new Matrix4f();
+        Vector3f t = new Vector3f(), s = new Vector3f();
+        Quaternionf q = new Quaternionf();
+        for (int i = 0; i < bones.size(); i++) {
+            CgVirtualBone v = bones.get(i);
+            int b = n + i;
+            if (at.containsKey(v.name())) throw new IllegalArgumentException("virtual bone " + v.name() + ": the skeleton has that name");
+            Integer source = at.get(v.source()), target = index.get(v.target());
+            if (source == null) throw new IllegalArgumentException("virtual bone " + v.name() + "'s source " + v.source() + " is not a bone before it");
+            if (target == null || virtualTargets[target] >= 0) {
+                throw new IllegalArgumentException("virtual bone " + v.name() + "'s target " + v.target() + " is not a real bone");
+            }
+            global[source].invertAffine(rel).mul(global[target]);
+            rel.getTranslation(t);
+            rel.getNormalizedRotation(q);
+            rel.getScale(s);
+            float[] values = {t.x, t.y, t.z, q.x, q.y, q.z, q.w, s.x, s.y, s.z};
+            System.arraycopy(values, 0, nr, b * REST, REST);
+            nn[b] = v.name();
+            np[b] = source;
+            nt[b] = target;
+            global[source].mul(rel, global[b]);
+            at.put(v.name(), b);
+        }
+        return new CgSkeleton(nn, np, nr, nt);
+    }
+
+    /** The bone a virtual bone follows, or -1 for a real bone. */
+    public int virtualTarget(int bone) {
+        return virtualTargets[bone];
+    }
+
+    /** Its virtual bones, in index order; empty for none. Read-only. */
+    int[] virtualBones() {
+        return virtualBones;
     }
 
     /** A skeleton built bone by bone, root first. */
@@ -136,7 +213,7 @@ public final class CgSkeleton {
     @Override
     public boolean equals(Object o) {
         return this == o || o instanceof CgSkeleton s && Arrays.equals(names, s.names) && Arrays.equals(parents, s.parents)
-                && Arrays.equals(rest, s.rest);
+                && Arrays.equals(rest, s.rest) && Arrays.equals(virtualTargets, s.virtualTargets);
     }
 
     @Override

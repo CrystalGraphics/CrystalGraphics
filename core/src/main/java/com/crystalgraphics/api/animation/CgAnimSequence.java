@@ -559,6 +559,7 @@ public final class CgAnimSequence {
         int[] bones = bind(pose.skeleton());
         if (keys != null) {
             sampleKeyed(bones, pose.local, time);
+            pose.deriveVirtualBones(bones);
             return;
         }
         int a, b;
@@ -584,6 +585,7 @@ public final class CgAnimSequence {
             nlerp(rotations[t], a, b, alpha, out, at + 3);
             lerp(scales[t], 3, a, b, alpha, out, at + 7);
         }
+        pose.deriveVirtualBones(bones);
     }
 
     /** Each keyed track's nine curves at {@code time}, its Euler angles composed {@code Rz·Ry·Rx} into a unit quaternion. */

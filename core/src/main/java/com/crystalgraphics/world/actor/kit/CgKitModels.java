@@ -27,14 +27,19 @@ public final class CgKitModels {
     private CgKitModels() {
     }
 
-    /** {@code mesh} with the sockets of {@code skeleton} (under {@code kit}) in the kit's units; {@code mesh} where the kit has none. */
+    /**
+     * {@code mesh} with the virtual bones and sockets of {@code skeleton} (under {@code kit}), the sockets in the kit's
+     * units; {@code mesh} where the kit has none.
+     */
     public static CgSkeletalMesh withSockets(CgSkeletalMesh mesh, Path kit, String skeleton) {
         Path file = kit.resolve(skeleton), units = kit.resolve("units.yaml");
         if (!Files.isRegularFile(file) || !Files.isRegularFile(units)) return mesh;
         try {
             CgUnits kitUnits = CgUnits.of(((Map<?, ?>) CgAssetYaml.read(Files.readString(units))).get("units"), CgUnits.HOST);
             Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(file));
-            return mesh.withSockets(CgSkeletonDefinition.compile(skeleton, tree, kitUnits).socketsOn(mesh.skeleton()));
+            CgSkeletonDefinition d = CgSkeletonDefinition.compile(skeleton, tree, kitUnits);
+            CgSkeletalMesh withBones = mesh.withVirtualBones(d.virtualBones());
+            return withBones.withSockets(d.socketsOn(withBones.skeleton()));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
