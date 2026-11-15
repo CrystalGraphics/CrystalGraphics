@@ -1,0 +1,16 @@
+_v: 1
+curves:
+  - name: eye_r_u_scale
+    drives: material
+    keys: [[-0.6, 0.0, cubic], [-0.4, 0.12963, cubic, 0.733668, 0.733668], [-0.333333, 0.195645, cubic, 0.925926, 0.925926], [0.0, 0.5, cubic, 0.83006, 0.83006], [0.033333, 0.5, cubic], [0.5, 0.5, cubic], [0.533333, 0.5, cubic, -0.500876, -0.500876], [0.8, 0.349737, cubic, -0.681818, -0.681818], [1.266667, 0.0, cubic]]
+  - name: blendOrient1
+    drives: none
+    keys: [[-0.6, 0.0, cubic], [-0.4, 0.12963, cubic, 0.733668, 0.733668], [-0.333333, 0.195645, cubic, 0.925926, 0.925926], [0.0, 0.5, cubic, 0.83006, 0.83006], [0.033333, 0.5, cubic], [0.5, 0.5, cubic], [0.533333, 0.5, cubic, -0.500876, -0.500876], [0.8, 0.349737, cubic, -0.681818, -0.681818], [1.266667, 0.0, cubic]]
+  - { name: blendPoint1, drives: none, keys: [[-0.6, 0.06, cubic], [0.533333, 0.06, cubic]] }
+  - { name: eye_l_u_offset, drives: material, keys: [[-0.6, 1.0, cubic], [0.533333, 1.0, cubic]] }
+  - { name: eye_l_u_scale, drives: material, keys: [[-0.6, -0.02, cubic], [0.533333, -0.02, cubic]] }
+  - { name: eye_l_v_offset, drives: material, keys: [[-0.6, 1.0, cubic], [0.533333, 1.0, cubic]] }
+  - { name: eye_l_v_scale, drives: material, keys: [[-0.6, -0.06, cubic], [0.533333, -0.06, cubic]] }
+  - { name: eye_r_u_offset, drives: material, keys: [[-0.6, 1.0, cubic], [0.533333, 1.0, cubic]] }
+  - { name: eye_r_v_offset, drives: material, keys: [[-0.6, -0.02, cubic], [0.533333, -0.02, cubic]] }
+  - { name: eye_r_v_scale, drives: material, keys: [[-0.6, 1.0, cubic], [0.533333, 1.0, cubic]] }

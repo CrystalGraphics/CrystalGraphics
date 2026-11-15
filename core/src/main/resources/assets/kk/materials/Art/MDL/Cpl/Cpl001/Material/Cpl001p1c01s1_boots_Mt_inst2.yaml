@@ -1,0 +1,56 @@
+_v: 1
+parent: kk:MasterMaterials/AT_Materials/CellShade_Tone
+keywords:
+  - SWITCH_USEAOMAP
+  - SWITCH_USEDIFFUSETEXTURE
+  - SWITCH_USELIGHTMAP
+  - SWITCH_USEOUTLINETEXTURE
+  - SWITCH_USERIMLIGHT
+  - SWITCH_USESPECULARTEXTURE
+values:
+  MiddleGradPower: 1.0
+  RegionOffset: 0.2199999988079071
+  RegionOffset_Middle: 0.800000011920929
+  RimLightInfl_bright: 1.0
+  RimLightInfl_dark: 0.4000000059604645
+  RimLightPow_bright: 5.0
+  RimLightPow_dark: 3.0
+  AffectedLight: 0.5
+  AOMult: 0.10000000149011612
+  AOPower: 1.0
+  CastShadowPower: 0.800000011920929
+  ShadowPower: 0.0
+  TonePattern: 43.0
+  AmbientDFctor: [0.12690000236034393, 0.19716499745845795, 0.23499999940395355, 1.0]
+  AmbientDFctor2: [0.00559999980032444, 0.0162189994007349, 0.03999999910593033, 1.0]
+  Specular: [1.0, 1.0, 1.0, 1.0]
+textures:
+  AmbientOcclusion_Texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_bodycloth_oc.png }
+  diffuse_texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/Diffuse/OrangeCloth_c01di.png }
+  outline_texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/post_01.png }
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal:
+        Damage1: 0.0
+        Damage2: 0.0
+        Damage3: 0.0
+        A_Noise_Far: 0.0
+        A_Noise_Near: 0.05000000074505806
+        D_Noise_Far: 0.0
+        D_Noise_Near: 0.05000000074505806
+        M_Noise_Far: 0.0
+        M_Noise_Near: 0.05000000074505806
+        NoiseScale: 0.0
+        A_Uneven_Far: 0.20000000298023224
+        A_Uneven_Near: 0.30000001192092896
+        D_Uneven_Far: 0.20000000298023224
+        D_Uneven_Near: 0.30000001192092896
+        UnevenScale: 0.0
+        RefractionDepthBias: 0.0
+        ambient_texture: { texture: kk:textures/Engine/EngineMaterials/DefaultDiffuse.png }
+        Dm_Mask_Texture: { texture: kk:textures/Art/MDL/Cpl/Cpl001/Texture/cpl001p1c01s1_boots_dm_msk.png }
+        InLineDesicion_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture02.png }
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_boots_Mt_inst2" }
+  note: "Cpl001p1c01s1_boots_Mt_inst2: an instance"

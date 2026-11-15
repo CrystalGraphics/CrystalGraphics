@@ -16,8 +16,10 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
@@ -135,6 +137,30 @@ public class CgIO {
         if (reads != null) reads.paths.add(normalizePath(path));
     }
 
+    /** Folders mounted for a namespace, {@link #mount}: copied on write, read on every open. */
+    private static volatile Map<String, File> MOUNTS = Collections.emptyMap();
+
+    /**
+     * Makes {@code folder} answer for {@code namespace}'s files ({@code <namespace>:<path>} is {@code folder/<path>}),
+     * ahead of the override roots and the classpath: a kit's folder, read as Unreal reads a mounted plugin's content.
+     *
+     * <pre>{@code
+     * CgIO.mount("mykit", Paths.get("D:/kits/mykit").toFile());
+     * CgIO.openStream("mykit:textures/hero_body.png");   // D:/kits/mykit/textures/hero_body.png
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A namespace mounts one folder: mounting it again replaces the folder.</li>
+     *   <li>A file the folder lacks falls through to the other roots, as before.</li>
+     *   <li>Mounting loads nothing and registers no asset: the folder's files are read when asked for.</li>
+     * </ul>
+     */
+    public static synchronized void mount(String namespace, File folder) {
+        Map<String, File> next = new HashMap<>(MOUNTS);
+        next.put(namespace, folder.getAbsoluteFile());
+        MOUNTS = Collections.unmodifiableMap(next);
+    }
+
     /** For instant hotswap from filesystem in harness*/
     private static final String ASSETS_HARNESS = "assets/harness/";
     
@@ -205,6 +231,19 @@ public class CgIO {
             if (path.contains(ASSETS_HARNESS))
                 return new FileInputStream("src/main/resources/" + path);
         } catch (Throwable ignored) {}
+
+        // 0.5 A folder mounted for its namespace: a kit's own files
+        if (!MOUNTS.isEmpty()) {
+            String stripped = normalized.substring(ASSETS_PREFIX.length());
+            int slash = stripped.indexOf('/');
+            File folder = slash > 0 ? MOUNTS.get(stripped.substring(0, slash)) : null;
+            if (folder != null) {
+                try {
+                    File file = new File(folder, stripped.substring(slash + 1));
+                    if (file.isFile()) return new FileInputStream(file);
+                } catch (Throwable ignored) {}
+            }
+        }
 
         // 1. Filesystem override — every configured source root, in order.
         if (!RESOURCE_OVERRIDE_DIRS.isEmpty()) {

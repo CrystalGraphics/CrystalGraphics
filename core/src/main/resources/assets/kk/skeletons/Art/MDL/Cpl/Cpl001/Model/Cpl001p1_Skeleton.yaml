@@ -1,0 +1,313 @@
+_v: 1
+model: kk:Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1
+sockets:
+  - { id: rsjamqwj, name: pelvis_EF_air, from: bone, bone: pelvis }
+  - { id: fhdate14, name: Eff_001, from: bone, bone: root, location: [70.0, -30.0, 80.0] }
+  - { id: tp38cjkh, name: Eff_002, from: bone, bone: root, location: [-70.0, -30.0, 80.0] }
+  - { id: mdb1q1s8, name: Eff_003, from: bone, bone: root, location: [0.0, -30.0, 140.0] }
+  - { id: dryntd88, name: Eff_004, from: bone, bone: root, location: [0.0, -30.0, -10.0] }
+  - id: tksgv3je
+    name: Icon
+    from: bone
+    bone: root
+    location: [0.0, -225.0, 0.0]
+    rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 }
+  - { id: r3j7zcsz, name: Lockon, from: bone, bone: spine_02 }
+  - id: hms9nw4y
+    name: foot_l_trl01
+    from: bone
+    bone: foot_l
+    location: [1.633866548538208, -5.505115509033203, 13.808059692382812]
+  - id: we5y9v74
+    name: foot_l_trl02
+    from: bone
+    bone: foot_l
+    location: [3.387160062789917, -4.687652111053467, -13.036784172058105]
+  - id: prk1y39r
+    name: foot_r_trl01
+    from: bone
+    bone: foot_r
+    location: [-14.17713451385498, 2.732123851776123, 14.606634140014648]
+  - id: gvrc3e60
+    name: foot_r_trl02
+    from: bone
+    bone: foot_r
+    location: [6.497478485107422, 6.855024814605713, -10.564894676208496]
+  - id: mc160h5k
+    name: DB_Fallen
+    from: bone
+    bone: foot_r
+    location: [-18.606609344482422, 85.95201110839844, -1.4815351963043213]
+    rotation: { pitch: 7.722443580627441, yaw: -99.4017333984375, roll: -78.68295288085938 }
+  - id: sv6npck2
+    name: hand_r_kameha_socket_01
+    from: bone
+    bone: hand_r
+    rotation: { pitch: 5.0, yaw: 19.0, roll: 5.199999809265137 }
+  - { id: snvr385j, name: tail_001, from: bone, bone: Pelvis }
+  - id: x5h2cmcg
+    name: head_left_EF
+    from: bone
+    bone: head
+    location: [4.926080226898193, 9.628629684448242, -10.915431022644043]
+  - id: x24fd3kx
+    name: Eff_001_step
+    from: bone
+    bone: Root
+    location: [103.73240661621094, -116.36178588867188, 99.99909973144531]
+  - id: b7zefa0b
+    name: Eff_002_step
+    from: bone
+    bone: Root
+    location: [-106.96894836425781, -124.60528564453125, 100.00096130371094]
+  - id: w9pt8p31
+    name: Eff_003_step
+    from: bone
+    bone: Root
+    location: [0.0, -99.95938873291016, 222.08560180664062]
+  - id: jkpva5j4
+    name: Eff_004_step
+    from: bone
+    bone: Root
+    location: [0.0, -102.28921508789062, -26.946929931640625]
+  - id: d4b93a22
+    name: hand_r_kameha_socket_02
+    from: bone
+    bone: Hand_R
+    location: [10.244170188903809, 4.747684955596924, 13.706435203552246]
+    rotation: { pitch: 5.0, yaw: 19.0, roll: 5.199999809265137 }
+  - id: t0rddm7p
+    name: hand_r_kameha_socket_03
+    from: bone
+    bone: Hand_R
+    location: [-33.44145584106445, 10.254715919494629, -17.587568283081055]
+    rotation: { pitch: 5.0, yaw: 19.0, roll: 5.199999809265137 }
+  - { id: e26mk4sa, name: Eff_001_step_gohan, from: bone, bone: Root, location: [48.87211227416992, -30.0, 50.0] }
+  - id: x16xp9an
+    name: Eff_002_step_gohan
+    from: bone
+    bone: Root
+    location: [-56.0948600769043, -30.000015258789062, 50.0]
+  - id: qcpvy5bg
+    name: Eff_003_step_gohan
+    from: bone
+    bone: Root
+    location: [9.1552734375e-05, -42.65491485595703, 123.87079620361328]
+  - id: xf808djv
+    name: Eff_004_step_gohan
+    from: bone
+    bone: Root
+    location: [0.0, -39.917572021484375, -24.698932647705078]
+  - { id: cbf18kc6, name: Eff_001_gohan, from: bone, bone: Root, location: [40.0, -30.0, 30.0] }
+  - { id: dyagfg22, name: Eff_002_gohan, from: bone, bone: Root, location: [-40.0, -30.0, 30.0] }
+  - { id: fea3xfy7, name: Eff_003_gohan, from: bone, bone: Root, location: [0.0, -30.0, 90.0] }
+  - { id: v36vtcf3, name: Eff_004_gohan, from: bone, bone: Root, location: [0.0, -30.0, -10.0] }
+  - { id: mx2kpjj2, name: hand_r_effect_socket_01, from: bone, bone: Hand_R, location: [-19.0, 15.0, 26.0] }
+  - { id: jnkkv1qy, name: hand_r_effect_socket_02, from: bone, bone: Hand_R, location: [-16.0, 28.0, -6.0] }
+  - { id: dr680846, name: hand_l_effect_socket_01, from: bone, bone: Hand_L, location: [19.0, -15.0, -26.0] }
+  - { id: d5cndh33, name: hand_l_effect_socket_02, from: bone, bone: Hand_L, location: [16.0, -28.0, 6.0] }
+  - { id: srdm3xya, name: hand_r_effect_socket_03, from: bone, bone: Hand_R, location: [-18.0, 20.0, 15.0] }
+  - { id: jsdre1ek, name: hand_r_effect_socket_04, from: bone, bone: Hand_R, location: [-17.5, 24.0, 4.0] }
+  - { id: epyrjtkr, name: hand_l_effect_socket_03, from: bone, bone: Hand_L, location: [18.0, -20.0, -15.0] }
+  - { id: kn2fzxfy, name: hand_l_effect_socket_04, from: bone, bone: Hand_L, location: [17.5, -24.0, -4.0] }
+  - id: rw9pgwa8
+    name: Eff_001_step_cpl021
+    from: bone
+    bone: Root
+    location: [81.36709594726562, -74.11665344238281, 124.57069396972656]
+  - id: w2rw8p9m
+    name: Eff_002_step_cpl021
+    from: bone
+    bone: Root
+    location: [-77.58846282958984, -95.71348571777344, 142.3687286376953]
+  - id: jzgkp6k1
+    name: Eff_003_step_cpl021
+    from: bone
+    bone: Root
+    location: [0.0, -99.95926666259766, 217.23318481445312]
+  - id: hjsq0t24
+    name: Eff_004_step_cpl021
+    from: bone
+    bone: Root
+    location: [0.0, -102.28921508789062, 49.86383056640625]
+  - { id: mht5nwwh, name: EFF_root, from: bone, bone: Root, rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 } }
+  - id: h1srpfms
+    name: EFF_1_c001_boost_001
+    from: bone
+    bone: Root
+    location: [140.0, -110.0, 0.0]
+    rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 }
+  - id: wa6emqky
+    name: EFF_1_c001_boost_002
+    from: bone
+    bone: Root
+    location: [-140.0, -110.0, 0.0]
+    rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 }
+  - id: gxx7z6fa
+    name: EFF_1_c001_boost_003
+    from: bone
+    bone: Root
+    location: [0.0, -250.0, 0.0]
+    rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 }
+  - id: gy84n371
+    name: EFF_1_c001_boost_004
+    from: bone
+    bone: Root
+    location: [0.0, 30.0, 0.0]
+    rotation: { pitch: 0.0, yaw: 0.0, roll: -90.0 }
+  - { id: jqyx0ja0, name: EFF_sklpoint001, from: bone, bone: index_end_r }
+  - id: d7p8bz3y
+    name: eff_c002b_point001
+    from: bone
+    bone: ring_01_l
+    location: [-1.6343904733657837, 9.593600273132324, 3.6810615062713623]
+  - id: rckabes8
+    name: eff_attachpoint_r
+    from: bone
+    bone: attachpoint_r
+    location: [6.8900065422058105, -2.572159767150879, -6.0627665519714355]
+    rotation: { pitch: -24.758621215820312, yaw: -5.919050693511963, roll: -168.46554565429688 }
+  - id: m4ry15y3
+    name: c007a_s_skl002_point001
+    from: bone
+    bone: attachpoint_r
+    location: [29.26592254638672, 4.146625518798828, 1.83607816696167]
+  - id: gwfpjsrc
+    name: hand_I_effect_socket_05
+    from: bone
+    bone: Hand_L
+    location: [5.183352947235107, -3.4585354328155518, 10.376890182495117]
+    rotation: { pitch: -20.00000762939453, yaw: 4.362892923381878e-06, roll: -3.991010089521296e-06 }
+  - id: zj3qa7qy
+    name: EFF_C002B_S_SKL004
+    from: bone
+    bone: Root
+    location: [-2.3322982788085938, -67.50559997558594, 53.35816192626953]
+  - id: k9y6kteb
+    name: EFF_minigame_fish_001
+    from: bone
+    bone: Root
+    location: [-0.000640869140625, -130.19187927246094, 47.434810638427734]
+  - id: g5q97405
+    name: Foot_L_Ground
+    from: bone
+    bone: Foot_L
+    location: [8.252601623535156, -7.283181667327881, 2.0391063690185547]
+  - id: gv3sqrng
+    name: Foot_R_Ground
+    from: bone
+    bone: Foot_R
+    location: [8.054139137268066, -6.687371730804443, -2.905087947845459]
+  - { id: e80rcvnf, name: C001A_FootGround_L, from: bone, bone: Foot_L, location: [7.0, -8.5, 8.66129994392395e-08] }
+  - { id: s6wt3xqs, name: C001A_FootGround_R, from: bone, bone: Foot_R, location: [7.0, -8.5, 0.0] }
+  - { id: rnb5d1vm, name: C002B_FootGround_L, from: bone, bone: Foot_L, location: [4.5, -5.5, -3.725290298461914e-09] }
+  - { id: mk8pwqjp, name: C002B_FootGround_R, from: bone, bone: Foot_R, location: [4.5, -5.500000476837158, 0.0] }
+  - { id: gfma09n6, name: C003A_FootGround_L, from: bone, bone: Foot_L, location: [6.0, -8.0, -4.0978193283081055e-08] }
+  - { id: tyy9s2v6, name: C003A_FootGround_R, from: bone, bone: Foot_R, location: [6.0, -8.0, 0.0] }
+  - id: jm58898e
+    name: C006A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [4.599999904632568, -5.300000190734863, -6.332993507385254e-08]
+  - id: d72b09r0
+    name: C006A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [4.599999904632568, -5.300000190734863, 0.0]
+  - id: w1w119mg
+    name: C007A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [7.699999809265137, -8.5, -7.450580596923828e-09]
+  - { id: jb8gjsqf, name: C007A_FootGround_R, from: bone, bone: Foot_R, location: [7.699999809265137, -8.5, 0.0] }
+  - id: mm4apa0y
+    name: C008A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [7.199999809265137, -8.300000190734863, 1.6763806343078613e-08]
+  - id: gpncmk65
+    name: C008A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [7.199999809265137, -8.300000190734863, 0.0]
+  - id: mq900yzd
+    name: C010A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [3.4000000953674316, -3.799999952316284, -1.4621764421463013e-07]
+  - id: v749p7v5
+    name: C010A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [3.4000000953674316, -3.799999952316284, 0.0]
+  - { id: ymefc8k2, name: C011A_FootGround_L, from: bone, bone: Foot_L, location: [8.0, -10.0, -9.872019290924072e-08] }
+  - { id: dwees8xc, name: C011A_FootGround_R, from: bone, bone: Foot_R, location: [8.0, -10.0, 0.0] }
+  - { id: e8z0tbzp, name: release_point_r, from: bone, bone: middle_end_r, location: [-1.0, 6.0, -1.0] }
+  - id: mq2f55w2
+    name: glove_point_l
+    from: bone
+    bone: Hand_L
+    rotation: { pitch: 10.214028358459473, yaw: 91.4729995727539, roll: -86.99391174316406 }
+  - id: khnyz9ap
+    name: bat_point_l
+    from: bone
+    bone: pinky_01_l
+    location: [1.0, 3.700000047683716, -5.0]
+    rotation: { pitch: -9.0, yaw: 4.159421443939209, roll: -5.5 }
+  - id: dce1h3nr
+    name: DB_Attach_point
+    from: bone
+    bone: head
+    location: [28.098976135253906, -6.029956340789795, 2.4804845452308655e-05]
+  - { id: es7df7c4, name: EFF_bullet_cpl007, from: bone, bone: Root, location: [-62.0, -300.0, 0.0] }
+  - id: bhrarz8e
+    name: C002A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [2.700000047683716, -3.0999999046325684, 0.0]
+  - id: gnjg5d4q
+    name: C002A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [2.700000047683716, -3.0999999046325684, 0.0]
+  - { id: j8v86w3m, name: C002C_FootGround_L, from: bone, bone: Foot_L, location: [7.0, -8.0, 0.0] }
+  - { id: zpfsd7cc, name: C002C_FootGround_R, from: bone, bone: Foot_R, location: [7.0, -8.0, 0.0] }
+  - { id: sbwa2vex, name: C002D_FootGround_L, from: bone, bone: Foot_L, location: [5.0, -5.5, 0.0] }
+  - { id: ytvv7n1t, name: C002D_FootGround_R, from: bone, bone: Foot_R, location: [5.0, -5.5, 0.0] }
+  - id: cb244cfq
+    name: C028A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [6.300000190734863, -7.300000190734863, 0.0]
+  - id: dq0aztbj
+    name: C028A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [6.300000190734863, -7.300000190734863, 0.0]
+  - { id: tk00bphm, name: C028B_FootGround_L, from: bone, bone: Foot_L, location: [6.0, -7.0, 0.0] }
+  - { id: x3parbdv, name: C028B_FootGround_R, from: bone, bone: Foot_R, location: [6.0, -7.0, 0.0] }
+  - { id: x9cxcjef, name: C032A_FootGround_L, from: bone, bone: Foot_L, location: [8.5, -6.800000190734863, 0.0] }
+  - { id: m8gts22e, name: C032A_FootGround_R, from: bone, bone: Foot_R, location: [8.5, -6.800000190734863, 0.0] }
+  - { id: j1nnge50, name: C036A_FootGround_L, from: bone, bone: Foot_L, location: [3.5, -4.0, 0.0] }
+  - { id: ycrebcdc, name: C036A_FootGround_R, from: bone, bone: Foot_R, location: [3.5, -4.0, 0.0] }
+  - { id: ny69vdb3, name: C042A_FootGround_L, from: bone, bone: Foot_L, location: [4.5, -5.300000190734863, 0.0] }
+  - { id: qxe107e6, name: C042A_FootGround_R, from: bone, bone: Foot_R, location: [4.5, -5.300000190734863, 0.0] }
+  - id: m28ffv8w
+    name: C043A_FootGround_L
+    from: bone
+    bone: Foot_L
+    location: [7.300000190734863, -8.300000190734863, 0.0]
+  - id: yhn2r8t7
+    name: C043A_FootGround_R
+    from: bone
+    bone: Foot_R
+    location: [7.300000190734863, -8.300000190734863, 0.0]
+  - id: t35kd3ba
+    name: cane_grab_r_socket_01
+    from: bone
+    bone: cane_grab_r
+    location: [-1.1240695130254608e-06, -81.43326568603516, 0.00022817838180344552]
+unsupported:
+  - { what: "a socket on no bone", source: { unreal: { SocketName: pelvis_EF_air_0 } } }
+  - { what: "a socket on no bone", source: { unreal: { SocketName: pelvis_EF_air_1 } } }
+  - { what: "a socket on no bone", source: { unreal: { SocketName: Eff_002_step_cpl021_0 } } }

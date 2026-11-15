@@ -3380,9 +3380,11 @@ com/crystalgraphics/asset/load/CgAssetMounts
   access public,final
   extends java/lang/Object
   method public,static file (Ljava/lang/String;)Ljava/nio/file/Path;
+  method public,static folder (Ljava/lang/String;)Ljava/nio/file/Path;
   method public,static loadAhead ()V
   method public,static mount ()V
   method public,static mount (Lcom/crystalgraphics/asset/registry/CgAssetRegistry;Ljava/util/List;Ljava/util/List;)Lcom/crystalgraphics/asset/load/CgAssetMounts$Result;
+  method public,static namespaces ()Ljava/util/List;
 com/crystalgraphics/asset/load/CgAssetMounts$Result
   access public,final,record
   extends java/lang/Record
@@ -6280,6 +6282,22 @@ com/crystalgraphics/demo/CgVfxShowcase
   method public submitStage (Lcom/crystalgraphics/render/world/CgWorldRenderer;DDDDDD)V
   method public vfx ()Lcom/crystalgraphics/vfx/CgVfxSystem;
   method public,static stress (I)Lcom/crystalgraphics/demo/CgVfxShowcase;
+com/crystalgraphics/demo/anim/CgAnimDemo
+  access public,final
+  extends java/lang/Object
+  field public,static,final KEYS [I
+  field public,static,final SPACING I
+  method public <init> (Ljava/util/List;)V
+  method public clear ()V
+  method public delete ()V
+  method public hud ()Ljava/lang/String;
+  method public precache ()V
+  method public press (IZ)Z
+  method public ready ()Z
+  method public stations ()I
+  method public submit (Lcom/crystalgraphics/camera/CgCamera;DDDD)V
+  method public view (I)[F
+  method public,static demoKits ()Ljava/util/List;
 com/crystalgraphics/demo/collision/CgCollisionDemo
   access public,final
   extends java/lang/Object
@@ -16325,6 +16343,7 @@ com/crystalgraphics/util/io/CgIO
   method public <init> ()V
   method public,static list (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
   method public,static loadSource (Ljava/lang/String;)Ljava/lang/String;
+  method public,static mount (Ljava/lang/String;Ljava/io/File;)V
   method public,static normalizePath (Ljava/lang/String;)Ljava/lang/String;
   method public,static noteRead (Ljava/lang/String;)V
   method public,static openStream (Ljava/lang/String;)Ljava/io/InputStream;
@@ -22317,7 +22336,8 @@ com/crystalgraphics/world/actor/kit/CgKitActor
 com/crystalgraphics/world/actor/kit/CgKitActor$Spec
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V
+  method public <init> (Ljava/lang/String;Ljava/nio/file/Path;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/util/List;)V
+  method public clips ()Ljava/util/List;
   method public factory ()Ljava/util/function/Supplier;
   method public kit ()Ljava/nio/file/Path;
   method public mesh ()Ljava/lang/String;
@@ -22336,6 +22356,7 @@ com/crystalgraphics/world/actor/kit/CgKitActorFile
   extends java/lang/Object
   method public,static preload (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public,static read ()Ljava/util/Map;
+  method public,static readActor (Ljava/nio/file/Path;)Lcom/crystalgraphics/world/actor/kit/CgKitActor$Spec;
 com/crystalgraphics/world/actor/kit/CgKitAssets
   access public,final
   extends java/lang/Object

@@ -6,10 +6,13 @@ import com.crystalgraphics.platform.service.CgGameDirectory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   prefab: prefabs/Hero_BP.yaml
  *   outline: mykit:Renderer/Outline   # optional: a kit material drawn as the engine's outline
  *   stencil: 1                        # and the custom depth stencil value it reads the character by
+ *   clips: [anims/Hero/BAS, anims/Hero/BTL]   # optional: its clips' folders, what the animation demo plays on it
  * }</pre>
  *
  * <ul>
@@ -81,21 +85,69 @@ public final class CgKitActorFile {
                     LOGGER.warn("[actors] {}: not a map", name);
                     continue;
                 }
-                String[] v = new String[KEYS.length];
-                for (int i = 0; i < KEYS.length; i++) v[i] = m.get(KEYS[i]) == null ? null : String.valueOf(m.get(KEYS[i]));
-                String missing = null;
-                for (int i = 0; i < KEYS.length && missing == null; i++) if (v[i] == null) missing = KEYS[i];
-                if (missing != null) {
-                    LOGGER.warn("[actors] {}: no {}", name, missing);
-                    continue;
-                }
-                out.put(name, new CgKitActor.Spec(name, Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
-                        m.get("outline") == null ? null : String.valueOf(m.get("outline")),
-                        m.get("stencil") instanceof Number n ? n.intValue() : 0));
+                CgKitActor.Spec spec = spec(name, m, null);
+                if (spec != null) out.put(name, spec);
             }
         } catch (IOException | RuntimeException ex) {
             LOGGER.warn("[actors] {} did not read: {}", file, ex.toString());
         }
+        return out;
+    }
+
+    /**
+     * The character a kit folder carries in its own {@code actor.yaml}: the same keys as an {@code actors.yaml} entry
+     * but {@code kit}, which is the folder itself. Null, logged, where it has none or it does not read.
+     *
+     * <pre>{@code
+     * # <kit>/actor.yaml
+     * name: Hero
+     * namespace: herokit
+     * shading: mystudio
+     * mesh: models/Hero.glb
+     * skeleton: skeletons/Hero_Skeleton.yaml
+     * prefab: prefabs/Hero_BP.yaml
+     * clips: [anims/Hero/BAS]
+     * }</pre>
+     */
+    @Nullable
+    public static CgKitActor.Spec readActor(Path kit) {
+        Path file = kit.resolve("actor.yaml");
+        if (!Files.isRegularFile(file)) return null;
+        try {
+            if (!(CgAssetYaml.read(Files.readString(file)) instanceof Map<?, ?> m)) {
+                LOGGER.warn("[actors] {}: not a map", file);
+                return null;
+            }
+            return spec(m.get("name") == null ? kit.getFileName().toString() : String.valueOf(m.get("name")), m, kit);
+        } catch (IOException | RuntimeException ex) {
+            LOGGER.warn("[actors] {} did not read: {}", file, ex.toString());
+            return null;
+        }
+    }
+
+    /** An entry's spec, {@code kit} its folder where given (else its {@code kit} key); null, logged, where a key is missing. */
+    @Nullable
+    private static CgKitActor.Spec spec(String name, Map<?, ?> m, @Nullable Path kit) {
+        String[] v = new String[KEYS.length];
+        for (int i = 0; i < KEYS.length; i++) v[i] = m.get(KEYS[i]) == null ? null : String.valueOf(m.get(KEYS[i]));
+        if (kit != null) v[0] = kit.toString();
+        for (int i = 0; i < KEYS.length; i++) {
+            if (v[i] == null) {
+                LOGGER.warn("[actors] {}: no {}", name, KEYS[i]);
+                return null;
+            }
+        }
+        return new CgKitActor.Spec(name, Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
+                m.get("outline") == null ? null : String.valueOf(m.get("outline")),
+                m.get("stencil") instanceof Number n ? n.intValue() : 0, clips(m.get("clips")));
+    }
+
+    /** {@code clips:}, one folder or a list of them; none where absent. */
+    private static List<String> clips(@Nullable Object value) {
+        if (value == null) return List.of();
+        if (!(value instanceof List<?> list)) return List.of(String.valueOf(value));
+        List<String> out = new ArrayList<>();
+        for (Object o : list) out.add(String.valueOf(o));
         return out;
     }
 }

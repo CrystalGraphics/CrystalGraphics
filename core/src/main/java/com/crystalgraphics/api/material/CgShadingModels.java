@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -26,7 +27,8 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
  * }</pre>
  *
  * <ul>
- *   <li>An id is registered once, and an index too: a second model under either throws, naming both.</li>
+ *   <li>An id is registered once, and an index too: a second model under either throws, naming both. A second id
+ *       for a model alike in every other field is the same model under that name too (two kits of one game).</li>
  *   <li>An index runs 0 to {@link #MAX_INDEX}; a kit takes its game's own numbers, so a game's table of models
  *       ports as it is written.</li>
  *   <li>A kit's ids are its namespace's: {@code registerKit("kakarot", ...)} registers {@code kakarot:<name>}, and
@@ -85,6 +87,12 @@ public final class CgShadingModels {
         }
         CgShadingModel at = BY_INDEX.get(model.index());
         if (at != null) {
+            // Two kits of one game name one model: the same program under a second id
+            if (at.index() == model.index() && at.base().equals(model.base()) && Objects.equals(at.keyword(), model.keyword())
+                    && Objects.equals(at.library(), model.library())) {
+                BY_ID.put(model.id(), at);
+                return;
+            }
             throw new IllegalArgumentException(model.id() + " takes index " + model.index() + ", which " + at.id() + " holds");
         }
         BY_ID.put(model.id(), model);

@@ -1,0 +1,60 @@
+_v: 1
+shader: kk:shaders/cell_tone.shader
+state: { BlendMode: Masked, ShadingModel: kk:cell_tone, Faces: Front }
+values:
+  OutlineColorType: 0.0
+  RimPower_Shadow: 1.0
+  OutlineID: 0.5
+  LightDirectionPower: 0.0
+  LightDirection_Side: 1.0
+  MipLevel0: 0.0
+  MipLevel1: 2000.0
+  MipLevel2: 4000.0
+  MipLevel3: 8000.0
+  RimPower_Light: 0.0
+  AffectedLight: 0.0
+  Shadow2Power: 0.0
+  NomalPower: 1.0
+  Opacity_Threshold: 1.0
+  Diffuse_Power: 1.0
+  CastShadowPower: 0.800000011920929
+  UniqueAmbient: 0.5
+  CastShadowParamPower: 1.0
+  OutlineMask: 1.0
+  AOMult: 1.0
+  AOPower: 1.0
+  LightDirection_Vertical: 0.0
+  TonePattern: 0.0
+  LineTex_Power: 0.0
+  ShadowPower: 0.0
+  HightLightColor: [0.30000001192092896, 0.30000001192092896, 0.30000001192092896, 1.0]
+  AmbientDFctor2: [0.30000001192092896, 0.10000000149011612, 0.0, 1.0]
+  Specular: [1.0, 1.0, 1.0, 1.0]
+  Diffuse: [0.625, 0.4782490134239197, 0.05487800016999245, 1.0]
+  AmbientShadow: [0.2750000059604645, 0.1303129941225052, 0.030110999941825867, 1.0]
+  AmbientDFctor: [0.5, 0.5, 0.5, 1.0]
+textures:
+  AmbientOcclusion_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture04.png }
+  InsideLine_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture.png }
+  Normal_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/NormalTexture.png }
+  TONE: { texture: kk:textures/Engine/EngineMaterials/Tone.png }
+  Unique_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_Alpha0Texture.png }
+  diffuse_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+  outline_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture.png }
+  second_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal:
+        BloomIntensity_Hight: 0.0
+        AmbientOverlay-Mult: 0.0
+        BloomIntensity: 0.0
+        specular_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+        InLineDesicion_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture02.png }
+        ambient_texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+        ColorMask: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/dummy.png }
+        LightMap_Texture: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture02.png }
+        HighLightMap: { texture: kk:textures/MasterMaterials/AT_Materials/Texture/gim_s04a_bike01_cubemap.png }
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/CellShade_Tone" }
+  note: "CellShade_Tone: a surface material, ported as cell_tone"
