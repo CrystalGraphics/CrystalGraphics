@@ -233,7 +233,7 @@ public final class CgAssetYaml {
             boolean maps = false;
             for (int i = 0; i < list.size(); i++) {
                 if (i > 0) b.append(", ");
-                b.append(flow(list.get(i), items));
+                b.append(flow(list.get(i), type != null && type.kind() == CgValueType.Kind.LIST ? type.at(i) : items));
                 maps |= list.get(i) instanceof Map;
             }
             return maps ? "[ " + b + " ]" : "[" + b + "]";

@@ -53,6 +53,7 @@ public class CgTextStyleTest {
         assertTrue(yaml + "\n" + v.issues(), v.valid());
         assertEquals(yaml, built, compile(read));
         assertTrue("a flat paint is spelled as a colour:\n" + yaml, yaml.contains("paint: 0xFF3A1E08"));
+        assertTrue("a gradient stop's colour is spelled as a colour:\n" + yaml, yaml.contains("[0.0, 0xFFFFF6B0]"));
     }
 
     @Test

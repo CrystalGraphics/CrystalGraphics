@@ -9992,6 +9992,7 @@ com/crystalgraphics/object/CgValueType
   field public,static,final VEC3 Lcom/crystalgraphics/object/CgValueType;
   field public,static,final VEC4 Lcom/crystalgraphics/object/CgValueType;
   method public alternatives ()Ljava/util/List;
+  method public at (I)Lcom/crystalgraphics/object/CgValueType;
   method public element ()Lcom/crystalgraphics/object/CgValueType;
   method public enumValues ()Ljava/util/List;
   method public equals (Ljava/lang/Object;)Z
@@ -10017,6 +10018,7 @@ com/crystalgraphics/object/CgValueType
   method public,static ref (Ljava/lang/String;Lcom/crystalgraphics/object/CgValueType$Strength;)Lcom/crystalgraphics/object/CgValueType;
   method public,static string (Ljava/lang/String;)Lcom/crystalgraphics/object/CgValueType;
   method public,static struct (Lcom/crystalgraphics/object/CgType;)Lcom/crystalgraphics/object/CgValueType;
+  method public,static tuple (Lcom/crystalgraphics/object/CgValueType;[Lcom/crystalgraphics/object/CgValueType;)Lcom/crystalgraphics/object/CgValueType;
 com/crystalgraphics/object/CgValueType$Kind
   access public,final,enum
   extends java/lang/Enum

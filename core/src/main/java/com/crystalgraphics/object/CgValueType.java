@@ -191,6 +191,24 @@ public final class CgValueType {
                 Objects.requireNonNull(element), null);
     }
 
+    /**
+     * A short list whose items are typed by position for the writer alone: a gradient stop {@code [position, colour]}
+     * whose colour is spelled in hex. To the schema and validation it is a list of {@code element}.
+     *
+     * <pre>{@code
+     * CgValueType stop = CgValueType.tuple(CgValueType.VALUE, CgValueType.FLOAT, CgValueType.ARGB);
+     * }</pre>
+     */
+    public static CgValueType tuple(CgValueType element, CgValueType... positions) {
+        return new CgValueType(Kind.LIST, Collections.<String>emptyList(), null, null, null, Objects.requireNonNull(element),
+                null, Collections.unmodifiableList(Arrays.asList(positions.clone())));
+    }
+
+    /** A {@link #tuple}'s type at {@code index}, or its element type past its positions or for any other list. */
+    public CgValueType at(int index) {
+        return kind == Kind.LIST && index < alternatives.size() ? alternatives.get(index) : element;
+    }
+
     /** A list of elements, each with an {@code id}, merged by id under inheritance. */
     public static CgValueType idList(CgType element) {
         if (element.kind() != CgTypeKind.ELEMENT && element.kind() != CgTypeKind.DISPATCH) {
@@ -278,6 +296,7 @@ public final class CgValueType {
     /** Whether the writer spells a whole number of this type in hex: {@link #ARGB}, alone or among a one-of's types. */
     public boolean hex() {
         if (hex) return true;
+        if (kind != Kind.ONE_OF) return false;
         for (CgValueType alt : alternatives) if (alt.hex) return true;
         return false;
     }

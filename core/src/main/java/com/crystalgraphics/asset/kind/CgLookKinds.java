@@ -171,7 +171,7 @@ public final class CgLookKinds {
     static final CgType TEXT_GRADIENT = CgTypes.struct("crystalgraphics:text_style.gradient")
             .property("space", CgValueType.enumOf("glyph", "line", "run"))
             .property("angle", FLOAT).forms(CgValueForm.CONSTANT)
-            .property("stops", CgValueType.listOf(CgValueType.listOf(CgValueType.VALUE))).required()
+            .property("stops", CgValueType.listOf(CgValueType.tuple(CgValueType.VALUE, FLOAT, CgValueType.ARGB))).required()
             .register();
 
     static final CgType TEXT_GRADIENT_PAINT = CgTypes.struct("crystalgraphics:text_style.gradient_paint")
