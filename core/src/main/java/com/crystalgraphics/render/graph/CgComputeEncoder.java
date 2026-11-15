@@ -144,6 +144,7 @@ final class CgComputeEncoder {
         CgBindings k = kernelBindings.clear();
         CgTransitions transitions = execution.transitions;
         int serial = device.passSerial;
+        advanceImageHistories(d);
         for (int b = 0; b < d.buffers.length; b++) {
             if (d.buffers[b] != null) {
                 int access = d.hoisted[b] == serial ? 0 : d.bufferAccess[b];
@@ -263,6 +264,28 @@ final class CgComputeEncoder {
         for (int i = 0; i < d.buffers.length; i++) {
             if (wroteHistory(d.buffers[i], d.bufferAccess[i]) && firstWriter(d, i)) d.buffers[i].advance();
         }
+    }
+
+    /**
+     * A history texture {@code d} writes as an image: its next version becomes the newest before anything of {@code d}
+     * resolves, as before a raster pass draws one, so its {@code previous()} samples last frame's.
+     */
+    private void advanceImageHistories(CgDispatch d) {
+        for (int i = 0; i < d.images.length; i++) {
+            CgGraphTexture texture = d.images[i];
+            if (texture == null || texture.kind() != CgGraphTexture.Kind.HISTORY
+                    || (d.imageAccess[i] & CgAccess.COMPUTE_WRITE) == 0 || !firstImageWriter(d, i)) continue;
+            if (texture.isPreviousVersion()) throw new IllegalStateException(texture + " is sampled only: write its history");
+            device.storage(texture);
+            texture.advance();
+        }
+    }
+
+    private static boolean firstImageWriter(CgDispatch d, int image) {
+        for (int i = 0; i < image; i++) {
+            if (d.images[i] == d.images[image] && (d.imageAccess[i] & CgAccess.COMPUTE_WRITE) != 0) return false;
+        }
+        return true;
     }
 
     /**

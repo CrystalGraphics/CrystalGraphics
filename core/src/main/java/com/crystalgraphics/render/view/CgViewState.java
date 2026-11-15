@@ -125,7 +125,8 @@ public final class CgViewState {
     /**
      * {@code key}'s history in this view, of {@code desc}: its storage kept from frame to frame while the description
      * holds, made again (the old released in {@code recording}) when it changes. {@link CgGraphTexture#history}'s rules
-     * hold: raster passes draw its next version, {@code previous()} samples the last.
+     * hold: a raster pass into it or a dispatch writing it as an image makes its next version, {@code previous()} samples
+     * the last.
      */
     public CgGraphTexture history(HistoryKey key, CgTextureDesc desc, CgRecording recording) {
         History h = get(key.record);

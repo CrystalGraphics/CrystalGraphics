@@ -31,8 +31,8 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
  *   <li><b>Transient</b>: storage from a pool for the passes between its first and last use in one frame; its
  *       contents do not survive the frame. Two that never live at once may share storage.</li>
  *   <li><b>Requested</b>: storage made on first use and kept until {@code recording.release(texture)}.</li>
- *   <li><b>History</b>: two storages kept until released, each raster pass into it drawing the next version
- *       ({@link #history}).</li>
+ *   <li><b>History</b>: two storages kept until released, each raster pass into it, or dispatch writing it as an image,
+ *       making the next version ({@link #history}).</li>
  *   <li>A kernel binds one as a storage image (a {@code CgDispatch}'s {@code image}) where its format is the image's:
  *       a volume as a {@code 3d} image, any other as a {@code 2d} one. A draw samples a volume as a {@code sampler3D}.</li>
  *   <li>Sampled outside the passes that resolve it, it binds nothing.</li>
@@ -115,8 +115,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /**
      * The newest two versions of a picture drawn every frame, kept until released: what a temporal effect blends its
-     * new frame into. Each raster pass into it draws the next version, which becomes the newest; {@link #previous()}
-     * samples the one before. Sampled itself, it is the newest.
+     * new frame into. Each raster pass into it, or dispatch writing it as an image, makes the next version, which becomes
+     * the newest; {@link #previous()} samples the one before. Sampled itself, it is the newest.
      *
      * <pre>{@code
      * CgGraphTexture smoke = CgGraphTexture.history("smoke", new CgTextureDesc(w, h, rgba16f));
@@ -128,6 +128,13 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      * }</pre>
      *
      * <pre>{@code
+     * // A kernel's history, as MegaLights' temporal pass: the dispatch writing it makes the next version
+     * CgComputePass temporal = rec.compute("lights.temporal", constants);
+     * temporal.dispatch(accumulate, w, h, 1).image("LIGHTING", lighting).values().sampler("_Last", 1, lighting.previous());
+     * temporal.end();
+     * }</pre>
+     *
+     * <pre>{@code
      * rec.release(smoke);          // both versions, once nothing draws it: unused for a while, or resized
      * }</pre>
      *
@@ -135,7 +142,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
      *   <li>Both versions start cleared to 0. Whether the previous one holds a frame of yours is yours to keep: blend by
      *       a validity false at its first frame and after a cut, and select rather than multiply by it, since a frame of
      *       another view is no zero.</li>
-     *   <li>Raster passes write it, level 0 and layer 0: never a kernel's image or a copy.</li>
+     *   <li>Raster passes and kernels' images write it, level 0 and layer 0: never a copy. A dispatch writing it through
+     *       several images makes one version.</li>
      *   <li>A frame executed again draws into it once: its passes are taken once, as a simulation's are.</li>
      *   <li>Never transient, never aliased, never culled; its storage is made at its first use, a read included.</li>
      *   <li>A history of one view a firing: a second firing of another camera drawing into it blends the two.</li>
