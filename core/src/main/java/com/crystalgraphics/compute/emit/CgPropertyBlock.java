@@ -2,6 +2,7 @@ package com.crystalgraphics.compute.emit;
 
 import com.crystalgraphics.api.buffer.CgBufferField;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.material.CgMaterialProperties;
@@ -32,6 +33,8 @@ public final class CgPropertyBlock {
     private final CgBufferLayout format;
     private final float[] defaults;
     private final List<String> samplers;
+    /** Each sampler's declaration, in unit order: what its default names. */
+    private final List<CgMaterialProperty> samplerDecls;
     /** The {@code sampler3D} ones. */
     private final List<String> volumes;
     /** Each sampler's index's float offset in the block. */
@@ -39,10 +42,14 @@ public final class CgPropertyBlock {
     /** Its value fields by name: a dispatch sets each by name every frame. */
     private final Map<String, CgBufferField> fields = new HashMap<>();
 
-    private CgPropertyBlock(@Nullable CgBufferLayout format, float[] defaults, List<String> samplers, List<String> volumes) {
+    private CgPropertyBlock(@Nullable CgBufferLayout format, float[] defaults, List<CgMaterialProperty> samplerDecls,
+                            List<String> volumes) {
         this.format = format;
         this.defaults = defaults;
-        this.samplers = samplers;
+        this.samplerDecls = samplerDecls;
+        List<String> names = new ArrayList<>(samplerDecls.size());
+        for (CgMaterialProperty p : samplerDecls) names.add(p.getName());
+        this.samplers = Collections.unmodifiableList(names);
         this.volumes = volumes;
         if (format != null) for (int i = 0; i < format.getFieldCount(); i++) fields.put(format.getField(i).getName(), format.getField(i));
         textureOffsets = new int[format == null ? 0 : samplers.size()];
@@ -53,9 +60,10 @@ public final class CgPropertyBlock {
 
     public static CgPropertyBlock of(List<CgMaterialProperty> properties) {
         CgMaterialProperties all = new CgMaterialProperties(properties);
-        List<String> samplers = new ArrayList<>(), volumes = new ArrayList<>();
+        List<CgMaterialProperty> samplers = new ArrayList<>();
+        List<String> volumes = new ArrayList<>();
         for (CgMaterialProperty p : all.all()) {
-            if (p.getType().isSampler()) samplers.add(p.getName());
+            if (p.getType().isSampler()) samplers.add(p.copyWithDefaults());
             if (p.getType() == CgMaterialProperty.Type.SAMPLER3D) volumes.add(p.getName());
         }
         samplers = Collections.unmodifiableList(samplers);
@@ -143,6 +151,15 @@ public final class CgPropertyBlock {
     /** The sampler properties, each bound at its index as a texture unit. */
     public List<String> samplers() {
         return samplers;
+    }
+
+    /**
+     * What sampler {@code unit} reads when a dispatch sets nothing there: the engine texture its default names
+     * ({@code = "white"}, {@code = "cg_blue_noise"}), asked now; null for none.
+     */
+    @Nullable
+    public CgTexture defaultTexture(int unit) {
+        return samplerDecls.get(unit).boundTexture();
     }
 
     /** The unit sampler {@code name} is read from, or -1. */

@@ -2,6 +2,8 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.compute.emit.CgPropertyBlock;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
@@ -437,8 +439,9 @@ public final class CgFrameBuilder {
             CgDispatch dispatch = dispatches.get(d);
             CgFrameBindings values = frame.bindings.begin();
             if (dispatch.values != null) values.block(CgBindingModel.MATERIAL_BLOCK, dispatch.values, 0, dispatch.values.length);
+            CgPropertyBlock block = dispatch.kernel.compute().properties();
             for (int unit = 0; unit < dispatch.samplers.length; unit++) {
-                if (dispatch.samplers[unit] != null) values.texture(unit, dispatch.samplers[unit]);
+                CgTexture texture = dispatch.samplers[unit] != null ? dispatch.samplers[unit] : block.defaultTexture(unit);                if (texture != null) values.texture(unit, texture);
             }
             // Each dispatch's values are its own: interning would hash every float to find no equal.
             packed.bindings[d] = values.endUnique();
