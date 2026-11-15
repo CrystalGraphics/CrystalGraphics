@@ -67,7 +67,7 @@ CgScene.client().mesh(mesh, glow).at(x, y, z).spawn();
 | `OPAQUE` | `Blend OFF` | Opaque | its colour |
 | `ALPHA` | `Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA` | Translucent | straight colour and its alpha |
 | `PREMULTIPLIED` | `Blend ONE ONE_MINUS_SRC_ALPHA` | AlphaComposite | colour already times its coverage, and the coverage |
-| `ADDITIVE` | `Blend ONE ONE` | Additive | light; its alpha is unused |
+| `ADDITIVE` | `Blend ONE ONE` | Additive | light: the colour times its opacity, as Unreal's additive |
 | `MODULATE` | `Blend DST_COLOR ZERO` | Modulate | what is behind, times its colour |
 | `SUBTRACT` | `Blend ONE ONE`, `BlendEquation REV_SUB` | (none) | what it takes away from behind it |
 

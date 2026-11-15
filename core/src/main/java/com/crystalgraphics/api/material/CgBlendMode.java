@@ -15,7 +15,8 @@ import com.crystalgraphics.api.state.CgBlendState;
  *
  * <ul>
  *   <li>The fragment writes for its mode: straight colour and alpha for {@link #ALPHA}, colour already times its
- *       coverage for {@link #PREMULTIPLIED}, light for {@link #ADDITIVE} and {@link #SUBTRACT}, whose alpha is unused,
+ *       coverage for {@link #PREMULTIPLIED}, light for {@link #ADDITIVE} and {@link #SUBTRACT}: a
+ *       surface material's colour times its opacity, as Unreal's additive output, the target's alpha untouched;
  *       a multiplier for {@link #MODULATE}.</li>
  *   <li>A mode never moves a draw between the opaque and transparent passes: that is the shader's {@code Queue}.</li>
  * </ul>

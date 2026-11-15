@@ -415,10 +415,9 @@ final class SurfaceDomain {
             fragmentBody.append("        CG_SHADING_MODEL_OUT(s.shadingModelId.x, s.shadingModelId.y);\n");
         }
         if (named.contains("volumeDepth")) fragmentBody.append("        CG_VOLUME_DEPTH(s.volumeDepth);\n");
-        // Added light leaves the target's alpha as it was, as Unreal's BLEND_Additive does (alpha Zero, One)
-        boolean adds = blendMode.equals("Additive") || blendMode.equals("Subtract");
-        fragmentBody.append("        fragColor = vec4(").append(colour(unlit)).append(", ").append(adds ? "0.0" : "s.opacity")
-                .append(");\n    ");
+        // Straight colour and opacity whatever the blend: a material state may change it after this read, and the
+        // writer applies the final blend's output (CgGlslWriter.addedLight)
+        fragmentBody.append("        fragColor = vec4(").append(colour(unlit)).append(", s.opacity);\n    ");
 
         CgShaderPass forward = new CgShaderPass(CgRenderPassVariant.FORWARD, "Pass0", forwardState.build(), varyings,
                 passCode.directives, passCode.code, vertexBody.toString(), fragmentBody.toString(), "fragColor", false);

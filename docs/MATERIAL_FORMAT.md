@@ -222,7 +222,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 
 | Property | Values (default first) | What it does |
 |---|---|---|
-| `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` ignore `opacity` and leave what is behind's alpha as it was |
+| `BlendMode` | `Opaque`, `Masked`, `Translucent`, `AlphaComposite`, `Additive`, `Modulate`, `Subtract` | How it combines with what is behind it. `Masked` is solid with holes cut by `opacityMask`; `AlphaComposite` is premultiplied; `Additive` and `Subtract` add (or take away) the colour times `opacity`, as Unreal's additive does, and leave what is behind's alpha as it was |
 | `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; drawn as its `emissive` alone (`Unlit`); or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |

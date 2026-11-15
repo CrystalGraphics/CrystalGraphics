@@ -3,6 +3,7 @@ package com.crystalgraphics.material.shader;
 import com.crystalgraphics.render.shader.CgBindless;
 import com.crystalgraphics.material.CgMaterialProperties;
 import com.crystalgraphics.animation.CgBonePalettes;
+import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.shader.CgPreprocessorException;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -373,6 +374,9 @@ public final class CgGlslWriter {
         if (cover) sb.append("  _cg_fragColor = vec4(0.0, 0.0, 0.0, _cg_fragColor.a);\n");
         if (forward && !spec.linearColor() && !cover) {
             sceneDecode(sb, pass);
+        }
+        if (forward && !cover && spec.domain() == CgMaterialDomain.SURFACE) addedLight(sb, pass);
+        if (forward && !spec.linearColor() && !cover) {
             // Held at white, as the 8-bit target holds it: its glow carries the light past, or it counts twice
             if (spec.pass(CgRenderPassVariant.EMISSIVE) != null) {
                 sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = min(_cg_fragColor.rgb, vec3(1.0));\n");
@@ -656,6 +660,17 @@ public final class CgGlslWriter {
         } else {
             sb.append("  if (CG_LINEAR_SCENE) _cg_fragColor.rgb = cg_SceneDecode(_cg_fragColor.rgb);\n");
         }
+    }
+
+    /**
+     * A surface's Forward colour under a blend that adds or subtracts (ONE ONE) weighed by its opacity, in linear
+     * light, and the target's alpha left as it was: Unreal's additive base pass output, {@code Color * Opacity} with
+     * alpha 0 ({@code BasePassPixelShader.usf}, {@code MATERIALBLENDING_ADDITIVE}).
+     */
+    private static void addedLight(StringBuilder sb, CgShaderPass pass) {
+        CgBlendState blend = pass.state().getBlend();
+        if (blend == null || !blend.enabled() || blend.srcRgb() != GLC.GL_ONE || blend.dstRgb() != GLC.GL_ONE) return;
+        sb.append("  _cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);\n");
     }
 
     /**

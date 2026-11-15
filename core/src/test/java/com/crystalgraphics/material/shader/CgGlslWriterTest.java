@@ -1,5 +1,7 @@
 package com.crystalgraphics.material.shader;
 
+import com.crystalgraphics.api.material.CgBlendMode;
+import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import org.junit.Test;
 
@@ -23,6 +25,17 @@ public class CgGlslWriterTest {
 
     private static CgGlslProgram write(CgShaderSpec spec) {
         return write(spec, Collections.emptySet());
+    }
+
+    @Test
+    public void addedLightIsWeighedByOpacityAuthoredOrUnderAState() {
+        String added = "_cg_fragColor = vec4(_cg_fragColor.rgb * _cg_fragColor.a, 0.0);";
+        String unlit = "s.emissive = vec3(1.0); s.opacity = i.uv0.x;";
+        assertTrue(write(surface("BlendMode Additive  ShadingModel Unlit", unlit)).fragment().contains(added));
+        CgShaderSpec composite = surface("BlendMode AlphaComposite  ShadingModel Unlit", unlit);
+        assertFalse(write(composite).fragment().contains(added));
+        CgShaderSpec overridden = composite.withState(CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).build(), "test");
+        assertTrue(write(overridden).fragment().contains(added));
     }
 
     @Test
