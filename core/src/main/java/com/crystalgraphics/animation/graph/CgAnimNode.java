@@ -62,6 +62,18 @@ public abstract class CgAnimNode {
         /** Back to its first frame: a clip to its start, a blend to its first choice. Unreal's {@code Initialize_AnyThread}. */
         public void initialize(CgAnimGraphInstance g) {
         }
+
+        /**
+         * Whether it reads the game's state on the game thread each frame, before the worker's update: a foot's traces.
+         * Asked once, when it is made. Unreal's {@code bHasPreUpdate}.
+         */
+        public boolean hasPreUpdate() {
+            return false;
+        }
+
+        /** The game thread's turn, before {@link #update}, where {@link #hasPreUpdate}: Unreal's {@code PreUpdate}. */
+        public void preUpdate(CgAnimGraphInstance g) {
+        }
     }
 
     /** Its runtime in {@code g}; children's runtimes come from {@link CgAnimGraphInstance#runtime}. */

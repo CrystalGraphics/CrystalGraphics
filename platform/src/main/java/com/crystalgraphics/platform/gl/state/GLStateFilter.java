@@ -571,6 +571,7 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public void glDeleteSync(long sync) { raw.glDeleteSync(sync); }
     @Override public void glFlush() { raw.glFlush(); }
     @Override public void glFinish() { raw.glFinish(); }
+    @Override public int glGetError() { return raw.glGetError(); }
     @Override public int glCreateQueries(int target) { return raw.glCreateQueries(target); }
     @Override public void glQueryCounter(int query, int target) { raw.glQueryCounter(query, target); }
     @Override public long glGetQueryObjecti64(int query, int name) { return raw.glGetQueryObjecti64(query, name); }

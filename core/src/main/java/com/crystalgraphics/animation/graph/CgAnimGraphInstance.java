@@ -11,6 +11,9 @@ import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
+import org.joml.Matrix4d;
+import org.joml.Matrix4dc;
+
 import com.crystalgraphics.animation.sync.CgAnimAssetPlayer;
 import com.crystalgraphics.animation.sync.CgAnimSync;
 import com.crystalgraphics.animation.sync.CgSyncGroup;
@@ -96,6 +99,10 @@ public final class CgAnimGraphInstance {
     private final List<CgAnimSlot> extraSlots = new ArrayList<>();
     /** A linked instance's layer and graph nodes playing it: at 0 it leaves its main. */
     int users;
+    /** Runtimes asking for the game thread's {@code preUpdate}: Unreal's {@code bHasPreUpdate}. */
+    private final List<CgAnimNode.Runtime> preUpdates = new ArrayList<>();
+    /** The component's placement in the world, copied on the game thread (Unreal's proxy {@code ComponentTransform}). */
+    private final Matrix4d placement = new Matrix4d();
 
     public CgAnimGraphInstance(CgAnimGraph graph, CgSkeleton skeleton) {
         this(graph, skeleton, null);
@@ -158,6 +165,7 @@ public final class CgAnimGraphInstance {
         if (r == null) {
             r = node.instantiate(this);
             runtimes.put(node, r);
+            if (r.hasPreUpdate()) preUpdates.add(r);
         }
         return r;
     }
@@ -387,6 +395,25 @@ public final class CgAnimGraphInstance {
     /** The game thread, before the worker's update: the variables handed over. */
     public void preUpdate() {
         System.arraycopy(values, 0, proxy, 0, values.length);
+        for (int i = 0; i < preUpdates.size(); i++) preUpdates.get(i).preUpdate(this);
+        for (int i = 0; i < linked.size(); i++) {
+            CgAnimGraphInstance l = linked.get(i);
+            for (int j = 0; j < l.preUpdates.size(); j++) l.preUpdates.get(j).preUpdate(l);
+        }
+    }
+
+    /**
+     * Where the component stands in the world, set on the game thread before {@link #preUpdate}: what a node reads a
+     * world-space target or a trace by. Identity until set.
+     */
+    public CgAnimGraphInstance placement(Matrix4dc placement) {
+        this.placement.set(placement);
+        return this;
+    }
+
+    /** The component's placement in the world, as of this frame's {@link #preUpdate}: its main instance's. */
+    public Matrix4dc placement() {
+        return main.placement;
     }
 
     /**

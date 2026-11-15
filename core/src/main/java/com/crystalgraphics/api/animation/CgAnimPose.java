@@ -6,6 +6,8 @@ import org.joml.Matrix4fc;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import java.util.Arrays;
+
 /**
  * One skeleton's pose: every bone's translation, rotation and scale local to its parent, and once {@link #resolve()}d
  * each bone's transform in the skeleton's space. What a clip is sampled into, poses are blended into, and skinning
@@ -43,12 +45,19 @@ public final class CgAnimPose {
     final float[] local;
     private final Matrix4f[] component;
     private final Matrix4f scratch = new Matrix4f();
+    /** blendComponent's: the set bones' locals before, which bones moved, a decomposed transform. */
+    private final float[] saved;
+    private final boolean[] moved;
+    private final Vector3f blendT = new Vector3f(), blendS = new Vector3f();
+    private final Quaternionf blendQ = new Quaternionf();
 
     public CgAnimPose(CgSkeleton skeleton) {
         this.skeleton = skeleton;
         this.local = skeleton.rest().clone();
         this.component = new Matrix4f[skeleton.boneCount()];
         for (int b = 0; b < component.length; b++) component[b] = new Matrix4f();
+        this.saved = new float[local.length];
+        this.moved = new boolean[component.length];
     }
 
     public CgSkeleton skeleton() {
@@ -407,6 +416,72 @@ public final class CgAnimPose {
             if (parent >= 0) component[parent].mulAffine(m, m);   // TRS both: the bottom row is (0, 0, 0, 1)
         }
         return this;
+    }
+
+    /**
+     * Sets {@code count} bones' transforms in the skeleton's space, each bone's children following it, then at an
+     * {@code alpha} below 1 blends the set bones' local transforms back toward the ones they had: Unreal's
+     * {@code FCSPose::LocalBlendCSBoneTransforms} (BonePose.h:769-830), how a skeletal control lands. Resolves after.
+     *
+     * <pre>{@code
+     * pose.resolve();
+     * // a solver writes thigh, calf and foot in the skeleton's space
+     * pose.blendComponent(3, bones, transforms, 0.5f);   // half its effect, the toes riding the foot
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Reads the last {@link #resolve()}.</li>
+     *   <li>{@code bones} ascending, as Unreal's bone transforms are: a parent before its children.</li>
+     * </ul>
+     */
+    public CgAnimPose blendComponent(int count, int[] bones, Matrix4fc[] transforms, float alpha) {
+        if (count == 0 || alpha < ZERO_WEIGHT) return this;
+        if (alpha < 1f - ZERO_WEIGHT) {
+            for (int i = 0; i < count; i++) System.arraycopy(local, bones[i] * REST, saved, i * REST, REST);
+        }
+        // SafeSetCSBoneTransforms: each set against its parent as already moved, the moved bones' children following
+        for (int i = 0; i < count; i++) {
+            int bone = bones[i];
+            if (i > 0 && bone < bones[i - 1]) throw new IllegalArgumentException("bones out of order at " + i);
+            int parent = skeleton.parent(bone);
+            Matrix4f m = parent < 0 ? scratch.set(transforms[i]) : component[parent].invertAffine(scratch).mulAffine(transforms[i]);
+            m.getTranslation(blendT);
+            m.getNormalizedRotation(blendQ);
+            m.getScale(blendS);
+            set(bone, blendT.x, blendT.y, blendT.z, blendQ.x, blendQ.y, blendQ.z, blendQ.w, blendS.x, blendS.y, blendS.z);
+            component[bone].set(transforms[i]);
+            Arrays.fill(moved, false);
+            moved[bone] = true;
+            for (int b = bone + 1; b < component.length; b++) {
+                int p = skeleton.parent(b);
+                if (p < 0 || !moved[p]) continue;
+                int at = b * REST;
+                component[p].mulAffine(component[b].translationRotateScale(local[at], local[at + 1], local[at + 2],
+                        local[at + 3], local[at + 4], local[at + 5], local[at + 6], local[at + 7], local[at + 8], local[at + 9]),
+                        component[b]);
+                moved[b] = true;
+            }
+        }
+        if (alpha < 1f - ZERO_WEIGHT) {
+            // Pose[Bone].BlendWith(LocalBefore, 1 - Alpha): FTransform::Blend, the rotation the shortest lerp, normalised
+            float back = 1f - alpha;
+            for (int i = 0; i < count; i++) {
+                int at = bones[i] * REST, from = i * REST;
+                for (int c = 0; c < REST; c++) {
+                    if (c == 3) {
+                        float dot = local[at + 3] * saved[from + 3] + local[at + 4] * saved[from + 4]
+                                + local[at + 5] * saved[from + 5] + local[at + 6] * saved[from + 6];
+                        float sign = dot >= 0f ? 1f : -1f;
+                        for (int q = 3; q < 7; q++) local[at + q] = local[at + q] * alpha + saved[from + q] * back * sign;
+                        normalizeRotation(local, at + 3);
+                        c = 6;
+                        continue;
+                    }
+                    local[at + c] = local[at + c] * alpha + saved[from + c] * back;
+                }
+            }
+        }
+        return resolve();
     }
 
     /** Bone {@code bone}'s transform in the skeleton's space, as of the last {@link #resolve()}. */

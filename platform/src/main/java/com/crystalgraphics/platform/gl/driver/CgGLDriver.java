@@ -341,6 +341,9 @@ public interface CgGLDriver {
 
     void glFinish();
 
+    /** The oldest error GL recorded and cleared, 0 for none. A diagnostic's: it waits for a threaded driver. */
+    int glGetError();
+
     int glCreateQueries(int target);
 
     void glQueryCounter(int query, int target);

@@ -36,7 +36,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -77,12 +77,14 @@ public class CgBibleGateTest {
 
     @Test
     public void theShippedModulesAreTheSpecs() throws IOException {
-        byte[] specs = Files.readAllBytes(spec.resolve("schema/modules.yaml"));
-        byte[] shipped;
+        // As text, line endings aside: a Windows checkout writes either copy with CRLF
+        String specs = new String(Files.readAllBytes(spec.resolve("schema/modules.yaml")), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
+        String shipped;
         try (InputStream in = CgIO.openStream(CgModuleTypes.RESOURCE)) {
-            shipped = in.readAllBytes();
+            shipped = new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         }
-        assertArrayEquals("core's " + CgModuleTypes.RESOURCE + " differs from the format's modules.yaml: copy it over", specs, shipped);
+        assertEquals("core's " + CgModuleTypes.RESOURCE + " differs from the format's modules.yaml: copy it over", specs, shipped);
     }
 
     @Test

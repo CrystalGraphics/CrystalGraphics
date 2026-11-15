@@ -69,10 +69,6 @@ public final class CgAnimDemo {
      * all.addAll(CgAnimDemo.demoKits());
      * CgAnimDemo demo = new CgAnimDemo(all);
      * }</pre>
-     *
-     * <ul>
-     *   <li>A namespace mounted from a jar is read through its folder too, so its kit must be a folder on disk to play.</li>
-     * </ul>
      */
     public static List<CgKitActor.Spec> demoKits() {
         List<CgKitActor.Spec> out = new ArrayList<>();

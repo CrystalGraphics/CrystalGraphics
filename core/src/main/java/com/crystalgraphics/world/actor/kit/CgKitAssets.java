@@ -78,7 +78,7 @@ public final class CgKitAssets {
         this.ids = List.copyOf(ids);
         if (shading != null) CgShadingModels.registerKit(shading, kit);
         // Its textures and shaders read from its own folder, with no resource root holding assets/<namespace>
-        CgIO.mount(namespace, kit.toFile());
+        CgIO.mount(namespace, kit);
         CgVfxSystemAssets.register();
         CgPrefabAssets.register();
         // Mounted on the process's assets, as a mod's: the world's cue manager routes the kit's cues from that registry
