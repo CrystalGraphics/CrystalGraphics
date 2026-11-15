@@ -72,7 +72,6 @@ public final class CgAnimInstance {
     @Nullable
     private Consumer<Matrix4d> placedBy;
     private final Matrix4d placement = new Matrix4d();
-    private final List<CgBoneWrite> writes = new ArrayList<>();
     private CgAnimGround ground = CgAnimGround.NONE;
     private final List<Update> updates = new ArrayList<>();
     private float rate = 1f, delta;
@@ -314,18 +313,13 @@ public final class CgAnimInstance {
     }
 
     /**
-     * The worker's half: the graph updated and evaluated, bone writes applied, the pose resolved and skinned, the
-     * frame's curves gathered. After {@link #preUpdate}.
+     * The worker's half: the graph updated and evaluated, the pose resolved and skinned, the frame's curves gathered.
+     * After {@link #preUpdate}.
      */
     public CgAnimInstance evaluate() {
         graph.update(delta);
         gatherCurves();
         graph.evaluate(pose);
-        for (int i = 0; i < writes.size(); i++) {
-            CgBoneWrite write = writes.get(i);
-            if (write.needsComponent()) pose.resolve();
-            write.apply(pose);
-        }
         pose.resolve();
         pose.skinning(mesh, skinning);
         evaluations++;
@@ -357,29 +351,6 @@ public final class CgAnimInstance {
                 curves.addLayer(graph.sampleClip(i), graph.sampleTime(i), graph.sampleWeight(i));
             }
         }
-    }
-
-    /**
-     * A bone write on {@code bone}, applied every frame after the graph in the order made ({@link CgBoneWrite},
-     * Unreal's modify bone). It does nothing until one of its parts is set.
-     *
-     * <pre>{@code
-     * CgBoneWrite drop = anim.modify("model");
-     * drop.translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0f, -crouch, 0f);   // each frame
-     * }</pre>
-     *
-     * @throws IllegalArgumentException where the skeleton has no {@code bone}
-     */
-    public CgBoneWrite modify(String bone) {
-        CgBoneWrite write = new CgBoneWrite(bone(bone));
-        writes.add(write);
-        return write;
-    }
-
-    /** Stops applying {@code write}. */
-    public CgAnimInstance remove(CgBoneWrite write) {
-        writes.remove(write);
-        return this;
     }
 
     /**

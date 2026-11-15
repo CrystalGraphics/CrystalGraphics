@@ -20,7 +20,6 @@ com/crystalgraphics/animation/CgAnimInstance
   method public linkGraph (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimGraph;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public linkLayers (Lcom/crystalgraphics/animation/graph/CgAnimGraph;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
-  method public modify (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite;
   method public montages ()Lcom/crystalgraphics/animation/montage/CgMontages;
   method public onUpdate (Lcom/crystalgraphics/animation/CgAnimInstance$Update;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public placedBy (Ljava/util/function/Consumer;)Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -35,7 +34,6 @@ com/crystalgraphics/animation/CgAnimInstance
   method public preUpdate (F)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public rate ()F
   method public rate (F)Lcom/crystalgraphics/animation/CgAnimInstance;
-  method public remove (Lcom/crystalgraphics/animation/CgBoneWrite;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public requestTransitionEvent (Ljava/lang/String;D)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public requestTransitionEvent (Ljava/lang/String;DZLcom/crystalgraphics/animation/state/CgAnimStateMachineNode$Replace;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public set (Lcom/crystalgraphics/animation/graph/CgAnimVariable;F)Lcom/crystalgraphics/animation/CgAnimInstance;
@@ -73,32 +71,6 @@ com/crystalgraphics/animation/CgBonePalettes
   method public,static record (Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public,static write ([Lorg/joml/Matrix4fc;I)I
   method public,static written ()I
-com/crystalgraphics/animation/CgBoneWrite
-  access public,final
-  extends java/lang/Object
-  method public alpha ()F
-  method public alpha (F)Lcom/crystalgraphics/animation/CgBoneWrite;
-  method public bone ()I
-  method public clear ()Lcom/crystalgraphics/animation/CgBoneWrite;
-  method public rotation (Lcom/crystalgraphics/animation/CgBoneWrite$Mode;Lcom/crystalgraphics/animation/CgBoneWrite$Space;Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/animation/CgBoneWrite;
-  method public scale (Lcom/crystalgraphics/animation/CgBoneWrite$Mode;Lcom/crystalgraphics/animation/CgBoneWrite$Space;FFF)Lcom/crystalgraphics/animation/CgBoneWrite;
-  method public translation (Lcom/crystalgraphics/animation/CgBoneWrite$Mode;Lcom/crystalgraphics/animation/CgBoneWrite$Space;FFF)Lcom/crystalgraphics/animation/CgBoneWrite;
-com/crystalgraphics/animation/CgBoneWrite$Mode
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final ADD Lcom/crystalgraphics/animation/CgBoneWrite$Mode;
-  field public,static,final IGNORE Lcom/crystalgraphics/animation/CgBoneWrite$Mode;
-  field public,static,final REPLACE Lcom/crystalgraphics/animation/CgBoneWrite$Mode;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite$Mode;
-  method public,static values ()[Lcom/crystalgraphics/animation/CgBoneWrite$Mode;
-com/crystalgraphics/animation/CgBoneWrite$Space
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final BONE Lcom/crystalgraphics/animation/CgBoneWrite$Space;
-  field public,static,final COMPONENT Lcom/crystalgraphics/animation/CgBoneWrite$Space;
-  field public,static,final PARENT Lcom/crystalgraphics/animation/CgBoneWrite$Space;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/CgBoneWrite$Space;
-  method public,static values ()[Lcom/crystalgraphics/animation/CgBoneWrite$Space;
 com/crystalgraphics/animation/CgCollisionGround
   access public,final
   extends java/lang/Object
