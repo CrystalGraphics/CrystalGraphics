@@ -912,7 +912,7 @@ public final class CgSequencePlayer {
                 && track.kind().equals("transform") && spawnableTransforms[b.index()] != null) {
             return spawnableTransforms[b.index()];
         }
-        return target(b, "tracks." + track.id());
+        return target(b, track);
     }
 
     /**
@@ -921,11 +921,12 @@ public final class CgSequencePlayer {
      */
     @Nullable
     public CgSequenceTarget target(CgSequenceBinding binding) {
-        return target(binding, "a binding");
+        return target(binding, null);
     }
 
+    /** {@code b}'s target, its part resolved; {@code track} only names where a missing part was asked for. */
     @Nullable
-    private CgSequenceTarget target(CgSequenceBinding b, String path) {
+    private CgSequenceTarget target(CgSequenceBinding b, @Nullable CgSequenceTrack track) {
         CgSequenceTarget object = switch (b.subject()) {
             case ROLE -> roles[b.index()];
             case LOCATOR -> locators[b.index()];
@@ -935,7 +936,8 @@ public final class CgSequencePlayer {
         };
         if (object == null || b.part() == CgSequenceBinding.Part.WHOLE || b.part() == CgSequenceBinding.Part.VELOCITY) return object;
         CgSequenceTarget part = object.part(b.part(), b.partName());
-        if (part == null) throw new CgAssetException(definition.id() + ": " + path + ": " + object + " has no "
+        if (part == null) throw new CgAssetException(definition.id() + ": " + (track != null ? "tracks." + track.id() : "a binding")
+                + ": " + object + " has no "
                 + b.part().name().toLowerCase(Locale.ROOT) + " " + b.partName());
         return part;
     }
