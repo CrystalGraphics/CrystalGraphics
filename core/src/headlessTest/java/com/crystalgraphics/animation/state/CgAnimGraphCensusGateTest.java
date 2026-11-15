@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 import org.joml.Vector3f;
 import org.junit.Assume;
@@ -40,7 +41,7 @@ import com.crystalgraphics.asset.tree.CgAssetData;
  * <ul>
  *   <li>{@code -PanimGraphFile=<the imported yaml>} {@code -PanimGraphCensus=<census json>}: skipped without them;
  *       {@code -PanimGraphParent=<its parent's yaml>} for a child graph; {@code -PanimGraphKit=<kit folder>} binds the
- *       blend spaces it names and checks them against the census's {@code blend_spaces[]}.</li>
+ *       blend spaces it names and checks every one of the census's {@code blend_spaces[]} against the kit's.</li>
  *   <li>The census is the importer's: {@code machines[] { name, initial, states[] { name, conduit, reset_on_entry },
  *       transitions[] { from, to, duration, blend } }}, machines and blends as Unreal names them ({@code BrakingSub},
  *       {@code HermiteCubic}); the file's are snake_case.</li>
@@ -70,7 +71,7 @@ public class CgAnimGraphCensusGateTest {
         // A kit's blend spaces, by the id a node names: <kit>/blend_spaces/<path after the namespace>.yaml
         String kit = System.getProperty("crystalgraphics.animGraph.kit");
         Map<String, CgBlendSpaceDefinition> spaces = new LinkedHashMap<>();
-        CgAssetCompiler.Dependencies deps = kit == null ? null : (kind, id) -> spaces.computeIfAbsent(id, k -> {
+        Function<String, CgBlendSpaceDefinition> load = id -> spaces.computeIfAbsent(id, k -> {
             try {
                 Path f = Path.of(kit, "blend_spaces", k.substring(k.indexOf(':') + 1) + ".yaml");
                 Map<?, ?> t = (Map<?, ?>) CgAssetYaml.read(Files.readString(f, StandardCharsets.UTF_8));
@@ -79,6 +80,7 @@ public class CgAnimGraphCensusGateTest {
                 throw new AssertionError(k + ": " + e);
             }
         });
+        CgAssetCompiler.Dependencies deps = kit == null ? null : (kind, id) -> load.apply(id);
         CgAnimGraph graph = CgAnimGraphCodec.compile(CgAssetData.of("gate:imported", CgBodyKinds.ANIM_GRAPH, tree, parent), deps)
                 .graph(bone, id -> clip);
 
@@ -124,14 +126,13 @@ public class CgAnimGraphCensusGateTest {
         assertTrue(states > 0 && transitions > 0);
         System.out.println("[census] " + machines.size() + " machines, " + states + " states, " + transitions + " transitions match");
 
-        // Each blend space the graph named, against the census's: samples, places, rate scales, weight speed
-        int checked = 0;
+        // Every blend space of the census, bound by the graph or not, against the kit's: samples, places, rate scales, weight speed
+        if (kit == null) return;
+        int bound = spaces.size(), checked = 0;
         for (Object o : c.get("blend_spaces") instanceof List<?> l ? l : List.of()) {
             Map<?, ?> eb = (Map<?, ?>) o;
             String asset = String.valueOf(eb.get("asset"));
-            CgBlendSpaceDefinition d = spaces.entrySet().stream().filter(e -> e.getKey().endsWith(":" + asset)).map(Map.Entry::getValue)
-                    .findFirst().orElse(null);
-            if (d == null) continue;
+            CgBlendSpaceDefinition d = load.apply("census:" + asset);
             List<?> es = (List<?>) eb.get("samples"), ds = (List<?>) d.tree().get("samples");
             assertEquals(asset + " samples", es.size(), ds.size());
             for (int i = 0; i < es.size(); i++) {
@@ -149,7 +150,7 @@ public class CgAnimGraphCensusGateTest {
                     ((Number) d.tree().get("weight_speed")).floatValue(), 0f);
             checked++;
         }
-        if (!spaces.isEmpty()) System.out.println("[census] " + checked + " blend spaces match, " + spaces.size() + " bound");
+        System.out.println("[census] " + checked + " blend spaces match, " + bound + " bound by the graph");
     }
 
     /** Every machine under {@code node}, a state's pose included. */
