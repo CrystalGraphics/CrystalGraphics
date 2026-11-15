@@ -147,6 +147,42 @@ public final class CgAnimInstance {
     }
 
     /**
+     * Plays each layer {@code layers} declares through it, wherever its graph plays that layer: Unreal's
+     * {@code LinkAnimClassLayers}. A graph of sword arms over a hero's own; one group's layers share one run of it.
+     *
+     * <pre>{@code
+     * anim.linkLayers(SWORD_ARMS);       // blended over each layer's blend times, under the graph's inertialization
+     * anim.unlinkLayers(SWORD_ARMS);     // the graph's own layers again
+     * }</pre>
+     *
+     * <ul>
+     *   <li>On the game thread, between frames, as every change to what plays.</li>
+     *   <li>Its graph's own graph is refused: it would play itself.</li>
+     * </ul>
+     */
+    public CgAnimInstance linkLayers(CgAnimGraph layers) {
+        graph.linkLayers(layers);
+        return this;
+    }
+
+    /** Its graph's own layers again where {@code layers} played them: Unreal's {@code UnlinkAnimClassLayers}. */
+    public CgAnimInstance unlinkLayers(CgAnimGraph layers) {
+        graph.unlinkLayers(layers);
+        return this;
+    }
+
+    /**
+     * Runs {@code linked} in its graph's linked graph node tagged {@code tag}, null for none: Unreal's
+     * {@code LinkAnimGraphByTag}.
+     *
+     * @throws IllegalArgumentException where no linked graph node has the tag
+     */
+    public CgAnimInstance linkGraph(String tag, @Nullable CgAnimGraph linked) {
+        graph.linkGraph(tag, linked);
+        return this;
+    }
+
+    /**
      * Its montages: those playing on its slots and blending out, its root motion, and their events. A sequence's
      * {@code animation} track plays each of its plays as one.
      *

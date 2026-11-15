@@ -1,5 +1,6 @@
 package com.crystalgraphics.animation.graph;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
@@ -85,7 +86,8 @@ public final class CgAnimGraphCodec {
     }
 
     private static final Set<String> BUILT_IN = Set.of("sequence_player", "ref_pose", "slot", "two_way_blend",
-            "blend_list_by_bool", "blend_list_by_int", "layered_blend", "apply_additive", "save_cached_pose", "use_cached_pose");
+            "blend_list_by_bool", "blend_list_by_int", "layered_blend", "apply_additive", "save_cached_pose", "use_cached_pose",
+            "linked_input_pose", "linked_anim_layer", "linked_anim_graph");
 
     /**
      * {@code asset}'s graph, resolved over its parent and checked.
@@ -113,11 +115,24 @@ public final class CgAnimGraphCodec {
     // ── reading ──────────────────────────────────────────────────────────────────────────
 
     static CgAnimGraph build(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips, Resolver resolver) {
-        Reader r = new Reader(id, tree, clips, resolver);
+        Reader r = new Reader(id, tree, skeleton, clips, resolver);
         CgAnimGraph.Builder b = CgAnimGraph.builder(id, skeleton);
         b.variables(r.variables.values().toArray(new CgAnimVariable<?>[0]));
+        if (tree.get("inputs") instanceof List<?> ins) for (Object in : ins) b.inputs(String.valueOf(in));
         if (!(tree.get("output") instanceof String output)) throw new CgAssetException(id + ": output: none");
         b.output(r.pose(output));
+        if (tree.get("layers") instanceof Map<?, ?> layers) {
+            for (Map.Entry<?, ?> e : layers.entrySet()) {
+                String name = String.valueOf(e.getKey()), at = id + ": layers." + name;
+                Map<?, ?> l = (Map<?, ?>) e.getValue();
+                List<String> ins = new ArrayList<>();
+                if (l.get("inputs") instanceof List<?> li) for (Object in : li) ins.add(String.valueOf(in));
+                b.layer(new CgAnimGraph.Layer(name, ins, r.pose(r.string(at, l, "output")),
+                        l.get("group") instanceof String g ? g : null,
+                        l.get("blend_in") == null ? 0f : r.number(at + ".blend_in", l.get("blend_in")),
+                        l.get("blend_out") == null ? 0f : r.number(at + ".blend_out", l.get("blend_out"))));
+            }
+        }
         for (Map.Entry<String, CgAnimNode> save : r.saves.entrySet()) b.save(save.getKey(), save.getValue());
         for (Object name : r.nodes.keySet()) {
             if (!r.reached.contains(String.valueOf(name))) {
@@ -138,12 +153,14 @@ public final class CgAnimGraphCodec {
         final Map<?, ?> nodes;
         final Function<String, CgAnimSequence> clips;
         final Resolver resolver;
+        final CgSkeleton skeleton;
         final Map<String, CgAnimVariable<?>> variables = new LinkedHashMap<>();
         final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
         final Set<String> reached = new HashSet<>(), saving = new HashSet<>();
 
-        Reader(String id, Map<?, ?> tree, Function<String, CgAnimSequence> clips, Resolver resolver) {
+        Reader(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips, Resolver resolver) {
             this.id = id;
+            this.skeleton = skeleton;
             this.tree = tree;
             this.clips = clips;
             this.resolver = resolver;
@@ -238,6 +255,26 @@ public final class CgAnimGraphCodec {
                         saves.put(save, pose(source));
                     }
                     yield CgCachedPoseNode.use(save);
+                }
+                case "linked_input_pose" -> CgLinkedInputPoseNode.of(string(at, m, "name"));
+                case "linked_anim_layer" -> {
+                    CgLinkedAnimLayerNode node = CgLinkedAnimLayerNode.of(string(at, m, "layer"));
+                    if (m.get("inputs") instanceof Map<?, ?> ins) {
+                        for (Map.Entry<?, ?> e : ins.entrySet()) node = node.input(String.valueOf(e.getKey()), pose(String.valueOf(e.getValue())));
+                    }
+                    yield node;
+                }
+                case "linked_anim_graph" -> {
+                    String gid = string(at, m, "graph");
+                    if (!(definition(at + ".graph", CgBodyKinds.ANIM_GRAPH, gid) instanceof CgAnimGraphDefinition d)) {
+                        throw new CgAssetException(at + ".graph: " + gid + " is no anim_graph");
+                    }
+                    CgLinkedAnimGraphNode node = CgLinkedAnimGraphNode.of(d.graph(skeleton, clips));
+                    if (m.get("tag") instanceof String tag) node = node.tag(tag);
+                    if (m.get("inputs") instanceof Map<?, ?> ins) {
+                        for (Map.Entry<?, ?> e : ins.entrySet()) node = node.input(String.valueOf(e.getKey()), pose(String.valueOf(e.getValue())));
+                    }
+                    yield node;
                 }
                 default -> {
                     CgAnimNodeKind reader = KINDS.get(kind);
@@ -421,9 +458,21 @@ public final class CgAnimGraphCodec {
             }
             tree.put("variables", vars);
         }
+        if (!graph.inputs().isEmpty()) tree.put("inputs", new ArrayList<>(graph.inputs()));
         tree.put("output", output);
+        Map<String, Object> layers = new LinkedHashMap<>();
+        for (CgAnimGraph.Layer l : graph.layers().values()) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            if (!l.inputs().isEmpty()) m.put("inputs", new ArrayList<>(l.inputs()));
+            m.put("output", names.apply(l.output()));
+            if (l.group() != null) m.put("group", l.group());
+            if (l.blendIn() != 0f) m.put("blend_in", (double) l.blendIn());
+            if (l.blendOut() != 0f) m.put("blend_out", (double) l.blendOut());
+            layers.put(l.name(), m);
+        }
         tree.put("nodes", nodes);
         tree.putAll(names.sections);
+        if (!layers.isEmpty()) tree.put("layers", layers);
         return tree;
     }
 }

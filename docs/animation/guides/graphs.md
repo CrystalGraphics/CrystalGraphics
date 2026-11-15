@@ -315,6 +315,81 @@ CgSequencePlayerNode.of(LIMP).loop().sync(CgSyncGroup.of("feet", CgAnimGroupRole
 - `TRANSITION_LEADER` and `TRANSITION_FOLLOWER` join only once fully blended in, as Unreal's.
 - Play rate by speed: `playRate(STRIDE)` reads a float variable each frame.
 
+## One graph, many characters
+
+A graph from a file names its clips by id and is bound to each mesh: **one graph, each character its own clips**.
+
+```java
+CgAnimGraphDefinition hero = (CgAnimGraphDefinition) load.definition();     // anim_graphs/mymod/hero.yaml
+goku.anim().graph(hero.graph(goku.mesh().skeleton(), id -> gokuClips.get(id)));
+vegeta.anim().graph(hero.graph(vegeta.mesh().skeleton(), id -> vegetaClips.get(id)));
+```
+
+A character whose graph differs only in some clips is a **child graph**: `parent:` and the nodes it changes, each
+merged field by field, so replacing a node's `clip` or `blend_space` keeps its `loop`, its inputs and its sync group
+(Unreal's child anim blueprint's asset overrides).
+
+```yaml
+# anim_graphs/mymod/goku.yaml
+_v: 1
+parent: mymod:hero
+nodes:
+  idle: { clip: mymod:goku/idle }
+  run:  { blend_space: mymod:goku/run }
+```
+
+## Linked layers and linked graphs
+
+A **layer** is a named part of a graph that another graph may play instead: a sword's arms over a hero's locomotion,
+swapped at runtime. The graph declares it, with the poses it takes; a `CgLinkedAnimLayerNode` plays it, the graph's
+own until a graph implementing it is linked.
+
+```java
+CgAnimGraph hero = CgAnimGraph.builder("mymod:hero", skeleton)
+        .layer(CgAnimGraph.Layer.of("arms", CgLinkedInputPoseNode.of("body"), "body").blend(0.2f, 0.2f))   // its own: the body through
+        .output(CgInertializationNode.of(CgLinkedAnimLayerNode.of("arms").input("body", locomotion)))
+        .build();
+CgAnimGraph swordArms = CgAnimGraph.builder("mymod:sword_arms", skeleton)
+        .layer(CgAnimGraph.Layer.of("arms", CgLayeredBlendNode.of(CgLinkedInputPoseNode.of("body"))
+                .layer(CgSequencePlayerNode.of(SWORD_IDLE).loop(), CgBlendMask.branch("clavicle_r", 0)), "body").blend(0.2f, 0.2f))
+        .output(CgRefPoseNode.create())
+        .build();
+
+anim.graph(hero);
+anim.linkLayers(swordArms);     // the sword's arms, blended in over 0.2 s
+anim.unlinkLayers(swordArms);   // the hero's own again
+```
+
+A **linked graph** runs another graph as a node; a tag lets the game swap it.
+
+```java
+CgAnimGraph face = CgAnimGraph.builder("mymod:face", skeleton).inputs("body")
+        .output(CgLayeredBlendNode.of(CgLinkedInputPoseNode.of("body")).layer(blink, CgBlendMask.branch("head", 0)))
+        .build();
+CgAnimGraph hero = CgAnimGraph.builder("mymod:hero", skeleton)
+        .output(CgLinkedAnimGraphNode.of(face).input("body", locomotion).tag("face"))
+        .build();
+anim.linkGraph("face", ANGRY_FACE);    // null: the body passes through
+```
+
+```yaml
+# the hero above, as a file
+layers:
+  arms: { inputs: [body], output: arms_own, blend_in: 0.2, blend_out: 0.2 }
+nodes:
+  arms_own: { kind: linked_input_pose, name: body }
+  arms:     { kind: linked_anim_layer, layer: arms, inputs: { body: locomotion } }
+  face:     { kind: linked_anim_graph, graph: mymod:face, tag: face, inputs: { body: arms } }
+```
+
+- **A linked graph plays inside its owner**: its variables are the owner's of the same name and type, its slots the
+  owner's (a montage plays there too), its players in the owner's sync groups.
+- **Layers of one `group`** linked from one graph share one run of it; an ungrouped layer has its own.
+- **A layer's blend times inertialize a swap**, and need an inertialization node above the layer node; a swap with
+  none fails as it is linked.
+- **Fails at build or load**: a layer node naming a layer its graph does not declare, an input no layer or graph
+  takes, a linked input pose naming an input its layer lacks, a `graph` that is no `anim_graph`.
+
 ## From a file
 
 The same graph, as `anim_graphs/mymod/hero.yaml`:

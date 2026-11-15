@@ -223,6 +223,33 @@ public final class CgBodyKinds {
             .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    /** {@code FAnimNode_LinkedInputPose}: a pose its layer's or graph's caller passes. */
+    static final CgType ANIM_LINKED_INPUT_POSE = animNode("linked_input_pose")
+            .property("name", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_LinkedAnimLayer}: a layer, the graph's own or a linked graph's, its input poses by name. */
+    static final CgType ANIM_LINKED_ANIM_LAYER = animNode("linked_anim_layer")
+            .property("layer", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("inputs", CgValueType.mapOf(NODE_NAME)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_LinkedAnimGraph}: another graph run as a node. */
+    static final CgType ANIM_LINKED_ANIM_GRAPH = animNode("linked_anim_graph")
+            .property("graph", hard("anim_graph")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("tag", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("inputs", CgValueType.mapOf(NODE_NAME)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** An anim layer function: its input poses, the node that is its pose, its group and its swap's blends. */
+    static final CgType ANIM_LAYER_FUNCTION = CgTypes.struct("crystalgraphics:anim_graph.layer_function")
+            .property("inputs", CgValueType.listOf(STRING)).flags(CgPropertyFlag.HEADLESS)
+            .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("group", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("blend_in", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).range(0, null).defaultValue(0.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("blend_out", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).range(0, null).defaultValue(0.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     private static final CgValueType COMPARISON = CgValueType.enumOf("<", "<=", ">", ">=", "==", "!=");
 
     /** A transition rule: {@code all}, {@code any}, {@code not}, a variable compared, a clock compared, an event. */
@@ -283,9 +310,11 @@ public final class CgBodyKinds {
      */
     public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)
             .property("variables", CgValueType.mapOf(CgValueType.struct(ANIM_VARIABLE))).flags(CgPropertyFlag.HEADLESS)
+            .property("inputs", CgValueType.listOf(STRING)).flags(CgPropertyFlag.HEADLESS)
             .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)
             .property("machines", CgValueType.mapOf(CgValueType.struct(ANIM_MACHINE))).flags(CgPropertyFlag.HEADLESS)
+            .property("layers", CgValueType.mapOf(CgValueType.struct(ANIM_LAYER_FUNCTION))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Blend space ──────────────────────────────────────────────────────────────────────

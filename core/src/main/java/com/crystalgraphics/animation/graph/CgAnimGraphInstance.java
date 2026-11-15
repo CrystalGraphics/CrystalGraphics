@@ -1,8 +1,10 @@
 package com.crystalgraphics.animation.graph;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -79,13 +81,57 @@ public final class CgAnimGraphInstance {
     private CgAnimPose[] pool = new CgAnimPose[4];
     private int pooled, borrowed;
 
+    /** The instance whose frame this runs in: itself, or a linked instance's owner's own main. */
+    private final CgAnimGraphInstance main;
+    /** Per variable, its main instance's of the same name and type, or -1. */
+    private final int[] fromMain;
+    /** Each layer's (or, under "", the graph's) input poses, by name: what its linked input pose nodes read. */
+    private final Map<String, Input> inputs = new LinkedHashMap<>();
+    /** The layer whose nodes are instantiating now, "" for the graph's own. */
+    private String scope = "";
+    /** A main instance's linked instances; a linked instance's last frame run. */
+    private final List<CgAnimGraphInstance> linked = new ArrayList<>();
+    private long linkedFrame = -1;
+    /** A main instance's slots its linked graphs brought. */
+    private final List<CgAnimSlot> extraSlots = new ArrayList<>();
+    /** A linked instance's layer and graph nodes playing it: at 0 it leaves its main. */
+    int users;
+
     public CgAnimGraphInstance(CgAnimGraph graph, CgSkeleton skeleton) {
+        this(graph, skeleton, null);
+    }
+
+    /**
+     * A run of {@code graph} inside {@code owner}'s: a linked graph's or a layer graph's. It keeps its own variables,
+     * nodes and cached poses; its players tick in its owner's sync, its clips reach its owner's curves, a slot its owner
+     * has is its owner's (Unreal's linked instances play the main instance's montages), and its variables are its
+     * owner's of the same name and type each frame.
+     */
+    CgAnimGraphInstance(CgAnimGraph graph, CgSkeleton skeleton, @Nullable CgAnimGraphInstance owner) {
         this.graph = Objects.requireNonNull(graph, "graph");
         this.skeleton = Objects.requireNonNull(skeleton, "skeleton");
+        this.main = owner == null ? this : owner.main;
         values = new float[graph.variables().size()];
         for (int i = 0; i < values.length; i++) values[i] = graph.variables().get(i).defaultValue();
         proxy = values.clone();
-        for (String name : graph.slots()) slots.put(name, new CgAnimSlot(name));
+        fromMain = new int[values.length];
+        for (int i = 0; i < values.length; i++) {
+            CgAnimVariable<?> v = graph.variables().get(i);
+            int at = main.graph.variable(v.name());
+            fromMain[i] = main != this && at >= 0 && main.graph.variables().get(at).type() == v.type() ? at : -1;
+        }
+        for (String name : graph.slots()) {
+            CgAnimSlot slot = main != this ? main.slots.get(name) : null;
+            if (slot == null) {
+                slot = new CgAnimSlot(name);
+                // A linked graph's slot is its main's, as Unreal's linked instances play the main instance's montages
+                if (main != this) {
+                    main.slots.put(name, slot);
+                    main.extraSlots.add(slot);
+                }
+            }
+            slots.put(name, slot);
+        }
         for (String name : graph.saves().keySet()) save(name);
         root = runtime(graph.output());
         single = graph.singlePlayer() == null ? null : (CgSequencePlayerNode.PlayerRuntime) runtime(graph.singlePlayer());
@@ -95,6 +141,7 @@ public final class CgAnimGraphInstance {
         flushOrder = new CgCachedPoseNode.SaveRuntime[saveArray.length];
         for (int i = 0; i < flushOrder.length; i++) flushOrder[i] = saves.get(graph.saveOrder().get(i));
         initialize();
+        if (main != this) main.linked.add(this);
     }
 
     public CgAnimGraph graph() {
@@ -130,7 +177,138 @@ public final class CgAnimGraphInstance {
 
     /** A new curve layer's number, for a layered blend's layer at instantiate. */
     int newCurveLayer() {
-        return ++curveLayers;
+        return main != this ? main.newCurveLayer() : ++curveLayers;
+    }
+
+    // ── linked graphs and layers ─────────────────────────────────────────────────────────
+
+    /** An input pose handed into a layer or a linked graph: the node passing it, and the instance that node runs in. */
+    static final class Input {
+        @Nullable
+        CgAnimNode.Runtime source;
+        @Nullable
+        CgAnimGraphInstance instance;
+
+        void set(@Nullable CgAnimNode.Runtime source, @Nullable CgAnimGraphInstance instance) {
+            this.source = source;
+            this.instance = instance;
+        }
+    }
+
+    /** Input pose {@code name} of the layer instantiating now (or of the graph's own inputs). */
+    Input input(String name) {
+        return input(scope, name);
+    }
+
+    Input input(String layer, String name) {
+        return inputs.computeIfAbsent(layer + '\u0000' + name, k -> new Input());
+    }
+
+    /** Layer {@code layer}'s output here, its nodes instantiated in the layer's scope. */
+    CgAnimNode.Runtime layerRuntime(String layer) {
+        CgAnimGraph.Layer l = graph.layers().get(layer);
+        if (l == null) throw new IllegalArgumentException(graph + " declares no layer " + layer);
+        String was = scope;
+        scope = layer;
+        try {
+            return runtime(l.output());
+        } finally {
+            scope = was;
+        }
+    }
+
+    /** The main instance this one runs in: itself unless it is a linked instance. */
+    CgAnimGraphInstance main() {
+        return main;
+    }
+
+    /**
+     * A linked instance's part of its main's update: {@code root} (its output or a layer's) at {@code weight}. Its first
+     * in a frame takes the main's variables and begins its cached poses; the main flushes them after its walk.
+     */
+    void linkedUpdate(CgAnimNode.Runtime root, float weight) {
+        if (linkedFrame != main.frame) {
+            linkedFrame = main.frame;
+            for (int i = 0; i < fromMain.length; i++) {
+                if (fromMain[i] >= 0) proxy[i] = main.proxy[fromMain[i]];
+                else proxy[i] = values[i];
+            }
+            for (CgCachedPoseNode.SaveRuntime s : saveArray) s.begin();
+        }
+        root.update(this, weight);
+    }
+
+    void linkedEvaluate(CgAnimNode.Runtime root, CgAnimPose out) {
+        root.evaluate(this, out);
+    }
+
+    /** Leaves its main: it no longer runs. */
+    void unlinkFromMain() {
+        main.linked.remove(this);
+    }
+
+    /** How many linked instances run in this one. */
+    int linkedInstances() {
+        return linked.size();
+    }
+
+    /**
+     * Plays each layer {@code layers} declares through it, wherever this graph plays that layer: Unreal's
+     * {@code LinkAnimClassLayers}. Layers of one group share one run of it; an ungrouped layer has its own. A layer
+     * already played by {@code layers} is left as it is.
+     *
+     * @throws IllegalArgumentException for this instance's own graph, which would play itself
+     */
+    public void linkLayers(CgAnimGraph layers) {
+        if (layers == graph) throw new IllegalArgumentException(graph + " cannot link its own layers");
+        Map<String, CgAnimGraphInstance> groups = new LinkedHashMap<>();
+        for (CgAnimNode.Runtime r : runtimes.values().toArray(new CgAnimNode.Runtime[0])) {
+            if (!(r instanceof CgLinkedAnimLayerNode.LayerRuntime l)) continue;
+            CgAnimGraph.Layer layer = layers.layers().get(l.layer());
+            if (layer == null || l.linkedGraph() == layers) continue;
+            CgAnimGraphInstance target = layer.group() == null ? null : groups.get(layer.group());
+            if (target == null) {
+                target = linkedInstance(layers, l.inertialized());
+                if (layer.group() != null) groups.put(layer.group(), target);
+            }
+            l.link(this, target, layer);
+        }
+    }
+
+    /**
+     * A run of {@code linked} in this instance, built as though inside the node linking it: under an inertialization
+     * node where that node is, so the linked graph's own transitions find one.
+     */
+    CgAnimGraphInstance linkedInstance(CgAnimGraph linked, boolean inertialized) {
+        if (inertialized) main.inertializersAbove++;
+        try {
+            return new CgAnimGraphInstance(linked, skeleton, this);
+        } finally {
+            if (inertialized) main.inertializersAbove--;
+        }
+    }
+
+    /** Plays each layer {@code layers} plays here as this graph's own again: Unreal's {@code UnlinkAnimClassLayers}. */
+    public void unlinkLayers(CgAnimGraph layers) {
+        for (CgAnimNode.Runtime r : runtimes.values().toArray(new CgAnimNode.Runtime[0])) {
+            if (r instanceof CgLinkedAnimLayerNode.LayerRuntime l && l.linkedGraph() == layers) l.link(this, null, null);
+        }
+    }
+
+    /**
+     * Runs {@code graph} in the linked graph node tagged {@code tag}, or nothing for null: Unreal's
+     * {@code LinkAnimGraphByTag}.
+     *
+     * @throws IllegalArgumentException where no linked graph node has the tag
+     */
+    public void linkGraph(String tag, @Nullable CgAnimGraph graph) {
+        for (CgAnimNode.Runtime r : runtimes.values()) {
+            if (r instanceof CgLinkedAnimGraphNode.GraphRuntime gr && tag.equals(gr.tag())) {
+                gr.link(this, graph);
+                return;
+            }
+        }
+        throw new IllegalArgumentException(this.graph + " has no linked graph tagged " + tag);
     }
 
     /** Each node's runtime, in no order: what a game-thread request to every node of a kind walks (a transition event). */
@@ -233,6 +411,10 @@ public final class CgAnimGraphInstance {
         root.update(this, 1f);
         // Each cached pose's source once, at its heaviest use; a save before those it reads, so their requests are in
         for (CgCachedPoseNode.SaveRuntime s : flushOrder) s.flush(this);
+        for (int i = 0; i < linked.size(); i++) {
+            CgAnimGraphInstance l = linked.get(i);
+            if (l.linkedFrame == frame) for (CgCachedPoseNode.SaveRuntime s : l.flushOrder) s.flush(l);
+        }
         sync.tick(delta);
         for (int i = 0; i < records; i++) {
             sink.player = recordPlayers[i];
@@ -263,21 +445,25 @@ public final class CgAnimGraphInstance {
     public void evaluate(CgAnimPose out) {
         root.evaluate(this, out);
         for (CgAnimSlot s : slotArray) s.clear();
+        for (int i = 0; i < extraSlots.size(); i++) extraSlots.get(i).clear();
         if (borrowed != 0) throw new IllegalStateException(graph + ": " + borrowed + " scratch poses not given back");
     }
 
     /** This frame's delta, seconds. */
     public float delta() {
+        if (main != this) return main.delta;
         return delta;
     }
 
     /** Its clock, seconds: the sum of its deltas. What a state's re-entry and an event's time to live count by. */
     public double seconds() {
+        if (main != this) return main.seconds;
         return seconds;
     }
 
     /** How many frames it has updated: a cached pose evaluates once per frame by it. */
     public long frame() {
+        if (main != this) return main.frame;
         return frame;
     }
 
@@ -285,11 +471,13 @@ public final class CgAnimGraphInstance {
 
     /** The curve layer a node's players contribute to: 0 the base, more a layer's own, -1 none. */
     public int curveLayer() {
+        if (main != this) return main.curveLayer;
         return curveLayer;
     }
 
     /** Sets the curve layer for the nodes a layered blend updates under it; answers the one it replaced. */
     public int curveLayer(int layer) {
+        if (main != this) return main.curveLayer(layer);
         int was = curveLayer;
         curveLayer = layer;
         return was;
@@ -301,6 +489,10 @@ public final class CgAnimGraphInstance {
      * {@code fullWeightOnce}.
      */
     public void record(CgAnimAssetPlayer player, float weight, @Nullable CgSyncGroup group, boolean fullWeightOnce) {
+        if (main != this) {
+            main.record(player, weight, group, fullWeightOnce);
+            return;
+        }
         if (records == recordPlayers.length) {
             int n = records * 2;
             recordPlayers = Arrays.copyOf(recordPlayers, n);
@@ -334,29 +526,38 @@ public final class CgAnimGraphInstance {
 
     /** This frame's players recorded so far: a state machine finds its states' relevant player among them. */
     public int records() {
+        if (main != this) return main.records;
         return records;
     }
 
     public CgAnimAssetPlayer recordPlayer(int i) {
+        if (main != this) return main.recordPlayers[i];
         return recordPlayers[i];
     }
 
     public float recordWeight(int i) {
+        if (main != this) return main.recordWeights[i];
         return recordWeights[i];
     }
 
     /** The player scope record {@code i} was made in: which state machine's states it belongs to, 0 none. */
     public int recordScope(int i) {
+        if (main != this) return main.recordScopes[i];
         return recordScopes[i];
     }
 
     /** Its sync groups: where they stood after the last tick. */
     public CgAnimSync sync() {
+        if (main != this) return main.sync;
         return sync;
     }
 
     /** A clip sampled at {@code time} this frame (a slot's entry): its curves added at {@code weight}. */
     void sampled(CgAnimSequence clip, float time, float weight) {
+        if (main != this) {
+            main.sampled(clip, time, weight);
+            return;
+        }
         int i = reserve();
         sampleScopes[i] = playerScope;
         samplePlayers[i] = null;
@@ -412,10 +613,15 @@ public final class CgAnimGraphInstance {
      * Answers the scope's depth.
      */
     public int beginPlayerScope() {
+        if (main != this) return main.beginPlayerScope();
         return ++playerScope;
     }
 
     public void endPlayerScope() {
+        if (main != this) {
+            main.endPlayerScope();
+            return;
+        }
         playerScope--;
     }
 
@@ -430,17 +636,26 @@ public final class CgAnimGraphInstance {
 
     /** While an inertialization node updates its source: requests below go to it. */
     public void pushInertializer(Inertializer inertializer) {
+        if (main != this) {
+            main.pushInertializer(inertializer);
+            return;
+        }
         if (inertializing == inertializers.length) inertializers = Arrays.copyOf(inertializers, inertializing * 2);
         inertializers[inertializing++] = inertializer;
     }
 
     public void popInertializer() {
+        if (main != this) {
+            main.popInertializer();
+            return;
+        }
         inertializers[--inertializing] = null;
     }
 
     /** The nearest inertialization node above the node updating now, or null. */
     @Nullable
     public Inertializer inertializer() {
+        if (main != this) return main.inertializer();
         return inertializing == 0 ? null : inertializers[inertializing - 1];
     }
 
@@ -449,15 +664,24 @@ public final class CgAnimGraphInstance {
      * that needs one checks {@link #inertializerAbove} as it instantiates.
      */
     public void enterInertializer() {
+        if (main != this) {
+            main.enterInertializer();
+            return;
+        }
         inertializersAbove++;
     }
 
     public void exitInertializer() {
+        if (main != this) {
+            main.exitInertializer();
+            return;
+        }
         inertializersAbove--;
     }
 
     /** Whether the node instantiating now has an inertialization node above it. */
     public boolean inertializerAbove() {
+        if (main != this) return main.inertializerAbove();
         return inertializersAbove > 0;
     }
 

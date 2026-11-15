@@ -66,6 +66,14 @@ public final class CgAnimNodeWriter {
         return this;
     }
 
+    /** Nodes it reads by a name of its own: a linked node's inputs. */
+    public CgAnimNodeWriter nodeMap(String key, Map<String, CgAnimNode> nodes) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        for (Map.Entry<String, CgAnimNode> e : nodes.entrySet()) n.put(e.getKey(), names.apply(e.getValue()));
+        out.put(key, n);
+        return this;
+    }
+
     /** The name {@code node} is written by: for a field of a struct the node writes itself. */
     public String name(CgAnimNode node) {
         return names.apply(node);
