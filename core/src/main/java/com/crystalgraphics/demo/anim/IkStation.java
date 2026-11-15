@@ -61,10 +61,13 @@ final class IkStation implements AnimDemoStation {
      * names poles: each limb then takes two-bone IK, its joint bending toward a point that far along the
      * joint bone's own z.</p>
      *
-     * <p>{@code pelvisDrop} is how far foot placement may lower its pelvis, in proportion to its legs.</p>
+     * <p>{@code pelvisDrop} is how far foot placement may lower its pelvis, in proportion to its legs. With
+     * {@code stride}, a foot planted well below its hip is moved forward until its shin stands upright, the thigh
+     * raised from the hip: a short-shinned leg folding straight down would bend its knee sharply instead.</p>
      */
     private record Rig(@Nullable String root, String pelvis, String footL, String footR, @Nullable String ballL, @Nullable String ballR,
-                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole, float pelvisDrop) {
+                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole, float pelvisDrop,
+                       boolean stride) {
 
         String ball(boolean left) {
             String b = left ? ballL : ballR;
@@ -91,7 +94,7 @@ final class IkStation implements AnimDemoStation {
     }
 
     private static final Rig STANDARD = new Rig("root", "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "hand_l", "hand_r",
-            "FLD_Stand", "FLD_Punch", 0f, 0f, CgFootPlacementNode.Pelvis.DEFAULT.maxOffset());
+            "FLD_Stand", "FLD_Punch", 0f, 0f, CgFootPlacementNode.Pelvis.DEFAULT.maxOffset(), false);
     // its legs hang off "model", the body's pivot: that is its pelvis
     private static final Rig HUMANOID = new Rig(null, "model", "left_foot_locator", "right_foot_locator", null, null,
             "left_hand_locator", "right_hand_locator", "vanilla/idle", "melee/melee_0",
@@ -99,9 +102,12 @@ final class IkStation implements AnimDemoStation {
             -0.4f, 0.4f,
             // its legs are 0.625 m: dropping its pelvis the default 0.5 m to reach the floor folds the other leg shut,
             // so on a half block the leg off the edge hangs instead
-            0.25f);
+            0.25f, true);
 
     private final CgAnimVariable<Boolean> ik = CgAnimVariable.bool("ik", true), dynamics = CgAnimVariable.bool("dynamics", true);
+    /** Each foot's stride forward, in the world: x then z, left then right. */
+    private final CgAnimVariable<Float> strideLx = CgAnimVariable.floating("stride_l_x"), strideLz = CgAnimVariable.floating("stride_l_z"),
+            strideRx = CgAnimVariable.floating("stride_r_x"), strideRz = CgAnimVariable.floating("stride_r_z");
     private final List<Stand> stands = new ArrayList<>();
     private final List<Puncher> punchers = new ArrayList<>();
     private AnimDemoSet set;
@@ -110,17 +116,55 @@ final class IkStation implements AnimDemoStation {
     private boolean sway, ikOn = true, dynamicsOn = true;
     private float time;
 
+    /**
+     * One leg's stride: from last frame's pose, how far forward its IK foot goes for its shin to stand upright under a
+     * thigh raised from the hip. A foot its full leg's length below the hip (standing) takes none.
+     */
+    private static final class Stride {
+        final AnimDemoCast.Body body;
+        final int hip, ikFoot;
+        final float thigh, shin;
+        final Matrix4f m = new Matrix4f();
+
+        Stride(AnimDemoCast.Body body, String foot, String ikFoot) {
+            CgSkeleton s = body.cast.mesh.skeleton();
+            int f = s.indexOf(foot), knee = s.parent(f);
+            this.body = body;
+            this.hip = s.parent(knee);
+            this.ikFoot = s.indexOf(ikFoot);
+            Vector3f t = new Vector3f();
+            thigh = s.restTranslation(knee, t).length();
+            shin = s.restTranslation(f, t).length();
+        }
+
+        float forward() {
+            float drop = body.instance.pose().component(hip, m).m31() - body.instance.pose().component(ikFoot, m).m31();
+            if (drop >= thigh + shin || drop <= 0f) return 0f;
+            if (drop <= shin) return thigh;
+            float down = drop - shin;
+            return (float) Math.sqrt(thigh * thigh - down * down);
+        }
+    }
+
     /** One body standing at {@code baseY} on the set's blocks. */
     private final class Stand implements CgAnimGround {
         final AnimDemoCast.Body body;
         final double x, baseY, z;
 
-        Stand(AnimDemoCast.Body body, double x, double baseY, double z) {
+        Stand(AnimDemoCast.Body body, Rig rig, double x, double baseY, double z) {
             this.body = body;
             this.x = x;
             this.baseY = baseY;
             this.z = z;
             body.instance.ground(this);
+            if (rig.stride) {
+                Stride left = new Stride(body, rig.footL, "ik_foot_l"), right = new Stride(body, rig.footR, "ik_foot_r");
+                body.instance.onUpdate((anim, dt) -> {
+                    float l = left.forward(), r = right.forward();
+                    float fx = (float) Math.sin(body.yaw), fz = (float) Math.cos(body.yaw);
+                    anim.set(strideLx, l * fx).set(strideLz, l * fz).set(strideRx, r * fx).set(strideRz, r * fz);
+                });
+            }
         }
 
         @Override
@@ -285,7 +329,7 @@ final class IkStation implements AnimDemoStation {
         for (double[] a : at) {
             AnimDemoCast.Body body = cast.spawn().at(a[0], a[1], z, 0f);
             body.instance.graph(graph);
-            stands.add(new Stand(body, a[0], a[1], z));
+            stands.add(new Stand(body, rig, a[0], a[1], z));
         }
     }
 
@@ -297,8 +341,15 @@ final class IkStation implements AnimDemoStation {
                 .settings(CgFootPlacementNode.Plant.DEFAULT, pelvis(rig.pelvisDrop), CgFootPlacementNode.Interpolation.DEFAULT,
                         CgFootPlacementNode.Trace.DEFAULT)
                 .alpha(ikAlpha);
+        if (rig.stride) {
+            n = CgModifyBoneNode.of(n, "ik_foot_l").translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.WORLD, strideLx, null, strideLz)
+                    .alpha(ikAlpha);
+            n = CgModifyBoneNode.of(n, "ik_foot_r").translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.WORLD, strideRx, null, strideRz)
+                    .alpha(ikAlpha);
+        }
         n = limbs(n, skeleton, "ik_foot_l", rig.footL, "ik_foot_r", rig.footR, rig.kneePole, true, ikAlpha);
-        return CgAnimGraph.builder("demo:ik_feet", skeleton).variables(ik, dynamics).output(dynamics(n, skeleton)).build();
+        return CgAnimGraph.builder("demo:ik_feet", skeleton).variables(ik, dynamics, strideLx, strideLz, strideRx, strideRz)
+                .output(dynamics(n, skeleton)).build();
     }
 
     /** A body {@code reach} from the wall at {@code wallZ}, facing it, punching it every so often. */
