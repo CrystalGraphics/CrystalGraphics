@@ -350,6 +350,15 @@ vec4 c = texture(_Flames, vec3(uv, frame));
 - Images of different sizes are each centred on a layer the size of the largest.
 - The first frame's settings file says how all of them load.
 
+One sheet of equal tiles instead of a file a frame:
+
+```java
+// smoke_sheet.png, 8 x 8 tiles -> layers 0..63, row by row from the top left
+static final CgTexture2DArray SMOKE = CgTextures.frames("mymod:textures/vfx/smoke_sheet.png", 8, 8);
+```
+
+The sheet must divide into the tiles exactly, or its layers stay clear and `isMissing()` says so.
+
 ### Volume: a 3D texture
 
 Slices, one per image, sampled as a `sampler3D`. Unlike an array, it blends between slices.
@@ -364,6 +373,13 @@ vec3 graded = texture(_Lut, colour.rgb).rgb;
 ```
 
 Every slice must be the same size.
+
+One sheet of equal tiles works here too, a slice a tile in reading order:
+
+```java
+// a 1024x512 sheet of 8 x 4 tiles -> a 128x128x32 volume
+static final CgTexture3D NOISE = CgTextures.volume("mymod:textures/noise_sheet.png", 8, 4);
+```
 
 ### Cube
 

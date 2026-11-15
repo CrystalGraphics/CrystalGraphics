@@ -48,6 +48,7 @@ import com.crystalgraphics.material.CgMaterialShader;
 import com.crystalgraphics.material.CgMaterialShaderRegistry;
 import com.crystalgraphics.render.mesh.CgMeshStore;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
+import com.crystalgraphics.noise.CgBlueNoise;
 import com.crystalgraphics.noise.CgNoiseVolumes;
 import com.crystalgraphics.gpu.resource.CgTextureManager;
 import com.crystalgraphics.settings.CgSettings;
@@ -236,6 +237,7 @@ public final class CgGraphicsLifecycle {
                 CgExecutor.ahead(2);
                 CgStartSteps.step("targets and fallbacks");
                 CgNoiseVolumes.install();
+                CgBlueNoise.install();
                 CgStartSteps.step("noise");
             }
             case 2 -> {

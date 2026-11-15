@@ -24,6 +24,7 @@
 #pragma kernel Sample 8 8 image
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/blue_noise.glsl"
 #include "crystalgraphics:shaders/world/lights/lights.glsl"
 #include "crystalgraphics:shaders/world/lights/shadow.glsl"
 #include "crystalgraphics:shaders/world/lights/trace.glsl"
@@ -54,6 +55,7 @@ Properties {
     _GBuffer       ("Each pixel's normal in the view, alpha 1 where ours (gbuffer.compute)", sampler2D) = "black"
     _EntityTiles   ("Each 16x16 tile's entities a ray from it can meet: 16 bits a channel (tiles.compute)", sampler2D) = "black"
     _SunMap        ("The sun's cascades, a quadrant each, nearest bottom left: our casters' depth from the light, blocks", sampler2D) = "white"
+    _BlueNoise     ("Spatiotemporal blue noise (lib/blue_noise.glsl)", sampler3D) = "cg_blue_noise"
     _WorldBaseX    ("Its lowest block, absolute: x",               int) = 0
     _WorldBaseY    ("y",                                           int) = 0
     _WorldBaseZ    ("z",                                           int) = 0
@@ -114,10 +116,9 @@ vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2
 // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
 ivec2 down() { return ivec2(_Screen.zw); }
 
-// Unreal's GetDownsampleJitter2x2: which pixel of a downsampled pixel's block it stands for this frame.
+// Which pixel of a downsampled pixel's block it stands for this frame; shade.compute reads the same.
 ivec2 jitter(ivec2 d) {
-    int k = (CG_FRAME_INDEX + d.x * 3 + d.y * 5) & 3;
-    return ivec2(k & 1, k >> 1) % down();
+    return cg_downsample_offset(d, down(), CG_FRAME_INDEX);
 }
 
 // The screen trace (TraceScreen) from a along dir for len: 1 a hit within the depth thickness, -1 uncertain, the ray
@@ -257,10 +258,10 @@ float block_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord, uvec4 t
     int from = int(CELLS(e * 4 + 1));   // CG_LIGHT_CELL_START, named for the binding
     ivec2 span = CG_LIGHTS_MINECRAFT(e);
     vec3 at = block_of(to_world(p + n * 0.5));
-    float pick = cg_shadow_noise(vec2(sampleCoord) + 113.0, CG_FRAME_INDEX), weightSum = 0.0;
+    float pick = cg_blue_noise(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 6), weightSum = 0.0;
     int chosen = -1;
     int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
-    float stride = CG_LIGHT_STRIDE(count), offset = cg_shadow_noise(vec2(sampleCoord) + 191.0, CG_FRAME_INDEX);
+    float stride = CG_LIGHT_STRIDE(count), offset = cg_blue_noise(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 7);
     for (int c = 0; c < walked; c++) {
         int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
         vec4 light = VIEWED(index).positionRadius;
@@ -281,12 +282,12 @@ float block_visibility(vec3 p, vec3 n, bool ownPixel, ivec2 sampleCoord, uvec4 t
     vec3 centre = VIEWED(chosen).positionRadius.xyz;
     vec3 toLight = centre - p;
     if (dot(n, toLight) <= 0.0) return ownPixel ? 0.0 : 1.0;
-    vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord) + 131.0, CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 151.0, CG_FRAME_INDEX));
+    vec2 u = cg_blue_noise2(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 8);
     vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
     vec4 ray = cg_shadow_sphere_ray(centre - a, 0.3, u);
     // Stopped short of the block it comes from, which may be solid (glowstone).
     float rayEnd = max(ray.w - 0.9, 0.0);
-    float jit = cg_shadow_noise(vec2(sampleCoord) + 173.0, CG_FRAME_INDEX), reached;
+    float jit = cg_blue_noise(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 9), reached;
     // Minecraft's world keeps its own blocks' shadows: only our objects take its light from it.
     if (caster_trace(to_world(a), to_world_dir(ray.xyz), 0.0, rayEnd)) return 0.0;
     if (!ownPixel) return 1.0;
@@ -305,13 +306,13 @@ vec2 light_sample(vec3 p, vec3 n, ivec2 d, ivec2 sampleCoord, int mine, uvec4 ti
     ivec2 span = CG_LIGHTS_SAMPLED(e);
 
     // InitLightSamplerStratified and AddLightSample (MegaLightsSampling.ush): four stratified picks in one pass.
-    float rnd = cg_shadow_noise(vec2(d), CG_FRAME_INDEX);
+    float rnd = cg_blue_noise(_BlueNoise, d, CG_FRAME_INDEX, 0);
     vec4 pick = (vec4(0.0, 1.0, 2.0, 3.0) + rnd) / _SampleGrid.z;
     ivec4 chosen = ivec4(-1);
     vec4 chosenWeight = vec4(0.0);
     float weightSum = 0.0;
     int count = span.y - span.x, walked = min(count, CG_LIGHT_CANDIDATES);
-    float stride = CG_LIGHT_STRIDE(count), offset = cg_shadow_noise(vec2(d) + 59.0, CG_FRAME_INDEX);
+    float stride = CG_LIGHT_STRIDE(count), offset = cg_blue_noise(_BlueNoise, d, CG_FRAME_INDEX, 1);
     for (int c = 0; c < walked; c++) {
         int index = int(INDICES(from + span.x + CG_LIGHT_CANDIDATE(c, count, offset)));
         vec4 reach = VIEWED(index).positionRadius;
@@ -350,7 +351,7 @@ vec2 light_sample(vec3 p, vec3 n, ivec2 d, ivec2 sampleCoord, int mine, uvec4 ti
 
     // GetLightSampleTrace: toward a point of the light sampled over the solid angle its sphere covers, along its
     // line for a tube.
-    vec2 u = vec2(cg_shadow_noise(vec2(sampleCoord), CG_FRAME_INDEX), cg_shadow_noise(vec2(sampleCoord) + 17.0, CG_FRAME_INDEX));
+    vec2 u = cg_blue_noise2(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 2);
     vec3 a = p + n * (_Trace.z + 0.002 * -p.z);
     vec3 centre = light.positionRadius.xyz + light.segment.xyz * (u.x - 0.5);
     vec4 ray = cg_shadow_sphere_ray(centre - a, light.kind.z, u);
@@ -358,7 +359,7 @@ vec2 light_sample(vec3 p, vec3 n, ivec2 d, ivec2 sampleCoord, int mine, uvec4 ti
     float rayEnd = max(ray.w - 0.01, 0.0);
 
     // The screen trace, then the world trace from where it left off: a lamp of ours is shadowed by everything.
-    float jit = cg_shadow_noise(vec2(sampleCoord) + 31.0, CG_FRAME_INDEX), reached;
+    float jit = cg_blue_noise(_BlueNoise, sampleCoord, CG_FRAME_INDEX, 3), reached;
     if (caster_trace(to_world(a), to_world_dir(ray.xyz), 0.0, rayEnd)) return vec2(float(index), -1.0);
     int screen = screen_trace(a, ray.xyz, min(rayEnd, _Trace.x), int(_Trace.y), jit, reached);
     if (screen == 1) return vec2(float(index), -1.0);

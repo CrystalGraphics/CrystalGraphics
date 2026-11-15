@@ -30,6 +30,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *   <li>{@link #create(String...)} — a slice an image, cached by the paths, loaded at its first use as a
  *       {@link CgTexture2D} from a file is. Slices of another size than the first, or that will not load, are logged
  *       and leave a clear 1x1x1 volume: {@link #isMissing()}.</li>
+ *   <li>{@link #createTiled(String, int, int)} — one image of equal tiles, a slice each in reading order.</li>
  *   <li>{@link #create(String, CgTextureDesc)} — storage a kernel, a bake or an upload fills; any thread.</li>
  * </ul>
  *
@@ -69,11 +70,16 @@ public final class CgTexture3D extends CgTextureAbstract {
 
     /** Source paths for reload; {@code null} for a made volume. */
     @Getter private final String[] sourcePaths;
+    /** For a volume cut from one image ({@link #createTiled}): tiles across and down; 0 for a slice a file. */
+    private final int columns, rows;
 
-    private CgTexture3D(int textureId, int width, int height, int depth, Texels spec, String[] sourcePaths) {
+    private CgTexture3D(int textureId, int width, int height, int depth, Texels spec, String[] sourcePaths, int columns,
+                        int rows) {
         super(textureId, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
+        this.columns = columns;
+        this.rows = rows;
     }
 
     // ── Factories ────────────────────────────────────────────────────
@@ -83,7 +89,26 @@ public final class CgTexture3D extends CgTextureAbstract {
         String[] own = checkPaths(paths);
         Texels spec = Texels.file(own[0]);
         CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
-            CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, spec, own);
+            CgTexture3D tex = new CgTexture3D(0, 0, 0, own.length, spec, own, 0, 0);
+            tex.loadOnFirstUse();
+            return tex;
+        });
+        return (CgTexture3D) result;
+    }
+
+    /**
+     * One image cut into {@code columns} x {@code rows} equal tiles, a slice each in reading order: tile {@code (c, r)},
+     * counted from the image's top left, is slice {@code r * columns + c}. One file for a volume of many slices (a
+     * noise sequence, a flipbook to read as a volume), as its settings file says: shared, loaded at its first use.
+     *
+     * @throws IllegalArgumentException for fewer than one tile either way
+     */
+    public static CgTexture3D createTiled(String path, int columns, int rows) {
+        if (columns < 1 || rows < 1) throw new IllegalArgumentException(path + " in " + columns + "x" + rows + " tiles");
+        Texels spec = Texels.file(path);
+        String key = path + CgTextureManager.PATH_SEPARATOR + "tiles " + columns + "x" + rows;
+        CgTexture result = CgTextureManager.get().getOrCreate(key, spec, () -> {
+            CgTexture3D tex = new CgTexture3D(0, 0, 0, columns * rows, spec, new String[] {path}, columns, rows);
             tex.loadOnFirstUse();
             return tex;
         });
@@ -149,7 +174,7 @@ public final class CgTexture3D extends CgTextureAbstract {
             throw new IllegalArgumentException(levels + " levels for a " + width + "x" + height + "x" + depth
                     + " texture: it holds 1 to " + fullChain(width, height, depth));
         }
-        CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null);
+        CgTexture3D tex = new CgTexture3D(0, width, height, depth, spec, null, 0, 0);
         tex.levels = levels;
         tex.gpu.run(tex::store3D);
         return tex;
@@ -220,6 +245,10 @@ public final class CgTexture3D extends CgTextureAbstract {
     @Override
     protected void load() {
         if (sourcePaths == null) return;
+        if (columns > 0) {
+            loadTiled();
+            return;
+        }
         CgImageData[] images = new CgImageData[sourcePaths.length];
         for (int i = 0; i < images.length; i++) {
             images[i] = CgTextureIO.load(sourcePaths[i]);
@@ -248,6 +277,33 @@ public final class CgTexture3D extends CgTextureAbstract {
             for (int i = 0; i < images.length; i++) {
                 CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, i, w, h, 1), images[i].pixels(), format,
                         GL_UNSIGNED_BYTE);
+            }
+            if (spec.mipmapped()) CgDeviceTextures.mipmaps(image);
+        });
+    }
+
+    /** {@link #createTiled}'s load: the one image read, each tile copied out and written as its slice. */
+    private void loadTiled() {
+        CgImageData sheet = CgTextureIO.load(sourcePaths[0]);
+        if (sheet == null || !CgTileSheet.divides(sheet, columns, rows)) {
+            LOGGER.log(Level.WARNING, "[CgTexture3D] {0} would not load as {1}x{2} equal tiles",
+                    new Object[] {sourcePaths[0], columns, rows});
+            if (width != 0) return;
+            missing = true;
+            width = height = depth = 1;
+            gpu.run(this::store3D);
+            return;
+        }
+        missing = false;
+        int w = sheet.width() / columns, h = sheet.height() / rows, format = pixelFormatForChannels(sheet.channels());
+        ByteBuffer[] slices = CgTileSheet.cut(sheet, columns, rows);
+        width = w;
+        height = h;
+        depth = slices.length;
+        gpu.run(() -> {
+            store3D();
+            for (int s = 0; s < slices.length; s++) {
+                CgDeviceTextures.write(image, new CgTextureRegion(0, 0, 0, s, w, h, 1), slices[s], format, GL_UNSIGNED_BYTE);
             }
             if (spec.mipmapped()) CgDeviceTextures.mipmaps(image);
         });

@@ -151,6 +151,23 @@ public final class CgTextures {
     }
 
     /**
+     * One image of {@code columns} x {@code rows} equal tiles, a layer each in reading order: tile {@code (c, r)} from
+     * the top left is layer {@code r * columns + c}. A flipbook shipped as one sheet.
+     *
+     * <pre>{@code
+     * // a 1024x1024 sheet of 8x8 frames -> 64 layers of 128x128
+     * static final CgTexture2DArray SMOKE = CgTextures.frames("mymod:textures/vfx/smoke_sheet.png", 8, 8);
+     *
+     * builder.texture("_Smoke", SMOKE);   // sampler2DArray: texture(_Smoke, vec3(uv, frame))
+     * }</pre>
+     *
+     * <p>An image that does not divide into equal tiles, or will not load, leaves its layers clear: {@code isMissing()}.</p>
+     */
+    public static CgTexture2DArray frames(String path, int columns, int rows) {
+        return CgTexture2DArray.createTiled(path, columns, rows);
+    }
+
+    /**
      * An array of your own, filled layer region by layer region and deepened as it fills: its maker's to release.
      *
      * <pre>{@code
@@ -185,6 +202,22 @@ public final class CgTextures {
     /** A slice for each of {@code paths}, in order, all one size. */
     public static CgTexture3D volume(String... paths) {
         return CgTexture3D.create(paths);
+    }
+
+    /**
+     * One image of {@code columns} x {@code rows} equal tiles, a slice each in reading order: tile {@code (c, r)} from the
+     * top left is slice {@code r * columns + c}. A volume of many slices shipped as one file.
+     *
+     * <pre>{@code
+     * // a 1024x512 sheet of 8x4 tiles -> a 128x128x32 volume
+     * static final CgTexture3D NOISE = CgTextures.volume("mymod:textures/noise_sheet.png", 8, 4);
+     * }</pre>
+     *
+     * <p>An image that does not divide into equal tiles, or will not load, leaves a clear 1x1x1 volume:
+     * {@code isMissing()}.</p>
+     */
+    public static CgTexture3D volume(String path, int columns, int rows) {
+        return CgTexture3D.createTiled(path, columns, rows);
     }
 
     /**

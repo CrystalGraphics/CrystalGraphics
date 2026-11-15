@@ -9,6 +9,7 @@
 #pragma kernel Shade 8 8 image
 #include "crystalgraphics:shaders/lib/math.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
+#include "crystalgraphics:shaders/lib/blue_noise.glsl"
 #include "crystalgraphics:shaders/world/lights/lights.glsl"
 #include "crystalgraphics:shaders/world/lights/shadow.glsl"
 
@@ -28,6 +29,7 @@ Properties {
     _MaxWeight ("Unreal's r.MegaLights.MaxShadingWeight",          float) = 20.0
     _Scale   ("Target pixels a written texel spans each way: 1, 2 or 4 (crystalgraphics.world.lightsShadeScale)", int) = 1
     _SampleGrid ("Unreal's NumSamplesPerPixel as a block of the samples texture: its width, height and count", vec4) = (2, 2, 4, 0)
+    _BlueNoise ("Spatiotemporal blue noise (lib/blue_noise.glsl)", sampler3D) = "cg_blue_noise"
 }
 
 Buffers {
@@ -62,9 +64,9 @@ vec3 normal_at(ivec2 px) { return texelFetch(_GBuffer, clamp(px, ivec2(0), ivec2
 // Unreal's r.MegaLights.DownsampleMode as a factor: 1x1, 2x1 (checkerboard) or 2x2 (half resolution).
 ivec2 down() { return ivec2(_Screen.zw); }
 
+// Which pixel of a downsampled pixel's block its samples stood for this frame, as sample.compute placed them.
 ivec2 jitter(ivec2 d) {
-    int k = (CG_FRAME_INDEX + d.x * 3 + d.y * 5) & 3;
-    return ivec2(k & 1, k >> 1) % down();
+    return cg_downsample_offset(d, down(), CG_FRAME_INDEX);
 }
 
 // world/lights/lights.shader's lighting of p facing n by one light, times the scene.
@@ -115,7 +117,7 @@ void shade(ivec2 t, out vec4 lit, out vec4 visibility) {
     }
     float total = dot(weights, vec4(1.0));
     if (total <= 1.0e-4) return;
-    float r = cg_shadow_noise(vec2(px), CG_FRAME_INDEX) * total;
+    float r = cg_blue_noise(_BlueNoise, px, CG_FRAME_INDEX, 4) * total;
     int chosen = 3;
     for (int k = 0; k < 3; k++) {
         if (r < weights[k]) {

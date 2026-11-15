@@ -37,6 +37,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * static final CgTexture2DArray FLAMES = CgTextures.frames("mymod:textures/vfx/flame_%d.png", 3);   // numbered files
  * static final CgTexture2DArray PAINTINGS = CgTexture2DArray.create(
  *         "mymod:textures/vfx/dash_wide.png", "mymod:textures/vfx/dash_thin.png");
+ * static final CgTexture2DArray SMOKE = CgTextures.frames("mymod:textures/vfx/smoke_sheet.png", 8, 8);   // one sheet
  * }</pre>
  *
  * <ul>
@@ -75,10 +76,15 @@ public final class CgTexture2DArray extends CgTextureAbstract {
 
     private final Consumer<CgUploadLease> landing = this::land;
 
-    private CgTexture2DArray(int width, int height, int depth, Texels spec, String[] sourcePaths) {
+    /** For an array cut from one image ({@link #createTiled}): tiles across and down; 0 for a layer a file. */
+    private final int columns, rows;
+
+    private CgTexture2DArray(int width, int height, int depth, Texels spec, String[] sourcePaths, int columns, int rows) {
         super(0, width, height, spec);
         this.depth = depth;
         this.sourcePaths = sourcePaths;
+        this.columns = columns;
+        this.rows = rows;
     }
 
     // ── Factories ────────────────────────────────────────────────────
@@ -91,7 +97,26 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         String[] own = checkPaths(paths);
         Texels spec = Texels.file(own[0]);
         CgTexture result = CgTextureManager.get().getOrCreate(String.join(CgTextureManager.PATH_SEPARATOR, own), spec, () -> {
-            CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own);
+            CgTexture2DArray tex = new CgTexture2DArray(0, 0, own.length, spec, own, 0, 0);
+            tex.loadOnFirstUse();
+            return tex;
+        });
+        return (CgTexture2DArray) result;
+    }
+
+    /**
+     * One image cut into {@code columns} x {@code rows} equal tiles, a layer each in reading order: tile {@code (c, r)},
+     * counted from the image's top left, is layer {@code r * columns + c}. A flipbook or a set of frames shipped as one
+     * sheet, as its settings file says: shared, loaded at its first use. Any thread.
+     *
+     * @throws IllegalArgumentException for fewer than one tile either way
+     */
+    public static CgTexture2DArray createTiled(String path, int columns, int rows) {
+        if (columns < 1 || rows < 1) throw new IllegalArgumentException(path + " in " + columns + "x" + rows + " tiles");
+        Texels spec = Texels.file(path);
+        String key = path + CgTextureManager.PATH_SEPARATOR + "tiles " + columns + "x" + rows;
+        CgTexture result = CgTextureManager.get().getOrCreate(key, spec, () -> {
+            CgTexture2DArray tex = new CgTexture2DArray(0, 0, columns * rows, spec, new String[] {path}, columns, rows);
             tex.loadOnFirstUse();
             return tex;
         });
@@ -148,7 +173,7 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         if (layers <= 0)
             throw new IllegalArgumentException("layers must be positive, got: " + layers);
 
-        CgTexture2DArray tex = new CgTexture2DArray(width, height, layers, spec, null);
+        CgTexture2DArray tex = new CgTexture2DArray(width, height, layers, spec, null, 0, 0);
         tex.gpu.run(() -> {
             CgDeviceTextures.release(tex.store(layers, 1));
             tex.storageDepth = layers;
@@ -233,6 +258,10 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     @Override
     protected void load() {
         if (sourcePaths == null) return;
+        if (columns > 0) {
+            loadTiled();
+            return;
+        }
         CgImageData[] images = new CgImageData[sourcePaths.length];
         int w = 0, h = 0, channels = 0;
         boolean failed = false;
@@ -260,6 +289,28 @@ public final class CgTexture2DArray extends CgTextureAbstract {
         int format = pixelFormatForChannels(channels);
         width = w;
         height = h;
+        gpu.run(() -> uploadLayers(format, layers));
+    }
+
+    /** {@link #createTiled}'s load: the one image read and cut into its layers; clear layers where it will not cut. */
+    private void loadTiled() {
+        CgImageData sheet = CgTextureIO.load(sourcePaths[0]);
+        if (sheet == null || !CgTileSheet.divides(sheet, columns, rows)) {
+            LOGGER.log(Level.WARNING, "[CgTexture2DArray] {0} would not load as {1}x{2} equal tiles: its layers stay clear",
+                    new Object[] {sourcePaths[0], columns, rows});
+            if (width != 0) return;
+            missing = true;
+            width = height = 1;
+            ByteBuffer[] clear = new ByteBuffer[depth];
+            for (int i = 0; i < clear.length; i++) clear[i] = ByteBuffer.allocateDirect(4);
+            gpu.run(() -> uploadLayers(pixelFormatForChannels(4), clear));
+            return;
+        }
+        missing = false;
+        int format = pixelFormatForChannels(sheet.channels());
+        ByteBuffer[] layers = CgTileSheet.cut(sheet, columns, rows);
+        width = sheet.width() / columns;
+        height = sheet.height() / rows;
         gpu.run(() -> uploadLayers(format, layers));
     }
 
