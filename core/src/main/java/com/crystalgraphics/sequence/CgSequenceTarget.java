@@ -3,6 +3,7 @@ package com.crystalgraphics.sequence;
 import javax.annotation.Nullable;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 
 /**
  * What a bound object takes from a sequence's state tracks: named slots of up to four numbers, resolved once when the
@@ -55,6 +56,15 @@ public interface CgSequenceTarget {
      * A part of it a binding names ({@code { role: caster, material: body }}, a node, a socket), or null if it has no
      * such part.
      */
+    /**
+     * The scene primitive it draws as, or null for none: what a capture's {@code show} and {@code hide} lists name
+     * (Unreal's show-only and hidden actors). A role drawn by a skeletal mesh answers its component.
+     */
+    @Nullable
+    default CgPrimitiveComponent<?> primitive() {
+        return null;
+    }
+
     @Nullable
     default CgSequenceTarget part(CgSequenceBinding.Part part, String name) {
         return null;

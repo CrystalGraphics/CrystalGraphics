@@ -443,6 +443,41 @@ instance.sampler("_View", 0, colour);                          // then anything 
 - A frame graph imports one with `CgGraphTexture.imported(name, target)`. Textures that live one frame are the
   graph's own (`CgGraphTexture.transientTexture(name, desc)`), not yours. Only those can be multisampled.
 
+### Render targets
+
+A render target is a texture the engine draws into at run time, which a material samples like any other: Unreal's
+`UTextureRenderTarget2D`. A scene capture fills one (a mirror, a portal, a monitor), or you draw a material into it.
+
+```java
+CgRenderTarget mirror = CgRenderTarget.create("mymod:mirror", 512, 512, CgRenderTarget.Format.RGBA16F);
+CgMaterialDefinition.of("mymod:glass", "mymod:shaders/glass.shader").texture("_Reflection", mirror.texture());
+scene.capture().target(mirror).at(x, y, z).rotation(facing).everyFrame(true).spawn();   // what it sees, each frame
+
+mirror.clear();                        // its clear colour, Unreal's green unless set: clearColor(0xFF000000)
+mirror.drawMaterial(ripples);          // a #domain ui material over the whole of it, no scene
+mirror.readback(pixels -> save(pixels));   // a frame or more later; nothing ever blocks
+mirror.release();                      // when nothing draws into or samples it any more
+```
+
+As an asset it is a settings file with a `render_target` block and no image, named by its path without an extension,
+so a material file and a capture name it alike:
+
+```yaml
+# assets/mymod/textures/fx/mirror.yaml: the texture mymod:textures/fx/mirror
+render_target: { size: [512, 512], format: rgba16f, clear: [0, 0, 0, 1] }
+mips: true                 # its chain remade after each draw (Unreal's bAutoGenerateMips); none unless asked
+```
+
+```java
+CgRenderTarget mirror = CgRenderTarget.of("mymod:textures/fx/mirror");   // the one every material naming it samples
+```
+
+- **Its formats are Unreal's ten**: `r8`, `rg8`, `rgba8`, `rgba8_srgb`, `r16f`, `rg16f`, `rgba16f` (the default),
+  `r32f`, `rg32f`, `rgba32f`, `rgb10a2`.
+- **Its size is fixed**: a material holds its texture, so a target of another size is another target.
+- **A capture lends it a depth texture** (`depth()`): the scene's depth, reversed, near 1.
+- Drawing, clearing and reading back are the render thread's, outside a stage firing's recording.
+
 ---
 
 ## 10. Reading back

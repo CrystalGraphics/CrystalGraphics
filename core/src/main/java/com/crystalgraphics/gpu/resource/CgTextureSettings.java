@@ -29,6 +29,15 @@ import java.util.Map;
  * cube: true                              # six faces stacked top to bottom, w x 6w
  * }</pre>
  *
+ * <p>A settings file with a {@code render_target} block and no image is a render target (Unreal's
+ * {@code UTextureRenderTarget2D}), named by its path without an extension; {@code CgRenderTarget.of} makes it.</p>
+ *
+ * <pre>{@code
+ * # mymod/textures/fx/mirror.yaml: the texture mymod:textures/fx/mirror
+ * render_target: { size: [512, 512], format: rgba16f, clear: [0, 0, 0, 1] }
+ * mips: true                              # its chain made after each draw (none otherwise)
+ * }</pre>
+ *
  * <ul>
  *   <li>With a settings file, a key left out takes Unreal's default: sRGB, mips, trilinear and repeated.</li>
  *   <li>Without one, a file loads plain: linear 8-bit colour (float for {@code .hdr} and {@code .exr}), one level,
@@ -36,16 +45,24 @@ import java.util.Map;
  *   <li>{@code compression} picks no format yet: every image loads uncompressed, a {@code .hdr} as RGBA16F.</li>
  * </ul>
  *
- * @param colour  {@code srgb} or {@code linear}; null for the default
- * @param sampler its own sampling; null for the default
+ * @param colour       {@code srgb} or {@code linear}; null for the default
+ * @param sampler      its own sampling; null for the default
+ * @param renderTarget its {@code render_target} block; null for an image
  */
 public record CgTextureSettings(@Nullable String colour, boolean mips, @Nullable String compression, boolean cube,
-                                @Nullable CgSampler sampler, boolean asset) {
+                                @Nullable CgSampler sampler, boolean asset, @Nullable RenderTarget renderTarget) {
 
     /** A file without settings. */
-    public static final CgTextureSettings PLAIN = new CgTextureSettings("linear", false, null, false, CgSampler.BILINEAR_CLAMP, false);
+    public static final CgTextureSettings PLAIN = new CgTextureSettings("linear", false, null, false, CgSampler.BILINEAR_CLAMP, false, null);
     /** A settings file with nothing in it: Unreal's defaults. */
-    public static final CgTextureSettings ASSET = new CgTextureSettings(null, true, null, false, null, true);
+    public static final CgTextureSettings ASSET = new CgTextureSettings(null, true, null, false, null, true, null);
+
+    /**
+     * A {@code render_target} block, as Unreal's {@code UTextureRenderTarget2D} holds it: its size, its format by name
+     * ({@code rgba16f}, Unreal's {@code RTF_RGBA16f}) and its clear colour, Unreal's green where unsaid.
+     */
+    public record RenderTarget(int width, int height, String format, float r, float g, float b, float a) {
+    }
 
     /**
      * {@code image}'s settings: its file's, or {@link #PLAIN} where it has none.
@@ -54,12 +71,14 @@ public record CgTextureSettings(@Nullable String colour, boolean mips, @Nullable
      *                          only a binding's sampler carries
      */
     public static CgTextureSettings of(String image) {
-        int dot = image.lastIndexOf('.');
-        if (dot < 0) return PLAIN;
-        try (InputStream in = CgIO.openStream(image.substring(0, dot) + ".yaml")) {
+        // An image's settings sit beside it as name.yaml; a render target, which has no image, is named by that file
+        int dot = image.lastIndexOf('.'), end = Math.max(image.lastIndexOf('/'), image.lastIndexOf(':'));
+        String file = dot > end ? image.substring(0, dot) + ".yaml" : image + ".yaml";
+        try (InputStream in = CgIO.openStream(file)) {
             if (in == null) return PLAIN;
             Object tree = CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8));
             Map<?, ?> m = tree instanceof Map<?, ?> map ? map : Map.of();
+            RenderTarget target = m.get("render_target") instanceof Map<?, ?> rt ? renderTarget(image, rt) : null;
             Object colour = m.get("colour"), compression = m.get("compression"), block = m.get("sampler");
             if (block != null && !(block instanceof Map)) {
                 throw new CgAssetException(image + "'s sampler is " + block + ", not a block: { filter: ..., wrap: ... }");
@@ -69,8 +88,10 @@ public record CgTextureSettings(@Nullable String colour, boolean mips, @Nullable
             if (sampler != null && sampler.anisotropy() > 1) {
                 throw new CgAssetException(image + "'s sampler names anisotropy, which only a binding's sampler carries");
             }
-            return new CgTextureSettings(colour == null ? null : colour.toString(), !Boolean.FALSE.equals(m.get("mips")),
-                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")), sampler, true);
+            // A render target's chain is made only when asked, as Unreal's bAutoGenerateMips; an image's unless refused
+            boolean mips = target != null ? Boolean.TRUE.equals(m.get("mips")) : !Boolean.FALSE.equals(m.get("mips"));
+            return new CgTextureSettings(colour == null ? null : colour.toString(), mips,
+                    compression == null ? null : compression.toString(), Boolean.TRUE.equals(m.get("cube")), sampler, true, target);
         } catch (IOException e) {
             throw new UncheckedIOException(image + "'s settings do not read", e);
         }
@@ -84,12 +105,26 @@ public record CgTextureSettings(@Nullable String colour, boolean mips, @Nullable
      * }</pre>
      */
     public CgTextureSettings withMips(boolean mips) {
-        return new CgTextureSettings(colour, mips, compression, cube, sampler, asset);
+        return new CgTextureSettings(colour, mips, compression, cube, sampler, asset, renderTarget);
     }
 
     /** These, sampled by {@code sampler} where a binding names none. */
     public CgTextureSettings withSampler(CgSampler sampler) {
-        return new CgTextureSettings(colour, mips, compression, cube, sampler, asset);
+        return new CgTextureSettings(colour, mips, compression, cube, sampler, asset, renderTarget);
+    }
+
+    private static RenderTarget renderTarget(String image, Map<?, ?> block) {
+        if (!(block.get("size") instanceof List<?> size) || size.size() != 2 || !(size.get(0) instanceof Number w)
+                || !(size.get(1) instanceof Number h) || w.intValue() <= 0 || h.intValue() <= 0) {
+            throw new CgAssetException(image + "'s render_target names no size: size: [width, height]");
+        }
+        String format = block.get("format") instanceof String f ? f : "rgba16f";
+        float[] clear = {0f, 1f, 0f, 1f};
+        if (block.get("clear") instanceof List<?> c) {
+            if (c.size() != 4) throw new CgAssetException(image + "'s render_target clear is " + c + ", not [r, g, b, a]");
+            for (int i = 0; i < 4; i++) clear[i] = ((Number) c.get(i)).floatValue();
+        }
+        return new RenderTarget(w.intValue(), h.intValue(), format, clear[0], clear[1], clear[2], clear[3]);
     }
 
     /** The format {@code image} loads as: float for a float image, else sRGB or linear 8-bit as the settings say. */

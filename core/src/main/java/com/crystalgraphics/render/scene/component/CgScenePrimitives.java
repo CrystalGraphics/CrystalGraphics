@@ -7,6 +7,7 @@ import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
 import com.crystalgraphics.render.view.CgView;
@@ -54,6 +55,9 @@ public final class CgScenePrimitives {
     private final List<CgPrimitiveComponent<?>> attached = new ArrayList<>();
     private final List<CgSkeletalMeshComponent> skeletal = new ArrayList<>();
     private final List<CgDecalComponent> decals = new ArrayList<>();
+    /** Its spawned scene captures, and the ring frame they last ran in. */
+    final List<CgSceneCaptureComponent> captures = new ArrayList<>();
+    private long capturedFrame = Long.MIN_VALUE;
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
     private final Vector2d hit = new Vector2d();
@@ -100,6 +104,26 @@ public final class CgScenePrimitives {
 
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return new CgDynamicComponent(this, Objects.requireNonNull(primitive, "primitive"));
+    }
+
+    /** A camera drawing {@code scene}, whose primitives these are, into a render target. */
+    public CgSceneCaptureComponent capture(CgScene scene) {
+        return new CgSceneCaptureComponent(this, Objects.requireNonNull(scene, "scene"));
+    }
+
+    /**
+     * Engine side, before the scene's first view of a ring frame draws: every capture due draws into its target now,
+     * Unreal's scene capture update ahead of the main view. Once a ring frame, so a capture drawing this scene runs no
+     * captures inside itself. Render thread, outside a firing's recording.
+     */
+    public void updateCaptures() {
+        long now = CgFrameRing.frame();
+        if (now == capturedFrame) return;
+        capturedFrame = now;
+        for (int i = 0; i < captures.size(); i++) {
+            CgSceneCaptureComponent c = captures.get(i);
+            if (c.due()) c.capture();
+        }
     }
 
     public void drawOnce(CgMesh mesh, CgMaterialInterface material, double x, double y, double z) {
@@ -159,7 +183,7 @@ public final class CgScenePrimitives {
         gathering.begin(camera);
         for (int i = 0, n = primitives.size(); i < n; i++) {
             CgPrimitiveComponent<?> p = primitives.get(i);
-            if (!p.visible || !p.inReach(camera) || !gathering.inView(p)) continue;
+            if (!p.visible || !view.sees(p) || !p.inReach(camera) || !gathering.inView(p)) continue;
             int first = out.size();
             p.gather(view, camera, out, gathering);
             for (int b = first, rows = out.size(); b < rows; b++) {
@@ -167,7 +191,7 @@ public final class CgScenePrimitives {
                 if (Float.isNaN(out.primitiveDistance(b))) out.primitiveDistance(b, gathering.distance);
             }
         }
-        if (onceFrame == CgFrameRing.frame() && onceRows.size() > 0) oneFrame.gather(view, camera, out, gathering);
+        if (onceFrame == CgFrameRing.frame() && onceRows.size() > 0 && !view.showsOnly()) oneFrame.gather(view, camera, out, gathering);
     }
 
     /**

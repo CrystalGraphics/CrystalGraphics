@@ -879,6 +879,20 @@ public final class CgSequencePlayer {
                 && track.kind().equals("transform") && spawnableTransforms[b.index()] != null) {
             return spawnableTransforms[b.index()];
         }
+        return target(b, "tracks." + track.id());
+    }
+
+    /**
+     * The target {@code binding} names now, its part resolved; null where it waits on a spawnable not yet made or names
+     * a skipped role. What a spawner resolves a binding in its block by (a capture's {@code show}).
+     */
+    @Nullable
+    public CgSequenceTarget target(CgSequenceBinding binding) {
+        return target(binding, "a binding");
+    }
+
+    @Nullable
+    private CgSequenceTarget target(CgSequenceBinding b, String path) {
         CgSequenceTarget object = switch (b.subject()) {
             case ROLE -> roles[b.index()];
             case LOCATOR -> locators[b.index()];
@@ -888,7 +902,7 @@ public final class CgSequencePlayer {
         };
         if (object == null || b.part() == CgSequenceBinding.Part.WHOLE || b.part() == CgSequenceBinding.Part.VELOCITY) return object;
         CgSequenceTarget part = object.part(b.part(), b.partName());
-        if (part == null) throw new CgAssetException(definition.id() + ": tracks." + track.id() + ": " + object + " has no "
+        if (part == null) throw new CgAssetException(definition.id() + ": " + path + ": " + object + " has no "
                 + b.part().name().toLowerCase(Locale.ROOT) + " " + b.partName());
         return part;
     }

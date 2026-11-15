@@ -19,6 +19,7 @@ import com.crystalgraphics.render.scene.component.CgDynamicPrimitive;
 import com.crystalgraphics.render.scene.component.CgInstancedMeshComponent;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
+import com.crystalgraphics.render.scene.component.CgSceneCaptureComponent;
 import com.crystalgraphics.render.scene.component.CgScenePrimitives;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
@@ -231,6 +232,11 @@ public final class CgScene {
     /** Geometry asked for per view each frame. */
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return primitives.dynamic(primitive);
+    }
+
+    /** A camera drawing this scene into a render target a material samples: a mirror, a portal, a monitor. */
+    public CgSceneCaptureComponent capture() {
+        return primitives.capture(this);
     }
 
     /** {@code mesh} drawn in this frame only, at an absolute position: a prototype or a debug shape. */

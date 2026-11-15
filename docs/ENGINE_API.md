@@ -147,6 +147,11 @@ CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2
 CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a prefab: a root a node, a mesh a part
 scene.spawn(WYVERN).at(x, y, z).spawn().effect("breath").play();       // a node may be a skeletal mesh or an effect
 
+// A camera drawing the scene into a render target a material samples: Unreal's USceneCaptureComponent2D
+CgSceneCaptureComponent mirror = scene.capture().target(mirrorTarget).at(x, y, z).rotation(facing).everyFrame(true).spawn();
+mirror.view().hide(player.root());                                     // a view like any: hidden and show-only lists
+frozen.copyCamera(CgView.main()).captureScene();                       // the game's view, copied, captured once
+
 // The engine's base surface material, for a model with no shader of its own: a texture and Unreal's base properties
 CgMaterial cloth = CgSurfaceMaterial.of("mymod:cloth", "mymod:textures/cloth.png").blend(CgBlendMode.ALPHA).twoSided().build();
 

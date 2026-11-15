@@ -118,6 +118,8 @@ public final class CgStageHost {
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
         Fired f = fired(stage);
         boolean world = stage == WORLD_OPAQUE || stage == WORLD_TRANSPARENT;
+        // Its scene's captures draw first, each a view of its own, before this view's firing is begun
+        if (stage == WORLD_OPAQUE && CgGraphicsLifecycle.isInitialized()) f.host.view().scene().primitives().updateCaptures();
         CgDeviceSection.begin();
         try {
             CgEngineLifecycle.ensureGraphicsContext(f.host.width(), f.host.height());
@@ -175,6 +177,8 @@ public final class CgStageHost {
      */
     public static void renderView(CgView view, CgExternalTarget target) {
         if (CgGraphicsLifecycle.isContextDestroyed() || CgGraphicsLifecycle.isStoodDown()) return;
+        // Its scene's captures first: each is a renderView of its own, and the shared firing below is begun after
+        if (CgGraphicsLifecycle.isInitialized()) view.scene().primitives().updateCaptures();
         CgHostFrame game = frame(WORLD_OPAQUE);
         VIEWS.host.set(game.partialTick(), target.width(), target.height(), target);
         view.size(target.width(), target.height());

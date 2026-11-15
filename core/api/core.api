@@ -6578,7 +6578,7 @@ com/crystalgraphics/gpu/resource/CgTextureSettings
   extends java/lang/Record
   field public,static,final ASSET Lcom/crystalgraphics/gpu/resource/CgTextureSettings;
   field public,static,final PLAIN Lcom/crystalgraphics/gpu/resource/CgTextureSettings;
-  method public <init> (Ljava/lang/String;ZLjava/lang/String;ZLcom/crystalgraphics/api/texture/CgSampler;Z)V
+  method public <init> (Ljava/lang/String;ZLjava/lang/String;ZLcom/crystalgraphics/api/texture/CgSampler;ZLcom/crystalgraphics/gpu/resource/CgTextureSettings$RenderTarget;)V
   method public asset ()Z
   method public colour ()Ljava/lang/String;
   method public compression ()Ljava/lang/String;
@@ -6586,6 +6586,7 @@ com/crystalgraphics/gpu/resource/CgTextureSettings
   method public defaultSampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public format (Ljava/lang/String;)Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public mips ()Z
+  method public renderTarget ()Lcom/crystalgraphics/gpu/resource/CgTextureSettings$RenderTarget;
   method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public withMips (Z)Lcom/crystalgraphics/gpu/resource/CgTextureSettings;
   method public withSampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/gpu/resource/CgTextureSettings;
@@ -6595,6 +6596,20 @@ com/crystalgraphics/gpu/resource/CgTextureSettings
   method public,static isFloat (Ljava/lang/String;)Z
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureSettings;
   method public,static sampler (Ljava/util/Map;)Lcom/crystalgraphics/api/texture/CgSampler;
+com/crystalgraphics/gpu/resource/CgTextureSettings$RenderTarget
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IILjava/lang/String;FFFF)V
+  method public a ()F
+  method public b ()F
+  method public format ()Ljava/lang/String;
+  method public g ()F
+  method public height ()I
+  method public r ()F
+  method public width ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/gpu/resource/CgTextureType
   access public,final,enum
   extends java/lang/Enum
@@ -11639,6 +11654,7 @@ com/crystalgraphics/render/scene/CgScene
   access public,final
   extends java/lang/Object
   method public <init> ()V
+  method public capture ()Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
   method public clear ()V
   method public clock ()Lcom/crystalgraphics/render/scene/CgSceneClock;
   method public decal (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgDecalComponent;
@@ -11781,6 +11797,27 @@ com/crystalgraphics/render/scene/batch/CgMeshBatches$Instances
   method public,abstract count ()I
   method public,abstract gpuIds ()Lcom/crystalgraphics/api/buffer/CgBuffer;
   method public,abstract ids ()[I
+com/crystalgraphics/render/scene/capture/CgSceneCaptureSpawner
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/sequence/spawn/CgSequenceSpawner
+  method public <init> ()V
+  method public check (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;)V
+  method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
+  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
+com/crystalgraphics/render/scene/capture/CgSceneCaptureSpawner$Spec
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;FILjava/util/List;Ljava/util/List;)V
+  method public every ()I
+  method public fov ()F
+  method public hide ()Ljava/util/List;
+  method public show ()Ljava/util/List;
+  method public target ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Ljava/util/Map;Ljava/lang/String;Ljava/util/function/Function;)Lcom/crystalgraphics/render/scene/capture/CgSceneCaptureSpawner$Spec;
 com/crystalgraphics/render/scene/component/CgBoneHide
   access public,final,enum
   extends java/lang/Enum
@@ -11930,10 +11967,35 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public,final drawnFrom (DDD)Z
   method public,final passSettings ()I
   method public,final worldTransform ()Lorg/joml/Matrix4dc;
+com/crystalgraphics/render/scene/component/CgSceneCaptureComponent
+  access public,final
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  method public captureScene ()Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public captures ()J
+  method public copyCamera (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public everyFrame (Z)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public fov ()F
+  method public fov (F)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public onMovement (Z)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public orthographic (F)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public source ()Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;
+  method public source (Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public target ()Lcom/crystalgraphics/render/target/CgRenderTarget;
+  method public target (Lcom/crystalgraphics/render/target/CgRenderTarget;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
+  method public toString ()Ljava/lang/String;
+  method public view ()Lcom/crystalgraphics/render/view/CgView;
+com/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final FINAL_COLOR Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;
+  field public,static,final SCENE_COLOR_HDR Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent$Source;
 com/crystalgraphics/render/scene/component/CgScenePrimitives
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;Lcom/crystalgraphics/render/scene/component/CgScenePrimitives$Driver;)V
+  method public capture (Lcom/crystalgraphics/render/scene/CgScene;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
   method public clear ()V
   method public culled ()I
   method public decal (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgDecalComponent;
@@ -11951,6 +12013,7 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public tested ()I
   method public update ()V
+  method public updateCaptures ()V
 com/crystalgraphics/render/scene/component/CgScenePrimitives$Driver
   access public,abstract,interface
   extends java/lang/Object
@@ -12694,6 +12757,46 @@ com/crystalgraphics/render/stage/CgStageRenderer
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract render (Lcom/crystalgraphics/render/stage/CgStageFrame;)V
+com/crystalgraphics/render/target/CgRenderTarget
+  access public,final
+  extends java/lang/Object
+  method public beginDraw (Z)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
+  method public clear ()V
+  method public clearColor (FFFF)Lcom/crystalgraphics/render/target/CgRenderTarget;
+  method public clearColor (I)Lcom/crystalgraphics/render/target/CgRenderTarget;
+  method public depth ()Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public drawMaterial (Lcom/crystalgraphics/api/material/CgMaterialInterface;)V
+  method public drawn ()V
+  method public format ()Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  method public height ()I
+  method public name ()Ljava/lang/String;
+  method public readback (Lcom/crystalgraphics/gpu/resource/CgReadback$Sink;)V
+  method public release ()V
+  method public texture ()Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public toString ()Ljava/lang/String;
+  method public width ()I
+  method public,static create (Ljava/lang/String;IILcom/crystalgraphics/render/target/CgRenderTarget$Format;)Lcom/crystalgraphics/render/target/CgRenderTarget;
+  method public,static isAsset (Ljava/lang/String;)Z
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/render/target/CgRenderTarget;
+  method public,static withMips (Ljava/lang/String;IILcom/crystalgraphics/render/target/CgRenderTarget$Format;)Lcom/crystalgraphics/render/target/CgRenderTarget;
+com/crystalgraphics/render/target/CgRenderTarget$Format
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final R16F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final R32F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final R8 Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RG16F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RG32F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RG8 Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RGB10A2 Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RGBA16F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RGBA32F Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RGBA8 Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  field public,static,final RGBA8_SRGB Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  method public format ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  method public,static named (Ljava/lang/String;)Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
+  method public,static values ()[Lcom/crystalgraphics/render/target/CgRenderTarget$Format;
 com/crystalgraphics/render/view/CgSceneTextures
   access public,final
   extends java/lang/Object
@@ -12749,12 +12852,15 @@ com/crystalgraphics/render/view/CgView
   method public beginFrame (JLjava/lang/Object;)V
   method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public clearOverride (Lcom/crystalgraphics/variable/CgVar;)Lcom/crystalgraphics/render/view/CgView;
+  method public clearShown ()Lcom/crystalgraphics/render/view/CgView;
+  method public copySettings (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/view/CgView;
   method public draws ()J
   method public environment ()Lcom/crystalgraphics/render/host/CgHostEnvironment;
   method public flag (Lcom/crystalgraphics/variable/CgVar$Bool;)Z
   method public flag (Lcom/crystalgraphics/variable/CgVar$Int;)I
   method public flag (Lcom/crystalgraphics/variable/CgVar$Num;)F
   method public height ()I
+  method public hide (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Lcom/crystalgraphics/render/view/CgView;
   method public historyValid ()Z
   method public hostTextures ()Lcom/crystalgraphics/render/host/CgHostTextures;
   method public name ()Ljava/lang/String;
@@ -12769,7 +12875,10 @@ com/crystalgraphics/render/view/CgView
   method public renderInto (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
   method public renderPicture (III)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public scene ()Lcom/crystalgraphics/render/scene/CgScene;
+  method public sees (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Z
   method public showFlags ()Lcom/crystalgraphics/render/view/CgShowFlags;
+  method public showOnly (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Lcom/crystalgraphics/render/view/CgView;
+  method public showsOnly ()Z
   method public size (II)Lcom/crystalgraphics/render/view/CgView;
   method public state ()Lcom/crystalgraphics/render/view/CgViewState;
   method public textures ()Lcom/crystalgraphics/render/view/CgSceneTextures;
@@ -12876,6 +12985,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public spawned (I)Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public stop ()V
   method public stopped ()Z
+  method public target (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public target (Lcom/crystalgraphics/sequence/definition/CgSequenceTrack;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public toString ()Ljava/lang/String;
   method public trigger (Lcom/crystalgraphics/sequence/definition/CgSequenceTrack;Lcom/crystalgraphics/sequence/definition/CgSequenceSection;)Lcom/crystalgraphics/sequence/event/CgEventTrigger;
@@ -12883,6 +12993,7 @@ com/crystalgraphics/sequence/CgSequenceTarget
   access public,abstract,interface
   extends java/lang/Object
   method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
+  method public primitive ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public,abstract get (I[F)V
   method public,abstract set (I[FI)V
   method public,abstract slot (Ljava/lang/String;)I

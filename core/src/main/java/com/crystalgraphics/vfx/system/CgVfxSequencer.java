@@ -9,6 +9,7 @@ import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.camera.CgCameraSystem;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.post.volume.CgColourRegionSpawner;
+import com.crystalgraphics.render.scene.capture.CgSceneCaptureSpawner;
 import com.crystalgraphics.render.post.volume.CgPostVolumeSpawner;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.camera.CgSequenceCameras;
@@ -67,6 +68,7 @@ public final class CgVfxSequencer {
         sequencer.spawner("prefab", new CgVfxPrefabSpawner(vfx, systems));
         CgPostVolumeSpawner.install(sequencer, cameras);
         CgColourRegionSpawner.install(sequencer);
+        CgSceneCaptureSpawner.install(sequencer);
         CgCameraShakeTrackEvaluator.install(sequencer);
         if (cameras != null && !sequencer.evaluates("camera_cut")) {
             CgSequenceCameras.install(sequencer, cameras, cameraSequences != null ? cameraSequences

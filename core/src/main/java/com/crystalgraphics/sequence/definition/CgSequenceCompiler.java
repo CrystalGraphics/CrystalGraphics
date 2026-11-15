@@ -40,6 +40,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Spawnable;
 import com.crystalgraphics.sequence.time.CgFrameRate;
 import com.crystalgraphics.sequence.notify.CgNotifyKind;
 import com.crystalgraphics.render.post.volume.CgPostBlendable;
+import com.crystalgraphics.render.scene.capture.CgSceneCaptureSpawner;
 
 /** Compiles a resolved, validated {@code sequence} into its {@link CgSequenceDefinition}. One per compile. */
 final class CgSequenceCompiler {
@@ -121,7 +122,9 @@ final class CgSequenceCompiler {
             Object definition = named != null ? deps.definition(named, (String) s.get(kind))
                     : kind.equals("post") && s.get("post") instanceof Map<?, ?> post ? blendables(post, "spawnables." + sid + ".post")
                     : kind.equals("camera") && s.get("camera") instanceof Map<?, ?> camera && camera.get("rig") instanceof String rig
-                    ? rig(rig, "spawnables." + sid + ".camera.rig") : null;
+                    ? rig(rig, "spawnables." + sid + ".camera.rig")
+                    : kind.equals("capture") && s.get("capture") instanceof Map<?, ?> capture ? captureSpec(capture, "spawnables." + sid + ".capture")
+                    : null;
             spawnableDefinitions.add(definition);
             spawnables.add(new Spawnable(sid, (String) s.get("name"), kind, binding(at, "spawnables." + sid + ".at"),
                     !(at instanceof Map<?, ?> m) || !Boolean.FALSE.equals(m.get("follow")), s, definition,
@@ -184,6 +187,12 @@ final class CgSequenceCompiler {
             points.add(point);
         }
         return new CgSequenceDefinition.SoundAttach(track.index(), s.index(), ticks, Collections.unmodifiableList(points));
+    }
+
+    /** A capture block: its target, field of view and frequency, its {@code show} and {@code hide} as bindings. */
+    private CgSceneCaptureSpawner.Spec captureSpec(Map<?, ?> capture, String path) {
+        int[] n = {0};
+        return CgSceneCaptureSpawner.Spec.of(capture, id + ": " + path, b -> binding(b, path + ".bindings[" + n[0]++ + "]"));
     }
 
     /** A post block's {@code materials}, each material a hard reference compiled before the sequence. */

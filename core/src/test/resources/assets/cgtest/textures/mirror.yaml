@@ -1,0 +1,2 @@
+# A render target: no image beside it, named cgtest:textures/mirror
+render_target: { size: [64, 32], format: rgb10a2, clear: [0, 0, 0, 1] }

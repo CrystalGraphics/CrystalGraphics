@@ -7,6 +7,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.gpu.resource.CgTextureCubemap;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.target.CgRenderTarget;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -26,6 +27,20 @@ public class CgMaterialTextureSettingsTest {
     private static void refused(String path, String says) {
         CgAssetException e = assertThrows(CgAssetException.class, () -> CgMaterialRegistry.texture(DIR + path));
         assertTrue(e.getMessage(), e.getMessage().contains(says));
+    }
+
+    @Test
+    public void aRenderTargetAsset_isNamedWithoutAnExtension_andIsWhatItsMaterialsSample() {
+        CgTexture sampled = CgMaterialRegistry.texture(DIR + "mirror");
+        CgRenderTarget target = CgRenderTarget.of(DIR + "mirror");
+        assertSame(target.texture(), sampled);
+        assertEquals(64, sampled.getWidth());
+        assertEquals(32, sampled.getHeight());
+        assertSame(CgRenderTarget.Format.RGB10A2, target.format());
+        assertFalse("a target's chain only where asked", CgMaterialRegistry.textureSettings(DIR + "mirror").mips());
+        assertTrue(CgRenderTarget.isAsset(DIR + "mirror"));
+        assertFalse(CgRenderTarget.isAsset(DIR + "ramp.hdr"));
+        refused("bad_target", "not one of r8");
     }
 
     @Test

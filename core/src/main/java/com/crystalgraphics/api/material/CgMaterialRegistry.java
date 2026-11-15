@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.material.CgMaterialShader;
+import com.crystalgraphics.render.target.CgRenderTarget;
 
 /**
  * Singleton load/reload/delete lifecycle manager for {@link CgMaterial} instances.
@@ -151,6 +152,7 @@ public final class CgMaterialRegistry {
 
     private static CgTexture fromFile(String path) {
         CgTextureSettings s = textureSettings(path);
+        if (s.renderTarget() != null) return CgRenderTarget.of(path).texture();   // a texture with no image, drawn at run time
         boolean hdr = CgTextureSettings.isFloat(path);
         int dot = path.lastIndexOf('.');
         if (hdr || path.endsWith(".png")) {

@@ -102,6 +102,11 @@ public final class CgSequenceKinds {
             .property("at_end", CgValueType.idList(SPLINE_AT_END))
             .register();
 
+    /**
+     * A scene capture into a render target, Unreal's {@code USceneCaptureComponent2D}: {@code target} the render target's
+     * path without an extension, {@code fov} horizontal degrees, {@code every} frames between captures (once at its
+     * spawn where unsaid), {@code show} and {@code hide} bindings drawn alone or left out.
+     */
     static final CgType CAPTURE = CgTypes.struct("crystalgraphics:sequence.capture")
             .property("target", CgValueType.binaryRef("textures")).required()
             .property("fov", FLOAT).quantity(CgQuantity.ANGLE)

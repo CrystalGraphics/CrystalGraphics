@@ -11,7 +11,9 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.view.CgView;
+import org.joml.Matrix4dc;
 import org.joml.Quaternionf;
+import org.joml.Vector3d;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import org.junit.Test;
 
@@ -64,6 +66,49 @@ public class CgSceneTest {
         near.visible(false);
         assertSame(far, eye.pick(50, 50));
         assertNull("a corner's ray passes beside both", eye.pick(0, 0));
+    }
+
+    @Test
+    public void aViewsHiddenAndShowOnlyLists_coverWhatRidesWhatTheyName() {
+        CgScene scene = new CgScene();
+        CgMeshComponent rock = scene.mesh(CUBE, STONE).at(0, 0, -5).spawn();
+        CgMeshComponent moss = scene.mesh(CUBE, GLOW).attach(rock, null).at(0, 1, 0).spawn();
+        CgMeshComponent tree = scene.mesh(CUBE, STONE).at(2, 0, -5).spawn();
+        scene.update();
+        CgView eye = CgView.of(scene);
+        eye.hide(rock);
+        scene.primitives().gather(eye, camera, out);
+        assertEquals("the moss rides the hidden rock", 1, out.size());
+        assertSame(tree, out.primitive(0));
+
+        eye.clearShown().showOnly(rock);
+        scene.drawOnce(CUBE, GLOW, 0, 0, -4);
+        scene.primitives().gather(eye, camera, out);
+        assertEquals("the rock and what rides it; no tree, no row of this frame alone", 2, out.size());
+        assertTrue(out.primitive(0) == rock && out.primitive(1) == moss || out.primitive(0) == moss && out.primitive(1) == rock);
+
+        scene.primitives().gather(view, camera, out);
+        assertEquals("another view's lists are its own", 4, out.size());
+    }
+
+    @Test
+    public void aCaptureCopyingAView_standsWhereItsCameraIs_turnedAndWideAsItIs() {
+        CgScene scene = new CgScene();
+        CgView game = CgView.of(scene);
+        game.camera().set(CgCamera.perspective(70f, 2f, 0.05f, 1000f).lookAt(3f, 4f, 5f, 3f, 4f, 15f).position(3, 4, 5));
+        CgSceneCaptureComponent capture = scene.capture().copyCamera(game).spawn();
+        scene.update();
+        Matrix4dc m = capture.worldTransform();
+        assertEquals(3.0, m.m30(), 1e-6);
+        assertEquals(4.0, m.m31(), 1e-6);
+        assertEquals(5.0, m.m32(), 1e-6);
+        Vector3d forward = m.transformDirection(new Vector3d(1, 0, 0)), up = m.transformDirection(new Vector3d(0, 1, 0));
+        assertEquals("its +x looks where the camera does", 1.0, forward.z, 1e-5);
+        assertEquals("its +y is the camera's up", 1.0, up.y, 1e-5);
+        double horizontal = Math.toDegrees(2.0 * Math.atan(2.0 * Math.tan(Math.toRadians(35.0))));
+        assertEquals("the vertical 70 at 2:1, as wide across", horizontal, capture.fov(), 1e-3);
+        assertEquals(0, capture.captures());
+        assertNull("no target, nothing drawn", capture.target());
     }
 
     @Test

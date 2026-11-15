@@ -88,9 +88,11 @@ public final class CgLookKinds {
 
     // ── Texture, mesh ────────────────────────────────────────────────────────────────────
 
+    /** A texture with no image, drawn into at run time: Unreal's {@code UTextureRenderTarget2D} and its ten formats. */
     static final CgType RENDER_TARGET = CgTypes.struct("crystalgraphics:texture.render_target")
             .property("size", CgValueType.listOf(INT)).required().flags(CgPropertyFlag.STRUCTURAL)
-            .property("format", CgValueType.enumOf("rgba8", "rgba16f", "r16f", "rgba32f")).flags(CgPropertyFlag.STRUCTURAL)
+            .property("format", CgValueType.enumOf("r8", "rg8", "rgba8", "rgba8_srgb", "r16f", "rg16f", "rgba16f", "r32f",
+                    "rg32f", "rgba32f", "rgb10a2")).flags(CgPropertyFlag.STRUCTURAL)
             .property("clear", VEC4)
             .register();
 

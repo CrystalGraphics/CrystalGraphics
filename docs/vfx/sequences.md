@@ -346,6 +346,19 @@ spawnables:
   `animation` on the play's time, each bone answering `at: { spawnable, node }`, so a light or a system rides it.
   Clip `ns:path/name` is looked for in `<the model's namespace>:models/path/name.glb`, then in the model's own file;
   a host with clips elsewhere installs its own finder. It draws nothing yet: a puppet naming `meshes` fails.
+- **A `capture` spawnable draws the scene into a render target** (`CgSceneCaptureSpawner`, which `CgVfxSequencer`
+  installs; Unreal's `USceneCaptureComponent2D`): a capture of the client scene where its `at` puts it, looking along
+  its +x through a horizontal `fov` (90 unless set), into `target`, a render target asset's path without an extension
+  (`docs/TEXTURES.md` § Render targets). It captures once as it spawns, or every `every` frames; `show` lists the
+  bindings it draws alone and `hide` those it leaves out, each a role or spawnable that draws as a scene primitive. A
+  `fov` property track keys its field of view. A target that is no render target fails as the play starts.
+
+```yaml
+spawnables:
+  - { id: s3, name: mirror_shot, at: { role: caster, offset: [0, 1.6, 2] },
+      capture: { target: mymod:textures/fx/mirror, fov: 60, every: 1, hide: [ { role: caster } ] } }
+```
+
 - **A `colour_region` spawnable grades the world inside a shape** (`CgColourRegionSpawner`, which `CgVfxSequencer`
   installs; Unreal 5.1's `AColorCorrectRegion`): every pixel whose world point is inside its sphere, box, cylinder or
   cone mixed toward the scene graded (saturation, contrast, gamma, gain, offset; for the whole as `colour` and per

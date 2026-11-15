@@ -11,6 +11,7 @@ import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
+import com.crystalgraphics.render.target.CgRenderTarget;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -81,6 +82,8 @@ public final class CgView {
     private final Map<CgViewKey<?>, Object> published = new IdentityHashMap<>();
     private final Map<CgVar<?>, Object> overrides = new IdentityHashMap<>();
     private final CgShowFlags showFlags = new CgShowFlags();
+    private final Set<CgPrimitiveComponent<?>> hidden = Collections.newSetFromMap(new IdentityHashMap<>()),
+            showOnly = Collections.newSetFromMap(new IdentityHashMap<>());
     private int width, height;
     private long frame = Long.MIN_VALUE, draws;
 
@@ -243,6 +246,63 @@ public final class CgView {
         return this;
     }
 
+    /**
+     * Takes {@code other}'s settings: its show flags and every flag it overrides, in place of this view's own. What a
+     * scene capture copying the game's view takes besides its camera (Unreal's post settings copied with it).
+     */
+    public CgView copySettings(CgView other) {
+        showFlags.set(other.showFlags);
+        overrides.clear();
+        overrides.putAll(other.overrides);
+        return this;
+    }
+
+    /**
+     * Leaves {@code primitive} out of this view, and whatever rides it: Unreal's {@code HiddenComponents}. A capture
+     * that must not see its own owner, a mirror that skips the player.
+     *
+     * <pre>{@code
+     * mirror.view().hide(player.root());        // the player and everything attached to it
+     * portal.showOnly(statue);                  // the statue alone (Unreal's show-only list)
+     * }</pre>
+     */
+    public CgView hide(CgPrimitiveComponent<?> primitive) {
+        hidden.add(Objects.requireNonNull(primitive, "primitive"));
+        return this;
+    }
+
+    /**
+     * Draws only what is listed here and what rides it, once anything is: Unreal's show-only list
+     * ({@code PRM_UseShowOnlyList}). A scene's rows added for one frame ({@code scene.once()}) are left out too.
+     */
+    public CgView showOnly(CgPrimitiveComponent<?> primitive) {
+        showOnly.add(Objects.requireNonNull(primitive, "primitive"));
+        return this;
+    }
+
+    /** Empties both lists: everything is drawn again. */
+    public CgView clearShown() {
+        hidden.clear();
+        showOnly.clear();
+        return this;
+    }
+
+    /** Engine side, the gather's: whether this view draws {@code primitive}, by its lists and those of what it rides. */
+    public boolean sees(CgPrimitiveComponent<?> primitive) {
+        if (hidden.isEmpty() && showOnly.isEmpty()) return true;
+        boolean listed = showOnly.isEmpty();
+        for (CgPrimitiveComponent<?> p = primitive; p != null; p = p.attachParent()) {
+            if (hidden.contains(p)) return false;
+            if (!listed && showOnly.contains(p)) listed = true;
+        }
+        return listed;
+    }
+
+    /** Engine side: whether it draws only what its show-only list names. */
+    public boolean showsOnly() {
+        return !showOnly.isEmpty();
+    }
+
     /** {@code flag} as this view reads it: its override, else the flag's value. What the renderer reads, never a setter. */
     public boolean flag(CgVar.Bool flag) {
         Object o = overrides.get(flag);
@@ -311,8 +371,9 @@ public final class CgView {
      */
     public CgTexture2D renderPicture(int width, int height, int argb) {
         if (picture == null) picture = new CgViewPicture("cg_view." + name);
-        renderInto(picture.begin(width, height, argb));
-        return picture.colour();
+        CgRenderTarget target = picture.at(width, height, argb);
+        renderInto(target.beginDraw(true));
+        return target.texture();
     }
 
     /** Frees {@link #renderPicture}'s picture. Render thread; the next call makes it again. */
