@@ -3,6 +3,9 @@ package com.crystalgraphics.world.actor;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
+import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
+
+import javax.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,12 +48,25 @@ import java.util.List;
  *       front, faces the entity's facing.</li>
  *   <li>The client world's thread. {@code tick} runs in {@code PLAYS}, before {@code POSE}.</li>
  * </ul>
+ *
+ * <p>An actor registered with a prefab has it spawned on its root before {@code onSpawn}; its code keeps only
+ * behaviour:</p>
+ * <pre>{@code
+ * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");
+ *
+ * @Override protected void onSpawn(CgEntity wyvern) {
+ *     wings = prefab().mesh("wings");                       // a node's part, a mesh component like any other
+ *     prefab().node("jaw").rotation(open);                  // a node: what rides it follows
+ * }
+ * }</pre>
  */
 public abstract class CgEntityActor {
 
     private final List<CgPrimitiveComponent<?>> components = new ArrayList<>();
     CgEntity entity;
     CgSceneRoot root;
+    @Nullable
+    CgPrefabInstance prefab;
 
     /** The entity appeared on this client: make its components. */
     protected abstract void onSpawn(CgEntity entity);
@@ -73,6 +89,12 @@ public abstract class CgEntityActor {
         return root;
     }
 
+    /** Its registration's prefab, spawned on its root; null where it names none. */
+    @Nullable
+    protected final CgPrefabInstance prefab() {
+        return prefab;
+    }
+
     /** The entity it draws. */
     public final CgEntity entity() {
         return entity;
@@ -86,10 +108,12 @@ public abstract class CgEntityActor {
         return component;
     }
 
-    /** Removes what it added, the root last. */
+    /** Removes what it added and its prefab, the root last. */
     final void removeAll() {
         for (int i = components.size() - 1; i >= 0; i--) components.get(i).remove();
         components.clear();
+        if (prefab != null) prefab.remove();
+        prefab = null;
         root.remove();
     }
 }

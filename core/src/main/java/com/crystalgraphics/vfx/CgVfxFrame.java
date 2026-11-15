@@ -42,13 +42,14 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxParticlePool;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonGeneration;
 import com.crystalgraphics.vfx.particle.ribbon.CgVfxRibbonShape;
 import com.crystalgraphics.vfx.path.CgVfxPath;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.render.CgVfxQuads;
 import com.crystalgraphics.vfx.render.CgVfxRibbons;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefabLook;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
@@ -699,12 +700,13 @@ public final class CgVfxFrame {
                             + " is neither a sequence renderer nor a prefab's, but " + def.name() + " plays a clip");
                 }
             }
-            CgVfxPrefab prefab = def.clip().prefab();
+            CgPrefab prefab = def.clip().prefab();
+            CgVfxPrefabLook prefabLook = def.clip().look();
             CgVfxClipAtlas.Section section = CgVfxClipAtlas.of(def.clip());
             for (int node = 0; node < prefab.nodes(); node++) {
                 for (int part = prefab.firstPart(node), end = prefab.firstPart(node + 1); part < end; part++) {
                     CgMeshLods mesh = prefab.partMesh(part);
-                    for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
+                    for (CgVfxLook.Placed placed : look.on(prefabLook.partSlot(part))) {
                         if (skips(effect, placed)) continue;
                         CgVfxMaterials.Resolved r = materials.resolve(look, placed);
                         Renderer rd = rs.next(Shape.SEQUENCE, placed, r, materials.material(r, CgVfxSlot.Kind.SEQUENCE));

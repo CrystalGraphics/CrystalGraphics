@@ -5,6 +5,8 @@ import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefabPose;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 import com.crystalgraphics.sequence.definition.CgSequenceChannel;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
@@ -55,7 +57,7 @@ import java.util.Set;
  * it.</p>
  *
  * <ul>
- *   <li>Each spawnable's prefab is made once, its keyed material values its parameters ({@link CgVfxPrefab#keyed}), and
+ *   <li>Each spawnable's prefab is made once, its keyed material values its parameters ({@link CgVfxPrefabLook#keyed}), and
  *       checked drawable then: a node drawing what is not built yet fails at play, naming it.</li>
  *   <li>A spawnable's {@code nodes} rest is set on its nodes as it spawns.</li>
  *   <li>Ending it removes it at once, gracefully or not: a prefab has nothing in flight.</li>
@@ -68,8 +70,8 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
 
     private final CgVfxSystem vfx;
     private final CgVfxSystemSpawner systems;
-    /** Each spawnable's prefab, keyed for its tracks: made at its first spawn. */
-    private final Map<CgSequenceDefinition.Spawnable, CgVfxPrefab> prefabs = new IdentityHashMap<>();
+    /** Each spawnable's prefab's look, keyed for its tracks: made at its first spawn. */
+    private final Map<CgSequenceDefinition.Spawnable, CgVfxPrefabLook> looks = new IdentityHashMap<>();
 
     public CgVfxPrefabSpawner(CgVfxSystem vfx, CgVfxSystemSpawner systems) {
         this.vfx = vfx;
@@ -83,14 +85,14 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
 
     @Override
     public CgSequenceSpawned spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at) {
-        CgVfxPrefab prefab = prefabs.computeIfAbsent(spawnable, s -> prefab(player.definition(), s));
+        CgVfxPrefabLook look = looks.computeIfAbsent(spawnable, s -> look(player.definition(), s));
         double[] point = new double[3];
         Quaternionf turn = new Quaternionf();
         if (!at.place(point, turn)) {
             point[0] = point[1] = point[2] = 0;
             turn.identity();
         }
-        CgVfxPrefabEffect effect = new CgVfxPrefabEffect(prefab, point[0], point[1], point[2]).sortGroup(systems.group(player));
+        CgVfxPrefabEffect effect = new CgVfxPrefabEffect(look, point[0], point[1], point[2]).sortGroup(systems.group(player));
         if (spawnable.follow()) effect.follow(at);
         else effect.orient(turn);
         Spawned spawned = new Spawned(effect, player.definition().units());
@@ -99,11 +101,11 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
         return spawned;
     }
 
-    /** {@code s}'s prefab, its material values keyed by {@code definition}'s tracks made parameters. */
-    private static CgVfxPrefab prefab(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable s) {
+    /** {@code s}'s prefab's look, its material values keyed by {@code definition}'s tracks made parameters. */
+    private static CgVfxPrefabLook look(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable s) {
         String who = definition.id() + ": spawnables." + s.id();
         if (!(s.tree().get("prefab") instanceof String id)) throw new CgAssetException(who + ".prefab: an inline prefab is not built yet");
-        CgVfxPrefab prefab = CgVfxAssets.<CgVfxPrefab>ref(CgBodyKinds.PREFAB, id).get();
+        CgPrefab prefab = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, id).get();
         int index = definition.spawnables().indexOf(s);
         Map<String, Set<String>> keyed = new LinkedHashMap<>();
         for (CgSequenceTrack t : definition.tracks()) {
@@ -134,7 +136,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                 }
             }
         }
-        CgVfxPrefab made = prefab.keyed(keyed);
+        CgVfxPrefabLook made = CgVfxPrefabLook.of(prefab).keyed(keyed);
         made.requireDrawable(who);
         return made;
     }
@@ -142,7 +144,8 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
     /** A spawned prefab: its effect, and a target a node. */
     private static final class Spawned implements CgSequenceSpawned {
         private final CgVfxPrefabEffect effect;
-        private final CgVfxPrefab prefab;
+        private final CgPrefab prefab;
+        private final CgVfxPrefabLook look;
         private final CgUnits units;
         private final Node[] nodes;
         private final Map<String, Material> materials = new LinkedHashMap<>();
@@ -151,7 +154,8 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
 
         Spawned(CgVfxPrefabEffect effect, CgUnits units) {
             this.effect = effect;
-            this.prefab = effect.instance().prefab();
+            this.look = effect.prefabLook();
+            this.prefab = look.prefab();
             this.units = units;
             this.nodes = new Node[prefab.nodes()];
         }
@@ -167,14 +171,14 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                 if (rest.get("location") instanceof List<?> l) node.set(TRANSLATION, three(units.toHost(l, CgQuantity.POSITION), v), 7);
                 if (rest.get("rotation") != null) {
                     Quaternionf q = units.rotationToHost(rest.get("rotation"), new Quaternionf());
-                    effect.instance().rotation(node.index, q.x, q.y, q.z, q.w);
+                    effect.pose().rotation(node.index, q.x, q.y, q.z, q.w);
                 }
                 if (rest.get("scale") instanceof List<?> s) node.set(SCALE, three(units.toHost(s, CgQuantity.SCALE), v), 7);
-                if (rest.get("opacity") instanceof Number a) effect.instance().opacity(node.index, a.floatValue());
+                if (rest.get("opacity") instanceof Number a) effect.pose().opacity(node.index, a.floatValue());
                 if (rest.get("values") instanceof Map<?, ?> values) {
                     for (Map.Entry<?, ?> p : values.entrySet()) {
                         float[] value = p.getValue() instanceof List<?> l ? floats(l) : new float[] {((Number) p.getValue()).floatValue()};
-                        node.set(PARAMS + prefab.keyedNames(node.index).indexOf((String) p.getKey()), value, 15);
+                        node.set(PARAMS + look.keyedNames(node.index).indexOf((String) p.getKey()), value, 15);
                     }
                 }
             }
@@ -252,7 +256,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
             public int slot(String property) {
                 int[] on = new int[nodes.length];
                 for (int k = 0; k < nodes.length; k++) {
-                    on[k] = prefab.keyedNames(nodes[k].index).indexOf(property);
+                    on[k] = look.keyedNames(nodes[k].index).indexOf(property);
                     if (on[k] < 0) return -1;
                     on[k] += PARAMS;
                 }
@@ -280,7 +284,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
         /** One node as a target. */
         private final class Node implements CgSequenceTarget {
             final int index;
-            private final float[] local = new float[CgVfxPrefab.REST];
+            private final float[] local = new float[CgPrefab.REST];
             /** The angles last keyed, by a transform track and by {@code rotationEulerDeg}. */
             private final float[] angles = new float[3], degrees = new float[3], vector = new float[4];
             private final Quaternionf turn = new Quaternionf();
@@ -303,14 +307,14 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                     case "opacity":
                         return OPACITY;
                     default:
-                        int k = prefab.keyedNames(index).indexOf(name);
+                        int k = look.keyedNames(index).indexOf(name);
                         return k < 0 ? -1 : PARAMS + k;
                 }
             }
 
             @Override
             public void set(int slot, float[] values, int mask) {
-                CgVfxPrefabInstance instance = effect.instance();
+                CgPrefabPose instance = effect.pose();
                 switch (slot) {
                     case TRANSLATION, SCALE -> {
                         instance.local(index, local);
@@ -330,7 +334,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                         if ((mask & 1) != 0) instance.opacity(index, values[0]);
                     }
                     default -> {
-                        CgVfxParam p = prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS));
+                        CgVfxParam p = look.param(index, look.keyedNames(index).get(slot - PARAMS));
                         if (p instanceof CgVfxParam.Scalar s) {
                             if ((mask & 1) != 0) effect.set(s, values[0]);
                         } else {
@@ -344,7 +348,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
 
             @Override
             public void get(int slot, float[] out) {
-                CgVfxPrefabInstance instance = effect.instance();
+                CgPrefabPose instance = effect.pose();
                 switch (slot) {
                     case TRANSLATION, SCALE -> {
                         instance.local(index, local);
@@ -354,7 +358,7 @@ public final class CgVfxPrefabSpawner implements CgSequenceSpawner {
                     case EULER_DEGREES -> System.arraycopy(degrees, 0, out, 0, 3);
                     case OPACITY -> out[0] = instance.opacity(index);
                     default -> {
-                        CgVfxParam p = prefab.param(index, prefab.keyedNames(index).get(slot - PARAMS));
+                        CgVfxParam p = look.param(index, look.keyedNames(index).get(slot - PARAMS));
                         if (p instanceof CgVfxParam.Scalar s) {
                             out[0] = effect.get(s);
                         } else {

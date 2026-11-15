@@ -23,6 +23,8 @@ import com.crystalgraphics.render.scene.component.CgScenePrimitives;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
 
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -202,6 +204,18 @@ public final class CgScene {
     /** A place that draws nothing, for others to attach to: an actor's root. */
     public CgSceneRoot root() {
         return primitives.root();
+    }
+
+    /**
+     * {@code prefab} as components of this scene, unspawned: a root a node and a mesh component a part. Place or
+     * attach it, then {@code spawn()}.
+     *
+     * <pre>{@code
+     * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();
+     * }</pre>
+     */
+    public CgPrefabInstance spawn(CgPrefab prefab) {
+        return new CgPrefabInstance(this, prefab);
     }
 
     /** Many of one mesh, each instance its own record. */

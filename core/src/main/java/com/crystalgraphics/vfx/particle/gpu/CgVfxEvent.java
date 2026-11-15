@@ -358,7 +358,7 @@ public final class CgVfxEvent {
     }
 
     /**
-     * Fired at node {@code node} of its {@code SEQUENCE} emitter's clip ({@code CgVfxPrefab.node(name)}) rather than
+     * Fired at node {@code node} of its {@code SEQUENCE} emitter's clip ({@code CgPrefab.node(name)}) rather than
      * where the particle is: the node's place at the particle's age, its +Y the normal. The emitter refuses a node its
      * clip does not bake ({@code CgVfxClipAtlas.bakes}), and any node on another renderer.
      */

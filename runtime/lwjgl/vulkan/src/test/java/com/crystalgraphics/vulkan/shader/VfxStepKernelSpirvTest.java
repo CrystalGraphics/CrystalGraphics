@@ -15,7 +15,7 @@ import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxEmitterCompiler;
 import com.crystalgraphics.vfx.particle.gpu.sim.CgVfxShape;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxOwnerScale;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.AfterClass;
 import org.junit.Test;
@@ -81,7 +81,7 @@ public class VfxStepKernelSpirvTest {
             .event(CgVfxEvent.onDeath().readback(4)).build();
     private static final CgVfxEmitter MIDDLE = CgVfxEmitter.builder("middle").capacity(64).life(1f, 1f)
             .module(new CgVfxModule.Gravity(9.8f)).event(CgVfxEvent.every(0.1f).between(0.2f, 0.8f).spawn(LEAF, 2)).build();
-    private static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub")
+    private static final CgPrefab SPINNER = CgPrefab.builder("test:spinner").node("hub").node("tip").parent("hub")
             .at(0f, 1f, 0f)
             .part(CgMaterialDefinition.of("test:blade", "crystalgraphics:shaders/vfx/sequence/part.shader").build())
             .build();

@@ -3,6 +3,7 @@ package com.crystalgraphics.vfx.prefab;
 import java.util.function.Supplier;
 
 import com.crystalgraphics.asset.load.CgAssetPreparer;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.vfx.system.CgVfxSystemPreparer;
 
@@ -30,7 +31,7 @@ public final class CgVfxPrefabPreparer implements CgAssetPreparer {
 
     @Override
     public void plan(Object definition, Plan plan) {
-        CgVfxPrefab prefab = (CgVfxPrefab) definition;
+        CgPrefab prefab = (CgPrefab) definition;
         // Its parts' mesh files read on a worker: a part asked for its mesh at its first draw would read it there.
         plan.preload(l -> {
             for (int k = 0; k < prefab.firstPart(prefab.nodes()); k++) {
@@ -38,6 +39,6 @@ public final class CgVfxPrefabPreparer implements CgAssetPreparer {
                 l.read(() -> prefab.partMesh(part));
             }
         });
-        CgVfxSystemPreparer.planLook(prefab.id(), prefab.look(), false, system, plan);
+        CgVfxSystemPreparer.planLook(prefab.id(), CgVfxPrefabLook.of(prefab).look(), false, system, plan);
     }
 }

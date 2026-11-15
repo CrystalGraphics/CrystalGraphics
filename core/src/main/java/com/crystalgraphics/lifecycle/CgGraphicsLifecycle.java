@@ -26,7 +26,7 @@ import com.crystalgraphics.vfx.CgVfxRegistry;
 import com.crystalgraphics.vfx.effect.CgSmokeGrenade;
 import com.crystalgraphics.vfx.effect.beam.CgEnergyWave;
 import com.crystalgraphics.vfx.element.CgVfxBlast;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
+import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
@@ -348,7 +348,7 @@ public final class CgGraphicsLifecycle {
     }
 
     /** Classes whose static definitions are the start's largest CPU cost (CgVfx.install's 540 ms, mostly these). */
-    private static final Class<?>[] AHEAD = {CgVfxSystemAssets.class, CgVfxPrefabAssets.class, CgVfxRegistry.class,
+    private static final Class<?>[] AHEAD = {CgVfxSystemAssets.class, CgPrefabAssets.class, CgVfxRegistry.class,
             CgEnergyWave.class, CgVfxBlast.class, CgSmokeGrenade.class};
 
     /**

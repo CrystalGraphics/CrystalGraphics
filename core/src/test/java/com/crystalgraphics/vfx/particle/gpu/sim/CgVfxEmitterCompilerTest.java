@@ -17,7 +17,7 @@ import com.crystalgraphics.vfx.particle.gpu.CgVfxGpuModule;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxWords;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDataInterface;
 import com.crystalgraphics.vfx.particle.spawn.CgVfxEmitterState;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import org.junit.Test;
 
@@ -237,7 +237,7 @@ public class CgVfxEmitterCompilerTest {
         CgVfxEmitter middle = CgVfxEmitter.builder("middle").capacity(64).life(1f, 1f)
                 .module(new CgVfxModule.Gravity(9.8f)).module(new CgVfxModule.Ground(0.3f, 0.5f, 0.8f))
                 .event(CgVfxEvent.onLanding().spawn(leaf, 2)).build();
-        CgVfxPrefab prefab = CgVfxPrefab.builder("test:spinner").node("hub").node("tip").parent("hub").at(0f, 1f, 0f)
+        CgPrefab prefab = CgPrefab.builder("test:spinner").node("hub").node("tip").parent("hub").at(0f, 1f, 0f)
                 .part(CgMaterialDefinition.of("test:blade", "crystalgraphics:shaders/vfx/sequence/part.shader").build())
                 .build();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30).channel("hub", CgVfxNodeClip.Channel.ROTATION_Y,

@@ -407,7 +407,7 @@ CgVfxSystemAssets.export(new CgVfxSystemDefinition("mymod:spark/fire", Spark.FIR
 
 - **One file, by its kind and id**: `CgAssetYaml.save(resources, kind, id, tree)` writes any kind's tree where the
   registry reads it (`CgAssetYaml.file`), through the one writer: a cue's `CgCueDefinition.Builder.tree()`, an
-  emitter's `CgVfxEmitterAssets.write`, a prefab's `CgVfxPrefabAssets.write`.
+  emitter's `CgVfxEmitterAssets.write`, a prefab's `CgPrefabAssets.write`.
 - A behaviour's own slot renderers are its contract's, so neither they nor their materials are written.
 - **A texture or mesh made in code has no file form**: the writer refuses it, naming it. Make it a texture or mesh
   asset first.

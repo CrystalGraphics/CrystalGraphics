@@ -90,7 +90,7 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
      * @param at         where it is placed; {@link CgSequenceBinding#NONE} where it says nothing
      * @param follow     whether it follows {@code at} every frame, or is placed and left
      * @param tree       its keys as written
-     * @param definition the asset it names, compiled (a {@code CgVfxPrefab}, a system's definition), or for a
+     * @param definition the asset it names, compiled (a {@code CgPrefab}, a system's definition), or for a
      *                   {@code post} its post materials ({@code List<CgPostBlendable>}); null where it
      *                   names none or writes it inline
      * @param binds      its {@code bind} block's points by the user parameter each sets every frame (a system's

@@ -8,7 +8,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceChannel;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceSection;
 import com.crystalgraphics.sequence.definition.CgSequenceTrack;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
@@ -79,7 +79,7 @@ public final class CgVfxClipBake {
             if (prefabAt >= 0) throw new CgAssetException(where + ": a particle plays one prefab, not " + s.id() + " too");
             prefabAt = i;
         }
-        if (prefabAt < 0 || !(sequence.spawnables().get(prefabAt).definition() instanceof CgVfxPrefab prefab)) {
+        if (prefabAt < 0 || !(sequence.spawnables().get(prefabAt).definition() instanceof CgPrefab prefab)) {
             throw new CgAssetException(where + " spawns no prefab a particle could play");
         }
         double ticksPerFrame = sequence.tickResolution().asDecimal() / CgVfxNodeClip.FRAMES_PER_SECOND;
@@ -113,7 +113,7 @@ public final class CgVfxClipBake {
     }
 
     /** The nodes {@code b} names: its node, or every node drawing its material. */
-    private static List<Integer> nodes(CgVfxPrefab prefab, CgSequenceBinding b, String at) {
+    private static List<Integer> nodes(CgPrefab prefab, CgSequenceBinding b, String at) {
         List<Integer> out = new ArrayList<>();
         if (b.part() == CgSequenceBinding.Part.NODE) {
             int n = prefab.node(b.partName());

@@ -14,7 +14,7 @@ import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
+import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.render.post.stage.CgStageDefinition;
@@ -75,7 +75,7 @@ public final class CgKitAssets {
         this.ids = List.copyOf(ids);
         if (shading != null) CgShadingModels.registerKit(shading, kit);
         CgVfxSystemAssets.register();
-        CgVfxPrefabAssets.register();
+        CgPrefabAssets.register();
         // Mounted on the process's assets, as a mod's: the world's cue manager routes the kit's cues from that registry
         CgVfxAssets assets = CgVfxAssets.instance();
         // The engine's world has its preparers; a scene's own system warms what it plays too

@@ -7,7 +7,7 @@ import com.crystalgraphics.vfx.particle.renderer.CgVfxRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxSequenceRendererProperties;
 import com.crystalgraphics.vfx.sequence.CgVfxClipBake;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxLightRendererProperties;
 import com.crystalgraphics.vfx.particle.renderer.CgVfxMeshRendererProperties;
@@ -834,7 +834,7 @@ public final class CgVfxEmitterAssets {
             }
             // A prefab a particle, Niagara's mesh renderer on a static mesh: a clip of its rest, a frame long.
             if (r instanceof CgVfxMeshRendererProperties mesh && mesh.prefab() != null) {
-                if (!(deps != null && deps.definition(CgBodyKinds.PREFAB, mesh.prefab()) instanceof CgVfxPrefab prefab)) {
+                if (!(deps != null && deps.definition(CgBodyKinds.PREFAB, mesh.prefab()) instanceof CgPrefab prefab)) {
                     throw new IllegalArgumentException(name + ": its mesh renderer's prefab " + mesh.prefab() + " is not compiled with it");
                 }
                 b.sequence(CgVfxNodeClip.of(prefab, 1).build());

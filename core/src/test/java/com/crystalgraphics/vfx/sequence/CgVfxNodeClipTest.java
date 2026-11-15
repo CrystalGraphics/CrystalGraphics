@@ -2,7 +2,7 @@ package com.crystalgraphics.vfx.sequence;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip.Channel;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip.Interp;
 import org.joml.Matrix4f;
@@ -19,8 +19,8 @@ public class CgVfxNodeClipTest {
             CgMaterialDefinition.of("test:skin", "crystalgraphics:shaders/vfx/sequence/part.shader").build();
     private static final CgVfxEmitter SPARKS = CgVfxEmitter.builder("sparks").build();
 
-    private static CgVfxPrefab chain() {
-        return CgVfxPrefab.builder("test:clip")
+    private static CgPrefab chain() {
+        return CgPrefab.builder("test:clip")
                 .node("root").at(1f, 0f, 0f)
                 .node("arm").parent("root").at(0f, 2f, 0f).opacity(0.5f).part(SKIN)
                 .node("hand").parent("arm").at(1f, 0f, 0f).part(SKIN)
@@ -31,7 +31,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void keysInterpolateStepAndHold() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30)
                 .channel("arm", Channel.LOCATION_X, Interp.LINEAR, 10, 0f, 20, 4f)
                 .channel("arm", Channel.SCALE_Y, Interp.CONSTANT, 0, 1f, 15, 3f)
@@ -47,7 +47,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void eulerDegreesTurnXThenYThenZIntrinsic() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 1)
                 .channel("hand", Channel.ROTATION_X, Interp.LINEAR, 0, 90f)
                 .channel("hand", Channel.ROTATION_Y, Interp.LINEAR, 0, 90f)
@@ -59,7 +59,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void theBakeComposesTransformsDownTheTreeAndBakesOnlyWhatDrawsOrSpawns() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 30)
                 .channel("arm", Channel.ROTATION_Y, Interp.LINEAR, 0, 0f, 30, 90f)
                 .channel("arm", Channel.SCALE_X, Interp.LINEAR, 0, 1f, 30, 2f)
@@ -84,7 +84,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void aConstantChannelStepsItsRowsAndItsSubtreesMatrices() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 10)
                 .channel("arm", Channel.LOCATION_Z, Interp.CONSTANT, 0, 0f, 5, 1f)
                 .material("hand", "_UV0Window.x", Interp.CONSTANT, 0, 0f, 5, 0.5f)
@@ -96,7 +96,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void anUnkeyedScalarIsTheLayersOwn() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         CgVfxNodeClip clip = CgVfxNodeClip.of(prefab, 10)
                 .material("hand", "_UV0Window.y", Interp.LINEAR, 0, 0f, 10, 1f)
                 .rest("hand", "_Glare", 2f)
@@ -118,7 +118,7 @@ public class CgVfxNodeClipTest {
 
     @Test
     public void badKeysAreRefused() {
-        CgVfxPrefab prefab = chain();
+        CgPrefab prefab = chain();
         assertThrows(IllegalArgumentException.class,
                 () -> CgVfxNodeClip.of(prefab, 10).channel("arm", Channel.OPACITY, Interp.LINEAR, 5, 1f, 5, 0f));
         assertThrows(IllegalArgumentException.class,

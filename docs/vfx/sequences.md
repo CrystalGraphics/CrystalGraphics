@@ -624,7 +624,7 @@ static final CgMaterialDefinition BLADE = CgMaterialDefinition.of("mymod:materia
         "crystalgraphics:shaders/vfx/sequence/part.shader").usage(CgMaterialUsage.MESH_PARTICLES)
         .texture("_MainTex", "mymod:textures/vfx/blade.png").build();
 
-static final CgVfxPrefab SPINNER = CgVfxPrefab.builder("mymod:spinner")
+static final CgPrefab SPINNER = CgPrefab.builder("mymod:spinner")
         .node("hub")
         .node("blade").parent("hub").at(1.5f, 0f, 0f).part(BLADE, "mymod:models/blade.glb")
         .node("tip").parent("blade").at(0.8f, 0f, 0f)
@@ -705,7 +705,7 @@ static final CgVfxEmitter SHURIKENS = CgVfxEmitter.builder("shurikens").sequence
         .build();
 
 static final CgVfxLook LOOK = CgVfxLook.builder(CgVfxSchema.of("mymod:shurikens"))
-        .with(CgVfxKit.of("mymod:shurikens").emitter(SHURIKENS).build(), SPINNER.kit())
+        .with(CgVfxKit.of("mymod:shurikens").emitter(SHURIKENS).build(), CgVfxPrefabLook.of(SPINNER).kit())
         .build();
 
 VFX.play(new CgVfxSystemInstance<>(LOOK, x, y, z));

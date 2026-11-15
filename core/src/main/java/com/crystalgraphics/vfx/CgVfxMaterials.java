@@ -37,7 +37,7 @@ import com.crystalgraphics.vfx.particle.spawn.CgVfxSpawning;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.vfx.render.CgVfxSlotRenderer;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.vfx.sequence.CgVfxClipAtlas;
 import com.crystalgraphics.vfx.sequence.CgVfxNodeClip;
 import com.crystalgraphics.vfx.particle.gpu.CgVfxDrawLayout;
@@ -790,9 +790,9 @@ final class CgVfxMaterials {
         for (CgVfxEmitter emitter : look.emitters()) {
             CgVfxNodeClip clip = emitter.clip();
             if (clip == null) continue;
-            CgVfxPrefab prefab = clip.prefab();
+            CgPrefab prefab = clip.prefab();
             for (int part = 0; part < prefab.firstPart(prefab.nodes()); part++) {
-                for (CgVfxLook.Placed placed : look.on(prefab.partSlot(part))) {
+                for (CgVfxLook.Placed placed : look.on(clip.look().partSlot(part))) {
                     CgMaterialInstance material = material(resolve(look, placed), CgVfxSlot.Kind.SEQUENCE);
                     if (!warming.contains(material)) warming.add(material);
                 }

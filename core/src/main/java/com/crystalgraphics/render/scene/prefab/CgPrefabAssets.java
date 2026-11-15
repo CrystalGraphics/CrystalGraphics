@@ -1,4 +1,4 @@
-package com.crystalgraphics.vfx.prefab;
+package com.crystalgraphics.render.scene.prefab;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
@@ -15,16 +15,16 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The {@code prefab} kind's compiler and writer: a {@code prefabs/} file to the {@link CgVfxPrefab} it describes, and a
+ * The {@code prefab} kind's compiler and writer: a {@code prefabs/} file to the {@link CgPrefab} it describes, and a
  * prefab back to its file. Unreal's Blueprint actor and its component tree, CC2's clump.
  *
  * <pre>{@code
- * CgVfxPrefabAssets.register();                                    // the pipeline compiles prefabs so
- * CgVfxPrefab shock = CgVfxAssets.<CgVfxPrefab>ref(CgBodyKinds.PREFAB, "nsuns4_kit:1efcmn/1efc_shock08").get();
+ * CgPrefabAssets.register();                                    // the pipeline compiles prefabs so
+ * CgPrefab shock = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "nsuns4_kit:1efcmn/1efc_shock08").get();
  * }</pre>
  *
  * <pre>{@code
- * Map<String, Object> tree = CgVfxPrefabAssets.write(CORE);       // a prefab built in Java, as its file
+ * Map<String, Object> tree = CgPrefabAssets.write(CORE);       // a prefab built in Java, as its file
  * Files.write(path, CgAssetYaml.write(tree, CgBodyKinds.PREFAB).getBytes(StandardCharsets.UTF_8));
  * }</pre>
  *
@@ -40,17 +40,17 @@ import java.util.Map;
  *   <li>Its values convert from its units to the host's: a location and a scale through the axes, a rotation in its
  *       convention to a quaternion.</li>
  *   <li>A mesh slot is kept as written, its materials and its other fields: a character's several materials and its
- *       overlay compile, and fail only where a prefab would draw them ({@link CgVfxPrefab#requireDrawable}).</li>
+ *       overlay compile, and fail only where what plays the prefab does not draw them.</li>
  *   <li>A material it names must be compiled with it: one that is not fails, naming the node.</li>
  *   <li>{@link #write} writes in the host's units; a part whose mesh was made in code has no file and fails there.</li>
  * </ul>
  */
-public final class CgVfxPrefabAssets {
+public final class CgPrefabAssets {
 
     /** The prefab kind's compiler. */
-    public static final CgAssetCompiler<CgVfxPrefab> COMPILER = (asset, deps) -> compile(asset.id(), asset.resolved(), deps);
+    public static final CgAssetCompiler<CgPrefab> COMPILER = (asset, deps) -> compile(asset.id(), asset.resolved(), deps);
 
-    private CgVfxPrefabAssets() {
+    private CgPrefabAssets() {
     }
 
     /** Sets {@link #COMPILER} as the prefab kind's. */
@@ -59,9 +59,9 @@ public final class CgVfxPrefabAssets {
     }
 
     /** {@code tree}, a prefab file, as a prefab: its materials from {@code deps}, its values from {@code deps}' units. */
-    public static CgVfxPrefab compile(String id, Map<?, ?> tree, CgAssetCompiler.Dependencies deps) {
+    public static CgPrefab compile(String id, Map<?, ?> tree, CgAssetCompiler.Dependencies deps) {
         CgUnits units = deps.units();
-        CgVfxPrefab.Builder b = CgVfxPrefab.builder(id);
+        CgPrefab.Builder b = CgPrefab.builder(id);
         Quaternionf turn = new Quaternionf();
         if (!(tree.get("nodes") instanceof List<?> nodes)) throw new CgAssetException(id + " has no nodes");
         for (Object o : nodes) {
@@ -97,7 +97,7 @@ public final class CgVfxPrefabAssets {
         return b.build();
     }
 
-    private static void part(CgVfxPrefab.Builder b, Map<?, ?> slot, CgAssetCompiler.Dependencies deps, String where) {
+    private static void part(CgPrefab.Builder b, Map<?, ?> slot, CgAssetCompiler.Dependencies deps, String where) {
         List<CgMaterialDefinition> materials = new ArrayList<>();
         if (slot.get("material") instanceof String m) materials.add(material(m, deps, where + ".material"));
         if (slot.get("materials") instanceof List<?> ms) {
@@ -119,11 +119,11 @@ public final class CgVfxPrefabAssets {
     }
 
     /** {@code prefab} as its file's tree, in the host's units: compiling it gives a prefab that writes the same tree. */
-    public static Map<String, Object> write(CgVfxPrefab prefab) {
+    public static Map<String, Object> write(CgPrefab prefab) {
         Map<String, Object> tree = new LinkedHashMap<>();
         tree.put("_v", 1);
         List<Object> nodes = new ArrayList<>();
-        float[] rest = new float[CgVfxPrefab.REST];
+        float[] rest = new float[CgPrefab.REST];
         for (int n = 0; n < prefab.nodes(); n++) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("id", prefab.elementId(n));

@@ -9,7 +9,7 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -26,7 +26,7 @@ public class CgVfxClipBakeTest {
 
     private static final CgMaterialDefinition GLOW =
             CgMaterialDefinition.of("test:glow", "crystalgraphics:shaders/vfx/sequence/part.shader").build();
-    private static final CgVfxPrefab RING = CgVfxPrefab.builder("test:ring")
+    private static final CgPrefab RING = CgPrefab.builder("test:ring")
             .node("root").part(GLOW, "test:models/root.glb")
             .node("blade").parent("root").at(0f, 1f, 0f).part(GLOW, "test:models/blade.glb")
             .build();

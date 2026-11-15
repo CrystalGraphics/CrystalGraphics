@@ -1,28 +1,30 @@
 # Prefabs: models made of parts
 
-A prefab is a model built from parts that move and fade together: the core of a Rasen Shuriken, its rings and blades,
-a lens of nested balls. It is a tree of nodes, each with a parent, a rest transform, an opacity and the meshes it
-draws, each with a material. Unreal calls it an actor and its component tree; CC2 a clump. An effect plays one; its
-look draws it.
+A prefab is a model built from parts that move and fade together: a lantern and its flame, the core of a Rasen
+Shuriken with its rings and blades, a lens of nested balls. It is a tree of nodes, each with a parent, a rest transform,
+an opacity and the meshes it draws, each with its materials. Unreal calls it a Blueprint's component tree; CC2 a clump.
+
+A prefab is an asset, `CgPrefab`, and two things play it:
+
+- **A scene spawns it as components** (`scene.spawn(prefab)`): a root a node, a mesh component a part. What an actor or
+  a level places.
+- **A VFX effect plays it through its look** (`CgVfxPrefabEffect`): its parts drawn with the effect, keyed by a
+  sequence, sorted with the play's systems. What a move's sequence spawns.
 
 ## Building one
 
 ```java
 // A material asset: one definition is one material, however many parts draw with it.
-static final CgMaterialDefinition LENS = CgMaterialDefinition.of("mymod:materials/lens",
-        "mymod:shaders/vfx/lens.shader").build();
-static final CgMaterialDefinition GLOW = CgMaterialDefinition.of("mymod:materials/lens_glow",
-        "crystalgraphics:shaders/materials/emission_only.shader").build();
+static final CgMaterialDefinition IRON = CgSurfaceMaterial.of("mymod:iron", "mymod:textures/lantern/iron.png").definition();
+static final CgMaterialDefinition FLAME = CgSurfaceMaterial.of("mymod:flame", "mymod:textures/lantern/flame.png")
+        .blend(CgBlendMode.ADDITIVE).shading(CgShadingModels.UNLIT).definition();
 
-static final CgVfxPrefab LENS_CORE = CgVfxPrefab.builder("mymod:lens_core")
-        .node("ball03")
-        .node("ball02").parent("ball03").at(0f, 1f, 0f).part(LENS, "mymod:models/core/ball02.glb")
-        .node("ball01").parent("ball02").scale(0.5f).opacity(0.5f)
-            .part(LENS, "mymod:models/core/ball01.glb")
-            .part(GLOW, "mymod:models/core/ball01.glb")            // a second mesh on the same node
+static final CgPrefab LANTERN = CgPrefab.builder("mymod:lantern")
+        .node("frame").part(IRON, "mymod:models/lantern/frame.glb")
+        .node("flame").parent("frame").at(0f, 0.25f, 0f).scale(0.5f).value("_Emissive", 2f)
+            .part(FLAME, "mymod:models/lantern/flame.glb")
+            .part(IRON, "mymod:models/lantern/wick.glb")           // a second mesh on the same node
         .build();
-
-static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).build();
 ```
 
 | Call | Sets |
@@ -31,94 +33,136 @@ static final CgVfxLook LOOK = CgVfxLook.builder(SCHEMA).with(LENS_CORE.kit()).bu
 | `parent(name)` | its parent, a node named before it |
 | `at(x, y, z)`, `rotation(x, y, z, w)`, `scale(...)` | its rest transform in its parent's space; the rotation a quaternion |
 | `opacity(a)` | its own opacity, 0 to 1 |
-| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file's path loaded at its first draw; `part(material)` draws the unit sphere |
+| `value(property, ...)` | a material value of its own over each of its parts' materials |
+| `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file's path loaded at its first draw; `part(material)` draws the unit sphere, a VFX look's alone |
 
 ## As a file
 
-A prefab is a `prefabs/` asset, compiled by `CgVfxPrefabAssets` (which `CgVfx.install` registers) and written back by
-it, so a prefab built in Java and its file are one model. On a client it is `READY` once `CgVfxPrefabPreparer` (also
-registered by `CgVfx.install`) has read its parts' meshes on a worker, uploaded their textures and precached its look,
-so a sequence spawning it reads, uploads and compiles nothing; a preview of its own registers one over its system
+A prefab is a `prefabs/` asset, compiled by `CgPrefabAssets` (which `CgVfx.install` registers) and written back by it,
+so a prefab built in Java and its file are one model. On a client it is `READY` once `CgVfxPrefabPreparer` (also
+registered by `CgVfx.install`) has read its parts' meshes on a worker, uploaded their textures and precached its VFX
+look, so a sequence spawning it reads, uploads and compiles nothing; a preview of its own registers one over its system
 (`assets.preparer(CgBodyKinds.PREFAB, new CgVfxPrefabPreparer(() -> mySystem))`):
 
 ```yaml
-# assets/mymod/prefabs/core.yaml
+# assets/mymod/prefabs/lantern.yaml
 _v: 1
 nodes:
-  - { id: n1, name: ball03 }
+  - { id: n1, name: frame, meshes: [ { mesh: mymod:models/lantern/frame.glb, material: mymod:iron } ] }
   - id: n2
-    name: ball02
-    parent: ball03
-    location: [0, 1, 0]
-    values: { _Glare: 0.2 }
-    meshes: [ { mesh: mymod:models/core/ball02.glb, material: mymod:lens } ]
+    name: flame
+    parent: frame
+    location: [0, 0.25, 0]
+    values: { _Emissive: 2 }
+    meshes: [ { mesh: mymod:models/lantern/flame.glb, material: mymod:flame, cast_shadow: false } ]
 ```
 
 ```java
-Map<String, Object> tree = CgVfxPrefabAssets.write(CORE);   // what CgAssetYaml writes as its file
-CgVfxPrefab core = CgVfxAssets.<CgVfxPrefab>ref(CgBodyKinds.PREFAB, "mymod:core").get();
+Map<String, Object> tree = CgPrefabAssets.write(LANTERN);   // what CgAssetYaml writes as its file
+CgPrefab lantern = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "mymod:prefabs/lantern").get();
 ```
 
-- **A node's `values`** are material values of its own over each of its parts' materials: it draws a material derived
-  with them (`value(property, ...)` in Java), shared by every node with the same values.
+- **A node's `values`** are material values of its own over each of its parts' materials: it draws its materials
+  derived with them (`drawnMaterials(part)`), shared by every node with the same values.
 - **Its units convert**: a location and a scale through its file's axes, a rotation in its convention to a quaternion.
-- **A mesh slot is kept as written**: several `materials`, an `overlay`, `cast_shadow` compile, and are refused only
-  where a prefab would draw them (`requireDrawable`), naming the node.
+- **A mesh slot is kept as written**: several `materials` (one a section of its mesh), `cast_shadow`, an `overlay`
+  compile, and are refused only by what plays the prefab and does not draw them, naming the node.
 
-A sequence spawns one (`spawnables: - { prefab: mymod:core }`, `CgVfxPrefabSpawner`) and keys its nodes: their
-transforms, opacity and material values. A material value a sequence keys is a parameter of a variant made for it,
-starting at the node's value, else its material's, else its shader's default:
+## Spawning one in a scene
 
 ```java
-CgVfxPrefab keyed = CORE.keyed(Map.of("ball01", List.of("_U0_LocX")));
-CgVfxPrefabEffect effect = VFX.play(new CgVfxPrefabEffect(keyed, x, y, z));   // its own look, the prefab's
-effect.set(keyed.param(keyed.node("ball01"), "_U0_LocX"), -0.5f);
-```
-
-## Playing one
-
-```java
-public final class Shuriken extends CgVfxEffect<Shuriken> {
-    private final CgVfxPrefabInstance core = new CgVfxPrefabInstance(LENS_CORE);
-    private final int ball01 = LENS_CORE.node("ball01");
-    private final Matrix4f spin = new Matrix4f();
-
-    @Override protected void tick(float dt) {
-        core.place(spin.rotationY(age * 6f));                 // its roots, from the effect's origin
-        core.opacity(ball01, 1f - age / 2f);                  // fades ball01's parts; its children keep their own
-    }
-
-    @Override protected void submit(CgVfxFrame frame) {
-        core.submit(this, frame);
-    }
-}
+CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).rotation(facing).spawn();
+lantern.node("flame").scale(0.6f);               // a node is a CgSceneRoot: what rides it follows
+lantern.mesh("flame").customDepth(1);            // a part is a CgMeshComponent like any other
+lantern.mesh("flame", 1);                        // the node's second part
+lantern.remove();                                // every component it made
 ```
 
 | Call | Does |
 |---|---|
+| `scene.spawn(prefab)` | the instance, unspawned: place it with `at`, `rotation`, `scale`, or `attach(parent, socket)` to ride another |
+| `spawn()` | a `CgSceneRoot` a node at its rest under its parent's, a `CgMeshComponent` a part riding its node |
+| `root()`, `node(name)` | its own root, and a node's |
+| `mesh(name)`, `mesh(name, k)` | a node's parts, in its file's order; null where it has none |
+| `remove()` | every component it made, its root last |
+
+- **A part draws its materials** with its node's values over them, one a section of its mesh.
+- **A node below an opacity of 0.001** spawns its parts hidden; a part's `cast_shadow` is its `castsShadow`.
+- **Refused at `spawn()`, naming the node**: a part drawing the unit sphere, and any other mesh-slot setting.
+- `--mode=scene-prefab` is the gate: a node riding its parent, and every form of the base surface material.
+
+## Playing one as an effect
+
+A sequence spawns one (`spawnables: - { prefab: mymod:core }`, `CgVfxPrefabSpawner`) and keys its nodes: their
+transforms, opacity and material values. What a VFX look draws a prefab with is its `CgVfxPrefabLook`: a slot
+renderer a material, on slots of its own. A material value a sequence keys is a parameter of a variant made for it,
+starting at the node's value, else its material's, else its shader's default:
+
+```java
+CgVfxPrefabEffect flame = VFX.play(new CgVfxPrefabEffect(LANTERN, x, y, z).follow(hand));  // its own look
+flame.pose().opacity(LANTERN.node("flame"), 0.5f);                                      // a node, as it stands
+
+CgVfxPrefabLook keyed = CgVfxPrefabLook.of(LANTERN).keyed(Map.of("flame", List.of("_Emissive")));
+CgVfxPrefabEffect effect = VFX.play(new CgVfxPrefabEffect(keyed, x, y, z));
+effect.set((CgVfxParam.Scalar) keyed.param(LANTERN.node("flame"), "_Emissive"), 4f);
+
+CgVfxLook mine = CgVfxLook.builder(SCHEMA).with(CgVfxPrefabLook.of(LANTERN).kit()).build();   // inside a look of yours
+```
+
+| `CgPrefabPose` call | Does |
+|---|---|
 | `place(matrix)` | where its roots stand, from the effect's origin |
 | `location`, `rotation`, `scale`, `opacity(node, ...)` | a node's transform or opacity from now on, by its index (`prefab.node(name)`) |
 | `reset()` | every node back at its rest |
-| `evaluate()` | each node's matrix and presence, parents first; `submit` calls it |
-| `world(node)`, `presence(node)` | a node's matrix from the effect's origin, and its own opacity |
-| `submit(effect, frame)` | evaluates, then draws each node's parts at its presence |
+| `evaluate()` | each node's matrix, parents first; the effect's draw calls it |
+| `world(node)`, `opacity(node)` | a node's matrix from its place's origin, and its own opacity |
 
 ## Things to know
 
 - **A node's opacity is its own** (as an Unreal component's is its material's): a parent at 0 leaves its
-  children drawn. A game whose opacity passes down (CC2's) has it baked into each node at import. It reaches the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine
-  shader does.
-- **A material is one slot renderer however many parts use it.** The kit holds a slot renderer per distinct material,
-  on a slot of the prefab's own, so a prefab of hundreds of nodes and a few materials is a few draws: a look draws at
-  most 256.
-- **Its materials read no user parameter of yours**: a part's colour is its material's, its node's values, and the
-  values a `keyed` variant binds.
+  children drawn. A game whose opacity passes down (CC2's) has it baked into each node at import. In an effect it reaches
+  the shader as `FX_PRESENCE`, so a material fades only if it multiplies by it, as every engine shader does.
+- **In a look, a material is one slot renderer however many parts use it**, on a slot of the prefab's own, so a prefab
+  of hundreds of nodes and a few materials is a few draws: a look draws at most 256. A look draws one material a part;
+  a part of several, or one setting `cast_shadow`, is spawned in a scene instead.
+- **Its materials read no user parameter of yours** in an effect: a part's colour is its material's, its node's values,
+  and the values a keyed look binds.
 - **Transforms multiply as matrices, as glTF's do**: a rotated child under a non-uniformly scaled parent shears, as it
   did in the game it came from.
-- Evaluating is CPU matrix work, about 8 microseconds for 458 nodes; nothing allocates once the instance is made.
-  Each node's part is a draw, and draws of one material batch.
+- Evaluating a pose is CPU matrix work, about 8 microseconds for 458 nodes; nothing allocates once it is made.
 - Names are unique and a parent comes before its children; the builder throws otherwise.
-- `--mode=vfx-prefab` is the gate: 458 nodes, a subtree cut and a chain dimmed.
+- `--mode=vfx-prefab` is the effect's gate: 458 nodes, a subtree cut and a chain dimmed.
+
+## The base surface material
+
+A model with no shader of its own draws in the engine's base surface material, `CgSurfaceMaterial`: a texture with
+Unreal's base properties over it, a blend mode, a shading model, two-sided and an emissive scale. A Minecraft render type
+is these properties, never a name in the engine:
+
+```java
+static final CgMaterial SKIN = CgSurfaceMaterial.of("mymod:dragon_skin", "mymod:textures/entity/dragon.png").build();
+static final CgMaterial CLOTH = CgSurfaceMaterial.of("mymod:dragon_cloth", "mymod:textures/entity/cloth.png")
+        .blend(CgBlendMode.ALPHA).twoSided().build();
+static final CgMaterial EYES = CgSurfaceMaterial.of("mymod:dragon_eyes", "mymod:textures/entity/eyes.png")
+        .shading(CgShadingModels.UNLIT).emissive(2f).build();
+static final CgMaterial GOLD = CgSurfaceMaterial.of("mymod:gold").tint(0xFFFFC030).build();           // no texture
+static final CgMaterial CRACK = CgSurfaceMaterial.decal("mymod:crack", "mymod:textures/crack.png").build();   // a decal's
+```
+
+| Minecraft render type | Properties |
+|---|---|
+| `entitySolid` | `of(id, texture)`: opaque, lit by the world |
+| `entityCutout`, `entityCutoutNoCull` | `.masked(0.1f)`, and `.twoSided()` for no-cull |
+| `entityTranslucent` | `.blend(CgBlendMode.ALPHA)` |
+| `eyes`, `entityTranslucentEmissive` | `.blend(CgBlendMode.ADDITIVE).shading(CgShadingModels.UNLIT)` |
+| `entityDecal` | `CgSurfaceMaterial.decal(id, texture)`, on a `CgDecalComponent` |
+| `outline` (glowing) | custom depth and the engine's outline (below) |
+
+- **The colour** is the texture times the vertex colour and `tint`; its alpha is the opacity a blend mode or `masked`
+  reads. The texture is sampled nearest and clamped, as an entity's is; `sampling(filter, address)` for a model's own.
+- **Under `UNLIT` the emissive is the colour drawn**, at 1 unless `emissive` says otherwise; lit, it is a glow over the
+  lit colour, 0 unless set.
+- `definition()` is the same material as a definition, for a prefab's part or a kit.
 
 # Skinned meshes: models with bones
 
@@ -424,8 +468,23 @@ CgEntityActors.register("mymod:dragon", DragonActor::new);                    //
 CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn beside the vanilla model
 ```
 
+An actor whose components are an asset names its prefab: spawned on its root before `onSpawn`, removed with it, so its
+code keeps only behaviour (Unreal's actor Blueprint):
+
+```java
+CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");
+
+@Override protected void onSpawn(CgEntity wyvern) {
+    wings = prefab().mesh("wings");                 // a node's part
+    jaw = prefab().node("jaw");                     // a node: turn it, and what rides it follows
+}
+```
+
 - **`add`** attaches a component to the root unless it rides something already, spawns it, and removes it with the
   actor.
+- **A registration's prefab loads behind the loading screen** (the load task `crystalgraphics:actor-prefabs`), with the
+  pipelines its parts draw with, so the first actor draws as it spawns; one named while the game runs loads at its
+  first spawn. A prefab that fails to load fails the spawn: the entity is left to its host.
 - **The root** stands at the entity's feet, turned by its body yaw (`-bodyYaw` about up): +z, a glTF mesh's front,
   faces the entity's facing. A component keeps the placement it was built with as its offset from the root, so
   `.at`, `.rotation` and `.transform` may come before or after `add`.

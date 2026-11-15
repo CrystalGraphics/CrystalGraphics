@@ -5,7 +5,7 @@ import com.crystalgraphics.render.graph.CgBufferUsage;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.vfx.CgVfxTrace;
 import org.joml.Matrix4f;
@@ -109,7 +109,7 @@ public final class CgVfxClipAtlas {
 
     /** Whether {@code clip} bakes {@code node}: it has parts, or a burst or stream starts there. */
     public static boolean bakes(CgVfxNodeClip clip, int node) {
-        CgVfxPrefab prefab = clip.prefab();
+        CgPrefab prefab = clip.prefab();
         if (prefab.firstPart(node + 1) > prefab.firstPart(node)) return true;
         for (CgVfxNodeClip.Spawn s : clip.spawns()) if (s.node() == node) return true;
         return false;
@@ -165,7 +165,7 @@ public final class CgVfxClipAtlas {
     }
 
     private static Section bake(CgVfxNodeClip clip) {
-        CgVfxPrefab prefab = clip.prefab();
+        CgPrefab prefab = clip.prefab();
         int nodes = prefab.nodes(), frames = clip.frames(), rowLength = frames + 1;
         int[] base = new int[nodes], stepMask = new int[nodes];
         int baked = 0;

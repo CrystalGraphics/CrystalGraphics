@@ -1,6 +1,16 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.load.CgAssetRef;
+import com.crystalgraphics.asset.load.CgAssetState;
+import com.crystalgraphics.asset.load.CgLoadPriority;
+import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.precache.CgPipelinePrecache;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
@@ -35,6 +45,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
  * CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn as well as the vanilla model
+ * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");   // its components an asset
  * }</pre>
  *
  * <p>One entity can be bound alone, beating its type's actor, with no registration by type:</p>
@@ -50,6 +61,8 @@ import java.util.function.Supplier;
  *       an entity already in the level; {@link #bindLocalPlayer} follows the player across respawns and level changes.</li>
  *   <li>An id binding ends with its entity: a new id needs a new binding.</li>
  *   <li>An actor whose {@code onSpawn} throws is not retried: its binding stays and does nothing.</li>
+ *   <li>A registration's prefab loads behind the loading screen, with the pipelines its parts draw with; one named
+ *       while the game runs loads at its first spawn, held.</li>
  * </ul>
  *
  * <p>What a host does, from its entity events (a harness scene's fake entities do the same):</p>
@@ -94,6 +107,8 @@ public final class CgEntityActors extends CgWorldSubsystem {
         private final int entityId;
         private final Supplier<? extends CgEntityActor> factory;
         private volatile boolean keepVanillaModel;
+        @Nullable
+        private volatile String prefab;
         /** Its actor failed to spawn: not tried again. */
         private boolean failed;
 
@@ -106,6 +121,16 @@ public final class CgEntityActors extends CgWorldSubsystem {
         /** Draws the host's own model as well as the actor: an actor adding to an entity rather than replacing it. */
         public Registration keepVanillaModel() {
             keepVanillaModel = true;
+            return this;
+        }
+
+        /**
+         * Its actors spawn {@code id}, a prefab asset ({@code mymod:prefabs/wyvern}), on their root before
+         * {@code onSpawn}, which reads it as {@code prefab()}; removed with the actor. Unreal's actor Blueprint and its
+         * components.
+         */
+        public Registration prefab(String id) {
+            prefab = Objects.requireNonNull(id, "id");
             return this;
         }
 
@@ -189,6 +214,52 @@ public final class CgEntityActors extends CgWorldSubsystem {
         BINDINGS.add(r);
         if (client == null) CgWorld.client().add(new CgEntityActors());
         return r;
+    }
+
+    /**
+     * Loads every registration's prefab as the load task {@code crystalgraphics:actor-prefabs}, behind the loading
+     * screen: each asset to {@code READY}, then the pipelines its parts draw with, so an actor spawns drawn. The engine's
+     * client start names it, after every listener's {@code onLoad}.
+     */
+    public static void preload(CgLoadPlan plan) {
+        List<CgAssetRef<CgPrefab>> refs = new ArrayList<>();
+        CgPipelinePrecache.Request[] pipelines = {null};
+        boolean[] started = {false};
+        plan.task("crystalgraphics:actor-prefabs").render(task -> {
+            if (!started[0]) {
+                started[0] = true;
+                for (Registration r : TYPES.values()) if (r.prefab != null) refs.add(prefabRef(r.prefab));
+                for (Registration r : BINDINGS) if (r.prefab != null) refs.add(prefabRef(r.prefab));
+                if (refs.isEmpty()) return true;
+                CgVfxAssets.instance().load(refs, CgLoadPriority.MOVE);
+            }
+            int settled = 0;
+            for (CgAssetRef<CgPrefab> ref : refs) if (ref.ready() || ref.state() == CgAssetState.FAILED) settled++;
+            if (settled < refs.size()) {
+                task.progress(0.5f * settled / refs.size());
+                task.nextFrame();
+                return false;
+            }
+            if (pipelines[0] == null) {
+                pipelines[0] = CgPipelinePrecache.request(p -> {
+                    for (CgAssetRef<CgPrefab> ref : refs) {
+                        CgPrefab prefab = ref.loaded();
+                        if (prefab == null) continue;
+                        for (int k = 0; k < prefab.firstPart(prefab.nodes()); k++) {
+                            for (CgMaterialDefinition m : prefab.drawnMaterials(k)) p.add(CgMaterial.of(m), false);
+                        }
+                    }
+                });
+            }
+            if (pipelines[0].ready()) return true;
+            task.progress(0.75f);
+            task.nextFrame();
+            return false;
+        }).start();
+    }
+
+    private static CgAssetRef<CgPrefab> prefabRef(String id) {
+        return CgVfxAssets.ref(CgBodyKinds.PREFAB, id);
     }
 
     /** Whether {@code type} has an actor. */
@@ -308,6 +379,11 @@ public final class CgEntityActors extends CgWorldSubsystem {
         Live l = new Live(entity, actor, !r.keepVanillaModel, r);
         refresh(l);
         try {
+            if (r.prefab != null) {
+                CgPrefab prefab = prefabRef(r.prefab).get();
+                if (prefab == null) throw new IllegalStateException("its prefab " + r.prefab + " did not load");
+                actor.prefab = CgScene.client().spawn(prefab).attach(actor.root, null).spawn();
+            }
             actor.onSpawn(entity);
         } catch (RuntimeException e) {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);

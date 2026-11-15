@@ -20,7 +20,7 @@ import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefabAssets;
+import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
 import com.crystalgraphics.vfx.system.CgVfxCueEffects;
 import com.crystalgraphics.vfx.system.CgVfxSequencer;
@@ -177,7 +177,7 @@ public final class CgVfx {
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgView.main().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
-        CgVfxPrefabAssets.register();
+        CgPrefabAssets.register();
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         preparers(CgVfxAssets.instance(), CgVfx::world);
         // The client world's sequencer, then its cue manager: what the server's cues and gameplay's tags play through

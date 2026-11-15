@@ -1,7 +1,8 @@
 package com.crystalgraphics.vfx.sequence;
 
 import com.crystalgraphics.vfx.particle.CgVfxEmitter;
-import com.crystalgraphics.vfx.prefab.CgVfxPrefab;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
+import com.crystalgraphics.vfx.prefab.CgVfxPrefabLook;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -120,7 +121,8 @@ public final class CgVfxNodeClip {
         }
     }
 
-    private final CgVfxPrefab prefab;
+    private final CgPrefab prefab;
+    private final CgVfxPrefabLook look;
     private final int frames;
     /** By node, then channel id: its interpolation and keys, or null where nothing keys it. */
     private final Interp[][] interp;
@@ -129,6 +131,7 @@ public final class CgVfxNodeClip {
 
     private CgVfxNodeClip(Builder b) {
         prefab = b.prefab;
+        look = CgVfxPrefabLook.of(prefab);
         frames = b.frames;
         interp = b.interp;
         keyFrames = b.keyFrames;
@@ -137,12 +140,17 @@ public final class CgVfxNodeClip {
     }
 
     /** A clip of {@code prefab} {@code frames} frames long, every channel at rest until keyed. */
-    public static Builder of(CgVfxPrefab prefab, int frames) {
+    public static Builder of(CgPrefab prefab, int frames) {
         return new Builder(prefab, frames);
     }
 
-    public CgVfxPrefab prefab() {
+    public CgPrefab prefab() {
         return prefab;
+    }
+
+    /** What its parts draw with: the prefab's own look. */
+    public CgVfxPrefabLook look() {
+        return look;
     }
 
     /** Its length in frames: it plays frames 0 to this, then holds the last. */
@@ -230,13 +238,13 @@ public final class CgVfxNodeClip {
 
     /** Builds a clip; channels and spawns in any order. */
     public static final class Builder {
-        private final CgVfxPrefab prefab;
+        private final CgPrefab prefab;
         private final int frames;
         private final Interp[][] interp;
         private final float[][][] keyFrames, keyValues;
         private final List<Spawn> spawns = new ArrayList<>();
 
-        private Builder(CgVfxPrefab prefab, int frames) {
+        private Builder(CgPrefab prefab, int frames) {
             this.prefab = Objects.requireNonNull(prefab, "prefab");
             if (frames < 1) throw new IllegalArgumentException("a clip of " + frames + " frames");
             this.frames = frames;

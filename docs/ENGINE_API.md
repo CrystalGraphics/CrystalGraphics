@@ -144,6 +144,10 @@ rock.remove();
 CgSkeletalMeshComponent goku = scene.skeletal(gokuMesh).materials(skins::get).at(x, y, z).spawn();
 CgInstancedMeshComponent grass = scene.instanced(blade, grassMaterial).spawn();
 CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();
+CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a prefab: a root a node, a mesh a part
+
+// The engine's base surface material, for a model with no shader of its own: a texture and Unreal's base properties
+CgMaterial cloth = CgSurfaceMaterial.of("mymod:cloth", "mymod:textures/cloth.png").blend(CgBlendMode.ALPHA).twoSided().build();
 
 // This frame only, Unreal's debug draw: rows added before the frame's views draw
 scene.once().mesh(marker, debugMaterial).at(x, y, z).customData(0, r, g, b, a).add();
