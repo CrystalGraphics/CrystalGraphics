@@ -106,9 +106,10 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     private void updateAndEvaluate(float dt) {
         int n = instances.size();
-        boolean paused = world().paused();
+        // the world's time dilation scales every instance's seconds, as Unreal's world delta does
+        float seconds = world().paused() ? 0f : dt * world().timeDilation();
         // The game thread's half first (variables set, handed over), as Unreal's PreUpdate and NativeUpdateAnimation
-        for (int i = 0; i < n; i++) instances.get(i).preUpdate(paused ? 0f : dt);
+        for (int i = 0; i < n; i++) instances.get(i).preUpdate(seconds);
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, EVALUATE)) {
             if (n >= PARALLEL_AT) {
                 CgJob.forEach(n, evaluateEach);

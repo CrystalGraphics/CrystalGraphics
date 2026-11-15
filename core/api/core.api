@@ -6961,14 +6961,18 @@ com/crystalgraphics/demo/anim/CgAnimDemo
   field public,static,final KEYS [I
   field public,static,final SPACING I
   method public <init> (Ljava/util/List;)V
+  method public advance (F)F
   method public clear ()V
   method public delete ()V
+  method public faster (I)V
   method public hud ()Ljava/lang/String;
   method public precache ()V
   method public press (IZ)Z
   method public ready ()Z
   method public stations ()I
+  method public step (I)V
   method public submit (Lcom/crystalgraphics/camera/CgCamera;DDDD)V
+  method public togglePause ()V
   method public view (I)[F
   method public,static demoKits ()Ljava/util/List;
 com/crystalgraphics/demo/collision/CgCollisionDemo

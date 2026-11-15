@@ -147,6 +147,11 @@ public class CgPoseFeaturesTest {
         paused[0] = true;
         for (int i = 0; i < 5; i++) server.tick();
         assertEquals("paused, it holds its time", time, body.position(), 0f);
+
+        paused[0] = false;
+        server.timeDilation(0.5f);
+        for (int i = 0; i < 4; i++) server.tick();
+        assertEquals("the world's dilation scales its time", time + 0.1f, body.position(), 1e-4f);
         server.close();
         assertTrue("the world's end stops posing it", !body.posed());
     }

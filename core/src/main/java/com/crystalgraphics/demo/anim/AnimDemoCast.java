@@ -42,6 +42,7 @@ final class AnimDemoCast {
             this.component = CgScene.client().skeletal(cast.mesh).materials(cast.materials::apply).customData(0, 0f, 0f, 0f, 0f);
             this.instance = component.anim();
             component.spawn();
+            cast.live.add(this);
         }
 
         /** Stands it at ({@code x}, {@code y}, {@code z}), turned {@code yaw} radians from facing +z about its feet. */
@@ -56,6 +57,7 @@ final class AnimDemoCast {
 
         void remove() {
             component.remove();
+            cast.live.remove(this);
         }
     }
 
@@ -67,14 +69,18 @@ final class AnimDemoCast {
     /** Mesh to body: its feet on the floor, facing +z. */
     final Matrix4f fit;
     private final IntFunction<CgMaterial> materials;
+    /** Every body of every cast now standing, shared by the casts: what the demo's time steps and records. */
+    private final List<Body> live;
 
-    AnimDemoCast(String name, String family, CgSkeletalMesh mesh, List<Clip> clips, Matrix4f fit, IntFunction<CgMaterial> materials) {
+    AnimDemoCast(String name, String family, CgSkeletalMesh mesh, List<Clip> clips, Matrix4f fit, IntFunction<CgMaterial> materials,
+                 List<Body> live) {
         this.name = name;
         this.family = family;
         this.mesh = mesh;
         this.clips = List.copyOf(clips);
         this.fit = fit;
         this.materials = materials;
+        this.live = live;
     }
 
     Body spawn() {
@@ -83,7 +89,7 @@ final class AnimDemoCast {
 
     /** This character drawn from {@code mesh}: its own mesh with bones added ({@code withVirtualBones}). */
     AnimDemoCast withMesh(CgSkeletalMesh mesh) {
-        return new AnimDemoCast(name, family, mesh, clips, fit, materials);
+        return new AnimDemoCast(name, family, mesh, clips, fit, materials, live);
     }
 
     /** The first clip whose name contains {@code part}, ignoring case; null for none. */

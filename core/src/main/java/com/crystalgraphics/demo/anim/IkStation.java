@@ -238,9 +238,9 @@ final class IkStation implements AnimDemoStation {
             rigs.add(HUMANOID);
         }
         for (int i = 0; i < rigged.size(); i++) feet(rigged.get(i), rigs.get(i), x, y, z - i * ROW);
-        // the wall, its face toward +z, and before it each character at each distance
+        // the wall, its face toward +z, thin so a fist through it shows behind; before it each character at each distance
         double wallZ = z - 2 * ROW;
-        set.box(x - 4, y, wallZ - 0.4, x + 4.5, y + 2.5, wallZ, 0xFF8C8C96);
+        set.box(x - 4, y, wallZ - 0.02, x + 4.5, y + 2.5, wallZ, 0xFF8C8C96);
         double px = x - 3;
         for (int i = 0; i < rigged.size(); i++) {
             for (float reach : REACH) {

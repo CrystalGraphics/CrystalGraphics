@@ -49,6 +49,7 @@ public final class CgAnimDemo {
     private final List<CgKitActor.Spec> kitCharacters;
     private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation());
     private AnimDemoCasts casts;
+    private AnimDemoTime time;
     private AnimDemoSet set;
     private boolean built;
     private double x, y, z, lastSeconds = Double.NaN;
@@ -84,7 +85,10 @@ public final class CgAnimDemo {
 
     /** Starts loading its characters. Render thread; once. */
     public void precache() {
-        if (casts == null) casts = AnimDemoCasts.load(kitCharacters);
+        if (casts == null) {
+            casts = AnimDemoCasts.load(kitCharacters);
+            time = new AnimDemoTime(casts);
+        }
     }
 
     /** Whether its characters have loaded or failed: it draws nothing until then. Render thread. */
@@ -112,6 +116,35 @@ public final class CgAnimDemo {
         float dt = Double.isNaN(lastSeconds) ? 0f : (float) Math.max(0.0, seconds - lastSeconds);
         lastSeconds = seconds;
         stations.get(active).update(dt);
+        time.tickSteps();
+    }
+
+    /**
+     * This frame's demo seconds from {@code frameSeconds} of the host's, under the demo's rate and pause; sets the
+     * client world's time dilation to match. A host passing its own clock to {@link #submit} needs none of it.
+     *
+     * <pre>{@code
+     * seconds += demo.advance(frame.getDeltaTime());
+     * demo.submit(view, x, y, z, seconds);
+     * }</pre>
+     */
+    public float advance(float frameSeconds) {
+        return time == null ? frameSeconds : time.advance(frameSeconds);
+    }
+
+    /** P: pauses or plays. */
+    public void togglePause() {
+        if (time != null) time.togglePause();
+    }
+
+    /** U/I: the rate {@code by} steps along 0.1x to 2x. */
+    public void faster(int by) {
+        if (time != null) time.faster(by);
+    }
+
+    /** , .: pauses, then {@code frames} frames of 1/30 s on or back; a step back shows a recorded frame. */
+    public void step(int frames) {
+        if (time != null) time.step(frames);
     }
 
     /** A key of {@link #KEYS}, for the station in view; true when it took it. */
@@ -127,6 +160,7 @@ public final class CgAnimDemo {
             String name = stations.get(i).name();
             line.append(i == active ? "  [" + (i + 1) + " " + name + "]" : "  " + (i + 1) + " " + name);
         }
+        if (time != null) line.append(time.hud());
         return built ? line.append(stations.get(active).hud()).toString() : line.toString();
     }
 
@@ -158,6 +192,7 @@ public final class CgAnimDemo {
 
     public void delete() {
         clear();
+        if (time != null) time.delete();
     }
 
     private String names() {

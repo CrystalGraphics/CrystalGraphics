@@ -61,9 +61,11 @@ final class AnimDemoCasts {
         CgKitAssets assets;
         CgPipelinePrecache.Request pipelines;
         AnimDemoCast cast;
+        final List<AnimDemoCast.Body> bodies;
 
-        Kit(CgKitActor.Spec spec) {
+        Kit(CgKitActor.Spec spec, List<AnimDemoCast.Body> bodies) {
             this.spec = spec;
+            this.bodies = bodies;
         }
 
         /** Moves its load along; true once it has a cast or has failed. Render thread. */
@@ -84,7 +86,7 @@ final class AnimDemoCasts {
             if (!pipelines.ready()) return false;
             CgMaterial[] slots = new CgMaterial[materials.size()];
             for (int i = 0; i < slots.length; i++) slots[i] = CgMaterial.of(assets.material(i).get());
-            cast = new AnimDemoCast(spec.name(), spec.name(), mesh, clips, standing(mesh), s -> slots[s]);
+            cast = new AnimDemoCast(spec.name(), spec.name(), mesh, clips, standing(mesh), s -> slots[s], bodies);
             return true;
         }
     }
@@ -92,6 +94,7 @@ final class AnimDemoCasts {
     private volatile List<AnimDemoCast> humanoids;
     private volatile boolean humanoidsFailed;
     private final List<Kit> kits = new ArrayList<>();
+    private final List<AnimDemoCast.Body> bodies = new ArrayList<>();
 
     private AnimDemoCasts() {
     }
@@ -105,12 +108,12 @@ final class AnimDemoCasts {
                 .texture("_MainTex", CgTextures.of(HUMANOID + "textures/base.png"), CgSampler.Filter.NEAREST,
                         CgSampler.Address.CLAMP)
                 .build());
-        CgJob.run(() -> casts.humanoids = humanoids(look)).named("anim-demo humanoids").onError(e -> {
+        CgJob.run(() -> casts.humanoids = humanoids(look, casts.bodies)).named("anim-demo humanoids").onError(e -> {
             LOGGER.warn("[anim-demo] the humanoids failed to load: {}", e.detail(), e.cause());
             casts.humanoidsFailed = true;
         });
         for (CgKitActor.Spec spec : specs) {
-            Kit kit = new Kit(spec);
+            Kit kit = new Kit(spec, casts.bodies);
             try {
                 // The prefab names the materials: their load starts now, beside the mesh's and the clips' reads
                 kit.materials = CgKitModels.prefabMaterials(spec.kit().resolve(spec.prefab()));
@@ -150,6 +153,11 @@ final class AnimDemoCasts {
         return humanoids == null || humanoids.isEmpty() ? null : humanoids.get(0);
     }
 
+    /** Every body of every cast now standing; render thread. */
+    List<AnimDemoCast.Body> bodies() {
+        return bodies;
+    }
+
     /** The kits' characters that loaded. */
     List<AnimDemoCast> kitCasts() {
         List<AnimDemoCast> out = new ArrayList<>();
@@ -159,7 +167,7 @@ final class AnimDemoCasts {
 
     // ── Worker reads ──
 
-    private static List<AnimDemoCast> humanoids(CgMaterial look) {
+    private static List<AnimDemoCast> humanoids(CgMaterial look, List<AnimDemoCast.Body> bodies) {
         List<AnimDemoCast> out = new ArrayList<>();
         for (String body : BODIES) {
             CgGeckoModel geo = CgGeckoModel.load(HUMANOID + "geo/" + body + ".geo.json");
@@ -172,7 +180,7 @@ final class AnimDemoCasts {
             }
             String name = "Humanoid " + body.replace("_model", "").replace("model", "").replace('_', ' ').trim();
             // A GeckoLib model faces -z
-            out.add(new AnimDemoCast(name.trim(), "humanoid", geo.mesh(), clips, new Matrix4f().rotationY((float) Math.PI), s -> look));
+            out.add(new AnimDemoCast(name.trim(), "humanoid", geo.mesh(), clips, new Matrix4f().rotationY((float) Math.PI), s -> look, bodies));
         }
         return out;
     }
