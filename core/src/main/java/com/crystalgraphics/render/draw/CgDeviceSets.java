@@ -172,7 +172,7 @@ public final class CgDeviceSets {
 
     /**
      * Loads every texture {@code table}'s snapshots record and lands its buffers' pending uploads: outside any render
-     * pass, as an upload is a copy. Before the first {@link #set} of a frame.
+     * pass, as an upload is a copy. Once an execution, before its first {@link #set}: the table holds for all its steps.
      */
     public void prepare(CgFrameBindings table) {
         boolean bindless = CgBindless.active();

@@ -365,7 +365,6 @@ final class CgRasterEncoder {
             passBatch.clear();
             copy(passBase, passBatch, false);
             passVersion++;
-            execution.deviceSets.prepare(frame.bindings);
             linkBatches(packed);
         }
         CgLoad load = pass.load;

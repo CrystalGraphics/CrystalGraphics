@@ -86,7 +86,6 @@ final class CgComputeEncoder {
             view.put(CgBindingModel.SCENE_DEPTH, execution.scene.depthFrom(frame.depthFromOp[s],
                     device.storage(pass.depthFrom()), pass));
         }
-        execution.deviceSets.prepare(frame.bindings);
         if (CgKernelTarget.CHECKED) CgComputeCheck.prepare();
         for (int i = 0; i < dispatches.size(); i++) {
             CgDispatch d = dispatches.get(i);

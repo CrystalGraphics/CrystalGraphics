@@ -82,7 +82,8 @@ public final class CgExecutor {
             STEP_INCLUDE = CgTrace.name("graph.include"), STEP_BUFFER = CgTrace.name("graph.bufferStep"),
             STEP_COMPILE = CgTrace.name("graph.compile"), STEP_RELEASE = CgTrace.name("graph.release"),
             STALE = CgTrace.name("graph.stale"), GIVE_BACK = CgTrace.name("graph.giveBack"),
-            FINISH = CgTrace.name("graph.finish");
+            FINISH = CgTrace.name("graph.finish"), PREPARE_BINDINGS = CgTrace.name("graph.prepareBindings"),
+            COMPILE = CgTrace.name("graph.compileFrame"), STEP_COMPUTE = CgTrace.name("graph.computeStep");
 
     // ── One execution ────────────────────────────────────────────────────────
 
@@ -391,11 +392,17 @@ public final class CgExecutor {
         } finally {
             if (gpu) CgGpuTrace.end();
         }
-        CgFrameCompiler.renderPasses(frame, takes, takes && !again, gpuCounts);
-        CgFrameCompiler.transitions(frame, asyncCompute, ASYNC_ALL, splits);
-        CgFrameCompiler.multiDraws(frame, multiDraw);
-        CgFrameCompiler.steps(frame, takes, again);
-        CgFrameCompiler.sceneCopies(frame, scene.depthSource);
+        // Once an execution, outside any pass: its table and textures hold for every step of it
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, PREPARE_BINDINGS)) {
+            deviceSets.prepare(frame.bindings);
+        }
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, COMPILE)) {
+            CgFrameCompiler.renderPasses(frame, takes, takes && !again, gpuCounts);
+            CgFrameCompiler.transitions(frame, asyncCompute, ASYNC_ALL, splits);
+            CgFrameCompiler.multiDraws(frame, multiDraw);
+            CgFrameCompiler.steps(frame, takes, again);
+            CgFrameCompiler.sceneCopies(frame, scene.depthSource);
+        }
         int resolved = 0;
         try {
             if (!again) {
@@ -599,8 +606,10 @@ public final class CgExecutor {
             if (pass instanceof CgRasterPass r) {
                 raster.raster(frame, s, r);
             } else if (pass instanceof CgComputePass c) {
-                if (async) compute.computeAsync(frame, s, c);
-                else compute.compute(frame, s, c);
+                try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_COMPUTE)) {
+                    if (async) compute.computeAsync(frame, s, c);
+                    else compute.compute(frame, s, c);
+                }
                 if (CgBufferInspector.watching()) compute.inspect(c);
             } else if (pass instanceof CgPass.BufferFill || pass instanceof CgPass.BufferUpdate || pass instanceof CgPass.BufferCopy) {
                 try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, STEP_BUFFER)) {
