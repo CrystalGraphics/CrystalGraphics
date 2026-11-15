@@ -16343,7 +16343,7 @@ com/crystalgraphics/util/io/CgIO
   method public <init> ()V
   method public,static list (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/util/List;
   method public,static loadSource (Ljava/lang/String;)Ljava/lang/String;
-  method public,static mount (Ljava/lang/String;Ljava/io/File;)V
+  method public,static mount (Ljava/lang/String;Ljava/nio/file/Path;)V
   method public,static normalizePath (Ljava/lang/String;)Ljava/lang/String;
   method public,static noteRead (Ljava/lang/String;)V
   method public,static openStream (Ljava/lang/String;)Ljava/io/InputStream;

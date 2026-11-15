@@ -43,6 +43,9 @@ import com.crystalgraphics.platform.rhi.sync.CgTimerQuery;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceChannel;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import java.nio.ByteBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -110,6 +113,14 @@ public final class CgGLDevice implements CgRHI {
     private static final CgVar.Bool PARALLEL_LINKS = CgVar.bool("crystalgraphics.gl.parallelLinks", true, CgVar.DEV,
             "Build programs on the driver's own compiler threads where it has KHR_parallel_shader_compile, polled "
                     + "from the render thread; false, or a driver without it, links them on the link worker's context.");
+    private static final CgVar.Bool SECTION_ERRORS = CgVar.bool("crystalgraphics.gl.sectionErrors", false, CgVar.DEV,
+            "Read GL's error at each host section's edges and log whose it is: one pending as a section opens is the "
+                    + "host's (or another mod's), one pending as it closes is ours, with the Java stack that closed it. "
+                    + "For a host without debug output (LWJGL 2); each read waits for a threaded driver.");
+    private static final Logger LOGGER = LogManager.getLogger(CgGLDevice.class);
+    /** Errors {@link #SECTION_ERRORS} logs, each way, before going quiet. */
+    private static final int SECTION_ERRORS_LOGGED = 8;
+    private int hostErrors, ourErrors;
 
     private final GLStateFilter gl;
     private final GLHostState host;
@@ -290,6 +301,7 @@ public final class CgGLDevice implements CgRHI {
     @Override
     public void fromHost() {
         if (host == null) return;
+        if (SECTION_ERRORS.get()) hostErrors = sectionErrors(true, hostErrors);
         long t = CgTrace.stamp(GL_CHANNEL);
         host.read(entry);
         gl.adopt(entry);
@@ -311,6 +323,22 @@ public final class CgGLDevice implements CgRHI {
         encoder.invalidate();
         host.left();
         CgTrace.zoneDone(GL_CHANNEL, TO_HOST, t);
+        if (SECTION_ERRORS.get()) ourErrors = sectionErrors(false, ourErrors);
+    }
+
+    /** Drains GL's errors at a section's edge, logging the first few each way; answers how many were logged. */
+    private int sectionErrors(boolean opening, int logged) {
+        for (int i = 0, e; i < 8 && (e = raw.glGetError()) != 0; i++) {
+            if (logged >= SECTION_ERRORS_LOGGED) continue;
+            logged++;
+            if (opening) {
+                LOGGER.warn("[gl] GL error 0x{} pending as a section opens: the host's, from before it", Integer.toHexString(e));
+            } else {
+                LOGGER.warn("[gl] GL error 0x{} pending as a section closes: ours, from inside it", Integer.toHexString(e),
+                        new Throwable("the section closed here"));
+            }
+        }
+        return logged;
     }
 
     /** A host section's two hand-overs: once each a device pass on a GL host. */

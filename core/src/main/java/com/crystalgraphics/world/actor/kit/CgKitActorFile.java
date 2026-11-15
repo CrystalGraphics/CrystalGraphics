@@ -130,14 +130,15 @@ public final class CgKitActorFile {
     private static CgKitActor.Spec spec(String name, Map<?, ?> m, @Nullable Path kit) {
         String[] v = new String[KEYS.length];
         for (int i = 0; i < KEYS.length; i++) v[i] = m.get(KEYS[i]) == null ? null : String.valueOf(m.get(KEYS[i]));
-        if (kit != null) v[0] = kit.toString();
+        if (kit != null) v[0] = "";
         for (int i = 0; i < KEYS.length; i++) {
             if (v[i] == null) {
                 LOGGER.warn("[actors] {}: no {}", name, KEYS[i]);
                 return null;
             }
         }
-        return new CgKitActor.Spec(name, Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
+        // Kept as given: a mounted namespace's folder may be inside a jar, which a string loses
+        return new CgKitActor.Spec(name, kit != null ? kit : Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
                 m.get("outline") == null ? null : String.valueOf(m.get("outline")),
                 m.get("stencil") instanceof Number n ? n.intValue() : 0, clips(m.get("clips")));
     }

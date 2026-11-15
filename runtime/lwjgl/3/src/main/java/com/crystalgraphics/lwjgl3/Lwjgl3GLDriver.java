@@ -574,6 +574,8 @@ public final class Lwjgl3GLDriver implements CgGLDriver {
 
     @Override public void glFinish() { GL11.glFinish(); }
 
+    @Override public int glGetError() { return GL11.glGetError(); }
+
     @Override public int glCreateQueries(int target) { return GL45.glCreateQueries(target); }
 
     @Override public void glQueryCounter(int query, int target) { GL33.glQueryCounter(query, target); }

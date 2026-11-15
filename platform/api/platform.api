@@ -482,6 +482,7 @@ com/crystalgraphics/platform/gl/driver/CgGLDriver
   method public,abstract glFrontFace (I)V
   method public,abstract glGenTextures ()I
   method public,abstract glGenerateTextureMipmap (I)V
+  method public,abstract glGetError ()I
   method public,abstract glGetFloat (I)F
   method public,abstract glGetFloatv (I[F)V
   method public,abstract glGetInteger (I)I
@@ -1311,6 +1312,7 @@ com/crystalgraphics/platform/gl/state/GLStateFilter
   method public glFrontFace (I)V
   method public glGenTextures ()I
   method public glGenerateTextureMipmap (I)V
+  method public glGetError ()I
   method public glGetFloat (I)F
   method public glGetFloatv (I[F)V
   method public glGetInteger (I)I

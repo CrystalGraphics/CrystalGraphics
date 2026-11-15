@@ -138,26 +138,27 @@ public class CgIO {
     }
 
     /** Folders mounted for a namespace, {@link #mount}: copied on write, read on every open. */
-    private static volatile Map<String, File> MOUNTS = Collections.emptyMap();
+    private static volatile Map<String, Path> MOUNTS = Collections.emptyMap();
 
     /**
      * Makes {@code folder} answer for {@code namespace}'s files ({@code <namespace>:<path>} is {@code folder/<path>}),
      * ahead of the override roots and the classpath: a kit's folder, read as Unreal reads a mounted plugin's content.
      *
      * <pre>{@code
-     * CgIO.mount("mykit", Paths.get("D:/kits/mykit").toFile());
+     * CgIO.mount("mykit", Paths.get("D:/kits/mykit"));
      * CgIO.openStream("mykit:textures/hero_body.png");   // D:/kits/mykit/textures/hero_body.png
      * }</pre>
      *
      * <ul>
      *   <li>A namespace mounts one folder: mounting it again replaces the folder.</li>
+     *   <li>The folder may be inside a jar (a zip file system's path), as a mounted namespace's is.</li>
      *   <li>A file the folder lacks falls through to the other roots, as before.</li>
      *   <li>Mounting loads nothing and registers no asset: the folder's files are read when asked for.</li>
      * </ul>
      */
-    public static synchronized void mount(String namespace, File folder) {
-        Map<String, File> next = new HashMap<>(MOUNTS);
-        next.put(namespace, folder.getAbsoluteFile());
+    public static synchronized void mount(String namespace, Path folder) {
+        Map<String, Path> next = new HashMap<>(MOUNTS);
+        next.put(namespace, folder.toAbsolutePath());
         MOUNTS = Collections.unmodifiableMap(next);
     }
 
@@ -236,11 +237,11 @@ public class CgIO {
         if (!MOUNTS.isEmpty()) {
             String stripped = normalized.substring(ASSETS_PREFIX.length());
             int slash = stripped.indexOf('/');
-            File folder = slash > 0 ? MOUNTS.get(stripped.substring(0, slash)) : null;
+            Path folder = slash > 0 ? MOUNTS.get(stripped.substring(0, slash)) : null;
             if (folder != null) {
                 try {
-                    File file = new File(folder, stripped.substring(slash + 1));
-                    if (file.isFile()) return new FileInputStream(file);
+                    Path file = folder.resolve(stripped.substring(slash + 1));
+                    if (Files.isRegularFile(file)) return Files.newInputStream(file);
                 } catch (Throwable ignored) {}
             }
         }

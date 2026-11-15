@@ -22,9 +22,12 @@ import org.apache.logging.log4j.Logger;
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
-import java.io.File;
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -177,23 +180,32 @@ final class AnimDemoCasts {
     /** A kit character's mesh with its sockets, its clip folders' {@code .glb} clips and its prefab's materials. */
     private static void read(Kit kit) {
         CgKitActor.Spec s = kit.spec;
-        File meshFile = s.kit().resolve(s.mesh()).toFile();
-        if (!meshFile.isFile()) throw new IllegalStateException("no mesh at " + meshFile);
-        CgSkeletalMesh mesh = CgKitModels.withSockets(CgMeshLoader.skeletal(meshFile.getPath()), s.kit(), s.skeleton());
+        // Read by id through the kit's mount (CgKitAssets), which may be a folder inside a jar
+        String ns = s.namespace() + ":";
+        if (!Files.isRegularFile(s.kit().resolve(s.mesh()))) throw new IllegalStateException("no mesh at " + ns + s.mesh());
+        CgSkeletalMesh mesh = CgKitModels.withSockets(CgMeshLoader.skeletal(ns + s.mesh()), s.kit(), s.skeleton());
         if (kit.materials.size() != mesh.mesh().submeshCount()) {
             throw new IllegalStateException(s.name() + "'s prefab names " + kit.materials.size() + " materials for "
                     + mesh.mesh().submeshCount() + " slots");
         }
-        List<File> files = new ArrayList<>();
+        List<String> files = new ArrayList<>();
         for (String folder : s.clips()) {
-            File[] in = s.kit().resolve(folder).toFile().listFiles((d, n) -> n.toLowerCase(Locale.ROOT).endsWith(".glb"));
-            if (in == null) throw new IllegalStateException(s.name() + "'s clips folder " + folder + " is missing");
-            files.addAll(Arrays.asList(in));
+            Path dir = s.kit().resolve(folder);
+            if (!Files.isDirectory(dir)) throw new IllegalStateException(s.name() + "'s clips folder " + folder + " is missing");
+            try (DirectoryStream<Path> in = Files.newDirectoryStream(dir)) {
+                for (Path p : in) {
+                    // Java 8's zip file system lists a folder with a trailing slash
+                    String file = p.getFileName().toString().replace("/", "");
+                    if (file.toLowerCase(Locale.ROOT).endsWith(".glb")) files.add(ns + folder + "/" + file);
+                }
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
         files.sort(null);
         List<List<CgAnimSequence>> read = new ArrayList<>();
         for (int i = 0; i < files.size(); i++) read.add(null);
-        CgJob.forEach(files.size(), i -> read.set(i, CgMeshLoader.sequences(files.get(i).getAbsolutePath())));
+        CgJob.forEach(files.size(), i -> read.set(i, CgMeshLoader.sequences(files.get(i))));
         List<AnimDemoCast.Clip> clips = new ArrayList<>();
         for (CgAnimSequence c : mesh.sequences()) clips.add(new AnimDemoCast.Clip(c.name(), c, true));
         for (List<CgAnimSequence> sequences : read) {
