@@ -1333,6 +1333,214 @@ com/crystalgraphics/animation/montage/CgRootMotionParams
   method public consume (FLorg/joml/Matrix4f;)Z
   method public get (Lorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
   method public hasRootMotion ()Z
+com/crystalgraphics/animation/retarget/CgClipResolver
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/util/function/Function;Ljava/util/function/Function;Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;)V
+  method public bakeAll (Ljava/util/List;)V
+  method public find (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public resolve (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+com/crystalgraphics/animation/retarget/CgRetargetBake
+  access public,final
+  extends java/lang/Object
+  field public,static,final VERSION I
+  method public,static bake (Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;Lcom/crystalgraphics/api/animation/CgAnimSequence;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static cached (Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;Lcom/crystalgraphics/api/animation/CgAnimSequence;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public,static clear ()V
+  method public,static isCached (Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;Lcom/crystalgraphics/api/animation/CgAnimSequence;)Z
+com/crystalgraphics/animation/retarget/CgRetargetPoses
+  access public,final
+  extends java/lang/Object
+  method public,static alignTarget (Lcom/crystalgraphics/animation/retarget/CgRetargeter;Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/api/animation/CgSkeleton;)Ljava/util/Map;
+com/crystalgraphics/animation/retarget/CgRetargetProcessor
+  access public,final
+  extends java/lang/Object
+  method public <init> (Lcom/crystalgraphics/animation/retarget/CgRetargeter;Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/api/animation/CgSkeleton;)V
+  method public enabled (Ljava/lang/String;)Z
+  method public enabled (Ljava/lang/String;Z)V
+  method public goal (Ljava/lang/String;Lorg/joml/Vector3f;)Z
+  method public heightRatio ()F
+  method public retargeter ()Lcom/crystalgraphics/animation/retarget/CgRetargeter;
+  method public run (Lcom/crystalgraphics/api/animation/CgAnimPose;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public sourcePosition (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
+  method public sourceSkeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
+  method public targetSkeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
+com/crystalgraphics/animation/retarget/CgRetargeter
+  access public,final
+  extends java/lang/Object
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public chain (Ljava/lang/String;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;
+  method public chains ()Ljava/util/List;
+  method public contentHash ()J
+  method public id ()Ljava/lang/String;
+  method public op (Ljava/lang/String;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  method public ops ()Ljava/util/List;
+  method public scaleEffects ()Z
+  method public sockets ()Ljava/util/List;
+  method public source ()Lcom/crystalgraphics/animation/rig/CgRig;
+  method public sourcePose ()Ljava/util/Map;
+  method public target ()Lcom/crystalgraphics/animation/rig/CgRig;
+  method public targetPose ()Ljava/util/Map;
+  method public toBuilder ()Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public toTree ()Ljava/util/Map;
+  method public,static auto (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRig;Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRig;)Lcom/crystalgraphics/animation/retarget/CgRetargeter;
+  method public,static builder (Ljava/lang/String;Lcom/crystalgraphics/animation/rig/CgRig;Lcom/crystalgraphics/animation/rig/CgRig;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public,static compile (Ljava/lang/String;Ljava/util/Map;Lcom/crystalgraphics/object/value/CgUnits;Ljava/util/function/Function;)Lcom/crystalgraphics/animation/retarget/CgRetargeter;
+  method public,static register ()V
+com/crystalgraphics/animation/retarget/CgRetargeter$Builder
+  access public,final
+  extends java/lang/Object
+  method public build ()Lcom/crystalgraphics/animation/retarget/CgRetargeter;
+  method public chain (Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public ops ([Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public scaleEffects (Z)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public socket (Lcom/crystalgraphics/animation/retarget/CgRetargeter$Socket;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public sourcePose (Ljava/util/Map;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public targetPose (Ljava/util/Map;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+  method public targetRotation (Ljava/lang/String;Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Builder;
+com/crystalgraphics/animation/retarget/CgRetargeter$ChainMap
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;FLcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;FZFFLorg/joml/Vector3fc;)V
+  method public blendToSource ()F
+  method public extension ()F
+  method public fk (Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;
+  method public ik ()Z
+  method public ik (FFLorg/joml/Vector3fc;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;
+  method public ik (Z)Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;
+  method public rotation ()Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  method public rotationAlpha ()F
+  method public source ()Ljava/lang/String;
+  method public staticOffset ()Lorg/joml/Vector3fc;
+  method public target ()Ljava/lang/String;
+  method public translation ()Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  method public translationAlpha ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$ChainMap;
+com/crystalgraphics/animation/retarget/CgRetargeter$Op
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final DEFAULT Ljava/util/List;
+  field public,static,final FK_CHAINS Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  field public,static,final IK_CHAINS Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  method public <init> (Ljava/lang/String;FFFF)V
+  method public a ()F
+  method public b ()F
+  method public c ()F
+  method public d ()F
+  method public kind ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static floor (F)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  method public,static pelvisMotion (FF)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  method public,static pelvisMotion (FFFF)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+  method public,static scaleSource (F)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Op;
+com/crystalgraphics/animation/retarget/CgRetargeter$Rotation
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COPY_LOCAL Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final INTERPOLATED Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final MATCH_CHAIN Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final MATCH_SCALED_CHAIN Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final NONE Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final ONE_TO_ONE Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  field public,static,final ONE_TO_ONE_REVERSED Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+  method public,static values ()[Lcom/crystalgraphics/animation/retarget/CgRetargeter$Rotation;
+com/crystalgraphics/animation/retarget/CgRetargeter$Socket
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;)V
+  method public bone ()Ljava/lang/String;
+  method public location ()Lorg/joml/Vector3fc;
+  method public name ()Ljava/lang/String;
+  method public rotation ()Lorg/joml/Quaternionfc;
+  method public scale ()Lorg/joml/Vector3fc;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/animation/retarget/CgRetargeter$Translation
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ABSOLUTE Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  field public,static,final GLOBALLY_SCALED Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  field public,static,final NONE Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  field public,static,final ORIENT_AND_SCALE Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  field public,static,final STRETCH_NON_UNIFORM Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  field public,static,final STRETCH_UNIFORM Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+  method public,static values ()[Lcom/crystalgraphics/animation/retarget/CgRetargeter$Translation;
+com/crystalgraphics/animation/rig/CgRig
+  access public,final
+  extends java/lang/Object
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  field public,static,final IK_ROOT Ljava/lang/String;
+  method public adapter ()Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+  method public carried ()Ljava/util/List;
+  method public chain (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Chain;
+  method public chains ()Ljava/util/List;
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public id ()Ljava/lang/String;
+  method public ikBones (Lcom/crystalgraphics/api/animation/CgSkeleton;)Ljava/util/List;
+  method public model ()Ljava/lang/String;
+  method public pelvis ()Ljava/lang/String;
+  method public root ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public toTree ()Ljava/util/Map;
+  method public,static builder (Ljava/lang/String;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public,static compile (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/animation/rig/CgRig;
+  method public,static register ()V
+com/crystalgraphics/animation/rig/CgRig$Builder
+  access public,final
+  extends java/lang/Object
+  method public bend (Ljava/lang/String;FFF)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public build ()Lcom/crystalgraphics/animation/rig/CgRig;
+  method public carried (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public chain (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public chain (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public model (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public pelvis (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public pivot (Ljava/lang/String;FFF)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public rides (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+  method public root (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
+com/crystalgraphics/animation/rig/CgRig$Chain
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;Ljava/lang/String;Lorg/joml/Vector3fc;)V
+  method public bend ()Lorg/joml/Vector3fc;
+  method public end ()Ljava/lang/String;
+  method public goal ()Ljava/lang/String;
+  method public name ()Ljava/lang/String;
+  method public pivot ()Lorg/joml/Vector3fc;
+  method public rides ()Ljava/lang/String;
+  method public start ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/animation/rig/CgRigAdapter
+  access public,abstract,interface
+  extends java/lang/Object
+  method public rotationOnly (Lcom/crystalgraphics/api/animation/CgSkeleton;I)Z
+  method public,abstract facing ()Lorg/joml/Vector3fc;
+  method public,abstract name ()Ljava/lang/String;
+  method public,static of (Ljava/lang/String;Lorg/joml/Vector3fc;)Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+com/crystalgraphics/animation/rig/CgRigAdapters
+  access public,final
+  extends java/lang/Object
+  field public,static,final CRYSTALGRAPHICS Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+  field public,static,final GECKOLIB Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+  method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+  method public,static register (Lcom/crystalgraphics/animation/rig/CgRigAdapter;)V
+com/crystalgraphics/animation/rig/CgRigs
+  access public,final
+  extends java/lang/Object
+  method public,static detect (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
+  method public,static geckoHumanoid (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
+  method public,static standardHumanoid (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
 com/crystalgraphics/animation/state/CgAnimRule
   access public,abstract
   extends java/lang/Object

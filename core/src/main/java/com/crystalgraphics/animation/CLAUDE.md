@@ -14,6 +14,8 @@
 | `CgCpuSkin`, `CgPosedVertexSink` | Unreal's CPU skinning, quads into a sink, for a host's own vertex path under a shader pack (`CgSkeletalMeshComponent.cpuSkin`; gate `CgCpuSkinTest`) |
 | `ik/` | Unreal's bone controllers as graph nodes: modify bone, two-bone IK, look-at, FABRIK, CCD, constraints, leg IK, foot placement, spring bone, AnimDynamics. Its own guide |
 | `dynamics/` | `CgAnimPhys`, the rigid-body solver AnimDynamics runs on (Stan Melax's Sandbox, as Unreal adapted it) |
+| `rig/` | `CgRig` (a skeleton read as a body: root, pelvis, named chains with IK goals, `bend`, `rides`, `pivot`; the `rig` kind's compiler), `CgRigAdapter`/`CgRigAdapters` (a library's facing and rotation-only bones: the engine's, GeckoLib's), `CgRigs` (default rigs from bone names: the standard humanoid, GeckoLib's humanoid) |
+| `retarget/` | Unreal's IK Retargeter: `CgRetargeter` (chain mapping, retarget poses, the op stack; `auto`, the `retargeter` kind's compiler), `CgRetargetPoses` (auto-align), `CgRetargetProcessor` (a source pose in, the target's out, 0 B a run), `CgRetargetBake` (a clip baked onto the target, cached), `CgClipResolver` (own, retargeted, fail). Gates: `CgRetargetTest` (headless) and `CgRetargetKakarotTest` (Goku's battle clips on RPG-Core's humanoid). Guide: `docs/animation/guides/retargeting.md` |
 | `CgCollisionGround` | A `graph.CgAnimGround` over a `CgCollisionWorld`: foot placement's sweeps against Minecraft's blocks |
 | `CgBonePalettes` | A frame's bone matrices on the GPU, written by the scene in `ATTACH` |
 

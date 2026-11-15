@@ -714,6 +714,9 @@ public final class CgBodyKinds {
             .property("start", STRING).required()
             .property("end", STRING).required()
             .property("goal", STRING)
+            .property("bend", VEC3)
+            .property("rides", STRING)
+            .property("pivot", VEC3)
             .register();
 
     static final CgType OUTLINE = CgTypes.struct("crystalgraphics:rig.outline")

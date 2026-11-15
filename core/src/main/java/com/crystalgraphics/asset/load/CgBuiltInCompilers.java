@@ -18,6 +18,8 @@ import com.crystalgraphics.animation.ik.CgModifyBoneNode;
 import com.crystalgraphics.animation.ik.CgAnimDynamicsNode;
 import com.crystalgraphics.animation.ik.CgSpringBoneNode;
 import com.crystalgraphics.animation.ik.CgTwoBoneIkNode;
+import com.crystalgraphics.animation.retarget.CgRetargeter;
+import com.crystalgraphics.animation.rig.CgRig;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgClipDefinition;
 import com.crystalgraphics.api.animation.CgSkeletonDefinition;
@@ -65,6 +67,8 @@ public final class CgBuiltInCompilers {
         CgSkeletonDefinition.register();
         CgFigureDefinition.register();
         CgClipDefinition.register();
+        CgRig.register();
+        CgRetargeter.register();
         CgAnimGraphCodec.register();
         CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);

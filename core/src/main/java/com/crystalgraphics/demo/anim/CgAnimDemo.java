@@ -47,7 +47,7 @@ public final class CgAnimDemo {
             CgKeyCodes.KEY_GRAVE, CgKeyCodes.KEY_BACKSLASH};
 
     private final List<CgKitActor.Spec> kitCharacters;
-    private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation());
+    private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation(), new ReachStation(), new RetargetStation());
     private AnimDemoCasts casts;
     private AnimDemoTime time;
     private AnimDemoSet set;

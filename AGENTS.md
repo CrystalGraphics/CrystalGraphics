@@ -167,6 +167,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
 | Animate a skinned character: play a clip, run an anim graph or a state machine from variables, play a montage on a slot | **[`docs/animation/guides/graphs.md`](docs/animation/guides/graphs.md)** | `animation/CLAUDE.md`, `animation/graph/CLAUDE.md`, `animation/state/CLAUDE.md` |
 | Place bones from the game: IK, look-at, feet on the ground, constraints, hair and cloth that swing | **[`docs/animation/guides/ik.md`](docs/animation/guides/ik.md)** | `animation/ik/CLAUDE.md` |
+| Play one character's clips on another: rigs, retargeters, baking | **[`docs/animation/guides/retargeting.md`](docs/animation/guides/retargeting.md)** | `animation/CLAUDE.md` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |
 | Draw 2D quads, curves or text, in the world or on the screen, below widgets | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |

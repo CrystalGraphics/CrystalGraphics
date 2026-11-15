@@ -153,6 +153,11 @@ final class AnimDemoCasts {
         return humanoids == null || humanoids.isEmpty() ? null : humanoids.get(0);
     }
 
+    /** Every humanoid body that loaded: the default, skinny, female and skinny female. */
+    List<AnimDemoCast> humanoids() {
+        return humanoids == null ? List.of() : humanoids;
+    }
+
     /** Every body of every cast now standing; render thread. */
     List<AnimDemoCast.Body> bodies() {
         return bodies;
