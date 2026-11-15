@@ -103,6 +103,7 @@ public final class CgAnimGraphInstance {
     private final List<CgAnimNode.Runtime> preUpdates = new ArrayList<>();
     /** The component's placement in the world, copied on the game thread (Unreal's proxy {@code ComponentTransform}). */
     private final Matrix4d placement = new Matrix4d();
+    private CgAnimGround ground = CgAnimGround.NONE;
 
     public CgAnimGraphInstance(CgAnimGraph graph, CgSkeleton skeleton) {
         this(graph, skeleton, null);
@@ -414,6 +415,17 @@ public final class CgAnimGraphInstance {
     /** The component's placement in the world, as of this frame's {@link #preUpdate}: its main instance's. */
     public Matrix4dc placement() {
         return main.placement;
+    }
+
+    /** The ground a node asks on the game thread, in its {@code preUpdate}: {@link CgAnimGround#NONE} until set. */
+    public CgAnimGraphInstance ground(CgAnimGround ground) {
+        this.ground = Objects.requireNonNull(ground, "ground");
+        return this;
+    }
+
+    /** Its ground: its main instance's. */
+    public CgAnimGround ground() {
+        return main.ground;
     }
 
     /**

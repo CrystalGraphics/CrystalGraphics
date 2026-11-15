@@ -1,7 +1,7 @@
 package com.crystalgraphics.animation.ik;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -12,9 +12,11 @@ import javax.annotation.Nullable;
 import org.joml.Matrix4f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
+import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
  * A point a control reaches for: a location in a {@link CgBoneSpace}, relative to a bone where the space is a bone's,
@@ -85,9 +87,35 @@ public final class CgIkTarget {
         for (CgAnimVariable<Float> v : variables) if (v != null) each.accept(v);
     }
 
+    /** Reads {@link #tree()}'s form at {@code at}. */
+    @SuppressWarnings("unchecked")
+    static CgIkTarget read(CgAnimNodeKind.Context c, String at, @Nullable Object o) {
+        if (!(o instanceof Map<?, ?> m)) throw new CgAssetException(at + ": a target is { space, bone, location }");
+        CgBoneSpace space;
+        try {
+            space = CgBoneSpace.of(c.string(at, m, "space"));
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(at + ".space: " + e.getMessage());
+        }
+        String bone = m.get("bone") instanceof String s ? s : null;
+        if (!(m.get("location") instanceof List<?> l) || l.size() != 3) throw new CgAssetException(at + ".location: 3 values");
+        float[] k = new float[3];
+        CgAnimVariable<Float>[] v = new CgAnimVariable[3];
+        for (int i = 0; i < 3; i++) {
+            Object e = l.get(i);
+            if (e instanceof String name) v[i] = c.variable(at + ".location[" + i + "]", name, CgAnimVariable.Type.FLOAT);
+            else k[i] = c.number(at + ".location[" + i + "]", e);
+        }
+        try {
+            return new CgIkTarget(space, bone, k[0], k[1], k[2], v[0], v[1], v[2]);
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(at + ": " + e.getMessage());
+        }
+    }
+
     /** Its data form: {@code { space, bone, location: [x, y, z] }}, a coordinate a number or a variable's name. */
     Map<String, Object> tree() {
-        Map<String, Object> out = new HashMap<>();
+        Map<String, Object> out = new LinkedHashMap<>();
         out.put("space", space.id());
         if (bone != null) out.put("bone", bone);
         List<Object> location = new ArrayList<>(3);

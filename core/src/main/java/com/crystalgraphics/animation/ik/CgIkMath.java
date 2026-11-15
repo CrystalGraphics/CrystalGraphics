@@ -1,5 +1,7 @@
 package com.crystalgraphics.animation.ik;
 
+import javax.annotation.Nullable;
+
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
@@ -106,6 +108,43 @@ public final class CgIkMath {
             if (cos < 0f) proj = -proj;
             outJoint.set(root).fma(proj, dir).fma(jointLine, bend);
         }
+    }
+
+    /**
+     * The turn taking unit {@code aim}, from {@code origin}, toward {@code target}, into {@code out}:
+     * {@code AnimationCore::SolveAim} (AnimationCoreLibrary.cpp). Beyond {@code clampDegrees} (above 0) the aim stops at
+     * that angle; with {@code up} (unit, or null), the target is first projected onto the plane it is normal to.
+     */
+    public static Quaternionf solveAim(Vector3fc origin, Vector3fc target, Vector3fc aim, @Nullable Vector3fc up,
+                                       float clampDegrees, Vector3f scratch, Quaternionf out) {
+        Vector3f to = scratch.set(target).sub(origin);
+        if (to.lengthSquared() < 1e-16f) return out.identity();
+        to.normalize();
+        if (clampDegrees > 0.00001f) {
+            double clamp = Math.toRadians(Math.min(clampDegrees, 180f));
+            double diff = Math.acos(Math.max(-1f, Math.min(1f, aim.dot(to))));
+            if (diff > clamp) {
+                // the delta from aim to target scaled by the ratio, then renormalised
+                to.sub(aim).mul((float) (clamp / diff)).add(aim).normalize();
+            }
+        }
+        if (up != null) {
+            to.fma(-to.dot(up), up);
+            if (to.lengthSquared() < 1e-16f) return out.identity();
+            to.normalize();
+        }
+        return findBetweenNormals(aim, to, out);
+    }
+
+    /**
+     * {@code q}'s Euler angles in radians, about x, y and z, such that {@code rotationZYX(z, y, x)} gives it back: the
+     * order of Unreal's {@code FRotator} (yaw, then pitch, then roll).
+     */
+    public static Vector3f eulerZYX(Quaternionf q, Vector3f out) {
+        float sinPitch = 2f * (q.w * q.y - q.z * q.x);
+        return out.set((float) Math.atan2(2f * (q.w * q.x + q.y * q.z), 1f - 2f * (q.x * q.x + q.y * q.y)),
+                (float) Math.asin(Math.max(-1f, Math.min(1f, sinPitch))),
+                (float) Math.atan2(2f * (q.w * q.z + q.x * q.y), 1f - 2f * (q.y * q.y + q.z * q.z)));
     }
 
     /** {@code FVector::FindBestAxisVectors}' first axis, perpendicular to {@code n}, into {@code out}; its second is {@code out × n}. */

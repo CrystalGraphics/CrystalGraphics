@@ -11,6 +11,7 @@ import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgAnimGround;
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
@@ -72,6 +73,7 @@ public final class CgAnimInstance {
     private Consumer<Matrix4d> placedBy;
     private final Matrix4d placement = new Matrix4d();
     private final List<CgBoneWrite> writes = new ArrayList<>();
+    private CgAnimGround ground = CgAnimGround.NONE;
     private final List<Update> updates = new ArrayList<>();
     private float rate = 1f, delta;
     private boolean playing = true;
@@ -306,6 +308,7 @@ public final class CgAnimInstance {
             placedBy.accept(placement);
             graph.placement(placement);
         }
+        graph.ground(ground);
         graph.preUpdate();
         return this;
     }
@@ -406,10 +409,6 @@ public final class CgAnimInstance {
     }
 
     /**
-     * Where its clips' material curves are set each frame: its component's materials (a {@code CgSkeletalMeshComponent}
-     * sets itself). Null, as on a server, evaluates them and sets nothing.
-     */
-    /**
      * Where its component stands in the world, asked on the game thread each frame before the graph runs (Unreal's
      * proxy copies the component's transform there): what world-space targets and foot traces read. The skeletal mesh
      * component that makes it sets this; an instance with none stands at the origin.
@@ -417,12 +416,33 @@ public final class CgAnimInstance {
      * <pre>{@code
      * new CgAnimInstance(mesh).placedBy(out -> out.translation(x, y, z));
      * }</pre>
+     *
+     * <ul>
+     *   <li>Called on the game thread every frame: it must not allocate.</li>
+     * </ul>
      */
     public CgAnimInstance placedBy(@Nullable Consumer<Matrix4d> placedBy) {
         this.placedBy = placedBy;
         return this;
     }
 
+    /**
+     * The ground its graph's nodes ask on the game thread (a foot placement's sweeps, whether it stands on a floor):
+     * Unreal's world and character movement through the proxy. {@link CgAnimGround#NONE} until set.
+     *
+     * <pre>{@code
+     * anim.ground(CgCollisionGround.of(() -> CgCollisionWorld.client(partialTick), component::worldTransform));
+     * }</pre>
+     */
+    public CgAnimInstance ground(CgAnimGround ground) {
+        this.ground = Objects.requireNonNull(ground, "ground");
+        return this;
+    }
+
+    /**
+     * Where its clips' material curves are set each frame: its component's materials (a {@code CgSkeletalMeshComponent}
+     * sets itself). Null, as on a server, evaluates them and sets nothing.
+     */
     public CgAnimInstance curveTarget(@Nullable CgAnimCurveTarget target) {
         curveTarget = target;
         return this;

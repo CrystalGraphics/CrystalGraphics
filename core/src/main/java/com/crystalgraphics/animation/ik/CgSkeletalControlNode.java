@@ -1,5 +1,8 @@
 package com.crystalgraphics.animation.ik;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -8,10 +11,12 @@ import org.joml.Matrix4f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimNode;
+import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimNodeWriter;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
  * A node that moves bones over its input pose: Unreal's {@code FAnimNode_SkeletalControlBase}
@@ -151,13 +156,70 @@ public abstract class CgSkeletalControlNode extends CgAnimNode {
         return b;
     }
 
-    /** Writes the base's fields, the input and the alpha, after a kind's {@code out.kind(...)}. */
+    /** The bones from {@code root} down to {@code tip}, root first, failing by name where {@code tip} is not below it. */
+    protected static int[] chain(CgSkeleton skeleton, String root, String tip, Object node) {
+        int r = bone(skeleton, root, node), b = bone(skeleton, tip, node), n = 1;
+        for (int at = b; at != r; at = skeleton.parent(at), n++) {
+            if (at < 0) throw new IllegalArgumentException(node + ": " + tip + " is not below " + root);
+        }
+        if (n < 2) throw new IllegalArgumentException(node + ": a chain needs two bones, " + root + " to " + tip);
+        int[] out = new int[n];
+        for (int at = b, i = n - 1; i >= 0; at = skeleton.parent(at), i--) out[i] = at;
+        return out;
+    }
+
+    /** Writes the base's fields, the input and the alpha (omitted at full), after a kind's {@code out.kind(...)}. */
     protected final void writeBase(CgAnimNodeWriter out) {
         out.node("source", source);
-        if (alpha.enabled() != null) {
-            out.put("alpha", Map.of("bool", alpha.enabled().name(), "blend_in", alpha.blendIn(), "blend_out", alpha.blendOut()));
-        } else {
-            out.alpha("alpha", alpha.constant(), alpha.variable(), 1f);
+        if (!alpha.full()) out.put("alpha", alpha.tree());
+    }
+
+    // ── reading a control's data form ──
+
+    /** Its {@code source} node. */
+    static CgAnimNode source(CgAnimNodeKind.Context c, String at, Map<?, ?> m) {
+        return c.pose(c.string(at, m, "source"));
+    }
+
+    /** Its {@code alpha}, {@link CgControlAlpha#FULL} where absent. */
+    static CgControlAlpha alpha(CgAnimNodeKind.Context c, String at, Map<?, ?> m) {
+        return CgControlAlpha.read(c, at + ".alpha", m.get("alpha"));
+    }
+
+    /** {@code m.key} as a number, {@code dflt} where absent. */
+    static float number(CgAnimNodeKind.Context c, String at, Map<?, ?> m, String key, float dflt) {
+        Object o = m.get(key);
+        return o == null ? dflt : c.number(at + "." + key, o);
+    }
+
+    /** {@code m.key} as three numbers, {@code dflt} where absent. */
+    static float[] vector(CgAnimNodeKind.Context c, String at, Map<?, ?> m, String key, float... dflt) {
+        float[] v = CgControlAlpha.numbers(c, at + "." + key, m.get(key), 3);
+        return v != null ? v : dflt;
+    }
+
+    /** {@code m.key} as an enum constant by its snake-case name, {@code dflt} where absent. */
+    static <E extends Enum<E>> E choice(CgAnimNodeKind.Context c, String at, Map<?, ?> m, String key, Class<E> type, E dflt) {
+        Object o = m.get(key);
+        if (o == null) return dflt;
+        for (E e : type.getEnumConstants()) if (e.name().toLowerCase(Locale.ROOT).equals(o)) return e;
+        throw new CgAssetException(at + "." + key + ": " + o + " is not one of " + Arrays.toString(type.getEnumConstants()).toLowerCase(Locale.ROOT));
+    }
+
+    /** {@code [x, y, z]} as three booleans, all {@code dflt} where absent. */
+    static boolean[] flags(String at, Object o, boolean dflt) {
+        if (o == null) return new boolean[]{dflt, dflt, dflt};
+        if (!(o instanceof List<?> l) || l.size() != 3) throw new CgAssetException(at + ": three booleans");
+        boolean[] out = new boolean[3];
+        for (int i = 0; i < 3; i++) {
+            if (!(l.get(i) instanceof Boolean flag)) throw new CgAssetException(at + ": three booleans");
+            out[i] = flag;
         }
+        return out;
+    }
+
+    /** {@code e}'s data form: its name, snake-cased. */
+    static String id(Enum<?> e) {
+        return e.name().toLowerCase(Locale.ROOT);
     }
 }

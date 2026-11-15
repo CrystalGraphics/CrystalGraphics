@@ -1,5 +1,8 @@
 package com.crystalgraphics.animation.ik;
 
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -7,7 +10,9 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.animation.blend.CgAlphaBlender;
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
+import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
+import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
  * How much of a bone control shows over its input, 0 to 1: Unreal's skeletal control alpha
@@ -171,25 +176,70 @@ public final class CgControlAlpha {
 
     // ── its data form ──
 
-    float constant() {
-        return constant;
+    /**
+     * Its data form: a number, a float variable's name, {@code { bool, blend_in, blend_out }}, or
+     * {@code { value, scale, bias, map_range, clamp, interp }} where it scales, maps, clamps or eases.
+     */
+    Object tree() {
+        if (enabled != null) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("bool", enabled.name());
+            out.put("blend_in", blendIn);
+            out.put("blend_out", blendOut);
+            return out;
+        }
+        Object value = variable != null ? variable.name() : (Object) constant;
+        if (scale == 1f && bias == 0f && !mapRange && !clampResult && !interpResult) return value;
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("value", value);
+        if (scale != 1f) out.put("scale", scale);
+        if (bias != 0f) out.put("bias", bias);
+        if (mapRange) out.put("map_range", List.of(inMin, inMax, outMin, outMax));
+        if (clampResult) out.put("clamp", List.of(clampMin, clampMax));
+        if (interpResult) out.put("interp", List.of(interpUp, interpDown));
+        return out;
     }
 
+    /** Whether it is {@link #FULL}'s: a constant 1, nothing applied. */
+    boolean full() {
+        return enabled == null && variable == null && constant == 1f && scale == 1f && bias == 0f && !mapRange
+                && !clampResult && !interpResult;
+    }
+
+    /** Reads {@link #tree()}'s forms at {@code at}; null is {@link #FULL}. */
+    static CgControlAlpha read(CgAnimNodeKind.Context c, String at, @Nullable Object o) {
+        if (o == null) return FULL;
+        if (o instanceof Number n) return of(n.floatValue());
+        if (o instanceof String name) return of(c.<Float>variable(at, name, CgAnimVariable.Type.FLOAT));
+        if (!(o instanceof Map<?, ?> m)) throw new CgAssetException(at + ": an alpha is a number, a variable or a map");
+        if (m.get("bool") != null) {
+            return bool(c.variable(at + ".bool", c.string(at, m, "bool"), CgAnimVariable.Type.BOOL),
+                    m.get("blend_in") == null ? 0f : c.number(at + ".blend_in", m.get("blend_in")),
+                    m.get("blend_out") == null ? 0f : c.number(at + ".blend_out", m.get("blend_out")));
+        }
+        Object v = m.get("value");
+        CgControlAlpha a = v instanceof String name ? of(c.<Float>variable(at + ".value", name, CgAnimVariable.Type.FLOAT))
+                : of(v == null ? 1f : c.number(at + ".value", v));
+        if (m.get("scale") != null || m.get("bias") != null) {
+            a = a.scaleBias(m.get("scale") == null ? 1f : c.number(at + ".scale", m.get("scale")),
+                    m.get("bias") == null ? 0f : c.number(at + ".bias", m.get("bias")));
+        }
+        float[] r = numbers(c, at + ".map_range", m.get("map_range"), 4);
+        if (r != null) a = a.mapRange(r[0], r[1], r[2], r[3]);
+        float[] k = numbers(c, at + ".clamp", m.get("clamp"), 2);
+        if (k != null) a = a.clamp(k[0], k[1]);
+        float[] i = numbers(c, at + ".interp", m.get("interp"), 2);
+        if (i != null) a = a.interp(i[0], i[1]);
+        return a;
+    }
+
+    /** {@code o} as {@code n} numbers, or null where absent. */
     @Nullable
-    CgAnimVariable<Float> variable() {
-        return variable;
-    }
-
-    @Nullable
-    CgAnimVariable<Boolean> enabled() {
-        return enabled;
-    }
-
-    float blendIn() {
-        return blendIn;
-    }
-
-    float blendOut() {
-        return blendOut;
+    static float[] numbers(CgAnimNodeKind.Context c, String at, @Nullable Object o, int n) {
+        if (o == null) return null;
+        if (!(o instanceof List<?> l) || l.size() != n) throw new CgAssetException(at + ": " + n + " numbers");
+        float[] out = new float[n];
+        for (int j = 0; j < n; j++) out[j] = c.number(at + "[" + j + "]", l.get(j));
+        return out;
     }
 }

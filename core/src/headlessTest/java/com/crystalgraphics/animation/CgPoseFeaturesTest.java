@@ -13,6 +13,9 @@ import com.crystalgraphics.animation.graph.CgBlendMask;
 import com.crystalgraphics.animation.graph.CgLayeredBlendNode;
 import com.crystalgraphics.animation.graph.CgRefPoseNode;
 import com.crystalgraphics.animation.graph.CgSlotNode;
+import com.crystalgraphics.animation.ik.CgBoneSpace;
+import com.crystalgraphics.animation.ik.CgControlAlpha;
+import com.crystalgraphics.animation.ik.CgModifyBoneNode;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgMirrorTable;
 import com.crystalgraphics.api.animation.CgAnimPose;
@@ -23,7 +26,7 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.frame.CgWorld;
 
 /**
- * The pose's features on a dedicated server's classpath: mirroring, bone writes, layer weights and masks, hidden bones,
+ * The pose's features on a dedicated server's classpath: mirroring, modify bone, layer weights and masks, hidden bones,
  * and an instance posed on the server's tick that holds while paused.
  */
 public class CgPoseFeaturesTest {
@@ -78,26 +81,27 @@ public class CgPoseFeaturesTest {
     }
 
     @Test
-    public void boneWritesReplaceInTheParentAndAddInComponentSpace() {
+    public void modifyBoneReplacesInTheParentAndAddsInComponentSpace() {
         CgSkeletalMesh mesh = body();
-        CgAnimInstance body = new CgAnimInstance(mesh);
-        Quaternionf quarter = new Quaternionf().rotateZ((float) Math.toRadians(90));
-        body.modify("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter);
+        CgModifyBoneNode turn = CgModifyBoneNode.of(CgRefPoseNode.create(), "spine")
+                .rotation(CgModifyBoneNode.Mode.REPLACE, CgBoneSpace.PARENT_BONE, 0f, 0f, 90f);
         // In component space, after the spine turned: +x of the component, whatever the parent's turn
-        body.modify("l_arm").translation(CgBoneWrite.Mode.ADD, CgBoneWrite.Space.COMPONENT, 0.5f, 0, 0);
-        body.evaluate();
+        CgModifyBoneNode push = CgModifyBoneNode.of(turn, "l_arm")
+                .translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.COMPONENT, 0.5f, 0f, 0f);
+        CgAnimInstance body = new CgAnimInstance(mesh).graph(CgAnimGraph.builder("test:modify", mesh.skeleton()).output(push).build());
+        body.tick(0f);
         int arm = mesh.skeleton().indexOf("l_arm");
         Matrix4f m = body.pose().component(arm, new Matrix4f());
-        // The spine at (0,1,0) turned 90° about z puts the arm's (1,0,0) at (0,2,0); the write then adds +x
+        // The spine at (0,1,0) turned 90° about z puts the arm's (1,0,0) at (0,2,0); the node then adds +x
         assertEquals(0.5f, m.m30(), EPS);
         assertEquals(2f, m.m31(), EPS);
 
-        CgBoneWrite half = new CgAnimInstance(mesh).modify("spine");
-        CgAnimInstance faded = new CgAnimInstance(mesh);
-        faded.modify("spine").rotation(CgBoneWrite.Mode.REPLACE, CgBoneWrite.Space.PARENT, quarter).alpha(0.5f);
-        faded.evaluate();
+        CgAnimInstance faded = new CgAnimInstance(mesh).graph(CgAnimGraph.builder("test:faded", mesh.skeleton())
+                .output(CgModifyBoneNode.of(CgRefPoseNode.create(), "spine")
+                        .rotation(CgModifyBoneNode.Mode.REPLACE, CgBoneSpace.PARENT_BONE, 0f, 0f, 90f).alpha(CgControlAlpha.of(0.5f)))
+                .build());
+        faded.tick(0f);
         assertEquals("alpha 0.5 is half the turn", 45f, angleZ(faded.pose(), mesh.skeleton().indexOf("spine")), 1e-2f);
-        assertEquals(1f, half.alpha(), 0f);
     }
 
     @Test

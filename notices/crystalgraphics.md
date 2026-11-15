@@ -27,6 +27,7 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **Skia** mask blur | `com/crystalgraphics/text/shadow/{CgMaskBlurFilter,CgGaussFilter}` | BSD-3-Clause — © 2017 Google LLC | Ported source, modified. Licence below |
 | **Skia Graphite** rect blur | `assets/crystalgraphics/shaders/canvas/primitives/rect_blur.glsl` | BSD-3-Clause — © 2023–2024 Google LLC | Ported source, modified. Licence below |
 | **Godot Engine** particle attractors, colliders and process material | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/**/*.glsl` | MIT — © 2014-present Godot Engine contributors; © 2007-2014 Juan Linietsky, Ariel Manzur | Ported source, modified. Licence below |
+| **Stan Melax's Sandbox** rigid-body limits | `com/crystalgraphics/animation/dynamics/CgAnimPhys` | MIT — © 2014 Stan Melax | Written to its behaviour. Licence below |
 | **bevy_hanabi** update modifiers | `com/crystalgraphics/vfx/particle/CgVfxModule`, `assets/crystalgraphics/shaders/vfx/sim/{vortex,conform,kill}.glsl` | MIT (of MIT or Apache-2.0) — © 2021 Jerome Humbert | Ported source, modified. Licence below |
 | **Jolt Physics** GJK, EPA and closed-form tests | `com/crystalgraphics/shape/query/` | MIT — © 2021 Jorrit Rouwe | Ported source, modified. Licence below |
 | **Effekseer** procedural models and curl noise | `com/crystalgraphics/api/mesh/CgProceduralMesh`, `CgMeshNoise` | MIT — © 2011 Effekseer Project | Ported source, modified. Licence below |
@@ -202,6 +203,33 @@ collision response from `scene/resources/particle_process_material.cpp`.
 ```
 Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md).
 Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Stan Melax's Sandbox
+
+The animation dynamics solver follows the rigid-body limits of Sandbox (github.com/melax/sandbox), as Unreal's
+AnimDynamics adapted them.
+
+```
+Copyright (c) 2014 Stan Melax
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

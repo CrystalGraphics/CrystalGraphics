@@ -127,7 +127,7 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
     CgSkeletalMeshComponent(CgScenePrimitives scene, CgSkeletalMesh mesh) {
         super(scene);
         this.mesh = mesh;
-        this.own = new CgAnimInstance(mesh).curveTarget(this);
+        this.own = new CgAnimInstance(mesh).curveTarget(this).placedBy(out -> out.set(world()));
         int slots = mesh.mesh().submeshCount();
         this.materials = new CgMaterialInterface[slots];
         this.dynamic = new CgMaterialInstance[slots];

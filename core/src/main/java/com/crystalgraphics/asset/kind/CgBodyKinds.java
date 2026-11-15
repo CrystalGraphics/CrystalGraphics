@@ -223,6 +223,312 @@ public final class CgBodyKinds {
             .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    // ── bone controls (FAnimNode_SkeletalControlBase): a source pose and an alpha each ──
+
+    /** A control's alpha as a map: a bool blended in and out, or a value scaled, mapped, clamped and eased. */
+    static final CgType CONTROL_ALPHA = CgTypes.struct("crystalgraphics:anim_graph.control_alpha")
+            .property("bool", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("blend_in", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("blend_out", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("value", ALPHA).flags(CgPropertyFlag.HEADLESS)
+            .property("scale", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("bias", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("map_range", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("clamp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("interp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    private static final CgValueType CONTROL_ALPHA_VALUE = CgValueType.oneOf(FLOAT, STRING, CgValueType.struct(CONTROL_ALPHA));
+    /** {@code EBoneControlSpace}. */
+    private static final CgValueType BONE_SPACE = CgValueType.enumOf("world", "component", "parent_bone", "bone");
+    /** A point a control reaches for: a location in a space, relative to a bone where the space is a bone's. */
+    static final CgType IK_TARGET = CgTypes.struct("crystalgraphics:anim_graph.ik_target")
+            .property("space", BONE_SPACE).required().flags(CgPropertyFlag.HEADLESS)
+            .property("bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("location", CgValueType.listOf(ALPHA)).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    private static CgType.Builder controlNode(String kind) {
+        return animNode(kind)
+                .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+                .property("alpha", CONTROL_ALPHA_VALUE).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS);
+    }
+
+    static final CgType BONE_MODIFICATION = CgTypes.struct("crystalgraphics:anim_graph.bone_modification")
+            .property("mode", CgValueType.enumOf("ignore", "replace", "add")).defaultValue("add").flags(CgPropertyFlag.HEADLESS)
+            .property("space", BONE_SPACE).required().flags(CgPropertyFlag.HEADLESS)
+            .property("value", CgValueType.listOf(ALPHA)).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_ModifyBone}. */
+    static final CgType ANIM_MODIFY_BONE = controlNode("modify_bone")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("translation", CgValueType.struct(BONE_MODIFICATION)).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation", CgValueType.struct(BONE_MODIFICATION)).flags(CgPropertyFlag.HEADLESS)
+            .property("scale", CgValueType.struct(BONE_MODIFICATION)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_TwoBoneIK}. */
+    static final CgType ANIM_TWO_BONE_IK = controlNode("two_bone_ik")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("effector", CgValueType.struct(IK_TARGET)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("joint_target", CgValueType.struct(IK_TARGET)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("stretch", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_from_effector", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("keep_relative_rotation", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("no_twist", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_LookAt}. */
+    static final CgType ANIM_LOOK_AT = controlNode("look_at")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("target", CgValueType.struct(IK_TARGET)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("look_at_axis", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("look_up_axis", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("clamp", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("interpolation_time", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("interpolation", CgValueType.enumOf("linear", "cubic", "sinusoidal", "ease_in_out_exponent_2",
+                    "ease_in_out_exponent_3", "ease_in_out_exponent_4", "ease_in_out_exponent_5")).defaultValue("linear").flags(CgPropertyFlag.HEADLESS)
+            .property("interpolation_trigger", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_CopyBone}. */
+    static final CgType ANIM_COPY_BONE = controlNode("copy_bone")
+            .property("source_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("target_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("translation", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("scale", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("space", BONE_SPACE).defaultValue("component").flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_Fabrik}. */
+    static final CgType ANIM_FABRIK = controlNode("fabrik")
+            .property("root_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("tip_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("effector", CgValueType.struct(IK_TARGET)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("tip_rotation", CgValueType.enumOf("keep_local", "copy_from_target", "keep_component")).defaultValue("keep_local").flags(CgPropertyFlag.HEADLESS)
+            .property("precision", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.01).flags(CgPropertyFlag.HEADLESS)
+            .property("max_iterations", INT).forms(CgValueForm.CONSTANT).defaultValue(10).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_CCDIK}. */
+    static final CgType ANIM_CCD_IK = controlNode("ccd_ik")
+            .property("root_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("tip_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("effector", CgValueType.struct(IK_TARGET)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("precision", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.01).flags(CgPropertyFlag.HEADLESS)
+            .property("max_iterations", INT).forms(CgValueForm.CONSTANT).defaultValue(10).flags(CgPropertyFlag.HEADLESS)
+            .property("start_from_tail", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("enable_rotation_limit", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_limits", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType CONSTRAINT_TARGET = CgTypes.struct("crystalgraphics:anim_graph.constraint_target")
+            .property("target_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("type", CgValueType.enumOf("translation", "rotation", "scale", "parent")).defaultValue("parent").flags(CgPropertyFlag.HEADLESS)
+            .property("maintain_offset", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("axes", CgValueType.listOf(BOOL)).flags(CgPropertyFlag.HEADLESS)
+            .property("weight", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_Constraint}. */
+    static final CgType ANIM_CONSTRAINT = controlNode("constraint")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("constraints", CgValueType.listOf(CgValueType.struct(CONSTRAINT_TARGET))).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    static final CgType ANGULAR_LIMIT = CgTypes.struct("crystalgraphics:anim_graph.angular_limit")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("min", CgValueType.listOf(FLOAT)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("max", CgValueType.listOf(FLOAT)).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_ApplyLimits}. */
+    static final CgType ANIM_APPLY_LIMITS = controlNode("apply_limits")
+            .property("limits", CgValueType.listOf(CgValueType.struct(ANGULAR_LIMIT))).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_BoneDrivenController}, driving a bone. */
+    static final CgType ANIM_BONE_DRIVEN_CONTROLLER = controlNode("bone_driven_controller")
+            .property("source_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("source_component", CgValueType.enumOf("translation_x", "translation_y", "translation_z", "rotation_x",
+                    "rotation_y", "rotation_z", "scale", "scale_x", "scale_y", "scale_z")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("target_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("affects", CgValueType.listOf(CgValueType.enumOf("translation_x", "translation_y", "translation_z",
+                    "rotation_x", "rotation_y", "rotation_z", "scale_x", "scale_y", "scale_z"))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("mode", CgValueType.enumOf("add_to_input", "replace_component", "add_to_ref_pose")).defaultValue("add_to_input").flags(CgPropertyFlag.HEADLESS)
+            .property("multiplier", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("range", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    private static final CgValueType BONE_AXIS = CgValueType.enumOf("none", "x", "y", "z");
+    static final CgType LEG_IK_LEG = CgTypes.struct("crystalgraphics:anim_graph.leg_ik_leg")
+            .property("ik_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("fk_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("bones_in_limb", INT).forms(CgValueForm.CONSTANT).defaultValue(2).flags(CgPropertyFlag.HEADLESS)
+            .property("min_rotation_angle", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(15.0).flags(CgPropertyFlag.HEADLESS)
+            .property("foot_forward_axis", BONE_AXIS).defaultValue("y").flags(CgPropertyFlag.HEADLESS)
+            .property("hinge_axis", BONE_AXIS).defaultValue("none").flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_limit", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("knee_twist_correction", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_LegIK}. */
+    static final CgType ANIM_LEG_IK = controlNode("leg_ik")
+            .property("legs", CgValueType.listOf(CgValueType.struct(LEG_IK_LEG))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("reach_precision", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0001).flags(CgPropertyFlag.HEADLESS)
+            .property("max_iterations", INT).forms(CgValueForm.CONSTANT).defaultValue(12).flags(CgPropertyFlag.HEADLESS)
+            .property("soft_percent_length", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("soft_alpha", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    static final CgType FOOT_PLACEMENT_LEG = CgTypes.struct("crystalgraphics:anim_graph.foot_placement_leg")
+            .property("fk_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("ik_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("ball_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("bones_in_limb", INT).forms(CgValueForm.CONSTANT).defaultValue(2).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FFootPlacementPlantSettings}, in metres. */
+    static final CgType FOOT_PLACEMENT_PLANT = CgTypes.struct("crystalgraphics:anim_graph.foot_placement_plant")
+            .property("speed_threshold", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.6).flags(CgPropertyFlag.HEADLESS)
+            .property("distance_to_ground", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("lock_type", CgValueType.enumOf("unlocked", "pivot_around_ball", "pivot_around_ankle", "lock_rotation"))
+            .defaultValue("pivot_around_ball").flags(CgPropertyFlag.HEADLESS)
+            .property("unplant_radius", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.35).flags(CgPropertyFlag.HEADLESS)
+            .property("replant_radius_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.35).flags(CgPropertyFlag.HEADLESS)
+            .property("unplant_angle", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(45.0).flags(CgPropertyFlag.HEADLESS)
+            .property("replant_angle_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("max_extension_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("min_extension_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.2).flags(CgPropertyFlag.HEADLESS)
+            .property("separating_distance", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("unalignment_speed_threshold", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(2.0).flags(CgPropertyFlag.HEADLESS)
+            .property("ankle_twist_reduction", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.75).flags(CgPropertyFlag.HEADLESS)
+            .property("reconstruct_world_plant_from_velocity", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("adjust_heel_before_planting", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FFootPlacementPelvisSettings}, in metres. */
+    static final CgType FOOT_PLACEMENT_PELVIS = CgTypes.struct("crystalgraphics:anim_graph.foot_placement_pelvis")
+            .property("max_offset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(350.0).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("horizontal_rebalancing_weight", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.3).flags(CgPropertyFlag.HEADLESS)
+            .property("max_offset_horizontal", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("heel_lift_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("movement_compensation", CgValueType.enumOf("component_space", "world_space", "sudden_motion_only"))
+            .defaultValue("sudden_motion_only").flags(CgPropertyFlag.HEADLESS)
+            .property("interpolation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("disable_offset_in_air", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FFootPlacementInterpolationSettings}. */
+    static final CgType FOOT_PLACEMENT_INTERPOLATION = CgTypes.struct("crystalgraphics:anim_graph.foot_placement_interpolation")
+            .property("unplant_linear_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(250.0).flags(CgPropertyFlag.HEADLESS)
+            .property("unplant_linear_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("unplant_angular_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(450.0).flags(CgPropertyFlag.HEADLESS)
+            .property("unplant_angular_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("floor_linear_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1000.0).flags(CgPropertyFlag.HEADLESS)
+            .property("floor_linear_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("floor_angular_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(450.0).flags(CgPropertyFlag.HEADLESS)
+            .property("floor_angular_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("floor_interpolation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("separation_interpolation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FFootPlacementTraceSettings}, in metres. */
+    static final CgType FOOT_PLACEMENT_TRACE = CgTypes.struct("crystalgraphics:anim_graph.foot_placement_trace")
+            .property("start_offset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(-0.75).flags(CgPropertyFlag.HEADLESS)
+            .property("end_offset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("sweep_radius", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.05).flags(CgPropertyFlag.HEADLESS)
+            .property("max_ground_penetration", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("enabled", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_FootPlacement}. */
+    static final CgType ANIM_FOOT_PLACEMENT = controlNode("foot_placement")
+            .property("pelvis_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("ik_foot_root_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("legs", CgValueType.listOf(CgValueType.struct(FOOT_PLACEMENT_LEG))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("plant", CgValueType.struct(FOOT_PLACEMENT_PLANT)).flags(CgPropertyFlag.HEADLESS)
+            .property("pelvis", CgValueType.struct(FOOT_PLACEMENT_PELVIS)).flags(CgPropertyFlag.HEADLESS)
+            .property("interpolation", CgValueType.struct(FOOT_PLACEMENT_INTERPOLATION)).flags(CgPropertyFlag.HEADLESS)
+            .property("trace", CgValueType.struct(FOOT_PLACEMENT_TRACE)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code FAnimNode_SpringBone}, in metres. */
+    static final CgType ANIM_SPRING_BONE = controlNode("spring_bone")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(50.0).flags(CgPropertyFlag.HEADLESS)
+            .property("damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(4.0).flags(CgPropertyFlag.HEADLESS)
+            .property("error_reset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(2.56).flags(CgPropertyFlag.HEADLESS)
+            .property("max_displacement", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("translate", CgValueType.listOf(BOOL)).flags(CgPropertyFlag.HEADLESS)
+            .property("rotate", CgValueType.listOf(BOOL)).flags(CgPropertyFlag.HEADLESS)
+            .property("owner_velocity", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    private static final CgValueType AXIS = CgValueType.enumOf("x", "y", "z");
+    private static final CgValueType LINEAR_LIMIT = CgValueType.enumOf("free", "limited");
+    /** {@code FAnimPhysConstraintSetup}, angles in degrees. */
+    static final CgType ANIM_DYNAMICS_CONSTRAINT = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_constraint")
+            .property("linear_x", LINEAR_LIMIT).defaultValue("limited").flags(CgPropertyFlag.HEADLESS)
+            .property("linear_y", LINEAR_LIMIT).defaultValue("limited").flags(CgPropertyFlag.HEADLESS)
+            .property("linear_z", LINEAR_LIMIT).defaultValue("limited").flags(CgPropertyFlag.HEADLESS)
+            .property("linear_min", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_max", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_type", CgValueType.enumOf("angular", "cone")).defaultValue("angular").flags(CgPropertyFlag.HEADLESS)
+            .property("twist_axis", AXIS).defaultValue("x").flags(CgPropertyFlag.HEADLESS)
+            .property("angular_target_axis", AXIS).defaultValue("x").flags(CgPropertyFlag.HEADLESS)
+            .property("cone_angle", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_min", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_max", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_target", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimPhysBodyDefinition}, in metres. */
+    static final CgType ANIM_DYNAMICS_BODY = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_body")
+            .property("bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("box_extents", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("local_joint_offset", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("constraint", CgValueType.struct(ANIM_DYNAMICS_CONSTRAINT)).flags(CgPropertyFlag.HEADLESS)
+            .property("collision", CgValueType.enumOf("com", "custom_sphere", "inner_sphere", "outer_sphere")).defaultValue("com")
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("sphere_radius", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimPhysSphericalLimit}. */
+    static final CgType ANIM_DYNAMICS_SPHERE = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_sphere")
+            .property("driving_bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("offset", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("radius", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("type", CgValueType.enumOf("inner", "outer")).defaultValue("outer").flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimPhysPlanarLimit}: the plane's point and its up axis. */
+    static final CgType ANIM_DYNAMICS_PLANE = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_plane")
+            .property("driving_bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("point", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("normal", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** How much of the component's motion the bodies feel, in metres a second squared. */
+    static final CgType ANIM_DYNAMICS_COMPONENT_MOTION = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_component_motion")
+            .property("linear_acc_scale", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_vel_scale", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("applied_linear_acc_clamp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimPhysSimSpaceSettings}. */
+    static final CgType ANIM_DYNAMICS_SIM_SPACE = CgTypes.struct("crystalgraphics:anim_graph.anim_dynamics_sim_space")
+            .property("angular_alpha", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_angular_velocity", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(10000.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_angular_acceleration", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(10000.0).flags(CgPropertyFlag.HEADLESS)
+            .property("external_angular_velocity", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_AnimDynamics}, in metres; no wind and no retargeting. */
+    static final CgType ANIM_DYNAMICS = controlNode("anim_dynamics")
+            .property("bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("chain_end", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("simulation_space", CgValueType.enumOf("component", "world", "root_relative", "bone_relative"))
+            .defaultValue("component").flags(CgPropertyFlag.HEADLESS)
+            .property("relative_space_bone", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("bodies", CgValueType.listOf(CgValueType.struct(ANIM_DYNAMICS_BODY))).flags(CgPropertyFlag.HEADLESS)
+            .property("gravity_scale", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("gravity_override", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("gravity_override_in_sim_space", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_damping", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_damping", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_bias", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("linear_spring", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("angular_spring", FLOAT).forms(CgValueForm.CONSTANT).flags(CgPropertyFlag.HEADLESS)
+            .property("pre_iterations", INT).forms(CgValueForm.CONSTANT).defaultValue(4).flags(CgPropertyFlag.HEADLESS)
+            .property("post_iterations", INT).forms(CgValueForm.CONSTANT).defaultValue(1).flags(CgPropertyFlag.HEADLESS)
+            .property("external_force", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("component_motion", CgValueType.struct(ANIM_DYNAMICS_COMPONENT_MOTION)).flags(CgPropertyFlag.HEADLESS)
+            .property("sim_space_settings", CgValueType.struct(ANIM_DYNAMICS_SIM_SPACE)).flags(CgPropertyFlag.HEADLESS)
+            .property("spherical_limits", CgValueType.listOf(CgValueType.struct(ANIM_DYNAMICS_SPHERE))).flags(CgPropertyFlag.HEADLESS)
+            .property("planar_limits", CgValueType.listOf(CgValueType.struct(ANIM_DYNAMICS_PLANE))).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     /** {@code FAnimNode_LinkedInputPose}: a pose its layer's or graph's caller passes. */
     static final CgType ANIM_LINKED_INPUT_POSE = animNode("linked_input_pose")
             .property("name", STRING).required().flags(CgPropertyFlag.HEADLESS)

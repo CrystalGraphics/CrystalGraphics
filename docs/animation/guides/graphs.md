@@ -503,7 +503,7 @@ weight_speed: 5
 1. **The game thread**: each instance's montages (their weights, their clips onto their slots), its `onUpdate`, then
    its variables copied for the worker.
 2. **A worker** (split across workers past `crystalgraphics.animation.parallelAt` instances): the graph's update
-   (weights, which nodes show, every clip's tick), its evaluation into the pose, bone writes, the skinning matrices.
+   (weights, which nodes show, every clip's tick), its evaluation into the pose (bone controllers included, [ik.md](ik.md)), the skinning matrices.
 3. **The game thread**: the frame's material curves onto the component's materials.
 
 - **Nothing allocates per frame** once a graph has run a few frames.

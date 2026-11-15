@@ -86,8 +86,8 @@ public final class CgSmoothing {
         springDamperFrequency(state, target, targetRate, dt, 1f / ((float) Math.PI * smoothingTime), dampingRatio);
     }
 
-    /** {@code SpringDamper}: by its undamped frequency, cycles a second. */
-    private static void springDamperFrequency(float[] state, float target, float targetRate, float dt, float frequency, float damping) {
+    /** {@code SpringDamper}: by its undamped frequency, cycles a second; what {@link CgSpringInterp}'s springs step. */
+    public static void springDamperFrequency(float[] state, float target, float targetRate, float dt, float frequency, float damping) {
         if (dt <= 0f) return;
         float w = frequency * 2f * (float) Math.PI;
         float value = state[0], rate = state[1];

@@ -15,9 +15,11 @@ import org.joml.Vector3f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimNode;
+import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimNodeWriter;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.api.animation.CgAnimPose;
+import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
  * One bone's translation, rotation or scale replaced or added to, each in a space of its own: Unreal's Transform
@@ -47,6 +49,35 @@ public final class CgModifyBoneNode extends CgSkeletalControlNode {
 
     /** Unreal's {@code EBoneModificationMode}. */
     public enum Mode { IGNORE, REPLACE, ADD }
+
+    /** Reads {@code kind: modify_bone}. */
+    public static final CgAnimNodeKind KIND = (c, at, m) -> {
+        CgModifyBoneNode n = of(source(c, at, m), c.string(at, m, "bone")).alpha(alpha(c, at, m));
+        return new CgModifyBoneNode(n.source, n.alpha, n.bone, read(c, at + ".translation", m.get("translation"), n.translation),
+                read(c, at + ".rotation", m.get("rotation"), n.rotation), read(c, at + ".scale", m.get("scale"), n.scale));
+    };
+
+    @SuppressWarnings("unchecked")
+    private static Part read(CgAnimNodeKind.Context c, String at, @Nullable Object o, Part none) {
+        if (o == null) return none;
+        if (!(o instanceof Map<?, ?> p)) throw new CgAssetException(at + ": { mode, space, value }");
+        Mode mode = choice(c, at, p, "mode", Mode.class, Mode.ADD);
+        CgBoneSpace space;
+        try {
+            space = CgBoneSpace.of(c.string(at, p, "space"));
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(at + ".space: " + e.getMessage());
+        }
+        if (!(p.get("value") instanceof List<?> l) || l.size() != 3) throw new CgAssetException(at + ".value: 3 values");
+        float[] k = none.constants.clone();
+        CgAnimVariable<Float>[] v = new CgAnimVariable[3];
+        for (int i = 0; i < 3; i++) {
+            Object e = l.get(i);
+            if (e instanceof String name) v[i] = c.variable(at + ".value[" + i + "]", name, CgAnimVariable.Type.FLOAT);
+            else k[i] = c.number(at + ".value[" + i + "]", e);
+        }
+        return part(mode, space, k[0], k[1], k[2], v[0], v[1], v[2]);
+    }
 
     /** One part: its mode, space and three values, each a constant or a variable. */
     private record Part(Mode mode, CgBoneSpace space, float[] constants, CgAnimVariable<Float>[] variables) {

@@ -11,6 +11,7 @@ import org.joml.Vector3f;
 
 import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimNode;
+import com.crystalgraphics.animation.graph.CgAnimNodeKind;
 import com.crystalgraphics.animation.graph.CgAnimNodeWriter;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.api.animation.CgAnimPose;
@@ -37,6 +38,19 @@ import com.crystalgraphics.api.animation.CgAnimPose;
  * </ul>
  */
 public final class CgTwoBoneIkNode extends CgSkeletalControlNode {
+
+    /** Reads {@code kind: two_bone_ik}. */
+    public static final CgAnimNodeKind KIND = (c, at, m) -> {
+        CgTwoBoneIkNode n = of(source(c, at, m), c.string(at, m, "bone"), CgIkTarget.read(c, at + ".effector", m.get("effector")),
+                CgIkTarget.read(c, at + ".joint_target", m.get("joint_target"))).alpha(alpha(c, at, m));
+        float[] stretch = CgControlAlpha.numbers(c, at + ".stretch", m.get("stretch"), 2);
+        if (stretch != null) n = n.stretch(stretch[0], stretch[1]);
+        if (Boolean.TRUE.equals(m.get("rotation_from_effector"))) n = n.rotationFromEffector();
+        if (Boolean.TRUE.equals(m.get("keep_relative_rotation"))) n = n.keepRelativeRotation();
+        float[] twist = CgControlAlpha.numbers(c, at + ".no_twist", m.get("no_twist"), 3);
+        if (twist != null) n = n.noTwist(twist[0], twist[1], twist[2]);
+        return n;
+    };
 
     private final String ikBone;
     private final CgIkTarget effector, jointTarget;
