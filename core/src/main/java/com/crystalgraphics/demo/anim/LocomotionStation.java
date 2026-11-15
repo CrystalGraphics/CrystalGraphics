@@ -217,7 +217,8 @@ final class LocomotionStation implements AnimDemoStation {
                 .ikFeet("ik_foot_l", "ik_foot_r").locomotionAngle(angle).flipBeyond(0f).alpha(on);
         CgAnimNode legs = CgLegIkNode.of(turned).leg("ik_foot_l", "foot_l").leg("ik_foot_r", "foot_r");
         CgAnimGraph warpedGraph = CgAnimGraph.builder("demo:locomotion_warped", s).variables(speed, rate, angle, warp).output(legs).build();
-        CgAnimGraph plainGraph = CgAnimGraph.builder("demo:locomotion_plain", s).variables(speed, rate)
+        // the same variables as the warped graph's: every runner is fed alike
+        CgAnimGraph plainGraph = CgAnimGraph.builder("demo:locomotion_plain", s).variables(speed, rate, angle)
                 .output(CgBlendSpacePlayerNode.of(runs, speed)).build();
         CgAnimNode standing = CgOffsetRootBoneNode.of(CgSequencePlayerNode.of(cast.clip("FLD_Stand").sequence()).loop())
                 .rotation(CgOffsetRootBoneNode.Mode.INTERPOLATE, 0.25f, 100f).translation(CgOffsetRootBoneNode.Mode.INTERPOLATE, 0.1f, 0.5f);
