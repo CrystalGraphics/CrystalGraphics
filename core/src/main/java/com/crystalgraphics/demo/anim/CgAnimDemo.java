@@ -1,8 +1,12 @@
 package com.crystalgraphics.demo.anim;
 
+import com.crystalgraphics.api.font.CgDefaultFont;
+import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.asset.load.CgAssetMounts;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.demo.CgDemoStyles;
 import com.crystalgraphics.platform.input.CgKeyCodes;
+import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.world.actor.kit.CgKitActor;
 import com.crystalgraphics.world.actor.kit.CgKitActorFile;
 
@@ -40,6 +44,8 @@ public final class CgAnimDemo {
 
     private static final Logger LOGGER = LogManager.getLogger(CgAnimDemo.class);
 
+    /** How high over each station's origin its name stands, in blocks. */
+    private static final double LABEL_Y = 4;
     /** Blocks between stations along x. */
     public static final int SPACING = 14;
     /** The stations' keys, which neither Minecraft nor {@code CgRenderDemo} uses. */
@@ -48,6 +54,9 @@ public final class CgAnimDemo {
 
     private final List<CgKitActor.Spec> kitCharacters;
     private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation(), new ReachStation(), new RetargetStation());
+    private final CgFont labelFont = CgDefaultFont.bold(48);
+    /** Each station's name over it: its number, the key that brings the harness's camera to it, then its name. */
+    private final String[] titles = new String[stations.size()];
     private AnimDemoCasts casts;
     private AnimDemoTime time;
     private AnimDemoSet set;
@@ -58,6 +67,7 @@ public final class CgAnimDemo {
     /** A demo with {@code kitCharacters} beside the humanoids, each with the clips of its spec's {@code clips} folders. */
     public CgAnimDemo(List<CgKitActor.Spec> kitCharacters) {
         this.kitCharacters = List.copyOf(kitCharacters);
+        for (int i = 0; i < titles.length; i++) titles[i] = (i + 1) + "  " + stations.get(i).name();
     }
 
     /**
@@ -117,6 +127,10 @@ public final class CgAnimDemo {
         lastSeconds = seconds;
         stations.get(active).update(dt);
         time.tickSteps();
+        for (int i = 0; i < stations.size(); i++) {
+            CgScene.client().label(titles[i]).at(x + i * SPACING, y + LABEL_Y, z).height(0.6f)
+                    .font(labelFont).style(CgDemoStyles.LABEL).submit();
+        }
     }
 
     /**
