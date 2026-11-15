@@ -470,6 +470,47 @@ tracks:
 - **What fails at play**, naming it: a kind no spawner makes; a prefab part drawing what is not built yet (several
   materials, an overlay); an inline prefab; a fractional post priority. A dedicated server's sequencer spawns nothing.
 
+### Figures: effects sized to the body they land on
+
+A **figure** (`figures/`) is a body type's own transforms for the effects placed on it, by record and key: a hit's
+spark scaled up on a giant and down on a child. A locator naming a role's `figure` takes that key's transform under its
+own, so whatever is placed at the locator grows, shrinks or moves with the body it lands on.
+
+```yaml
+# assets/mymod/figures/large.yaml: the figure mymod:figures/large
+_v: 1
+records:
+  - id: r1
+    name: hit
+    transform: { scale: [1, 1, 1] }
+    keys: [ { id: k1, name: spark, transform: { scale: [1.35, 1.35, 1.35] } } ]
+```
+
+```yaml
+# in the sequence: the spark's locator takes the struck one's figure
+locators:
+  - { id: j1, name: impact, parent: { role: target, socket: chest }, figure: { role: target, record: hit, key: spark } }
+spawnables:
+  - { id: s1, name: spark, at: { locator: j1 }, system: mymod:hit_spark }
+```
+
+The gameplay names each role's figure, with its other presentation:
+
+```java
+final class Fighter implements CgSequenceRole {
+    private static final CgAssetRef<CgFigureDefinition> LARGE = CgVfxAssets.ref(CgSequenceKinds.FIGURE, "mymod:figures/large");
+
+    @Override public CgFigureDefinition figure() { return LARGE.get(); }   // null: a role with no figure
+    ...
+}
+```
+
+- The figure's transform comes after the locator's own: its own place, then the figure's offset, turn and scale.
+- A key the record lacks takes the record's own transform; a record the figure lacks, or a role with no figure, leaves
+  the locator as it is.
+- A figure naming a role the sequence lacks fails at load, naming the locator.
+- The role is asked once, as the locator is first placed in a play.
+
 ## Events: out of a sequence and into it
 
 An `event` track says when something happens, for whoever hears its side: **`rpg`** is the gameplay (a hit window,

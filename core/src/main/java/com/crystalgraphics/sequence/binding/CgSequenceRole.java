@@ -60,4 +60,14 @@ public interface CgSequenceRole extends CgSequenceTarget {
     default Collection<String> variants() {
         return List.of();
     }
+
+    /**
+     * Its figure: its body type's transforms for the effects placed on it, which a locator naming this role's
+     * {@code figure} composes onto its own. Read once, as a play starts. Null for none, which leaves such a locator
+     * as it is.
+     */
+    @Nullable
+    default CgFigureDefinition figure() {
+        return null;
+    }
 }

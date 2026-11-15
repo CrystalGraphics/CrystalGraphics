@@ -79,8 +79,19 @@ public record CgSequenceDefinition(String id, CgFrameRate tickResolution, CgFram
     public record Role(String id, String name, String kind, @Nullable String character, boolean seed, boolean skip) {
     }
 
-    /** A point the sequence owns, placed under {@code parent}; {@code tree} holds its rest transform as written. */
-    public record Locator(String id, @Nullable String name, CgSequenceBinding parent, Map<?, ?> tree) {
+    /**
+     * A point the sequence owns, placed under {@code parent}; {@code tree} holds its rest transform as written.
+     *
+     * @param figure the role's figure it takes, composed onto its own transform; null for none
+     */
+    public record Locator(String id, @Nullable String name, CgSequenceBinding parent, Map<?, ?> tree, @Nullable Figure figure) {
+    }
+
+    /**
+     * A locator's take of a role's figure: record {@code record}'s key {@code key} (its record's own where null) of
+     * the figure role {@code role} plays with.
+     */
+    public record Figure(int role, String record, @Nullable String key) {
     }
 
     /**

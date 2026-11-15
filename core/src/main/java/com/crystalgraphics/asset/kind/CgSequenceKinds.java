@@ -57,12 +57,20 @@ public final class CgSequenceKinds {
             .property("absent", CgValueType.enumOf("skip", "fail"))
             .register();
 
+    /** A locator's take of its role's figure: the record's key transform, composed onto its own. */
+    static final CgType LOCATOR_FIGURE = CgTypes.struct("crystalgraphics:sequence.locator.figure")
+            .property("role", STRING).required()
+            .property("record", STRING).required()
+            .property("key", STRING)
+            .register();
+
     static final CgType LOCATOR = CgTypes.element("crystalgraphics:sequence.locator")
             .property("name", STRING)
             .property("parent", BINDING)
             .property("location", VEC3).quantity(CgQuantity.POSITION)
             .property("rotation", CgValueType.ROTATION).quantity(CgQuantity.ROTATION)
             .property("scale", VEC3).quantity(CgQuantity.SCALE)
+            .property("figure", CgValueType.struct(LOCATOR_FIGURE))
             .register();
 
     static final CgType SPLINE_LAYER = CgTypes.element("crystalgraphics:sequence.spline_mesh.layer")
@@ -562,6 +570,34 @@ public final class CgSequenceKinds {
             .property("spawnables", CgValueType.idList(SPAWNABLE)).flags(CgPropertyFlag.STRUCTURAL)
             .property("tracks", CgValueType.idList(TRACKS)).flags(CgPropertyFlag.STRUCTURAL)
             .property("splines", CgValueType.idList(SPLINE))
+            .register();
+
+    // ── Figures ──────────────────────────────────────────────────────────────────────────
+
+    /** A figure's transform: each part identity where absent. */
+    static final CgType FIGURE_TRANSFORM = CgTypes.struct("crystalgraphics:figure.transform")
+            .property("location", VEC3).quantity(CgQuantity.POSITION)
+            .property("rotation", CgValueType.ROTATION).quantity(CgQuantity.ROTATION)
+            .property("scale", VEC3).quantity(CgQuantity.SCALE)
+            .register();
+
+    static final CgType FIGURE_KEY = CgTypes.element("crystalgraphics:figure.key")
+            .property("name", STRING).required()
+            .property("transform", CgValueType.struct(FIGURE_TRANSFORM))
+            .register();
+
+    static final CgType FIGURE_RECORD = CgTypes.element("crystalgraphics:figure.record")
+            .property("name", STRING).required()
+            .property("transform", CgValueType.struct(FIGURE_TRANSFORM))
+            .property("keys", CgValueType.idList(FIGURE_KEY))
+            .register();
+
+    /**
+     * {@code figures/}: a body type's own transforms for the effects placed on it, by record and key (Sparking! Zero's
+     * {@code USSEffectFigureTransformDataAsset}: a hit's spark scaled by the struck one's size).
+     */
+    public static final CgType FIGURE = CgTypes.kind("crystalgraphics:figure").folder("figures").version(1)
+            .property("records", CgValueType.idList(FIGURE_RECORD))
             .register();
 
     static void register() {

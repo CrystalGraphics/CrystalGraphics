@@ -22,6 +22,7 @@ import com.crystalgraphics.sequence.time.CgFrameTime;
 import com.crystalgraphics.sequence.time.CgSequenceEvaluationRange;
 import com.crystalgraphics.sequence.time.CgSequencePlaybackPosition;
 import com.crystalgraphics.world.CgAttachment;
+import com.crystalgraphics.sequence.binding.CgFigureDefinition;
 import com.crystalgraphics.sequence.binding.CgSequenceLocator;
 import com.crystalgraphics.sequence.binding.CgSequencePlacement;
 import com.crystalgraphics.sequence.binding.CgSequenceRole;
@@ -625,7 +626,7 @@ public final class CgSequencePlayer {
         if (spawnableTransforms[index] != null) {
             // Its transform track keys its relative transform, its at's offset and turn the rest it starts from
             return spawnablePlaces[index] = new CgSequencePlacement(parent(s.at(), "spawnables." + s.id() + ".at"), definition,
-                    spawnableTransforms[index]);
+                    spawnableTransforms[index], null);
         }
         Map<?, ?> at = s.tree().get("at") instanceof Map<?, ?> m ? m : Map.of();
         CgUnits units = definition.units();
@@ -640,7 +641,16 @@ public final class CgSequencePlayer {
         CgSequencePlacement p = locatorPlaces[index];
         if (p != null) return p;
         CgSequenceDefinition.Locator l = definition.locators().get(index);
-        return locatorPlaces[index] = new CgSequencePlacement(parent(l.parent(), "locators." + l.id() + ".parent"), definition, locators[index]);
+        return locatorPlaces[index] = new CgSequencePlacement(parent(l.parent(), "locators." + l.id() + ".parent"), definition,
+                locators[index], figure(l.figure()));
+    }
+
+    /** The transform a locator takes from its role's figure: none where the role has no figure, or the record is not in it. */
+    @Nullable
+    private CgFigureDefinition.Transform figure(@Nullable CgSequenceDefinition.Figure f) {
+        if (f == null || !(roles[f.role()] instanceof CgSequenceRole role)) return null;
+        CgFigureDefinition figure = role.figure();
+        return figure == null ? null : figure.transform(f.record(), f.key());
     }
 
     /**

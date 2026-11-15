@@ -26,6 +26,9 @@ public final class CgSequencePlacement implements CgAttachment {
     @Nullable
     private final CgSequenceLocator locator;
     private final CgSequenceDefinition definition;
+    /** A locator's role's figure transform, composed after its own; null for none. */
+    @Nullable
+    private final CgFigureDefinition.Transform figure;
     private final Vector3f offset = new Vector3f(), scratch = new Vector3f();
     private final Quaternionf turn = new Quaternionf(), parentTurn = new Quaternionf(), local = new Quaternionf();
 
@@ -33,15 +36,21 @@ public final class CgSequencePlacement implements CgAttachment {
     public CgSequencePlacement(Parent parent, CgSequenceDefinition definition, float[] offset, @Nullable Quaternionf turn) {
         this.parent = parent;
         this.locator = null;
+        this.figure = null;
         this.definition = definition;
         this.offset.set(offset[0], offset[1], offset[2]);
         if (turn != null) this.turn.set(turn);
     }
 
-    /** A locator's place: its parent and its live transform. */
-    public CgSequencePlacement(Parent parent, CgSequenceDefinition definition, CgSequenceLocator locator) {
+    /**
+     * A locator's place: its parent, its live transform, then its role's figure transform, the cue's own placement
+     * scaled and moved by the body it lands on ({@code null} for none).
+     */
+    public CgSequencePlacement(Parent parent, CgSequenceDefinition definition, CgSequenceLocator locator,
+                               @Nullable CgFigureDefinition.Transform figure) {
         this.parent = parent;
         this.locator = locator;
+        this.figure = figure;
         this.definition = definition;
     }
 
@@ -66,7 +75,18 @@ public final class CgSequencePlacement implements CgAttachment {
         point[0] += scratch.x;
         point[1] += scratch.y;
         point[2] += scratch.z;
-        if (out != null) parentTurn.mul(local, out);
+        if (figure != null) {
+            // the figure under the locator's own: its offset in the locator's turned frame, its turn after
+            parentTurn.mul(local).transform(scratch.set(figure.location()));
+            point[0] += scratch.x;
+            point[1] += scratch.y;
+            point[2] += scratch.z;
+            parentTurn.mul(figure.rotation());
+        }
+        if (out != null) {
+            if (figure != null) out.set(parentTurn);
+            else parentTurn.mul(local, out);
+        }
         return true;
     }
 
@@ -77,6 +97,7 @@ public final class CgSequencePlacement implements CgAttachment {
         if (p == null) out.set(1f);
         else p.scale(null, out);
         if (locator != null) out.mul(locator.scale()[0], locator.scale()[1], locator.scale()[2]);
+        if (figure != null) out.mul(figure.scale());
         return out;
     }
 

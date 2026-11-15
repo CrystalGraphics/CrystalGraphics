@@ -21,6 +21,7 @@ import com.crystalgraphics.animation.ik.CgTwoBoneIkNode;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgClipDefinition;
 import com.crystalgraphics.api.animation.CgSkeletonDefinition;
+import com.crystalgraphics.sequence.binding.CgFigureDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
 import com.crystalgraphics.render.post.CgOutline;
@@ -62,6 +63,7 @@ public final class CgBuiltInCompilers {
         CgCameraShakeDefinition.register();
         CgSequenceDefinition.register();
         CgSkeletonDefinition.register();
+        CgFigureDefinition.register();
         CgClipDefinition.register();
         CgAnimGraphCodec.register();
         CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);

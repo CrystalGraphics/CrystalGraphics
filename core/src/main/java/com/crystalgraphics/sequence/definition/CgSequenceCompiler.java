@@ -33,6 +33,7 @@ import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.sequence.condition.CgConditionKinds;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Child;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.CompositeSection;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Figure;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Locator;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Role;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.SectionRef;
@@ -109,7 +110,8 @@ final class CgSequenceCompiler {
         List<Locator> locators = new ArrayList<>();
         for (Map<?, ?> l : locatorTrees) {
             String lid = string(l.get("id"));
-            locators.add(new Locator(lid, (String) l.get("name"), binding(l.get("parent"), "locators." + lid + ".parent"), l));
+            locators.add(new Locator(lid, (String) l.get("name"), binding(l.get("parent"), "locators." + lid + ".parent"), l,
+                    figure(l.get("figure"), "locators." + lid + ".figure")));
         }
         List<Spawnable> spawnables = new ArrayList<>();
         for (int i = 0; i < spawnableTrees.size(); i++) {
@@ -264,6 +266,16 @@ final class CgSequenceCompiler {
         if (m.get("material") instanceof String material) return new CgSequenceBinding(subject, index, CgSequenceBinding.Part.MATERIAL, material);
         if ("velocity".equals(m.get("value"))) return new CgSequenceBinding(subject, index, CgSequenceBinding.Part.VELOCITY, null);
         return new CgSequenceBinding(subject, index, CgSequenceBinding.Part.WHOLE, null);
+    }
+
+    /** A locator's {@code figure: { role, record, key }}, its role found by name; null for none. */
+    @Nullable
+    private Figure figure(@Nullable Object o, String path) {
+        if (o == null) return null;
+        if (!(o instanceof Map<?, ?> m) || !(m.get("role") instanceof String role) || !(m.get("record") instanceof String record)) {
+            throw fail(path, "a figure is { role, record, key }");
+        }
+        return new Figure(lookup(roleByName, role, path + ".role", "role named"), record, m.get("key") instanceof String k ? k : null);
     }
 
     private int lookup(Map<String, Integer> by, String key, String path, String what) {

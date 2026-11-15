@@ -3967,6 +3967,7 @@ com/crystalgraphics/asset/kind/CgSchemaWriter
 com/crystalgraphics/asset/kind/CgSequenceKinds
   access public,final
   extends java/lang/Object
+  field public,static,final FIGURE Lcom/crystalgraphics/object/CgType;
   field public,static,final SEQUENCE Lcom/crystalgraphics/object/CgType;
   field public,static,final SPAWNABLE_KIND Ljava/lang/String;
   field public,static,final TRACKS Lcom/crystalgraphics/object/CgType;
@@ -14287,6 +14288,40 @@ com/crystalgraphics/sequence/animation/CgSequenceSkeletal
   implements com/crystalgraphics/sequence/CgSequenceTarget
   method public,abstract clip (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
   method public,abstract instance ()Lcom/crystalgraphics/animation/CgAnimInstance;
+com/crystalgraphics/sequence/binding/CgFigureDefinition
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public <init> (Ljava/lang/String;Ljava/util/Map;)V
+  method public id ()Ljava/lang/String;
+  method public records ()Ljava/util/Map;
+  method public transform (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/binding/CgFigureDefinition$Transform;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static compile (Ljava/lang/String;Ljava/util/Map;Lcom/crystalgraphics/object/value/CgUnits;)Lcom/crystalgraphics/sequence/binding/CgFigureDefinition;
+  method public,static register ()V
+com/crystalgraphics/sequence/binding/CgFigureDefinition$Record
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/sequence/binding/CgFigureDefinition$Transform;Ljava/util/Map;)V
+  method public keys ()Ljava/util/Map;
+  method public name ()Ljava/lang/String;
+  method public transform ()Lcom/crystalgraphics/sequence/binding/CgFigureDefinition$Transform;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/sequence/binding/CgFigureDefinition$Transform
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final IDENTITY Lcom/crystalgraphics/sequence/binding/CgFigureDefinition$Transform;
+  method public <init> (Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;Lorg/joml/Vector3fc;)V
+  method public location ()Lorg/joml/Vector3fc;
+  method public rotation ()Lorg/joml/Quaternionfc;
+  method public scale ()Lorg/joml/Vector3fc;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/sequence/binding/CgMaterialParameters
   access public,final
   extends java/lang/Object
@@ -14315,7 +14350,7 @@ com/crystalgraphics/sequence/binding/CgSequencePlacement
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/world/CgAttachment
-  method public <init> (Lcom/crystalgraphics/sequence/binding/CgSequencePlacement$Parent;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/binding/CgSequenceLocator;)V
+  method public <init> (Lcom/crystalgraphics/sequence/binding/CgSequencePlacement$Parent;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/binding/CgSequenceLocator;Lcom/crystalgraphics/sequence/binding/CgFigureDefinition$Transform;)V
   method public <init> (Lcom/crystalgraphics/sequence/binding/CgSequencePlacement$Parent;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;[FLorg/joml/Quaternionf;)V
   method public live ()Z
   method public place ([DLorg/joml/Quaternionf;)Z
@@ -14329,6 +14364,7 @@ com/crystalgraphics/sequence/binding/CgSequenceRole
   extends java/lang/Object
   implements com/crystalgraphics/sequence/CgSequenceTarget
   method public character ()Ljava/lang/String;
+  method public figure ()Lcom/crystalgraphics/sequence/binding/CgFigureDefinition;
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
   method public variants ()Ljava/util/Collection;
   method public,abstract attachment (Ljava/lang/String;)Lcom/crystalgraphics/world/CgAttachment;
@@ -14605,10 +14641,21 @@ com/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation
   field public,static,final SUB_FRAMES Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation;
   method public,static values ()[Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Evaluation;
+com/crystalgraphics/sequence/definition/CgSequenceDefinition$Figure
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (ILjava/lang/String;Ljava/lang/String;)V
+  method public key ()Ljava/lang/String;
+  method public record ()Ljava/lang/String;
+  method public role ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/sequence/definition/CgSequenceDefinition$Locator
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/sequence/definition/CgSequenceBinding;Ljava/util/Map;)V
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/sequence/definition/CgSequenceBinding;Ljava/util/Map;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Figure;)V
+  method public figure ()Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Figure;
   method public id ()Ljava/lang/String;
   method public name ()Ljava/lang/String;
   method public parent ()Lcom/crystalgraphics/sequence/definition/CgSequenceBinding;
