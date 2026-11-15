@@ -61,13 +61,11 @@ final class IkStation implements AnimDemoStation {
      * names poles: each limb then takes two-bone IK, its joint bending toward a point that far along the
      * joint bone's own z.</p>
      *
-     * <p>{@code pelvisDrop} is how far foot placement may lower its pelvis, in proportion to its legs. With
-     * {@code stride}, a foot planted well below its hip is moved forward until its shin stands upright, the thigh
+     * <p>With {@code stride}, a foot planted well below its hip is moved forward until its shin stands upright, the thigh
      * raised from the hip: a short-shinned leg folding straight down would bend its knee sharply instead.</p>
      */
     private record Rig(@Nullable String root, String pelvis, String footL, String footR, @Nullable String ballL, @Nullable String ballR,
-                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole, float pelvisDrop,
-                       boolean stride) {
+                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole, boolean stride) {
 
         String ball(boolean left) {
             String b = left ? ballL : ballR;
@@ -94,20 +92,23 @@ final class IkStation implements AnimDemoStation {
     }
 
     private static final Rig STANDARD = new Rig("root", "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "hand_l", "hand_r",
-            "FLD_Stand", "FLD_Punch", 0f, 0f, CgFootPlacementNode.Pelvis.DEFAULT.maxOffset(), false);
+            "FLD_Stand", "FLD_Punch", 0f, 0f, false);
     // its legs hang off "model", the body's pivot: that is its pelvis
     private static final Rig HUMANOID = new Rig(null, "model", "left_foot_locator", "right_foot_locator", null, null,
             "left_hand_locator", "right_hand_locator", "vanilla/idle", "melee/melee_0",
             // its clips hold its legs and arms straight; it faces -z: knees bend forward, elbows back
             -0.4f, 0.4f,
-            // its legs are 0.625 m: dropping its pelvis the default 0.5 m to reach the floor folds the other leg shut,
-            // so on a half block the leg off the edge hangs instead
-            0.25f, true);
+            // its legs are short for a half block: the raised foot strides forward rather than fold the knee
+            true);
 
     private final CgAnimVariable<Boolean> ik = CgAnimVariable.bool("ik", true), dynamics = CgAnimVariable.bool("dynamics", true);
     /** Each foot's stride forward, in the world: x then z, left then right. */
     private final CgAnimVariable<Float> strideLx = CgAnimVariable.floating("stride_l_x"), strideLz = CgAnimVariable.floating("stride_l_z"),
             strideRx = CgAnimVariable.floating("stride_r_x"), strideRz = CgAnimVariable.floating("stride_r_z");
+    /** Where each striding knee bends toward, in the world: left then right. */
+    private final CgAnimVariable<Float> kneeLx = CgAnimVariable.floating("knee_l_x"), kneeLy = CgAnimVariable.floating("knee_l_y"),
+            kneeLz = CgAnimVariable.floating("knee_l_z"), kneeRx = CgAnimVariable.floating("knee_r_x"),
+            kneeRy = CgAnimVariable.floating("knee_r_y"), kneeRz = CgAnimVariable.floating("knee_r_z");
     private final List<Stand> stands = new ArrayList<>();
     private final List<Puncher> punchers = new ArrayList<>();
     private AnimDemoSet set;
@@ -125,6 +126,7 @@ final class IkStation implements AnimDemoStation {
         final int hip, ikFoot;
         final float thigh, shin;
         final Matrix4f m = new Matrix4f();
+        final Vector3d pole = new Vector3d();
 
         Stride(AnimDemoCast.Body body, String foot, String ikFoot) {
             CgSkeleton s = body.cast.mesh.skeleton();
@@ -135,6 +137,16 @@ final class IkStation implements AnimDemoStation {
             Vector3f t = new Vector3f();
             thigh = s.restTranslation(knee, t).length();
             shin = s.restTranslation(f, t).length();
+        }
+
+        /**
+         * Where its knee bends toward, in the world: a shin above its IK foot and half a metre ahead, where an upright
+         * shin's knee is; ahead of the knee too while the leg stands straight. {@code (fx, fz)} is the body's forward.
+         */
+        Vector3d pole(float fx, float fz) {
+            body.instance.pose().component(ikFoot, m);
+            body.component.worldTransform().transformPosition(pole.set(m.m30(), m.m31(), m.m32()));
+            return pole.add(0.5 * fx, shin, 0.5 * fz);
         }
 
         float forward() {
@@ -163,6 +175,9 @@ final class IkStation implements AnimDemoStation {
                     float l = left.forward(), r = right.forward();
                     float fx = (float) Math.sin(body.yaw), fz = (float) Math.cos(body.yaw);
                     anim.set(strideLx, l * fx).set(strideLz, l * fz).set(strideRx, r * fx).set(strideRz, r * fz);
+                    Vector3d pl = left.pole(fx, fz), pr = right.pole(fx, fz);
+                    anim.set(kneeLx, (float) pl.x).set(kneeLy, (float) pl.y).set(kneeLz, (float) pl.z)
+                            .set(kneeRx, (float) pr.x).set(kneeRy, (float) pr.y).set(kneeRz, (float) pr.z);
                 });
             }
         }
@@ -299,12 +314,6 @@ final class IkStation implements AnimDemoStation {
         }
     }
 
-    /** The default pelvis settings, its drop limited to {@code maxOffset} metres. */
-    private static CgFootPlacementNode.Pelvis pelvis(float maxOffset) {
-        CgFootPlacementNode.Pelvis d = CgFootPlacementNode.Pelvis.DEFAULT;
-        return new CgFootPlacementNode.Pelvis(maxOffset, d.linearStiffness(), d.linearDamping(), d.horizontalRebalancingWeight(),
-                d.maxOffsetHorizontal(), d.heelLiftRatio(), d.compensation(), d.interpolation(), d.disableOffsetInAir());
-    }
 
     /** {@code rig}'s character, the first of {@code casts} with its bones, given its virtual bones; null for none. */
     @Nullable
@@ -338,8 +347,6 @@ final class IkStation implements AnimDemoStation {
         CgControlAlpha ikAlpha = CgControlAlpha.bool(ik, 0.2f, 0.2f);
         n = CgFootPlacementNode.of(n, rig.pelvis, "ik_foot_root")
                 .leg(rig.footL, "ik_foot_l", rig.ball(true)).leg(rig.footR, "ik_foot_r", rig.ball(false))
-                .settings(CgFootPlacementNode.Plant.DEFAULT, pelvis(rig.pelvisDrop), CgFootPlacementNode.Interpolation.DEFAULT,
-                        CgFootPlacementNode.Trace.DEFAULT)
                 .alpha(ikAlpha);
         if (rig.stride) {
             n = CgModifyBoneNode.of(n, "ik_foot_l").translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.WORLD, strideLx, null, strideLz)
@@ -347,8 +354,12 @@ final class IkStation implements AnimDemoStation {
             n = CgModifyBoneNode.of(n, "ik_foot_r").translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.WORLD, strideRx, null, strideRz)
                     .alpha(ikAlpha);
         }
-        n = limbs(n, skeleton, "ik_foot_l", rig.footL, "ik_foot_r", rig.footR, rig.kneePole, true, ikAlpha);
-        return CgAnimGraph.builder("demo:ik_feet", skeleton).variables(ik, dynamics, strideLx, strideLz, strideRx, strideRz)
+        n = rig.stride
+                ? limbs(n, skeleton, "ik_foot_l", rig.footL, "ik_foot_r", rig.footR, rig.kneePole,
+                        CgIkTarget.world(kneeLx, kneeLy, kneeLz), CgIkTarget.world(kneeRx, kneeRy, kneeRz), true, ikAlpha)
+                : limbs(n, skeleton, "ik_foot_l", rig.footL, "ik_foot_r", rig.footR, rig.kneePole, true, ikAlpha);
+        return CgAnimGraph.builder("demo:ik_feet", skeleton).variables(ik, dynamics, strideLx, strideLz, strideRx, strideRz,
+                        kneeLx, kneeLy, kneeLz, kneeRx, kneeRy, kneeRz)
                 .output(dynamics(n, skeleton)).build();
     }
 
@@ -382,14 +393,21 @@ final class IkStation implements AnimDemoStation {
      */
     private static CgAnimNode limbs(CgAnimNode n, CgSkeleton s, String ikL, String endL, String ikR, String endR, float pole,
                                     boolean feet, CgControlAlpha alpha) {
+        return limbs(n, s, ikL, endL, ikR, endR, pole, null, null, feet, alpha);
+    }
+
+    /** As above, each joint bending toward its own target where {@code poleL} and {@code poleR} are given. */
+    private static CgAnimNode limbs(CgAnimNode n, CgSkeleton s, String ikL, String endL, String ikR, String endR, float pole,
+                                    @Nullable CgIkTarget poleL, @Nullable CgIkTarget poleR, boolean feet, CgControlAlpha alpha) {
         if (pole == 0f) {
             return CgLegIkNode.of(n).leg(CgLegIkNode.Leg.of(ikL, endL).kneeTwistCorrection(feet))
                     .leg(CgLegIkNode.Leg.of(ikR, endR).kneeTwistCorrection(feet)).alpha(alpha);
         }
-        for (String[] limb : new String[][] {{ikL, endL}, {ikR, endR}}) {
-            String joint = s.name(s.parent(s.indexOf(limb[1])));
-            n = CgTwoBoneIkNode.of(n, limb[1], CgIkTarget.of(CgBoneSpace.BONE, limb[0], 0f, 0f, 0f),
-                    CgIkTarget.of(CgBoneSpace.BONE, joint, 0f, 0f, pole)).rotationFromEffector().alpha(alpha);
+        for (int i = 0; i < 2; i++) {
+            String ik = i == 0 ? ikL : ikR, end = i == 0 ? endL : endR;
+            CgIkTarget given = i == 0 ? poleL : poleR;
+            CgIkTarget joint = given != null ? given : CgIkTarget.of(CgBoneSpace.BONE, s.name(s.parent(s.indexOf(end))), 0f, 0f, pole);
+            n = CgTwoBoneIkNode.of(n, end, CgIkTarget.of(CgBoneSpace.BONE, ik, 0f, 0f, 0f), joint).rotationFromEffector().alpha(alpha);
         }
         return n;
     }
