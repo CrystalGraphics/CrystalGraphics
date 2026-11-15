@@ -60,9 +60,11 @@ final class IkStation implements AnimDemoStation {
      * <p>Leg IK keeps the bend a limb has in its clips, so it cannot bend one its clips hold straight. Such a rig
      * names poles: each limb then takes two-bone IK, its joint bending toward a point that far along the
      * joint bone's own z.</p>
+     *
+     * <p>{@code pelvisDrop} is how far foot placement may lower its pelvis, in proportion to its legs.</p>
      */
     private record Rig(@Nullable String root, String pelvis, String footL, String footR, @Nullable String ballL, @Nullable String ballR,
-                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole) {
+                       String handL, String handR, String idle, String punch, float kneePole, float elbowPole, float pelvisDrop) {
 
         String ball(boolean left) {
             String b = left ? ballL : ballR;
@@ -89,12 +91,15 @@ final class IkStation implements AnimDemoStation {
     }
 
     private static final Rig STANDARD = new Rig("root", "pelvis", "foot_l", "foot_r", "ball_l", "ball_r", "hand_l", "hand_r",
-            "FLD_Stand", "FLD_Punch", 0f, 0f);
+            "FLD_Stand", "FLD_Punch", 0f, 0f, CgFootPlacementNode.Pelvis.DEFAULT.maxOffset());
     // its legs hang off "model", the body's pivot: that is its pelvis
     private static final Rig HUMANOID = new Rig(null, "model", "left_foot_locator", "right_foot_locator", null, null,
             "left_hand_locator", "right_hand_locator", "vanilla/idle", "melee/melee_0",
             // its clips hold its legs and arms straight; it faces -z: knees bend forward, elbows back
-            -0.4f, 0.4f);
+            -0.4f, 0.4f,
+            // its legs are 0.625 m: dropping its pelvis the default 0.5 m to reach the floor folds the other leg shut,
+            // so on a half block the leg off the edge hangs instead
+            0.25f);
 
     private final CgAnimVariable<Boolean> ik = CgAnimVariable.bool("ik", true), dynamics = CgAnimVariable.bool("dynamics", true);
     private final List<Stand> stands = new ArrayList<>();
@@ -250,6 +255,13 @@ final class IkStation implements AnimDemoStation {
         }
     }
 
+    /** The default pelvis settings, its drop limited to {@code maxOffset} metres. */
+    private static CgFootPlacementNode.Pelvis pelvis(float maxOffset) {
+        CgFootPlacementNode.Pelvis d = CgFootPlacementNode.Pelvis.DEFAULT;
+        return new CgFootPlacementNode.Pelvis(maxOffset, d.linearStiffness(), d.linearDamping(), d.horizontalRebalancingWeight(),
+                d.maxOffsetHorizontal(), d.heelLiftRatio(), d.compensation(), d.interpolation(), d.disableOffsetInAir());
+    }
+
     /** {@code rig}'s character, the first of {@code casts} with its bones, given its virtual bones; null for none. */
     @Nullable
     private static AnimDemoCast rigged(List<AnimDemoCast> casts, Rig rig) {
@@ -281,7 +293,10 @@ final class IkStation implements AnimDemoStation {
         CgAnimNode n = CgSequencePlayerNode.of(idle.sequence()).loop();
         CgControlAlpha ikAlpha = CgControlAlpha.bool(ik, 0.2f, 0.2f);
         n = CgFootPlacementNode.of(n, rig.pelvis, "ik_foot_root")
-                .leg(rig.footL, "ik_foot_l", rig.ball(true)).leg(rig.footR, "ik_foot_r", rig.ball(false)).alpha(ikAlpha);
+                .leg(rig.footL, "ik_foot_l", rig.ball(true)).leg(rig.footR, "ik_foot_r", rig.ball(false))
+                .settings(CgFootPlacementNode.Plant.DEFAULT, pelvis(rig.pelvisDrop), CgFootPlacementNode.Interpolation.DEFAULT,
+                        CgFootPlacementNode.Trace.DEFAULT)
+                .alpha(ikAlpha);
         n = limbs(n, skeleton, "ik_foot_l", rig.footL, "ik_foot_r", rig.footR, rig.kneePole, true, ikAlpha);
         return CgAnimGraph.builder("demo:ik_feet", skeleton).variables(ik, dynamics).output(dynamics(n, skeleton)).build();
     }
