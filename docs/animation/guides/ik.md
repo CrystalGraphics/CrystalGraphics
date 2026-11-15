@@ -155,7 +155,15 @@ virtual_bones:
 - The IK root's up is whichever of its axes points up at rest, so an import that keeps Unreal's bone frames under a
   turned root plants the same as one that converts them.
 - Make the IK root follow the bone that stands on the floor at rest (`root`), not the pelvis: the feet keep their
-  height above it.
+  height above it. A GeckoLib model's bone 0 is a root at its origin for this.
+- **Leg IK keeps the bend a limb has in its clips**, as Unreal's does: it cannot choose one for a limb its clips hold
+  straight (a Minecraft-style model's legs), and that limb folds onto itself. Give such a limb two-bone IK with a pole:
+
+```java
+CgTwoBoneIkNode.of(placed, "left_foot_locator", CgIkTarget.of(CgBoneSpace.BONE, "ik_foot_l", 0f, 0f, 0f),
+        CgIkTarget.of(CgBoneSpace.BONE, "left_leg_2", 0f, 0f, -0.4f))   // the knee bends toward its own -z: forward
+        .rotationFromEffector();
+```
 
 ## Things that swing
 

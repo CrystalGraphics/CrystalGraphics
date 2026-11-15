@@ -88,7 +88,7 @@ public class CgGeckoModelTest {
         CgSkeletalMesh mesh = model().mesh();
         CgAnimPose pose = new CgAnimPose(mesh.skeleton());
         s.sample(pose, 0.5f);
-        Quaternionf got = pose.rotation(0, new Quaternionf());
+        Quaternionf got = pose.rotation(mesh.skeleton().indexOf("b"), new Quaternionf());
         Quaternionf want = new Quaternionf().rotationZ(2.3f).rotateY(-1.1f).rotateX(0.4f);
         assertEquals(1f, Math.abs(got.dot(want)), 1e-6f);
     }

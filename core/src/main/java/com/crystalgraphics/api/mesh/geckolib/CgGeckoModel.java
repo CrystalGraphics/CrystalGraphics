@@ -44,7 +44,9 @@ import com.crystalgraphics.util.io.CgIO;
  *
  * <ul>
  *   <li>A bone's rest is GeckoLib's: its pivot from its parent's, in blocks, its rotation {@code Rz·Ry·Rx} of the file's
- *       degrees with x and y negated. Several top-level bones are given a root of the geometry's identifier.</li>
+ *       degrees with x and y negated.</li>
+ *   <li>Bone 0 is a root at the model's origin, named by the geometry's identifier, over every top-level bone: Unreal's
+ *       one root at the component's origin, on the floor where the entity stands.</li>
  *   <li>Animations are this model's: GeckoLib adds a clip's rotations to each bone's rest angles, so a clip converted
  *       for one model is not another's.</li>
  *   <li>What fails at load, naming the file and where: no geometry, a bone whose parent is not in the file, two bones
@@ -227,16 +229,14 @@ public final class CgGeckoModel {
 
             CgSkeleton.Builder skeleton = CgSkeleton.builder();
             List<float[]> pivotList = new ArrayList<>(), eulerList = new ArrayList<>();
-            boolean synthetic = tops.size() > 1;
-            if (synthetic) {
-                if (byName.containsKey(identifier)) throw new IllegalArgumentException(file + ": a bone shares the geometry's name " + identifier);
-                skeleton.bone(identifier, -1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1);
-                index.put(identifier, 0);
-                order.add(null);
-                pivotList.add(new float[3]);
-                eulerList.add(new float[3]);
-            }
-            for (Map<?, ?> top : tops) add(top, synthetic ? 0 : -1, children, skeleton, pivotList, eulerList);
+            // the root at the model's origin, as Unreal's skeletons have one: what stands on the floor, an IK root's source
+            if (byName.containsKey(identifier)) throw new IllegalArgumentException(file + ": a bone shares the geometry's name " + identifier);
+            skeleton.bone(identifier, -1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1);
+            index.put(identifier, 0);
+            order.add(null);
+            pivotList.add(new float[3]);
+            eulerList.add(new float[3]);
+            for (Map<?, ?> top : tops) add(top, 0, children, skeleton, pivotList, eulerList);
             CgSkeleton built = skeleton.build();
 
             // Each bone's rest frame in model space, to place its cubes and its locators
