@@ -145,6 +145,7 @@ CgSkeletalMeshComponent goku = scene.skeletal(gokuMesh).materials(skins::get).at
 CgInstancedMeshComponent grass = scene.instanced(blade, grassMaterial).spawn();
 CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();
 CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a prefab: a root a node, a mesh a part
+scene.spawn(WYVERN).at(x, y, z).spawn().effect("breath").play();       // a node may be a skeletal mesh or an effect
 
 // The engine's base surface material, for a model with no shader of its own: a texture and Unreal's base properties
 CgMaterial cloth = CgSurfaceMaterial.of("mymod:cloth", "mymod:textures/cloth.png").blend(CgBlendMode.ALPHA).twoSided().build();

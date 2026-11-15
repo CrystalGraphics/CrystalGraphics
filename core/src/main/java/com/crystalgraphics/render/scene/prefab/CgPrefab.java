@@ -5,6 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgMeshLods;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -34,9 +35,18 @@ import java.util.function.Function;
  * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a component a part, a root a node
  * }</pre>
  *
+ * <p>A node is a skeletal mesh or plays an effect, and rides a parent's socket:</p>
+ * <pre>{@code
+ * static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
+ *         .node("body").skeletal("mymod:geo/wyvern.glb", List.of(SKIN)).play("idle")
+ *         .node("membranes").skeletal("mymod:geo/membranes.glb", List.of(MEMBRANE)).followPose("body")
+ *         .node("flame").parent("body", "jaw").effect("mymod:vfx/breath", false)     // started by code
+ *         .build();
+ * }</pre>
+ *
  * <p>From a file, by id:</p>
  * <pre>{@code
- * CgPrefab wyvern = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "mymod:prefabs/wyvern").get();
+ * CgPrefab wyvern = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "mymod:wyvern").get();
  * }</pre>
  *
  * <ul>
@@ -47,6 +57,7 @@ import java.util.function.Function;
  *   <li>A mesh path loads at its first draw, so a server naming one loads nothing.</li>
  *   <li>A mesh slot is kept as written ({@link #partMaterials}, {@link #partSettings}): several materials draw its mesh's
  *       sections in order.</li>
+ *   <li>A skeletal node, an effect node and a parent's socket are a scene's: a VFX look draws a prefab's parts alone.</li>
  * </ul>
  */
 public final class CgPrefab {
@@ -66,6 +77,10 @@ public final class CgPrefab {
     private final int[] partStart;
     private final Part[] parts;
     private final Map<String, Integer> byName;
+    /** Per node: the socket of its parent it rides, its skeletal mesh, its effect; null for none. */
+    private final String[] sockets;
+    private final Skeletal[] skeletal;
+    private final Effect[] effects;
     private final Map<Class<?>, Object> derived = new ConcurrentHashMap<>(2);
 
     private CgPrefab(Builder b) {
@@ -79,6 +94,9 @@ public final class CgPrefab {
         this.values = new ArrayList<>(b.values);
         this.byName = new HashMap<>(b.byName);
         this.partStart = new int[n + 1];
+        this.sockets = b.sockets.toArray(new String[0]);
+        this.skeletal = b.skeletal.toArray(new Skeletal[0]);
+        this.effects = b.effects.toArray(new Effect[0]);
         List<Part> all = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             parents[i] = b.parents.get(i);
@@ -115,6 +133,30 @@ public final class CgPrefab {
     /** {@code node}'s parent, -1 for a root; always lower than {@code node}. */
     public int parent(int node) {
         return parents[node];
+    }
+
+    /** The socket (or bone) of its parent {@code node} rides, null for the parent's origin. */
+    @Nullable
+    public String parentSocket(int node) {
+        return sockets[node];
+    }
+
+    /** {@code node}'s skeletal mesh, or null where it is none. */
+    @Nullable
+    public Skeletal skeletal(int node) {
+        return skeletal[node];
+    }
+
+    /** The effect {@code node} plays, or null. */
+    @Nullable
+    public Effect effect(int node) {
+        return effects[node];
+    }
+
+    /** Whether any node is a skeletal mesh or plays an effect: what a scene spawns and a VFX look does not draw. */
+    public boolean hasSceneNodes() {
+        for (int i = 0; i < names.length; i++) if (skeletal[i] != null || effects[i] != null) return true;
+        return false;
     }
 
     /** The node of that name, or -1. */
@@ -218,6 +260,75 @@ public final class CgPrefab {
         return opacity;
     }
 
+    /**
+     * A node's skeletal mesh (Unreal's skeletal mesh component in a Blueprint): its mesh, given or a file's loaded at its
+     * first ask, a material a slot (the last for any slot past them), the clip it plays from its spawn, and the node whose
+     * pose it follows.
+     */
+    public static final class Skeletal {
+        private final String path;
+        private volatile CgSkeletalMesh mesh;
+        private final List<CgMaterialDefinition> materials;
+        @Nullable
+        private final String play, followPose;
+
+        Skeletal(@Nullable String path, @Nullable CgSkeletalMesh mesh, List<CgMaterialDefinition> materials,
+                 @Nullable String play, @Nullable String followPose) {
+            if (materials.isEmpty()) throw new IllegalArgumentException("a skeletal node draws a material a slot");
+            this.path = path;
+            this.mesh = mesh;
+            this.materials = List.copyOf(materials);
+            this.play = play;
+            this.followPose = followPose;
+        }
+
+        /** Its mesh, read the first time it is asked where it is a file's. */
+        public CgSkeletalMesh mesh() {
+            CgSkeletalMesh m = mesh;
+            if (m == null) mesh = m = CgMeshLoader.skeletal(path);
+            return m;
+        }
+
+        /** Its file's path, or null for a mesh given in code. */
+        @Nullable
+        public String path() {
+            return path;
+        }
+
+        public List<CgMaterialDefinition> materials() {
+            return materials;
+        }
+
+        /** The clip it plays, looping, from its spawn: one of its mesh's sequences by name; null for none. */
+        @Nullable
+        public String play() {
+            return play;
+        }
+
+        /** The skeletal node whose pose it is drawn in (Unreal's leader pose), null for its own. */
+        @Nullable
+        public String followPose() {
+            return followPose;
+        }
+
+        Skeletal with(@Nullable String play, @Nullable String followPose) {
+            return new Skeletal(path, mesh, materials, play, followPose);
+        }
+    }
+
+    /**
+     * The effect a node plays where it stands: a VFX system by asset id, started at its spawn where {@code auto}, else by
+     * code ({@code instance.effect(node).play()}).
+     *
+     * @param effect the system's asset id
+     * @param auto   whether it starts at the prefab's spawn
+     */
+    public record Effect(String effect, boolean auto) {
+        public Effect {
+            Objects.requireNonNull(effect, "effect");
+        }
+    }
+
     /** A part's mesh: given, or a path loaded at its first draw. */
     private static final class Mesh {
         private final String path;
@@ -277,6 +388,9 @@ public final class CgPrefab {
         private final List<Float> opacity = new ArrayList<>();
         private final List<Map<String, float[]>> values = new ArrayList<>();
         private final List<List<Part>> parts = new ArrayList<>();
+        private final List<String> sockets = new ArrayList<>();
+        private final List<Skeletal> skeletal = new ArrayList<>();
+        private final List<Effect> effects = new ArrayList<>();
         private final Map<String, Integer> byName = new HashMap<>();
         private float[] rest = new float[16 * REST];
         private int at = -1;
@@ -298,6 +412,9 @@ public final class CgPrefab {
             opacity.add(1f);
             values.add(new LinkedHashMap<>());
             parts.add(new ArrayList<>());
+            sockets.add(null);
+            skeletal.add(null);
+            effects.add(null);
             if (rest.length < (at + 1) * REST) rest = Arrays.copyOf(rest, rest.length * 2);
             int o = at * REST;
             rest[o + 6] = 1f;
@@ -313,12 +430,62 @@ public final class CgPrefab {
 
         /** Its parent, a node named before it. */
         public Builder parent(String name) {
+            return parent(name, null);
+        }
+
+        /** Its parent, a node named before it, at {@code socket} on it: a socket or a bone of a skeletal node. */
+        public Builder parent(String name, @Nullable String socket) {
             Integer p = byName.get(name);
             if (p == null || p == current()) {
                 throw new IllegalArgumentException(id + ": " + names.get(at) + "'s parent " + name + " is not a node before it");
             }
+            if (socket != null && skeletal.get(p) == null) {
+                throw new IllegalArgumentException(id + ": " + names.get(at) + " rides socket " + socket + " of " + name
+                        + ", which is no skeletal node");
+            }
             parents.set(at, p);
+            sockets.set(at, socket);
             return this;
+        }
+
+        /** It is a skeletal mesh, {@code materials} one a slot: Unreal's skeletal mesh component. */
+        public Builder skeletal(CgSkeletalMesh mesh, List<CgMaterialDefinition> materials) {
+            skeletal.set(current(), new Skeletal(null, Objects.requireNonNull(mesh, "mesh"), materials, null, null));
+            return this;
+        }
+
+        /** As {@link #skeletal(CgSkeletalMesh, List)}, a file's mesh read at its first spawn. */
+        public Builder skeletal(String path, List<CgMaterialDefinition> materials) {
+            skeletal.set(current(), new Skeletal(Objects.requireNonNull(path, "path"), null, materials, null, null));
+            return this;
+        }
+
+        /** The clip its skeletal mesh plays, looping, from its spawn: one of the mesh's sequences by name. */
+        public Builder play(String clip) {
+            skeletal.set(current(), skeletalNode("play").with(Objects.requireNonNull(clip, "clip"), skeletal.get(at).followPose()));
+            return this;
+        }
+
+        /** Its skeletal mesh drawn in {@code leader}'s pose, a skeletal node named before it (Unreal's leader pose). */
+        public Builder followPose(String leader) {
+            Integer l = byName.get(leader);
+            if (l == null || l == current() || skeletal.get(l) == null) {
+                throw new IllegalArgumentException(id + ": " + names.get(at) + " follows " + leader + ", no skeletal node before it");
+            }
+            skeletal.set(at, skeletalNode("followPose").with(skeletal.get(at).play(), leader));
+            return this;
+        }
+
+        /** It plays the VFX system {@code effect} where it stands: from its spawn where {@code auto}, else when told. */
+        public Builder effect(String effect, boolean auto) {
+            effects.set(current(), new Effect(effect, auto));
+            return this;
+        }
+
+        private Skeletal skeletalNode(String what) {
+            Skeletal s = skeletal.get(current());
+            if (s == null) throw new IllegalStateException(id + ": " + names.get(at) + " sets " + what + " but is no skeletal node");
+            return s;
         }
 
         /** Its rest location in its parent's space. */

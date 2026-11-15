@@ -38,6 +38,10 @@ public final class CgVfxPrefabPreparer implements CgAssetPreparer {
                 int part = k;
                 l.read(() -> prefab.partMesh(part));
             }
+            for (int n = 0; n < prefab.nodes(); n++) {
+                CgPrefab.Skeletal skeletal = prefab.skeletal(n);
+                if (skeletal != null) l.read(skeletal::mesh);
+            }
         });
         CgVfxSystemPreparer.planLook(prefab.id(), CgVfxPrefabLook.of(prefab).look(), false, system, plan);
     }

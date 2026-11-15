@@ -34,12 +34,18 @@ public final class CgPrimitiveRelevance {
 
     private CgPrimitiveRelevance() {}
 
-    /** {@code material}'s relevance; 0 while its shader does not parse, and for a domain no mesh pass draws. */
+    /**
+     * {@code material}'s relevance; 0 while its shader does not parse, and for a domain no mesh pass draws, which is said
+     * once a material (a scene's rows draw {@code #domain surface} and {@code decal}).
+     */
     public static int of(CgMaterialInterface material) {
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
         CgMaterialDomain domain = proxy.domain();
         if (domain == CgMaterialDomain.DECAL) return DECAL;
-        if (domain != CgMaterialDomain.SURFACE) return 0;
+        if (domain != CgMaterialDomain.SURFACE) {
+            if (domain != null) proxy.warnNoMeshPass(domain);
+            return 0;
+        }
         // Solid: queued before the translucent, or blending nothing and writing depth (a lit solid queued after the lights)
         boolean solid = proxy.getRenderQueue() < CgRenderQueue.TRANSPARENT_THRESHOLD || proxy.solid();
         int r = solid ? MAIN | DEPTH : TRANSLUCENT;

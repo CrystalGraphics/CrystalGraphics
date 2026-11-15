@@ -1,0 +1,6 @@
+# The actors gauntlet's prefab (CgActorProbe): two nodes and no mesh, so a host proves an actor's prefab spawns on its
+# root and rides it while the target shows as its name tag alone.
+_v: 1
+nodes:
+  - { id: n1, name: body }
+  - { id: n2, name: head, parent: body, location: [0, 1, 0] }

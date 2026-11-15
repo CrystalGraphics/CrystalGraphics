@@ -3,6 +3,8 @@ package com.crystalgraphics.world.actor;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.kind.CgParticleKinds;
+import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgAssetState;
 import com.crystalgraphics.asset.load.CgLoadPriority;
@@ -45,7 +47,7 @@ import java.util.function.Supplier;
  * <pre>{@code
  * CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
  * CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn as well as the vanilla model
- * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");   // its components an asset
+ * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern");   // its components an asset
  * }</pre>
  *
  * <p>One entity can be bound alone, beating its type's actor, with no registration by type:</p>
@@ -125,7 +127,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         }
 
         /**
-         * Its actors spawn {@code id}, a prefab asset ({@code mymod:prefabs/wyvern}), on their root before
+         * Its actors spawn {@code id}, a prefab asset ({@code mymod:wyvern}, the file {@code assets/mymod/prefabs/wyvern.yaml}), on their root before
          * {@code onSpawn}, which reads it as {@code prefab()}; removed with the actor. Unreal's actor Blueprint and its
          * components.
          */
@@ -218,13 +220,15 @@ public final class CgEntityActors extends CgWorldSubsystem {
 
     /**
      * Loads every registration's prefab as the load task {@code crystalgraphics:actor-prefabs}, behind the loading
-     * screen: each asset to {@code READY}, then the pipelines its parts draw with, so an actor spawns drawn. The engine's
-     * client start names it, after every listener's {@code onLoad}.
+     * screen: each asset to {@code READY} with the systems its effect nodes play, then the pipelines its parts and
+     * skeletal meshes draw with, so an actor spawns drawn. The engine's client start names it, after every listener's
+     * {@code onLoad}.
      */
     public static void preload(CgLoadPlan plan) {
         List<CgAssetRef<CgPrefab>> refs = new ArrayList<>();
+        List<CgAssetRef<?>> systems = new ArrayList<>();
         CgPipelinePrecache.Request[] pipelines = {null};
-        boolean[] started = {false};
+        boolean[] started = {false, false};
         plan.task("crystalgraphics:actor-prefabs").render(task -> {
             if (!started[0]) {
                 started[0] = true;
@@ -233,13 +237,20 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 if (refs.isEmpty()) return true;
                 CgVfxAssets.instance().load(refs, CgLoadPriority.MOVE);
             }
-            int settled = 0;
-            for (CgAssetRef<CgPrefab> ref : refs) if (ref.ready() || ref.state() == CgAssetState.FAILED) settled++;
-            if (settled < refs.size()) {
-                task.progress(0.5f * settled / refs.size());
-                task.nextFrame();
-                return false;
+            if (!settled(refs, 0.25f, task)) return false;
+            if (!started[1]) {
+                started[1] = true;
+                // The systems its effect nodes play: loaded behind the screen too, so a node's play waits on nothing
+                for (CgAssetRef<CgPrefab> ref : refs) {
+                    CgPrefab prefab = ref.loaded();
+                    if (prefab == null) continue;
+                    for (int n = 0; n < prefab.nodes(); n++) {
+                        if (prefab.effect(n) != null) systems.add(CgVfxAssets.ref(CgParticleKinds.SYSTEM, prefab.effect(n).effect()));
+                    }
+                }
+                if (!systems.isEmpty()) CgVfxAssets.instance().load(systems, CgLoadPriority.MOVE);
             }
+            if (!settled(systems, 0.5f, task)) return false;
             if (pipelines[0] == null) {
                 pipelines[0] = CgPipelinePrecache.request(p -> {
                     for (CgAssetRef<CgPrefab> ref : refs) {
@@ -247,6 +258,10 @@ public final class CgEntityActors extends CgWorldSubsystem {
                         if (prefab == null) continue;
                         for (int k = 0; k < prefab.firstPart(prefab.nodes()); k++) {
                             for (CgMaterialDefinition m : prefab.drawnMaterials(k)) p.add(CgMaterial.of(m), false);
+                        }
+                        for (int n = 0; n < prefab.nodes(); n++) {
+                            CgPrefab.Skeletal skeletal = prefab.skeletal(n);
+                            if (skeletal != null) for (CgMaterialDefinition m : skeletal.materials()) p.add(CgMaterial.of(m), false, true);
                         }
                     }
                 });
@@ -256,6 +271,16 @@ public final class CgEntityActors extends CgWorldSubsystem {
             task.nextFrame();
             return false;
         }).start();
+    }
+
+    /** Whether every one of {@code refs} is ready or failed; else the task waits a frame, {@code share} of its bar per ref. */
+    private static boolean settled(List<? extends CgAssetRef<?>> refs, float share, CgLoadTask task) {
+        int settled = 0;
+        for (CgAssetRef<?> ref : refs) if (ref.ready() || ref.state() == CgAssetState.FAILED) settled++;
+        if (settled == refs.size()) return true;
+        task.progress(share * settled / refs.size());
+        task.nextFrame();
+        return false;
     }
 
     private static CgAssetRef<CgPrefab> prefabRef(String id) {

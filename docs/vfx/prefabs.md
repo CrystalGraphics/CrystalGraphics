@@ -1,8 +1,9 @@
 # Prefabs: models made of parts
 
 A prefab is a model built from parts that move and fade together: a lantern and its flame, the core of a Rasen
-Shuriken with its rings and blades, a lens of nested balls. It is a tree of nodes, each with a parent, a rest transform,
-an opacity and the meshes it draws, each with its materials. Unreal calls it a Blueprint's component tree; CC2 a clump.
+Shuriken with its rings and blades, a lens of nested balls, a wyvern with its armour and the fire in its jaw. It is a
+tree of nodes, each with a parent, a rest transform, an opacity and the meshes it draws, each with its materials; a node
+may instead be a skeletal mesh, or play an effect. Unreal calls it a Blueprint's component tree; CC2 a clump.
 
 A prefab is an asset, `CgPrefab`, and two things play it:
 
@@ -35,6 +36,31 @@ static final CgPrefab LANTERN = CgPrefab.builder("mymod:lantern")
 | `opacity(a)` | its own opacity, 0 to 1 |
 | `value(property, ...)` | a material value of its own over each of its parts' materials |
 | `part(material, mesh)` | a mesh it draws with a material: a `CgMesh`, `CgMeshLods`, or a file's path loaded at its first draw; `part(material)` draws the unit sphere, a VFX look's alone |
+| `skeletal(mesh, materials)` | the node is a skeletal mesh: a `CgSkeletalMesh` or a file's path, its materials one a section |
+| `play(clip)`, `followPose(leader)` | a skeletal node's clip at the spawn, or a leader node it is drawn in the pose of |
+| `parent(name, socket)` | its parent a skeletal node, riding that socket or bone |
+| `effect(system, auto)` | the node plays a VFX system following it: at the spawn if `auto`, else when told |
+
+### Skeletal meshes and effects
+
+A character's model is a skeletal mesh with what rides it: armour in its pose, a weapon on its hand, a flame in its jaw.
+In a prefab, each is a node:
+
+```java
+static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
+        .node("body").skeletal("mymod:geo/wyvern.glb", List.of(SKIN)).play("idle")
+        .node("armour").skeletal("mymod:geo/wyvern_armour.glb", List.of(STEEL)).followPose("body")
+        .node("saddle").parent("body", "spine_02").part(LEATHER, "mymod:geo/saddle.glb")
+        .node("breath").parent("body", "jaw").effect("mymod:vfx/fire_breath", false)
+        .build();
+```
+
+- **A skeletal node is a `CgSkeletalMeshComponent`** when spawned, playing its clip; a clip its mesh lacks is refused at
+  `spawn()`, naming it. `followPose` names a skeletal node before it, `parent(name, socket)` one too.
+- **An effect node plays through `CgPrefabEffects.HOST`**, which `CgVfx.install` fills: the system plays in the world's
+  VFX, following the node, and stops when the instance is removed. Without VFX installed it warns once and plays nothing.
+- **A VFX look draws neither**: a prefab with a skeletal or effect node is spawned in a scene, and an effect playing it
+  throws, naming the node.
 
 ## As a file
 
@@ -57,9 +83,24 @@ nodes:
     meshes: [ { mesh: mymod:models/lantern/flame.glb, material: mymod:flame, cast_shadow: false } ]
 ```
 
+A skeletal node names its mesh and its materials; a parent's socket follows a `#`:
+
+```yaml
+nodes:
+  - { id: n1, name: body, skeletal: { mesh: mymod:geo/wyvern.glb, play: idle }, materials: [ mymod:wyvern_skin ] }
+  - { id: n2, name: armour, skeletal: { mesh: mymod:geo/wyvern_armour.glb, follow_pose: body }, materials: [ mymod:steel ] }
+  - { id: n3, name: breath, parent: "body#jaw", effect: { effect: mymod:vfx/fire_breath, auto: false } }
+```
+
+| Key | Means |
+|---|---|
+| `skeletal: { mesh, play, follow_pose }` | a skeletal node; `materials:` beside it lists its materials, one a section |
+| `parent: "node#socket"` | riding a skeletal node's socket or bone |
+| `effect: { effect, auto }` | an effect node; `auto` is true unless written |
+
 ```java
 Map<String, Object> tree = CgPrefabAssets.write(LANTERN);   // what CgAssetYaml writes as its file
-CgPrefab lantern = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "mymod:prefabs/lantern").get();
+CgPrefab lantern = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "mymod:lantern").get();
 ```
 
 - **A node's `values`** are material values of its own over each of its parts' materials: it draws its materials
@@ -82,9 +123,17 @@ lantern.remove();                                // every component it made
 |---|---|
 | `scene.spawn(prefab)` | the instance, unspawned: place it with `at`, `rotation`, `scale`, or `attach(parent, socket)` to ride another |
 | `spawn()` | a `CgSceneRoot` a node at its rest under its parent's, a `CgMeshComponent` a part riding its node |
-| `root()`, `node(name)` | its own root, and a node's |
+| `root()`, `node(name)` | its own root, and a node's: a `CgSceneRoot`, or a skeletal node's `CgSkeletalMeshComponent` |
+| `skeletal(name)` | a skeletal node's component; null for any other node |
+| `effect(name)` | an effect node's play: `play()`, `stop()`, `playing()`; null for any other node |
 | `mesh(name)`, `mesh(name, k)` | a node's parts, in its file's order; null where it has none |
-| `remove()` | every component it made, its root last |
+| `remove()` | its effects stopped, then every component it made, its root last |
+
+```java
+CgPrefabInstance wyvern = scene.spawn(WYVERN).at(x, y, z).spawn();
+wyvern.skeletal("body").anim().play(ROAR);
+wyvern.effect("breath").play();                  // follows the jaw until stopped or removed
+```
 
 - **A part draws its materials** with its node's values over them, one a section of its mesh.
 - **A node below an opacity of 0.001** spawns its parts hidden; a part's `cast_shadow` is its `castsShadow`.
@@ -131,7 +180,8 @@ CgVfxLook mine = CgVfxLook.builder(SCHEMA).with(CgVfxPrefabLook.of(LANTERN).kit(
   did in the game it came from.
 - Evaluating a pose is CPU matrix work, about 8 microseconds for 458 nodes; nothing allocates once it is made.
 - Names are unique and a parent comes before its children; the builder throws otherwise.
-- `--mode=vfx-prefab` is the effect's gate: 458 nodes, a subtree cut and a chain dimmed.
+- `--mode=vfx-prefab` is the effect's gate: 458 nodes, a subtree cut and a chain dimmed, played at `HERO` scalability
+  (its pixel-unit scene would otherwise be culled by distance) once its look's kernels are compiled.
 
 ## The base surface material
 
@@ -348,6 +398,8 @@ CgMeshComponent staff = CgScene.client().mesh(staffMesh, wood).attach(body, "han
   (`socket_location` spawning) are the component's; it stops once the component is removed.
 - **Late attach**: after the effects tick and before they draw (`LATE_ATTACH`), every followed point is read again, an
   entity's freshest mark included, so what draws at a point sits on it as it is drawn (Unreal's late update).
+- **Any primitive's own place** is `attachment()`: an effect follows a lantern's root or a static mesh as it does a
+  socket, and stops once it is removed.
 - A loaded file carries no sockets: they come from the skeleton asset (`withSockets`) or `CgSkeletalMesh.Builder.socket`.
 
 ### Attaching one primitive to another
@@ -472,7 +524,7 @@ An actor whose components are an asset names its prefab: spawned on its root bef
 code keeps only behaviour (Unreal's actor Blueprint):
 
 ```java
-CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");
+CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern");
 
 @Override protected void onSpawn(CgEntity wyvern) {
     wings = prefab().mesh("wings");                 // a node's part
@@ -483,8 +535,9 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/
 - **`add`** attaches a component to the root unless it rides something already, spawns it, and removes it with the
   actor.
 - **A registration's prefab loads behind the loading screen** (the load task `crystalgraphics:actor-prefabs`), with the
-  pipelines its parts draw with, so the first actor draws as it spawns; one named while the game runs loads at its
-  first spawn. A prefab that fails to load fails the spawn: the entity is left to its host.
+  systems its effect nodes play and the pipelines its parts and skeletal meshes draw with, so the first actor draws as
+  it spawns; one named while the game runs loads at its first spawn. A prefab that fails to load fails the spawn: the
+  entity is left to its host.
 - **The root** stands at the entity's feet, turned by its body yaw (`-bodyYaw` about up): +z, a glTF mesh's front,
   faces the entity's facing. A component keeps the placement it was built with as its offset from the root, so
   `.at`, `.rotation` and `.transform` may come before or after `add`.
@@ -507,7 +560,7 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/
   leaves, and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
   entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
 - **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
-  target, following it, its model left to the actor, and gone with it.
+  target with a prefab on its root, following it, its model left to the actor, and gone with it.
 
 ## Drawing a palette yourself
 

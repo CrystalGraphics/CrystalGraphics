@@ -40,6 +40,25 @@ public class CgPrefabAssetsTest {
     }
 
     @Test
+    public void aSkeletalNode_aSocketParent_andAnEffect_writeTheFileTheyLoadFrom() {
+        CgPrefab built = CgPrefab.builder("test:wyvern")
+                .node("body").elementId("n1").skeletal("test:geo/wyvern.glb", List.of(SKIN)).play("idle")
+                .node("membranes").elementId("n2").skeletal("test:geo/membranes.glb", List.of(GLOW, SKIN)).followPose("body")
+                .node("flame").elementId("n3").parent("body", "jaw").effect("test:vfx/breath", false)
+                .node("aura").elementId("n4").effect("test:vfx/aura", true)
+                .build();
+        Map<String, Object> written = CgPrefabAssets.write(built);
+        CgPrefab loaded = CgPrefabAssets.compile("test:wyvern", written, DEPS);
+        assertEquals(written, CgPrefabAssets.write(loaded));
+        int flame = loaded.node("flame");
+        assertEquals("jaw", loaded.parentSocket(flame));
+        assertEquals(new CgPrefab.Effect("test:vfx/breath", false), loaded.effect(flame));
+        assertEquals("body", loaded.skeletal(loaded.node("membranes")).followPose());
+        assertEquals(List.of(GLOW, SKIN), loaded.skeletal(loaded.node("membranes")).materials());
+        assertTrue(loaded.effect(loaded.node("aura")).auto());
+    }
+
+    @Test
     public void anUnrealRotatorByKeyTurnsTheNodeAndAShapeItCannotReadFailsNamingIt() {
         CgAssetCompiler.Dependencies unreal = new CgAssetCompiler.Dependencies() {
             @Override public Object definition(CgType kind, String id) {

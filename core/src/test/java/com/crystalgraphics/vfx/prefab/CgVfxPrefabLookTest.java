@@ -71,6 +71,10 @@ public class CgVfxPrefabLookTest {
                 .node("a").part(List.of(SKIN), "test:models/a.glb", Map.of("cast_shadow", true)).build();
         e = assertThrows(CgAssetException.class, () -> CgVfxPrefabLook.of(shadowed).requireDrawable("here"));
         assertTrue(e.getMessage(), e.getMessage().contains("cast_shadow"));
+        CgPrefab bodied = CgPrefab.builder("test:bodied").node("body")
+                .skeletal("test:geo/body.glb", List.of(SKIN)).build();
+        e = assertThrows(CgAssetException.class, () -> CgVfxPrefabLook.of(bodied).requireDrawable("here"));
+        assertTrue(e.getMessage(), e.getMessage().contains("skeletal mesh") && e.getMessage().contains("spawn it in a scene"));
         CgVfxPrefabLook.of(CgPrefab.builder("test:plain").node("a")
                 .part(List.of(SKIN), "test:models/a.glb", Map.of("cast_shadow", false)).build()).requireDrawable("here");
     }

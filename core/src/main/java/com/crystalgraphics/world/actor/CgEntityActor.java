@@ -52,7 +52,7 @@ import java.util.List;
  * <p>An actor registered with a prefab has it spawned on its root before {@code onSpawn}; its code keeps only
  * behaviour:</p>
  * <pre>{@code
- * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:prefabs/wyvern");
+ * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern");
  *
  * @Override protected void onSpawn(CgEntity wyvern) {
  *     wings = prefab().mesh("wings");                       // a node's part, a mesh component like any other

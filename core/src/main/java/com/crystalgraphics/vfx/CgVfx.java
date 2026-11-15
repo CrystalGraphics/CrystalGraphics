@@ -20,7 +20,10 @@ import com.crystalgraphics.vfx.particle.gpu.draw.CgVfxRange;
 import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
+import com.crystalgraphics.render.scene.prefab.CgPrefabEffects;
+import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
 import com.crystalgraphics.vfx.system.CgVfxCueEffects;
 import com.crystalgraphics.vfx.system.CgVfxSequencer;
@@ -178,6 +181,12 @@ public final class CgVfx {
         CgCharacterClockNet.install(() -> CgView.main().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
         CgPrefabAssets.register();
+        // A scene's prefabs play their effect nodes in the world's system, each following its node
+        CgPlatform.provide(CgPrefabEffects.HOST, (effect, at) -> {
+            CgVfxSystemInstance<?> play = new CgVfxSystemInstance<>(CgVfxAssets.ref(CgParticleKinds.SYSTEM, effect), 0, 0, 0);
+            world().play(play.follow(at));
+            return play::stop;
+        });
         // and are READY once the world's system has warmed what they draw: nothing compiles or uploads at a play
         preparers(CgVfxAssets.instance(), CgVfx::world);
         // The client world's sequencer, then its cue manager: what the server's cues and gameplay's tags play through

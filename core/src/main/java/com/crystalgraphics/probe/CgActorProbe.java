@@ -1,5 +1,7 @@
 package com.crystalgraphics.probe;
 
+import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.gauntlet.CgGauntletCapture;
 import com.crystalgraphics.gauntlet.CgGauntletController;
@@ -8,11 +10,15 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
+import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.actor.CgEntity;
 import com.crystalgraphics.world.actor.CgEntityActor;
 import com.crystalgraphics.world.actor.CgEntityActors;
+import org.joml.Matrix4dc;
+
+import java.util.List;
 
 /**
  * Proves, in a running single-player game, that the host binds entity actors: an actor spawned for an entity of its
@@ -25,6 +31,7 @@ import com.crystalgraphics.world.actor.CgEntityActors;
  * // what it logs, and writes in the run's report:
  * crystalgraphics:actors actors.spawned: true (minecraft:armor_stand#412 has an actor, #411 entered before its type did)
  * crystalgraphics:actors actors.replaced: true (the host's renderer reached #412 over 57 frames)
+ * crystalgraphics:actors actors.prefab: true (crystalgraphics:probe_actor's head 0.0 blocks from 1 above the root)
  * }</pre>
  *
  * <ul>
@@ -32,7 +39,8 @@ import com.crystalgraphics.world.actor.CgEntityActors;
  *       the player, registers an actor for their type between the two, and clears every entity but players within
  *       {@value #CLEAR} blocks at the end. Never point it at a world that matters.</li>
  *   <li>The actor draws nothing: the second target shows as its name tag and shadow alone, which the shot
- *       {@code crystalgraphics-actors-replaced.png} shows.</li>
+ *       {@code crystalgraphics-actors-replaced.png} shows. Its registration names a prefab of two nodes and no mesh,
+ *       requested as the test starts, its head checked a block above the root.</li>
  *   <li>Skipped, with the reason, where there is no single-player server.</li>
  * </ul>
  */
@@ -41,6 +49,7 @@ public final class CgActorProbe {
     /** Client ticks: in a world before summoning; the most for a summon to arrive or leave; a draw to be seen over. */
     private static final int SETTLE = 60, ARRIVE = 100, WATCH = 40;
     private static final double AHEAD = 3, FIND = 1.5, CLEAR = 8, FOLLOW = 1e-3;
+    private static final String PREFAB = "crystalgraphics:probe_actor";
 
     private enum Phase { WAITING, SETTLING, FIRST, SECOND, WATCHING, SHOT, LEAVING, DONE }
 
@@ -71,6 +80,10 @@ public final class CgActorProbe {
         @Override
         protected void onSpawn(CgEntity entity) {
         }
+
+        CgPrimitiveComponent<?> head() {
+            return prefab() == null ? null : prefab().node("head");
+        }
     }
 
     private static final class Test extends CgGauntletController {
@@ -79,6 +92,7 @@ public final class CgActorProbe {
             active = this;
             phase = Phase.WAITING;
             first = second = -1;
+            CgVfxAssets.instance().prefetch(List.of(CgVfxAssets.ref(CgBodyKinds.PREFAB, PREFAB)));   // ready by the spawn
             install();
         }
 
@@ -160,7 +174,7 @@ public final class CgActorProbe {
                     finish(test);
                     return;
                 }
-                registration = CgEntityActors.register(type, ProbeActor::new);
+                registration = CgEntityActors.register(type, ProbeActor::new).prefab(PREFAB);
                 stimulus.stand(ax, ay, az);
                 next(Phase.SECOND);
                 return;
@@ -223,6 +237,16 @@ public final class CgActorProbe {
         double dz = actor.root().z() - (box.minZ + box.maxZ) * 0.5;
         double off = Math.sqrt(dx * dx + dy * dy + dz * dz);
         test.stated("actors.follows", off < FOLLOW, "root " + off + " blocks from the box's bottom centre");
+        // its prefab's head, a block up from its body, placed off the root as of the last frame's ATTACH
+        CgPrimitiveComponent<?> head = ((ProbeActor) actor).head();
+        if (head == null) {
+            test.stated("actors.prefab", false, PREFAB + " was not spawned on the actor");
+            return;
+        }
+        Matrix4dc m = head.worldTransform();
+        double hx = m.m30() - actor.root().x(), hy = m.m31() - actor.root().y() - 1, hz = m.m32() - actor.root().z();
+        double headOff = Math.sqrt(hx * hx + hy * hy + hz * hz);
+        test.stated("actors.prefab", headOff < FOLLOW, PREFAB + "'s head " + headOff + " blocks from 1 above the root");
     }
 
     /** The nearest entity but the player and {@code not} within {@value #FIND} of the targets' point; -1 for none. */

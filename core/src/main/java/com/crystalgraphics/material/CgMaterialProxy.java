@@ -48,6 +48,7 @@ import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -114,6 +115,8 @@ public final class CgMaterialProxy {
      * and attached buffers. {@code null} for materials created via {@link #forTest}.
      */
     private final CgMaterialShader cgMaterialShader;
+    /** It warned once that a scene row named it while no mesh pass draws its domain. */
+    private boolean warnedNoMeshPass;
 
     /** Its render state where it is not its shader's: the blend and clip are its shader asset's, cull and depth write applied per pass here. */
     private final CgMaterialState state;
@@ -1256,6 +1259,17 @@ public final class CgMaterialProxy {
      */
     public int getMaterialId() {
         return materialId;
+    }
+
+    /**
+     * Says once that a scene row names this material, whose domain no mesh pass draws: the row draws nothing. A scene's
+     * rows draw {@code #domain surface} and {@code decal}; the others are a stage's, a post stack's or the canvas's.
+     */
+    public void warnNoMeshPass(CgMaterialDomain domain) {
+        if (warnedNoMeshPass) return;
+        warnedNoMeshPass = true;
+        LOGGER.warn("{} is a #domain {} material, which no mesh pass draws: a scene row naming it draws nothing (a scene's"
+                + " rows draw #domain surface and decal)", this, domain.name().toLowerCase(Locale.ROOT));
     }
 
     /** Where its material is drawn ({@code #domain}); null while its shader does not parse. A parse, never a compile. */

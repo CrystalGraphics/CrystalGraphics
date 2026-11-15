@@ -15,6 +15,7 @@ import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.shape.bounds.CgAABBc;
+import com.crystalgraphics.world.CgAttachment;
 import org.joml.Matrix4d;
 import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
@@ -279,6 +280,28 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     @Nullable
     public String attachSocket() {
         return parentSocketName;
+    }
+
+    /**
+     * Where it stands, as an attachment: what follows it (an effect) rides its placement as of this frame's
+     * {@code ATTACH}, and stops once it is removed. A skeletal mesh's sockets are {@code attachment(name)}.
+     *
+     * <pre>{@code
+     * VFX.play(new CgVfxSystemInstance<>(GLOW, 0, 0, 0).follow(lantern.attachment()));
+     * }</pre>
+     */
+    public CgAttachment attachment() {
+        return (point, turn) -> {
+            if (!spawned()) return false;
+            Matrix4dc m = worldTransform();
+            if (point != null) {
+                point[0] = m.m30();
+                point[1] = m.m31();
+                point[2] = m.m32();
+            }
+            if (turn != null) m.getUnnormalizedRotation(turn);
+            return true;
+        };
     }
 
     /** How many parents above it: the order {@code ATTACH} places in. */

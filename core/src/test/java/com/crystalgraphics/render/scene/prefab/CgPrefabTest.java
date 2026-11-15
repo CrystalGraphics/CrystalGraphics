@@ -2,19 +2,27 @@ package com.crystalgraphics.render.scene.prefab;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgSurfaceMaterial;
+import com.crystalgraphics.animation.CgSocketTest;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.api.mesh.CgMeshShapes;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
+import com.crystalgraphics.world.CgAttachment;
 import org.joml.Vector3d;
 import org.joml.Vector3f;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
@@ -101,6 +109,64 @@ public class CgPrefabTest {
                 .part(List.of(SKIN), "test:models/body.glb", Map.of("overlay", true)).build();
         e = assertThrows(CgAssetException.class, () -> scene.spawn(overlaid).spawn());
         assertTrue(e.getMessage(), e.getMessage().contains("body") && e.getMessage().contains("overlay"));
+    }
+
+    @Test
+    public void aSkeletalNodeIsASkeletalMesh_aFollowerInItsLeadersPose_aChildOnItsSocket() {
+        CgSkeletalMesh arm = CgSocketTest.arm();
+        CgPrefab prefab = CgPrefab.builder("test:arm")
+                .node("body").skeletal(arm, List.of(SKIN)).play("bend")
+                .node("sleeve").skeletal(arm, List.of(GLOW)).followPose("body")
+                .node("ring").parent("body", "Palm").part(GLOW, CUBE)
+                .build();
+        CgPrefabInstance spawned = new CgScene().spawn(prefab).spawn();
+        CgSkeletalMeshComponent body = spawned.skeletal("body");
+        assertNotNull(body);
+        assertSame(body, spawned.skeletal("sleeve").leaderPose());
+        assertSame(body, spawned.node("ring").attachParent());
+        assertEquals("Palm", spawned.node("ring").attachSocket());
+        assertNull("a root is no skeletal mesh", spawned.skeletal("ring"));
+
+        CgPrefab silent = CgPrefab.builder("test:silent").node("body").skeletal(arm, List.of(SKIN)).play("dance").build();
+        CgAssetException e = assertThrows(CgAssetException.class, () -> new CgScene().spawn(silent).spawn());
+        assertTrue(e.getMessage(), e.getMessage().contains("dance"));
+        assertThrows(IllegalArgumentException.class, () -> CgPrefab.builder("test:bad").node("a").node("b").parent("a", "Palm"));
+    }
+
+    @Test
+    public void anEffectNodePlaysThroughTheHost_atTheSpawnOrWhenTold_followingItsNode_stoppedWithTheInstance() {
+        List<String> started = new ArrayList<>();
+        List<CgAttachment> at = new ArrayList<>();
+        int[] stopped = {0};
+        CgPlatform.provide(CgPrefabEffects.HOST, (effect, where) -> {
+            started.add(effect);
+            at.add(where);
+            return () -> stopped[0]++;
+        });
+        try {
+            CgPrefab prefab = CgPrefab.builder("test:lamp")
+                    .node("lamp").at(0f, 1f, 0f).effect("test:glow", true)
+                    .node("breath").effect("test:breath", false)
+                    .build();
+            CgScene scene = new CgScene();
+            CgPrefabInstance lamp = scene.spawn(prefab).at(5, 0, 0).spawn();
+            assertEquals(List.of("test:glow"), started);
+            assertTrue(lamp.effect("lamp").playing());
+            assertFalse(lamp.effect("breath").playing());
+            scene.update();
+            double[] point = new double[3];
+            assertTrue(at.get(0).place(point, null));
+            assertEquals(5.0, point[0], 1e-9);
+            assertEquals(1.0, point[1], 1e-9);
+
+            lamp.effect("breath").play();
+            assertEquals(List.of("test:glow", "test:breath"), started);
+            lamp.remove();
+            assertEquals(2, stopped[0]);
+            assertFalse("gone with its node", at.get(0).place(point, null));
+        } finally {
+            CgPlatform.provide(CgPrefabEffects.HOST, null);
+        }
     }
 
     @Test

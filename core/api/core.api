@@ -7415,6 +7415,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
   method public surfaceLit ()Z
   method public toString ()Ljava/lang/String;
+  method public warnNoMeshPass (Lcom/crystalgraphics/api/material/CgMaterialDomain;)V
   method public writer ()Lcom/crystalgraphics/api/material/CgMaterialValues;
   method public writesCustomData ()Z
   method public writesDepth ()Z
@@ -11879,6 +11880,7 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public attach (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public attachParent ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public attachSocket ()Ljava/lang/String;
+  method public attachment ()Lcom/crystalgraphics/world/CgAttachment;
   method public blockLight ()F
   method public bounds (Lcom/crystalgraphics/shape/bounds/CgAABBc;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public castsShadow (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -12044,8 +12046,10 @@ com/crystalgraphics/render/scene/prefab/CgPrefab
   field public,static,final REST I
   method public derived (Ljava/lang/Class;Ljava/util/function/Function;)Ljava/lang/Object;
   method public drawnMaterials (I)Ljava/util/List;
+  method public effect (I)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Effect;
   method public elementId (I)Ljava/lang/String;
   method public firstPart (I)I
+  method public hasSceneNodes ()Z
   method public id ()Ljava/lang/String;
   method public name (I)Ljava/lang/String;
   method public node (Ljava/lang/String;)I
@@ -12053,11 +12057,13 @@ com/crystalgraphics/render/scene/prefab/CgPrefab
   method public nodesDrawing (Ljava/lang/String;)[I
   method public opacity (I)F
   method public parent (I)I
+  method public parentSocket (I)Ljava/lang/String;
   method public partMaterials (I)Ljava/util/List;
   method public partMesh (I)Lcom/crystalgraphics/api/mesh/CgMeshLods;
   method public partPath (I)Ljava/lang/String;
   method public partSettings (I)Ljava/util/Map;
   method public rest (I[F)[F
+  method public skeletal (I)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Skeletal;
   method public values (I)Ljava/util/Map;
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
 com/crystalgraphics/render/scene/prefab/CgPrefab$Builder
@@ -12065,19 +12071,42 @@ com/crystalgraphics/render/scene/prefab/CgPrefab$Builder
   extends java/lang/Object
   method public at (FFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public build ()Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
+  method public effect (Ljava/lang/String;Z)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public elementId (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public followPose (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public opacity (F)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public parent (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public parent (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Lcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Lcom/crystalgraphics/api/mesh/CgMesh;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Lcom/crystalgraphics/api/mesh/CgMeshLods;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public play (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public rotation (FFFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public scale (F)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public scale (FFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;Ljava/util/List;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public skeletal (Ljava/lang/String;Ljava/util/List;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public value (Ljava/lang/String;[F)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+com/crystalgraphics/render/scene/prefab/CgPrefab$Effect
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Z)V
+  method public auto ()Z
+  method public effect ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/scene/prefab/CgPrefab$Skeletal
+  access public,final
+  extends java/lang/Object
+  method public followPose ()Ljava/lang/String;
+  method public materials ()Ljava/util/List;
+  method public mesh ()Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
+  method public path ()Ljava/lang/String;
+  method public play ()Ljava/lang/String;
 com/crystalgraphics/render/scene/prefab/CgPrefabAssets
   access public,final
   extends java/lang/Object
@@ -12085,20 +12114,42 @@ com/crystalgraphics/render/scene/prefab/CgPrefabAssets
   method public,static compile (Ljava/lang/String;Ljava/util/Map;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
   method public,static register ()V
   method public,static write (Lcom/crystalgraphics/render/scene/prefab/CgPrefab;)Ljava/util/Map;
+com/crystalgraphics/render/scene/prefab/CgPrefabEffects
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+com/crystalgraphics/render/scene/prefab/CgPrefabEffects$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Host;
+  method public,abstract play (Ljava/lang/String;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Stoppable;
+com/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played
+  access public,final
+  extends java/lang/Object
+  method public effect ()Ljava/lang/String;
+  method public play ()Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played;
+  method public playing ()Z
+  method public stop ()Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played;
+com/crystalgraphics/render/scene/prefab/CgPrefabEffects$Stoppable
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract stop ()V
 com/crystalgraphics/render/scene/prefab/CgPrefabInstance
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/scene/CgScene;Lcom/crystalgraphics/render/scene/prefab/CgPrefab;)V
   method public at (DDD)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public attach (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
+  method public effect (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played;
   method public mesh (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Ljava/lang/String;I)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
-  method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
+  method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public prefab ()Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
   method public remove ()V
   method public root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public scale (F)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
+  method public skeletal (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public spawn ()Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
 com/crystalgraphics/render/scene/prefab/CgPrefabPose
   access public,final

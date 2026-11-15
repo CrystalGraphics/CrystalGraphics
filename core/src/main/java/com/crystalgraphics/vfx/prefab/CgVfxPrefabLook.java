@@ -191,10 +191,15 @@ public final class CgVfxPrefabLook {
 
     /**
      * Throws, naming {@code who} and the part, where a part draws what a look does not: several materials, one a
-     * section of its mesh (a character's), or an overlay, a shadow or a stencil its slot sets.
+     * section of its mesh (a character's), an overlay, a shadow or a stencil its slot sets, or a node that is a skeletal
+     * mesh or plays an effect.
      */
     public void requireDrawable(String who) {
         for (int node = 0; node < prefab.nodes(); node++) {
+            if (prefab.skeletal(node) != null || prefab.effect(node) != null) {
+                throw new CgAssetException(who + ": " + prefab.id() + "'s node " + prefab.name(node) + " is a "
+                        + (prefab.skeletal(node) != null ? "skeletal mesh" : "VFX effect") + ", which a VFX look does not draw: spawn it in a scene");
+            }
             for (int k = prefab.firstPart(node); k < prefab.firstPart(node + 1); k++) {
                 int materials = prefab.partMaterials(k).size();
                 if (materials != 1) {

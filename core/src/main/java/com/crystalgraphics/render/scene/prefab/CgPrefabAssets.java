@@ -36,6 +36,12 @@ import java.util.Map;
  *   - { id: n2, name: ball02, parent: ball03, location: [0, 1, 0], meshes: [ { mesh: mymod:models/core/ball02.glb, material: mymod:lens } ] }
  * }</pre>
  *
+ * <pre>{@code
+ * # a skeletal node, a node on its socket, an effect started by code
+ *   - { id: n3, name: body, skeletal: { mesh: mymod:geo/wyvern.glb, play: idle }, materials: [ mymod:wyvern_skin ] }
+ *   - { id: n4, name: flame, parent: "body#jaw", effect: { effect: mymod:vfx/breath, auto: false } }
+ * }</pre>
+ *
  * <ul>
  *   <li>Its values convert from its units to the host's: a location and a scale through the axes, a rotation in its
  *       convention to a quaternion.</li>
@@ -69,7 +75,15 @@ public final class CgPrefabAssets {
             String name = (String) node.get("name");
             String where = id + ": nodes." + node.get("id");
             b.node(name).elementId(String.valueOf(node.get("id")));
-            if (node.get("parent") instanceof String parent) b.parent(parent);
+            if (node.get("parent") instanceof String parent) {
+                int socket = parent.indexOf('#');
+                try {
+                    if (socket < 0) b.parent(parent);
+                    else b.parent(parent.substring(0, socket), parent.substring(socket + 1));
+                } catch (IllegalArgumentException e) {
+                    throw new CgAssetException(where + ".parent: " + e.getMessage());
+                }
+            }
             if (node.get("location") != null) {
                 float[] v = three(units.toHost(vector(node.get("location"), where + ".location"), CgQuantity.POSITION));
                 b.at(v[0], v[1], v[2]);
@@ -90,11 +104,35 @@ public final class CgPrefabAssets {
             if (node.get("values") instanceof Map<?, ?> values) {
                 for (Map.Entry<?, ?> v : values.entrySet()) b.value((String) v.getKey(), floats(v.getValue(), where + ".values." + v.getKey()));
             }
+            if (node.get("skeletal") instanceof Map<?, ?> skeletal) skeletal(b, node, skeletal, deps, where);
+            if (node.get("effect") instanceof Map<?, ?> effect) {
+                if (!(effect.get("effect") instanceof String system)) throw new CgAssetException(where + ".effect names no effect");
+                b.effect(system, !Boolean.FALSE.equals(effect.get("auto")));
+            }
             if (node.get("meshes") instanceof List<?> meshes) {
                 for (int k = 0; k < meshes.size(); k++) part(b, (Map<?, ?>) meshes.get(k), deps, where + ".meshes[" + k + "]");
             }
         }
         return b.build();
+    }
+
+    private static void skeletal(CgPrefab.Builder b, Map<?, ?> node, Map<?, ?> skeletal, CgAssetCompiler.Dependencies deps,
+                                 String where) {
+        if (!(skeletal.get("mesh") instanceof String mesh)) throw new CgAssetException(where + ".skeletal names no mesh");
+        List<CgMaterialDefinition> materials = new ArrayList<>();
+        if (node.get("materials") instanceof List<?> ms) {
+            for (int i = 0; i < ms.size(); i++) materials.add(material((String) ms.get(i), deps, where + ".materials[" + i + "]"));
+        }
+        if (materials.isEmpty()) throw new CgAssetException(where + " is a skeletal mesh with no materials");
+        b.skeletal(mesh, materials);
+        if (skeletal.get("play") instanceof String clip) b.play(clip);
+        if (skeletal.get("follow_pose") instanceof String leader) {
+            try {
+                b.followPose(leader);
+            } catch (IllegalArgumentException e) {
+                throw new CgAssetException(where + ".skeletal.follow_pose: " + e.getMessage());
+            }
+        }
     }
 
     private static void part(CgPrefab.Builder b, Map<?, ?> slot, CgAssetCompiler.Dependencies deps, String where) {
@@ -128,7 +166,10 @@ public final class CgPrefabAssets {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("id", prefab.elementId(n));
             node.put("name", prefab.name(n));
-            if (prefab.parent(n) >= 0) node.put("parent", prefab.name(prefab.parent(n)));
+            if (prefab.parent(n) >= 0) {
+                String socket = prefab.parentSocket(n);
+                node.put("parent", prefab.name(prefab.parent(n)) + (socket == null ? "" : "#" + socket));
+            }
             prefab.rest(n, rest);
             if (rest[0] != 0 || rest[1] != 0 || rest[2] != 0) node.put("location", list(rest, 0, 3));
             if (rest[3] != 0 || rest[4] != 0 || rest[5] != 0 || rest[6] != 1) node.put("rotation", list(rest, 3, 4));
@@ -138,6 +179,27 @@ public final class CgPrefabAssets {
                 Map<String, Object> values = new LinkedHashMap<>();
                 for (Map.Entry<String, float[]> v : prefab.values(n).entrySet()) values.put(v.getKey(), number(v.getValue()));
                 node.put("values", values);
+            }
+            CgPrefab.Skeletal skeletal = prefab.skeletal(n);
+            if (skeletal != null) {
+                if (skeletal.path() == null) {
+                    throw new IllegalArgumentException(prefab.id() + "'s node " + prefab.name(n) + " is a skeletal mesh made in code, which has no file");
+                }
+                Map<String, Object> s = new LinkedHashMap<>();
+                s.put("mesh", skeletal.path());
+                if (skeletal.play() != null) s.put("play", skeletal.play());
+                if (skeletal.followPose() != null) s.put("follow_pose", skeletal.followPose());
+                node.put("skeletal", s);
+                List<Object> ids = new ArrayList<>();
+                for (CgMaterialDefinition m : skeletal.materials()) ids.add(m.id());
+                node.put("materials", ids);
+            }
+            CgPrefab.Effect effect = prefab.effect(n);
+            if (effect != null) {
+                Map<String, Object> e = new LinkedHashMap<>();
+                e.put("effect", effect.effect());
+                if (!effect.auto()) e.put("auto", false);
+                node.put("effect", e);
             }
             List<Object> meshes = new ArrayList<>();
             for (int k = prefab.firstPart(n); k < prefab.firstPart(n + 1); k++) {

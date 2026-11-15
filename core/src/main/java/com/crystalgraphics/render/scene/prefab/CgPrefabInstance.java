@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.prefab;
 
+import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.tree.CgAssetException;
@@ -7,6 +8,7 @@ import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgMeshComponent;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 
@@ -15,27 +17,32 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A {@link CgPrefab} spawned into a scene as components: a {@link CgSceneRoot} a node, at its rest under its parent's,
- * and a {@link CgMeshComponent} a part, riding its node. Unreal's actor spawned from a Blueprint, its component tree
- * made from the template. Made by {@code scene.spawn(prefab)}.
+ * A {@link CgPrefab} spawned into a scene as components: a node a {@link CgSceneRoot} at its rest under its parent's
+ * (a {@link CgSkeletalMeshComponent} where it is a skeletal mesh), a {@link CgMeshComponent} a part riding its node, and
+ * an effect node's VFX play following it. Unreal's actor spawned from a Blueprint, its component tree made from the
+ * template. Made by {@code scene.spawn(prefab)}.
  *
  * <pre>{@code
  * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).rotation(facing).spawn();
  * lantern.node("flame").scale(0.8f);                  // a node moves what rides it
  * lantern.mesh("glass").customDepth(1);               // a part is a mesh component like any other
- * lantern.remove();                                   // every component it made
+ * lantern.remove();                                   // every component it made, its effects stopped
  * }</pre>
  *
- * <p>Riding another, as an actor's prefab rides the actor's root:</p>
+ * <p>A skeletal node and an effect node:</p>
  * <pre>{@code
- * CgPrefabInstance saddle = scene.spawn(SADDLE).attach(horse, "back").spawn();
+ * CgPrefabInstance wyvern = scene.spawn(WYVERN).attach(root, null).spawn();
+ * wyvern.skeletal("body").anim().play(roar);          // its own clip over the prefab's
+ * wyvern.effect("flame").play();                      // a node's effect, not started at the spawn
  * }</pre>
  *
  * <ul>
- *   <li>A part draws its materials with its node's values over them, one a section of its mesh.</li>
+ *   <li>A part draws its materials with its node's values over them, one a section of its mesh; a skeletal node its
+ *       materials one a slot, the last for any slot past them.</li>
  *   <li>A node whose opacity is below {@link CgPrefab#MIN_OPACITY} spawns its parts hidden; a part's {@code cast_shadow}
  *       is its {@code castsShadow}. Any other mesh-slot setting, and a part drawing the VFX unit sphere, is refused at
  *       {@link #spawn}, naming the node.</li>
+ *   <li>An effect node plays through {@link CgPrefabEffects#HOST}, the VFX engine's.</li>
  *   <li>The client world's thread, as every component's.</li>
  * </ul>
  */
@@ -45,9 +52,11 @@ public final class CgPrefabInstance {
     private final CgPrefab prefab;
     private final CgSceneRoot root;
     @Nullable
-    private CgSceneRoot[] nodes;
+    private CgPrimitiveComponent<?>[] nodes;
     @Nullable
     private CgMeshComponent[] parts;
+    @Nullable
+    private CgPrefabEffects.Played[] effects;
 
     /** {@code prefab} for {@code scene}, unspawned: what {@code scene.spawn(prefab)} answers. */
     public CgPrefabInstance(CgScene scene, CgPrefab prefab) {
@@ -87,7 +96,7 @@ public final class CgPrefabInstance {
     }
 
     /**
-     * Makes and spawns its components, roots first. Answers this.
+     * Makes and spawns its components, roots first, then starts the effects its nodes start with. Answers this.
      *
      * @throws CgAssetException naming the node, where a part sets what a scene does not draw or draws the unit sphere
      * @throws IllegalStateException where it is spawned already
@@ -97,34 +106,73 @@ public final class CgPrefabInstance {
         requireDrawable();
         root.spawn();
         int n = prefab.nodes();
-        CgSceneRoot[] made = new CgSceneRoot[n];
+        CgPrimitiveComponent<?>[] made = new CgPrimitiveComponent<?>[n];
         CgMeshComponent[] drawn = new CgMeshComponent[prefab.firstPart(n)];
+        CgPrefabEffects.Played[] played = new CgPrefabEffects.Played[n];
         float[] rest = new float[CgPrefab.REST];
         Quaternionf turn = new Quaternionf();
         for (int i = 0; i < n; i++) {
             prefab.rest(i, rest);
             int p = prefab.parent(i);
-            made[i] = scene.root().at(rest[0], rest[1], rest[2]).rotation(turn.set(rest[3], rest[4], rest[5], rest[6]))
-                    .scale(rest[7], rest[8], rest[9]).attach(p < 0 ? root : made[p], null).spawn();
+            CgPrimitiveComponent<?> node = component(i, made);
+            node.at(rest[0], rest[1], rest[2]).rotation(turn.set(rest[3], rest[4], rest[5], rest[6]))
+                    .scale(rest[7], rest[8], rest[9]).attach(p < 0 ? root : made[p], prefab.parentSocket(i)).spawn();
+            made[i] = node;
             boolean shown = prefab.opacity(i) >= CgPrefab.MIN_OPACITY;
             for (int k = prefab.firstPart(i); k < prefab.firstPart(i + 1); k++) {
                 List<CgMaterialDefinition> materials = prefab.drawnMaterials(k);
                 CgMeshComponent part = scene.mesh(prefab.partMesh(k), CgMaterial.of(materials.get(0)))
                         .materials(slot -> CgMaterial.of(materials.get(Math.min(slot, materials.size() - 1))));
                 if (prefab.partSettings(k).get("cast_shadow") instanceof Boolean casts) part.castsShadow(casts);
-                drawn[k] = part.visible(shown).attach(made[i], null).spawn();
+                drawn[k] = part.visible(shown).attach(node, null).spawn();
+            }
+            CgPrefab.Effect effect = prefab.effect(i);
+            if (effect != null) {
+                played[i] = new CgPrefabEffects.Played(effect.effect(), node.attachment());
+                if (effect.auto()) played[i].play();
             }
         }
         nodes = made;
         parts = drawn;
+        effects = played;
         return this;
     }
 
-    /** Node {@code name}'s root: moving it moves its parts and children. Null where it has none. */
+    /** Node {@code i}'s own component, unspawned: its skeletal mesh (its leader among {@code made}), else a root. */
+    private CgPrimitiveComponent<?> component(int i, CgPrimitiveComponent<?>[] made) {
+        CgPrefab.Skeletal s = prefab.skeletal(i);
+        if (s == null) return scene.root();
+        List<CgMaterialDefinition> materials = s.materials();
+        CgSkeletalMeshComponent body = scene.skeletal(s.mesh())
+                .materials(slot -> CgMaterial.of(materials.get(Math.min(slot, materials.size() - 1))));
+        if (s.play() != null) {
+            CgAnimSequence clip = s.mesh().sequence(s.play());
+            if (clip == null) throw refused(i, "plays " + s.play() + ", which its mesh has no sequence of");
+            body.anim().play(clip);
+        }
+        if (s.followPose() != null) body.followPose((CgSkeletalMeshComponent) made[prefab.node(s.followPose())]);
+        return body;
+    }
+
+    /** Node {@code name}'s component: a root, or its skeletal mesh. Moving it moves its parts and children. Null where it has none. */
     @Nullable
-    public CgSceneRoot node(String name) {
+    public CgPrimitiveComponent<?> node(String name) {
         int i = prefab.node(name);
         return i < 0 ? null : spawned()[i];
+    }
+
+    /** Skeletal node {@code name}'s component, or null where it is none. */
+    @Nullable
+    public CgSkeletalMeshComponent skeletal(String name) {
+        return node(name) instanceof CgSkeletalMeshComponent s ? s : null;
+    }
+
+    /** Node {@code name}'s effect, playing or not, or null where it plays none. */
+    @Nullable
+    public CgPrefabEffects.Played effect(String name) {
+        int i = prefab.node(name);
+        spawned();
+        return i < 0 ? null : effects[i];
     }
 
     /** Node {@code name}'s first part, or null where it has none or draws nothing. */
@@ -142,16 +190,18 @@ public final class CgPrefabInstance {
         return parts[prefab.firstPart(i) + k];
     }
 
-    /** Removes every component it made, parts first, its root last. */
+    /** Stops its effects and removes every component it made, parts first, its root last. */
     public void remove() {
+        if (effects != null) for (CgPrefabEffects.Played e : effects) if (e != null) e.stop();
         if (parts != null) for (CgMeshComponent part : parts) part.remove();
         if (nodes != null) for (int i = nodes.length - 1; i >= 0; i--) nodes[i].remove();
         root.remove();
+        effects = null;
         parts = null;
         nodes = null;
     }
 
-    private CgSceneRoot[] spawned() {
+    private CgPrimitiveComponent<?>[] spawned() {
         if (nodes == null) throw new IllegalStateException(prefab.id() + " is not spawned");
         return nodes;
     }
