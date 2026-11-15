@@ -246,8 +246,8 @@ scene.pointLight().at(x, y, z).radius(2f).color(0xFFFFE080).intensity(4f)
 - **Resolution and rays**: `crystalgraphics.world.lightsDownsample` is Unreal's `r.MegaLights.DownsampleMode`: 0 traces
   every pixel, 1 every other (2x1), 2 a quarter (2x2); `crystalgraphics.world.lightsSamplesPerPixel` its
   `NumSamplesPerPixel`, 1, 2 or 4 samples each. Unreal's default, 4 samples on a 2x2 pixel, is a ray a screen pixel and
-  leans on TSR to hide the 2-pixel steps. The default is 2x2 at 1 sample a pixel, a quarter of Unreal's rays, the frames
-  averaging the rest: in the lights demo at 2560x1440 in game, the sample pass took 1.9 ms at full resolution and 0.65
+  leans on TSR to hide the 2-pixel steps. Ours is the same: 2x2 at 4 samples (2 below High); fewer is noisier where
+  many lights overlap. In the lights demo at 2560x1440 in game, the sample pass took 1.9 ms at full resolution and 0.65
   at 2x2. Minecraft's block light takes
   that sample's one ray too, and on our pixels the sun's. Standing over the shadows demo's plaza at 2000x1080 the sample pass took 12-13 ms at 4
   samples a pixel and 3.2-3.4 at 1 (RTX 4070 Super, Minecraft 1.20.1).
@@ -393,14 +393,13 @@ still wins.
 | Lit air (`lightsAir`) | off | off | on | on | `r.VolumetricFog` |
 | Screen-trace steps (`lightsScreenSteps`) | 12 | 12 | 24 | 24 | `r.MegaLights.ScreenTraces.Quality` 0 0 1 1: its half-resolution traces as half the steps |
 | Our meshes shadowing the lights (`lightsMeshShadows`) | off | off | on | on | `r.DistanceFieldShadowing` |
+| Shadow rays a downsampled pixel (`lightsSamplesPerPixel`) | 2 | 2 | 4 | 4 | `r.MegaLights.NumSamplesPerPixel` |
 | Sun cascades (`sunShadowCascades`) | 1 | 1 | 4 | 4 | `r.Shadow.CSM.MaxCascades` 1 1 4 10 |
 | Sun map a cascade (`sunShadowResolution`) | 512 | 512 | 1024 | 1024 | `r.Shadow.MaxCSMResolution` 512 1024 2048 2048, ours half (a float copy beside its depth) at High and up |
 | Sun shadow distance (`sunShadowDistance`) | 58 | 67 | 82 | 96 | `r.Shadow.DistanceScale` 0.6 0.7 0.85 1 |
 | Block lights' shadow reach (`blockShadowReach`) | 24 | 24 | 48 | 48 | `r.LightMaxDrawDistanceScale` 0.5 0.5 1 1 |
 | Translucency volume cells (`lightsVolumeCells`) | 24 | 32 | 48 | 64 | `r.TranslucencyLightingVolume.Dim` |
 
-- Unreal's tables also scale MegaLights' samples a pixel (2 2 4 4): ours is already 1 a pixel at Ultra, Unreal's
-  budget at a quarter of the pixels, so the tiers leave it.
 - Nothing here scales the exact particle lights (the fireflies' apply), as nothing in Unreal's tables does: Niagara
   scales them only through an effect type's spawn counts, which a system opts into.
 

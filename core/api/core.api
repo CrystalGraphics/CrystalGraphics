@@ -3808,12 +3808,14 @@ com/crystalgraphics/api/texture/CgTextures
   method public,static cube (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static cube (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTextureCubemap;
   method public,static frames (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
+  method public,static frames (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static frames (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static frames ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
   method public,static target (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/platform/rhi/CgExternalTarget;
   method public,static volume (Ljava/lang/String;I)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
+  method public,static volume (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static volume (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static volume ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
 com/crystalgraphics/api/vertex/CgAttribType
@@ -6000,6 +6002,7 @@ com/crystalgraphics/compute/emit/CgKernelTarget
 com/crystalgraphics/compute/emit/CgPropertyBlock
   access public,final
   extends java/lang/Object
+  method public defaultTexture (I)Lcom/crystalgraphics/api/texture/CgTexture;
   method public defaults ()[F
   method public defaultsInto ([F)V
   method public floats ()I
@@ -7785,6 +7788,7 @@ com/crystalgraphics/gpu/resource/CgTexture2DArray
   method public uploadLayerRegion (IIIIIIILjava/nio/FloatBuffer;)V
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
+  method public,static createTiled (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
 com/crystalgraphics/gpu/resource/CgTexture3D
   access public,final
   extends com/crystalgraphics/gpu/resource/CgTextureAbstract
@@ -7800,6 +7804,7 @@ com/crystalgraphics/gpu/resource/CgTexture3D
   method public uploadRegion (IIIIIIILjava/nio/ByteBuffer;II)V
   method public,static create (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static create ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
+  method public,static createTiled (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static fullChain (III)I
 com/crystalgraphics/gpu/resource/CgTextureAbstract
   access public,abstract
@@ -9971,6 +9976,12 @@ com/crystalgraphics/net/wire/CgWireTransport
   method public send (Ljava/lang/Object;)V
   method public sendNotification (Ljava/lang/String;[BI)Z
   method public setReceiver (Ljava/util/function/Consumer;)V
+com/crystalgraphics/noise/CgBlueNoise
+  access public,final
+  extends java/lang/Object
+  field public,static,final FRAMES I
+  field public,static,final NAME Ljava/lang/String;
+  method public,static install ()V
 com/crystalgraphics/noise/CgNoiseVolumes
   access public,final
   extends java/lang/Object
@@ -13821,7 +13832,12 @@ com/crystalgraphics/render/scene/renderer/feature/light/CgLightCollector$Light
 com/crystalgraphics/render/scene/renderer/feature/light/CgLightSettings
   access public,final
   extends java/lang/Object
+  field public,static,final DOWNSAMPLE Lcom/crystalgraphics/variable/CgVar$Num;
+  field public,static,final MAX_FRAMES Lcom/crystalgraphics/variable/CgVar$Num;
+  field public,static,final SCREEN_TRACE Lcom/crystalgraphics/variable/CgVar$Num;
   field public,static,final SHADE_SCALE Lcom/crystalgraphics/variable/CgVar$Int;
+  field public,static,final SHADOWS Lcom/crystalgraphics/variable/CgVar$Bool;
+  field public,static,final SPATIAL_RADIUS Lcom/crystalgraphics/variable/CgVar$Num;
 com/crystalgraphics/render/scene/renderer/feature/light/CgSceneLight
   access public,final
   extends java/lang/Object

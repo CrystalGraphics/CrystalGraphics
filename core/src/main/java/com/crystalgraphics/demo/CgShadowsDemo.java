@@ -15,7 +15,6 @@ import com.crystalgraphics.shape.primitive.CgSphere;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.variable.CgVars;
 import org.joml.Matrix4f;
 
 import java.util.Locale;
@@ -48,10 +47,6 @@ import java.util.Locale;
 public final class CgShadowsDemo {
 
     private static final String MATERIAL = "crystalgraphics:shaders/demo/matte.shader";
-    private static final String SHADOWS = "crystalgraphics.world.lightsShadows";
-    private static final String FRAMES = "crystalgraphics.world.lightsShadowFrames", SPATIAL = "crystalgraphics.world.lightsShadowSpatial";
-    private static final String SCREEN = "crystalgraphics.world.lightsScreenTrace";
-    private static final String DOWNSAMPLE = "crystalgraphics.world.lightsDownsample";
     private static final String[] RESOLUTIONS = {"full", "checkerboard", "half"};
     private static final CgSphere MARK = CgSphere.of(0.15);
     /** The plaza's half width, and the stations' distance from its middle. */
@@ -66,32 +61,32 @@ public final class CgShadowsDemo {
      * so {@code -Dcrystalgraphics.trace.splitAt=demo.shadows} reports the frames either side apart.
      */
     public static void toggleShadows() {
-        CgVar.Bool shadows = (CgVar.Bool) CgVars.get(SHADOWS);
+        CgVar.Bool shadows = CgLightSettings.SHADOWS;
         shadows.set(!shadows.get());
         CgTrace.marker(CgChannels.WORLD, "demo.shadows", shadows.get() ? "on" : "off");
     }
 
     /** The shadows' temporal accumulation: one frame, or the default twelve. */
     public static void toggleTemporal() {
-        CgVar.Num frames = (CgVar.Num) CgVars.get(FRAMES);
+        CgVar.Num frames = CgLightSettings.MAX_FRAMES;
         frames.set(frames.get() > 1f ? 1f : 12f);
     }
 
     /** The shadows' spatial filter: none, or the default eight pixels. */
     public static void toggleSpatial() {
-        CgVar.Num radius = (CgVar.Num) CgVars.get(SPATIAL);
+        CgVar.Num radius = CgLightSettings.SPATIAL_RADIUS;
         radius.set(radius.get() > 0f ? 0f : 8f);
     }
 
     /** The shadow rays' screen trace: none, or Unreal's one block. */
     public static void toggleScreenTrace() {
-        CgVar.Num reach = (CgVar.Num) CgVars.get(SCREEN);
+        CgVar.Num reach = CgLightSettings.SCREEN_TRACE;
         reach.set(reach.get() > 0f ? 0f : 1f);
     }
 
     /** The shadow rays' resolution, Unreal's DownsampleMode: full, checkerboard (2x1), half (2x2), and round again. */
     public static void cycleResolution() {
-        CgVar.Num mode = (CgVar.Num) CgVars.get(DOWNSAMPLE);
+        CgVar.Num mode = CgLightSettings.DOWNSAMPLE;
         mode.set((Math.round(mode.get()) + 1) % 3);
     }
 
@@ -120,7 +115,7 @@ public final class CgShadowsDemo {
     }
 
     public static boolean shadowsOn() {
-        return ((CgVar.Bool) CgVars.get(SHADOWS)).get();
+        return CgLightSettings.SHADOWS.get();
     }
 
     public void precache() {
@@ -180,10 +175,10 @@ public final class CgShadowsDemo {
     /** What the HUD says under the scene's line. */
     public static String hud() {
         return lightingLine()
-                + " | temporal [K]: " + (((CgVar.Num) CgVars.get(FRAMES)).get() > 1f ? "on" : "off")
-                + " | spatial [J]: " + (((CgVar.Num) CgVars.get(SPATIAL)).get() > 0f ? "on" : "off")
-                + " | screen trace [U]: " + (((CgVar.Num) CgVars.get(SCREEN)).get() > 0f ? "on" : "off")
-                + " | resolution [M]: " + RESOLUTIONS[Math.round(((CgVar.Num) CgVars.get(DOWNSAMPLE)).get())]
+                + " | temporal [K]: " + (CgLightSettings.MAX_FRAMES.get() > 1f ? "on" : "off")
+                + " | spatial [J]: " + (CgLightSettings.SPATIAL_RADIUS.get() > 0f ? "on" : "off")
+                + " | screen trace [U]: " + (CgLightSettings.SCREEN_TRACE.get() > 0f ? "on" : "off")
+                + " | resolution [M]: " + RESOLUTIONS[Math.round(CgLightSettings.DOWNSAMPLE.get())]
                 + "\neast pillar: place a torch beside it; west cube: by day";
     }
 }

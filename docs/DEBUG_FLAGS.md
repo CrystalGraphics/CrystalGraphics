@@ -386,7 +386,8 @@ The 1.7.10 hotswap plugin and integration test run before CrystalGraphics' class
 | `crystalgraphics.world.lightsEntityTiles` | true, false | `true` | A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity. |
 | `crystalgraphics.world.lightsMeshShadows` | true, false | `true` | Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do. |
 | `crystalgraphics.world.lightsMinScreenRadius` | 0.0 to 1.0 | `0.03` | A light whose bounding sphere is smaller than this share of the screen is not drawn; 0 keeps all. |
-| `crystalgraphics.world.lightsSamplesPerPixel` | 1 to 4 | `1` | Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget. |
+| `crystalgraphics.world.lightsSamplesPerPixel` | 1 to 4 | `4` (2 below High) | Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a downsampled pixel: fewer, noisier where many lights overlap. |
+| `crystalgraphics.world.lightsSkip` | 0 to 127 | `0` | Parts the shadow rays leave out, a bit each, to tell which draws an artifact: 1 sun, 2 block light, 4 lights, 8 meshes, 16 screen, 32 blocks, 64 entities. |
 | `crystalgraphics.world.lightsScreenSteps` | 4 to 64 | `24` | Steps a shadow ray takes across the screen's depth. |
 | `crystalgraphics.world.lightsScreenTrace` | 0.0 to 64.0 | `1.0` | Blocks a shadow ray is followed across the screen's depth before the world trace takes over: Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm. |
 | `crystalgraphics.world.lightsShadeScale` | 1 to 4 | `2` | Target pixels each way one texel of the shadowed lights' shading, history and filter stands for: 1 full, 2 half, 4 quarter resolution (3 reads as 2), upsampled by depth. |

@@ -104,9 +104,9 @@ final class CgMegaLights {
         CgCompute.load(DENOISE_KERNELS).kernel("Denoise").precache();
     }
 
-    /** What the shadow rays leave out: our meshes without {@code lightsMeshShadows}. */
+    /** What the shadow rays leave out: {@code lightsSkip}, and our meshes without {@code lightsMeshShadows}. */
     static int skip() {
-        return CgLightSettings.MESH_SHADOWS.get() ? 0 : 8;
+        return CgLightSettings.SKIP.get() | (CgLightSettings.MESH_SHADOWS.get() ? 0 : 8);
     }
 
     /**

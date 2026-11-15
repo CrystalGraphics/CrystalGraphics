@@ -38,10 +38,10 @@ public final class CgLightSettings {
                     + " and where no sky reaches. 1 never fades.");
 
     // The shadows: Unreal's bCastShadows for the world, and MegaLights' traces
-    static final CgVar.Bool SHADOWS = CgVar.bool("crystalgraphics.world.lightsShadows", true, CgVar.DEV,
+    public static final CgVar.Bool SHADOWS = CgVar.bool("crystalgraphics.world.lightsShadows", true, CgVar.DEV,
             "Lights that cast shadows are withheld by the blocks and entities between them and a surface.");
     /** Unreal's r.MegaLights.ScreenTraces.MaxDistance, in blocks: longer, since the world trace knows only blocks. */
-    static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 1f, 0f, 64f,
+    public static final CgVar.Num SCREEN_TRACE = CgVar.number("crystalgraphics.world.lightsScreenTrace", 1f, 0f, 64f,
             CgVar.DEV, "Blocks a shadow ray is followed across the screen's depth before the world trace takes over: "
                     + "Unreal's r.MegaLights.ScreenTraces.MaxDistance, 100 cm.");
     /** Unreal's r.MegaLights.ScreenTraces.Quality as a step count: its fast half-resolution traces as half the steps. */
@@ -50,17 +50,20 @@ public final class CgLightSettings {
     /** Unreal's r.DistanceFieldShadowing: our meshes' distance fields in the lights' shadow rays. */
     static final CgVar.Bool MESH_SHADOWS = CgVar.bool("crystalgraphics.world.lightsMeshShadows", true, CgVar.DEV,
             "Our meshes withhold the lights through their distance fields; off, only blocks, entities and the screen do.");
-    static final CgVar.Int SAMPLES = CgVar.integer("crystalgraphics.world.lightsSamplesPerPixel", 1, 1, 4, CgVar.DEV,
-            "Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a pixel (or a downsampled one). Unreal's 4 "
-                    + "fall on a 2x2 downsampled pixel, a ray a screen pixel; 1 at full resolution is the same budget.");
-    static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 2f, 0f, 2f, CgVar.DEV,
+    static final CgVar.Int SAMPLES = CgVar.integer("crystalgraphics.world.lightsSamplesPerPixel", 4, 1, 4, CgVar.DEV,
+            "Unreal's r.MegaLights.NumSamplesPerPixel: 1, 2 or 4 shadow rays a downsampled pixel; fewer, noisier where "
+                    + "many lights overlap.");
+    public static final CgVar.Num DOWNSAMPLE = CgVar.number("crystalgraphics.world.lightsDownsample", 2f, 0f, 2f, CgVar.DEV,
             "Unreal's r.MegaLights.DownsampleMode: 0 traces every pixel, 1 every other (2x1), 2 a quarter (2x2), Unreal's "
                     + "default. In the lights demo at 2560x1440 in game the sample pass took 1.9 ms at 0, 0.65 at 2.");
-    static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
+    public static final CgVar.Num MAX_FRAMES = CgVar.number("crystalgraphics.world.lightsShadowFrames", 12f, 1f, 32f,
             CgVar.DEV, "Frames the shadowed lighting accumulates over: fewer ghost less and shimmer more.");
     /** Unreal's r.MegaLights.Spatial.KernelRadius, in pixels; 0 filters nothing. */
-    static final CgVar.Num SPATIAL_RADIUS = CgVar.number("crystalgraphics.world.lightsShadowSpatial", 8f, 0f, 32f,
+    public static final CgVar.Num SPATIAL_RADIUS = CgVar.number("crystalgraphics.world.lightsShadowSpatial", 8f, 0f, 32f,
             CgVar.DEV, "Pixels the shadowed lighting is filtered across where it is still noisy; 0 for none.");
+    static final CgVar.Int SKIP = CgVar.integer("crystalgraphics.world.lightsSkip", 0, 0, 127, CgVar.DEV,
+            "Parts the shadow rays leave out, a bit each, to tell which draws an artifact: 1 sun, 2 block light, 4 lights, "
+                    + "8 meshes, 16 screen, 32 blocks, 64 entities.");
     static final CgVar.Bool ENTITY_TILES = CgVar.bool("crystalgraphics.world.lightsEntityTiles", true, CgVar.DEV,
             "A shadow ray tests only the entities its 16x16 tile can meet; off, every tile keeps every entity.");
     /** Minecraft's light-giving blocks as lights our objects shadow: how far from the eye, in blocks; 0 for none. */
@@ -139,6 +142,7 @@ public final class CgLightSettings {
         AIR.set(high);                                          // r.VolumetricFog 0 0 1 1
         SCREEN_STEPS.set(high ? 24 : 12);                       // r.MegaLights.ScreenTraces.Quality 0 0 1 1
         MESH_SHADOWS.set(high);                                 // r.DistanceFieldShadowing 0 0 1 1
+        SAMPLES.set(high ? 4 : 2);                              // r.MegaLights.NumSamplesPerPixel 2 2 4 4
         SUN_CASCADES.set(high ? CgSunShadows.CASCADES : 1);     // r.Shadow.CSM.MaxCascades 1 1 4 10
         // r.Shadow.MaxCSMResolution 512 1024 2048 2048: ours is half Unreal's at High and up (it keeps a float copy),
         // and 512 below, Unreal's Low: at 256 the caster bias, 10 texels, outgrew a box's height off the ground.
