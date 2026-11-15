@@ -9,12 +9,14 @@ the engine bakes each clip onto your model once, when it loads. Nothing retarget
 |---|---|---|
 | **Rig** | How a skeleton is read as a body: its root, its pelvis, its named chains (a spine, each arm, each leg), and the IK goal at the end of a limb | `CgRig` |
 | **Adapter** | What a model library says of its models: which way they face, which bones only rotate | `CgRigAdapter`, `CgRigAdapters` |
-| **Default rig** | A rig found from bone names, so a common shape needs no rig file: the standard humanoid's names, GeckoLib's humanoid | `CgRigs` |
+| **Default rig** | A rig found from bone names, so a common shape needs no rig file: the standard humanoid's names, GeckoLib's humanoid, Minecraft's humanoid | `CgRigs` |
 | **Retargeter** | One rig's animation on another: which chain follows which, the poses that line the two up, the steps | `CgRetargeter` |
 | **Retarget pose** | Each skeleton's stance the two are compared in: an arms-down model turned to meet a source standing arms out | `CgRetargetPoses` |
 | **Processor** | Runs a retargeter on poses: a source pose in, the target's out | `CgRetargetProcessor` |
 | **Bake** | A source clip made into a clip of the target's own bones, once, cached | `CgRetargetBake` |
 | **Resolver** | Which clip a character plays for a name: its own, else the source's baked onto it, else an error naming it | `CgClipResolver` |
+| **Carried bone** | An animated bone that is not the body's (an effect's dummy: a charge point, a trail's edge), added to a target that lacks it and kept moving | `CgRig.Builder.carried` |
+| **Vanilla humanoid** | Minecraft's own humanoid model as a skeleton the engine poses; the game still draws it | `mc.model.CgVanillaHumanoid`, `CgVanillaPoses` |
 
 ## Ten lines: a Goku clip on a GeckoLib model
 
@@ -29,7 +31,33 @@ CgAnimSequence punch = CgRetargetBake.cached(p, gokuPunch);          // baked on
 playerInstance.play(punch, false);                                   // plays like any clip of its own
 ```
 
-`detect` returns null for a skeleton of neither shape: give it a rig of its own (below).
+`detect` returns null for a skeleton of none of its shapes: give it a rig of its own (below).
+
+## Sockets and effect bones
+
+A move names sockets and bones of its own character's: `hand_r_kameha_socket_01`, `Pelvis`, `AttachPoint_r`. On another
+model each must still be somewhere, or the effect has nowhere to attach.
+
+```java
+CgRig goku = CgRigs.detect(gokuSkeleton, CgRigAdapters.CRYSTALGRAPHICS).toBuilder()
+        .carried("AttachPoint_r").carried("AttachPoint_l")          // keyed effect dummies: keep their motion
+        .build();
+CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(gokuSkeleton, goku, playerSkeleton, player),
+        gokuSkeleton, playerSkeleton);
+
+CgSkeletalMesh playerMesh = p.mesh(rawPlayerMesh, gokuMesh.sockets());   // the carried bones added, every socket placed
+scene.skeletal(playerMesh).spawn().anim().play(CgRetargetBake.cached(p, kamehameha), false);
+playerMesh.socket("hand_r_kameha_socket_01");                           // on the player's right hand
+```
+
+- **A static socket sits where it sat on the source**, relative to the nearest of its bone and that bone's ancestors a
+  chain maps, on the target bone that maps to, its reach scaled by the height ratio. Every source bone the target
+  lacks by name becomes such a socket too, so anything a move names resolves.
+- **A carried bone is added to the target** under the bone its parent maps to, and keeps its animated motion
+  relative to it, scaled by the height ratio: a dummy keyed to swing round the hand swings round the player's hand.
+  A bone the target already has by name takes the source's own local turn instead.
+- **The model's own sockets win**: `mesh` keeps them first, as Unreal finds a socket by name on the mesh it is on.
+- The retargeter's own sockets (`sockets:` in its file) come before both, their locations scaled by the height ratio.
 
 ## What each step does
 
@@ -40,7 +68,7 @@ A retargeter runs its steps in order, each on the pose the last left:
 | `scale_source` | scales the source's places before anything reads them | — |
 | `pelvis_motion` | moves the target's hips as the source's move, scaled by the height ratio (the target's hip height over the source's), and turns the pelvis as the source's turns | the body stays where it stood while the source jumps |
 | `fk_chains` | turns each target chain's bones as its source chain's turn, sampled along the chain so chains of different bone counts match | the target stays in its retarget pose |
-| `ik_chains` | puts each limb's IK goal where the source's hand or foot is, relative to the shoulder or hip and scaled to the target's own limb, then bends the limb to it | hands and feet drift: right turns on a differently built body land elsewhere |
+| `ik_chains` | puts each limb's IK goal where the source's hand or foot is, relative to the shoulder or hip and scaled to the target's own limb, then bends the limb to it (three bones), or points it at the goal (a rigid part and its end: Minecraft's one-cube arm) | hands and feet drift: right turns on a differently built body land elsewhere |
 | `floor_constraint` | holds a foot near the floor at the source's height above it, plus the target's own foot height | feet sink or float on a body whose legs differ |
 
 ```java
@@ -111,6 +139,23 @@ ops:
 
 `retargeter.toTree()` writes one; the `retargeter` kind's compiler reads it, its rigs as hard references.
 
+## Minecraft's own models
+
+A zombie, a skeleton or a player drawn by the game is Minecraft's humanoid: `CgVanillaHumanoid.SKELETON`, its six parts
+pivoted where the game pivots them, with a hand and a foot at the end of each limb. Retarget onto it like any target;
+`CgVanillaPoses` poses an entity's model from it each frame.
+
+```java
+CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(goku, gokuRig, CgVanillaHumanoid.SKELETON,
+        CgVanillaHumanoid.rig()), goku, CgVanillaHumanoid.SKELETON);
+CgVanillaPoses.play(zombie.getId()).play(CgRetargetBake.cached(p, punch), false);
+CgVanillaPoses.stop(zombie.getId());                                     // the game's own animation again
+```
+
+- Each limb is one rigid cube, so it points at where the source's hand or foot is; it cannot bend.
+- The game draws the model, its armour and what it holds. A host sets the parts from `CgVanillaPoses.parts` in its
+  model setup; until the host you run on does, `play` logs once that the entity is drawn unposed.
+
 ## Baking and which clip plays
 
 ```java
@@ -121,6 +166,16 @@ playerInstance.play(clips.resolve("punch"), false);      // its own "punch" if i
 
 - **Its own clip wins**: give your model a GeckoLib animation named as one of the source's and it plays instead.
 - **A clip neither has fails**, naming it.
+- **Baked as the role's asset is prepared**: `clips.plan(plan, names)` in a preparer is a step that bakes on workers,
+  so the asset is READY with nothing left to bake in play.
+
+```java
+assets.preparer(MyKinds.FIGHTER, (definition, plan) -> clips.plan(plan, ((Fighter) definition).moveClips()));
+```
+
+- **A sequence's animation section asks its role** (`CgSequenceSkeletal.clip(id)`): answer with `clips.find(name)`,
+  and a clip neither has fails the play at bind, naming it. The section then plays over the role's own pose in its
+  montage slot, blended in and out on its ease.
 - **A clip not named to `bakeAll` bakes on first use**, on the calling thread, and counts `retarget.late` on the
   `crystalgraphics.world` trace channel: name it to `bakeAll`.
 - Bakes are cached by the clip, the retargeter and the bake's version; `CgRetargetBake.clear()` after a reload.
@@ -131,7 +186,8 @@ playerInstance.play(clips.resolve("punch"), false);      // its own "punch" if i
 - **What is not built fails by name** when the processor is made or the file loads: the `match_chain`,
   `match_scaled_chain` and `copy_local` rotations, the `stretch_*` and `orient_and_scale` translations, the `pin_bone`
   and `curve_remap` steps, a pose's `root_offset`, an IK chain's `static_rotation_offset` and `scale_vertical`.
-- **IK solves limbs of three bones** (shoulder, elbow, hand): a longer limb with a goal is refused, naming it.
+- **IK solves limbs of three bones** (shoulder, elbow, hand), and points a rigid part of two (the part, its end) at
+  its goal: a longer limb with a goal is refused, naming it.
 - **A one-bone chain standing for a longer one** (GeckoLib's single torso for a three-bone spine) takes the source
   chain's whole lean, not its last bone's turn: a rigid torso cannot curl as a spine does.
 - **Different builds land differently.** A target whose torso is long for its legs puts its hands where its own
@@ -149,5 +205,6 @@ The animation demo (`anim-demo` in the harness, `anim` in the game's demo) has t
 ## Where it came from
 
 The design is Unreal's IK Retargeter: rigs of named chains, retarget poses, chain mapping by name, and the op stack of
-scale source, pelvis motion, FK chains, IK chains and floor constraint. Facing frames from adapters, hips-based scaling,
-and `rides` and `pivot` are ours, for model libraries built unlike Unreal's skeletons.
+scale source, pelvis motion, FK chains, IK chains and floor constraint; static sockets found by name on the target.
+Facing frames from adapters, hips-based scaling, `rides` and `pivot`, carried bones added to the target, and pointing a
+rigid part at its goal are ours, for model libraries built unlike Unreal's skeletons.

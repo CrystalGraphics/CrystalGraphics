@@ -5,7 +5,10 @@ import com.crystalgraphics.animation.rig.CgRig;
 import com.crystalgraphics.animation.rig.CgRigAdapter;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import org.joml.Quaternionf;
+import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
@@ -13,7 +16,10 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 /**
  * Runs a {@link CgRetargeter} on poses: a source skeleton's pose in, the target skeleton's out, through the
@@ -45,7 +51,9 @@ public final class CgRetargetProcessor {
     static final float FLOOR_START = 0.08f, FLOOR_RANGE = 0.20f;
 
     private final CgRetargeter retargeter;
-    private final RetargetSkeleton src, tgt;
+    private final CgSkeleton baseTarget;
+    private final RetargetSkeleton src;
+    private RetargetSkeleton tgt;
     private final CgRetargeter.Op[] ops;
     private final boolean[] opOn;
     private final int srcPelvis, tgtPelvis;
@@ -61,8 +69,8 @@ public final class CgRetargetProcessor {
     private final Vector3f[] pivotPoint;
     /** Per riding chain: its start bone, the bone it rides. */
     private final int[] rideStart, rideBone;
-    /** Target bones copied from the source's local, by index; -1 where not. */
-    private final int[] carriedFrom;
+    /** Per target bone: the carried source bone it follows, or -1; and the source bone it is carried relative to, -1 for its local copied. */
+    private final int[] carriedFrom, carriedAnchor;
 
     private record Fk(CgRetargeter.ChainMap map, RetargetChain target, RetargetChain source) {
     }
@@ -85,7 +93,7 @@ public final class CgRetargetProcessor {
             tgtInitLen = tgt.initPos[target.end()].distance(tgt.initPos[target.start()]);
             int mid = target.bones[1];
             upper = tgt.initPos[mid].distance(tgt.initPos[target.start()]);
-            lower = tgt.initPos[target.end()].distance(tgt.initPos[mid]);
+            lower = target.bones.length == 3 ? tgt.initPos[target.end()].distance(tgt.initPos[mid]) : 0f;
             heightOffset = tgt.initPos[target.end()].y - src.initPos[source.end()].y;
         }
     }
@@ -118,10 +126,8 @@ public final class CgRetargetProcessor {
         srcHips = hips(owner, retargeter.source(), src);
         tgtHips = hips(owner, retargeter.target(), tgt);
         heightRatio = centre(tgt.initPos, tgtHips, va).y / centre(src.initPos, srcHips, vb).y;
+        baseTarget = target;
 
-        fkChainOf = new int[tgt.count];
-        fkIndex = new int[tgt.count];
-        Arrays.fill(fkChainOf, -1);
         List<Fk> fks = new ArrayList<>();
         List<Ik> iks = new ArrayList<>();
         for (CgRetargeter.ChainMap map : retargeter.chains()) {
@@ -136,14 +142,50 @@ public final class CgRetargetProcessor {
             RetargetChain tc = RetargetChain.resolve(owner, t, tgt), sc = RetargetChain.resolve(owner, s, src);
             if (map.rotation() != CgRetargeter.Rotation.NONE) fks.add(new Fk(map, tc, sc));
             if (map.ik() && t.goal() != null && s.goal() != null) {
-                if (tc.bones.length != 3) {
+                if (tc.bones.length != 2 && tc.bones.length != 3) {
                     throw new IllegalArgumentException(owner + ": chain " + t.name() + " is solved by IK but has "
-                            + tc.bones.length + " bones; only a limb of three is");
+                            + tc.bones.length + " bones; only a limb of two (a rigid part and its end) or three is");
                 }
                 iks.add(new Ik(map, tc, sc, src, tgt));
             }
         }
         fks.sort(Comparator.comparingInt(f -> f.target.start()));
+        fk = fks.toArray(new Fk[0]);
+        ik = iks.toArray(new Ik[0]);
+
+        // the source's carried effect bones: a bone the target has keeps the source's local; one it lacks is added
+        // under the target bone its nearest mapped ancestor maps to, and keeps its motion relative to that ancestor
+        List<Integer> carried = new ArrayList<>();
+        for (String name : retargeter.source().carried()) {
+            int s = source.indexOf(name);
+            if (s < 0) throw new IllegalArgumentException(owner + ": carries " + name + ", not a source bone");
+            carried.add(s);
+        }
+        carried.sort(null);
+        int[] from = new int[target.boneCount() + carried.size()], anchor = new int[from.length];
+        Arrays.fill(from, -1);
+        Arrays.fill(anchor, -1);
+        CgSkeleton extended = target;
+        for (int s : carried) {
+            int t = target.indexOf(source.name(s));
+            if (t >= 0) {
+                from[t] = s;
+                continue;
+            }
+            int[] m = map(source.parent(s), from, extended.boneCount());
+            Quaternionf inv = tgt.initRot[m[1]].conjugate(new Quaternionf());
+            Vector3f local = inv.transform(src.initPos[s].sub(src.initPos[m[0]], new Vector3f()).mul(heightRatio));
+            extended = extended.withBone(source.name(s), extended.name(m[1]), local, inv.mul(src.initRot[s], new Quaternionf()));
+            from[extended.boneCount() - 1] = s;
+            anchor[extended.boneCount() - 1] = m[0];
+            tgt = new RetargetSkeleton(owner, extended, retargeter.targetPose(), new Quaternionf(), 1f);
+        }
+        carriedFrom = Arrays.copyOf(from, tgt.count);
+        carriedAnchor = Arrays.copyOf(anchor, tgt.count);
+
+        fkChainOf = new int[tgt.count];
+        fkIndex = new int[tgt.count];
+        Arrays.fill(fkChainOf, -1);
         List<int[]> rides = new ArrayList<>();
         for (Fk f : fks) {
             String r = f.target.chain.rides();
@@ -163,8 +205,6 @@ public final class CgRetargetProcessor {
             rideStart[i] = rides.get(i)[0];
             rideBone[i] = rides.get(i)[1];
         }
-        fk = fks.toArray(new Fk[0]);
-        ik = iks.toArray(new Ik[0]);
         for (int c = 0; c < fk.length; c++) {
             for (int i = 0; i < fk[c].target.bones.length; i++) {
                 int b = fk[c].target.bones[i];
@@ -173,13 +213,32 @@ public final class CgRetargetProcessor {
                 fkIndex[b] = i;
             }
         }
-        carriedFrom = new int[tgt.count];
-        Arrays.fill(carriedFrom, -1);
-        for (String name : retargeter.target().carried()) {
-            int t = target.indexOf(name), s = source.indexOf(name);
-            if (t < 0) throw new IllegalArgumentException(owner + ": carries " + name + ", not a target bone");
-            if (s >= 0) carriedFrom[t] = s;
+    }
+
+    /**
+     * Where source bone {@code s} lands on the target: {source bone it is placed relative to, target bone}. The
+     * nearest of it and its ancestors that a mapped chain holds (the target bone nearest its place along the chain), a
+     * carried bone already added, or the pelvis; the root else.
+     */
+    private int[] map(int s, int[] carriedFrom, int count) {
+        for (int a = s; a >= 0; a = src.skeleton.parent(a)) {
+            for (int t = baseTarget.boneCount(); t < count; t++) if (carriedFrom[t] == a) return new int[] {a, t};
+            for (Fk f : fk) {
+                for (int i = 0; i < f.source.bones.length; i++) {
+                    if (f.source.bones[i] == a) return new int[] {a, f.target.bones[nearest(f.target, f.source.params[i])]};
+                }
+            }
+            if (a == srcPelvis) return new int[] {a, tgtPelvis};
         }
+        return new int[] {0, 0};
+    }
+
+    private static int nearest(RetargetChain chain, float param) {
+        int best = 0;
+        for (int j = 1; j < chain.params.length; j++) {
+            if (Math.abs(chain.params[j] - param) < Math.abs(chain.params[best] - param)) best = j;
+        }
+        return best;
     }
 
     private static void refuse(String owner, CgRetargeter.ChainMap map, CgRig.Chain t, CgSkeleton target, CgRigAdapter adapter) {
@@ -255,8 +314,88 @@ public final class CgRetargetProcessor {
         return src.skeleton;
     }
 
+    /**
+     * The skeleton its target poses are of: the target's, with the source's carried bones it lacks added after its
+     * own. A baked clip keys them; a mesh takes them through {@link #mesh}.
+     */
     public CgSkeleton targetSkeleton() {
         return tgt.skeleton;
+    }
+
+    /** A processor of its own over the same retargeter and skeletons: one per thread. */
+    public CgRetargetProcessor copy() {
+        return new CgRetargetProcessor(retargeter, src.skeleton, baseTarget);
+    }
+
+    /**
+     * Every socket a source clip's moves may name, placed on the target: the retargeter's own sockets (their locations
+     * scaled by the height ratio), then each source bone the target has no bone of that name for, then each of
+     * {@code sourceSockets}. Each sits where it sits in the source's retarget pose, relative to the nearest of its
+     * bone and that bone's ancestors a chain maps, on the target bone that maps to, its reach scaled by the height
+     * ratio. A name the target already has as a bone, or one listed earlier, is skipped.
+     *
+     * <pre>{@code
+     * List<CgSocket> onPlayer = processor.sockets(gokuMesh.sockets());   // "hand_r_kameha_socket_01", "Pelvis", ...
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a retargeter socket on a bone the target lacks
+     */
+    public List<CgSocket> sockets(List<CgSocket> sourceSockets) {
+        List<CgSocket> out = new ArrayList<>();
+        Set<String> named = new HashSet<>();
+        for (CgRetargeter.Socket so : retargeter.sockets()) {
+            if (tgt.skeleton.indexOfIgnoringCase(so.bone()) < 0) {
+                throw new IllegalArgumentException(retargeter.id() + ": socket " + so.name() + " is on " + so.bone() + ", not a target bone");
+            }
+            if (named.add(so.name().toLowerCase(Locale.ROOT))) {
+                out.add(CgSocket.of(so.name(), so.bone(), new Vector3f(so.location()).mul(heightRatio), so.rotation(), so.scale()));
+            }
+        }
+        CgSkeleton source = src.skeleton;
+        for (int s = 0; s < source.boneCount(); s++) {
+            String name = source.name(s);
+            if (tgt.skeleton.indexOfIgnoringCase(name) >= 0 || !named.add(name.toLowerCase(Locale.ROOT))) continue;
+            out.add(placed(name, s, src.initPos[s], src.initRot[s]));
+        }
+        Vector3f at = new Vector3f();
+        Quaternionf turn = new Quaternionf();
+        for (CgSocket so : sourceSockets) {
+            if (tgt.skeleton.indexOfIgnoringCase(so.name()) >= 0 || !named.add(so.name().toLowerCase(Locale.ROOT))) continue;
+            int s = source.indexOfIgnoringCase(so.bone());
+            if (s < 0) continue;
+            src.initRot[s].transform(at.set(so.tx(), so.ty(), so.tz()).mul(src.scale)).add(src.initPos[s]);
+            src.initRot[s].mul(turn.set(so.qx(), so.qy(), so.qz(), so.qw()), turn);
+            out.add(placed(so.name(), s, at, turn));
+        }
+        return out;
+    }
+
+    /** A socket named {@code name} at a source place and turn in the retarget pose, on the target bone source bone {@code s} maps to. */
+    private CgSocket placed(String name, int s, Vector3fc at, Quaternionfc turn) {
+        int[] m = map(s, carriedFrom, tgt.count);
+        Quaternionf inv = tgt.initRot[m[1]].conjugate(new Quaternionf());
+        Vector3f local = inv.transform(at.sub(src.initPos[m[0]], new Vector3f()).mul(heightRatio));
+        return CgSocket.of(name, tgt.skeleton.name(m[1]), local, inv.mul(turn, new Quaternionf()), new Vector3f(1f));
+    }
+
+    /**
+     * {@code target} ready to play this processor's poses: over {@link #targetSkeleton()}, with its own sockets and,
+     * after them, {@link #sockets} of {@code sourceSockets}. Its own come first, so a socket the model has wins, as
+     * Unreal finds a socket by name on the mesh it is attached to.
+     *
+     * <pre>{@code
+     * CgSkeletalMesh player = processor.mesh(playerMesh, gokuMesh.sockets());
+     * scene.skeletal(player).spawn().anim().play(CgRetargetBake.cached(processor, punch), false);
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a mesh over another skeleton than the one this processor was made for
+     */
+    public CgSkeletalMesh mesh(CgSkeletalMesh target, List<CgSocket> sourceSockets) {
+        if (!target.skeleton().equals(baseTarget)) throw new IllegalArgumentException(target.skeleton() + " is not this processor's target");
+        CgSkeletalMesh m = target.withSkeleton(tgt.skeleton);
+        List<CgSocket> all = new ArrayList<>(m.sockets());
+        for (CgSocket s : sockets(sourceSockets)) if (m.socket(s.name()) == null) all.add(s);
+        return m.withSockets(all);
     }
 
     /** Target hip height over the source's: how much a source move is scaled. */
@@ -333,6 +472,10 @@ public final class CgRetargetProcessor {
     private void fkChains() {
         for (int b = 0; b < tgt.count; b++) {
             int carried = carriedFrom[b];
+            if (carried >= 0 && carriedAnchor[b] >= 0) {
+                carry(b, carried, carriedAnchor[b]);
+                continue;
+            }
             if (carried >= 0) {
                 tgt.lrot[b].set(src.lrot[carried]);
                 tgt.lpos[b].set(src.lpos[carried]).mul(heightRatio);
@@ -404,6 +547,21 @@ public final class CgRetargetProcessor {
     }
 
     /**
+     * Added bone {@code b} as carried source bone {@code s} moves relative to {@code anchor}: that motion undone of the
+     * anchor's turn, then put on the target parent's turn since its retarget pose, its reach scaled by the height ratio.
+     */
+    private void carry(int b, int s, int anchor) {
+        int parent = tgt.skeleton.parent(b);
+        Quaternionf undo = src.rot[anchor].conjugate(qa).premul(src.initRot[anchor]);
+        Quaternionf turn = tgt.initRot[parent].conjugate(qb).premul(tgt.rot[parent]);
+        undo.premul(turn, qc);
+        src.pos[s].sub(src.pos[anchor], va);
+        qc.transform(va).mul(heightRatio).add(tgt.pos[parent]);
+        qc.mul(src.rot[s], qd);
+        tgt.setGlobal(b, va, qd);
+    }
+
+    /**
      * The turn of a whole source chain, for one target bone standing in for all of it (a rigid torso for a spine):
      * the swing taking the chain's start-to-end line from its retarget pose to now, then its end's twist about that
      * line. Interpolation would give it the end's turn alone, which a curled spine overstates.
@@ -466,6 +624,15 @@ public final class CgRetargetProcessor {
     }
 
     private void solve(Ik c) {
+        if (c.target.bones.length == 2) {
+            // a rigid part cannot bend: it points its end at the goal (a vanilla arm at the source's hand)
+            int start = c.target.start(), end = c.target.end();
+            aim(start, tgt.pos[end], c.goal);
+            tgt.resolveBelow(start);
+            tgt.setGlobal(end, tgt.pos[end], c.goalRot);
+            tgt.resolveBelow(end);
+            return;
+        }
         int start = c.target.start(), mid = c.target.bones[1], end = c.target.end();
         Vector3f s = tgt.pos[start], j = tgt.pos[mid];
         // the knee as FK left it; a limb left straight bends the rig's way, turned with the pelvis

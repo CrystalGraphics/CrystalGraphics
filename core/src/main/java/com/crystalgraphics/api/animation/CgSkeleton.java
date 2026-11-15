@@ -125,6 +125,43 @@ public final class CgSkeleton {
         return new CgSkeleton(nn, np, nr, nt);
     }
 
+    /**
+     * This skeleton with one real bone added after its own, under {@code parent}, its rest local to it. A clip keys it
+     * by name like any bone; no vertex is bound to it.
+     *
+     * <pre>{@code
+     * CgSkeleton withPoint = skeleton.withBone("attach_r", "hand_r", new Vector3f(0, -0.1f, 0), new Quaternionf());
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a name the skeleton has, or a parent it lacks
+     */
+    public CgSkeleton withBone(String name, String parent, Vector3fc translation, Quaternionfc rotation) {
+        if (index.containsKey(name)) throw new IllegalArgumentException("bone " + name + ": the skeleton has that name");
+        Integer p = index.get(parent);
+        if (p == null) throw new IllegalArgumentException("bone " + name + "'s parent " + parent + " is not a bone");
+        int b = names.length;
+        String[] nn = Arrays.copyOf(names, b + 1);
+        int[] np = Arrays.copyOf(parents, b + 1), nt = Arrays.copyOf(virtualTargets, b + 1);
+        float[] nr = Arrays.copyOf(rest, (b + 1) * REST);
+        float length = CgAnimSequence.unitLength(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+        float[] values = {translation.x(), translation.y(), translation.z(), rotation.x() / length, rotation.y() / length,
+                rotation.z() / length, rotation.w() / length, 1f, 1f, 1f};
+        System.arraycopy(values, 0, nr, b * REST, REST);
+        nn[b] = name;
+        np[b] = p;
+        nt[b] = -1;
+        return new CgSkeleton(nn, np, nr, nt);
+    }
+
+    /** True when this skeleton starts with every bone of {@code base}, same names and parents, in order. */
+    public boolean extendsSkeleton(CgSkeleton base) {
+        if (base.names.length > names.length) return false;
+        for (int b = 0; b < base.names.length; b++) {
+            if (!names[b].equals(base.names[b]) || parents[b] != base.parents[b]) return false;
+        }
+        return true;
+    }
+
     /** The bone a virtual bone follows, or -1 for a real bone. */
     public int virtualTarget(int bone) {
         return virtualTargets[bone];

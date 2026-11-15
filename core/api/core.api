@@ -1339,6 +1339,7 @@ com/crystalgraphics/animation/retarget/CgClipResolver
   method public <init> (Ljava/util/function/Function;Ljava/util/function/Function;Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;)V
   method public bakeAll (Ljava/util/List;)V
   method public find (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
+  method public plan (Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;Ljava/util/List;)V
   method public resolve (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgAnimSequence;
 com/crystalgraphics/animation/retarget/CgRetargetBake
   access public,final
@@ -1356,12 +1357,15 @@ com/crystalgraphics/animation/retarget/CgRetargetProcessor
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/animation/retarget/CgRetargeter;Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/api/animation/CgSkeleton;)V
+  method public copy ()Lcom/crystalgraphics/animation/retarget/CgRetargetProcessor;
   method public enabled (Ljava/lang/String;)Z
   method public enabled (Ljava/lang/String;Z)V
   method public goal (Ljava/lang/String;Lorg/joml/Vector3f;)Z
   method public heightRatio ()F
+  method public mesh (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;Ljava/util/List;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public retargeter ()Lcom/crystalgraphics/animation/retarget/CgRetargeter;
   method public run (Lcom/crystalgraphics/api/animation/CgAnimPose;Lcom/crystalgraphics/api/animation/CgAnimPose;)V
+  method public sockets (Ljava/util/List;)Ljava/util/List;
   method public sourcePosition (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public sourceSkeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public targetSkeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
@@ -1489,6 +1493,7 @@ com/crystalgraphics/animation/rig/CgRig
   method public model ()Ljava/lang/String;
   method public pelvis ()Ljava/lang/String;
   method public root ()Ljava/lang/String;
+  method public toBuilder ()Lcom/crystalgraphics/animation/rig/CgRig$Builder;
   method public toString ()Ljava/lang/String;
   method public toTree ()Ljava/util/Map;
   method public,static builder (Ljava/lang/String;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig$Builder;
@@ -1533,6 +1538,7 @@ com/crystalgraphics/animation/rig/CgRigAdapters
   extends java/lang/Object
   field public,static,final CRYSTALGRAPHICS Lcom/crystalgraphics/animation/rig/CgRigAdapter;
   field public,static,final GECKOLIB Lcom/crystalgraphics/animation/rig/CgRigAdapter;
+  field public,static,final VANILLA Lcom/crystalgraphics/animation/rig/CgRigAdapter;
   method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/animation/rig/CgRigAdapter;
   method public,static register (Lcom/crystalgraphics/animation/rig/CgRigAdapter;)V
 com/crystalgraphics/animation/rig/CgRigs
@@ -1541,6 +1547,7 @@ com/crystalgraphics/animation/rig/CgRigs
   method public,static detect (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
   method public,static geckoHumanoid (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
   method public,static standardHumanoid (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
+  method public,static vanillaHumanoid (Lcom/crystalgraphics/api/animation/CgSkeleton;Lcom/crystalgraphics/animation/rig/CgRigAdapter;)Lcom/crystalgraphics/animation/rig/CgRig;
 com/crystalgraphics/animation/state/CgAnimRule
   access public,abstract
   extends java/lang/Object
@@ -2039,6 +2046,7 @@ com/crystalgraphics/api/animation/CgSkeleton
   extends java/lang/Object
   method public boneCount ()I
   method public equals (Ljava/lang/Object;)Z
+  method public extendsSkeleton (Lcom/crystalgraphics/api/animation/CgSkeleton;)Z
   method public hashCode ()I
   method public indexOf (Ljava/lang/String;)I
   method public indexOfIgnoringCase (Ljava/lang/String;)I
@@ -2051,6 +2059,7 @@ com/crystalgraphics/api/animation/CgSkeleton
   method public restTranslation (ILorg/joml/Vector3f;)Lorg/joml/Vector3f;
   method public toString ()Ljava/lang/String;
   method public virtualTarget (I)I
+  method public withBone (Ljava/lang/String;Ljava/lang/String;Lorg/joml/Vector3fc;Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public withVirtualBones (Ljava/util/List;)Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public,static builder ()Lcom/crystalgraphics/api/animation/CgSkeleton$Builder;
 com/crystalgraphics/api/animation/CgSkeleton$Builder
@@ -3289,6 +3298,7 @@ com/crystalgraphics/api/mesh/CgSkeletalMesh
   method public socket (Ljava/lang/String;)Lcom/crystalgraphics/api/animation/CgSocket;
   method public sockets ()Ljava/util/List;
   method public toString ()Ljava/lang/String;
+  method public withSkeleton (Lcom/crystalgraphics/api/animation/CgSkeleton;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public withSockets (Ljava/util/List;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public withVirtualBones (Ljava/util/List;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;
   method public,static builder (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/animation/CgSkeleton;)Lcom/crystalgraphics/api/mesh/CgSkeletalMesh$Builder;

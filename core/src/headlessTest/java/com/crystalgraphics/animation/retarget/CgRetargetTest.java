@@ -6,6 +6,7 @@ import com.crystalgraphics.animation.rig.CgRigs;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSocket;
 import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
@@ -120,6 +121,41 @@ public class CgRetargetTest {
         Vector3f shoulder = at(out, "left_arm"), hand = at(out, "left_hand_locator");
         assertEquals("the hand out at shoulder height", shoulder.y, hand.y, 0.01f);
         assertEquals("the hand out to its left", shoulder.x - 0.6f, hand.x, 0.01f);
+    }
+
+    @Test
+    public void aCarriedEffectBoneIsAddedToTheTargetAndKeepsItsMotion() {
+        CgSkeleton withPoint = STANDARD.withBone("attach_r", "hand_r", new Vector3f(0f, -0.1f, 0f), new Quaternionf());
+        CgRig from = FROM.toBuilder().carried("attach_r").build();
+        CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(withPoint, from, GECKO, TO), withPoint, GECKO);
+        CgSkeleton target = p.targetSkeleton();
+        int attach = target.indexOf("attach_r");
+        assertEquals("added under the bone its parent maps to", "right_hand_locator", target.name(target.parent(attach)));
+        assertTrue(target.extendsSkeleton(GECKO));
+
+        CgAnimPose in = new CgAnimPose(withPoint), out = new CgAnimPose(target);
+        p.run(in, out);
+        assertEquals("its reach scaled", 0.1f * RATIO, at(out, "attach_r").distance(at(out, "right_hand_locator")), 1e-3f);
+        move(in, "attach_r", 0f, -0.2f, 0f);   // the dummy slides out along the hand
+        p.run(in, out);
+        assertEquals("its motion kept, scaled", 0.3f * RATIO, at(out, "attach_r").distance(at(out, "right_hand_locator")), 1e-3f);
+    }
+
+    @Test
+    public void everySourceBoneAndSocketResolvesOnTheTarget() {
+        CgRetargetProcessor p = processor();
+        List<CgSocket> sockets = p.sockets(List.of(CgSocket.of("palm_r", "hand_r", new Vector3f(0.1f, 0f, 0f))));
+        for (int b = 0; b < STANDARD.boneCount(); b++) {
+            String name = STANDARD.name(b);
+            assertTrue(name, GECKO.indexOfIgnoringCase(name) >= 0 || sockets.stream().anyMatch(s -> s.name().equalsIgnoreCase(name)));
+        }
+        CgSocket palm = sockets.stream().filter(s -> s.name().equals("palm_r")).findFirst().orElseThrow();
+        assertEquals("right_hand_locator", palm.bone());
+        assertEquals("its reach scaled", 0.1f * RATIO, new Vector3f(palm.tx(), palm.ty(), palm.tz()).length(), 1e-4f);
+        CgSocket pelvis = sockets.stream().filter(s -> s.name().equals("pelvis")).findFirst().orElseThrow();
+        assertEquals("the pelvis onto the target's", "model", pelvis.bone());
+        assertEquals("ball_l rides the foot", "left_foot_locator",
+                sockets.stream().filter(s -> s.name().equals("ball_l")).findFirst().orElseThrow().bone());
     }
 
     @Test
