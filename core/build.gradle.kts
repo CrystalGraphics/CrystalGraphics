@@ -200,6 +200,7 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     providers.gradleProperty("animGraphFile").orNull?.let { systemProperty("crystalgraphics.animGraph.file", it) }
     providers.gradleProperty("animGraphCensus").orNull?.let { systemProperty("crystalgraphics.animGraph.census", it) }
     providers.gradleProperty("animGraphParent").orNull?.let { systemProperty("crystalgraphics.animGraph.parent", it) }
+    providers.gradleProperty("animGraphKit").orNull?.let { systemProperty("crystalgraphics.animGraph.kit", it) }
     // The kits' shading models, registered before their materials compile: -PkitShading=<namespace>=<kit dir>;...
     providers.gradleProperty("kitShading").orNull?.let { systemProperty("crystalgraphics.kits.shading", it) }
     // A move's materials, every one required to compile: -PkitMaterials=<file of ids, one a line>

@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -16,6 +17,10 @@ import org.joml.Vector3f;
 import org.junit.Assume;
 import org.junit.Test;
 
+import com.crystalgraphics.animation.blend.CgAimOffsetNode;
+import com.crystalgraphics.animation.blend.CgBlendSpaceCodec;
+import com.crystalgraphics.animation.blend.CgBlendSpaceDefinition;
+import com.crystalgraphics.animation.blend.CgBlendSpacePlayerNode;
 import com.crystalgraphics.animation.blend.CgInertializationNode;
 import com.crystalgraphics.animation.graph.CgAnimGraph;
 import com.crystalgraphics.animation.graph.CgAnimGraphCodec;
@@ -25,6 +30,7 @@ import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 
 /**
@@ -33,7 +39,8 @@ import com.crystalgraphics.asset.tree.CgAssetData;
  *
  * <ul>
  *   <li>{@code -PanimGraphFile=<the imported yaml>} {@code -PanimGraphCensus=<census json>}: skipped without them;
- *       {@code -PanimGraphParent=<its parent's yaml>} for a child graph.</li>
+ *       {@code -PanimGraphParent=<its parent's yaml>} for a child graph; {@code -PanimGraphKit=<kit folder>} binds the
+ *       blend spaces it names and checks them against the census's {@code blend_spaces[]}.</li>
  *   <li>The census is the importer's: {@code machines[] { name, initial, states[] { name, conduit, reset_on_entry },
  *       transitions[] { from, to, duration, blend } }}, machines and blends as Unreal names them ({@code BrakingSub},
  *       {@code HermiteCubic}); the file's are snake_case.</li>
@@ -48,6 +55,8 @@ public class CgAnimGraphCensusGateTest {
         CgAssetKinds.register();
         CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);
+        CgAnimGraphCodec.registerKind("blend_space_player", CgBlendSpacePlayerNode.KIND);
+        CgAnimGraphCodec.registerKind("aim_offset", CgAimOffsetNode.KIND);
 
         Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(Path.of(file), StandardCharsets.UTF_8));
         String parentFile = System.getProperty("crystalgraphics.animGraph.parent");
@@ -58,7 +67,19 @@ public class CgAnimGraphCensusGateTest {
         }
         CgSkeleton bone = CgSkeleton.builder().bone("root", null, new Vector3f()).build();
         CgAnimSequence clip = CgAnimSequence.builder("clip", 30, 1).build();
-        CgAnimGraph graph = CgAnimGraphCodec.compile(CgAssetData.of("gate:imported", CgBodyKinds.ANIM_GRAPH, tree, parent), null)
+        // A kit's blend spaces, by the id a node names: <kit>/blend_spaces/<path after the namespace>.yaml
+        String kit = System.getProperty("crystalgraphics.animGraph.kit");
+        Map<String, CgBlendSpaceDefinition> spaces = new LinkedHashMap<>();
+        CgAssetCompiler.Dependencies deps = kit == null ? null : (kind, id) -> spaces.computeIfAbsent(id, k -> {
+            try {
+                Path f = Path.of(kit, "blend_spaces", k.substring(k.indexOf(':') + 1) + ".yaml");
+                Map<?, ?> t = (Map<?, ?>) CgAssetYaml.read(Files.readString(f, StandardCharsets.UTF_8));
+                return CgBlendSpaceCodec.compile(CgAssetData.of(k, CgBodyKinds.BLEND_SPACE, t, null), null);
+            } catch (IOException e) {
+                throw new AssertionError(k + ": " + e);
+            }
+        });
+        CgAnimGraph graph = CgAnimGraphCodec.compile(CgAssetData.of("gate:imported", CgBodyKinds.ANIM_GRAPH, tree, parent), deps)
                 .graph(bone, id -> clip);
 
         List<CgAnimStateMachine> machines = new ArrayList<>();
@@ -102,6 +123,33 @@ public class CgAnimGraphCensusGateTest {
         }
         assertTrue(states > 0 && transitions > 0);
         System.out.println("[census] " + machines.size() + " machines, " + states + " states, " + transitions + " transitions match");
+
+        // Each blend space the graph named, against the census's: samples, places, rate scales, weight speed
+        int checked = 0;
+        for (Object o : c.get("blend_spaces") instanceof List<?> l ? l : List.of()) {
+            Map<?, ?> eb = (Map<?, ?>) o;
+            String asset = String.valueOf(eb.get("asset"));
+            CgBlendSpaceDefinition d = spaces.entrySet().stream().filter(e -> e.getKey().endsWith(":" + asset)).map(Map.Entry::getValue)
+                    .findFirst().orElse(null);
+            if (d == null) continue;
+            List<?> es = (List<?>) eb.get("samples"), ds = (List<?>) d.tree().get("samples");
+            assertEquals(asset + " samples", es.size(), ds.size());
+            for (int i = 0; i < es.size(); i++) {
+                Map<?, ?> e = (Map<?, ?>) es.get(i), s = (Map<?, ?>) ds.get(i);
+                String at = asset + " sample " + i;
+                assertTrue(at + " clip", String.valueOf(s.get("clip")).endsWith("/" + e.get("clip")));
+                List<?> place = (List<?>) e.get("at"), mine = (List<?>) s.get("at");
+                for (int a = 0; a < mine.size(); a++) {
+                    assertEquals(at + " at", ((Number) place.get(a)).floatValue(), ((Number) mine.get(a)).floatValue(), 0f);
+                }
+                float rate = s.get("rate_scale") instanceof Number n ? n.floatValue() : 1f;
+                assertEquals(at + " rate scale", ((Number) e.get("rate_scale")).floatValue(), rate, 0f);
+            }
+            assertEquals(asset + " weight speed", ((Number) eb.get("interpolation_per_second")).floatValue(),
+                    ((Number) d.tree().get("weight_speed")).floatValue(), 0f);
+            checked++;
+        }
+        if (!spaces.isEmpty()) System.out.println("[census] " + checked + " blend spaces match, " + spaces.size() + " bound");
     }
 
     /** Every machine under {@code node}, a state's pose included. */
