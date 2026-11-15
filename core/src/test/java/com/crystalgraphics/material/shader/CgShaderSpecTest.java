@@ -44,6 +44,13 @@ public class CgShaderSpecTest {
     // ── surface ──────────────────────────────────────────────────────────────
 
     @Test
+    public void aV2fFieldVertexNeverWritesIsRefused() {
+        refused("#domain surface\nstruct v2f { vec3 world; vec2 uv0; };\n"
+                + "void vertex(inout CgVertex v, out v2f o) { o.world = v.world; }\n"
+                + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(i.uv0, 0.0); }\n", "'uv0' is never written");
+    }
+
+    @Test
     public void passesFollowTheOutputsNamed() {
         CgShaderSpec plain = surface("", "s.baseColor = vec3(i.uv0, 0.0);");
         assertEquals(CgMaterialDomain.SURFACE, plain.domain());

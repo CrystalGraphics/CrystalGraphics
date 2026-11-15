@@ -168,7 +168,8 @@ name its fields after these and the engine fills them:
 | `vec3 world` | its camera-relative world position |
 | `vec2 light` | the draw's `(block, sky)` light |
 
-Any other name needs a `vertex()` to fill it. `flat int id;` passes a value un-interpolated (an integer must be
+Any other name needs a `vertex()` to fill it. **With a `vertex()`, the engine fills nothing**: it writes every field,
+`o.uv0 = v.uv0;` included, or the material fails to load naming the one it leaves out. `flat int id;` passes a value un-interpolated (an integer must be
 `flat`); `noperspective vec2 p;` interpolates in screen space.
 
 ### 4.3 `vertex()`: moving vertices

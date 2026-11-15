@@ -18,6 +18,7 @@ import com.crystalgraphics.platform.gl.driver.GLC;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -287,6 +288,7 @@ final class SurfaceDomain {
             if (!auto[0].equals(f.type())) throw t.error(f.token(), "v2f field '" + f.name() + "' is a " + auto[0]);
             autoFill.append("        o.").append(f.name()).append(" = ").append(auto[1]).append(";\n");
         }
+        if (vertex != null) requireWritten(t, vertex, fields);
         List<CgVarying> varyings = new ArrayList<>(Varyings.check(file, fields, false));
 
         // The factory's parameters surface() reads, each passed as an interpolator
@@ -446,6 +448,30 @@ final class SurfaceDomain {
             spec.text.append(offset).append('\n');
         }
         return spec.build();
+    }
+
+    /**
+     * Refuses a v2f field {@code vertex()} never writes as {@code o.field}: an unwritten out field reaches the fragment
+     * undefined, which drew a band's uv as zero and discarded all of it. Not checked where {@code o} is used whole.
+     */
+    private static void requireWritten(CgShaderTokens t, CgShaderSyntax.Function vertex, List<Varyings.Field> fields) {
+        String out = null;
+        for (int i = vertex.paramOpen(); i < vertex.open(); i++) {
+            if (t.isIdent(i, "v2f") && t.isIdent(i + 1)) out = t.text(i + 1);
+        }
+        if (out == null) return;
+        Set<String> written = new HashSet<>();
+        for (int i = vertex.open(); i < vertex.close(); i++) {
+            if (!t.isIdent(i, out)) continue;
+            if (!t.is(i + 1, '.') || !t.isIdent(i + 2)) return;
+            written.add(t.text(i + 2));
+        }
+        for (Varyings.Field f : fields) {
+            if (!written.contains(f.name())) {
+                throw t.error(f.token(), "v2f field '" + f.name() + "' is never written by vertex(): an unwritten field"
+                        + " reaches surface() undefined. Write " + out + "." + f.name() + ", or drop the field");
+            }
+        }
     }
 
     /** The output a surface's Forward pass draws as its colour: Unreal's unlit draws its emissive. */
