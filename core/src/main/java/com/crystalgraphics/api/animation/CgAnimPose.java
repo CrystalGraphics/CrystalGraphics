@@ -214,6 +214,57 @@ public final class CgAnimPose {
     }
 
     /**
+     * {@code additive}'s mesh-space rotations added at {@code weight}: Unreal's
+     * {@code AccumulateMeshSpaceRotationAdditiveToLocalPoseInternal} (AnimationRuntime.cpp:1328-1343). This pose's
+     * rotations are taken to the mesh's space, the differences added there, and brought back, so an aim offset turns the
+     * spine and arms together whatever the legs do.
+     *
+     * <pre>{@code
+     * aimClip.sampleAdditive(delta, scratch, t);     // a mesh-space additive clip
+     * body.accumulateMeshRotationAdditive(delta, 1f);
+     * }</pre>
+     */
+    public CgAnimPose accumulateMeshRotationAdditive(CgAnimPose additive, float weight) {
+        if (weight <= ZERO_WEIGHT) return this;
+        toMeshRotation();
+        accumulateAdditive(additive, weight);
+        return fromMeshRotation();
+    }
+
+    /** {@code ConvertPoseToMeshRotation} (AnimationRuntime.cpp:1150-1179): each rotation its parent's times its own, root first. */
+    public CgAnimPose toMeshRotation() {
+        for (int b = 1; b < skeleton.boneCount(); b++) {
+            int at = b * REST, p = skeleton.parent(b) * REST;
+            mul(local, p + 3, local, at + 3, local, at + 3);
+        }
+        return this;
+    }
+
+    /** {@code ConvertMeshRotationPoseToLocalSpace} (:1181-1210): each rotation its parent's inverse times its own, leaves first. */
+    public CgAnimPose fromMeshRotation() {
+        for (int b = skeleton.boneCount() - 1; b > 0; b--) {
+            int at = b * REST, p = skeleton.parent(b) * REST;
+            float px = -local[p + 3], py = -local[p + 4], pz = -local[p + 5], pw = local[p + 6];
+            float qx = local[at + 3], qy = local[at + 4], qz = local[at + 5], qw = local[at + 6];
+            local[at + 3] = pw * qx + px * qw + py * qz - pz * qy;
+            local[at + 4] = pw * qy - px * qz + py * qw + pz * qx;
+            local[at + 5] = pw * qz + px * qy - py * qx + pz * qw;
+            local[at + 6] = pw * qw - px * qx - py * qy - pz * qz;
+        }
+        return this;
+    }
+
+    /** {@code out[o..] = a[i..] · b[j..]}, Hamilton; {@code out} may be {@code b}. */
+    private static void mul(float[] a, int i, float[] b, int j, float[] out, int o) {
+        float ax = a[i], ay = a[i + 1], az = a[i + 2], aw = a[i + 3];
+        float bx = b[j], by = b[j + 1], bz = b[j + 2], bw = b[j + 3];
+        out[o] = aw * bx + ax * bw + ay * bz - az * by;
+        out[o + 1] = aw * by - ax * bz + ay * bw + az * bx;
+        out[o + 2] = aw * bz + ax * by - ay * bx + az * bw;
+        out[o + 3] = aw * bw - ax * bx - ay * by - az * bz;
+    }
+
+    /**
      * Each bone moved toward {@code layer}'s by its weight in {@code boneWeights}, local to its parent: Unreal's layered
      * blend per bone in local space ({@code FAnimationRuntime::BlendPosesPerBoneFilter}). A weight of 0 keeps this
      * pose's bone, 1 takes the layer's.

@@ -34,8 +34,7 @@ import com.crystalgraphics.asset.tree.CgAssetException;
  *
  * <ul>
  *   <li>A clip with no file keeps {@link CgClipSettings#NONE}.</li>
- *   <li>{@code additive.type: mesh_space} fails at compile, naming the clip: mesh-space additives are an aim offset's,
- *       and no node plays them yet.</li>
+ *   <li>{@code additive.type: mesh_space} is an aim offset's sample: the aim offset node plays it.</li>
  *   <li>{@code base: clip_frame} names its clip in {@code base_clip}; {@link #settings} fails naming it when the
  *       resolver has none.</li>
  * </ul>
@@ -106,9 +105,6 @@ public record CgClipDefinition(String id, List<CgSyncMarker> markers, CgRootMoti
             base = CgAdditive.Base.valueOf(String.valueOf(a.get("base") == null ? "ref_pose" : a.get("base")).toUpperCase(Locale.ROOT));
             baseClip = a.get("base_clip") == null ? null : String.valueOf(a.get("base_clip"));
             baseFrame = a.get("base_frame") instanceof Number n ? n.intValue() : 0;
-            if (type == CgAdditive.Type.MESH_SPACE) {
-                throw new CgAssetException(id + ": a mesh-space additive is an aim offset's, which nothing plays yet");
-            }
             if (type != CgAdditive.Type.NONE && base == CgAdditive.Base.CLIP_FRAME && baseClip == null) {
                 throw new CgAssetException(id + ": additive base clip_frame names no base_clip");
             }

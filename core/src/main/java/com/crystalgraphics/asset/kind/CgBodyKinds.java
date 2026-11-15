@@ -123,12 +123,38 @@ public final class CgBodyKinds {
         return CgTypes.struct("crystalgraphics:anim_graph." + kind).onRegister(t -> ANIM_NODES.member(kind, t));
     }
 
+    /** {@code EAnimGroupRole}. */
+    private static final CgValueType GROUP_ROLE = CgValueType.enumOf("can_be_leader", "always_follower", "always_leader",
+            "transition_leader", "transition_follower", "exclusive_always_leader");
+
     static final CgType ANIM_SEQUENCE_PLAYER = animNode("sequence_player")
             .property("clip", STRING).required().flags(CgPropertyFlag.HEADLESS)
             .property("loop", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
-            .property("play_rate", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("play_rate", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
             .property("start_position", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.0)
             .flags(CgPropertyFlag.HEADLESS)
+            .property("sync_group", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("group_role", GROUP_ROLE).defaultValue("can_be_leader").flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_BlendSpacePlayer}: a blend space by its inputs. */
+    static final CgType ANIM_BLEND_SPACE_PLAYER = animNode("blend_space_player")
+            .property("blend_space", hard("blend_space")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("x", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("y", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("play_rate", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("loop", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("start_position", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("reset_on_change", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("sync_group", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("group_role", GROUP_ROLE).defaultValue("can_be_leader").flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** {@code FAnimNode_RotationOffsetBlendSpace}: a mesh-space additive blend space over a base pose. */
+    static final CgType ANIM_AIM_OFFSET = animNode("aim_offset")
+            .property("base", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("blend_space", hard("blend_space")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("x", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("y", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("alpha", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
             .register();
     static final CgType ANIM_REF_POSE = animNode("ref_pose").register();
     static final CgType ANIM_SLOT = animNode("slot")
@@ -260,6 +286,51 @@ public final class CgBodyKinds {
             .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)
             .property("machines", CgValueType.mapOf(CgValueType.struct(ANIM_MACHINE))).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    // ── Blend space ──────────────────────────────────────────────────────────────────────
+
+    /** {@code FInterpolationParameter}: an axis's input smoothing. */
+    static final CgType BLEND_SMOOTHING = CgTypes.struct("crystalgraphics:blend_space.smoothing")
+            .property("time", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).range(0, null).defaultValue(0.0)
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("type", CgValueType.enumOf("average", "linear", "cubic", "ease_in_out", "exponential_decay", "spring_damper"))
+            .defaultValue("spring_damper").flags(CgPropertyFlag.HEADLESS)
+            .property("damping", FLOAT).forms(CgValueForm.CONSTANT).range(0, null).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_speed", FLOAT).forms(CgValueForm.CONSTANT).range(0, null).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code FBlendParameter}. */
+    static final CgType BLEND_AXIS = CgTypes.struct("crystalgraphics:blend_space.axis")
+            .property("name", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("min", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(100.0).flags(CgPropertyFlag.HEADLESS)
+            .property("grid", INT).forms(CgValueForm.CONSTANT).range(1, null).defaultValue(4).flags(CgPropertyFlag.HEADLESS)
+            .property("smoothing", CgValueType.struct(BLEND_SMOOTHING)).flags(CgPropertyFlag.HEADLESS)
+            .property("wrap", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code FBlendSample}. */
+    static final CgType BLEND_SAMPLE = CgTypes.struct("crystalgraphics:blend_space.sample")
+            .property("clip", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("at", CgValueType.listOf(FLOAT)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("rate_scale", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /**
+     * {@code blend_spaces/}: clips placed on one or two axes and blended by where an input falls among them
+     * ({@code UBlendSpace}, {@code UBlendSpace1D}, {@code UAimOffsetBlendSpace}).
+     */
+    public static final CgType BLEND_SPACE = CgTypes.kind("crystalgraphics:blend_space").folder("blend_spaces").version(1)
+            .property("axes", CgValueType.listOf(CgValueType.struct(BLEND_AXIS))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("samples", CgValueType.listOf(CgValueType.struct(BLEND_SAMPLE))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("weight_speed", FLOAT).forms(CgValueForm.CONSTANT).range(0, null).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("weight_ease", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("grid_interpolation", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("legacy_length", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("scale_axis", CgValueType.enumOf("none", "x", "y")).defaultValue("none").flags(CgPropertyFlag.HEADLESS)
+            .property("sync", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("grid", CgValueType.listOf(CgValueType.listOf(CgValueType.listOf(FLOAT)))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Springs ──────────────────────────────────────────────────────────────────────────

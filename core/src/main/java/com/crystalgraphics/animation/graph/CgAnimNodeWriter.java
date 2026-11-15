@@ -3,10 +3,14 @@ package com.crystalgraphics.animation.graph;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
 
 import javax.annotation.Nullable;
+
+import com.crystalgraphics.animation.sync.CgAnimGroupRole;
+import com.crystalgraphics.animation.sync.CgSyncGroup;
 
 /**
  * Where a node writes its data form: its kind, its fields, and the nodes it reads by name. {@link CgAnimGraphCodec}
@@ -71,6 +75,14 @@ public final class CgAnimNodeWriter {
     public CgAnimNodeWriter alpha(String key, float constant, @Nullable CgAnimVariable<?> variable, float dflt) {
         if (variable != null) out.put(key, variable.name());
         else if (constant != dflt) out.put(key, (double) constant);
+        return this;
+    }
+
+    /** An asset player's sync group: {@code sync_group}, and {@code group_role} where it is not the default. */
+    public CgAnimNodeWriter sync(@Nullable CgSyncGroup group) {
+        if (group == null) return this;
+        out.put("sync_group", group.name());
+        if (group.role() != CgAnimGroupRole.CAN_BE_LEADER) out.put("group_role", group.role().name().toLowerCase(Locale.ROOT));
         return this;
     }
 

@@ -53,7 +53,9 @@ anim.graph(hero(mesh))
 
 | Node | Unreal | Does |
 |---|---|---|
-| `CgSequencePlayerNode.of(clip)` `.loop()` `.playRate(r)` `.startPosition(s)` | Sequence Player | plays a clip on its own clock; an additive clip gives its differences |
+| `CgSequencePlayerNode.of(clip)` `.loop()` `.playRate(r or variable)` `.startPosition(s)` `.sync(group)` | Sequence Player | plays a clip on its own clock, or in step with its sync group; an additive clip gives its differences |
+| `CgBlendSpacePlayerNode.of(space, x[, y])` `.playRate(...)` `.sync(group)` `.once()` | Blend Space Player | clips blended by where an input falls among them ([below](#blend-spaces)) |
+| `CgAimOffsetNode.of(base, space, yaw, pitch)` `.alpha(...)` | Aim Offset | a mesh-space additive blend space turned onto `base` |
 | `CgRefPoseNode.create()` | Reference Pose | the skeleton's rest pose |
 | `CgTwoWayBlendNode.of(a, b, alpha)` | Blend | `a` and `b` by an alpha, a constant or a float variable |
 | `CgBlendListNode.byBool(v, t, f)`, `.byInt(v, poses...)` `.blendTimes(...)` `.resetOnActivate()` | Blend Poses by bool / int | one pose by a variable, easing into each over its blend time |
@@ -187,6 +189,71 @@ CgAnimGraph.builder("mymod:fighter", skeleton)
 - **Offsets are in each bone's parent space**: a jump of the whole character is not smoothed, and material curves switch
   at once.
 
+## Blend spaces
+
+A **blend space** (`CgBlendSpace`, Unreal's) places clips on one or two axes and blends the ones nearest an input. One
+axis of speed turns an idle, a jog and a sprint into one locomotion; speed and direction make strafing.
+
+```java
+static final CgBlendSpace RUN = CgBlendSpace.oneD("mymod:hero_run", "speed", 0, 8)
+        .sample(IDLE, 0).sample(JOG, 4).sample(SPRINT, 8)
+        .weightSpeed(5)                                       // weights move toward their targets 5 a second
+        .build();
+
+static final CgBlendSpace STRAFE = CgBlendSpace.twoD("mymod:hero_strafe", "direction", -180, 180, "speed", 0, 6)
+        .sample(IDLE, 0, 0).sample(FORWARD, 0, 6).sample(LEFT, -90, 6).sample(RIGHT, 90, 6)
+        .sample(BACK, -180, 6).sample(BACK, 180, 6)
+        .wrap(0)                                              // -180 and 180 are one direction
+        .smoothing(1, 0.2f, CgBlendFilter.Type.SPRING_DAMPER) // the speed eases over 0.2 s
+        .build();
+
+CgBlendSpacePlayerNode.of(RUN, SPEED);                        // in a graph, by a variable
+CgBlendSpacePlayerNode.of(STRAFE, DIRECTION, SPEED);
+```
+
+- **Its time is shared**: every sample sits at the same fraction of its own clip, so a jog and a sprint of different
+  lengths stay in step. Where its clips carry sync markers (`foot_l`, `foot_r`), the heaviest marked clip leads and the
+  others follow its markers instead.
+- **Weights ease** toward each frame's targets at `weightSpeed` a second, eased by default; `weightEase(false)` moves them
+  at a constant speed (Unreal 4's).
+- **The lookup** is release Unreal's: between the nearest samples on one axis, by triangles on two.
+  `gridInterpolation(true)` uses Unreal 4's grid instead; `legacyLength(true)` its way of timing a blend. An importer of
+  an Unreal 4 game sets both.
+- **Past an axis's end** the input is clamped; `scaleAxis(X)` plays the clips faster instead, so a sprint past the
+  fastest sample does not slide its feet.
+- A sample outside its axes, or clips of mixed additive kinds, fails when the blend space is built.
+
+### Aim offsets
+
+An **aim offset** is a blend space of mesh-space additive clips (each the character aimed up, down, left, right, made
+with `CgAdditive.meshSpace`): the one at the look's angle is added over whatever plays, in the mesh's space, so the spine,
+arms and head turn together whatever the legs do.
+
+```java
+static final CgBlendSpace AIM = CgBlendSpace.twoD("mymod:hero_aim", "yaw", -90, 90, "pitch", -90, 90)
+        .sample(AIM_CENTRE, 0, 0).sample(AIM_LEFT, -90, 0).sample(AIM_RIGHT, 90, 0).sample(AIM_UP, 0, 90).sample(AIM_DOWN, 0, -90)
+        .build();
+
+CgAimOffsetNode.of(locomotion, AIM, YAW, PITCH).alpha(AIMING);    // only while aiming
+```
+
+### Sync groups
+
+Players in one **sync group** move together: the heaviest leads, the others follow its sync markers, or its fraction of
+its clip where they have none. A walk and a run blended by speed keep their feet in step.
+
+```java
+CgTwoWayBlendNode.of(
+        CgSequencePlayerNode.of(WALK).loop().sync(CgSyncGroup.of("feet")),
+        CgSequencePlayerNode.of(RUN).loop().sync(CgSyncGroup.of("feet")), SPEED);
+
+CgSequencePlayerNode.of(LIMP).loop().sync(CgSyncGroup.of("feet", CgAnimGroupRole.ALWAYS_FOLLOWER));
+```
+
+- A group's markers are those its leader and every marked member share; the rest are stepped over.
+- `TRANSITION_LEADER` and `TRANSITION_FOLLOWER` join only once fully blended in, as Unreal's.
+- Play rate by speed: `playRate(STRIDE)` reads a float variable each frame.
+
 ## From a file
 
 The same graph, as `anim_graphs/mymod/hero.yaml`:
@@ -215,7 +282,9 @@ anim.graph(graph);                                // bind once per mesh and keep
 
 | Kind | Fields |
 |---|---|
-| `sequence_player` | `clip` (an id the mesh resolves), `loop`, `play_rate`, `start_position` |
+| `sequence_player` | `clip` (an id the mesh resolves), `loop`, `play_rate`, `start_position`, `sync_group`, `group_role` |
+| `blend_space_player` | `blend_space` (an id), `x`, `y`, `play_rate`, `loop` (true), `start_position`, `reset_on_change`, `sync_group`, `group_role` |
+| `aim_offset` | `base`, `blend_space`, `x`, `y`, `alpha` |
 | `ref_pose` | — |
 | `slot` | `slot_name` (`DefaultSlot`), `source` |
 | `two_way_blend` | `a`, `b`, `alpha` |
@@ -274,6 +343,22 @@ nodes:
   run: { clip: mymod:villain/run }
 ```
 - `CgAnimGraphCodec.toTree(graph)` writes a graph built in Java; read back and bound, it is the same graph.
+- **A blend space** is its own asset, `blend_spaces/mymod/hero_run.yaml`, which a graph's node names by id; its clips
+  bind with the graph's:
+
+```yaml
+_v: 1
+axes: [ { name: speed, min: 0, max: 8 } ]       # each: min, max, grid (4), smoothing: { time, type, damping, max_speed }, wrap
+samples:
+  - { clip: mymod:hero/idle, at: [0] }
+  - { clip: mymod:hero/jog, at: [4] }
+  - { clip: mymod:hero/sprint, at: [8], rate_scale: 1.1 }
+weight_speed: 5
+```
+
+  Its other keys, each with release Unreal's default: `weight_ease` true, `grid_interpolation` false, `legacy_length`
+  false, `scale_axis` none, and `grid`, the editor's cooked grid (per grid point `y·(nx+1)+x`, its `[sample, weight]`
+  pairs), played as given. `CgBlendSpaceCodec.toTree(space)` writes one built in Java.
 
 ## The frame
 

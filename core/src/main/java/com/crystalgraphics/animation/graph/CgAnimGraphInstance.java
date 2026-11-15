@@ -9,6 +9,9 @@ import java.util.function.Consumer;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.animation.sync.CgAnimAssetPlayer;
+import com.crystalgraphics.animation.sync.CgAnimSync;
+import com.crystalgraphics.animation.sync.CgSyncGroup;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
@@ -54,12 +57,19 @@ public final class CgAnimGraphInstance {
     private Inertializer[] inertializers = new Inertializer[2];
     private int inertializing;
 
-    // This frame's ticks and samples: players to advance after the walk, and what each contributes to the curves
-    private CgSequencePlayerNode.PlayerRuntime[] tickPlayers = new CgSequencePlayerNode.PlayerRuntime[8];
+    // This frame's players, ticked by the sync after the walk, and the clips sampled, for the curves
+    private final CgAnimSync sync = new CgAnimSync();
+    private CgAnimAssetPlayer[] recordPlayers = new CgAnimAssetPlayer[8];
+    private float[] recordWeights = new float[8];
+    private int[] recordLayers = new int[8], recordScopes = new int[8];
+    private int records;
+    @Nullable
+    private CgAnimAssetPlayer[] samplePlayers = new CgAnimAssetPlayer[8];
     private CgAnimSequence[] sampleClips = new CgAnimSequence[8];
     private float[] sampleTimes = new float[8], sampleWeights = new float[8];
     private int[] sampleLayers = new int[8], sampleScopes = new int[8];
     private int samples;
+    private final Sink sink = new Sink();
 
     private CgAnimPose[] pool = new CgAnimPose[4];
     private int pooled, borrowed;
@@ -198,25 +208,44 @@ public final class CgAnimGraphInstance {
 
     /**
      * This frame's update, {@code delta} seconds on: the walk from the output (weights, relevance), each cached pose's
-     * source at its heaviest use (Unreal's {@code PostGraphUpdate}), then every recorded player's tick
-     * ({@code TickAssetPlayerInstances}).
+     * source at its heaviest use (Unreal's {@code PostGraphUpdate}), then every recorded player ticked by sync group
+     * ({@code TickAssetPlayerInstances}), and their clips gathered for the curves.
      */
     public void update(float delta) {
         this.delta = delta;
         seconds += delta;
         frame++;
         samples = 0;
+        records = 0;
         curveLayer = 0;
+        sync.begin();
         for (CgCachedPoseNode.SaveRuntime s : saveArray) s.begin();
         root.update(this, 1f);
         // Each cached pose's source once, at its heaviest use; a save before those it reads, so their requests are in
         for (CgCachedPoseNode.SaveRuntime s : flushOrder) s.flush(this);
-        for (int i = 0; i < samples; i++) {
-            CgSequencePlayerNode.PlayerRuntime p = tickPlayers[i];
-            if (p != null) {
-                p.tick(delta);
-                sampleTimes[i] = p.time();
-            }
+        sync.tick(delta);
+        for (int i = 0; i < records; i++) {
+            sink.player = recordPlayers[i];
+            sink.layer = recordLayers[i];
+            sink.scope = recordScopes[i];
+            recordPlayers[i].forEachSample(recordWeights[i], sink);
+        }
+    }
+
+    /** Where a player's clips land after its tick, each with its record's curve layer and scope. */
+    private final class Sink implements CgAnimAssetPlayer.SampleSink {
+        CgAnimAssetPlayer player;
+        int layer, scope;
+
+        @Override
+        public void sample(CgAnimSequence clip, float time, float weight) {
+            int i = reserve();
+            samplePlayers[i] = player;
+            sampleClips[i] = clip;
+            sampleTimes[i] = time;
+            sampleWeights[i] = weight;
+            sampleLayers[i] = layer;
+            sampleScopes[i] = scope;
         }
     }
 
@@ -256,21 +285,54 @@ public final class CgAnimGraphInstance {
         return was;
     }
 
-    /** A player's tick this frame at {@code weight}: advanced after the walk, its curves added at its new time. */
-    void tick(CgSequencePlayerNode.PlayerRuntime player, CgAnimSequence clip, float weight) {
-        int i = reserve();
-        sampleScopes[i] = playerScope;
-        tickPlayers[i] = player;
-        sampleClips[i] = clip;
-        sampleWeights[i] = weight;
-        sampleLayers[i] = curveLayer;
+    /**
+     * An asset player relevant this frame at {@code weight}, from its update: ticked by its sync group after the walk
+     * (Unreal's {@code AddTickRecord}), its clips then added to the curves. A transition role joins its group only once
+     * {@code fullWeightOnce}.
+     */
+    public void record(CgAnimAssetPlayer player, float weight, @Nullable CgSyncGroup group, boolean fullWeightOnce) {
+        if (records == recordPlayers.length) {
+            int n = records * 2;
+            recordPlayers = Arrays.copyOf(recordPlayers, n);
+            recordWeights = Arrays.copyOf(recordWeights, n);
+            recordLayers = Arrays.copyOf(recordLayers, n);
+            recordScopes = Arrays.copyOf(recordScopes, n);
+        }
+        recordPlayers[records] = player;
+        recordWeights[records] = weight;
+        recordLayers[records] = curveLayer;
+        recordScopes[records++] = playerScope;
+        sync.add(player, weight, group, fullWeightOnce);
+    }
+
+    /** This frame's players recorded so far: a state machine finds its states' relevant player among them. */
+    public int records() {
+        return records;
+    }
+
+    public CgAnimAssetPlayer recordPlayer(int i) {
+        return recordPlayers[i];
+    }
+
+    public float recordWeight(int i) {
+        return recordWeights[i];
+    }
+
+    /** The player scope record {@code i} was made in: which state machine's states it belongs to, 0 none. */
+    public int recordScope(int i) {
+        return recordScopes[i];
+    }
+
+    /** Its sync groups: where they stood after the last tick. */
+    public CgAnimSync sync() {
+        return sync;
     }
 
     /** A clip sampled at {@code time} this frame (a slot's entry): its curves added at {@code weight}. */
     void sampled(CgAnimSequence clip, float time, float weight) {
         int i = reserve();
         sampleScopes[i] = playerScope;
-        tickPlayers[i] = null;
+        samplePlayers[i] = null;
         sampleClips[i] = clip;
         sampleTimes[i] = time;
         sampleWeights[i] = weight;
@@ -280,7 +342,7 @@ public final class CgAnimGraphInstance {
     private int reserve() {
         if (samples == sampleClips.length) {
             int n = samples * 2;
-            tickPlayers = Arrays.copyOf(tickPlayers, n);
+            samplePlayers = Arrays.copyOf(samplePlayers, n);
             sampleClips = Arrays.copyOf(sampleClips, n);
             sampleTimes = Arrays.copyOf(sampleTimes, n);
             sampleWeights = Arrays.copyOf(sampleWeights, n);
@@ -313,13 +375,8 @@ public final class CgAnimGraphInstance {
 
     /** Sample {@code i}'s player, or null for a slot's entry. */
     @Nullable
-    public CgSequencePlayerNode.PlayerRuntime samplePlayer(int i) {
-        return tickPlayers[i];
-    }
-
-    /** The player scope sample {@code i} was ticked in: which state machine's states it belongs to, 0 none. */
-    public int sampleScope(int i) {
-        return sampleScopes[i];
+    public CgAnimAssetPlayer samplePlayer(int i) {
+        return samplePlayers[i];
     }
 
     /**

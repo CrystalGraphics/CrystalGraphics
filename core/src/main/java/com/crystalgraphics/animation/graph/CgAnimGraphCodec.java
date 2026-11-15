@@ -11,14 +11,19 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
+import javax.annotation.Nullable;
+
 import org.joml.Vector3f;
 
+import com.crystalgraphics.animation.sync.CgAnimGroupRole;
+import com.crystalgraphics.animation.sync.CgSyncGroup;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.object.CgType;
 
 /**
  * An {@code anim_graphs/} file and a {@link CgAnimGraph}, each way: {@link #compile} reads a resolved asset into a
@@ -87,17 +92,28 @@ public final class CgAnimGraphCodec {
      *
      * @throws CgAssetException a graph that cannot run, naming the asset and the node
      */
-    public static CgAnimGraphDefinition compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
-        CgAnimGraphDefinition definition = new CgAnimGraphDefinition(asset.id(), asset.resolved());
+    public static CgAnimGraphDefinition compile(CgAssetData asset, @Nullable CgAssetCompiler.Dependencies deps) {
+        Map<CgType, Map<String, Object>> found = new LinkedHashMap<>();
         // Everything but the clips and the mask's bones is checked here, so a bad file fails at load
-        definition.graph(STAND_IN, id -> STAND_IN_CLIP);
-        return definition;
+        build(asset.id(), asset.resolved(), STAND_IN, id -> STAND_IN_CLIP, (at, kind, id) -> {
+            Object d = deps == null ? null : deps.definition(kind, id);
+            if (d == null) throw new CgAssetException(at + ": " + id + " resolves to no " + kind);
+            found.computeIfAbsent(kind, k -> new LinkedHashMap<>()).put(id, d);
+            return d;
+        });
+        return new CgAnimGraphDefinition(asset.id(), asset.resolved(), found);
+    }
+
+    /** How a graph's reader finds a compiled dependency: through the pipeline at compile, from the definition at bind. */
+    @FunctionalInterface
+    interface Resolver {
+        Object definition(String at, CgType kind, String id);
     }
 
     // ── reading ──────────────────────────────────────────────────────────────────────────
 
-    static CgAnimGraph build(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips) {
-        Reader r = new Reader(id, tree, clips);
+    static CgAnimGraph build(String id, Map<?, ?> tree, CgSkeleton skeleton, Function<String, CgAnimSequence> clips, Resolver resolver) {
+        Reader r = new Reader(id, tree, clips, resolver);
         CgAnimGraph.Builder b = CgAnimGraph.builder(id, skeleton);
         b.variables(r.variables.values().toArray(new CgAnimVariable<?>[0]));
         if (!(tree.get("output") instanceof String output)) throw new CgAssetException(id + ": output: none");
@@ -121,14 +137,16 @@ public final class CgAnimGraphCodec {
         final Map<?, ?> tree;
         final Map<?, ?> nodes;
         final Function<String, CgAnimSequence> clips;
+        final Resolver resolver;
         final Map<String, CgAnimVariable<?>> variables = new LinkedHashMap<>();
         final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
         final Set<String> reached = new HashSet<>(), saving = new HashSet<>();
 
-        Reader(String id, Map<?, ?> tree, Function<String, CgAnimSequence> clips) {
+        Reader(String id, Map<?, ?> tree, Function<String, CgAnimSequence> clips, Resolver resolver) {
             this.id = id;
             this.tree = tree;
             this.clips = clips;
+            this.resolver = resolver;
             if (!(tree.get("nodes") instanceof Map<?, ?> n)) throw new CgAssetException(id + ": nodes: none");
             this.nodes = n;
             if (tree.get("variables") instanceof Map<?, ?> vars) {
@@ -169,13 +187,13 @@ public final class CgAnimGraphCodec {
             return switch (kind) {
                 case "sequence_player" -> {
                     String clipId = string(at, m, "clip");
-                    CgAnimSequence clip = clips.apply(clipId);
-                    if (clip == null) throw new CgAssetException(at + ".clip: " + clipId + " names no clip of this mesh");
-                    CgSequencePlayerNode p = CgSequencePlayerNode.of(clip, clipId);
+                    CgSequencePlayerNode p = CgSequencePlayerNode.of(clip(at + ".clip", clipId), clipId);
                     if (Boolean.TRUE.equals(m.get("loop"))) p = p.loop();
-                    if (m.get("play_rate") instanceof Number n) p = p.playRate(n.floatValue());
+                    if (m.get("play_rate") instanceof String v) p = p.playRate(floatVariable(at + ".play_rate", v));
+                    else if (m.get("play_rate") != null) p = p.playRate(number(at + ".play_rate", m.get("play_rate")));
                     if (m.get("start_position") instanceof Number n) p = p.startPosition(n.floatValue());
-                    yield p;
+                    CgSyncGroup group = syncGroup(at, m);
+                    yield group == null ? p : p.sync(group);
                 }
                 case "ref_pose" -> CgRefPoseNode.create();
                 case "slot" -> CgSlotNode.of(m.get("slot_name") instanceof String s ? s : CgAnimGraph.DEFAULT_SLOT, pose(string(at, m, "source")));
@@ -310,6 +328,32 @@ public final class CgAnimGraphCodec {
         public float number(String at, Object o) {
             if (!(o instanceof Number n)) throw new CgAssetException(at + ": " + o + " is not a number");
             return n.floatValue();
+        }
+
+        @Override
+        public CgAnimSequence clip(String at, String clipId) {
+            CgAnimSequence clip = clips.apply(clipId);
+            if (clip == null) throw new CgAssetException(at + ": " + clipId + " names no clip of this mesh");
+            return clip;
+        }
+
+        @Override
+        public Object definition(String at, CgType kind, String did) {
+            return resolver.definition(at, kind, did);
+        }
+
+        @Override
+        @Nullable
+        public CgSyncGroup syncGroup(String at, Map<?, ?> m) {
+            if (m.get("sync_group") == null) return null;
+            String name = string(at, m, "sync_group");
+            Object role = m.get("group_role");
+            if (role == null) return CgSyncGroup.of(name);
+            try {
+                return CgSyncGroup.of(name, CgAnimGroupRole.valueOf(String.valueOf(role).toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                throw new CgAssetException(at + ".group_role: " + role + " is no group role");
+            }
         }
     }
 

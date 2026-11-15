@@ -110,8 +110,8 @@ public class CgClipDataTest {
         assertTrue(s.rootMotion().enabled());
         assertEquals(CgRootMotion.Lock.ANIM_FIRST_FRAME, s.rootMotion().lock());
         assertEquals(CgAdditive.Base.FRAME, s.additive().base());
-        assertThrows(CgAssetException.class, () -> CgClipDefinition.compile("mymod:aim",
-                Map.of("additive", Map.of("type", "mesh_space"))));
+        assertEquals(CgAdditive.Type.MESH_SPACE, CgClipDefinition.compile("mymod:aim",
+                Map.of("additive", Map.of("type", "mesh_space"))).settings(id -> null).additive().type());
         assertThrows(CgAssetException.class, () -> CgClipDefinition.compile("mymod:flinch",
                 Map.of("additive", Map.of("type", "local_space", "base", "clip_frame", "base_clip", "mymod:idle"))).settings(id -> null));
     }

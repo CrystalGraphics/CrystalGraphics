@@ -1,5 +1,8 @@
 package com.crystalgraphics.asset.load;
 
+import com.crystalgraphics.animation.blend.CgAimOffsetNode;
+import com.crystalgraphics.animation.blend.CgBlendSpaceCodec;
+import com.crystalgraphics.animation.blend.CgBlendSpacePlayerNode;
 import com.crystalgraphics.animation.blend.CgInertializationNode;
 import com.crystalgraphics.animation.graph.CgAnimGraphCodec;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
@@ -50,6 +53,9 @@ public final class CgBuiltInCompilers {
         CgAnimGraphCodec.register();
         CgAnimGraphCodec.registerKind("state_machine", CgAnimStateMachineNode.KIND);
         CgAnimGraphCodec.registerKind("inertialization", CgInertializationNode.KIND);
+        CgBlendSpaceCodec.register();
+        CgAnimGraphCodec.registerKind("blend_space_player", CgBlendSpacePlayerNode.KIND);
+        CgAnimGraphCodec.registerKind("aim_offset", CgAimOffsetNode.KIND);
         CgCueDefinition.register();
         CgStageDefinition.register();
         CgTextStyle.register();

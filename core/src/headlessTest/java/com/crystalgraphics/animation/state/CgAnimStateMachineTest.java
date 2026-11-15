@@ -246,8 +246,7 @@ public class CgAnimStateMachineTest {
     /** The time of this frame's player of {@code clip}. */
     private static float playerTime(CgAnimInstance anim, String clip) {
         for (int i = 0; i < anim.graph().samples(); i++) {
-            CgSequencePlayerNode.PlayerRuntime p = anim.graph().samplePlayer(i);
-            if (p != null && p.clip() != null && p.clip().name().equals(clip)) return p.time();
+            if (anim.graph().samplePlayer(i) != null && anim.graph().sampleClip(i).name().equals(clip)) return anim.graph().sampleTime(i);
         }
         return Float.NaN;
     }

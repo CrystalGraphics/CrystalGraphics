@@ -134,7 +134,8 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `animation/CLAUDE.md` | `CgAnimInstance`, `CgAnimation`: what a skeletal mesh plays, posed here in `POSE`, on workers; headless on a server |
 | `animation/graph/CLAUDE.md` | `CgAnimGraph` and its nodes, `CgAnimGraphInstance`, the `anim_graph` kind's codec: Unreal's anim graph |
 | `animation/state/CLAUDE.md` | `CgAnimStateMachine` and `CgAnimStateMachineNode`: Unreal's state machines, rules and transition events |
-| `animation/blend/CLAUDE.md` | `CgAlphaBlend` (Unreal's blend options) and `CgInertializationNode` |
+| `animation/blend/CLAUDE.md` | `CgBlendSpace` and its player, `CgAimOffsetNode`, `CgAlphaBlend` (Unreal's blend options) and `CgInertializationNode` |
+| `animation/sync/CLAUDE.md` | `CgAnimSync`: asset players ticked by sync group, leader then followers, by markers or length |
 
 ### Vertex / Instancing
 | Path | What it covers |
