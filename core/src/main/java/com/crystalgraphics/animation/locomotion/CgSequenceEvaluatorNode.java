@@ -21,14 +21,24 @@ import com.crystalgraphics.api.animation.CgClipModifiers;
 import com.crystalgraphics.asset.tree.CgAssetException;
 
 /**
- * A clip held at a time the graph sets each frame rather than one that runs.
- * The time is a variable's, or found by distance matching: a start advanced by the ground covered, a stop placed by the
- * ground still to cover ({@link CgDistanceMatching}).
+ * A clip held at a time the graph sets each frame rather than one that runs: Unreal's
+ * {@code FAnimNode_SequenceEvaluator}. The time is a constant or a variable's, in seconds or as a share of the clip, so
+ * a game state drives the pose (Minecraft's swing progress plays the swing clip); or it is found by distance matching:
+ * a start advanced by the ground covered, a stop placed by the ground still to cover ({@link CgDistanceMatching}).
  *
  * <pre>{@code
  * CgSequenceEvaluatorNode.of(AIM).explicitTime(AIM_TIME)                       // seconds, set by the game
+ * CgSequenceEvaluatorNode.of(SWING).explicitTime(SWING_PROGRESS).normalized()  // 0-1 across the clip
+ * CgSequenceEvaluatorNode.of(KNEEL).at(0.4f)                                   // one frame, held
  * CgSequenceEvaluatorNode.of(RUN_START).advanceByDistance(TRAVELLED, 0.75f, 1.25f)   // metres this frame; rate kept within
  * CgSequenceEvaluatorNode.of(RUN_STOP).matchToTarget(TO_STOP)                  // metres still to go
+ * }</pre>
+ *
+ * <p>In a file, {@code time} is a number or a float variable's name, {@code normalized} makes it a share of the clip;
+ * the distance modes read {@code distance}:</p>
+ * <pre>{@code
+ * swing: { kind: sequence_evaluator, clip: mymod:hero/swing, time: swing, normalized: true }
+ * stop:  { kind: sequence_evaluator, clip: mymod:hero/run_stop, mode: match_to_target, distance: to_stop }
  * }</pre>
  *
  * <ul>
@@ -57,11 +67,16 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
         CgSequenceEvaluatorNode n = of(c.clip(at + ".clip", clipId), clipId);
         if (Boolean.TRUE.equals(m.get("loop"))) n = n.loop();
         if (m.get("curve") instanceof String curve) n = n.curve(curve);
-        CgAnimVariable<Float> v = floatVariable(c, at + ".input", c.string(at, m, "input"));
         Object mode = m.get("mode");
         String name = mode == null ? "explicit" : String.valueOf(mode);
+        if (name.equals("explicit")) {
+            Object time = m.get("time");
+            if (time instanceof String var) n = n.explicitTime(floatVariable(c, at + ".time", var));
+            else if (time != null) n = n.at(c.number(at + ".time", time));
+            return Boolean.TRUE.equals(m.get("normalized")) ? n.normalized() : n;
+        }
+        CgAnimVariable<Float> v = floatVariable(c, at + ".distance", c.string(at, m, "distance"));
         return switch (name) {
-            case "explicit" -> n.explicitTime(v);
             case "advance_by_distance" -> {
                 float min = -1f, max = -1f;
                 if (m.get("play_rate_clamp") instanceof List<?> l && l.size() == 2) {
@@ -90,9 +105,15 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
     private final CgAnimVariable<Float> input;
     private final String curve;
     private final float minRate, maxRate;
+    /** The explicit time where no variable sets it. */
+    private final float constant;
+    /** Whether the explicit time is a share of the clip. */
+    private final boolean normalized;
 
     private CgSequenceEvaluatorNode(CgAnimSequence clip, String clipId, boolean loop, Mode mode, @Nullable CgAnimVariable<Float> input,
-                                    String curve, float minRate, float maxRate) {
+                                    String curve, float minRate, float maxRate, float constant, boolean normalized) {
+        this.constant = constant;
+        this.normalized = normalized;
         this.clip = Objects.requireNonNull(clip, "clip");
         this.clipId = clipId;
         this.loop = loop;
@@ -105,26 +126,36 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
 
     /** {@code clip} held at its start until a mode sets its time. */
     public static CgSequenceEvaluatorNode of(CgAnimSequence clip) {
-        return new CgSequenceEvaluatorNode(clip, clip.name(), false, Mode.EXPLICIT, null, CgClipModifiers.DISTANCE, -1f, -1f);
+        return new CgSequenceEvaluatorNode(clip, clip.name(), false, Mode.EXPLICIT, null, CgClipModifiers.DISTANCE, -1f, -1f, 0f, false);
     }
 
     static CgSequenceEvaluatorNode of(CgAnimSequence clip, String id) {
-        return new CgSequenceEvaluatorNode(clip, id, false, Mode.EXPLICIT, null, CgClipModifiers.DISTANCE, -1f, -1f);
+        return new CgSequenceEvaluatorNode(clip, id, false, Mode.EXPLICIT, null, CgClipModifiers.DISTANCE, -1f, -1f, 0f, false);
     }
 
     /** Its time wraps past its end. */
     public CgSequenceEvaluatorNode loop() {
-        return new CgSequenceEvaluatorNode(clip, clipId, true, mode, input, curve, minRate, maxRate);
+        return new CgSequenceEvaluatorNode(clip, clipId, true, mode, input, curve, minRate, maxRate, constant, normalized);
     }
 
     /** The distance curve it matches by. */
     public CgSequenceEvaluatorNode curve(String name) {
-        return new CgSequenceEvaluatorNode(clip, clipId, loop, mode, input, name, minRate, maxRate);
+        return new CgSequenceEvaluatorNode(clip, clipId, loop, mode, input, name, minRate, maxRate, constant, normalized);
     }
 
-    /** Its time, seconds, read from {@code seconds} each frame. */
+    /** Held at {@code time}: seconds, or a share of the clip where {@link #normalized}. */
+    public CgSequenceEvaluatorNode at(float time) {
+        return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.EXPLICIT, null, curve, minRate, maxRate, time, normalized);
+    }
+
+    /** Its explicit time is a share of the clip, 0 its start and 1 its end, rather than seconds. */
+    public CgSequenceEvaluatorNode normalized() {
+        return new CgSequenceEvaluatorNode(clip, clipId, loop, mode, input, curve, minRate, maxRate, constant, true);
+    }
+
+    /** Its time, seconds (or a share, {@link #normalized}), read from {@code seconds} each frame. */
     public CgSequenceEvaluatorNode explicitTime(CgAnimVariable<Float> seconds) {
-        return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.EXPLICIT, Objects.requireNonNull(seconds, "seconds"), curve, minRate, maxRate);
+        return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.EXPLICIT, Objects.requireNonNull(seconds, "seconds"), curve, minRate, maxRate, constant, normalized);
     }
 
     /**
@@ -133,12 +164,12 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
      */
     public CgSequenceEvaluatorNode advanceByDistance(CgAnimVariable<Float> travelled, float min, float max) {
         return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.ADVANCE_BY_DISTANCE, Objects.requireNonNull(travelled, "travelled"),
-                curve, min, max);
+                curve, min, max, constant, normalized);
     }
 
     /** Placed each frame where its curve stands {@code toGo} metres short of its stop. */
     public CgSequenceEvaluatorNode matchToTarget(CgAnimVariable<Float> toGo) {
-        return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.MATCH_TO_TARGET, Objects.requireNonNull(toGo, "toGo"), curve, minRate, maxRate);
+        return new CgSequenceEvaluatorNode(clip, clipId, loop, Mode.MATCH_TO_TARGET, Objects.requireNonNull(toGo, "toGo"), curve, minRate, maxRate, constant, normalized);
     }
 
     @Override
@@ -171,10 +202,12 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
         public void update(CgAnimGraphInstance g, float w) {
             weight = w;
             float length = clip.duration(), dt = g.delta(), next = time;
-            if (input != null) {
+            if (mode == Mode.EXPLICIT) {
+                float value = input != null ? g.get(input) : constant;
+                next = normalized ? value * length : value;
+            } else {
                 float value = g.get(input);
                 switch (mode) {
-                    case EXPLICIT -> next = value;
                     case MATCH_TO_TARGET -> next = CgDistanceMatching.timeAtDistance(clip, -value, curve);
                     case ADVANCE_BY_DISTANCE -> {
                         if (dt > 0f && value > 0f) {
@@ -289,7 +322,9 @@ public final class CgSequenceEvaluatorNode extends CgAnimNode {
         out.kind("sequence_evaluator").put("clip", clipId);
         if (loop) out.put("loop", true);
         if (mode != Mode.EXPLICIT) out.put("mode", mode.name().toLowerCase(Locale.ROOT));
-        if (input != null) out.put("input", input.name());
+        if (mode == Mode.EXPLICIT) out.alpha("time", constant, input, 0f);
+        else out.put("distance", input.name());
+        if (normalized) out.put("normalized", true);
         if (!curve.equals(CgClipModifiers.DISTANCE)) out.put("curve", curve);
         if (minRate >= 0f && minRate < maxRate) out.put("play_rate_clamp", List.of((double) minRate, (double) maxRate));
     }

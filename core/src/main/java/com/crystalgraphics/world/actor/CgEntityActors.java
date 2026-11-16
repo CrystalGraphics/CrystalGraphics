@@ -13,6 +13,11 @@ import com.crystalgraphics.loading.task.CgLoadPlan;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.scene.prefab.CgPrefab;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.animation.graph.CgAnimGraphDefinition;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
@@ -50,6 +55,16 @@ import java.util.function.Supplier;
  * CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
  * CgEntityActors.register("mymod:golem", GolemActor::new).keepVanillaModel();  // drawn as well as the vanilla model
  * CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern");   // its components an asset
+ * }</pre>
+ *
+ * <p>A registration can carry what an {@code actor} file says (a file registers itself at load, the same way): the
+ * graph its body runs, the body whose root motion moves the entity, and its reactions to the entity's events.</p>
+ *
+ * <pre>{@code
+ * CgEntityActors.register("mymod:golem", CgEntityActors.plain()).prefab("mymod:golem")
+ *         .graph("mymod:golem_locomotion")                 // an anim_graph, bound to its body's mesh
+ *         .rootMotion("body")                              // the prefab node whose montages carry the entity
+ *         .react(CgReaction.of(CgEntityProperties.HURT, "mymod:golem_flinch"));
  * }</pre>
  *
  * <p>One entity can be bound alone, beating its type's actor, with no registration by type:</p>
@@ -124,7 +139,10 @@ public final class CgEntityActors extends CgWorldSubsystem {
         private final Supplier<? extends CgEntityActor> factory;
         private volatile boolean keepVanillaModel;
         @Nullable
-        private volatile String prefab;
+        private volatile String prefab, graph, rootMotion;
+        private final List<CgReaction> reactions = new CopyOnWriteArrayList<>();
+        /** Its graph bound to each mesh it ran on: binding builds the nodes anew, so once a mesh. */
+        private final Map<CgSkeletalMesh, CgAnimGraph> bound = new ConcurrentHashMap<>();
         /** Its actor failed to spawn: not tried again. */
         private boolean failed;
 
@@ -147,6 +165,30 @@ public final class CgEntityActors extends CgWorldSubsystem {
          */
         public Registration prefab(String id) {
             prefab = Objects.requireNonNull(id, "id");
+            return this;
+        }
+
+        /**
+         * Its actors' body runs {@code id}, an {@code anim_graph} asset, bound to the body's mesh and its clips: Unreal's
+         * anim class of a Character. The body is the {@link #rootMotion} node's, else the prefab's first skeletal mesh.
+         */
+        public Registration graph(String id) {
+            graph = Objects.requireNonNull(id, "id");
+            return this;
+        }
+
+        /**
+         * Its prefab's skeletal node {@code node} moves the entity by its montages' root motion, as
+         * {@link CgEntityActor#rootMotion} does for a body an actor adds itself.
+         */
+        public Registration rootMotion(String node) {
+            rootMotion = Objects.requireNonNull(node, "node");
+            return this;
+        }
+
+        /** Its actors play {@code reaction} when its event fires: each frame, the first that fires plays. */
+        public Registration react(CgReaction reaction) {
+            reactions.add(Objects.requireNonNull(reaction, "reaction"));
             return this;
         }
 
@@ -226,6 +268,17 @@ public final class CgEntityActors extends CgWorldSubsystem {
         return bindTo(LOCAL_PLAYER, factory);
     }
 
+    /** An actor with no code of its own: its registration's prefab, graph, root motion and reactions are all it does. */
+    public static Supplier<CgEntityActor> plain() {
+        return Plain::new;
+    }
+
+    private static final class Plain extends CgEntityActor {
+        @Override
+        protected void onSpawn(CgEntity entity) {
+        }
+    }
+
     private static synchronized Registration bindTo(int entityId, Supplier<? extends CgEntityActor> factory) {
         Registration r = new Registration("bound", entityId, Objects.requireNonNull(factory, "factory"));
         for (Registration b : BINDINGS) {
@@ -243,6 +296,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
      * {@code onLoad}.
      */
     public static void preload(CgLoadPlan plan) {
+        CgActorFiles.bindLocalPlayers();
         List<CgAssetRef<CgPrefab>> refs = new ArrayList<>();
         List<CgAssetRef<?>> systems = new ArrayList<>();
         CgPipelinePrecache.Request[] pipelines = {null};
@@ -250,9 +304,15 @@ public final class CgEntityActors extends CgWorldSubsystem {
         plan.task("crystalgraphics:actor-prefabs").render(task -> {
             if (!started[0]) {
                 started[0] = true;
-                for (Registration r : TYPES.values()) if (r.prefab != null) refs.add(prefabRef(r.prefab));
-                for (Registration r : BINDINGS) if (r.prefab != null) refs.add(prefabRef(r.prefab));
-                if (refs.isEmpty()) return true;
+                List<Registration> all = new ArrayList<>(TYPES.values());
+                all.addAll(BINDINGS);
+                for (Registration r : all) {
+                    if (r.prefab != null) refs.add(prefabRef(r.prefab));
+                    // what it plays: its graph and its reactions' sequences, loaded with its prefab
+                    if (r.graph != null) systems.add(CgVfxAssets.ref(CgBodyKinds.ANIM_GRAPH, r.graph));
+                    for (CgReaction reaction : r.reactions) systems.add(CgVfxAssets.ref(CgSequenceKinds.SEQUENCE, reaction.sequence()));
+                }
+                if (refs.isEmpty() && systems.isEmpty()) return true;
                 CgVfxAssets.instance().load(refs, CgLoadPriority.MOVE);
             }
             if (!settled(refs, 0.25f, task)) return false;
@@ -490,7 +550,13 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 if (prefab == null) throw new IllegalStateException("its prefab " + r.prefab + " did not load");
                 actor.prefab = scene.spawn(prefab).attach(actor.root, null).spawn();
                 actor.prefab.forEachSkeletal(actor::feed);
+                if (r.rootMotion != null) {
+                    CgSkeletalMeshComponent body = actor.prefab.skeletal(r.rootMotion);
+                    if (body == null) throw new IllegalStateException("its prefab " + r.prefab + " has no skeletal node " + r.rootMotion);
+                    actor.rootMotion(body);
+                }
             }
+            if (r.graph != null) runGraph(actor, r);
             actor.onSpawn(entity);
         } catch (RuntimeException e) {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
@@ -501,6 +567,18 @@ public final class CgEntityActors extends CgWorldSubsystem {
         order.add(l);
         index();
         return true;
+    }
+
+    /** Its registration's graph on its body, bound once per mesh. */
+    private static void runGraph(CgEntityActor actor, Registration r) {
+        CgSkeletalMeshComponent body = actor.body();
+        if (body == null) throw new IllegalStateException("its graph " + r.graph + " has no body to run on: its prefab has no skeletal mesh");
+        CgAnimGraph graph = r.bound.computeIfAbsent(body.mesh(), m -> {
+            CgAnimGraphDefinition d = CgVfxAssets.<CgAnimGraphDefinition>ref(CgBodyKinds.ANIM_GRAPH, r.graph).get();
+            if (d == null) throw new IllegalStateException("its graph " + r.graph + " did not load");
+            return d.graph(m.skeleton(), m::sequence);
+        });
+        body.anim().graph(graph);
     }
 
     private void despawn(int id) {
@@ -564,6 +642,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
                     continue;
                 }
                 try {
+                    l.actor.react(l.origin.reactions);
                     l.actor.tick(l.entity, dt);
                 } catch (RuntimeException e) {
                     LOGGER.error("the actor of {} failed: removed, its entity left to its host", l.entity, e);

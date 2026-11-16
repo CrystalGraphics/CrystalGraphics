@@ -1,6 +1,18 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.animation.CgAnimInstance;
+import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.asset.kind.CgSequenceKinds;
+import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.world.CgEntityMovement;
+import com.crystalgraphics.sequence.CgSequencePlayer;
+import com.crystalgraphics.sequence.CgSequenceTarget;
+import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.animation.CgSequenceSkeletal;
+import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
+import com.crystalgraphics.world.CgEntityProperties;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
@@ -13,7 +25,9 @@ import org.joml.Vector3f;
 import javax.annotation.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * What draws a host entity, Unreal's {@code AActor} bound to it: components made in {@link #onSpawn}, changed in
@@ -95,6 +109,12 @@ public abstract class CgEntityActor {
     private final Matrix4f step = new Matrix4f(), toWorld = new Matrix4f();
     private final Vector3f t = new Vector3f();
     private final Quaternionf q = new Quaternionf();
+    /** The reaction playing, until it ends or the next replaces it. */
+    @Nullable
+    private CgSequencePlayer reacting;
+    /** What its reactions' rules read its entity through; made with its first reaction. */
+    @Nullable
+    private CgReaction.Probe probe;
 
     /** The entity appeared on this side: make its components. */
     protected abstract void onSpawn(CgEntity entity);
@@ -192,8 +212,88 @@ public abstract class CgEntityActor {
         body.anim().onUpdate(new EntityFeed(entity));
     }
 
+    /**
+     * Its body: the root-motion body where it names one, else the first skeletal mesh it added, else its prefab's
+     * first; null where it has none. What its registration's graph runs on and its reactions play on.
+     */
+    @Nullable
+    public final CgSkeletalMeshComponent body() {
+        if (rootMotion != null) return rootMotion;
+        for (CgPrimitiveComponent<?> c : components) if (c instanceof CgSkeletalMeshComponent s) return s;
+        if (prefab == null) return null;
+        CgSkeletalMeshComponent[] first = {null};
+        prefab.forEachSkeletal(s -> {
+            if (first[0] == null) first[0] = s;
+        });
+        return first[0];
+    }
+
+    /**
+     * Each frame before {@code tick}: the first reaction whose event fired this frame, and whose rule holds, plays,
+     * stopping the one before; a reaction that ended is let go.
+     */
+    final void react(List<CgReaction> reactions) {
+        if (reacting != null && (reacting.finished() || reacting.stopped())) {
+            reacting.stop();
+            reacting = null;
+        }
+        if (reactions.isEmpty()) return;
+        CgNetObject motion = entity.properties(CgEntityProperties.MOTION);
+        if (motion == null) return;
+        if (probe == null) probe = new CgReaction.Probe(entity);
+        for (int i = 0; i < reactions.size(); i++) {
+            CgReaction r = reactions.get(i);
+            if (!r.fires(motion, probe)) continue;
+            play(r);
+            return;
+        }
+    }
+
+    private void play(CgReaction r) {
+        CgSkeletalMeshComponent body = body();
+        if (body == null) throw new IllegalStateException("no body to play " + r.sequence() + " on: its prefab has no skeletal mesh");
+        CgSequenceDefinition d = CgVfxAssets.<CgSequenceDefinition>ref(CgSequenceKinds.SEQUENCE, r.sequence()).get();
+        if (d == null) throw new IllegalStateException("its reaction's sequence " + r.sequence() + " did not load");
+        CgWorld world = server ? CgWorld.serverWorld() : CgWorld.client();
+        CgSequencer sequencer = CgSequencer.of(world);
+        if (sequencer == null) sequencer = world.add(new CgSequencer());
+        Reacting target = new Reacting(body, r.slot());
+        Map<String, CgSequenceTarget> roles = new HashMap<>();
+        for (CgSequenceDefinition.Role role : d.roles()) roles.put(role.name(), target);
+        if (reacting != null) reacting.stop();
+        reacting = sequencer.play(d, roles);
+    }
+
+    /** The body as a reaction's every role: its clips by id, every section on the reaction's slot. */
+    private record Reacting(CgSkeletalMeshComponent body, String slot) implements CgSequenceSkeletal {
+        @Override public CgAnimInstance instance() {
+            return body.anim();
+        }
+
+        @Override @Nullable public CgAnimSequence clip(String id) {
+            CgAnimSequence clip = body.mesh().sequence(id);
+            return clip != null ? clip : body.mesh().sequence(id.substring(Math.max(id.lastIndexOf('/'), id.lastIndexOf(':')) + 1));
+        }
+
+        @Override public String montageSlot() {
+            return slot;
+        }
+
+        @Override public int slot(String name) {
+            return -1;
+        }
+
+        @Override public void set(int slot, float[] values, int mask) {
+        }
+
+        @Override public void get(int slot, float[] out) {
+        }
+    }
+
     /** Removes what it added and its prefab, the root last. */
     final void removeAll() {
+        if (reacting != null) reacting.stop();
+        reacting = null;
         for (int i = components.size() - 1; i >= 0; i--) components.get(i).remove();
         components.clear();
         if (prefab != null) prefab.remove();

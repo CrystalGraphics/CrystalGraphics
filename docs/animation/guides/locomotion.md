@@ -190,13 +190,15 @@ Then play it with a sequence evaluator, its time set each frame:
 CgSequenceEvaluatorNode.of(stop).matchToTarget(TO_STOP);
 // a start: advanced by the distance covered this frame, its rate kept within [0.75, 1.25]
 CgSequenceEvaluatorNode.of(start).advanceByDistance(TRAVELLED, 0.75f, 1.25f);
-// any clip at a time the game sets
+// any clip at a time the game sets: seconds, or a share of the clip
 CgSequenceEvaluatorNode.of(aim).explicitTime(AIM_TIME);
+CgSequenceEvaluatorNode.of(swing).explicitTime(SWING).normalized();   // Minecraft's swing progress, 0 to 1
 ```
 
 ```yaml
-stopping: { kind: sequence_evaluator, clip: mymod:hero/run_stop, mode: match_to_target, input: to_stop }
-starting: { kind: sequence_evaluator, clip: mymod:hero/run_start, mode: advance_by_distance, input: travelled, play_rate_clamp: [0.75, 1.25] }
+stopping: { kind: sequence_evaluator, clip: mymod:hero/run_stop, mode: match_to_target, distance: to_stop }
+starting: { kind: sequence_evaluator, clip: mymod:hero/run_start, mode: advance_by_distance, distance: travelled, play_rate_clamp: [0.75, 1.25] }
+swinging: { kind: sequence_evaluator, clip: mymod:hero/swing, time: swing, normalized: true }
 ```
 
 How far it still has to go, from its velocity and braking:

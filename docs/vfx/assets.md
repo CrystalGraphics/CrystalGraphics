@@ -37,7 +37,7 @@ emitters:
 | `parameters` | `parameters` | | `field` | `fields` |
 | `curve` | `curves` | | `cue` | `cues` |
 | `text_style` | `text_styles` | | `stage` | `stages` |
-| | | | `net_type` | `net_types` |
+| `actor` | `actors` | | `net_type` | `net_types` |
 
 ### Shipping them in your mod
 

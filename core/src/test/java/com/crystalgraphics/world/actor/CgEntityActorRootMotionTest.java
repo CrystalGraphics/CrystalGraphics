@@ -29,11 +29,15 @@ import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
+import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.world.CgEntityProperties;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
@@ -83,6 +87,8 @@ public class CgEntityActorRootMotionTest {
         final int id;
         double x, y, z;
         float yaw;
+        int hurtTime;
+        boolean grounded = true;
         double wallZ = Double.POSITIVE_INFINITY;
         int moves;
 
@@ -105,6 +111,13 @@ public class CgEntityActorRootMotionTest {
             out[Y] = mob.y;
             out[Z] = mob.z;
             out[YAW] = out[BODY_YAW] = out[HEAD_YAW] = mob.yaw;
+            return true;
+        }
+
+        @Override public boolean facts(int id, float partialTick, CgEntityFacts out) {
+            if (mob == null || id != mob.id) return false;
+            out.bits = CgEntityFacts.LIVING | (mob.grounded ? CgEntityFacts.GROUNDED : 0);
+            out.hurtTime = mob.hurtTime;
             return true;
         }
 
@@ -262,6 +275,39 @@ public class CgEntityActorRootMotionTest {
         assertEquals("4 m along its facing, +z", 4.0, m.z, 0.01);
         assertEquals(0.0, m.x, 1e-4);
         assertTrue("moved through the host, tick by tick: " + m.moves, m.moves >= 15);
+    }
+
+    @Test
+    public void beingHurtPlaysItsReactionWhereItsRuleHolds() {
+        CgVfxAssets.instance().registry().registerCode("test:lunge", CgSequenceKinds.SEQUENCE, () -> LUNGE);
+        try {
+            registration.react(CgReaction.of(CgEntityProperties.HURT, "test:lunge", CgAnimGraph.DEFAULT_SLOT,
+                    CgReaction.when(Map.of("variable", "entity.grounded", "op", "==", "value", true))));
+            Mob grounded = hurt(new Mob(nextId++));
+            assertEquals("hurt on the ground: its reaction's lunge carried it 4 m", 4.0, grounded.z, 0.01);
+
+            CgNetEntities.leftServer(grounded);
+            Mob falling = new Mob(nextId++);
+            falling.grounded = false;
+            hurt(falling);
+            assertEquals("hurt in the air: its rule did not hold, nothing played", 0.0, falling.z, 1e-9);
+        } finally {
+            CgVfxAssets.instance().registry().remove(CgSequenceKinds.SEQUENCE, "test:lunge");
+        }
+    }
+
+    /** {@code m} joins the server, is seen a few ticks, then hurt, then 40 ticks. */
+    private Mob hurt(Mob m) {
+        mob = m;
+        Fighter.body = mesh(lunge(null));
+        CgWorld server = CgWorld.serverWorld();
+        if (CgSequencer.of(server) == null) server.add(new CgSequencer());
+        CgNetEntities.enteredServer(m, "test:fighter");
+        for (int i = 0; i < 3; i++) server.tick();
+        assertEquals("not hurt yet: nothing played", 0.0, m.z, 1e-9);
+        m.hurtTime = 10;
+        for (int i = 0; i < 40; i++) server.tick();
+        return m;
     }
 
     @Test

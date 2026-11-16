@@ -662,6 +662,47 @@ CgNetObject seen = CgEntityProperties.MOTION.of(entityId);   // a client's, by n
   far it moved over its tick, its vehicle, Minecraft's hurt and death countdowns, the swing, the use, each hand's item
   and use animation). Core turns them into the properties; a host never decides an event.
 
+### An actor as a file, and its reactions
+
+An actor that needs no code of its own is a file, `actors/`: what it binds, its prefab, the graph its body runs, the
+body whose root motion moves the entity, and its reactions. Each file registers itself as the game starts, on both
+sides, before any entity enters.
+
+```yaml
+# assets/mymod/actors/golem.yaml
+_v: 1
+binds: { entities: [ mymod:golem ] }        # or { local_player: true }: the client's own player
+prefab: mymod:golem
+anim_graph: mymod:golem_locomotion          # bound to its body's mesh and clips
+root_motion: body                           # the prefab node whose montages carry the entity
+keep_vanilla_model: false
+reactions:                                  # an event plays a sequence on a slot
+  - { event: hurt, sequence: mymod:golem_flinch }
+  - { event: landed, sequence: mymod:golem_land, slot: FullBody, when: { variable: entity.land_height, op: ">", value: 3 } }
+```
+
+The same registration in Java, for an actor with code of its own or none (`plain()`):
+
+```java
+CgEntityActors.register("mymod:golem", CgEntityActors.plain()).prefab("mymod:golem")
+        .graph("mymod:golem_locomotion")
+        .rootMotion("body")
+        .react(CgReaction.of(CgEntityProperties.HURT, "mymod:golem_flinch"))
+        .react(CgReaction.of(CgEntityProperties.LANDED, "mymod:golem_land", "FullBody",
+                CgReaction.when(Map.of("variable", "entity.land_height", "op", ">", "value", 3))));
+```
+
+- **A reaction** is Unreal's slot animation played from a gameplay event: its sequence plays with the actor's body in
+  every role, each animation section on the reaction's slot. One playing is stopped by the next. Each side plays its
+  own from its own events: the server's moves the entity where the sequence carries root motion, a client's draws it.
+- **`event`** is one of the nine above (`jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`,
+  `mounted`, `dismounted`, `died`); **`when`** is a graph rule ([`../animation/guides/graphs.md`](../animation/guides/graphs.md)
+  § *State machines*) over the entity's properties by their graph names, `entity.grounded` or `mymod:ki#current`.
+- **The body** is the `root_motion` node's, else the first skeletal mesh the actor added, else its prefab's first.
+- **What it plays loads with its prefab**, behind the loading screen: its graph and its reactions' sequences.
+- **Fails at load, naming the file**: a prefab, graph, rig or sequence no file declares, an unknown event, a rule
+  naming a property no entity has, `binds` with neither form or both, and an entity type two actors bind.
+
 ## Drawing a palette yourself
 
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming

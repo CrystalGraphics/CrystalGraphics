@@ -131,7 +131,8 @@ public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
         if (section.fields().get("start_offset") instanceof Number ticks) b.startOffset((float) d.seconds(ticks.intValue()));
         Object loop = section.fields().get("loop");
         if (Boolean.TRUE.equals(loop) || loop instanceof Number n && n.intValue() > 1) b.loop();
-        String slot = section.fields().get("slot") instanceof String name ? name : CgAnimGraph.DEFAULT_SLOT;
+        String slot = skeletal.montageSlot() != null ? skeletal.montageSlot()
+                : section.fields().get("slot") instanceof String name ? name : CgAnimGraph.DEFAULT_SLOT;
         player.data(track, section, new Bound(montage(player, skeletal), b.build(), slot));
     }
 

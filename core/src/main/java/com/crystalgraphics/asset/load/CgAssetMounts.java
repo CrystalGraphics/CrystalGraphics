@@ -33,6 +33,7 @@ import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.world.actor.CgActorFiles;
 
 /**
  * Mounts every loaded mod's assets into the process's registry, as Unreal mounts each content plugin and its asset
@@ -88,6 +89,7 @@ public final class CgAssetMounts {
         for (File f : CgIO.overrideRoots()) dev.add(f.toPath());
         namespaces = mount(CgVfxAssets.instance().registry(), dev, CgModLoader.roots()).mounted();
         declareNetTypes(CgVfxAssets.instance());
+        CgActorFiles.declare(CgVfxAssets.instance());
     }
 
     /**
@@ -102,23 +104,32 @@ public final class CgAssetMounts {
      * }</pre>
      */
     public static void declareNetTypes(CgVfxAssets assets) {
-        List<CgAssetRef<?>> refs = new ArrayList<>();
-        for (CgAssetEntry e : assets.registry().entries(CgGameplayKinds.NET_TYPE)) {
-            if (e.redirect() == null) refs.add(assets.declare(CgGameplayKinds.NET_TYPE, e.id()));
+        for (CgAssetRef<?> r : compileNow(assets, CgGameplayKinds.NET_TYPE)) {
+            if (r.state() == CgAssetState.FAILED) LOGGER.error("net_type {} failed, so it is declared nowhere: {}", r.id(), r.failure());
         }
-        if (refs.isEmpty()) return;
+    }
+
+    /**
+     * Every asset of {@code kind} compiled now, on the calling thread's wait: what pre-init declares from files before
+     * anything enters a level. Each answered ref is {@code COMPILED} or {@code FAILED}.
+     *
+     * @throws IllegalStateException where they do not compile in 30 s
+     */
+    public static List<CgAssetRef<?>> compileNow(CgVfxAssets assets, CgType kind) {
+        List<CgAssetRef<?>> refs = new ArrayList<>();
+        for (CgAssetEntry e : assets.registry().entries(kind)) {
+            if (e.redirect() == null) refs.add(assets.declare(kind, e.id()));
+        }
+        if (refs.isEmpty()) return refs;
         assets.load(refs, CgLoadPriority.PLAYING);
         long deadline = System.nanoTime() + 30_000_000_000L;
         while (true) {
             assets.drain();
             boolean done = true;
             for (CgAssetRef<?> r : refs) done &= r.state().atLeast(CgAssetState.COMPILED) || r.state() == CgAssetState.FAILED;
-            if (done) break;
-            if (System.nanoTime() > deadline) throw new IllegalStateException("the net types did not compile in 30 s");
+            if (done) return refs;
+            if (System.nanoTime() > deadline) throw new IllegalStateException("the " + kind.id() + " assets did not compile in 30 s");
             LockSupport.parkNanos(50_000);
-        }
-        for (CgAssetRef<?> r : refs) {
-            if (r.state() == CgAssetState.FAILED) LOGGER.error("net_type {} failed, so it is declared nowhere: {}", r.id(), r.failure());
         }
     }
 

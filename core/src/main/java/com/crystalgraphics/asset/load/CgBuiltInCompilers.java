@@ -36,6 +36,7 @@ import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.cue.CgCueDefinition;
 import com.crystalgraphics.net.object.CgNetTypeCompiler;
+import com.crystalgraphics.world.actor.CgActorFiles;
 import com.crystalgraphics.render.post.stage.CgStageDefinition;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -99,6 +100,7 @@ public final class CgBuiltInCompilers {
         CgAnimGraphCodec.registerKind("sequence_evaluator", CgSequenceEvaluatorNode.KIND);
         CgCueDefinition.register();
         CgNetTypeCompiler.register();
+        CgActorFiles.register();
         CgStageDefinition.register();
         CgTextStyle.register();
         CgWidgetCodec.register();

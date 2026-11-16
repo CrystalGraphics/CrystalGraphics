@@ -9,6 +9,7 @@ import com.crystalgraphics.object.value.CgValueForm;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.mapOfValues;
+import static com.crystalgraphics.asset.kind.CgCommonStructs.soft;
 import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
@@ -538,13 +539,18 @@ public final class CgBodyKinds {
             .property("on_ground", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
             .property("teleport_distance", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(3.0).flags(CgPropertyFlag.HEADLESS)
             .register();
-    /** A clip held at a time set each frame: a variable's seconds, or matched by distance. */
+    /**
+     * {@code FAnimNode_SequenceEvaluator}: a clip held at a time set each frame, seconds or a share of the clip (a
+     * constant or a float variable), or matched by distance.
+     */
     static final CgType ANIM_SEQUENCE_EVALUATOR = animNode("sequence_evaluator")
             .property("clip", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("time", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("normalized", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
             .property("loop", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
             .property("mode", CgValueType.enumOf("explicit", "advance_by_distance", "match_to_target")).defaultValue("explicit")
             .flags(CgPropertyFlag.HEADLESS)
-            .property("input", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("distance", STRING).flags(CgPropertyFlag.HEADLESS)
             .property("curve", STRING).defaultValue("Distance").flags(CgPropertyFlag.HEADLESS)
             .property("play_rate_clamp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
             .register();
@@ -939,6 +945,37 @@ public final class CgBodyKinds {
             .property("ops", CgValueType.idList(OPS))
             .property("sockets", CgValueType.idList(RETARGET_SOCKET))
             .property("scale_effects", BOOL)
+            .register();
+
+    // ── Actor ────────────────────────────────────────────────────────────────────────────
+
+    /** What an actor draws: the local player, or entities by type id. */
+    static final CgType ACTOR_BINDS = CgTypes.struct("crystalgraphics:actor.binds")
+            .property("local_player", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("entities", CgValueType.listOf(CgValueType.NAMESPACED_ID)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** An entity event playing a sequence on a slot, where a rule over the entity's properties holds. */
+    static final CgType ACTOR_REACTION = CgTypes.struct("crystalgraphics:actor.reaction")
+            .property("event", CgValueType.enumOf("jumped", "landed", "hurt", "swing_started", "use_started", "use_stopped",
+                    "mounted", "dismounted", "died")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("sequence", soft("sequence")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("slot", STRING).defaultValue("DefaultSlot").flags(CgPropertyFlag.HEADLESS)
+            .property("when", CgValueType.struct(ANIM_RULE)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /**
+     * {@code actors/}: what draws an entity, a Character Blueprint's defaults: the entities it binds, its prefab, the
+     * graph its body runs, the body whose root motion moves the entity, and its reactions to the entity's events.
+     */
+    public static final CgType ACTOR = CgTypes.kind("crystalgraphics:actor").folder("actors").version(1)
+            .property("binds", CgValueType.struct(ACTOR_BINDS)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("prefab", soft("prefab")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("anim_graph", soft("anim_graph")).flags(CgPropertyFlag.HEADLESS)
+            .property("rig", soft("rig")).flags(CgPropertyFlag.HEADLESS)
+            .property("root_motion", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("keep_vanilla_model", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("reactions", CgValueType.listOf(CgValueType.struct(ACTOR_REACTION))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     static void register() {

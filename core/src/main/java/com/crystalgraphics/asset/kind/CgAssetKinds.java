@@ -48,7 +48,7 @@ public final class CgAssetKinds {
                 CgParticleKinds.ENDING, CgFieldKinds.FIELD, CgLookKinds.MATERIAL, CgLookKinds.TEXTURE, CgLookKinds.MESH,
                 CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgLookKinds.TEXT_STYLE, CgLookKinds.WIDGET, CgBodyKinds.PREFAB,
                 CgBodyKinds.SKELETON, CgBodyKinds.CLIP, CgBodyKinds.ANIM_GRAPH, CgBodyKinds.BLEND_SPACE,
-                CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgSequenceKinds.SEQUENCE, CgSequenceKinds.FIGURE,
+                CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgBodyKinds.ACTOR, CgSequenceKinds.SEQUENCE, CgSequenceKinds.FIGURE,
                 CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgGameplayKinds.NET_TYPE,
                 CgStageKinds.STAGE));
     }

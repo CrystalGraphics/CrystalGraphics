@@ -147,6 +147,36 @@ public class CgLocomotionWarpingTest {
     }
 
     @Test
+    public void aClipHeldAtAShareOfItsLengthFollowsAVariableAsMinecraftsSwingDoes() {
+        CgAnimSequence swing = walk("swing", 31, 0.5f);
+        CgAnimVariable<Float> progress = CgAnimVariable.floating("swing");
+        CgAnimGraph graph = CgAnimGraph.builder("test:swing", WALKER).variables(progress)
+                .output(CgSequenceEvaluatorNode.of(swing).explicitTime(progress).normalized()).build();
+        CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
+        CgAnimInstance expected = new CgAnimInstance(MESH);
+        int foot = WALKER.indexOf("foot_l");
+        for (float p : new float[] {0.25f, 0.8f, 0.4f}) {
+            anim.set(progress, p).tick(DT);
+            expected.play(swing, false).position(p * swing.duration()).tick(0f);
+            assertEquals("at " + p + " of the clip, backwards too", expected.pose().component(foot, new Matrix4f()).m32(),
+                    anim.pose().component(foot, new Matrix4f()).m32(), 1e-4f);
+        }
+
+        String yaml = CgAssetYaml.write(CgAnimGraphCodec.toTree(graph), CgBodyKinds.ANIM_GRAPH);
+        assertTrue(yaml, yaml.contains("time: swing") && yaml.contains("normalized: true"));
+        CgAnimGraph read = CgAnimGraphCodec.compile(CgAssetData.of("test:swing", CgBodyKinds.ANIM_GRAPH, (Map<?, ?>) CgAssetYaml.read(yaml), null),
+                null).graph(WALKER, id -> swing);
+        assertEquals("written again, the same file", yaml, CgAssetYaml.write(CgAnimGraphCodec.toTree(read), CgBodyKinds.ANIM_GRAPH));
+
+        CgAnimGraph held = CgAnimGraph.builder("test:held", WALKER).output(CgSequenceEvaluatorNode.of(swing).at(0.5f)).build();
+        CgAnimInstance still = new CgAnimInstance(MESH).graph(held);
+        still.tick(DT).tick(DT);
+        expected.play(swing, false).position(0.5f).tick(0f);
+        assertEquals("a constant time: held there", expected.pose().component(foot, new Matrix4f()).m32(),
+                still.pose().component(foot, new Matrix4f()).m32(), 1e-4f);
+    }
+
+    @Test
     public void orientationWarpingTurnsTheFeetAndKeepsTheChestFacing() {
         CgAnimVariable<Float> angle = CgAnimVariable.floating("angle");
         CgAnimSequence walk = walk("walk", 31, 0.5f);
