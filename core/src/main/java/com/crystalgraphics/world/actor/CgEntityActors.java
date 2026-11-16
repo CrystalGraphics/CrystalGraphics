@@ -477,7 +477,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         CgScene scene = actor.scene();
         actor.root = scene.root().spawn();
         Live l = new Live(entity, actor, !r.keepVanillaModel, r, host);
-        refresh(l);
+        refresh(l, 0f);
         try {
             if (r.prefab != null) {
                 CgPrefab prefab = prefabRef(r.prefab).get();
@@ -547,7 +547,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             boolean removed = false;
             for (int i = 0; i < order.size(); i++) {
                 Live l = order.get(i);
-                refresh(l);
+                refresh(l, dt);
                 if (!l.entity.present) {
                     order.remove(i--);
                     end(l);
@@ -567,14 +567,19 @@ public final class CgEntityActors extends CgWorldSubsystem {
         }
     }
 
-    /** Reads its entity's pose (a client's at the frame's partial tick, the server's at its tick) and stands its root there. */
-    private void refresh(Live l) {
+    /**
+     * Reads its entity's pose and state (a client's at the frame's partial tick, the server's at its tick), {@code dt}
+     * seconds on, and stands its root there.
+     */
+    private void refresh(Live l, float dt) {
         boolean onServer = l.host != null && world().server();
         CgEntityQuery entities = onServer ? CgEntityQueries.of(l.host) : CgEntityQueries.client();
         CgEntity e = l.entity;
-        e.present = entities.pose(e.id(), onServer ? 1f : CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), e.pose);
+        float partialTick = onServer ? 1f : CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick();
+        e.present = entities.pose(e.id(), partialTick, e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
+        e.state.update(entities, e.id(), partialTick, dt, e.pose);
         // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.
         // Minecraft's own models face -z, hence its 180 - bodyYaw (LivingEntityRenderer.setupRotations)
         turn.rotationY((float) Math.toRadians(-e.bodyYaw()));

@@ -1,10 +1,15 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.HumanoidArm;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.entity.animal.Animal;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.monster.Enemy;
@@ -19,6 +24,8 @@ import net.minecraft.world.entity.vehicle.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.Boat;
 //?}
 //? if >=1.14 {
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.phys.Vec3;
 //?}
 //? if >=1.21.11 {
@@ -334,6 +341,129 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         /*if (e.getCollideBox() != null) f |= SOLID;
         *///?}
         return f;
+    }
+
+    // Up to 1.16.5 a dedicated server's jar lacks getAttackAnim, getSwimAmount and isVisuallyCrawling: the swing is read
+    // from its fields (as getAttackAnim does) and core eases the swim amount from the pose (as updateSwimAmount does).
+    @Override
+    public boolean facts(int id, float partialTick, CgEntityFacts out) {
+        Entity e = find(id);
+        if (e == null) return false;
+        //? if >=1.15 {
+        double x = e.getX(), y = e.getY(), z = e.getZ();
+        //?} else {
+        /*double x = e.x, y = e.y, z = e.z;
+        *///?}
+        out.moveX = x - e.xo;
+        out.moveY = y - e.yo;
+        out.moveZ = z - e.zo;
+        out.y = e.yo + (y - e.yo) * partialTick;
+        int f = 0;
+        //? if >=1.20 {
+        if (e.onGround()) f |= CgEntityFacts.GROUNDED;
+        //?} elif >=1.16.5 {
+        /*if (e.isOnGround()) f |= CgEntityFacts.GROUNDED;
+        *///?} else {
+        /*if (e.onGround) f |= CgEntityFacts.GROUNDED;
+        *///?}
+        //? if >=1.15 {
+        if (e.isShiftKeyDown()) f |= CgEntityFacts.SNEAKING;
+        //?} else {
+        /*if (e.isSneaking()) f |= CgEntityFacts.SNEAKING;
+        *///?}
+        if (e.isSprinting()) f |= CgEntityFacts.SPRINTING;
+        if (e.isInWater()) f |= CgEntityFacts.IN_WATER;
+        //? if >=1.14 {
+        if (e.getPose() == Pose.SWIMMING) f |= CgEntityFacts.SWIM_POSE;
+        //?} else {
+        /*if (e.isSwimming()) f |= CgEntityFacts.SWIM_POSE;
+        *///?}
+        Entity vehicle = e.getVehicle();
+        out.vehicle = vehicle == null ? -1 : vehicle.getId();
+        if (e instanceof LivingEntity) f |= living((LivingEntity) e, partialTick, out);
+        out.bits |= f;
+        return true;
+    }
+
+    private static int living(LivingEntity e, float partialTick, CgEntityFacts out) {
+        int f = CgEntityFacts.LIVING;
+        if (e.isFallFlying()) f |= CgEntityFacts.GLIDING;
+        if (e.isAutoSpinAttack()) f |= CgEntityFacts.SPIN_ATTACK;
+        if (e.isSleeping()) f |= CgEntityFacts.SLEEPING;
+        //? if >=1.16.5 {
+        if (e.isDeadOrDying()) f |= CgEntityFacts.DEAD;
+        //?} else {
+        /*if (e.getHealth() <= 0f) f |= CgEntityFacts.DEAD;
+        *///?}
+        if (e.getMainArm() == HumanoidArm.LEFT) f |= CgEntityFacts.LEFT_HANDED;
+        out.hurtTime = e.hurtTime;
+        out.deathTime = e.deathTime;
+        //? if >=26.3 {
+        /*if (e.isSwinging()) {
+            f |= CgEntityFacts.SWINGING;
+            out.swingHand = hand(e.getCurrentSwing().hand());
+        }
+        out.swing = e.getSwingAnimation(partialTick);
+        *///?} else {
+        if (e.swinging) {
+            f |= CgEntityFacts.SWINGING;
+            out.swingHand = hand(e.swingingArm);
+        }
+        float d = e.attackAnim - e.oAttackAnim;
+        if (d < 0f) d += 1f;
+        out.swing = e.oAttackAnim + d * partialTick;
+        //?}
+        if (e.isUsingItem()) {
+            f |= CgEntityFacts.USING;
+            out.useHand = hand(e.getUsedItemHand());
+            out.useTicks = e.getTicksUsingItem();
+            out.useLength = out.useTicks + e.getUseItemRemainingTicks();
+        }
+        f |= held(e.getItemInHand(InteractionHand.MAIN_HAND), CgEntityFacts.MAIN, out);
+        f |= held(e.getItemInHand(InteractionHand.OFF_HAND), CgEntityFacts.OFF, out);
+        return f;
+    }
+
+    private static int hand(InteractionHand hand) {
+        return hand == InteractionHand.OFF_HAND ? CgEntityFacts.OFF : CgEntityFacts.MAIN;
+    }
+
+    /** Writes {@code hand}'s item; answers its charged-crossbow bit. */
+    private static int held(ItemStack stack, int hand, CgEntityFacts out) {
+        if (stack.isEmpty()) return 0;
+        out.item[hand] = Item.getId(stack.getItem());
+        out.use[hand] = useOf(stack.getUseAnimation().name());
+        //? if >=1.14 {
+        if (stack.getItem() instanceof CrossbowItem && CrossbowItem.isCharged(stack)) {
+            return hand == CgEntityFacts.MAIN ? CgEntityFacts.CHARGED_MAIN : CgEntityFacts.CHARGED_OFF;
+        }
+        //?}
+        return 0;
+    }
+
+    /** A use animation by its constant's name: {@code UseAnim} to 1.21.1, {@code ItemUseAnimation} from 1.21.3. */
+    private static int useOf(String name) {
+        switch (name) {
+            case "NONE": return CgEntityFacts.USE_NONE;
+            case "EAT": return CgEntityFacts.USE_EAT;
+            case "DRINK": return CgEntityFacts.USE_DRINK;
+            case "BLOCK": return CgEntityFacts.USE_BLOCK;
+            case "BOW": return CgEntityFacts.USE_BOW;
+            case "TRIDENT": return CgEntityFacts.USE_TRIDENT;
+            case "CROSSBOW": return CgEntityFacts.USE_CROSSBOW;
+            case "SPYGLASS": return CgEntityFacts.USE_SPYGLASS;
+            case "TOOT_HORN": return CgEntityFacts.USE_TOOT_HORN;
+            case "BRUSH": return CgEntityFacts.USE_BRUSH;
+            case "BUNDLE": return CgEntityFacts.USE_BUNDLE;
+            case "SPEAR":
+                // 1.21.11 named the trident's throw TRIDENT and gave SPEAR to its new spear
+                //? if >=1.21.11 {
+                /*return CgEntityFacts.USE_SPEAR;
+                *///?} else {
+                return CgEntityFacts.USE_TRIDENT;
+                //?}
+            default: return CgEntityFacts.USE_OTHER;
+        }
     }
 
     @Override

@@ -3274,6 +3274,57 @@ com/crystalgraphics/platform/world/CgCameraManager$Host
   method public hold (DDDFFFFI)V
   method public release ()V
   method public,abstract offset (FFFFFFF)V
+com/crystalgraphics/platform/world/CgEntityFacts
+  access public,final
+  extends java/lang/Object
+  field public bits I
+  field public deathTime I
+  field public hurtTime I
+  field public moveX D
+  field public moveY D
+  field public moveZ D
+  field public swing F
+  field public swingHand I
+  field public useHand I
+  field public useLength I
+  field public useTicks I
+  field public vehicle I
+  field public y D
+  field public,final item [I
+  field public,final use [I
+  field public,static,final CHARGED_MAIN I
+  field public,static,final CHARGED_OFF I
+  field public,static,final DEAD I
+  field public,static,final GLIDING I
+  field public,static,final GROUNDED I
+  field public,static,final IN_WATER I
+  field public,static,final LEFT_HANDED I
+  field public,static,final LIVING I
+  field public,static,final MAIN I
+  field public,static,final OFF I
+  field public,static,final SLEEPING I
+  field public,static,final SNEAKING I
+  field public,static,final SPIN_ATTACK I
+  field public,static,final SPRINTING I
+  field public,static,final SWIM_POSE I
+  field public,static,final SWINGING I
+  field public,static,final USE_BLOCK I
+  field public,static,final USE_BOW I
+  field public,static,final USE_BRUSH I
+  field public,static,final USE_BUNDLE I
+  field public,static,final USE_CROSSBOW I
+  field public,static,final USE_DRINK I
+  field public,static,final USE_EAT I
+  field public,static,final USE_NONE I
+  field public,static,final USE_OTHER I
+  field public,static,final USE_SPEAR I
+  field public,static,final USE_SPYGLASS I
+  field public,static,final USE_TOOT_HORN I
+  field public,static,final USE_TRIDENT I
+  field public,static,final USING I
+  method public <init> ()V
+  method public clear ()Lcom/crystalgraphics/platform/world/CgEntityFacts;
+  method public has (I)Z
 com/crystalgraphics/platform/world/CgEntityMovement
   access public,final
   extends java/lang/Object
@@ -3354,6 +3405,7 @@ com/crystalgraphics/platform/world/CgEntityQuery
   field public,static,final Z I
   method public entity (I)Ljava/lang/Object;
   method public entity (Ljava/util/UUID;)Ljava/lang/Object;
+  method public facts (IFLcom/crystalgraphics/platform/world/CgEntityFacts;)Z
   method public row (IF[ILcom/crystalgraphics/platform/world/CgBoxSink;[D)I
   method public type (I)Ljava/lang/String;
   method public,abstract box (IFLcom/crystalgraphics/platform/world/CgBoxSink;)Z

@@ -24252,6 +24252,68 @@ com/crystalgraphics/world/CgEntityQueries
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static requireId (Ljava/lang/Object;)I
+com/crystalgraphics/world/CgEntityState
+  access public,final
+  extends java/lang/Object
+  field public,static,final ARM_BLOCK I
+  field public,static,final ARM_BOW I
+  field public,static,final ARM_BRUSH I
+  field public,static,final ARM_CROSSBOW_CHARGE I
+  field public,static,final ARM_CROSSBOW_HOLD I
+  field public,static,final ARM_EMPTY I
+  field public,static,final ARM_ITEM I
+  field public,static,final ARM_SPEAR I
+  field public,static,final ARM_SPYGLASS I
+  field public,static,final ARM_THROW I
+  field public,static,final ARM_TOOT_HORN I
+  field public,static,final DIED I
+  field public,static,final DISMOUNTED I
+  field public,static,final HURT I
+  field public,static,final JUMPED I
+  field public,static,final LANDED I
+  field public,static,final MAIN I
+  field public,static,final MOUNTED I
+  field public,static,final OFF I
+  field public,static,final SWING_STARTED I
+  field public,static,final USE_STARTED I
+  field public,static,final USE_STOPPED I
+  method public <init> ()V
+  method public airSeconds ()F
+  method public armPose (I)I
+  method public crawling ()Z
+  method public dead ()Z
+  method public events ()I
+  method public gliding ()Z
+  method public grounded ()Z
+  method public happened (I)Z
+  method public headPitch ()F
+  method public headYaw ()F
+  method public inWater ()Z
+  method public item (I)I
+  method public landHeight ()F
+  method public leftHanded ()Z
+  method public living ()Z
+  method public reset ()V
+  method public riding ()Z
+  method public secondsDead ()F
+  method public secondsSinceHurt ()F
+  method public sleeping ()Z
+  method public sneaking ()Z
+  method public speed ()F
+  method public spinAttack ()Z
+  method public sprinting ()Z
+  method public swimAmount ()F
+  method public swimming ()Z
+  method public swing ()F
+  method public swingHand ()I
+  method public swinging ()Z
+  method public update (Lcom/crystalgraphics/platform/world/CgEntityQuery;IFF[D)Z
+  method public useAnimation ()I
+  method public useLength ()F
+  method public useSeconds ()F
+  method public using (I)Z
+  method public vehicle ()I
+  method public verticalSpeed ()F
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object
@@ -24279,6 +24341,7 @@ com/crystalgraphics/world/actor/CgEntity
   method public pitch ()F
   method public pose (I)D
   method public present ()Z
+  method public state ()Lcom/crystalgraphics/world/CgEntityState;
   method public toString ()Ljava/lang/String;
   method public type ()Ljava/lang/String;
   method public x ()D

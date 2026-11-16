@@ -598,6 +598,55 @@ sequencer.play(LUNGE, Map.of("caster", role));
   knockback or a launch, `velocity` and `gravity(false)` to hold a fighter in the air, `resetFall` after a dive,
   `teleport` for a vanish strike, `rotate` for yaw and pitch.
 
+### What the entity is doing: its state
+
+`CgEntity.state()` is what an animation follows, read from the entity each frame before `tick`, the same on every
+version and on both sides: how fast it moves, whether it is on the ground, sneaking, sprinting, swimming, crawling,
+gliding, riding or sleeping, its head against its body, each hand's item and arm pose, the item in use and the swing,
+and what just happened.
+
+```java
+@Override protected void tick(CgEntity fighter, float dt) {
+    CgEntityState s = fighter.state();
+    body.anim().set(SPEED, s.speed());                                  // blocks a second along the ground
+    body.anim().set(IN_AIR, !s.grounded());
+    if (s.happened(CgEntityState.LANDED) && s.landHeight() > 3) body.anim().montages().play(HARD_LANDING);
+    if (s.happened(CgEntityState.SWING_STARTED)) body.anim().montages().play(SLASH);
+    if (s.armPose(CgEntityState.MAIN) == CgEntityState.ARM_BOW) body.anim().set(DRAW, s.useSeconds());
+}
+```
+
+Any entity, watched by code that is no actor, keeps a state of its own:
+
+```java
+CgEntityState state = new CgEntityState();                          // one per entity, kept while it lives
+double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+// each frame
+if (entities.pose(id, partialTick, pose)) state.update(entities, id, partialTick, dt, pose);
+```
+
+| Event | When |
+|---|---|
+| `JUMPED` | it left the ground going up (walking off a ledge is not a jump) |
+| `LANDED` | it touched the ground again; `landHeight()` is the fall from the highest point it reached |
+| `HURT` | it was hit, a second hit before the first wore off included; `secondsSinceHurt()` counts from it |
+| `SWING_STARTED` | an arm began a swing, or began it again mid-swing |
+| `USE_STARTED`, `USE_STOPPED` | it began or stopped using an item: eating, drawing a bow, blocking |
+| `MOUNTED`, `DISMOUNTED` | it got on or off something; changing mounts raises both |
+| `DIED` | it died; `secondsDead()` counts from it |
+
+- **An event lasts one frame**: read it in the `tick` it happens. The first frame an entity is seen raises none, so one
+  seen in mid-air does not jump.
+- **The arm pose is Minecraft's own rule for a player's arms**, the newest version's, for every entity: a bow drawn, a
+  shield up, a crossbow charging or held charged, a trident raised, a spyglass, a horn, a brush, a spear. A bow or a
+  crossbow takes both arms, and the other hand then only holds its item.
+- **What a version lacks reads as not happening**: no swimming pose before 1.13, no gliding and no off hand before
+  1.10.2, no charged crossbow before 1.14.3. Items are the host's raw ids, the same item for the session.
+- **The swim amount** eases 0 to 1 over 0.45 s into the swimming pose and back, as Minecraft's own does.
+- **What a host does**: `CgEntityQuery.facts(id, partialTick, out)`, the entity's facts as `CgEntityFacts` (bits, how
+  far it moved over its tick, its vehicle, Minecraft's hurt and death countdowns, the swing, the use, each hand's item
+  and use animation). Core turns them into the state; a host never decides an event.
+
 ## Drawing a palette yourself
 
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming

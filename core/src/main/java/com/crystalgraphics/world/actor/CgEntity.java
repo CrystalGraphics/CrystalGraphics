@@ -1,6 +1,7 @@
 package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.world.CgEntityState;
 
 /**
  * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
@@ -8,8 +9,9 @@ import com.crystalgraphics.platform.world.CgEntityQuery;
  *
  * <pre>{@code
  * protected void tick(CgEntity dragon, float dt) {
- *     boolean flying = !dragon.flag(CgEntityQuery.ON_GROUND);
- *     double speed = Math.hypot(dragon.pose(CgEntityQuery.VELOCITY_X), dragon.pose(CgEntityQuery.VELOCITY_Z));
+ *     CgEntityState s = dragon.state();                     // what it is doing: speed, jumps, hands, events
+ *     if (s.happened(CgEntityState.LANDED)) body.anim().montages().play(LAND);
+ *     float lookYaw = s.headYaw();
  * }
  * }</pre>
  *
@@ -23,6 +25,7 @@ public final class CgEntity {
     private final int id;
     private final String type;
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+    final CgEntityState state = new CgEntityState();
     int flags;
     boolean present;
     long hostFrame = -1;
@@ -71,6 +74,14 @@ public final class CgEntity {
     /** Any value of its pose, by {@link CgEntityQuery}'s indices: velocity, size, limb swing. */
     public double pose(int index) {
         return pose[index];
+    }
+
+    /**
+     * What it is doing this frame, for its animation: speed, ground and air, swimming, riding, its hands' items and arm
+     * poses, uses and swings, and this frame's events (a jump, a landing, a hit). The same on every version and side.
+     */
+    public CgEntityState state() {
+        return state;
     }
 
     /** Its state bits ({@link CgEntityQuery#ALIVE}, {@link CgEntityQuery#SNEAKING}, ...). */
