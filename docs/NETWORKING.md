@@ -921,7 +921,7 @@ any player joins. A player's and an entity's per-holder ones are saved with them
 
 - Each object keeps its anchor, owner, saved fields (`serverOnly()` ones too) and age; a server behaviour is made
   again and hears `spawned` with that age, its other fields at their fallbacks.
-- **A player's object is saved in their own file**, `crystalgraphics/players/<uuid>.dat`, as the game keeps a
+- **A player's object is saved in their own file**, `crystalgraphics/players/<uuid>.jsonc`, as the game keeps a
   player's stats and advancements apart from their `playerdata`: a per-holder type's object on a player (`of(player)`,
   or `onEntities` accepting players), every type of theirs in one file. It is written when they leave, with the
   world's save and as the server stops, only for a player whose saved fields changed, and read as their objects are
@@ -950,6 +950,28 @@ any player joins. A player's and an entity's per-holder ones are saved with them
   logged and starts from its fallback.
 - **Elsewhere, in the world's file** (`crystalgraphics/objects/`): objects at a point, a chunk's, a dimension's, and
   objects spawned on a player by hand (several of a type may be).
+- **Files a person can open**: every file here is JSONC (JSON that allows `//` comments and trailing commas), so an
+  admin, or a player whose data went wrong, opens it in any editor:
+
+  ```jsonc
+  {
+    // raised by an admin after the rollback
+    "rpgcore:ki": { "current": 80, "max": 120 },
+    "mymod:mana": { "mana": 40 }
+  }
+  ```
+
+  - Edit it while the server is down, or while that player is offline: a file in use is written over from memory.
+  - Comments are kept: each write carries them back to the same key.
+  - Each write leaves the file it replaces beside it as `.jsonc.old`, as Minecraft keeps `level.dat_old`.
+  - A file that no longer parses is moved aside as `.jsonc.unreadable`, named in the log, and never written over: fix
+    it and move it back. A value of one type that does not decode starts that type from its fallbacks and keeps a copy
+    of the file as `.unreadable`; the player's other types load.
+  - A type the server no longer has (a mod removed) stays in the file untouched.
+  - A float field holding NaN or an infinity cannot be written (JSON has neither): the write is logged and its changes
+    stay pending.
+  - A file is read once while in use: as its player joins, or at the first `of(uuid)` while they are away. Writes come
+    from memory, only for a file whose saved fields changed.
 - **A folder of your own**: by default every mod's data goes under `<world>/crystalgraphics/`. A mod that wants its
   own, beside the files it already keeps, names a storage layout for its namespace once, at init:
 
@@ -960,8 +982,8 @@ any player joins. A player's and an entity's per-holder ones are saved with them
 
   | What | Default | With the layout |
   |---|---|---|
-  | a player's per-holder objects | `<world>/crystalgraphics/players/<uuid>.dat`, shared with every mod that has none | `<world>/rpgcore/players/<uuid>.dat`, its own alone |
-  | world objects | `<world>/crystalgraphics/objects/rpgcore/<type>.dat` | `<world>/rpgcore/objects/<type>.dat` |
+  | a player's per-holder objects | `<world>/crystalgraphics/players/<uuid>.jsonc`, shared with every mod that has none | `<world>/rpgcore/players/<uuid>.jsonc`, its own alone |
+  | world objects | `<world>/crystalgraphics/objects/rpgcore/<type>.jsonc` | `<world>/rpgcore/objects/<type>.jsonc` |
   | an entity's | the entity's own data | the same |
 
   `players/` and `objects/` are this layer's; keep your own files beside them. Only a file whose saved fields changed is

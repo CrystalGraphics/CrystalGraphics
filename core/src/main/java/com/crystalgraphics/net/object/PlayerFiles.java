@@ -1,10 +1,10 @@
 package com.crystalgraphics.net.object;
 
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,18 +16,22 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.platform.service.CgStorageLayout;
-import com.crystalgraphics.serialization.format.CgFiles;
-import com.crystalgraphics.serialization.nbt.CgNbtCompound;
-import com.crystalgraphics.serialization.nbt.CgNbtOps;
+import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgPlainOps;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**
- * The server's files per player, {@code <world>/<layout>/players/<uuid>.dat}: what a player's per-holder objects save,
- * each type under its name, in CrystalGraphics' binary format. One file per player and storage layout
- * ({@link CgNetType#storage}; {@code crystalgraphics} unless a namespace names its own), kept apart from the game's
- * {@code playerdata} as the game keeps its stats and advancements. Read as an object is made (the player online or
- * not), written for a file whose saved fields changed: as they leave, with the world's save, and as the server stops.
- * Server thread.
+ * The server's files per player, {@code <world>/<layout>/players/<uuid>.jsonc}: what a player's per-holder objects
+ * save, each type under its name ({@link SaveFiles}: JSONC, a person's comments kept). One file per player and storage
+ * layout ({@link CgNetType#storage}; {@code crystalgraphics} unless a namespace names its own), kept apart from the
+ * game's {@code playerdata} as the game keeps its stats and advancements.
+ *
+ * <p>A file is read once while it is in use: as its player joins, or at the first {@code of(uuid)} while they are away.
+ * Its contents stay in memory, types the server does not know included (a mod removed), and are written from there for a
+ * file whose saved fields changed: as the player leaves, with the world's save, as the server stops. An object that
+ * ends while its player goes on (they left, changed dimension, or respawned) leaves its values in the file; one ended
+ * at their death without {@code copyOnDeath()} leaves it. Server thread.</p>
  */
 final class PlayerFiles {
 
@@ -37,18 +41,14 @@ final class PlayerFiles {
     record File(UUID player, CgStorageLayout layout) {
     }
 
+    /** Files in use, as read and since changed: each type's fields by type name. */
+    private static final Map<File, Map<String, Object>> OPEN = new HashMap<>();
     /** Files whose saved fields changed since they were written: none, and a save writes nothing. */
     private static final Set<File> DIRTY = new HashSet<>();
-    /** Types a file drops at its next write: their objects ended (a death), not with the player leaving. */
-    private static final Map<File, Set<String>> ENDED = new HashMap<>();
     /** Players who joined since the tick began: their saved objects are made at its start. */
     private static final List<UUID> JOINED = new ArrayList<>();
-
-    /** The file {@link #restore} last read, and its contents; dropped at the tick's end. */
-    @Nullable
-    private static File restoring;
-    @Nullable
-    private static CgNbtCompound restored;
+    /** Players who left since the tick began: their files are written and closed at its start. */
+    private static final List<UUID> LEFT = new ArrayList<>();
 
     private PlayerFiles() {
     }
@@ -62,17 +62,15 @@ final class PlayerFiles {
     static void restore(CgNetObject obj, UUID player) {
         File file = new File(player, CgNetType.storageOf(obj.type.namespace));
         obj.saveFile = file;
-        // a player's types are made together as they join: each file is read once for them
-        if (!file.equals(restoring)) {
-            restored = read(file);
-            restoring = file;
-        }
-        CgNbtCompound saved = restored;
-        if (saved == null || !saved.has(obj.type.name)) return;
+        Object saved = open(file).get(obj.type.name);
+        if (saved == null) return;
         try {
-            CgNetObjects.decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
+            CgNetObjects.decodeFields(CgPlainOps.INSTANCE, saved, obj);
         } catch (RuntimeException failed) {
-            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", player, obj.type.name, failed);
+            Path path = path(file);
+            LOGGER.error("[cg-net] {} in {} does not read; it starts from its fallbacks, the file kept as .unreadable",
+                    obj.type.name, path, failed);
+            if (path != null) SaveFiles.keepCopy(path);
         }
     }
 
@@ -87,16 +85,27 @@ final class PlayerFiles {
         }
     }
 
-    /** {@code obj}'s player has left: its file is written now, and the object ends with them. */
+    /**
+     * {@code obj} ends while its player goes on: they left, changed dimension, or their entity was replaced. What it
+     * holds stays in their file's contents, written with the rest of their file.
+     */
     static void leaving(CgNetObject obj) {
         obj.leftWithPlayer = true;
-        if (DIRTY.contains(obj.saveFile)) write(obj.saveFile);
+        File file = obj.saveFile;
+        if (file != null && DIRTY.contains(file)) {
+            open(file).put(obj.type.name, CgNetObjects.encodeFields(CgPlainOps.INSTANCE, obj));
+        }
+    }
+
+    /** {@code player}'s connection closed: their files are written and closed at the next tick's start. */
+    static void disconnected(UUID player) {
+        LEFT.add(player);
     }
 
     /** {@code obj} ended: one that ended without its player leaving (a death) is dropped from their file. */
     static void dropped(CgNetObject obj) {
         if (!obj.type.persisted || obj.leftWithPlayer || obj.saveFile == null) return;
-        ENDED.computeIfAbsent(obj.saveFile, f -> new HashSet<>()).add(obj.type.name);
+        open(obj.saveFile).remove(obj.type.name);
         DIRTY.add(obj.saveFile);
     }
 
@@ -105,15 +114,20 @@ final class PlayerFiles {
         JOINED.add(player);
     }
 
-    /** Tick start: each player who joined gets the objects their files saved, of types made by asking. */
+    /**
+     * Tick start: each player who left has their files written and closed, and each who joined gets the objects their
+     * files saved, of types made by asking.
+     */
     static void tickStarted() {
+        if (!LEFT.isEmpty()) {
+            for (int i = 0; i < LEFT.size(); i++) close(LEFT.get(i));
+            LEFT.clear();
+        }
         if (JOINED.isEmpty()) return;
         for (int i = 0; i < JOINED.size(); i++) {
             UUID player = JOINED.get(i);
             for (CgStorageLayout layout : CgNetType.storageLayouts()) {
-                CgNbtCompound saved = read(new File(player, layout));
-                if (saved == null) continue;
-                for (String name : saved.keys()) {
+                for (String name : new ArrayList<>(open(new File(player, layout)).keySet())) {
                     CgNetType type = CgNetType.named(name);
                     // a type on entities is made as the player's entity enters
                     if (type != null && type.persisted && type.perHolder && type.entityTypes == null) type.of(player);
@@ -123,62 +137,67 @@ final class PlayerFiles {
         JOINED.clear();
     }
 
+    /** Writes {@code player}'s changed files and forgets them, unless they are back or a write failed. */
+    private static void close(UUID player) {
+        if (CgPlayers.player(player) != null) return;
+        for (File file : new ArrayList<>(OPEN.keySet())) {
+            if (!file.player().equals(player)) continue;
+            if (DIRTY.contains(file)) write(file);
+            if (DIRTY.contains(file) || hasLive(file)) continue;
+            OPEN.remove(file);
+        }
+    }
+
+    /** Whether an object still saves into {@code file}: one made by {@code of(uuid)} while its player is away. */
+    private static boolean hasLive(File file) {
+        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
+        for (int i = 0; i < types.size(); i++) {
+            CgNetObject obj = types.get(i).holders.get(file.player());
+            if (obj != null && !obj.isRemoved() && file.equals(obj.saveFile) && obj.offline) return true;
+        }
+        return false;
+    }
+
     /** With the world's save and as the server stops: every file whose saved fields changed. */
     static void writeAll() {
         if (DIRTY.isEmpty()) return;
         for (File file : new ArrayList<>(DIRTY)) write(file);
     }
 
-    /** Tick end: the file kept for restoring is dropped. */
-    static void tickEnded() {
-        restoring = null;
-        restored = null;
-    }
-
-    /** Back to nothing pending: the server stopped, or a test ended. */
+    /** Back to nothing open or pending: the server stopped, or a test ended. */
     static void reset() {
+        OPEN.clear();
         DIRTY.clear();
-        ENDED.clear();
         JOINED.clear();
-        tickEnded();
+        LEFT.clear();
     }
 
-    /** Writes {@code file} now, from its player's live objects of its layout and what it held. */
+    /** Writes {@code file} now: its player's live objects of its layout over what it held. */
     static void write(File file) {
         Path path = path(file);
         if (path == null) return;
-        CgNbtCompound saved = read(file);
-        if (saved == null) saved = new CgNbtCompound();
-        Set<String> ended = ENDED.remove(file);
-        if (ended != null) for (String name : ended) saved.remove(name);
+        Map<String, Object> saved = open(file);
         List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
         for (int i = 0; i < types.size(); i++) {
             CgNetType type = types.get(i);
             CgNetObject obj = type.holders.get(file.player());
             if (obj != null && !obj.isRemoved() && file.equals(obj.saveFile)) {
-                saved.put(type.name, CgNetObjects.encodeFields(CgNbtOps.INSTANCE, obj));
+                saved.put(type.name, CgNetObjects.encodeFields(CgPlainOps.INSTANCE, obj));
             }
         }
-        try {
-            CgFiles.write(path, CgNbtCompound.CODEC, saved);
-            DIRTY.remove(file);
-            if (file.equals(restoring)) restoring = null;
-        } catch (IOException failed) {
-            LOGGER.error("[cg-net] could not write {}: the player's changes stay pending", path, failed);
-        }
+        if (SaveFiles.write(path, CgCodecs.PLAIN, saved)) DIRTY.remove(file);
     }
 
-    /** {@code file} as it is on disk; null for none. */
-    @Nullable
-    static CgNbtCompound read(File file) {
+    /** {@code file}'s contents, read from disk the first time it is asked for while in use. */
+    @SuppressWarnings("unchecked")
+    static Map<String, Object> open(File file) {
+        Map<String, Object> saved = OPEN.get(file);
+        if (saved != null) return saved;
         Path path = path(file);
-        if (path == null) return null;
-        try {
-            return CgFiles.read(path, CgNbtCompound.CODEC);
-        } catch (IOException | RuntimeException failed) {
-            LOGGER.error("[cg-net] {} does not read: the player's saved values start from their fallbacks", path, failed);
-            return null;
-        }
+        Object read = path == null ? null : SaveFiles.read(path, CgCodecs.PLAIN);
+        saved = read instanceof Map ? new LinkedHashMap<>((Map<String, Object>) read) : new LinkedHashMap<>();
+        OPEN.put(file, saved);
+        return saved;
     }
 
     /** Where {@code file} is; null with no world. */
@@ -186,6 +205,6 @@ final class PlayerFiles {
     static Path path(File file) {
         Path world = CgWorldQueries.saveDirectory(CgNetObjects.server());
         return world == null ? null
-                : file.layout().rootIn(world).resolve("players").resolve(file.player() + ".dat");
+                : file.layout().rootIn(world).resolve("players").resolve(file.player() + SaveFiles.EXTENSION);
     }
 }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.net.object;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -13,16 +15,15 @@ import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.serialization.CgCodecs;
-import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
 /**
  * The gauntlet's {@code crystalgraphics:player-saves}: a type on players with a persisted field of every kind, filled on
- * the server, written to the player's file and read back, so {@code <world>/crystalgraphics/players/<uuid>.dat} can be
- * looked at after. A field not persisted and a local one are set too, and must not be there.
+ * the server, written to the player's file and read back, so {@code <world>/crystalgraphics/players/<uuid>.jsonc} can be
+ * opened after. A field not persisted and a local one are set too, and must not be there.
  *
  * <pre>{@code
  * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.gauntlet=crystalgraphics:player-saves
- * // the log's saves.compound line is what <world>/crystalgraphics/players/<uuid>.dat holds
+ * // then open <world>/crystalgraphics/players/<uuid>.jsonc; the log's saves.text is its contents
  * }</pre>
  */
 public final class CgPlayerSavesProbe {
@@ -148,21 +149,25 @@ public final class CgPlayerSavesProbe {
         private static void verify(Test test, CgNetObject obj) {
             PlayerFiles.File saved = obj.saveFile;
             PlayerFiles.write(saved);
-            CgNbtCompound all = PlayerFiles.read(saved);
-            CgNbtCompound mine = all != null && all.has(Saved.TYPE.name()) && all.get(Saved.TYPE.name()) instanceof CgNbtCompound c ? c : null;
+            Path file = PlayerFiles.path(saved);
+            Object all = file == null ? null : SaveFiles.read(file, CgCodecs.PLAIN);
+            Object entry = all instanceof Map ? ((Map<?, ?>) all).get(Saved.TYPE.name()) : null;
+            Map<?, ?> mine = entry instanceof Map ? (Map<?, ?>) entry : null;
             test.stated("saves.written", mine != null, "the player's file holds " + Saved.TYPE.name());
             if (mine != null) {
                 StringBuilder missing = new StringBuilder();
-                for (String field : SAVED) if (!mine.has(field)) missing.append(' ').append(field);
+                for (String field : SAVED) if (!mine.containsKey(field)) missing.append(' ').append(field);
                 test.stated("saves.persisted", missing.length() == 0,
                         missing.length() == 0 ? "every persisted field: " + String.join(", ", SAVED) : "missing:" + missing);
-                test.stated("saves.unpersisted", !mine.has("target"), "the field not persisted is left out");
-                test.stated("saves.local", !mine.has("ticks"), "the local field is left out");
-                test.said("saves.compound", mine.toString());
+                test.stated("saves.unpersisted", !mine.containsKey("target"), "the field not persisted is left out");
+                test.stated("saves.local", !mine.containsKey("ticks"), "the local field is left out");
             }
-            Path file = PlayerFiles.path(saved);
-            test.said("saves.file", (file == null ? "<world>/crystalgraphics/players/" + obj.player() + ".dat" : file.toAbsolutePath().toString())
-                    + ", under " + Saved.TYPE.name());
+            test.said("saves.file", (file == null ? "<world>/crystalgraphics/players/" + obj.player() + ".jsonc" : file.toAbsolutePath().toString()));
+            try {
+                if (file != null) test.said("saves.text", System.lineSeparator() + Files.readString(file));
+            } catch (IOException ignored) {
+                // the checks above already say whether it was written
+            }
             test.done();
         }
     }

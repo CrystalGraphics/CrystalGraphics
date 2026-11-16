@@ -826,19 +826,19 @@ public final class CgNetType {
 
     /**
      * Saves a namespace's objects under a folder of its own in the world, instead of {@code crystalgraphics}'s: each
-     * player's under {@code <world>/<root>/players/<uuid>.dat}, its world objects under
-     * {@code <world>/<root>/objects/<type>.dat}. Entities' objects are unaffected: they save with the entity.
+     * player's under {@code <world>/<root>/players/<uuid>.jsonc}, its world objects under
+     * {@code <world>/<root>/objects/<type>.jsonc}. Entities' objects are unaffected: they save with the entity.
      *
      * <pre>{@code
      * public static final CgStorageLayout LAYOUT = CgStorageLayout.of("rpgcore");
      * CgNetType.storage("rpgcore", LAYOUT);      // at init, before the server starts
-     * // rpgcore:ki on a player   -> <world>/rpgcore/players/<uuid>.dat
-     * // rpgcore:shrine           -> <world>/rpgcore/objects/shrine.dat
+     * // rpgcore:ki on a player   -> <world>/rpgcore/players/<uuid>.jsonc
+     * // rpgcore:shrine           -> <world>/rpgcore/objects/shrine.jsonc
      * }</pre>
      *
      * <ul>
-     *   <li>Without it, a namespace saves to {@code <world>/crystalgraphics/players/<uuid>.dat}, shared with every other
-     *       such namespace, and {@code <world>/crystalgraphics/objects/<namespace>/<type>.dat}.</li>
+     *   <li>Without it, a namespace saves to {@code <world>/crystalgraphics/players/<uuid>.jsonc}, shared with every other
+     *       such namespace, and {@code <world>/crystalgraphics/objects/<namespace>/<type>.jsonc}.</li>
      *   <li>Call it at init: what a running server already saved stays where it was.</li>
      *   <li>One layout per namespace: a second, different one throws. Several namespaces may share one layout.</li>
      *   <li>{@code players/} and {@code objects/} are this layer's: keep files of your own beside them.</li>

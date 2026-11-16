@@ -1,9 +1,6 @@
 package com.crystalgraphics.net.object;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -32,7 +29,6 @@ import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.serialization.format.CgFiles;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -325,6 +321,7 @@ public final class CgNetObjects {
     private static void dropViewer(Viewer viewer) {
         if (!VIEWERS.remove(viewer)) return;
         VIEWERS_BY_ID.remove(viewer.peer.id(), viewer);
+        PlayerFiles.disconnected(viewer.peer.id());
         CgNetObject.unmark(usedSlots, viewer.slot);
         for (CgNetObject obj : LIVE) CgNetObject.unmark(obj.seenBy, viewer.slot);
     }
@@ -347,8 +344,21 @@ public final class CgNetObjects {
         if (world != null) load(type, world);
     }
 
+    /** Where a change of {@code obj}'s is saved: with its entity, in its player's file, or in its type's world file. */
+    private static void noteSave(CgNetObject obj) {
+        if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
+            if (obj.anyDirty) CgNetEntities.changed(obj);
+        } else if (obj.type.persisted && PlayerFiles.owns(obj)) {
+            if (obj.anyDirty) PlayerFiles.changed(obj);
+        } else if (obj.anyDirty || obj.moved) {
+            markUnsaved(obj.type);
+        }
+    }
+
     /** The server is stopping: what persists is saved, and nothing carries into the next world. */
     public static void serverStopped() {
+        // changes since the last tick's end were never noted: the stop is mid-tick
+        for (int i = 0; i < LIVE.size(); i++) noteSave(LIVE.get(i));
         if (started) save();
         PlayerFiles.writeAll();
         CgNetEntities.stopping(LIVE);
@@ -388,7 +398,6 @@ public final class CgNetObjects {
             PlayerFiles.writeAll();
         }
         CgNetEntities.tickEnded();
-        PlayerFiles.tickEnded();
     }
 
     private static void trace(List<CgNetType> types) {
@@ -476,13 +485,7 @@ public final class CgNetObjects {
                 serverEnded(obj);
                 continue;
             }
-            if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
-                if (obj.anyDirty) CgNetEntities.changed(obj);
-            } else if (obj.type.persisted && PlayerFiles.owns(obj)) {
-                if (obj.anyDirty) PlayerFiles.changed(obj);
-            } else if (obj.anyDirty || obj.moved) {
-                markUnsaved(obj.type);
-            }
+            noteSave(obj);
             send(obj);
             obj.clearDirty();
             LIVE.set(keep++, obj);
@@ -1143,24 +1146,12 @@ public final class CgNetObjects {
         Path objects = layout.rootIn(world).resolve("objects");
         // the shared folder keeps each namespace apart; a namespace's own needs no second level
         if (layout == CgNetType.DEFAULT_STORAGE) objects = objects.resolve(type.namespace);
-        return objects.resolve(type.name.substring(type.namespace.length() + 1) + ".dat");
+        return objects.resolve(type.name.substring(type.namespace.length() + 1) + SaveFiles.EXTENSION);
     }
 
     private static void load(CgNetType type, Path world) {
         Path file = file(world, type);
-        List<CgNetObject> loaded;
-        try {
-            loaded = CgFiles.read(file, new SavedObjects(type));
-        } catch (IOException | RuntimeException failed) {
-            Path aside = file.resolveSibling(file.getFileName() + ".unreadable");
-            LOGGER.error("[cg-net] could not read {}; moved to {}", file, aside, failed);
-            try {
-                Files.move(file, aside, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException ignored) {
-                // A later save still writes a fresh file; saving over the unreadable one is what this guards.
-            }
-            return;
-        }
+        List<CgNetObject> loaded = SaveFiles.read(file, new SavedObjects(type));
         if (loaded == null) return;
         for (CgNetObject obj : loaded) {
             if (type.perHolder) {
@@ -1188,14 +1179,7 @@ public final class CgNetObjects {
         for (CgNetObject obj : LIVE) {
             if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY && !PlayerFiles.owns(obj)) objects.add(obj);
         }
-        Path file = file(world, type);
-        try {
-            CgFiles.write(file, new SavedObjects(type), objects);
-            return true;
-        } catch (IOException failed) {
-            LOGGER.error("[cg-net] could not save {} to {}", type.name, file, failed);
-            return false;
-        }
+        return SaveFiles.write(file(world, type), new SavedObjects(type), objects);
     }
 
     /** {@code obj}'s set fields that its type saves, as a map by name. */

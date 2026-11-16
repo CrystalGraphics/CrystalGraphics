@@ -235,6 +235,8 @@ public final class CgNetEntities extends CgWorldSubsystem {
             CgNetObject obj = onServer ? s.byEntity.remove(entity) : id < 0 ? null : s.byId.remove(id + 1);
             if (obj == null) continue;
             s.all.remove(obj);
+            // a player's entity leaving (logging out, a dimension, a respawn) keeps what its object saved
+            if (onServer && obj.type.persisted && PlayerFiles.owns(obj)) PlayerFiles.leaving(obj);
             end(obj);
         }
     }
