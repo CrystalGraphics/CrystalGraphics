@@ -396,12 +396,12 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
         return passesChanged();
     }
 
-    /** Draws into custom depth writing stencil value {@code stencil} (0 to 255): a kit's raw value. */
+    /** Draws into custom depth writing stencil value {@code stencil} (0 to 31; bits 5-7 hold a graded look): a kit's raw value. */
     public T customDepth(int stencil) {
         return customDepth(CgCustomDepth.stencil(stencil));
     }
 
-    /** As {@link #customDepth(int)}, writing only the bits of {@code mask}. */
+    /** As {@link #customDepth(int)}, writing only the bits of {@code mask} (within {@code CgCustomDepth.MARK_BITS}). */
     public T customDepth(int stencil, int mask) {
         return customDepth(CgCustomDepth.stencil(stencil, mask));
     }

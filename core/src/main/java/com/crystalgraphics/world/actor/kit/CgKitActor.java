@@ -182,10 +182,10 @@ public final class CgKitActor extends CgEntityActor {
                 .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f)
                 .grade(CgVfxKitLook.grade(spec.namespace(), loaded.post(spec))));
         if (spec.outline() != null) {
-            body.customDepth(spec.stencil(), 0xFF);
+            body.customDepth(spec.stencil());
             outline = CgOutline.hold(scene(), spec.stencil(), CgMaterial.of(kit.material(slots).get()));
         } else if (spec.stencil() > 0) {
-            body.customDepth(spec.stencil(), 0xFF);
+            body.customDepth(spec.stencil());
             outline = CgOutline.hold(scene(), spec.stencil(), null);
         }
         LOGGER.info("[kit-actor] {} drawn as {}{}", entity, spec.name(), outline != null ? ", outlined" : "");

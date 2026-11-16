@@ -45,7 +45,7 @@ final class AnimDemoCast {
             this.cast = cast;
             this.component = CgScene.client().skeletal(cast.mesh).materials(cast.materials::apply).customData(0, 0f, 0f, 0f, 0f)
                     .grade(cast.grade);
-            if (cast.stencil > 0) component.customDepth(cast.stencil, 0xFF);
+            if (cast.stencil > 0) component.customDepth(cast.stencil);
             this.outline = cast.stencil > 0 ? CgOutline.hold(CgScene.client(), cast.stencil, cast.outlineLook) : null;
             this.instance = component.anim();
             component.spawn();

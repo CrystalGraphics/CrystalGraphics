@@ -468,7 +468,7 @@ An overlay and CustomDepth, Unreal's `OverlayMaterial` and `bRenderCustomDepth`:
 ```java
 goku.overlay(outline);                  // every slot again in it; overlay(slot, m) for one slot's own
 goku.overlayMaxDistance(40f);           // beyond 40 blocks the overlay is not drawn (0: as far as the mesh)
-goku.customDepth(1, 0xFF);              // into the view's custom depth with stencil 1, even behind a wall
+goku.customDepth(1);                    // into the view's custom depth with stencil 1, even behind a wall
 ```
 
 - A slot's overlay replaces the mesh's for that slot; a slot with neither draws none.

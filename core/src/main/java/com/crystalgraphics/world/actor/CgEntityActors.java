@@ -737,7 +737,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             if (r.graph != null) runGraph(actor, r);
             if (r.outline >= 0 && actor.prefab != null) {
                 int stencil = r.outline;
-                actor.prefab.forEachSkeletal(b -> b.customDepth(stencil, 0xFF));
+                actor.prefab.forEachSkeletal(b -> b.customDepth(stencil));
                 if (!actor.server) l.outline = CgOutline.hold(scene, stencil, r.outlinePost == null ? null : CgMaterial.of(outlineLook(r.outlinePost)));
             }
             actor.onSpawn(entity);
