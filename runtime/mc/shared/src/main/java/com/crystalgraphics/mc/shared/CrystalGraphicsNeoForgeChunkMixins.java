@@ -11,6 +11,6 @@ public final class CrystalGraphicsNeoForgeChunkMixins extends VariantMixins {
 
     public CrystalGraphicsNeoForgeChunkMixins() {
         super("crystalgraphics", new String[]{"ChunkWriteHook"}, "CameraHook", "SoundVolumeHook", "FirstScreenHook",
-                "EntityRendererHook", "ActorRenderHook");
+                "EntityRendererHook", "ActorRenderHook", "VanillaPoseHook");
     }
 }

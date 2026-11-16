@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import net.minecraftforge.client.ClientCommandHandler;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
@@ -158,6 +159,7 @@ public final class PlatformService1710 implements CgPlatformService {
             // The render tick is on FML's bus; the mixin hook (MixinGuiScreen) takes the tick-time drain.
             FMLCommonHandler.instance().bus().register(new ScreenInput1710());
             MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());
+            CgVanillaPoses.hosted();   // VanillaPoseHook
             // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
             CgEngineLifecycle.clientStarting();
         }

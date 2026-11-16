@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
@@ -146,6 +147,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         MinecraftForge.EVENT_BUS.register(screenInput);
         FMLCommonHandler.instance().bus().register(screenInput);
         MinecraftForge.EVENT_BUS.register(new LoadingScreenLegacy());
+        CgVanillaPoses.hosted();   // VanillaPoseHook
         // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
         CgEngineLifecycle.clientStarting();
     }

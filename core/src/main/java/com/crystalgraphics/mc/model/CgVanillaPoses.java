@@ -5,6 +5,8 @@ import com.crystalgraphics.animation.CgAnimation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import javax.annotation.Nullable;
+
 import java.util.Arrays;
 
 /**
@@ -19,9 +21,13 @@ import java.util.Arrays;
  * }</pre>
  *
  * <pre>{@code
- * // a host, at the tail of its humanoid model's angle setup (render thread)
+ * // a host, once its renderer has set the entity's model up, before the model and its armour draw (render thread)
  * if (CgVanillaPoses.parts(entityId, parts)) for (int i = 0; i < 6; i++) set(model.part(i), parts, i * CgVanillaHumanoid.STRIDE);
  * }</pre>
+ *
+ * <p>Every era's host does this: after the living renderer's model setup to 1.21.8, after each submitted model's setup
+ * from 1.21.10 (its armour's too), and after {@code ModelBiped}'s angles on 1.8.9 to 1.12.2 and 1.7.10. Forge 1.13.2 and
+ * 1.14.3 load no mixins, so their models stay the game's.</p>
  *
  * <ul>
  *   <li>The frame thread's: {@code play}, {@code stop} and {@code parts} run where the game renders.</li>
@@ -80,6 +86,18 @@ public final class CgVanillaPoses {
         ids[at] = ids[count];
         instances[at] = instances[count];
         instances[count] = null;
+    }
+
+    /** The instance posing entity {@code id}'s model; null where the engine poses it not. */
+    @Nullable
+    public static CgAnimInstance instance(int id) {
+        int at = count == 0 ? -1 : find(id);
+        return at < 0 ? null : instances[at];
+    }
+
+    /** Whether the engine poses entity {@code id}'s model: a host marks its render state as it is taken. */
+    public static boolean posing(int id) {
+        return count > 0 && find(id) >= 0;
     }
 
     /**

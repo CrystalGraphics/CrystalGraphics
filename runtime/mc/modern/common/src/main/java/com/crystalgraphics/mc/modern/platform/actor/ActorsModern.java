@@ -13,7 +13,8 @@ import java.util.Arrays;
 
 /**
  * Entities entering and leaving the client level ({@link CgNetEntities}) on 1.13.2 to 26.3, and the dispatcher's
- * renderer swapped for {@link ActorRendererModern} where an actor draws the entity. Each loader's
+ * renderer swapped for {@link ActorRendererModern} where an actor draws the entity; which entity is drawn, for
+ * {@link VanillaPosesModern}. Each loader's
  * {@code ActorRenderHook} calls it.
  *
  * <ul>
@@ -50,11 +51,13 @@ public final class ActorsModern {
 
     /^* The dispatcher took {@code entity}'s state: kept for its submit when its actor replaces its model. ^/
     public static void extracted(Entity entity, EntityRenderState state) {
+        boolean newPass = submitting;
         if (submitting) {
             Arrays.fill(marked, 0, marks, null);
             marks = 0;
             submitting = false;
         }
+        VanillaPosesModern.extracted(entity, state, newPass);
         if (!CgEntityActors.replacesModel(entity.getId())) return;
         if (marks == marked.length) marked = Arrays.copyOf(marked, marks * 2);
         marked[marks++] = state;
@@ -77,6 +80,7 @@ public final class ActorsModern {
     /** The dispatcher starts drawing {@code entity}. */
     public static void drawing(Entity entity) {
         replacing = CgEntityActors.replacesModel(entity.getId()) ? entity : null;
+        VanillaPosesModern.drawing(entity);
     }
 
     /** The renderer the dispatcher looked up for {@code entity}: {@code found}, or its stand-in while drawing an actor's. */
@@ -87,6 +91,7 @@ public final class ActorsModern {
     /** The dispatcher finished drawing an entity. */
     public static void drawn() {
         replacing = null;
+        VanillaPosesModern.drawing(null);
     }
     //?}
 }

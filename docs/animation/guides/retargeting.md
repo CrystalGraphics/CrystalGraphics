@@ -153,8 +153,10 @@ CgVanillaPoses.stop(zombie.getId());                                     // the 
 ```
 
 - Each limb is one rigid cube, so it points at where the source's hand or foot is; it cannot bend.
-- The game draws the model, its armour and what it holds. A host sets the parts from `CgVanillaPoses.parts` in its
-  model setup; until the host you run on does, `play` logs once that the entity is drawn unposed.
+- The game draws the model, its armour and what it holds. Every Minecraft the engine runs on sets the parts right
+  after its own model setup, so a zombie's or a player's own arm code is overridden, armour follows, and a player's
+  sleeves and trousers go with the limbs. Forge 1.13.2 and 1.14.3 load no mixins: there `play` logs once that the
+  entity is drawn unposed.
 
 ## Baking and which clip plays
 
