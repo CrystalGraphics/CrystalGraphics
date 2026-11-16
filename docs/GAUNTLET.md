@@ -66,6 +66,7 @@ crystalgraphics:world: PASS (31 passed, 0 failed, 4 skipped)
 | `crystalgraphics:containers` | client | A furnace and a chest placed beside the player, opened with the use-block call, read through `CgContainers`, and driven: pick up, put back, quick-move, close (`probe.CgContainersProbe`, `docs/CONTAINERS.md`) |
 | `crystalgraphics:actors` | client | Entity actors bound by the host: one spawned for a summoned target, following it, its model left to it, gone with it (`docs/vfx/prefabs.md` § *Entity actors*) |
 | `crystalgraphics:net` | client, server | Networked objects across a player's death, and how late a change arrives (`docs/NETWORKING.md`) |
+| `crystalgraphics:player-saves` | client | A type on the player with a persisted field of every kind (and one plain, one local) filled on the server and saved through the player's own save: every persisted field there, the others not. Leave the world and open `<world>/playerdata/<uuid>.dat` (`net.object.CgPlayerSavesProbe`, `docs/NETWORKING.md` §13) |
 | `crystalgraphics:server` | dedicated server | The server-side stack is up and no client class loaded (`probe.CgServerSmoke`) |
 
 `crystalgraphics:server` watches the classes every mod declares on a `client` line of its
