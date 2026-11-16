@@ -22,6 +22,8 @@ variables:
   dead: { type: bool }
   swing: { type: float }
   swinging: { type: float }
+  head_yaw: { type: float }
+  head_pitch: { type: float }
 entity:
   speed: entity.speed
   sprinting: entity.sprinting
@@ -35,9 +37,12 @@ entity:
   dead: entity.dead
   swing: entity.swing
   swinging: entity.swinging
+  head_yaw: entity.head_yaw
+  head_pitch: entity.head_pitch
 output: out
 nodes:
-  out: { kind: inertialization, source: full_body }
+  out: { kind: inertialization, source: look }
+  look: { kind: modify_bone, source: full_body, bone: head, rotation: { mode: add, space: component, value: [head_pitch, head_yaw, 0] } }   # where the entity looks, as Minecraft turns its head
   full_body: { kind: slot, source: with_swing }                      # DefaultSlot: whole-body moves and reactions
   with_swing: { kind: layered_blend, base: upper_body_slot, layers: [ { pose: swing, mask: { branches: [ { bone: spine_01 } ] }, weight: swinging } ] }
   upper_body_slot: { kind: slot, slot_name: UpperBody, source: upper_body }
