@@ -1,6 +1,7 @@
 package com.crystalgraphics.world.actor;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
@@ -32,6 +33,7 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.animation.graph.CgAnimGraph;
 import com.crystalgraphics.world.CgEntityProperties;
+import com.crystalgraphics.world.CgMoveLocks;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.net.object.CgNetEntities;
@@ -88,6 +90,7 @@ public class CgEntityActorRootMotionTest {
         double x, y, z;
         float yaw;
         int hurtTime;
+        boolean ai = true, gravity = true;
         boolean grounded = true;
         double wallZ = Double.POSITIVE_INFINITY;
         int moves;
@@ -187,8 +190,20 @@ public class CgEntityActorRootMotionTest {
 
         @Override public boolean velocity(Object entity, double vx, double vy, double vz) { return false; }
         @Override public boolean push(Object entity, double vx, double vy, double vz) { return false; }
-        @Override public boolean gravity(Object entity, boolean on) { return false; }
+        @Override public boolean gravity(Object entity, boolean on) {
+            if (!(entity instanceof Mob m)) return false;
+            m.gravity = on;
+            return true;
+        }
         @Override public boolean resetFall(Object entity) { return false; }
+        @Override public boolean gravityOn(Object entity) { return !(entity instanceof Mob m) || m.gravity; }
+        @Override public boolean ai(Object entity, boolean on) {
+            if (!(entity instanceof Mob m)) return false;
+            m.ai = on;
+            return true;
+        }
+        @Override public boolean aiOn(Object entity) { return entity instanceof Mob m && m.ai; }
+        @Override public boolean holdInput(boolean held) { return false; }
     };
 
     /** The type's actor: one skeletal body whose root motion moves its entity, on either side. */
@@ -202,7 +217,7 @@ public class CgEntityActorRootMotionTest {
     }
 
     /** Its role: the body its clips play on. */
-    record Role(CgAnimInstance body) implements CgSequenceSkeletal {
+    record Role(CgAnimInstance body, Object entity) implements CgSequenceSkeletal {
         @Override public CgAnimInstance instance() {
             return body;
         }
@@ -264,7 +279,7 @@ public class CgEntityActorRootMotionTest {
         assertTrue("built for the server", actor.server());
         CgAnimInstance body = actor.component.anim();
         before.accept(body);
-        sequencer.play(LUNGE, Map.of("caster", new Role(body)));
+        sequencer.play(LUNGE, Map.of("caster", new Role(body, m)));
         for (int i = 0; i < 40; i++) server.tick();
         return m;
     }
@@ -308,6 +323,57 @@ public class CgEntityActorRootMotionTest {
         m.hurtTime = 10;
         for (int i = 0; i < 40; i++) server.tick();
         return m;
+    }
+
+    @Test
+    public void aMoveLockHoldsItsAiAndGravityWhileItsSpanPlaysThenGivesThemBack() {
+        CgSequenceDefinition locked = CgSequenceDefinition.compile(CgAssetData.of("test:locked", CgSequenceKinds.SEQUENCE,
+                (Map<?, ?>) CgAssetYaml.read("""
+                        _v: 1
+                        tick_resolution: 1000
+                        display_rate: 20
+                        range: [0, 1250]
+                        roles:
+                          - { id: b1, name: caster, kind: caster }
+                        tracks:
+                          - { id: t1, kind: animation, binding: { role: caster }, sections: [ { id: s1, range: [0, 1250], clip: test:lunge } ] }
+                          - { id: t2, kind: notify, binding: { role: caster }, sections: [
+                              { id: n1, range: [0, 600], kind: crystalgraphics:move_lock, properties: { gravity: true } } ] }
+                        """), null));
+        Mob m = new Mob(nextId++);
+        mob = m;
+        Fighter.body = mesh(lunge(null));
+        CgWorld server = CgWorld.serverWorld();
+        CgSequencer sequencer = CgSequencer.of(server);
+        if (sequencer == null) sequencer = server.add(new CgSequencer());
+        CgNetEntities.enteredServer(m, "test:fighter");
+        Fighter actor = (Fighter) CgEntityActors.serverActor(m.id);
+        sequencer.play(locked, Map.of("caster", new Role(actor.component.anim(), m)));
+        for (int i = 0; i < 4; i++) server.tick();
+        assertFalse("its AI held while the span plays", m.ai);
+        assertFalse("and its gravity, which the span names", m.gravity);
+        assertTrue(CgMoveLocks.held(m, CgMoveLocks.AI));
+        for (int i = 0; i < 20; i++) server.tick();
+        assertTrue("given back as the span ends", m.ai);
+        assertTrue(m.gravity);
+        assertFalse(CgMoveLocks.held(m, CgMoveLocks.AI | CgMoveLocks.GRAVITY));
+    }
+
+    @Test
+    public void holdsCountAndGiveBackWhatTheEntityWasDoing() {
+        Mob m = new Mob(nextId++);
+        m.ai = false;                                      // summoned with NoAI: it stays so after
+        CgMoveLocks.Hold a = CgMoveLocks.hold(m, CgMoveLocks.AI | CgMoveLocks.INPUT, true);
+        assertEquals("the keys are a client's: not held on the server", CgMoveLocks.AI, a.holds());
+        CgMoveLocks.Hold b = CgMoveLocks.hold(m, CgMoveLocks.AI | CgMoveLocks.GRAVITY, true);
+        assertFalse(m.gravity);
+        a.close();
+        a.close();
+        assertTrue("another hold keeps it", CgMoveLocks.held(m, CgMoveLocks.AI));
+        b.close();
+        assertFalse("as it was before: no AI", m.ai);
+        assertTrue(m.gravity);
+        assertFalse(CgMoveLocks.held(m, CgMoveLocks.AI));
     }
 
     @Test

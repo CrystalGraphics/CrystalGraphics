@@ -35,11 +35,14 @@ public final class CgNotifyContext {
     final int[] channels;
     final float[][] values;
     final int[] masks;
+    final CgNotifyKind kind;
     boolean active;
     double lastSeconds;
     int fires;
 
-    CgNotifyContext(CgSequencePlayer player, CgSequenceTrack track, CgSequenceSection section, @Nullable CgSequenceTarget target, int[] channels) {
+    CgNotifyContext(CgSequencePlayer player, CgSequenceTrack track, CgSequenceSection section, @Nullable CgSequenceTarget target,
+                    int[] channels, CgNotifyKind kind) {
+        this.kind = kind;
         this.player = player;
         this.track = track;
         this.section = section;

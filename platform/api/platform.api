@@ -3334,7 +3334,11 @@ com/crystalgraphics/platform/world/CgEntityMovement
   access public,final
   extends java/lang/Object
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static ai (Ljava/lang/Object;Z)Z
+  method public,static aiOn (Ljava/lang/Object;)Z
   method public,static gravity (Ljava/lang/Object;Z)Z
+  method public,static gravityOn (Ljava/lang/Object;)Z
+  method public,static holdInput (Z)Z
   method public,static move (Ljava/lang/Object;DDD)Z
   method public,static pitch (Ljava/lang/Object;)F
   method public,static push (Ljava/lang/Object;DDD)Z
@@ -3348,7 +3352,11 @@ com/crystalgraphics/platform/world/CgEntityMovement$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/platform/world/CgEntityMovement$Host;
+  method public,abstract ai (Ljava/lang/Object;Z)Z
+  method public,abstract aiOn (Ljava/lang/Object;)Z
   method public,abstract gravity (Ljava/lang/Object;Z)Z
+  method public,abstract gravityOn (Ljava/lang/Object;)Z
+  method public,abstract holdInput (Z)Z
   method public,abstract move (Ljava/lang/Object;DDD)Z
   method public,abstract pitch (Ljava/lang/Object;)F
   method public,abstract push (Ljava/lang/Object;DDD)Z

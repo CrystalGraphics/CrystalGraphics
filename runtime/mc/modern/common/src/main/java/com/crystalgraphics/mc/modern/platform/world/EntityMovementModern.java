@@ -2,6 +2,8 @@ package com.crystalgraphics.mc.modern.platform.world;
 
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
+import java.util.function.Predicate;
 //? if >=1.14.3 {
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.phys.Vec3;
@@ -11,6 +13,9 @@ import net.minecraft.world.phys.Vec3;
 public final class EntityMovementModern implements CgEntityMovement.Host {
 
     public static final EntityMovementModern INSTANCE = new EntityMovementModern();
+
+    /** The client's input hold, from its client half; none on a server. */
+    private volatile Predicate<Boolean> inputs = held -> false;
 
     private EntityMovementModern() {
     }
@@ -108,6 +113,33 @@ public final class EntityMovementModern implements CgEntityMovement.Host {
         if (!(entity instanceof Entity)) return false;
         ((Entity) entity).setNoGravity(!on);
         return true;
+    }
+
+    /** The client's half: holding its own player's input. From {@code ClientModern.install}. */
+    public void client(Predicate<Boolean> inputs) {
+        this.inputs = inputs;
+    }
+
+    @Override
+    public boolean gravityOn(Object entity) {
+        return !(entity instanceof Entity) || !((Entity) entity).isNoGravity();
+    }
+
+    @Override
+    public boolean ai(Object entity, boolean on) {
+        if (!(entity instanceof Mob)) return false;
+        ((Mob) entity).setNoAi(!on);
+        return true;
+    }
+
+    @Override
+    public boolean aiOn(Object entity) {
+        return entity instanceof Mob && !((Mob) entity).isNoAi();
+    }
+
+    @Override
+    public boolean holdInput(boolean held) {
+        return inputs.test(held);
     }
 
     @Override

@@ -179,6 +179,15 @@ public abstract class CgEntityActor {
         return server ? host : null;
     }
 
+    /**
+     * Its entity, the loader's own object on this side: the server's, or the client's copy looked up by id; null where
+     * the client has none loaded. What a move it plays holds ({@code crystalgraphics:move_lock}).
+     */
+    @Nullable
+    public final Object hostEntity() {
+        return entity.entity();
+    }
+
     /** Its root: where the entity stands this frame. */
     public final CgSceneRoot root() {
         return root;
@@ -257,7 +266,7 @@ public abstract class CgEntityActor {
         CgWorld world = server ? CgWorld.serverWorld() : CgWorld.client();
         CgSequencer sequencer = CgSequencer.of(world);
         if (sequencer == null) sequencer = world.add(new CgSequencer());
-        Reacting target = new Reacting(body, r.slot());
+        Reacting target = new Reacting(this, body, r.slot());
         Map<String, CgSequenceTarget> roles = new HashMap<>();
         for (CgSequenceDefinition.Role role : d.roles()) roles.put(role.name(), target);
         if (reacting != null) reacting.stop();
@@ -265,7 +274,11 @@ public abstract class CgEntityActor {
     }
 
     /** The body as a reaction's every role: its clips by id, every section on the reaction's slot. */
-    private record Reacting(CgSkeletalMeshComponent body, String slot) implements CgSequenceSkeletal {
+    private record Reacting(CgEntityActor actor, CgSkeletalMeshComponent body, String slot) implements CgSequenceSkeletal {
+        @Override @Nullable public Object entity() {
+            return actor.hostEntity();
+        }
+
         @Override public CgAnimInstance instance() {
             return body.anim();
         }

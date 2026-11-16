@@ -24,6 +24,17 @@ import com.crystalgraphics.platform.CgService;
  * CgEntityMovement.teleport(fighter, x, y, z);       // a vanish strike: placed, unswept, its clients told
  * }</pre>
  *
+ * <p>Holding an entity's own movement while a move plays: its AI on the server, the client's own player's keys on
+ * that client. Read the state first and put it back after, or use core's {@code CgMoveLocks}, which counts holds:</p>
+ *
+ * <pre>{@code
+ * boolean had = CgEntityMovement.aiOn(mob);
+ * CgEntityMovement.ai(mob, false);                   // a mob stands still: no goals, no pathing
+ * CgEntityMovement.ai(mob, had);
+ * CgEntityMovement.holdInput(true);                  // the client: its own player's movement keys read as none
+ * CgEntityMovement.holdInput(false);
+ * }</pre>
+ *
  * <ul>
  *   <li>Entities cross as {@code Object}; anything else answers false (NaN for a read) and changes nothing.</li>
  *   <li>A change a client makes to an entity it does not own is undone by the next update from its server.</li>
@@ -65,6 +76,21 @@ public final class CgEntityMovement {
         /** Clears the distance it has fallen, so landing does it no harm. */
         boolean resetFall(Object entity);
 
+        /** Whether gravity pulls it now; true where the version has no switch. */
+        boolean gravityOn(Object entity);
+
+        /** Whether a mob's own AI runs: its goals and pathing; false for an entity without one, or no switch. */
+        boolean ai(Object entity, boolean on);
+
+        /** Whether its own AI runs now; false for an entity without one. */
+        boolean aiOn(Object entity);
+
+        /**
+         * Holds the client's own player's movement keys (they read as none: no walking, no jump, no sneak) or lets them
+         * go. Client only, its game thread; false on a server.
+         */
+        boolean holdInput(boolean held);
+
         /** Changes nothing. */
         Host NONE = new None();
     }
@@ -80,6 +106,10 @@ public final class CgEntityMovement {
         @Override public boolean push(Object entity, double vx, double vy, double vz) { return false; }
         @Override public boolean gravity(Object entity, boolean on) { return false; }
         @Override public boolean resetFall(Object entity) { return false; }
+        @Override public boolean gravityOn(Object entity) { return true; }
+        @Override public boolean ai(Object entity, boolean on) { return false; }
+        @Override public boolean aiOn(Object entity) { return false; }
+        @Override public boolean holdInput(boolean held) { return false; }
     }
 
     /** The slot a host fills. */
@@ -137,6 +167,26 @@ public final class CgEntityMovement {
     /** Clears the distance {@code entity} has fallen, so landing does it no harm. */
     public static boolean resetFall(Object entity) {
         return host().resetFall(entity);
+    }
+
+    /** Whether gravity pulls {@code entity} now; true where the version has no switch. */
+    public static boolean gravityOn(Object entity) {
+        return host().gravityOn(entity);
+    }
+
+    /** Whether a mob's own AI runs: its goals and pathing. False for an entity without one, or none on 1.7.10. */
+    public static boolean ai(Object entity, boolean on) {
+        return host().ai(entity, on);
+    }
+
+    /** Whether {@code entity}'s own AI runs now; false for an entity without one. */
+    public static boolean aiOn(Object entity) {
+        return host().aiOn(entity);
+    }
+
+    /** Holds the client's own player's movement keys, or lets them go. Client only; false on a server or without a host. */
+    public static boolean holdInput(boolean held) {
+        return host().holdInput(held);
     }
 
     private static Host host() {

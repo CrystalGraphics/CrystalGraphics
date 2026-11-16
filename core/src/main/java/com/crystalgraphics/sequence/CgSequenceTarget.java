@@ -53,10 +53,6 @@ public interface CgSequenceTarget {
     void get(int slot, float[] out);
 
     /**
-     * A part of it a binding names ({@code { role: caster, material: body }}, a node, a socket), or null if it has no
-     * such part.
-     */
-    /**
      * The scene primitive it draws as, or null for none: what a capture's {@code show} and {@code hide} lists name
      * (Unreal's show-only and hidden actors). A role drawn by a skeletal mesh answers its component.
      */
@@ -65,8 +61,21 @@ public interface CgSequenceTarget {
         return null;
     }
 
+    /**
+     * A part of it a binding names ({@code { role: caster, material: body }}, a node, a socket), or null if it has no
+     * such part.
+     */
     @Nullable
     default CgSequenceTarget part(CgSequenceBinding.Part part, String name) {
+        return null;
+    }
+
+    /**
+     * The host entity it plays on, the loader's own object on this side, or null for none: what a
+     * {@code crystalgraphics:move_lock} span holds. An entity actor's body answers its entity.
+     */
+    @Nullable
+    default Object entity() {
         return null;
     }
 }

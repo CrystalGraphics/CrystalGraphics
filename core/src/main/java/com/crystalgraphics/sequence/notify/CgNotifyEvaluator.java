@@ -69,20 +69,22 @@ public final class CgNotifyEvaluator implements CgSequenceEvaluator {
                 if (index < 0) throw new CgAssetException(where + ": " + kind.id() + " writes " + slot + ", which " + (target == null ? "an unbound track" : target) + " does not have");
                 channels[i] = blender.channel(target, index);
             }
-            contexts[s.index()] = new CgNotifyContext(player, track, s, target, channels);
+            contexts[s.index()] = new CgNotifyContext(player, track, s, target, channels, kind);
         }
         player.data(track, null, contexts);
     }
 
     @Override
     public void evaluate(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection unused, float tick) {
-        // Presentation: a dedicated server never runs a notify's behaviour.
-        if (sequencer.server() || !(player.data(track, null) instanceof CgNotifyContext[] contexts)) return;
+        if (!(player.data(track, null) instanceof CgNotifyContext[] contexts)) return;
+        boolean server = sequencer.server();
         CgSequenceEvaluationRange range = player.range();
         int keyFrom = range.keyFrom(), keyEnd = range.keyEnd(), now = (int) Math.floor(tick);
         double seconds = player.seconds();
         for (CgNotifyContext c : contexts) {
             CgSequenceSection s = c.section();
+            // Presentation: a server runs only the kinds whose effect both sides apply
+            if (server && c.kind.runs() != CgNotifyKind.Runs.BOTH) continue;
             if (!s.active() || !passesFilter(s)) continue;
             boolean branching = Boolean.TRUE.equals(s.fields().get("branching_point"));
             if (s.fields().get("at") instanceof Number at) {
@@ -149,7 +151,7 @@ public final class CgNotifyEvaluator implements CgSequenceEvaluator {
     }
 
     private static void dispatch(CgNotifyContext c, int op, float dt) {
-        CgNotifyKind.Behaviour b = CgNotifyKind.get(String.valueOf(c.section().fields().get("kind"))).behaviour();
+        CgNotifyKind.Behaviour b = c.kind.behaviour();
         switch (op) {
             case NOTIFY -> b.notify(c);
             case BEGIN -> b.begin(c);

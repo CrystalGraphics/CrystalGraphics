@@ -10,10 +10,11 @@ public final class ClientLegacy {
     private ClientLegacy() {
     }
 
-    /** Gives the levels and players their client halves. Client only, once, from {@code PlatformServiceLegacy}. */
+    /** Gives the levels, the players and movement their client halves. Client only, once, from {@code PlatformServiceLegacy}. */
     public static void install() {
         LevelsLegacy.INSTANCE.client(new WorldQueryLegacy(), new EntityQueryLegacy(), ClientLegacy::world);
         PlayersLegacy.INSTANCE.client(ClientLegacy::player);
+        EntityMovementLegacy.INSTANCE.client(InputHoldLegacy::hold);
     }
 
     static WorldClient world() {

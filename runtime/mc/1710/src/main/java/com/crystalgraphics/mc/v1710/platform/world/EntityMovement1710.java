@@ -3,11 +3,15 @@ package com.crystalgraphics.mc.v1710.platform.world;
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityLivingBase;
+import java.util.function.Predicate;
 
-/** {@link CgEntityMovement} on 1.7.10: the entity's own members, both sides. It has no gravity switch. */
+/** {@link CgEntityMovement} on 1.7.10: the entity's own members, both sides. It has no gravity or AI switch. */
 public final class EntityMovement1710 implements CgEntityMovement.Host {
 
     public static final EntityMovement1710 INSTANCE = new EntityMovement1710();
+
+    /** The client's input hold, from its client half; none on a server. */
+    private volatile Predicate<Boolean> inputs = held -> false;
 
     private EntityMovement1710() {
     }
@@ -74,6 +78,31 @@ public final class EntityMovement1710 implements CgEntityMovement.Host {
     @Override
     public boolean gravity(Object entity, boolean on) {
         return false;
+    }
+
+    /** The client's half: holding its own player's input. From {@code Client1710.install}. */
+    public void client(Predicate<Boolean> inputs) {
+        this.inputs = inputs;
+    }
+
+    @Override
+    public boolean gravityOn(Object entity) {
+        return true;
+    }
+
+    @Override
+    public boolean ai(Object entity, boolean on) {
+        return false;
+    }
+
+    @Override
+    public boolean aiOn(Object entity) {
+        return false;
+    }
+
+    @Override
+    public boolean holdInput(boolean held) {
+        return inputs.test(held);
     }
 
     @Override

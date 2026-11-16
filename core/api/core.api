@@ -14734,6 +14734,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
 com/crystalgraphics/sequence/CgSequenceTarget
   access public,abstract,interface
   extends java/lang/Object
+  method public entity ()Ljava/lang/Object;
   method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public primitive ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public,abstract get (I[F)V
@@ -15461,6 +15462,7 @@ com/crystalgraphics/sequence/notify/CgNotifyKind
   method public behaviour ()Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Behaviour;
   method public id ()Ljava/lang/String;
   method public properties ()Lcom/crystalgraphics/object/CgType;
+  method public runs ()Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;
   method public writes ()Ljava/util/List;
   method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Builder;
   method public,static get (Ljava/lang/String;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind;
@@ -15477,7 +15479,15 @@ com/crystalgraphics/sequence/notify/CgNotifyKind$Builder
   method public behaviour (Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Behaviour;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Builder;
   method public properties (Lcom/crystalgraphics/object/CgType;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Builder;
   method public register ()Lcom/crystalgraphics/sequence/notify/CgNotifyKind;
+  method public runs (Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Builder;
   method public writes ([Ljava/lang/String;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Builder;
+com/crystalgraphics/sequence/notify/CgNotifyKind$Runs
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOTH Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;
+  field public,static,final CLIENT Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;
+  method public,static values ()[Lcom/crystalgraphics/sequence/notify/CgNotifyKind$Runs;
 com/crystalgraphics/sequence/sound/CgSequenceSoundEvaluator
   access public,final
   extends java/lang/Object
@@ -24445,6 +24455,23 @@ com/crystalgraphics/world/CgEntityTags
   method public,static release (I)V
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)Z
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
+com/crystalgraphics/world/CgMoveLocks
+  access public,final
+  extends java/lang/Object
+  field public,static,final AI I
+  field public,static,final GRAVITY I
+  field public,static,final INPUT I
+  field public,static,final KIND Ljava/lang/String;
+  field public,static,final PROPERTIES Lcom/crystalgraphics/object/CgType;
+  method public,static held (Ljava/lang/Object;I)Z
+  method public,static hold (Ljava/lang/Object;IZ)Lcom/crystalgraphics/world/CgMoveLocks$Hold;
+  method public,static install ()V
+com/crystalgraphics/world/CgMoveLocks$Hold
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public close ()V
+  method public holds ()I
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object
@@ -24517,6 +24544,7 @@ com/crystalgraphics/world/actor/CgEntityActor
   method public <init> ()V
   method public,final body ()Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public,final entity ()Lcom/crystalgraphics/world/actor/CgEntity;
+  method public,final hostEntity ()Ljava/lang/Object;
   method public,final root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
 com/crystalgraphics/world/actor/CgEntityActors
   access public,final

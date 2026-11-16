@@ -42,7 +42,9 @@ import com.crystalgraphics.object.CgType;
  *   <li>What a span {@linkplain CgNotifyContext#set sets} on its declared slots is restored when the span ends, as a
  *       {@code restore_state} section's is: by playing past it, stopping, or seeking back before it.</li>
  *   <li>Behaviours run on the client, in {@code SEQUENCES}, for presentation; a dedicated server never runs one.
- *       Gameplay's moments are {@code event} sections of side {@code rpg}.</li>
+ *       Gameplay's moments are {@code event} sections of side {@code rpg}. A kind whose effect both sides apply
+ *       (holding an entity's movement, {@code crystalgraphics:move_lock}) says {@link Runs#BOTH}: the server's play
+ *       runs it too.</li>
  *   <li>A queued notify (the default) is called after the frame's evaluation; a {@code branching_point} one inside it,
  *       on its exact tick.</li>
  * </ul>
@@ -68,6 +70,14 @@ public final class CgNotifyKind {
         }
     }
 
+    /** Where a kind's behaviour runs: a sequence's {@code runs}. */
+    public enum Runs {
+        /** On clients, for presentation: the default. */
+        CLIENT,
+        /** On clients and the server, for an effect both apply. */
+        BOTH
+    }
+
     private static final Map<String, CgNotifyKind> KINDS = new ConcurrentHashMap<>();
 
     private final String id;
@@ -75,8 +85,10 @@ public final class CgNotifyKind {
     private final CgType properties;
     private final List<String> writes;
     private final Behaviour behaviour;
+    private final Runs runs;
 
-    private CgNotifyKind(String id, @Nullable CgType properties, List<String> writes, Behaviour behaviour) {
+    private CgNotifyKind(String id, @Nullable CgType properties, List<String> writes, Behaviour behaviour, Runs runs) {
+        this.runs = runs;
         this.id = id;
         this.properties = properties;
         this.writes = writes;
@@ -112,6 +124,11 @@ public final class CgNotifyKind {
         return behaviour;
     }
 
+    /** Where its behaviour runs. */
+    public Runs runs() {
+        return runs;
+    }
+
     /** Declares a kind: its id, its properties, the slots it writes, its behaviour. */
     public static final class Builder {
         private final String id;
@@ -119,6 +136,7 @@ public final class CgNotifyKind {
         private final List<String> writes = new ArrayList<>();
         private Behaviour behaviour = new Behaviour() {
         };
+        private Runs runs = Runs.CLIENT;
 
         private Builder(String id) {
             if (id.indexOf(':') < 0) throw new IllegalArgumentException("a notify kind is namespaced: " + id);
@@ -141,9 +159,15 @@ public final class CgNotifyKind {
             return this;
         }
 
+        /** Where its behaviour runs: {@link Runs#CLIENT} unless said. */
+        public Builder runs(Runs runs) {
+            this.runs = runs;
+            return this;
+        }
+
         /** Registers it; an id already registered throws. */
         public CgNotifyKind register() {
-            CgNotifyKind kind = new CgNotifyKind(id, properties, List.copyOf(writes), behaviour);
+            CgNotifyKind kind = new CgNotifyKind(id, properties, List.copyOf(writes), behaviour, runs);
             if (KINDS.putIfAbsent(id, kind) != null) throw new IllegalStateException("notify kind " + id + " is already registered");
             return kind;
         }
