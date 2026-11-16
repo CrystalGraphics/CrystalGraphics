@@ -15,13 +15,19 @@ Properties {
     _ClipToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
     _Frame       ("x the frame index, the dither's", vec4) = (0, 0, 0, 0)
     _PrevGuide   ("Last frame's guide", sampler2D) = "black"
-    _Closest     ("The dilated surface's device depth last frame", sampler2D) = "black"
+    _Closest     ("The dilated surface's device depth: x last frame, y this frame", sampler2D) = "black"
     _Dilate      ("The dilate pass's edge and depth error", usampler2D) = "zero"
     _Vector      ("The dilated motion", sampler2D) = "black"
     _Atomics     ("Last frame's nearest surfaces, scattered", usampler2D) = "zero"
     _Responsive  ("Where the history is to be dropped (a responsive material)", sampler2D) = "black"
     _Flicker     ("x 1 reprojecting the moire history (High and up); y 1 where it holds nothing of last frame", vec4) = (0, 0, 0, 0)
     _PrevMoire   ("Last frame's moire history", sampler2D) = "black"
+    _Resurrect   ("x 1 reprojecting the oldest snapshot (Medium and up)", vec4) = (0, 0, 0, 0)
+    _ClipToResurrection0 ("This frame's clip to the oldest snapshot's, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToResurrection1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToResurrection2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToResurrection3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _ResurrectionGuide ("The oldest snapshot's guide", sampler2D) = "black"
 }
 
 Images {
@@ -29,13 +35,14 @@ Images {
     FILLED ("The motion each pixel's history is fetched by, hole-filled", rg16, writeonly)
     MASK   ("x the decimate bits over 255; y the reprojection edge", rg8, writeonly)
     MOIRE  ("Last frame's moire history, reprojected (with _Flicker)", rgba8, writeonly)
+    RESURRECTED ("The oldest snapshot's guide, reprojected (with _Resurrect)", rgb10_a2, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
 
 const float MAX_DEPTH_ERROR = 64.0;
 // The decimate bits, as the reject pass reads them
-const uint OFF_SCREEN = 1u, DISOCCLUDED = 2u, HOLE_FILLED = 8u, RESPONSIVE = 32u;
+const uint OFF_SCREEN = 1u, DISOCCLUDED = 2u, HOLE_FILLED = 8u, RESURRECTION_OFF_SCREEN = 16u, RESPONSIVE = 32u;
 
 vec2 vector_at(ivec2 p) {
     return cg_DecodeVelocity(texelFetch(_Vector, clamp(p, ivec2(0), ivec2(_Input.xy) - 1), 0).xy);
@@ -133,8 +140,20 @@ void Decimate() {
     if (holeFilled) vector = holeVelocity / (_Input.xy * 0.5);
     bool responsive = textureLod(_Responsive, (vec2(p) + 0.5) * _Input.zw, 0.0).r > 0.5;
 
+    // The oldest snapshot's guide where this pixel's surface was then, bilinear: what resurrection compares
+    bool unseen = false;
+    if (_Resurrect.x > 0.5) {
+        float device = texelFetch(_Closest, p, 0).g;
+        vec4 clip = _ClipToResurrection0 * screen.x + _ClipToResurrection1 * screen.y + _ClipToResurrection2 * device
+                + _ClipToResurrection3;
+        vec2 then = clip.xy / clip.w;
+        unseen = any(greaterThan(abs(then), vec2(1.0)));
+        vec2 texel = 1.0 / vec2(textureSize(_ResurrectionGuide, 0));
+        RESURRECTED_WRITE(textureLod(_ResurrectionGuide, clamp(then * 0.5 + 0.5, 0.5 * texel, 1.0 - 0.5 * texel), 0.0));
+    }
+
     uint bits = (offScreen ? OFF_SCREEN : 0u) | (disoccluded ? DISOCCLUDED : 0u) | (holeFilled ? HOLE_FILLED : 0u)
-            | (responsive ? RESPONSIVE : 0u);
+            | (unseen ? RESURRECTION_OFF_SCREEN : 0u) | (responsive ? RESPONSIVE : 0u);
     guide.rgb = tsr_dither_unorm(guide.rgb, tsr_random(p, int(_Frame.x)), 1.0 / 1023.0);
     GUIDE_WRITE(guide);
     FILLED_WRITE(vec4(cg_EncodeVelocity(vector), 0.0, 0.0));

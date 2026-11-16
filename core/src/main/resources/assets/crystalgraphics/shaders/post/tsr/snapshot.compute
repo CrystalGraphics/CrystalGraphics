@@ -1,0 +1,23 @@
+// TSR's snapshot (CgTemporalSuperResolution, Medium and up): every RESURRECTION_PERIOD frames this frame's history,
+// validity and guide are kept, the older of two kept ones being what history resurrection brings back. At the history's
+// size; the guide, at the render size, where the dispatch covers it.
+#pragma kernel Snapshot 8 8 image
+
+Properties {
+    _Color ("This frame's history", sampler2D) = "black"
+    _Valid ("Its validity", sampler2D) = "black"
+    _Guide ("Next frame's guide", sampler2D) = "black"
+}
+
+Images {
+    RES_COLOR ("The kept history", r11f_g11f_b10f, writeonly)
+    RES_VALID ("The kept validity", r8, writeonly)
+    RES_GUIDE ("The kept guide", rgb10_a2, writeonly)
+}
+
+void Snapshot() {
+    ivec2 p = CG_TEXEL.xy;
+    RES_COLOR_WRITE(vec4(texelFetch(_Color, p, 0).rgb, 1.0));
+    RES_VALID_WRITE(vec4(texelFetch(_Valid, p, 0).r));
+    if (all(lessThan(p, textureSize(_Guide, 0)))) RES_GUIDE_WRITE(texelFetch(_Guide, p, 0));
+}

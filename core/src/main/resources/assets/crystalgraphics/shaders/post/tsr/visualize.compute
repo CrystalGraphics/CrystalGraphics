@@ -3,7 +3,7 @@
 // clamp, blue disoccluded or off screen. samples: the history's validity, the samples it holds of 16, as a heat ramp.
 // guide: the reprojected guide the reject pass compared against. reprojection: the hole-filled motion the update fetches
 // by (0.5 + pixels a frame / 32), blue where hole filling took the motion of what was in front. flicker: the moire
-// history, red its swings' total variation x 8, green their count of 20, blue its gradient. resurrection: blue where an
+// history, red its swings' total variation x 8, green their count of 20, blue its gradient. resurrection: green where an
 // older frame's history was taken.
 #pragma kernel Visualize 8 8 image
 
@@ -57,7 +57,8 @@ void Visualize() {
         vec4 m = at(_Moire, uv);
         c = vec3(m.z * 8.0, m.w, m.y);
     } else if (mode == 6) {
-        c = vec3(0.0, 0.0, (bits & 4u) != 0u ? 1.0 : 0.0) + at(_Guide, uv).rgb * 0.3;
+        bool resurrected = (uint(round(at(_Rejection, uv).w * 255.0)) & 2u) != 0u;
+        c = vec3(0.0, resurrected ? 1.0 : 0.0, 0.0) + at(_Guide, uv).rgb * 0.3;
     }
     VIEW_WRITE(vec4(c, 1.0));
 }

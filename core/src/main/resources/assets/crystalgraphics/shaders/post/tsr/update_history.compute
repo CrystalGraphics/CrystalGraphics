@@ -25,6 +25,14 @@ Properties {
     _Field      ("x 1 reading the reprojection field (High and up)", vec4) = (0, 0, 0, 0)
     _Boundary   ("The reprojection field's boundary (tsr_encode_boundary)", usampler2D) = "zero"
     _Jacobian   ("The motion's Jacobian (tsr_encode_jacobian)", usampler2D) = "zero"
+    _Resurrect  ("x 1 where the reject pass may have resurrected the history (Medium and up)", vec4) = (0, 0, 0, 0)
+    _ClipToResurrection0 ("This frame's clip to the oldest snapshot's, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToResurrection1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToResurrection2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToResurrection3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _Closest    ("The dilated surface's device depth: y this frame", sampler2D) = "black"
+    _ResColor   ("The oldest snapshot's history", sampler2D) = "black"
+    _ResValid   ("The oldest snapshot's validity", sampler2D) = "black"
 }
 
 Images {
@@ -92,6 +100,15 @@ void update(bool spatial) {
     float lowRejection = min(rejection.x, dilated.x), disableClamp = min(rejection.y, dilated.y);
     float decreaseValidity = max(rejection.z, dilated.z);
     bool parallaxRejected = (uint(round(dilated.w * 255.0)) & 1u) == 0u;
+    // A pixel the reject pass resurrected fetches the oldest snapshot instead, along its own reprojection there
+    bool resurrected = _Resurrect.x > 0.5 && (uint(round(dilated.w * 255.0)) & 2u) != 0u;
+    if (resurrected) {
+        float device = texelFetch(_Closest, fetchAt, 0).g;
+        vec4 clip = _ClipToResurrection0 * screen.x + _ClipToResurrection1 * screen.y + _ClipToResurrection2 * device
+                + _ClipToResurrection3;
+        vector = screen - clip.xy / clip.w;
+        upscaleCorrection = 1.0;
+    }
     vec2 prevScreen = screen - vector;
     float pixelSpeed = length(vector * _Output.xy);
     bool offScreen = cut || max(abs(prevScreen.x), abs(prevScreen.y)) >= 1.0;
@@ -108,10 +125,10 @@ void update(bool spatial) {
         vec3 centre = vec3(0.0);
         for (int i = 0; i < 5; i++) {   // LOOP-BOUND: five taps
             vec2 at = clamp(uvs[i], 0.5 * size.zw, 1.0 - 0.5 * size.zw);
-            vec3 c = textureLod(_PrevColor, at, 0.0).rgb;
+            vec3 c = resurrected ? textureLod(_ResColor, at, 0.0).rgb : textureLod(_PrevColor, at, 0.0).rgb;
             if (i == 2) centre = c;
             prevColor += c * weights[i];
-            prevValid += textureLod(_PrevValid, at, 0.0).r * weights[i];
+            prevValid += (resurrected ? textureLod(_ResValid, at, 0.0).r : textureLod(_PrevValid, at, 0.0).r) * weights[i];
         }
         // A bright highlight's bicubic overshoots below 0: the centre tap instead
         if (any(lessThan(prevColor, vec3(0.0))) || any(isnan(prevColor))) prevColor = max(centre, vec3(0.0));

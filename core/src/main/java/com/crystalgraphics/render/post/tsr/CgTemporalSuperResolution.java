@@ -64,6 +64,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             UPDATE = "crystalgraphics:shaders/post/tsr/update_history.compute",
             SHARPEN = "crystalgraphics:shaders/post/tsr/sharpen.compute",
             RESOLVE = "crystalgraphics:shaders/post/tsr/resolve_history.compute",
+            SNAPSHOT = "crystalgraphics:shaders/post/tsr/snapshot.compute",
             FLICKER = "crystalgraphics:shaders/post/tsr/measure_flickering_luma.compute",
             VISUALIZE = "crystalgraphics:shaders/post/tsr/visualize.compute";
     /** This frame's debug view, at the output size, published while {@code crystalgraphics.post.debug} names one. */
@@ -75,11 +76,15 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             VALID = new CgViewState.HistoryKey("crystalgraphics:tsr_valid"),
             GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_guide"),
             FLICKER_LUMA = new CgViewState.HistoryKey("crystalgraphics:tsr_flicker_luma"),
-            MOIRE = new CgViewState.HistoryKey("crystalgraphics:tsr_moire");
+            MOIRE = new CgViewState.HistoryKey("crystalgraphics:tsr_moire"),
+            SNAPSHOT_COLOR = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_color"),
+            SNAPSHOT_VALID = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_valid"),
+            SNAPSHOT_GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_guide");
+    private static final CgViewState.Key<Snapshots> SNAPSHOTS = new CgViewState.Key<>("crystalgraphics:tsr_snapshots", Snapshots::new);
     private static final int GPU_DILATE = CgGpuTrace.name("post.tsr.dilate"), GPU_DECIMATE = CgGpuTrace.name("post.tsr.decimate"),
             GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_SPATIAL = CgGpuTrace.name("post.tsr.spatial"),
             GPU_UPDATE = CgGpuTrace.name("post.tsr.update"), GPU_SHARPEN = CgGpuTrace.name("post.tsr.sharpen"),
-            GPU_RESOLVE = CgGpuTrace.name("post.tsr.resolve"),
+            GPU_RESOLVE = CgGpuTrace.name("post.tsr.resolve"), GPU_SNAPSHOT = CgGpuTrace.name("post.tsr.snapshot"),
             GPU_FLICKER = CgGpuTrace.name("post.tsr.flicker");
 
     /** The most samples a history pixel holds ({@code r.TSR.History.SampleCount}). */
@@ -107,6 +112,11 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
      * differ by this many input pixels a frame at 100%, more as it upscales ({@code r.TSR.ReprojectionField.AntiAliasPixelSpeed}).
      */
     static final float FIELD_PIXEL_SPEED = 0.125f;
+    /**
+     * History resurrection (Medium and up): a snapshot of the history kept every this many frames, the older of two
+     * brought back where what it saw shows again ({@code r.TSR.Resurrection.PersistentFrameInterval}).
+     */
+    static final int RESURRECTION_PERIOD = 31;
     /** The least fraction it rebuilds from. */
     static final float MIN_FRACTION = 0.25f;
     /** The jitter's base sequence, and the primes it is rounded up to. */
@@ -119,16 +129,16 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
 
     private final CgTemporalGlow glow = new CgTemporalGlow(new CgViewState.HistoryKey("crystalgraphics:tsr_glow"));
     private final Matrix4f clipToPrev = new Matrix4f(), clipToWorld = new Matrix4f(), prevClipToWorld = new Matrix4f(),
-            turnToPrev = new Matrix4f();
+            turnToPrev = new Matrix4f(), clipToResurrection = new Matrix4f();
     private final Vector4f column = new Vector4f();
-    private CgKernel clear, dilate, decimate, reject, rejectSpatial, rejectFlicker, spatial, update, updateSpatial, sharpen, resolve,
+    private CgKernel clear, dilate, decimate, reject, rejectSpatial, rejectFlicker, spatial, update, updateSpatial, sharpen, resolve, snapshot,
             measure, visualize;
     /** The view state's frame index the flicker luma was last measured in, and when the last frame was resolved. */
     private int measuredFrame = -1;
     private long lastNanos;
     private int width, height, outWidth, outHeight;
     private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
-            offsets, moving, reprojectedMoire, boundary, jacobian, resolved, picture, debugView;
+            offsets, moving, reprojectedMoire, boundary, jacobian, resurrected, resolved, picture, debugView;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -144,6 +154,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgCompute.load(UPDATE).kernel("UpdateSpatial").precache();
         CgCompute.load(SHARPEN).kernel("Sharpen").precache();
         CgCompute.load(RESOLVE).kernel("Resolve").precache();
+        CgCompute.load(SNAPSHOT).kernel("Snapshot").precache();
     }
 
     @Override
@@ -217,6 +228,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             updateSpatial = CgCompute.load(UPDATE).kernel("UpdateSpatial");
             sharpen = CgCompute.load(SHARPEN).kernel("Sharpen");
             resolve = CgCompute.load(RESOLVE).kernel("Resolve");
+            snapshot = CgCompute.load(SNAPSHOT).kernel("Snapshot");
         }
         CgQuality quality = CgGraphicsSettings.ANTI_ALIASING.get();
         boolean antiAliasSpatially = quality.atLeast(CgQuality.MEDIUM);
@@ -242,6 +254,19 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         float jx = view.jitterTexelsX(), jy = view.jitterTexelsY(), cutFlag = cut ? 1f : 0f;
         int frame = state.frameIndex();
         clipToPrevious(view);
+        // History resurrection reprojects to the older snapshot, once two are kept
+        boolean resurrect = quality.atLeast(CgQuality.MEDIUM) && state.keepsHistory();
+        Snapshots snapshots = state.get(SNAPSHOTS);
+        CgGraphTexture snapshotColor = null, snapshotValid = null, snapshotGuide = null;
+        boolean canResurrect = false;
+        if (resurrect) {
+            snapshotColor = state.history(SNAPSHOT_COLOR, new CgTextureDesc(hw, hh, CgFormat.RG11B10_UFLOAT), recording);
+            snapshotValid = state.history(SNAPSHOT_VALID, new CgTextureDesc(hw, hh, CgFormat.R8_UNORM), recording);
+            snapshotGuide = state.history(SNAPSHOT_GUIDE, new CgTextureDesc(w, h, CgFormat.RGB10A2_UNORM), recording);
+            snapshots.track(snapshotColor, snapshotGuide);
+            canResurrect = !cut && snapshots.taken >= 2;
+            if (canResurrect) snapshots.clipToOlder(view, clipToResurrection);
+        }
         Matrix4f projection = view.camera().projection();
         float depthX = projection.m32(), depthY = projection.m22(), radius = 1f / (projection.m00() * w);
         CgGraphTexture velocity = ctx.scene().velocity(), responsive = ctx.scene().responsive();
@@ -269,6 +294,11 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_Frame", frame, 0f, 0f, 0f);
         if (responsive != null) d.texture("_Responsive", responsive);
         if (flicker) d.texture("_PrevMoire", moireHistory).set("_Flicker", 1f, state.fresh(MOIRE) ? 1f : 0f, 0f, 0f);
+        d.image("RESURRECTED", resurrected);
+        if (canResurrect) {
+            d.texture("_ResurrectionGuide", snapshotGuide.previous()).set("_Resurrect", 1f, 0f, 0f, 0f);
+            columns(d, "_ClipToResurrection", clipToResurrection);
+        }
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
         pass.end();
 
@@ -286,6 +316,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_Reject", least, TILE_BORDER, stride, translucency != null ? 1f : 0f);
         if (antiAliasSpatially) d.image("LUMA", luma).image("AA_MASK", aaMask);
         if (translucency != null) d.texture("_Translucency", translucency);
+        if (canResurrect) d.texture("_Resurrected", resurrected).set("_Resurrect", 1f, 0f, 0f, 0f);
         if (flicker) {
             float period = FLICKER_PERIOD / Math.max(refresh, 1f);
             d.image("MOIRE", moireHistory).texture("_MoireLuma", flickerLuma).texture("_PrevMoire", reprojectedMoire)
@@ -314,9 +345,23 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / (MOTION_PIXEL_SPEED * scale), 0f, 0f);
         if (antiAliasSpatially) d.texture("_Offset", offsets);
         if (field) d.texture("_Boundary", boundary).texture("_Jacobian", jacobian).set("_Field", 1f, 0f, 0f, 0f);
+        if (canResurrect) {
+            d.texture("_Closest", closest).texture("_ResColor", snapshotColor.previous())
+                    .texture("_ResValid", snapshotValid.previous()).set("_Resurrect", 1f, 0f, 0f, 0f);
+            columns(d, "_ClipToResurrection", clipToResurrection);
+        }
         float sharpness = CgTemporalAA.sharpness();
         d.set("_Options", sharpness > 0f || scale > 1 ? 0f : 1f, quality.atLeast(CgQuality.HIGH) ? 1f : 0f, 0f, 0f);
         pass.end();
+
+        if (resurrect && !cut && frame % RESURRECTION_PERIOD == 0) {
+            pass = recording.compute("tsr.snapshot").timed(GPU_SNAPSHOT);
+            pass.dispatch(snapshot, hw, hh, 1).image("RES_COLOR", snapshotColor).image("RES_VALID", snapshotValid)
+                    .image("RES_GUIDE", snapshotGuide).texture("_Color", colorHistory).texture("_Valid", validHistory)
+                    .texture("_Guide", guideHistory);
+            pass.end();
+            snapshots.take(view);
+        }
 
         CgGraphTexture output = colorHistory;
         if (scale > 1) {
@@ -388,6 +433,45 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         clipToPrev.mulLocal(view.previousViewProjection());
     }
 
+    /**
+     * A view's two snapshots' cameras: unjittered view-projection, camera-relative, and where the camera stood. The older
+     * one's is what resurrection reprojects to, its history being the snapshot histories' {@code previous()}.
+     */
+    private static final class Snapshots {
+        final Matrix4f older = new Matrix4f(), newer = new Matrix4f(), scratch = new Matrix4f();
+        double olderX, olderY, olderZ, newerX, newerY, newerZ;
+        int taken;
+        CgGraphTexture color, guide;
+
+        /** Counts from none again where the snapshot histories were made again (a new size or quality). */
+        void track(CgGraphTexture color, CgGraphTexture guide) {
+            if (color == this.color && guide == this.guide) return;
+            this.color = color;
+            this.guide = guide;
+            taken = 0;
+        }
+
+        void take(CgView view) {
+            older.set(newer);
+            olderX = newerX;
+            olderY = newerY;
+            olderZ = newerZ;
+            newer.set(view.camera().projection()).mul(view.camera().view());
+            newerX = view.camera().x();
+            newerY = view.camera().y();
+            newerZ = view.camera().z();
+            taken++;
+        }
+
+        /** This frame's unjittered clip space to the older snapshot's, through this frame's camera-relative world. */
+        void clipToOlder(CgView view, Matrix4f out) {
+            out.set(view.camera().projection()).mul(view.camera().view()).invert();
+            scratch.set(older).translate((float) (view.camera().x() - olderX), (float) (view.camera().y() - olderY),
+                    (float) (view.camera().z() - olderZ));
+            out.mulLocal(scratch);
+        }
+    }
+
     /** Its transient targets for an input of {@code w x h} and an output of {@code ow x oh}: made again when they move. */
     private void size(int w, int h, int ow, int oh) {
         if (atomics != null && width == w && height == h && outWidth == ow && outHeight == oh) return;
@@ -396,7 +480,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         outWidth = ow;
         outHeight = oh;
         atomics = transientTexture("cg_tsr_atomics", w, h, CgFormat.R32_UINT);
-        closest = transientTexture("cg_tsr_closest", w, h, CgFormat.R32_FLOAT);
+        closest = transientTexture("cg_tsr_closest", w, h, CgFormat.RG32_FLOAT);
         dilateMask = transientTexture("cg_tsr_dilate", w, h, CgFormat.RG8_UINT);
         vector = transientTexture("cg_tsr_vector", w, h, CgFormat.RG16_UNORM);
         reprojected = transientTexture("cg_tsr_reprojected", w, h, CgFormat.RGB10A2_UNORM);
@@ -411,6 +495,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         reprojectedMoire = transientTexture("cg_tsr_reprojected_moire", w, h, CgFormat.RGBA8_UNORM);
         boundary = transientTexture("cg_tsr_boundary", w, h, CgFormat.R32_UINT);
         jacobian = transientTexture("cg_tsr_jacobian", w, h, CgFormat.R32_UINT);
+        resurrected = transientTexture("cg_tsr_resurrected", w, h, CgFormat.RGB10A2_UNORM);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
         resolved = transientTexture("cg_tsr_resolved", ow, oh, CgFormat.RGBA16_FLOAT);
         debugView = transientTexture("cg_tsr_debug_view", ow, oh, CgFormat.RGBA16_FLOAT);

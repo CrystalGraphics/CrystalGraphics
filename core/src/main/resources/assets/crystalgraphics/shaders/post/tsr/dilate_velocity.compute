@@ -33,7 +33,7 @@ Properties {
 
 Images {
     ATOMICS ("Each pixel's nearest surface last frame, depth and motion, scattered", r32ui, readwrite)
-    CLOSEST ("The dilated surface's device depth last frame", r32f, writeonly)
+    CLOSEST ("The dilated surface's device depth: x last frame, y this frame", rg32f, writeonly)
     DILATE  ("x the reprojection edge in 7 bits, 128 where the motion came from a neighbour; y the depth error", rg8ui, writeonly)
     VECTOR  ("The dilated motion, encoded as the velocity target", rg16, writeonly)
     MOVING  ("1 where the surface moves in the world, or the camera's parallax over it is fast (with _Flicker)", r8, writeonly)
@@ -170,7 +170,7 @@ void Dilate() {
     float prevClosest = closest - dilated.z;
     uint encodedError = uint(ceil(clamp(error / (MAX_DEPTH_ERROR * tsr_pixel_depth_error(prevClosest)), 0.0, 1.0) * 255.0));
 
-    CLOSEST_STORE(p, vec4(prevClosest));
+    CLOSEST_STORE(p, vec4(prevClosest, closest, 0.0, 0.0));
     DILATE_STORE(p, uvec4(uint(round(edge * 127.0)) | (offset != ivec2(0) ? 0x80u : 0u), encodedError, 0u, 0u));
     VECTOR_STORE(p, vec4(cg_EncodeVelocity(dilated.xy), 0.0, 0.0));
     if (_Flicker.x > 0.5) MOVING_STORE(p, vec4(moving(screen, c, closest, prevClosest, dilated.xy)));
