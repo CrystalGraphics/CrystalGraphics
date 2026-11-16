@@ -233,11 +233,11 @@ public final class CgPostRenderer {
                 }
                 ctx.input(picture);
             }
-            post.translucency.compose(ctx, picture);
+            CgUpscaler upscaler = CgTemporalAA.shows(view) ? post.upscaler(view.antiAliasing()) : null;
+            post.translucency.compose(ctx, picture, upscaler == null || !upscaler.composesTranslucency());
             CgGraphTexture glow = null;
-            if (CgTemporalAA.shows(view)) {
+            if (upscaler != null) {
                 try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporal")) {
-                    CgUpscaler upscaler = post.upscaler(view.antiAliasing());
                     CgScreenTexture jittered = picture;
                     picture = upscaler.apply(ctx, picture);
                     // Bloom's light, taken per jittered frame and averaged: past the resolve, a light thinner than a texel

@@ -13164,6 +13164,7 @@ com/crystalgraphics/render/post/tsr/CgTemporalSuperResolution
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public composesTranslucency ()Z
   method public jitterSamples (F)I
   method public materialMipBias (F)F
   method public minFraction ()F
@@ -13197,6 +13198,7 @@ com/crystalgraphics/render/post/upscale/CgUpscaler
   access public,abstract,interface
   extends java/lang/Object
   method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public composesTranslucency ()Z
   method public presents (F)Z
   method public rebuilds (F)Z
   method public,abstract apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;

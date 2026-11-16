@@ -18,11 +18,12 @@ final class CgTranslucencyComposition {
 
     private CgMaterialInstance material;
 
-    void compose(CgPostContext ctx, CgScreenTexture scene) {
+    /** Over {@code scene} unless the temporal upscaler lays it itself ({@code overScene} false), and over each graded layer. */
+    void compose(CgPostContext ctx, CgScreenTexture scene, boolean overScene) {
         CgSeparateTranslucency apart = ctx.view().read(CgSeparateTranslucency.KEY);
         if (apart == null) return;
         if (material == null) material = CgMaterial.load(SHADER).instance();
-        if (apart.target() != null) over(ctx, scene, apart.target());
+        if (overScene && apart.target() != null) over(ctx, scene, apart.target());
         CgGradeLayers layers = ctx.view().read(CgGradeLayers.KEY);
         if (layers == null) return;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {

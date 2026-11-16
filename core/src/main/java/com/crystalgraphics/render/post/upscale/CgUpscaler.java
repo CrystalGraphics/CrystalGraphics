@@ -52,6 +52,14 @@ public interface CgUpscaler {
         return false;
     }
 
+    /**
+     * Whether {@link #apply} lays the separate translucency over the picture itself ({@code CgSeparateTranslucency}): the
+     * chain then hands it over uncomposed, so the upscaler can tell it from what is under it.
+     */
+    default boolean composesTranslucency() {
+        return false;
+    }
+
     /** Resolves {@code input}, this frame's jittered picture, and answers the chain's picture after it. */
     CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input);
 

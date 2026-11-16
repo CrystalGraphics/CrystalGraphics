@@ -12,6 +12,7 @@ import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.aa.CgTemporalGlow;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgSeparateTranslucency;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.settings.CgGraphicsSettings;
@@ -24,7 +25,7 @@ import org.joml.Vector4f;
  * The engine's temporal super resolution: a view's world drawn at a fraction of its output size through a jittered
  * projection, rebuilt to the full output size from its frames. Each output pixel keeps a history of up to 16 samples,
  * gathered over the frames from wherever the jitter put each frame's pixels, and drops it where this frame shows the
- * history is no longer what is there. Runs after separate translucency and depth of field, before {@code SCENE}; what
+ * history is no longer what is there. Runs after depth of field, laying the separate translucency in itself, before {@code SCENE}; what
  * records after it (bloom, the looks, the composite, {@code OVERLAY}) runs at the output size.
  *
  * <pre>{@code
@@ -139,6 +140,12 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         return true;
     }
 
+    /** It lays the separate translucency in its reject pass: measured blurred, kept sharp. */
+    @Override
+    public boolean composesTranslucency() {
+        return true;
+    }
+
     /** Bloom's light averaged over the jitter's frames at the size drawn ({@link CgTemporalGlow}). */
     @Override
     public CgGraphTexture bloomLight(CgPostContext ctx, CgScreenTexture input, CgScreenTexture resolved, float threshold) {
@@ -194,14 +201,17 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         float fraction = (float) w / ow;
         float least = 1f / (1f + HISTORY_SAMPLES / (fraction * fraction));
         int stride = TILE - 2 * TILE_BORDER;
+        CgSeparateTranslucency apart = view.read(CgSeparateTranslucency.KEY);
+        CgGraphTexture translucency = apart != null ? apart.target() : null;
         pass = recording.compute("tsr.reject").timed(GPU_REJECT);
         d = pass.dispatchGroups(antiAliasSpatially ? rejectSpatial : reject, (w + stride - 1) / stride,
                         (h + stride - 1) / stride, 1).image("GUIDE", guideHistory)
                 .image("REJECTION", rejection).image("COLOR", color).texture("_Color", input.texture())
                 .texture("_Guide", reprojected).texture("_Mask", mask).set("_Input", w, h, 1f / w, 1f / h)
                 .set("_Jitter", jx, jy, cutFlag, 0f).set("_Frame", frame, 0f, 0f, 0f)
-                .set("_Reject", least, TILE_BORDER, stride, 0f);
+                .set("_Reject", least, TILE_BORDER, stride, translucency != null ? 1f : 0f);
         if (antiAliasSpatially) d.image("LUMA", luma).image("AA_MASK", aaMask);
+        if (translucency != null) d.texture("_Translucency", translucency);
         pass.end();
 
         if (antiAliasSpatially) {
