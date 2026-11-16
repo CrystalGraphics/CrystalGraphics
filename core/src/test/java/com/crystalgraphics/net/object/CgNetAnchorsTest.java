@@ -1,5 +1,7 @@
 package com.crystalgraphics.net.object;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -10,6 +12,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
 
+import com.crystalgraphics.platform.service.CgStorageLayout;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
@@ -33,6 +36,12 @@ public class CgNetAnchorsTest {
     static final CgNetType WARDS = CgNetType.define("test:wards").fields(CURRENT).perHolder().persisted().build();
     static final CgNetType GUARD = CgNetType.define("test:guard").fields(CURRENT).perHolder().build();
     static final CgNetType FOCUS = CgNetType.define("test:focus").fields(CURRENT).perHolder().persisted().build();
+    static final CgStorageLayout OWN = CgStorageLayout.of("ownmod");
+    static {
+        CgNetType.storage("ownmod", OWN);
+    }
+    static final CgNetType OWN_POOL = CgNetType.define("ownmod:pool").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType OWN_SHRINE = CgNetType.define("ownmod:shrine").fields(CURRENT).persisted().build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -216,15 +225,40 @@ public class CgNetAnchorsTest {
         rig.client(0).die();
         rig.tick(1);
         PlayerFiles.writeAll();
-        assertFalse("ended at death: not brought back", PlayerFiles.read(id).has(FOCUS.name()));
+        assertFalse("ended at death: not brought back", file(id, CgNetType.DEFAULT_STORAGE).has(FOCUS.name()));
         rig.client(0).respawn();
         rig.tick(1);
         assertEquals(0, FOCUS.of(id).getInt(CURRENT));
     }
 
+    @Test
+    public void aNamespaceWithItsOwnLayoutSavesUnderItsOwnFolder() {
+        UUID id = rig.client(0).id();
+        OWN_POOL.of(id).setInt(CURRENT, 7);
+        MANA.of(id).setInt(CURRENT, 3);
+        OWN_SHRINE.spawn(rig.at(0, 64, 0)).start().setInt(CURRENT, 9);
+        rig.tick(1);
+        rig.restart().tick(1);
+
+        Path world = this.world.getRoot().toPath();
+        assertTrue(Files.isRegularFile(world.resolve("ownmod").resolve("players").resolve(id + ".dat")));
+        assertTrue(Files.isRegularFile(world.resolve("ownmod").resolve("objects").resolve("shrine.dat")));
+        assertFalse("its own file alone", file(id, CgNetType.DEFAULT_STORAGE).has(OWN_POOL.name()));
+        assertFalse(file(id, OWN).has(MANA.name()));
+        assertEquals(3, saved(0, MANA));
+        assertEquals("back from its own file", 7, OWN_POOL.of(id).getInt(CURRENT));
+        int[] shrine = {0};
+        OWN_SHRINE.forEach(obj -> shrine[0] = obj.getInt(CURRENT));
+        assertEquals("back from its own folder", 9, shrine[0]);
+    }
+
     private int saved(int client, CgNetType type) {
-        CgNbtCompound file = PlayerFiles.read(rig.client(client).id());
+        CgNbtCompound file = file(rig.client(client).id(), CgNetType.storageOf(type.namespace()));
         return ((CgNbtCompound) file.get(type.name())).get("current", CgCodecs.INT);
+    }
+
+    private static CgNbtCompound file(UUID player, CgStorageLayout layout) {
+        return PlayerFiles.read(new PlayerFiles.File(player, layout));
     }
 
     @Test

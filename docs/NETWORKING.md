@@ -950,6 +950,22 @@ any player joins. A player's and an entity's per-holder ones are saved with them
   logged and starts from its fallback.
 - **Elsewhere, in the world's file** (`crystalgraphics/objects/`): objects at a point, a chunk's, a dimension's, and
   objects spawned on a player by hand (several of a type may be).
+- **A folder of your own**: by default every mod's data goes under `<world>/crystalgraphics/`. A mod that wants its
+  own, beside the files it already keeps, names a storage layout for its namespace once, at init:
+
+  ```java
+  public static final CgStorageLayout LAYOUT = CgStorageLayout.of("rpgcore");
+  CgNetType.storage("rpgcore", LAYOUT);
+  ```
+
+  | What | Default | With the layout |
+  |---|---|---|
+  | a player's per-holder objects | `<world>/crystalgraphics/players/<uuid>.dat`, shared with every mod that has none | `<world>/rpgcore/players/<uuid>.dat`, its own alone |
+  | world objects | `<world>/crystalgraphics/objects/rpgcore/<type>.dat` | `<world>/rpgcore/objects/<type>.dat` |
+  | an entity's | the entity's own data | the same |
+
+  `players/` and `objects/` are this layer's; keep your own files beside them. Only a file whose saved fields changed is
+  written, so a mod's own file is rewritten for that mod's changes alone.
 - **Not saved**: fields not persisted, `local()` fields (`persisted()` on one throws), fired objects, and objects spawned
   on an entity by hand (`spawn(CgAnchor.on(entity))` of a type that saves throws: an entity saves one object of a
   type, a per-holder one).

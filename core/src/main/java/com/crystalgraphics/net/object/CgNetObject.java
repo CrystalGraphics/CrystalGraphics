@@ -82,6 +82,8 @@ public final class CgNetObject {
     boolean offline;
     /** Server: a player's object ended because they left, its values in their file. */
     boolean leftWithPlayer;
+    /** Server: the player's file a per-holder object of theirs saves in; null for any other. */
+    PlayerFiles.File saveFile;
 
     long spawnTick;
     int lifetime = -1;

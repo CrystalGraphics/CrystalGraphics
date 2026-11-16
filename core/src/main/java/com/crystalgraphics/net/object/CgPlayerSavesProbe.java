@@ -146,9 +146,9 @@ public final class CgPlayerSavesProbe {
         }
 
         private static void verify(Test test, CgNetObject obj) {
-            UUID player = obj.player();
-            PlayerFiles.write(player);
-            CgNbtCompound all = PlayerFiles.read(player);
+            PlayerFiles.File saved = obj.saveFile;
+            PlayerFiles.write(saved);
+            CgNbtCompound all = PlayerFiles.read(saved);
             CgNbtCompound mine = all != null && all.has(Saved.TYPE.name()) && all.get(Saved.TYPE.name()) instanceof CgNbtCompound c ? c : null;
             test.stated("saves.written", mine != null, "the player's file holds " + Saved.TYPE.name());
             if (mine != null) {
@@ -160,8 +160,8 @@ public final class CgPlayerSavesProbe {
                 test.stated("saves.local", !mine.has("ticks"), "the local field is left out");
                 test.said("saves.compound", mine.toString());
             }
-            Path file = PlayerFiles.file(player);
-            test.said("saves.file", (file == null ? "<world>/crystalgraphics/players/" + player + ".dat" : file.toAbsolutePath().toString())
+            Path file = PlayerFiles.path(saved);
+            test.said("saves.file", (file == null ? "<world>/crystalgraphics/players/" + obj.player() + ".dat" : file.toAbsolutePath().toString())
                     + ", under " + Saved.TYPE.name());
             test.done();
         }

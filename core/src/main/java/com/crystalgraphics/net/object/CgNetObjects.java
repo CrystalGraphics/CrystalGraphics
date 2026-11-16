@@ -27,6 +27,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
+import com.crystalgraphics.platform.service.CgStorageLayout;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
@@ -1138,8 +1139,11 @@ public final class CgNetObjects {
     // ── Persistence ─────────────────────────────────────────────────────────────────────────────
 
     private static Path file(Path world, CgNetType type) {
-        return world.resolve("crystalgraphics").resolve("objects").resolve(type.namespace)
-                .resolve(type.name.substring(type.namespace.length() + 1) + ".dat");
+        CgStorageLayout layout = CgNetType.storageOf(type.namespace);
+        Path objects = layout.rootIn(world).resolve("objects");
+        // the shared folder keeps each namespace apart; a namespace's own needs no second level
+        if (layout == CgNetType.DEFAULT_STORAGE) objects = objects.resolve(type.namespace);
+        return objects.resolve(type.name.substring(type.namespace.length() + 1) + ".dat");
     }
 
     private static void load(CgNetType type, Path world) {

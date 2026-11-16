@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.LinkedHashSet;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,6 +30,7 @@ import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.platform.service.CgStorageLayout;
 
 /**
  * A kind of networked object: its fields, who sees it, whether it persists, and what it is on a client. Declared once,
@@ -97,6 +101,9 @@ public final class CgNetType {
     static final List<CgNetType> ON_ENTITIES = new CopyOnWriteArrayList<>();
     /** The persisted per-holder types: what an entity being saved is asked for. */
     static final List<CgNetType> SAVED_ON_ENTITIES = new CopyOnWriteArrayList<>();
+    /** Where what saves goes unless its namespace names a layout ({@link #storage}). */
+    static final CgStorageLayout DEFAULT_STORAGE = CgStorageLayout.of("crystalgraphics");
+    private static final Map<String, CgStorageLayout> STORAGE = new ConcurrentHashMap<>();
     /** The types that have had an object or a refusal: the per-tick counters' loop, never every declared type. */
     static final List<CgNetType> USED = new CopyOnWriteArrayList<>();
 
@@ -815,6 +822,49 @@ public final class CgNetType {
     /** Every declared type, in declaration order. */
     public static List<CgNetType> all() {
         return Collections.unmodifiableList(REGISTERED);
+    }
+
+    /**
+     * Saves a namespace's objects under a folder of its own in the world, instead of {@code crystalgraphics}'s: each
+     * player's under {@code <world>/<root>/players/<uuid>.dat}, its world objects under
+     * {@code <world>/<root>/objects/<type>.dat}. Entities' objects are unaffected: they save with the entity.
+     *
+     * <pre>{@code
+     * public static final CgStorageLayout LAYOUT = CgStorageLayout.of("rpgcore");
+     * CgNetType.storage("rpgcore", LAYOUT);      // at init, before the server starts
+     * // rpgcore:ki on a player   -> <world>/rpgcore/players/<uuid>.dat
+     * // rpgcore:shrine           -> <world>/rpgcore/objects/shrine.dat
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Without it, a namespace saves to {@code <world>/crystalgraphics/players/<uuid>.dat}, shared with every other
+     *       such namespace, and {@code <world>/crystalgraphics/objects/<namespace>/<type>.dat}.</li>
+     *   <li>Call it at init: what a running server already saved stays where it was.</li>
+     *   <li>One layout per namespace: a second, different one throws. Several namespaces may share one layout.</li>
+     *   <li>{@code players/} and {@code objects/} are this layer's: keep files of your own beside them.</li>
+     * </ul>
+     */
+    public static void storage(String namespace, CgStorageLayout layout) {
+        Objects.requireNonNull(namespace, "namespace");
+        Objects.requireNonNull(layout, "layout");
+        CgStorageLayout before = STORAGE.putIfAbsent(namespace, layout);
+        if (before != null && before != layout) {
+            throw new IllegalStateException(namespace + " already saves under " + before.root() + ", not " + layout.root());
+        }
+    }
+
+    /** The layout {@code namespace} saves under: its own, or {@code crystalgraphics}'s. */
+    static CgStorageLayout storageOf(String namespace) {
+        CgStorageLayout layout = STORAGE.get(namespace);
+        return layout != null ? layout : DEFAULT_STORAGE;
+    }
+
+    /** Every layout something may be saved under: the default, and each namespace's own. */
+    static Collection<CgStorageLayout> storageLayouts() {
+        Set<CgStorageLayout> all = new LinkedHashSet<>();
+        all.add(DEFAULT_STORAGE);
+        all.addAll(STORAGE.values());
+        return all;
     }
 
     /** The declared type named {@code name}, or null: what a frame, a prediction or an asset names. */
