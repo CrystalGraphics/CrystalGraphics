@@ -206,9 +206,9 @@ public final class CrystalGraphicsForge implements VariantEntry {
         // what the engine saves with an entity, in Forge's persistent data: through IForgeEntity, which the compile
         // classpath of 26 and of 1.13.2-1.14.3 does not show on Entity though the patched Entity implements it
         //? if >=1.14.4 {
-        CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getPersistentData(), true, "ForgeData"));
+        CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getPersistentData(), true));
         //?} else {
-        /*CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getEntityData(), false, "ForgeData"));   // no mixins: written as it changes
+        /*CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getEntityData(), false));   // no mixins: written as it changes
         *///?}
         if (FMLEnvironment.dist == Dist.CLIENT) PlatformServiceModern.installClient();
         CgEngineLifecycle.preInit();

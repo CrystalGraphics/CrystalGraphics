@@ -285,6 +285,7 @@ public final class CgNetObjects {
             Viewer viewer = new Viewer((CgPeer) connection.peer(), connection, takeSlot());
             VIEWERS.add(viewer);
             VIEWERS_BY_ID.put(viewer.peer.id(), viewer);
+            PlayerFiles.joined(viewer.peer.id());
             connection.router().onNotify(COMMANDS, payload -> {
                 if (payload instanceof byte[]) receiveCommands(viewer, (byte[]) payload);
             });
@@ -348,6 +349,7 @@ public final class CgNetObjects {
     /** The server is stopping: what persists is saved, and nothing carries into the next world. */
     public static void serverStopped() {
         if (started) save();
+        PlayerFiles.writeAll();
         CgNetEntities.stopping(LIVE);
         started = false;
         startedServer = null;
@@ -356,6 +358,7 @@ public final class CgNetObjects {
         FIRED.clear();
         for (CgNetType type : CgNetType.REGISTERED) type.holders.clear();
         CgNetEntities.clear(true);
+        PlayerFiles.reset();
         Arrays.fill(unsaved, false);
     }
 
@@ -365,6 +368,7 @@ public final class CgNetObjects {
     /** Sends this tick's spawns, changes, moves and despawns, one frame per player. Server thread. */
     public static void serverTick() {
         tick = CgEngineLifecycle.serverTicks();
+        if (started) PlayerFiles.tickStarted();
         List<CgNetType> types = CgNetType.USED;
         for (int t = 0; t < types.size(); t++) {
             CgNetType type = types.get(t);
@@ -380,9 +384,10 @@ public final class CgNetObjects {
         trace(types);
         if (started && tick % SAVE_EVERY == 0) {
             save();
-            CgNetEntities.flushOffline(LIVE);
+            PlayerFiles.writeAll();
         }
         CgNetEntities.tickEnded();
+        PlayerFiles.tickEnded();
     }
 
     private static void trace(List<CgNetType> types) {
@@ -465,12 +470,15 @@ public final class CgNetObjects {
                 obj.removed();
                 if (obj.holderKey != null) obj.type.holders.remove(obj.holderKey, obj);
                 CgNetEntities.dropped(obj);
+                if (PlayerFiles.owns(obj)) PlayerFiles.dropped(obj);
                 markUnsaved(obj.type);
                 serverEnded(obj);
                 continue;
             }
-            if (obj.type.persisted && CgNetEntities.savedWith(obj)) {
+            if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
                 if (obj.anyDirty) CgNetEntities.changed(obj);
+            } else if (obj.type.persisted && PlayerFiles.owns(obj)) {
+                if (obj.anyDirty) PlayerFiles.changed(obj);
             } else if (obj.anyDirty || obj.moved) {
                 markUnsaved(obj.type);
             }
@@ -629,6 +637,7 @@ public final class CgNetObjects {
                 // reads them back as they return; one made while they are away (from their file) waits for them, and a
                 // spawned one that saves waits in the world's file
                 if (viewer == null && !obj.offline && (obj.holderKey != null || !obj.type.persisted)) {
+                    if (obj.type.persisted && obj.holderKey != null) PlayerFiles.leaving(obj);
                     obj.kill();
                     return;
                 }
@@ -637,10 +646,7 @@ public final class CgNetObjects {
                     return;
                 }
                 // a new player entity (joined, respawned) saves nothing of it yet: all of it goes into the next save
-                if (player != null && player != obj.holder) {
-                    obj.offline = false;
-                    CgNetEntities.newHolder(obj);
-                }
+                if (player != null) obj.offline = false;
                 obj.holder = player;
                 obj.dormant = player == null;
                 if (player == null) return;
@@ -1174,9 +1180,9 @@ public final class CgNetObjects {
 
     private static boolean save(CgNetType type, Path world) {
         List<CgNetObject> objects = new ArrayList<>();
-        // an entity's, and a player's per-holder ones, are saved with them
+        // an entity's are saved with the entity, a player's per-holder ones in the player's file
         for (CgNetObject obj : LIVE) {
-            if (obj.type == type && obj.isLive() && !CgNetEntities.savedWith(obj)) objects.add(obj);
+            if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY && !PlayerFiles.owns(obj)) objects.add(obj);
         }
         Path file = file(world, type);
         try {
@@ -1290,5 +1296,6 @@ public final class CgNetObjects {
         startedServer = null;
         Arrays.fill(unsaved, false);
         CgNetEntities.resetSaves();
+        PlayerFiles.reset();
     }
 }

@@ -80,6 +80,8 @@ public final class CgNetObject {
     boolean unsavedOnEntity;
     /** Server: a player's object made while they are away, from their file; dormant until they join. */
     boolean offline;
+    /** Server: a player's object ended because they left, its values in their file. */
+    boolean leftWithPlayer;
 
     long spawnTick;
     int lifetime = -1;

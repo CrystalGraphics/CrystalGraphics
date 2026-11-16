@@ -566,15 +566,16 @@ public final class CgNetType {
         if (!perHolder) throw new IllegalStateException(name + " is not per holder: spawn its objects with spawn()");
         CgNetObject obj = holders.get(key);
         if (obj != null && !obj.isRemoved()) return obj;
-        // a type that saves keeps an entity's or player's values in its own saved data; an absent player's, in their file
-        Object saver = !persisted || key instanceof ChunkKey ? null
-                : key instanceof UUID ? CgPlayers.player((UUID) key) : entity;
         obj = create(anchor != null ? anchor : CgAnchor.on(entity));
         obj.holderKey = key;
         holders.put(key, obj);
-        // what it held when the game last saved its holder
-        if (saver != null) CgNetEntities.restore(obj, saver);
-        else if (persisted && key instanceof UUID) CgNetEntities.restoreOffline(obj, (UUID) key);
+        // what it held when it was last saved: a player's in their file, online or not; an entity's in its own data
+        if (persisted && key instanceof UUID) {
+            PlayerFiles.restore(obj, (UUID) key);
+            obj.offline = CgPlayers.player((UUID) key) == null;
+        } else if (persisted && !(key instanceof ChunkKey)) {
+            CgNetEntities.restore(obj, entity);
+        }
         return obj.start();
     }
 

@@ -12,20 +12,17 @@ import com.crystalgraphics.gauntlet.CgGauntletController;
 import com.crystalgraphics.gauntlet.CgGauntletState;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
-import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
-import com.crystalgraphics.world.CgEntitySaves;
-import com.crystalgraphics.world.CgWorldQueries;
 
 /**
  * The gauntlet's {@code crystalgraphics:player-saves}: a type on players with a persisted field of every kind, filled on
- * the server, saved through the player's own save and read back, so their {@code playerdata/<uuid>.dat} can be opened
- * after the game is left. A field not persisted and a local one are set too, and must not be there.
+ * the server, written to the player's file and read back, so {@code <world>/crystalgraphics/players/<uuid>.dat} can be
+ * looked at after. A field not persisted and a local one are set too, and must not be there.
  *
  * <pre>{@code
  * ./gradlew :runtime:mc:modern:forge:1.20.1:runClient -Dcrystalgraphics.gauntlet=crystalgraphics:player-saves
- * // then leave the world: <world>/playerdata/<uuid>.dat holds ForgeData.crystalgraphics."cgprobe:player_saves"
+ * // the log's saves.compound line is what <world>/crystalgraphics/players/<uuid>.dat holds
  * }</pre>
  */
 public final class CgPlayerSavesProbe {
@@ -135,7 +132,7 @@ public final class CgPlayerSavesProbe {
                     .set(Saved.STATS, Map.of("strength", 12, "ki", 30))
                     .set(Saved.RIVAL, UUID.fromString("00000000-0000-0000-0000-0000000000a1"))
                     .setInt(Saved.TARGET, 7).setInt(Saved.TICKS, 99);
-            // the tick's end marks it unsaved; the player's own save writes it, as the game's next save will
+            // written at the next tick, as the world's save would
             CgEngineLifecycle.onServerTick(new Runnable() {
                 boolean done;
 
@@ -149,11 +146,11 @@ public final class CgPlayerSavesProbe {
         }
 
         private static void verify(Test test, CgNetObject obj) {
-            Object player = obj.entity();
-            CgEntitySaves.saving(player);
-            CgNbtCompound all = CgEntitySaves.read(player);
-            CgNbtCompound mine = all.has(Saved.TYPE.name()) && all.get(Saved.TYPE.name()) instanceof CgNbtCompound c ? c : null;
-            test.stated("saves.written", mine != null, "the player's compound holds " + Saved.TYPE.name());
+            UUID player = obj.player();
+            PlayerFiles.write(player);
+            CgNbtCompound all = PlayerFiles.read(player);
+            CgNbtCompound mine = all != null && all.has(Saved.TYPE.name()) && all.get(Saved.TYPE.name()) instanceof CgNbtCompound c ? c : null;
+            test.stated("saves.written", mine != null, "the player's file holds " + Saved.TYPE.name());
             if (mine != null) {
                 StringBuilder missing = new StringBuilder();
                 for (String field : SAVED) if (!mine.has(field)) missing.append(' ').append(field);
@@ -163,11 +160,9 @@ public final class CgPlayerSavesProbe {
                 test.stated("saves.local", !mine.has("ticks"), "the local field is left out");
                 test.said("saves.compound", mine.toString());
             }
-            Path world = CgWorldQueries.saveDirectory(CgNetObjects.server());
-            String[] path = CgPlatform.get(CgEntitySaves.HOST).savedPath();
-            test.said("saves.file", (world == null ? "<world>" : world.toAbsolutePath().toString()) + "/playerdata/"
-                    + obj.player() + ".dat, under " + (path == null ? "?" : String.join(".", path)) + "." + Saved.TYPE.name()
-                    + ", written as the game next saves the player: leave the world");
+            Path file = PlayerFiles.file(player);
+            test.said("saves.file", (file == null ? "<world>/crystalgraphics/players/" + player + ".dat" : file.toAbsolutePath().toString())
+                    + ", under " + Saved.TYPE.name());
             test.done();
         }
     }

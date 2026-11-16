@@ -17,7 +17,7 @@ import net.minecraft.world.entity.Entity;
  * {@code EntitySaveHook} adds and saves. Server thread.
  *
  * <pre>{@code
- * CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(Entity::getPersistentData, true, "ForgeData"));   // a loader's entry
+ * CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(Entity::getPersistentData, true));   // a loader's entry
  * }</pre>
  */
 public final class EntitySavesModern implements CgEntitySaves.Host {
@@ -27,25 +27,14 @@ public final class EntitySavesModern implements CgEntitySaves.Host {
 
     private final Function<Entity, CompoundTag> root;
     private final boolean hooked;
-    private final String[] path;
 
     /**
      * {@code root}: the compound, saved with an entity, that the key lives in; {@code hooked}: whether the loader's
-     * {@code EntitySaveHook} calls {@link CgEntitySaves#saving} at the head of each entity's save; {@code saved}: the key
-     * the loader saves {@code root} under in the entity's file ({@code "ForgeData"}), none where {@code root} is the
-     * file's own.
+     * {@code EntitySaveHook} calls {@link CgEntitySaves#saving} at the head of each entity's save.
      */
-    public EntitySavesModern(Function<Entity, CompoundTag> root, boolean hooked, String... saved) {
+    public EntitySavesModern(Function<Entity, CompoundTag> root, boolean hooked) {
         this.root = root;
         this.hooked = hooked;
-        this.path = new String[saved.length + 1];
-        System.arraycopy(saved, 0, path, 0, saved.length);
-        path[saved.length] = KEY;
-    }
-
-    @Override
-    public String[] savedPath() {
-        return path;
     }
 
     @Override
