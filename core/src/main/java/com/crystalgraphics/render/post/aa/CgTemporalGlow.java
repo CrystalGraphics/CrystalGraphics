@@ -70,7 +70,7 @@ public final class CgTemporalGlow {
      * 1 where every engine solid wrote velocity this frame ({@code requestVelocityWithStill}): a texel nothing wrote round
      * is then one the engine did not draw, which comes through as it came. 0 without it: every texel is the engine's.
      */
-    static float coversEngine(CgPostContext ctx, @Nullable CgGraphTexture velocity) {
+    public static float coversEngine(CgPostContext ctx, @Nullable CgGraphTexture velocity) {
         return velocity != null && ctx.view().textures().velocityWithStill() ? 1f : 0f;
     }
 }

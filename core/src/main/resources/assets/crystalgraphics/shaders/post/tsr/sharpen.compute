@@ -1,10 +1,13 @@
 // TSR's sharpen pass (CgTemporalSuperResolution), at the output size: the resolved picture sharpened by RCAS
-// (lib/rcas.glsl), as temporal AA's output is, giving back what the history's blend of jittered samples softens.
+// (lib/rcas.glsl), as temporal AA's output is, giving back what the history's blend of jittered samples softens. Where
+// the engine drew nothing (a host's world, which draws unjittered) the picture comes through unsharpened.
 #pragma kernel Sharpen 8 8 image
 
 Properties {
     _Source  ("The resolved picture, at the output size", sampler2D) = "black"
-    _Sharpen ("x RCAS's sharpness, 2^-stops (1 its most)", vec4) = (1, 0, 0, 0)
+    _Sharpen ("x RCAS's sharpness, 2^-stops (1 its most); y 1 where every engine solid writes velocity", vec4) = (1, 0, 0, 0)
+    _Velocity ("What the velocity pass wrote, at the input size, 0 where it wrote nothing", sampler2D) = "black"
+    _Responsive ("1 where a blended draw covered, at the input size", sampler2D) = "black"
 }
 
 Images {
@@ -12,6 +15,7 @@ Images {
 }
 
 #include "crystalgraphics:shaders/lib/rcas.glsl"
+#include "crystalgraphics:shaders/lib/velocity.glsl"
 
 vec3 load(ivec2 q, ivec2 last) {
     return rcas_encode(texelFetch(_Source, clamp(q, ivec2(0), last), 0).rgb);
@@ -20,6 +24,13 @@ vec3 load(ivec2 q, ivec2 last) {
 void Sharpen() {
     ivec2 p = CG_TEXEL.xy;
     ivec2 last = textureSize(_Source, 0) - 1;
+    if (_Sharpen.y > 0.5) {
+        ivec2 at = ivec2((vec2(p) + 0.5) * vec2(textureSize(_Velocity, 0)) / vec2(last + 1));
+        if (texelFetch(_Responsive, at, 0).r < 0.5 && !cg_EngineDrew(_Velocity, at)) {
+            PICTURE_WRITE(vec4(texelFetch(_Source, p, 0).rgb, 1.0));
+            return;
+        }
+    }
     vec3 sharp = rcas(load(p + ivec2(0, -1), last), load(p + ivec2(-1, 0), last), load(p, last), load(p + ivec2(1, 0), last),
             load(p + ivec2(0, 1), last), _Sharpen.x);
     PICTURE_WRITE(vec4(rcas_decode(sharp), 1.0));

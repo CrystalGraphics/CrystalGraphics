@@ -384,8 +384,10 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         if (lookHistory != null) view.publish(CgLookWeights.RESOLVED, lookHistory);
         if (sharpness > 0f) {
             pass = recording.compute("tsr.sharpen").timed(GPU_SHARPEN);
-            pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", output)
-                    .set("_Sharpen", sharpness, 0f, 0f, 0f);
+            CgDispatch s = pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", output)
+                    .set("_Sharpen", sharpness, CgTemporalGlow.coversEngine(ctx, velocity), 0f, 0f);
+            if (velocity != null) s.texture("_Velocity", velocity);
+            if (responsive != null) s.texture("_Responsive", responsive);
             pass.end();
         }
         int mode = debugMode(CgPostDebug.VIEW.get());

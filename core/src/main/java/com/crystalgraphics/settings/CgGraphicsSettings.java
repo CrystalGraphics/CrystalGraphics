@@ -34,7 +34,7 @@ public final class CgGraphicsSettings {
     public static final CgSetting.Choice<CgQuality> ANTI_ALIASING = FILE.choice("rendering", "anti_aliasing", "Anti-aliasing",
             "How much temporal super resolution does where the picture changes. Low lets a newly seen edge smooth over a few"
                     + " frames; Medium and High smooth it at once; Ultra follows each edge farther.",
-            CgQuality.ULTRA);
+            CgQuality.LOW);
 
     public static final CgSetting.Number SHAKE = FILE.number("comfort", "shake", "Camera shake",
             "Scales camera shake, on top of Minecraft's Screen Effects.", 1f, 0f, 1f, 0.05f);

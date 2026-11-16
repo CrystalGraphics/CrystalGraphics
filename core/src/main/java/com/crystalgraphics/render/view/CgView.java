@@ -69,6 +69,8 @@ public final class CgView {
     private static final Logger LOGGER = LogManager.getLogger("CgView");
     /** The least screen percentage a view draws at. */
     public static final float MIN_SCREEN_PERCENTAGE = 25f;
+    /** The screen percentage a view asked for none draws at while TSR rebuilds its picture: TSR Low's at 1440p. */
+    public static final float TSR_SCREEN_PERCENTAGE = 67f;
     /**
      * Unreal's display-based screen percentage ({@code [Rendering.AutoScreenPercentage]}): 16:9 display heights and the
      * heights drawn for them, a display of 720 lines drawing 720, of 2160 drawing 1080, of 4320 drawing 1440.
@@ -106,7 +108,7 @@ public final class CgView {
             showOnly = Collections.newSetFromMap(new IdentityHashMap<>());
     /** The size its world draws at this frame, and the size it presents at: the host's or the target's. */
     private int width, height, outputWidth, outputHeight;
-    private float screenPercentage = 100f, fraction = 1f;
+    private float screenPercentage = Float.NaN, fraction = 1f;
     private boolean screenPercentageAuto, refusedWarned;
     private CgUpscaleFilter upscaleFilter = CgUpscaleFilter.CATMULL_ROM;
     private CgAntiAliasing antiAliasing = CgAntiAliasing.TSR;
@@ -264,8 +266,9 @@ public final class CgView {
 
     /**
      * Draws its world at {@code percent} of its size on each axis and upscales it to its target (Unreal's
-     * {@code r.ScreenPercentage}): 50 draws a quarter of the pixels. 100 by default, clamped to
-     * {@value #MIN_SCREEN_PERCENTAGE} to 100.
+     * {@code r.ScreenPercentage}): 50 draws a quarter of the pixels. Clamped to {@value #MIN_SCREEN_PERCENTAGE} to 100.
+     * Asked for none, {@value #TSR_SCREEN_PERCENTAGE} while TSR rebuilds the picture (the {@code temporalAA} show flag
+     * on, {@link CgAntiAliasing#TSR}) and 100 otherwise.
      *
      * <pre>{@code
      * viewport.screenPercentage(67f);                       // two thirds wide and high, upscaled to the viewport
@@ -285,9 +288,10 @@ public final class CgView {
         return this;
     }
 
-    /** The screen percentage asked for: what {@link #screenPercentage(float)} set. */
+    /** The screen percentage it draws at unless {@link #screenPercentageAuto()}: the one asked for, else the default. */
     public float screenPercentage() {
-        return screenPercentage;
+        if (!Float.isNaN(screenPercentage)) return screenPercentage;
+        return showFlags.temporalAA() && antiAliasing == CgAntiAliasing.TSR ? TSR_SCREEN_PERCENTAGE : 100f;
     }
 
     /**
@@ -694,7 +698,7 @@ public final class CgView {
     public CgView size(int width, int height, boolean scales) {
         outputWidth = width;
         outputHeight = height;
-        float asked = screenPercentageAuto ? autoFraction(width, height) : screenPercentage / 100f;
+        float asked = screenPercentageAuto ? autoFraction(width, height) : screenPercentage() / 100f;
         if (asked < 1f && !scales && !refusedWarned) {
             refusedWarned = true;
             LOGGER.warn("view {} asks to draw at {}%, but its host draws a world of its own: drawn at 100%", name,

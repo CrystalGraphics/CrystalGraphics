@@ -15,16 +15,6 @@ vec2 cg_DecodeVelocity(vec2 encoded) {
     return (encoded - 32767.0 / 65535.0) / (0.499 * 0.5);
 }
 
-// Fragment stage: they read the scene's depth as a world point (cg_DepthToWorld)
-#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
-// The camera's own motion at uv (0 to 1, bottom left) for window depth windowDepth: the point reconstructed in this
-// pass's camera-relative world, projected by last frame's view (cg_PrevViewProj). 0 where there is no history.
-vec2 cg_CameraVelocity(vec2 uv, float windowDepth) {
-    if (!CG_HISTORY_VALID) return vec2(0.0);
-    vec4 previous = cg_PreviousClip(cg_DepthToWorld(uv, windowDepth));
-    return uv * 2.0 - 1.0 - previous.xy / previous.w;
-}
-
 // Whether the velocity pass wrote at texel at or beside it: with every engine solid writing
 // (CgSceneTextures.requestVelocityWithStill), whether the engine drew there, its edges' outer texels included.
 bool cg_EngineDrew(sampler2D velocity, ivec2 at) {
@@ -33,6 +23,16 @@ bool cg_EngineDrew(sampler2D velocity, ivec2 at) {
         if (texelFetch(velocity, clamp(at + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).x > 0.0) return true;
     }
     return false;
+}
+
+// Fragment stage: they read the scene's depth as a world point (cg_DepthToWorld)
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+// The camera's own motion at uv (0 to 1, bottom left) for window depth windowDepth: the point reconstructed in this
+// pass's camera-relative world, projected by last frame's view (cg_PrevViewProj). 0 where there is no history.
+vec2 cg_CameraVelocity(vec2 uv, float windowDepth) {
+    if (!CG_HISTORY_VALID) return vec2(0.0);
+    vec4 previous = cg_PreviousClip(cg_DepthToWorld(uv, windowDepth));
+    return uv * 2.0 - 1.0 - previous.xy / previous.w;
 }
 
 // The pixel's velocity: what the velocity pass wrote there, else the camera's motion over its depth.
