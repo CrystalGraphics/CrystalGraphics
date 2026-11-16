@@ -30,6 +30,7 @@ public final class GLFormats {
         put(CgFormat.R16_FLOAT, GL_R16F, GL_RED, GL_HALF_FLOAT);
         put(CgFormat.R16_UINT, GL_R16UI, GL_RED_INTEGER, GL_UNSIGNED_SHORT);
         put(CgFormat.R16_SINT, GL_R16I, GL_RED_INTEGER, GL_SHORT);
+        put(CgFormat.RG16_UNORM, GL_RG16, GL_RG, GL_UNSIGNED_SHORT);
         put(CgFormat.RG16_FLOAT, GL_RG16F, GL_RG, GL_HALF_FLOAT);
         put(CgFormat.RG16_UINT, GL_RG16UI, GL_RG_INTEGER, GL_UNSIGNED_SHORT);
         put(CgFormat.RG16_SINT, GL_RG16I, GL_RG_INTEGER, GL_SHORT);

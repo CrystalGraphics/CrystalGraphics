@@ -774,6 +774,7 @@ com/crystalgraphics/platform/gl/driver/GLC
   field public,static,final GL_REPEAT I
   field public,static,final GL_REPLACE I
   field public,static,final GL_RG I
+  field public,static,final GL_RG16 I
   field public,static,final GL_RG16F I
   field public,static,final GL_RG16I I
   field public,static,final GL_RG16UI I
@@ -2200,6 +2201,7 @@ com/crystalgraphics/platform/rhi/format/CgFormat
   field public,static,final RG16_FLOAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final RG16_SINT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final RG16_UINT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  field public,static,final RG16_UNORM Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final RG32_FLOAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final RG32_SINT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final RG32_UINT Lcom/crystalgraphics/platform/rhi/format/CgFormat;

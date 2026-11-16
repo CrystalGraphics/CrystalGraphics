@@ -20,7 +20,7 @@ public enum CgFormat {
     RGBA8_UNORM(4), RGBA8_SNORM(4), RGBA8_UINT(4, Numeric.INT), RGBA8_SINT(4, Numeric.INT), RGBA8_SRGB(4),
     BGRA8_UNORM(4),
     R16_FLOAT(2), R16_UINT(2, Numeric.INT), R16_SINT(2, Numeric.INT),
-    RG16_FLOAT(4), RG16_UINT(4, Numeric.INT), RG16_SINT(4, Numeric.INT),
+    RG16_UNORM(4), RG16_FLOAT(4), RG16_UINT(4, Numeric.INT), RG16_SINT(4, Numeric.INT),
     RGBA16_FLOAT(8), RGBA16_UINT(8, Numeric.INT), RGBA16_SINT(8, Numeric.INT),
     R32_FLOAT(4), R32_UINT(4, Numeric.INT), R32_SINT(4, Numeric.INT),
     RG32_FLOAT(8), RG32_UINT(8, Numeric.INT), RG32_SINT(8, Numeric.INT),
