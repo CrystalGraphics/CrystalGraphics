@@ -18,6 +18,7 @@ import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
+import org.joml.Matrix4d;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -112,6 +113,11 @@ public abstract class CgEntityActor {
     /** The reaction playing, until it ends or the next replaces it. */
     @Nullable
     private CgSequencePlayer reacting;
+    /** Its body's grip sockets, found once for the body they were found on. */
+    @Nullable
+    private CgSkeletalMeshComponent gripBody;
+    private int rightGrip, leftGrip;
+    private final Matrix4d grip = new Matrix4d();
     /** What its reactions' rules read its entity through; made with its first reaction. */
     @Nullable
     private CgReaction.Probe probe;
@@ -235,6 +241,42 @@ public abstract class CgEntityActor {
             if (first[0] == null) first[0] = s;
         });
         return first[0];
+    }
+
+    /**
+     * Where its body holds {@code hand}'s item this frame (the entity's {@code CgEntityProperties.MAIN} or {@code OFF}):
+     * the grip socket's transform into {@code out}, in blocks, from the entity's feet where the host draws it, unturned.
+     * The right arm holds the main hand unless the entity is left-handed. A grip socket is {@code right_hand_item} and
+     * {@code left_hand_item}, else the hand's own, {@code right_hand} and {@code left_hand}.
+     *
+     * @return {@link CgEntityActors#RIGHT} or {@link CgEntityActors#LEFT}, the arm holding it; {@link CgEntityActors#NO_GRIP}
+     *         where it has no body or the body no such socket
+     */
+    final int grip(int hand, Matrix4f out) {
+        CgSkeletalMeshComponent body = body();
+        if (body == null) return CgEntityActors.NO_GRIP;
+        CgAnimInstance anim = body.anim();
+        if (body != gripBody) {
+            gripBody = body;
+            rightGrip = socket(anim, "right_hand_item", "right_hand");
+            leftGrip = socket(anim, "left_hand_item", "left_hand");
+        }
+        CgNetObject motion = entity.properties(CgEntityProperties.MOTION);
+        boolean leftHanded = motion != null && motion.getBool(CgEntityProperties.LEFT_HANDED);
+        boolean right = (hand == CgEntityProperties.MAIN) != leftHanded;
+        int socket = right ? rightGrip : leftGrip;
+        if (socket == CgAnimInstance.NO_SOCKET) return CgEntityActors.NO_GRIP;
+        anim.socket(socket, out);
+        grip.set(body.worldTransform()).mul(out.m00(), out.m01(), out.m02(), out.m03(), out.m10(), out.m11(), out.m12(), out.m13(),
+                out.m20(), out.m21(), out.m22(), out.m23(), out.m30(), out.m31(), out.m32(), out.m33(), grip);
+        grip.translateLocal(-entity.x(), -entity.y(), -entity.z());
+        out.set(grip);
+        return right ? CgEntityActors.RIGHT : CgEntityActors.LEFT;
+    }
+
+    private static int socket(CgAnimInstance anim, String grip, String hand) {
+        int s = anim.socket(grip);
+        return s != CgAnimInstance.NO_SOCKET ? s : anim.socket(hand);
     }
 
     /**

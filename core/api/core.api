@@ -24549,10 +24549,14 @@ com/crystalgraphics/world/actor/CgEntityActor
 com/crystalgraphics/world/actor/CgEntityActors
   access public,final
   extends com/crystalgraphics/frame/CgWorldSubsystem
+  field public,static,final LEFT I
+  field public,static,final NO_GRIP I
+  field public,static,final RIGHT I
   method public <init> ()V
   method public,static actor (I)Lcom/crystalgraphics/world/actor/CgEntityActor;
   method public,static bind (ILjava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static bindLocalPlayer (Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
+  method public,static grip (IILorg/joml/Matrix4f;)I
   method public,static plain ()Ljava/util/function/Supplier;
   method public,static preload (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;

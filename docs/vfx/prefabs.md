@@ -559,6 +559,12 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern")
 - **What a host does**: `CgNetEntities.entered(id, type)` when an entity joins the client's level, `left(id)` when it
   leaves (its properties and its actor both hear it), and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
   entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
+- **What it holds draws in its hands.** The host's renderer draws each hand's item stack, Minecraft's own model in its
+  third-person display, where the actor's body holds it: its skeleton's grip socket, `right_hand_item` or
+  `left_hand_item`, else the hand's own, `right_hand` or `left_hand` (a grip is a hand's pose for an item, in
+  Minecraft's held-item frame). The right arm holds the main hand unless the entity is left-handed. A body with neither
+  socket draws no items. Every era from 1.15, and legacy Forge and 1.7.10 (one hand on 1.7.10 and 1.8.9); below 1.15
+  the hands draw nothing. `CgEntityActors.grip(id, hand, out)` is what a host reads.
 - **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
   target with a prefab on its root, following it, its model left to the actor, and gone with it.
 

@@ -9,7 +9,8 @@ import java.util.WeakHashMap;
 
 /**
  * The renderer an entity with an actor is drawn through instead of its own, Forge 1.8.9 to 1.12.2: its name tag, asked
- * of the real renderer, and the base renderer's shadow and fire at the real one's size; never its model. The
+ * of the real renderer, the base renderer's shadow and fire at the real one's size, and the items it holds where its
+ * actor's body holds them ({@link HeldItemsLegacy}); never its model. The
  * dispatcher draws the hitbox. One per real renderer, made the first time an actor's entity reaches it.
  */
 public final class ActorRenderLegacy extends Render<Entity> {
@@ -34,6 +35,12 @@ public final class ActorRenderLegacy extends Render<Entity> {
         made.shadowSize = made.host.crystalgraphics$shadowSize();
         made.shadowOpaque = made.host.crystalgraphics$shadowOpaque();
         return made;
+    }
+
+    @Override
+    public void doRender(Entity entity, double x, double y, double z, float yaw, float partialTicks) {
+        super.doRender(entity, x, y, z, yaw, partialTicks);
+        HeldItemsLegacy.render(entity, x, y, z);
     }
 
     @Override

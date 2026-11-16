@@ -58,6 +58,7 @@ public final class ActorsModern {
         if (!CgEntityActors.replacesModel(entity.getId())) return;
         if (marks == marked.length) marked = Arrays.copyOf(marked, marks * 2);
         marked[marks++] = state;
+        HeldItemsModern.extracted(entity, state);
     }
 
     /^* The renderer a state is submitted through: {@code found}, or its stand-in for a kept state. ^/

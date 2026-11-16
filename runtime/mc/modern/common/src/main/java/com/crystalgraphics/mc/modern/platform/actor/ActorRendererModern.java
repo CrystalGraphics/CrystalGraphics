@@ -43,7 +43,7 @@ import net.minecraft.world.phys.Vec3;
 
 /**
  * The renderer an entity with an actor is drawn through instead of its own: everything its own renderer draws but its
- * model. Its name tag and leash are the base renderer's, asked of the real one (a player's keeps its score line); its
+ * model, and the items it holds where its actor's body holds them ({@link HeldItemsModern}). Its name tag and leash are the base renderer's, asked of the real one (a player's keeps its score line); its
  * shadow, fire and hitbox are the dispatcher's, from the real one's state or radius. One per real renderer, made the
  * first time an actor's entity reaches it and dropped when the host rebuilds its renderers.
  *
@@ -131,6 +131,12 @@ public final class ActorRendererModern extends EntityRenderer {
         return real.getRenderOffset(state);
     }
 
+    @Override
+    public void submit(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector nodes, CameraRenderState camera) {
+        super.submit(state, poseStack, nodes, camera);
+        HeldItemsModern.submit(state, poseStack, nodes);
+    }
+
     //? if >=26.1 {
     /^@Override
     protected void submitNameDisplay(EntityRenderState state, PoseStack poseStack, SubmitNodeCollector nodes, CameraRenderState camera) {
@@ -151,11 +157,18 @@ public final class ActorRendererModern extends EntityRenderer {
     @Override
     public void extractRenderState(Entity entity, EntityRenderState state, float partialTick) {
         real.extractRenderState(entity, state, partialTick);
+        HeldItemsModern.extracted(entity, state);
     }
 
     @Override
     public Vec3 getRenderOffset(EntityRenderState state) {
         return real.getRenderOffset(state);
+    }
+
+    @Override
+    public void render(EntityRenderState state, PoseStack poseStack, MultiBufferSource buffers, int light) {
+        super.render(state, poseStack, buffers, light);
+        HeldItemsModern.render(state, poseStack, buffers, light);
     }
 
     @Override
@@ -168,6 +181,12 @@ public final class ActorRendererModern extends EntityRenderer {
         host.crystalgraphics$renderNameTag(state, name, poseStack, buffers, light);
     }
     *///?} elif >=1.15 {
+    @Override
+    public void render(Entity entity, float yaw, float partialTick, PoseStack poseStack, MultiBufferSource buffers, int light) {
+        super.render(entity, yaw, partialTick, poseStack, buffers, light);
+        HeldItemsModern.render(entity, poseStack, buffers, light);
+    }
+
     @Override
     public ResourceLocation getTextureLocation(Entity entity) {
         return real.getTextureLocation(entity);

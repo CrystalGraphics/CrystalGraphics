@@ -11,7 +11,8 @@ import java.util.WeakHashMap;
 
 /**
  * The renderer an entity with an actor is drawn through instead of its own, on 1.7.10: a living entity's name tag,
- * asked of its real renderer, and the base renderer's shadow and fire at the real one's size; never its model. The
+ * asked of its real renderer, the base renderer's shadow and fire at the real one's size, and the item it holds where
+ * its actor's body holds it ({@link HeldItems1710}); never its model. The
  * render manager draws the hitbox. One per real renderer, made the first time an actor's entity reaches it.
  */
 public final class ActorRender1710 extends Render {
@@ -44,6 +45,7 @@ public final class ActorRender1710 extends Render {
         if (real instanceof HostRender1710.Living && entity instanceof EntityLivingBase) {
             ((HostRender1710.Living) real).crystalgraphics$passSpecialRender((EntityLivingBase) entity, x, y, z);
         }
+        if (entity instanceof EntityLivingBase) HeldItems1710.render((EntityLivingBase) entity, x, y, z);
     }
 
     @Override

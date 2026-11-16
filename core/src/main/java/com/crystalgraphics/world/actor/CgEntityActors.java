@@ -33,6 +33,7 @@ import com.crystalgraphics.world.CgEntityTags;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
@@ -123,6 +124,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
     private static final Live[] NONE = new Live[0];
     private static final int BY_TYPE = Integer.MIN_VALUE, LOCAL_PLAYER = -1;
     private static final List<Registration> BINDINGS = new CopyOnWriteArrayList<>();
+
+    /** What {@link #grip} answers: no grip, or the arm holding the hand's item. */
+    public static final int NO_GRIP = 0, RIGHT = 1, LEFT = 2;
 
     /** The client world's, while it has one: what the host's per-entity questions read without a lookup. */
     @Nullable
@@ -437,6 +441,39 @@ public final class CgEntityActors extends CgWorldSubsystem {
         CgEntityActors actors = client;
         Live l = actors == null ? null : actors.find(id);
         return l == null ? null : l.actor;
+    }
+
+    /**
+     * Where entity {@code id}'s actor holds {@code hand}'s item this frame ({@code CgEntityProperties.MAIN} or {@code OFF}):
+     * what a host's renderer draws the hand's item stack at, in place of its model's hands. The grip socket's transform
+     * into {@code out}, in blocks, from the entity's feet where the host draws it, unturned: the host's pose at the
+     * entity times {@code out}, then the item in its third-person display for the arm answered.
+     *
+     * <pre>{@code
+     * // a host's actor renderer, its pose stack at the entity
+     * int arm = CgEntityActors.grip(entity.getId(), CgEntityProperties.MAIN, grip);
+     * if (arm != CgEntityActors.NO_GRIP && !stack.isEmpty()) {
+     *     poseStack.pushPose();
+     *     poseStack.mulPose(grip);
+     *     items.renderStatic(entity, stack, arm == CgEntityActors.LEFT ? THIRD_PERSON_LEFT_HAND : THIRD_PERSON_RIGHT_HAND, ...);
+     *     poseStack.popPose();
+     * }
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A grip socket is where and how the hand holds an item, in Minecraft's held-item frame: {@code right_hand_item}
+     *       and {@code left_hand_item}, else the hand's own sockets, {@code right_hand} and {@code left_hand}.</li>
+     *   <li>The right arm holds the main hand unless the entity is left-handed.</li>
+     *   <li>The client's render thread, after the frame's poses: any time the host draws the entity.</li>
+     * </ul>
+     *
+     * @return {@link #RIGHT} or {@link #LEFT}; {@link #NO_GRIP} where the entity has no actor, its actor no body, or
+     *         its body no such socket
+     */
+    public static int grip(int id, int hand, Matrix4f out) {
+        CgEntityActors actors = client;
+        Live l = actors == null ? null : actors.find(id);
+        return l == null ? NO_GRIP : l.actor.grip(hand, out);
     }
 
     /** How many actors live on this client. */

@@ -1,5 +1,10 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.net.object.CgNetObject;
@@ -11,6 +16,8 @@ import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.world.CgEntityProperties;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -199,6 +206,39 @@ public class CgEntityActorsTest {
         assertEquals(1, bound.removed);
         assertNull(CgEntityActors.actor(7));
         assertFalse("the host's model again", CgEntityActors.replacesModel(7));
+    }
+
+    /** A body whose right hand is a bone 0.3 to the side, 1.2 up and 0.1 ahead, and whose left hand has a grip socket. */
+    static final class Holding extends CgEntityActor {
+        @Override
+        protected void onSpawn(CgEntity entity) {
+            CgSkeleton skeleton = CgSkeleton.builder().bone("root", null, new Vector3f())
+                    .bone("right_hand", "root", new Vector3f(0.3f, 1.2f, 0.1f))
+                    .bone("left_hand", "root", new Vector3f(-0.3f, 1.2f, 0.1f)).build();
+            CgSkeletalMesh mesh = CgSkeletalMesh.builder(CgMesh.build(CgVertexFormat.SKINNED, m -> {
+            }), skeleton).socket(CgSocket.of("left_hand_item", "left_hand", new Vector3f(0f, -0.1f, 0f))).build();
+            add(scene().skeletal(mesh));
+        }
+    }
+
+    @Test
+    public void anActorsBodyHoldsEachHandsItemAtItsGrip() {
+        registration = CgEntityActors.register("test:walker", Holding::new);
+        CgNetEntities.entered(7, "test:walker");
+        walker.x = 5;
+        CgWorld.client().frame(null);
+        Matrix4f grip = new Matrix4f();
+        Vector3f at = new Vector3f();
+        assertEquals("the main hand in the right arm", CgEntityActors.RIGHT, CgEntityActors.grip(7, CgEntityProperties.MAIN, grip));
+        grip.getTranslation(at);
+        // body yaw 180: the root turned half round, so the hand's +x and +z land at -x and -z of the feet
+        assertEquals(-0.3f, at.x, 1e-4f);
+        assertEquals(1.2f, at.y, 1e-4f);
+        assertEquals(-0.1f, at.z, 1e-4f);
+        assertEquals(CgEntityActors.LEFT, CgEntityActors.grip(7, CgEntityProperties.OFF, grip));
+        grip.getTranslation(at);
+        assertEquals("the off hand at its grip socket, under its hand", 1.1f, at.y, 1e-4f);
+        assertEquals(CgEntityActors.NO_GRIP, CgEntityActors.grip(8, CgEntityProperties.MAIN, grip));
     }
 
     @Test
