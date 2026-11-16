@@ -382,6 +382,22 @@ public final class CgNetType {
         return entity == null ? null : CgNetObjects.clientHolder(this, CgEntityQueries.idOf(entity));
     }
 
+    /**
+     * Client: this client's copy of a per-holder type's object on entity {@code entityId} (its network id), or null while
+     * it sees none. As {@link #find} answers on a client, for a caller holding the id rather than the entity. Allocates
+     * nothing.
+     */
+    @Nullable
+    public CgNetObject findOnClient(int entityId) {
+        if (!perHolder) throw new IllegalStateException(name + " is not per holder: findOnClient answers per-holder types");
+        return CgNetObjects.clientHolder(this, entityId);
+    }
+
+    /** Whether its objects come one per holder ({@link Builder#perHolder}). */
+    public boolean isPerHolder() {
+        return perHolder;
+    }
+
     /** A per-holder type's object for a chunk, started if it was absent. Server thread. */
     public CgNetObject ofChunk(Object levelOrDimension, int chunkX, int chunkZ) {
         CgAnchor anchor = CgAnchor.chunk(levelOrDimension, chunkX, chunkZ);
@@ -559,9 +575,9 @@ public final class CgNetType {
         return Collections.unmodifiableList(REGISTERED);
     }
 
-    /** The declared type named {@code name}, or null: what a frame or a prediction names. */
+    /** The declared type named {@code name}, or null: what a frame, a prediction or an asset names. */
     @Nullable
-    static CgNetType named(String name) {
+    public static CgNetType named(String name) {
         for (int i = 0; i < REGISTERED.size(); i++) {
             CgNetType type = REGISTERED.get(i);
             if (type.name.equals(name)) return type;

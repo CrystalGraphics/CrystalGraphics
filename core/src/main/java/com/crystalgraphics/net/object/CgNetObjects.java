@@ -181,6 +181,10 @@ public final class CgNetObjects {
     /** Client: this client's per-holder object of {@code type} riding entity {@code entityId}, or null. */
     @Nullable
     static CgNetObject clientHolder(CgNetType type, int entityId) {
+        if (local != null) {
+            ClientObjects objects = local.get();
+            return objects == null ? null : objects.holder(type, entityId);
+        }
         CgProtocolConnection<Object> connection = CgNetwork.client();
         if (connection == null || !connection.hasAttachment(ClientObjects.class)) return null;
         return connection.attachment(ClientObjects.class, ClientObjects::new).holder(type, entityId);

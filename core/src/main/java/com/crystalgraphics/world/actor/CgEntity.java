@@ -1,12 +1,17 @@
 package com.crystalgraphics.world.actor;
 
-import com.crystalgraphics.platform.world.CgEntityQuery;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.tag.CgTagCounts;
+import com.crystalgraphics.world.CgEntityEvent;
+import com.crystalgraphics.world.CgEntityFields;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityState;
-import com.crystalgraphics.world.CgEntityVariables;
 
 /**
  * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
@@ -14,9 +19,12 @@ import com.crystalgraphics.world.CgEntityVariables;
  *
  * <pre>{@code
  * protected void tick(CgEntity dragon, float dt) {
- *     CgEntityState s = dragon.state();                     // what it is doing: speed, jumps, hands, events
- *     if (s.happened(CgEntityState.LANDED)) body.anim().montages().play(LAND);
+ *     CgEntityState s = dragon.state();                     // what it is doing: speed, ground, hands
  *     float lookYaw = s.headYaw();
+ * }
+ *
+ * protected void onSpawn(CgEntity dragon) {
+ *     dragon.on(CgEntityEvents.LANDED, (e, none) -> body.anim().montages().play(LAND));   // each time it happens
  * }
  * }</pre>
  *
@@ -25,7 +33,14 @@ import com.crystalgraphics.world.CgEntityVariables;
  *   <li>Its numbers hold until the next frame's refresh; a field holding a {@code CgEntity} sees them change.</li>
  * </ul>
  */
-public final class CgEntity implements CgEntityVariables.Source {
+public final class CgEntity implements CgEntityFields.Source {
+
+    /** What hears one of its events: the entity, and what the event carried. */
+    @FunctionalInterface
+    public interface Listener<P> {
+        void on(CgEntity entity, P payload);
+    }
+
 
     private final int id;
     private final String type;
@@ -38,9 +53,8 @@ public final class CgEntity implements CgEntityVariables.Source {
     /** The server's entity, on a server; null on a client, which looks its own up. */
     @Nullable
     Object serverHost;
-    /** On a client, the replicated variables' values its server sent; null on a server. */
-    @Nullable
-    float[] replicated;
+    private final List<CgEntityEvent<?>> heard = new ArrayList<>();
+    private final List<Listener<?>> listeners = new ArrayList<>();
     int flags;
     boolean present;
     long hostFrame = -1;
@@ -51,6 +65,7 @@ public final class CgEntity implements CgEntityVariables.Source {
     }
 
     /** Its network id: what {@link CgEntityQuery} and the host know it by. */
+    @Override
     public int id() {
         return id;
     }
@@ -111,7 +126,7 @@ public final class CgEntity implements CgEntityVariables.Source {
 
     /**
      * The loader's own entity on this side: the server's, or the client's copy looked up by id; null where the client
-     * has none loaded. What a mod's entity variable reads.
+     * has none loaded. What a mod's entity field reads.
      */
     @Override
     @Nullable
@@ -119,11 +134,34 @@ public final class CgEntity implements CgEntityVariables.Source {
         return serverHost != null ? serverHost : CgEntityQueries.client().entity(id);
     }
 
-    /** On a client, the server's replicated variable values; null on a server. */
+    /** Whether its actor runs on the server, reading the server's entity. */
     @Override
-    @Nullable
-    public float[] replicated() {
-        return replicated;
+    public boolean onServer() {
+        return serverHost != null;
+    }
+
+    /**
+     * Has {@code listener} hear {@code event} each time it happens to this entity, after its state's refresh and before
+     * its actor's {@code tick}, on the actor's side, until the actor ends.
+     *
+     * <pre>{@code
+     * entity.on(CgEntityEvents.SWING_STARTED, (e, hand) -> body.anim().montages().play(hand == CgHand.OFF ? JAB : SLASH));
+     * }</pre>
+     */
+    public <P> CgEntity on(CgEntityEvent<P> event, Listener<P> listener) {
+        heard.add(Objects.requireNonNull(event, "event"));
+        listeners.add(Objects.requireNonNull(listener, "listener"));
+        return this;
+    }
+
+    /** Tells each listener of an event that fired in the last refresh. */
+    @SuppressWarnings("unchecked")
+    void fireEvents() {
+        if (!state.firedAny()) return;
+        for (int i = 0; i < heard.size(); i++) {
+            CgEntityEvent<Object> event = (CgEntityEvent<Object>) heard.get(i);
+            if (state.fired(event)) ((Listener<Object>) listeners.get(i)).on(this, event.payload(state));
+        }
     }
 
     /** Its state bits ({@link CgEntityQuery#ALIVE}, {@link CgEntityQuery#SNEAKING}, ...). */

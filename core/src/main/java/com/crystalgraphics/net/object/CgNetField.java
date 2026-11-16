@@ -56,7 +56,8 @@ public final class CgNetField<V> {
 
     private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
 
-    enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CODEC }
+    /** What a field holds: a primitive, stored without boxing, or anything with a codec. */
+    public enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CODEC }
 
     final String name;
     final Kind kind;
@@ -182,6 +183,28 @@ public final class CgNetField<V> {
     /** What it reads before anything sets it. */
     public V fallback() {
         return fallback;
+    }
+
+    /** What it holds: {@code FLOAT} for {@link #ofFloat}, {@code CODEC} for {@link #of}. */
+    public Kind kind() {
+        return kind;
+    }
+
+    /** Its {@link #fallback} as a number, a bool 0 or 1: as {@link CgNetObject#getNumber} reads it unset. */
+    public float fallbackNumber() {
+        return number(kind, fallbackBits);
+    }
+
+    /** A primitive's stored bits as a number. */
+    static float number(Kind kind, long bits) {
+        switch (kind) {
+            case INT: return (int) bits;
+            case LONG: return bits;
+            case FLOAT: return Float.intBitsToFloat((int) bits);
+            case DOUBLE: return (float) Double.longBitsToDouble(bits);
+            case BOOL: return bits != 0 ? 1f : 0f;
+            default: throw new IllegalArgumentException("a codec field is no number");
+        }
     }
 
     /** Sent to a viewer who is, or is not, the owner. */

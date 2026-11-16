@@ -25,7 +25,6 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityTags;
-import com.crystalgraphics.world.CgEntityVariables;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -478,8 +477,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actor.host = host;
         entity.heldTags = !(actor.server && host != null);
         entity.tags = entity.heldTags ? CgEntityTags.hold(id) : CgEntityTags.of(host);
-        if (entity.heldTags) entity.replicated = CgEntityVariables.hold(id);
-        else entity.serverHost = host;
+        if (!entity.heldTags) entity.serverHost = host;
         CgScene scene = actor.scene();
         actor.root = scene.root().spawn();
         Live l = new Live(entity, actor, !r.keepVanillaModel, r, host);
@@ -495,10 +493,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         } catch (RuntimeException e) {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
             actor.removeAll();
-            if (entity.heldTags) {
-                CgEntityTags.release(id);
-                CgEntityVariables.release(id);
-            }
+            if (entity.heldTags) CgEntityTags.release(id);
             return false;
         }
         order.add(l);
@@ -532,10 +527,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             LOGGER.error("the actor of {} failed while removed", l.entity, e);
         }
         l.actor.removeAll();
-        if (l.entity.heldTags) {
-            CgEntityTags.release(l.entity.id());
-            CgEntityVariables.release(l.entity.id());
-        }
+        if (l.entity.heldTags) CgEntityTags.release(l.entity.id());
     }
 
     private void clear() {
@@ -594,12 +586,13 @@ public final class CgEntityActors extends CgWorldSubsystem {
         e.present = entities.pose(e.id(), partialTick, e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
-        e.state.update(entities, onServer ? CgWorldQueries.of(l.host) : CgWorldQueries.client(), e.id(), partialTick, dt,
-                e.pose);
-        if (e.serverHost != null) CgEntityVariables.serve(e.serverHost, e.state);
+        boolean updated = e.state.update(entities, onServer ? CgWorldQueries.of(l.host) : CgWorldQueries.client(), e.id(),
+                partialTick, dt, e.pose);
         // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.
         // Minecraft's own models face -z, hence its 180 - bodyYaw (LivingEntityRenderer.setupRotations)
         turn.rotationY((float) Math.toRadians(-e.bodyYaw()));
         l.actor.root.at(e.x(), e.y(), e.z()).rotation(turn);
+        // a frame the host answered no facts for keeps the last state, whose events have been heard
+        if (updated) e.fireEvents();
     }
 }

@@ -5,17 +5,18 @@ import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
 /**
- * What one entity is doing this frame, for an animation to follow: how fast it moves, whether it is on the ground,
- * sneaking, swimming, gliding, riding or sleeping, what each hand holds and how its arm is posed, how far into a use or
- * a swing it is, and what just happened (a jump, a landing, a hit, a swing, a death). The same on every Minecraft
- * version and on both sides; an entity actor's is {@code CgEntity.state()}, refreshed before its tick.
+ * What one entity is doing this frame, derived on each side from what the host says of it, never sent or saved: how
+ * fast it moves, whether it is on the ground, sneaking, swimming, gliding, riding or sleeping, what each hand holds and
+ * how its arm is posed, how far into a use or a swing it is, and what just happened ({@link CgEntityEvents}: a jump, a
+ * landing, a hit, a swing, a death). The same on every Minecraft version and on both sides; an entity actor's is
+ * {@code CgEntity.state()}, refreshed before its tick. {@link CgEntityFields} names each value for a graph.
  *
  * <pre>{@code
  * protected void tick(CgEntity fighter, float dt) {
  *     CgEntityState s = fighter.state();
  *     body.anim().set(SPEED, s.speed());
- *     if (s.happened(CgEntityState.LANDED) && s.landHeight() > 3) body.anim().montages().play(HARD_LANDING);
- *     if (s.happened(CgEntityState.SWING_STARTED)) body.anim().montages().play(SLASH);
+ *     if (s.fired(CgEntityEvents.LANDED) && s.landHeight() > 3) body.anim().montages().play(HARD_LANDING);
+ *     if (s.fired(CgEntityEvents.SWING_STARTED)) body.anim().montages().play(SLASH);
  * }
  * }</pre>
  *
@@ -41,8 +42,8 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
  */
 public final class CgEntityState {
 
-    /** {@link #happened} events. */
-    public static final int JUMPED = 1, LANDED = 1 << 1, HURT = 1 << 2, SWING_STARTED = 1 << 3, USE_STARTED = 1 << 4,
+    /** {@link CgEntityEvents}' bits. */
+    static final int JUMPED = 1, LANDED = 1 << 1, HURT = 1 << 2, SWING_STARTED = 1 << 3, USE_STARTED = 1 << 4,
             USE_STOPPED = 1 << 5, MOUNTED = 1 << 6, DISMOUNTED = 1 << 7, DIED = 1 << 8;
 
     /** How an arm is posed ({@link #armPose}): Minecraft's {@code HumanoidModel.ArmPose}. */
@@ -282,14 +283,18 @@ public final class CgEntityState {
 
     // ── what it is doing ────────────────────────────────────────────────────────
 
-    /** Whether {@code event} ({@link #JUMPED}, {@link #LANDED}, ...) happened in the last {@link #update}. */
-    public boolean happened(int event) {
-        return (events & event) != 0;
+    /** Whether {@code event} ({@link CgEntityEvents#JUMPED}, ...) happened in the last {@link #update}. */
+    public boolean fired(CgEntityEvent<?> event) {
+        return (events & event.bit) != 0;
     }
 
-    /** Every event of the last {@link #update}, as bits. */
-    public int events() {
-        return events;
+    /** Whether any event happened in the last {@link #update}. */
+    public boolean firedAny() {
+        return events != 0;
+    }
+
+    boolean fired(int bit) {
+        return (events & bit) != 0;
     }
 
     /** Its speed along the ground, blocks a second, smooth across the frame. */
@@ -501,6 +506,16 @@ public final class CgEntityState {
 
     public int swingHand() {
         return now.swingHand;
+    }
+
+    /** The hand in use, or last in use: {@link #MAIN} or {@link #OFF}. */
+    public int useHand() {
+        return now.useHand;
+    }
+
+    /** The hand whose use stopped in the last update. */
+    int stoppedHand() {
+        return was.useHand;
     }
 
     /** The swing's progress, 0 to 1: what Minecraft's own arm swing follows. */

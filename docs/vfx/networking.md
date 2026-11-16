@@ -93,6 +93,33 @@ CgEntityTags.client(entityId).has(FLYING);          // a client: what the server
 - `remove` of a tag the entity does not own explicitly answers false and changes nothing: a parent is never removed
   through its child.
 
+## Your own data on an entity
+
+Anything else your mod keeps on an entity (mana, a form, a charge) is a networked type with one object per entity,
+like the tags above: your server sets its fields, every client that sees the entity has them, a late joiner is sent
+them as they stand, and its events reach the same clients. A graph reads a number or bool field with no code, as
+`<type>#<field>`.
+
+```java
+public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");
+public static final CgNetEvent<Void> BURST = CgNetEvent.of("burst");
+public static final CgNetType MANA = CgNetType.define("mymod:mana").fields(CURRENT).events(BURST).perHolder().build();
+
+MANA.of(entity).setFloat(CURRENT, 80f);             // server: the entity's own object, made on first use
+MANA.of(entity).emit(BURST, null);                  // server: to every client that sees it
+MANA.find(entity);                                  // either side: its object, or null
+```
+
+```yaml
+# anim_graphs/mymod/hero.yaml
+entity:
+  ki: mymod:mana#current
+```
+
+- Every rule a networked field has applies: `ownerOnly()`, `serverOnly()`, prediction (`docs/NETWORKING.md`).
+- What the engine works out for itself each frame on each side (speed, ground, hands) is never sent: it is the
+  entity's state ([`prefabs.md`](prefabs.md) § *What the entity is doing*).
+
 ## Cues: what a gameplay moment plays
 
 A cue is what plays when gameplay says *this happened*: a hit, a charge, a beam. Gameplay names it by its tag and

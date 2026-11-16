@@ -1,12 +1,12 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.animation.graph.CgEntityFeed;
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
-import com.crystalgraphics.world.CgEntityVariables;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -190,7 +190,7 @@ public abstract class CgEntityActor {
 
     /** Has {@code body}'s graph's {@code entity} bindings set from this actor's entity, each frame before it runs. */
     final void feed(CgSkeletalMeshComponent body) {
-        body.anim().onUpdate(CgEntityVariables.feed(entity));
+        body.anim().onUpdate(CgEntityFeed.of(entity));
     }
 
     /** Removes what it added and its prefab, the root last. */

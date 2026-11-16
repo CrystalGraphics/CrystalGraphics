@@ -15,7 +15,11 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.tag.CgGameplayTag;
-import com.crystalgraphics.world.CgEntityVariable;
+import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetType;
+import com.crystalgraphics.object.CgValueType;
+import com.crystalgraphics.world.CgEntityBinding;
+import com.crystalgraphics.world.CgEntityNetField;
 
 /**
  * An animation graph: which clips play and how they mix, from variables the game sets. Unreal's anim blueprint, compiled
@@ -50,8 +54,9 @@ import com.crystalgraphics.world.CgEntityVariable;
  *       {@link CgCachedPoseNode#use} wherever), evaluated once a frame.</li>
  *   <li>Building checks it: a cycle, a node read twice, a cached pose used and never saved, or a variable a node reads
  *       and the graph does not declare, each fails, naming it.</li>
- *   <li>{@link Builder#entity} binds a variable to a standard one ({@code CgEntityVariables}): an entity actor then sets
- *       it every frame, and no code does.</li>
+ *   <li>{@link Builder#entity} binds a variable to a value of the entity: a field the engine derives
+ *       ({@code CgEntityFields}) or one of its networked data ({@code CgEntityNetField}). An entity actor then sets it
+ *       every frame ({@link CgEntityFeed}), and no code does.</li>
  *   <li>{@link Builder#tag} binds a variable to a gameplay tag the entity owns ({@code CgEntityTags}): set every frame
  *       from its count, as Unreal's gameplay tag property map sets a property.</li>
  *   <li>{@link #single} is a graph of one clip over the default slot: what an instance runs until it is given one.</li>
@@ -74,7 +79,7 @@ public final class CgAnimGraph {
 
     private final List<String> inputs;
     private final Map<String, Layer> layers;
-    private final Map<String, CgEntityVariable> entity;
+    private final Map<String, CgEntityBinding> entity;
     private final Map<String, TagBinding> tags;
 
     /**
@@ -157,7 +162,7 @@ public final class CgAnimGraph {
 
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
                         CgAnimNode output, CgSequencePlayerNode single, List<String> inputs, Map<String, Layer> layers,
-                        Map<String, CgEntityVariable> entity, Map<String, TagBinding> tags) {
+                        Map<String, CgEntityBinding> entity, Map<String, TagBinding> tags) {
         this.id = id;
         this.skeleton = skeleton;
         this.inputs = List.copyOf(inputs);
@@ -170,12 +175,12 @@ public final class CgAnimGraph {
         }
         // Unreal's property map checks the same at validation: a declared variable, of a type the value fits
         // (FGameplayTagBlueprintPropertyMap::IsDataValid)
-        for (Map.Entry<String, CgEntityVariable> e : entity.entrySet()) {
+        for (Map.Entry<String, CgEntityBinding> e : entity.entrySet()) {
             Integer at = variableIndex.get(e.getKey());
             if (at == null) throw new IllegalArgumentException(id + ": entity." + e.getKey() + " binds a variable the graph does not declare");
-            if (!e.getValue().feeds(this.variables.get(at).type())) {
+            if (!takes(this.variables.get(at).type(), e.getValue().type())) {
                 throw new IllegalArgumentException(id + ": entity." + e.getKey() + ": " + this.variables.get(at) + " cannot take "
-                        + e.getValue().name() + ", a " + e.getValue().type().name().toLowerCase(Locale.ROOT));
+                        + e.getValue().name() + ", a " + e.getValue().type());
             }
         }
         this.entity = Collections.unmodifiableMap(new LinkedHashMap<>(entity));
@@ -337,8 +342,17 @@ public final class CgAnimGraph {
     }
 
     /** Its variables an entity actor sets each frame, by variable name: what feeds each. */
-    public Map<String, CgEntityVariable> entity() {
+    public Map<String, CgEntityBinding> entity() {
         return entity;
+    }
+
+    /** Whether a variable of {@code variable}'s type takes a value of {@code value}'s: its own, or any as a float. */
+    static boolean takes(CgAnimVariable.Type variable, CgValueType value) {
+        return switch (variable) {
+            case FLOAT -> true;
+            case INT -> CgValueType.INT.equals(value);
+            case BOOL -> CgValueType.BOOL.equals(value);
+        };
     }
 
     /** Its variables set each frame from a gameplay tag the entity owns, by variable name. */
@@ -370,7 +384,7 @@ public final class CgAnimGraph {
         private final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
         private final List<String> inputs = new ArrayList<>();
         private final Map<String, Layer> layers = new LinkedHashMap<>();
-        private final Map<String, CgEntityVariable> entity = new LinkedHashMap<>();
+        private final Map<String, CgEntityBinding> entity = new LinkedHashMap<>();
         private final Map<String, TagBinding> tags = new LinkedHashMap<>();
         private CgAnimNode output;
 
@@ -409,22 +423,28 @@ public final class CgAnimGraph {
         }
 
         /**
-         * Has {@code variable} set every frame from {@code source}, one of the entity's standard variables, by whatever
-         * actor animates an entity with this graph: Unreal's gameplay tag property map, over the entity's state.
+         * Has {@code variable} set every frame from {@code source}, a value of the entity, by whatever actor animates
+         * an entity with this graph: Unreal's gameplay tag property map, over the entity's values.
          *
          * <pre>{@code
-         * builder.variables(SPEED, ON_GROUND)
-         *        .entity(SPEED, CgEntityVariables.SPEED)
-         *        .entity(ON_GROUND, CgEntityVariables.GROUNDED);
+         * builder.variables(SPEED, ON_GROUND, KI)
+         *        .entity(SPEED, CgEntityFields.SPEED)                       // derived each frame, on each side
+         *        .entity(ON_GROUND, CgEntityFields.GROUNDED)
+         *        .entity(KI, Mana.TYPE, Mana.CURRENT);                      // a field of the entity's networked data
          * }</pre>
          *
          * The variable must be declared, and of {@code source}'s type, or a float.
          */
-        public Builder entity(CgAnimVariable<?> variable, CgEntityVariable source) {
+        public Builder entity(CgAnimVariable<?> variable, CgEntityBinding source) {
             if (entity.put(variable.name(), Objects.requireNonNull(source, "source")) != null) {
                 throw new IllegalArgumentException(id + " binds " + variable.name() + " twice");
             }
             return this;
+        }
+
+        /** As {@link #entity(CgAnimVariable, CgEntityBinding)}, from {@code field} of the entity's object of {@code type}. */
+        public Builder entity(CgAnimVariable<?> variable, CgNetType type, CgNetField<?> field) {
+            return entity(variable, CgEntityNetField.of(type, field));
         }
 
         /**

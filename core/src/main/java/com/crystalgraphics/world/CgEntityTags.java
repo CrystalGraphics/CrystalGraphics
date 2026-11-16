@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
 
-import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetBehaviour;
 import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetObject;
@@ -56,7 +55,7 @@ public final class CgEntityTags {
             CgCodecs.field("t", WIRE_TAG, Owned::tag),
             CgCodecs.field("n", CgCodecs.INT, Owned::count), Owned::new);
     private static final CgNetField<List<Owned>> TAGS = CgNetField.of("tags", CgCodecs.listOf(OWNED));
-    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS).build();
+    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS).perHolder().build();
 
     /** The server's: every entity given a tag, held weakly, its counts and the object carrying them. */
     private static final Map<Object, Served> SERVER = new WeakHashMap<>();
@@ -66,7 +65,6 @@ public final class CgEntityTags {
 
     private static final class Served {
         final CgTagCounts counts = new CgTagCounts();
-        CgNetObject object;
     }
 
     private static final class Mirror {
@@ -158,12 +156,8 @@ public final class CgEntityTags {
         s.counts.update(tag, delta);
         List<Owned> now = new ArrayList<>(s.counts.size());
         for (int i = 0; i < s.counts.size(); i++) now.add(new Owned(s.counts.tag(i), s.counts.countAt(i)));
-        if (s.object == null || s.object.isRemoved()) {
-            if (now.isEmpty()) return;
-            s.object = TYPE.spawn(CgAnchor.on(entity)).set(TAGS, Collections.unmodifiableList(now)).start();
-        } else {
-            s.object.set(TAGS, Collections.unmodifiableList(now));
-        }
+        // the entity's own object of the type, made on its first tag, ending with it
+        TYPE.of(entity).set(TAGS, Collections.unmodifiableList(now));
     }
 
     // ── a client ────────────────────────────────────────────────────────────────────────

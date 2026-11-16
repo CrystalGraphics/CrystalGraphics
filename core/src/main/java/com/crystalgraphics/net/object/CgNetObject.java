@@ -466,6 +466,16 @@ public final class CgNetObject {
         return bits[primitive(field, CgNetField.Kind.BOOL)] != 0;
     }
 
+    /**
+     * A primitive field's value as a float, whatever its kind (a bool 0 or 1): for a reader that takes any number, as an
+     * animation variable does. Allocates nothing.
+     *
+     * @throws IllegalArgumentException for a codec field, or one its type does not list
+     */
+    public float getNumber(CgNetField<?> field) {
+        return CgNetField.number(field.kind, bits[type.require(field)]);
+    }
+
     private int primitive(CgNetField<?> field, CgNetField.Kind kind) {
         if (field.kind != kind) throw new IllegalArgumentException(field + " is not " + kind);
         return type.require(field);

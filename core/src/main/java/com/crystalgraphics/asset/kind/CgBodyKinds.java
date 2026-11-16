@@ -716,8 +716,9 @@ public final class CgBodyKinds {
 
     /**
      * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name, the one
-     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to a standard entity
-     * variable by name ({@code world.CgEntityVariables}), set each frame by the entity's actor; {@code tags} a variable
+     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to a value of the entity
+     * by name, a derived field or {@code <type>#<field>} of its networked data ({@code world.CgEntityFields#binding}),
+     * set each frame by the entity's actor; {@code tags} a variable
      * to a gameplay tag the entity owns ({@code world.CgEntityTags}).
      */
     public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)

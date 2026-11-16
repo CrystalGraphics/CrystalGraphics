@@ -600,8 +600,8 @@ sequencer.play(LUNGE, Map.of("caster", role));
 
 ### What the entity is doing: its state
 
-`CgEntity.state()` is what an animation follows, read from the entity each frame before `tick`, the same on every
-version and on both sides: how fast it moves, whether it is on the ground, sneaking, sprinting, swimming, crawling,
+`CgEntity.state()` is what the engine derives of the entity each frame before `tick`, the same on every version and on
+both sides, never sent and never saved: how fast it moves, whether it is on the ground, sneaking, sprinting, swimming, crawling,
 gliding, riding or sleeping, its head against its body, each hand's item and arm pose, the item in use and the swing,
 and what just happened.
 
@@ -610,9 +610,14 @@ and what just happened.
     CgEntityState s = fighter.state();
     body.anim().set(SPEED, s.speed());                                  // blocks a second along the ground
     body.anim().set(IN_AIR, !s.grounded());
-    if (s.happened(CgEntityState.LANDED) && s.landHeight() > 3) body.anim().montages().play(HARD_LANDING);
-    if (s.happened(CgEntityState.SWING_STARTED)) body.anim().montages().play(SLASH);
     if (s.armPose(CgEntityState.MAIN) == CgEntityState.ARM_BOW) body.anim().set(DRAW, s.useSeconds());
+}
+
+@Override protected void onSpawn(CgEntity fighter) {                    // events: heard each time they happen
+    fighter.on(CgEntityEvents.LANDED, (e, none) -> {
+        if (e.state().landHeight() > 3) body.anim().montages().play(HARD_LANDING);
+    });
+    fighter.on(CgEntityEvents.SWING_STARTED, (e, hand) -> body.anim().montages().play(hand == CgHand.OFF ? JAB : SLASH));
 }
 ```
 
@@ -625,18 +630,21 @@ double[] pose = new double[CgEntityQuery.POSE_LENGTH];
 if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, partialTick, dt, pose);
 ```
 
-| Event | When |
-|---|---|
-| `JUMPED` | it left the ground going up (walking off a ledge is not a jump) |
-| `LANDED` | it touched the ground again; `landHeight()` is the fall from the highest point it reached |
-| `HURT` | it was hit, a second hit before the first wore off included; `secondsSinceHurt()` counts from it |
-| `SWING_STARTED` | an arm began a swing, or began it again mid-swing |
-| `USE_STARTED`, `USE_STOPPED` | it began or stopped using an item: eating, drawing a bow, blocking |
-| `MOUNTED`, `DISMOUNTED` | it got on or off something; changing mounts raises both |
-| `DIED` | it died; `secondsDead()` counts from it |
+| `CgEntityEvents.` | Carries | When |
+|---|---|---|
+| `JUMPED` | nothing | it left the ground going up (walking off a ledge is not a jump) |
+| `LANDED` | nothing | it touched the ground again; `landHeight()` is the fall from the highest point it reached |
+| `HURT` | nothing | it was hit, a second hit before the first wore off included; `secondsSinceHurt()` counts from it |
+| `SWING_STARTED` | the `CgHand` | an arm began a swing, or began it again mid-swing |
+| `USE_STARTED`, `USE_STOPPED` | the `CgHand` | it began or stopped using an item: eating, drawing a bow, blocking |
+| `MOUNTED`, `DISMOUNTED` | nothing | it got on or off something (`vehicle()`); changing mounts raises both |
+| `DIED` | nothing | it died; `secondsDead()` counts from it |
 
-- **An event lasts one frame**: read it in the `tick` it happens. The first frame an entity is seen raises none, so one
-  seen in mid-air does not jump.
+- **An event lasts one frame**: a listener hears it once, after the state's refresh and before `tick`; a state is
+  asked `fired(CgEntityEvents.LANDED)` in that frame. The first frame an entity is seen raises none, so one seen in
+  mid-air does not jump.
+- **What only your server knows** (an ability fired, a hit's damage) is a `CgNetEvent` on your own networked type,
+  sent by your server ([`networking.md`](networking.md)).
 - **The arm pose is Minecraft's own rule for a player's arms**, the newest version's, for every entity: a bow drawn, a
   shield up, a crossbow charging or held charged, a trident raised, a spyglass, a horn, a brush, a spear. A bow or a
   crossbow takes both arms, and the other hand then only holds its item.

@@ -37,7 +37,7 @@ public class CgEntityStateTest {
         host.facts.hurtTime = 10;
         host.facts.bits |= CgEntityFacts.SWINGING | CgEntityFacts.USING;
         step();
-        assertEquals(0, state.events());
+        assertFalse(state.firedAny());
     }
 
     @Test
@@ -48,7 +48,7 @@ public class CgEntityStateTest {
         host.facts.moveY = 0.42;
         host.facts.y = 64.42;
         step();
-        assertTrue(state.happened(CgEntityState.JUMPED));
+        assertTrue(state.fired(CgEntityEvents.JUMPED));
         host.facts.y = 65.25;
         step();
         host.facts.moveY = -0.5;
@@ -58,7 +58,7 @@ public class CgEntityStateTest {
         host.facts.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
         host.facts.y = 60;
         step();
-        assertTrue(state.happened(CgEntityState.LANDED));
+        assertTrue(state.fired(CgEntityEvents.LANDED));
         assertEquals(5.25f, state.landHeight(), 1e-4);
         assertEquals(0f, state.airSeconds(), 0f);
     }
@@ -69,7 +69,7 @@ public class CgEntityStateTest {
         host.facts.bits = CgEntityFacts.LIVING;
         host.facts.moveY = -0.08;
         step();
-        assertFalse(state.happened(CgEntityState.JUMPED));
+        assertFalse(state.fired(CgEntityEvents.JUMPED));
     }
 
     @Test
@@ -77,15 +77,15 @@ public class CgEntityStateTest {
         step();
         host.facts.hurtTime = 10;
         step();
-        assertTrue(state.happened(CgEntityState.HURT));
+        assertTrue(state.fired(CgEntityEvents.HURT));
         assertEquals(0f, state.secondsSinceHurt(), 0f);
         host.facts.hurtTime = 9;
         step();
-        assertFalse(state.happened(CgEntityState.HURT));
+        assertFalse(state.fired(CgEntityEvents.HURT));
         assertEquals(DT, state.secondsSinceHurt(), 1e-6);
         host.facts.hurtTime = 10;
         step();
-        assertTrue("a second hit before the first wore off", state.happened(CgEntityState.HURT));
+        assertTrue("a second hit before the first wore off", state.fired(CgEntityEvents.HURT));
     }
 
     @Test
@@ -94,13 +94,14 @@ public class CgEntityStateTest {
         host.facts.bits |= CgEntityFacts.SWINGING;
         host.facts.swing = 0.1f;
         step();
-        assertTrue(state.happened(CgEntityState.SWING_STARTED));
+        assertTrue(state.fired(CgEntityEvents.SWING_STARTED));
+        assertEquals("what it carries is read off the state", CgHand.MAIN, CgEntityEvents.SWING_STARTED.payload(state));
         host.facts.swing = 0.6f;
         step();
-        assertFalse(state.happened(CgEntityState.SWING_STARTED));
+        assertFalse(state.fired(CgEntityEvents.SWING_STARTED));
         host.facts.swing = 0.05f;
         step();
-        assertTrue("clicked again mid-swing", state.happened(CgEntityState.SWING_STARTED));
+        assertTrue("clicked again mid-swing", state.fired(CgEntityEvents.SWING_STARTED));
     }
 
     @Test
@@ -111,7 +112,7 @@ public class CgEntityStateTest {
         host.facts.item[CgEntityFacts.MAIN] = 261;
         host.facts.use[CgEntityFacts.MAIN] = CgEntityFacts.USE_BOW;
         step();
-        assertTrue(state.happened(CgEntityState.USE_STARTED));
+        assertTrue(state.fired(CgEntityEvents.USE_STARTED));
         assertEquals(0f, state.useSeconds(), 0f);
         step();
         step();
@@ -120,7 +121,8 @@ public class CgEntityStateTest {
         assertEquals(CgEntityState.ARM_BOW, state.armPose(CgEntityState.MAIN));
         host.facts.bits &= ~CgEntityFacts.USING;
         step();
-        assertTrue(state.happened(CgEntityState.USE_STOPPED));
+        assertTrue(state.fired(CgEntityEvents.USE_STOPPED));
+        assertEquals(CgHand.MAIN, CgEntityEvents.USE_STOPPED.payload(state));
         assertEquals(0f, state.useSeconds(), 0f);
     }
 
@@ -133,8 +135,8 @@ public class CgEntityStateTest {
         assertEquals((4 + 1f) / 20f, state.useSeconds(), 1e-6);
         host.facts.useTicks = 0;
         step();
-        assertTrue("its ticks went back: a new use", state.happened(CgEntityState.USE_STARTED));
-        assertTrue(state.happened(CgEntityState.USE_STOPPED));
+        assertTrue("its ticks went back: a new use", state.fired(CgEntityEvents.USE_STARTED));
+        assertTrue(state.fired(CgEntityEvents.USE_STOPPED));
     }
 
     @Test
@@ -142,11 +144,11 @@ public class CgEntityStateTest {
         step();
         host.facts.vehicle = 40;
         step();
-        assertTrue(state.happened(CgEntityState.MOUNTED));
+        assertTrue(state.fired(CgEntityEvents.MOUNTED));
         assertTrue(state.riding());
         host.facts.vehicle = -1;
         step();
-        assertTrue(state.happened(CgEntityState.DISMOUNTED));
+        assertTrue(state.fired(CgEntityEvents.DISMOUNTED));
     }
 
     @Test
@@ -155,10 +157,10 @@ public class CgEntityStateTest {
         host.facts.bits |= CgEntityFacts.DEAD;
         host.facts.deathTime = 1;
         step();
-        assertTrue(state.happened(CgEntityState.DIED));
+        assertTrue(state.fired(CgEntityEvents.DIED));
         host.facts.deathTime = 10;
         step();
-        assertFalse(state.happened(CgEntityState.DIED));
+        assertFalse(state.fired(CgEntityEvents.DIED));
         assertEquals(0.5f, state.secondsDead(), 1e-6);
     }
 
@@ -228,7 +230,7 @@ public class CgEntityStateTest {
         assertEquals(3, state.vehicle());
         host.answers = true;
         step();
-        assertFalse(state.happened(CgEntityState.MOUNTED));
+        assertFalse(state.fired(CgEntityEvents.MOUNTED));
     }
 
     @Test

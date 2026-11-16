@@ -15,6 +15,7 @@ import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.animation.graph.CgAnimGraph;
 import com.crystalgraphics.animation.graph.CgAnimGraphCodec;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
+import com.crystalgraphics.animation.graph.CgEntityFeed;
 import com.crystalgraphics.animation.graph.CgRefPoseNode;
 import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -25,6 +26,9 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgNetType;
+import com.crystalgraphics.object.CgValueType;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
@@ -34,7 +38,7 @@ import com.crystalgraphics.tag.CgTagCounts;
 import com.crystalgraphics.tag.CgTagRegistry;
 
 /** A graph's {@code entity:} bindings: fed from an entity's state each frame, written and read, refused at load. */
-public class CgEntityVariablesTest {
+public class CgEntityFieldsTest {
 
     private static final CgAnimVariable<Float> SPEED = CgAnimVariable.floating("speed");
     private static final CgAnimVariable<Boolean> ON_GROUND = CgAnimVariable.bool("on_ground");
@@ -56,10 +60,10 @@ public class CgEntityVariablesTest {
 
     private static CgAnimGraph hero() {
         return CgAnimGraph.builder("test:hero", BONES).variables(SPEED, ON_GROUND, ARM, LANDED)
-                .entity(SPEED, CgEntityVariables.SPEED)
-                .entity(ON_GROUND, CgEntityVariables.GROUNDED)
-                .entity(ARM, CgEntityVariables.MAIN_ARM)
-                .entity(LANDED, CgEntityVariables.LANDED)       // a float takes a bool, as Unreal's float takes a count
+                .entity(SPEED, CgEntityFields.SPEED)
+                .entity(ON_GROUND, CgEntityFields.GROUNDED)
+                .entity(ARM, CgEntityFields.MAIN_ARM)
+                .entity(LANDED, CgEntityFields.LANDED)       // a float takes a bool, as Unreal's float takes a count
                 .output(CgRefPoseNode.create()).build();
     }
 
@@ -69,7 +73,7 @@ public class CgEntityVariablesTest {
         CgEntityState state = new CgEntityState();
         double[] pose = new double[CgEntityQuery.POSE_LENGTH];
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(hero());
-        anim.onUpdate(CgEntityVariables.feed(state));
+        anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(state, new CgTagCounts())));
 
         host.facts.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
         host.facts.moveX = 0.25;
@@ -99,10 +103,10 @@ public class CgEntityVariablesTest {
         Script host = new Script();
         CgEntityState state = new CgEntityState();
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(hero());
-        anim.onUpdate(CgEntityVariables.feed(state));
+        anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(state, new CgTagCounts())));
         anim.tick(0.05f);
         CgAnimVariable<Float> pace = CgAnimVariable.floating("pace");
-        anim.graph(CgAnimGraph.builder("test:other", BONES).variables(pace).entity(pace, CgEntityVariables.SPEED)
+        anim.graph(CgAnimGraph.builder("test:other", BONES).variables(pace).entity(pace, CgEntityFields.SPEED)
                 .output(CgRefPoseNode.create()).build());
         host.facts.moveZ = 0.1;
         state.update(host, CgWorldQuery.NONE, 1, 1f, 0.05f, new double[CgEntityQuery.POSE_LENGTH]);
@@ -113,9 +117,9 @@ public class CgEntityVariablesTest {
     @Test
     public void aBuilderRefusesWhatCannotBeFed() {
         assertThrows("undeclared", IllegalArgumentException.class, () -> CgAnimGraph.builder("test:x", BONES)
-                .entity(SPEED, CgEntityVariables.SPEED).output(CgRefPoseNode.create()).build());
+                .entity(SPEED, CgEntityFields.SPEED).output(CgRefPoseNode.create()).build());
         assertThrows("a bool cannot take a float", IllegalArgumentException.class, () -> CgAnimGraph.builder("test:x", BONES)
-                .variables(ON_GROUND).entity(ON_GROUND, CgEntityVariables.SPEED).output(CgRefPoseNode.create()).build());
+                .variables(ON_GROUND).entity(ON_GROUND, CgEntityFields.SPEED).output(CgRefPoseNode.create()).build());
     }
 
     private static CgAssetData asset(String yaml) {
@@ -144,7 +148,7 @@ public class CgEntityVariablesTest {
                   pose: { kind: ref_pose }
                 """;
         String[][] cases = {
-                {"entity:\n  speed: entity.sped\n", "entity.sped is no entity variable"},
+                {"entity:\n  speed: entity.sped\n", "entity.sped is no entity field"},
                 {"entity:\n  pace: entity.speed\n", "declares no variable pace"},
                 {"entity:\n  grounded: entity.speed\n", "cannot take entity.speed"}};
         for (String[] c : cases) {
@@ -157,9 +161,9 @@ public class CgEntityVariablesTest {
     @Test
     public void everyNameIsUniqueAndUnderEntity() {
         java.util.Set<String> seen = new java.util.HashSet<>();
-        for (CgEntityVariable v : CgEntityVariables.all()) {
+        for (CgEntityField v : CgEntityFields.all()) {
             assertTrue(v.name(), (v.name().startsWith("entity.") || v.name().contains(":")) && seen.add(v.name()));
-            assertEquals(v, CgEntityVariables.of(v.name()));
+            assertEquals(v, CgEntityFields.of(v.name()));
         }
         assertTrue(seen.size() >= 40);
     }
@@ -176,7 +180,7 @@ public class CgEntityVariablesTest {
                 .output(CgRefPoseNode.create()).build();
         CgTagCounts tags = new CgTagCounts();
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
-        anim.onUpdate(CgEntityVariables.feed(new CgEntityState(), tags));
+        anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(new CgEntityState(), tags)));
         anim.tick(0.05f);
         assertTrue(!anim.graph().is(isFlying));
         tags.update(fast, 2);
@@ -214,11 +218,11 @@ public class CgEntityVariablesTest {
         }
     }
 
-    private static final CgEntityVariable GEAR = CgEntityVariables.register("vartest:gear", CgAnimVariable.Type.INT,
+    private static final CgEntityField GEAR = CgEntityFields.register("vartest:gear", CgValueType.INT,
             (state, entity) -> entity instanceof int[] g ? g[0] : 0);
 
     @Test
-    public void aModsVariableIsReadOffTheEntityAndNamedInAFile() {
+    public void aModsDerivedFieldIsReadOffTheEntityAndNamedInAFile() {
         int[] host = {3};                                   // stands for the loader's entity a mod reads its state from
         CgAnimVariable<Integer> gear = CgAnimVariable.integer("gear");
         String yaml = """
@@ -236,11 +240,12 @@ public class CgEntityVariablesTest {
         CgEntityState state = new CgEntityState();
         CgTagCounts tags = new CgTagCounts();
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
-        anim.onUpdate(CgEntityVariables.feed(new CgEntityVariables.Source() {
+        anim.onUpdate(CgEntityFeed.of(new CgEntityFields.Source() {
             @Override public CgEntityState state() { return state; }
             @Override public CgTagCounts tags() { return tags; }
             @Override public Object entity() { return host; }
-            @Override public float[] replicated() { return null; }
+            @Override public int id() { return -1; }
+            @Override public boolean onServer() { return false; }
         }));
         anim.tick(0.05f);
         assertEquals(3f, anim.graph().get(gear), 0f);
@@ -250,6 +255,46 @@ public class CgEntityVariablesTest {
     }
 
     /** A host whose one entity does what the test sets. */
+    private static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current").fallback(50f);
+    private static final CgNetField<String> LABEL = CgNetField.of("label", com.crystalgraphics.serialization.CgCodecs.STRING);
+    private static final CgNetType MANA = CgNetType.define("fieldtest:mana").fields(CURRENT, LABEL).perHolder().build();
+    private static final CgNetType AURA = CgNetType.define("fieldtest:aura").fields(CgNetField.ofFloat("heat")).build();
+
+    @Test
+    public void aStoredFieldIsNamedByItsTypeAndReadsItsFallbackWithNoObject() {
+        CgAnimVariable<Float> ki = CgAnimVariable.floating("ki");
+        String yaml = """
+                _v: 1
+                variables:
+                  ki: { type: float }
+                entity:
+                  ki: fieldtest:mana#current
+                output: pose
+                nodes:
+                  pose: { kind: ref_pose }
+                """;
+        CgAnimGraph graph = CgAnimGraphCodec.compile(asset(yaml), null).graph(BONES, id -> null);
+        assertEquals(CgEntityNetField.of(MANA, CURRENT), graph.entity().get("ki"));
+        String written = CgAssetYaml.write(CgAnimGraphCodec.toTree(graph), CgBodyKinds.ANIM_GRAPH);
+        assertTrue(written, written.contains("fieldtest:mana#current"));
+        assertEquals(graph.entity(), CgAnimGraphCodec.compile(asset(written), null).graph(BONES, id -> null).entity());
+        CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
+        anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(new CgEntityState(), new CgTagCounts())));
+        anim.tick(0.05f);
+        assertEquals("no object of the type on this side: the field's fallback", 50f, anim.graph().get(ki), 0f);
+
+        String[][] refused = {
+                {"fieldtest:none#current", "no networked type fieldtest:none"},
+                {"fieldtest:mana#max", "has no field max"},
+                {"fieldtest:mana#label", "no number or bool"},
+                {"fieldtest:aura#heat", "not per holder"}};
+        for (String[] c : refused) {
+            CgAssetException e = assertThrows(c[1], CgAssetException.class, () -> CgAnimGraphCodec.compile(
+                    asset(yaml.replace("fieldtest:mana#current", c[0])), null).graph(BONES, id -> null));
+            assertTrue(e.getMessage(), e.getMessage().contains(c[1]) && e.getMessage().contains("entity.ki"));
+        }
+    }
+
     private static final class Script implements CgEntityQuery {
         final CgEntityFacts facts = new CgEntityFacts().clear();
 

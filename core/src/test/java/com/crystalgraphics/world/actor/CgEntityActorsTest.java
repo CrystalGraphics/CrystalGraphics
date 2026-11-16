@@ -3,10 +3,12 @@ package com.crystalgraphics.world.actor;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
+import com.crystalgraphics.world.CgEntityEvents;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -26,7 +28,10 @@ public class CgEntityActorsTest {
     /** One entity, id 7, walking along +x a block a frame. */
     private static final class Walker implements CgEntityQuery {
         double x;
+        int hurtTime;
         boolean here = true;
+        /** Whether it answers facts: a frame it does not keeps the last state. */
+        boolean facts = true;
 
         @Override public int localPlayer() { return -1; }
         @Override public int cameraEntity() { return -1; }
@@ -38,6 +43,14 @@ public class CgEntityActorsTest {
             out[X] = x;
             out[Y] = 64;
             out[BODY_YAW] = 180;
+            return true;
+        }
+
+        @Override
+        public boolean facts(int id, float partialTick, CgEntityFacts out) {
+            if (id != 7 || !here || !facts) return false;
+            out.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
+            out.hurtTime = hurtTime;
             return true;
         }
 
@@ -111,6 +124,31 @@ public class CgEntityActorsTest {
         assertTrue("its root removed with it", root.removed());
         assertNull(CgEntityActors.actor(7));
         assertFalse(CgEntityActors.replacesModel(7));
+    }
+
+    @Test
+    public void anEntitysListenersHearEachEventOnce() {
+        int[] hurt = {0};
+        CgEntityActor actor = new CgEntityActor() {
+            @Override
+            protected void onSpawn(CgEntity entity) {
+                entity.on(CgEntityEvents.HURT, (e, none) -> hurt[0]++);
+            }
+        };
+        registration = CgEntityActors.register("test:walker", () -> actor);
+        CgEntityActors.entered(7, "test:walker");
+        CgWorld.client().frame(null);
+        assertEquals(0, hurt[0]);
+        walker.hurtTime = 10;
+        CgWorld.client().frame(null);
+        assertEquals(1, hurt[0]);
+        walker.facts = false;
+        CgWorld.client().frame(null);
+        assertEquals("a frame with no facts keeps the state, and is no second hit", 1, hurt[0]);
+        walker.facts = true;
+        walker.hurtTime = 9;
+        CgWorld.client().frame(null);
+        assertEquals(1, hurt[0]);
     }
 
     @Test
