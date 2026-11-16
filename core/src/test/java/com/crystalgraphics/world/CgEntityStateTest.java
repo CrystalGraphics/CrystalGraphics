@@ -10,6 +10,7 @@ import org.junit.Test;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
 /** The state's events, timers and arm poses from scripted host facts: what every version's host feeds it. */
 public class CgEntityStateTest {
@@ -28,7 +29,7 @@ public class CgEntityStateTest {
     }
 
     private void step() {
-        assertTrue(state.update(host, 7, 1f, DT, pose));
+        assertTrue(state.update(host, CgWorldQuery.NONE, 7, 1f, DT, pose));
     }
 
     @Test
@@ -222,7 +223,7 @@ public class CgEntityStateTest {
         host.facts.vehicle = 3;
         step();
         host.answers = false;
-        assertFalse(state.update(host, 7, 1f, DT, pose));
+        assertFalse(state.update(host, CgWorldQuery.NONE, 7, 1f, DT, pose));
         assertEquals(5, state.item(CgEntityState.MAIN));
         assertEquals(3, state.vehicle());
         host.answers = true;
@@ -262,6 +263,58 @@ public class CgEntityStateTest {
         host.facts.moveZ = 0.001;
         step();
         assertEquals("friction's last drift is standing", 0f, state.input(), 0f);
+    }
+
+    private void step(float partialTick) {
+        assertTrue(state.update(host, CgWorldQuery.NONE, 7, partialTick, DT / 3, pose));
+    }
+
+    @Test
+    public void speedIsSmoothBetweenTicks() {
+        step(0.1f);
+        host.facts.moveX = 0.3;                    // the next tick: from standing to 6 blocks a second
+        step(0.05f);
+        assertEquals("a tick in, still near the last tick's", 0.3f, state.speed(), 1e-4);
+        step(0.5f);
+        assertEquals(3f, state.speed(), 1e-4);
+        step(0.95f);
+        assertEquals(5.7f, state.speed(), 1e-4);
+        assertEquals(120f, state.acceleration(), 1e-3);
+        step(0.2f);                                // the next tick, moving the same
+        assertEquals(6f, state.speed(), 1e-4);
+        assertEquals(0f, state.acceleration(), 1e-4);
+    }
+
+    @Test
+    public void aServerTicksEveryUpdate() {
+        step();
+        host.facts.moveZ = 0.2;
+        step();
+        assertEquals(4f, state.speed(), 1e-5);
+        host.facts.moveZ = 0.1;
+        step();
+        assertEquals(2f, state.speed(), 1e-5);
+        assertEquals(-40f, state.acceleration(), 1e-3);
+    }
+
+    @Test
+    public void turnRateAndMoveDirection() {
+        pose[CgEntityQuery.BODY_YAW] = 0;
+        step();
+        pose[CgEntityQuery.BODY_YAW] = -9;         // yaw falling: a turn to the left
+        host.facts.moveX = 0.2;                    // +x is left of a body facing +z
+        step();
+        assertEquals(9f / DT, state.turnRate(), 1e-2);
+        assertEquals(90f - 9f, state.moveDirection(), 1e-3);
+    }
+
+    @Test
+    public void groundDistance() {
+        step();
+        assertEquals(0f, state.groundDistance(), 0f);
+        host.facts.bits = CgEntityFacts.LIVING;
+        step();
+        assertEquals("no blocks to ask", Float.POSITIVE_INFINITY, state.groundDistance(), 0f);
     }
 
     /** A host whose one entity does what the test sets. */

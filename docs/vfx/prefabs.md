@@ -622,7 +622,7 @@ Any entity, watched by code that is no actor, keeps a state of its own:
 CgEntityState state = new CgEntityState();                          // one per entity, kept while it lives
 double[] pose = new double[CgEntityQuery.POSE_LENGTH];
 // each frame
-if (entities.pose(id, partialTick, pose)) state.update(entities, id, partialTick, dt, pose);
+if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, partialTick, dt, pose);
 ```
 
 | Event | When |
@@ -643,6 +643,11 @@ if (entities.pose(id, partialTick, pose)) state.update(entities, id, partialTick
 - **What a version lacks reads as not happening**: no swimming pose before 1.13, no gliding and no off hand before
   1.10.2, no charged crossbow before 1.14.3. Items are the host's raw ids, the same item for the session.
 - **The swim amount** eases 0 to 1 over 0.45 s into the swimming pose and back, as Minecraft's own does.
+- **Its motion is smooth between Minecraft's 20 ticks a second**: `speed()`, `verticalSpeed()`, `moveDirection()`
+  (degrees against the body's facing) and `acceleration()` follow the last two ticks' movement across the frame, as
+  the drawn position does, so a 144 fps gait never steps. `turnRate()` (degrees a second, left positive) and
+  `groundDistance()` (the feet over the first surface under them, 64 blocks down at most) are read each frame;
+  `airSeconds()` counts from leaving the ground.
 - **Intent is not speed.** `input()` (0 to 1) and `inputDirection()` (degrees against the facing, 90 to the left) are
   how hard and where it means to move: what a locomotion graph keys its gait on, since a slope or a shove changes its
   speed. They are the player's own keys or stick on its client, and on a 1.21.3+ server from the player's input packet

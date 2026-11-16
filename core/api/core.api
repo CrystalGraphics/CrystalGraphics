@@ -24278,12 +24278,14 @@ com/crystalgraphics/world/CgEntityState
   field public,static,final USE_STARTED I
   field public,static,final USE_STOPPED I
   method public <init> ()V
+  method public acceleration ()F
   method public airSeconds ()F
   method public armPose (I)I
   method public crawling ()Z
   method public dead ()Z
   method public events ()I
   method public gliding ()Z
+  method public groundDistance ()F
   method public grounded ()Z
   method public happened (I)Z
   method public headPitch ()F
@@ -24297,6 +24299,7 @@ com/crystalgraphics/world/CgEntityState
   method public landHeight ()F
   method public leftHanded ()Z
   method public living ()Z
+  method public moveDirection ()F
   method public reset ()V
   method public riding ()Z
   method public secondsDead ()F
@@ -24312,7 +24315,8 @@ com/crystalgraphics/world/CgEntityState
   method public swing ()F
   method public swingHand ()I
   method public swinging ()Z
-  method public update (Lcom/crystalgraphics/platform/world/CgEntityQuery;IFF[D)Z
+  method public turnRate ()F
+  method public update (Lcom/crystalgraphics/platform/world/CgEntityQuery;Lcom/crystalgraphics/platform/world/CgWorldQuery;IFF[D)Z
   method public useAnimation ()I
   method public useLength ()F
   method public useSeconds ()F

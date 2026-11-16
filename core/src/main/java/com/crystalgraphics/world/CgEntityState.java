@@ -2,6 +2,7 @@ package com.crystalgraphics.world;
 
 import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgWorldQuery;
 
 /**
  * What one entity is doing this frame, for an animation to follow: how fast it moves, whether it is on the ground,
@@ -23,12 +24,15 @@ import com.crystalgraphics.platform.world.CgEntityQuery;
  * CgEntityState state = new CgEntityState();                     // one per entity, kept while it lives
  * double[] pose = new double[CgEntityQuery.POSE_LENGTH];
  * // each frame:
- * if (entities.pose(id, partialTick, pose)) state.update(entities, id, partialTick, dt, pose);
+ * if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, partialTick, dt, pose);
  * }</pre>
  *
  * <ul>
  *   <li>Events last one {@link #update}: read them in the frame they happen. The first update after construction or
  *       {@link #reset} raises none, so an entity seen mid-jump does not jump.</li>
+ *   <li>Its motion is smooth between Minecraft's 20 ticks a second: {@link #speed}, {@link #verticalSpeed},
+ *       {@link #moveDirection} and {@link #acceleration} follow the last two ticks' movement across the frame, as the
+ *       drawn position does; {@link #turnRate} and {@link #groundDistance} are read each frame.</li>
  *   <li>A state a version lacks reads as not happening (no gliding before 1.10.2, no off hand before 1.10.2).</li>
  *   <li>The arm pose is Minecraft's own rule for a player's arms, the latest version's, on every version and for every
  *       entity: a mob's renderer may pose its arms its own way.</li>
@@ -54,6 +58,8 @@ public final class CgEntityState {
     private static final double MOVING = 0.01;
     /** What sneaking scales Minecraft's input by ({@code Input.tick}'s 0.3, the sneaking speed attribute's default). */
     private static final float SNEAK_INPUT = 0.3f;
+    /** How far down {@link #groundDistance} looks, blocks. */
+    private static final int GROUND_REACH = 64;
     /** Minecraft eases its swim amount 0.09 a tick toward the swim pose ({@code LivingEntity.updateSwimAmount}). */
     private static final float SWIM_EASE = 0.09f * TICKS_PER_SECOND;
 
@@ -68,13 +74,19 @@ public final class CgEntityState {
     private float input, inputDirection;
     private boolean inputFromPlayer, sprintHeld, jumpHeld;
     private double peakY;
+    /** The movement of the tick drawn toward and of the one before, blocks: what the frame's motion is between. */
+    private double tickX, tickY, tickZ, lastTickX, lastTickY, lastTickZ;
+    private double velocityX, velocityY, velocityZ;
+    private float lastPartialTick, bodyYaw, turnRate, groundDistance;
 
     /**
      * Reads entity {@code id} at {@code partialTick} and moves the state on by {@code dt} seconds; {@code pose} is its
-     * pose at the same partial tick, as {@link CgEntityQuery#pose} wrote it. False, with the state unchanged, where the
-     * host answers no facts for it.
+     * pose at the same partial tick, as {@link CgEntityQuery#pose} wrote it, and {@code world} its level's blocks, which
+     * {@link #groundDistance} looks down through ({@link CgWorldQuery#NONE}: never found). False, with the state
+     * unchanged, where the host answers no facts for it.
      */
-    public boolean update(CgEntityQuery entities, int id, float partialTick, float dt, double[] pose) {
+    public boolean update(CgEntityQuery entities, CgWorldQuery world, int id, float partialTick, float dt,
+                          double[] pose) {
         if (!entities.facts(id, partialTick, read.clear())) return false;
         CgEntityFacts spare = was;
         was = now;
@@ -92,6 +104,11 @@ public final class CgEntityState {
             was.useTicks = now.useTicks;
             peakY = now.y;
             swimAmount = now.has(CgEntityFacts.SWIM_POSE) ? 1f : 0f;
+            lastTickX = tickX = now.moveX;
+            lastTickY = tickY = now.moveY;
+            lastTickZ = tickZ = now.moveZ;
+            bodyYaw = (float) pose[CgEntityQuery.BODY_YAW];
+            turnRate = 0f;
         } else {
             swimAmount = now.has(CgEntityFacts.SWIM_POSE) ? Math.min(1f, swimAmount + SWIM_EASE * dt)
                     : Math.max(0f, swimAmount - SWIM_EASE * dt);
@@ -99,7 +116,9 @@ public final class CgEntityState {
         headYaw = wrap((float) (pose[CgEntityQuery.HEAD_YAW] - pose[CgEntityQuery.BODY_YAW]));
         headPitch = (float) pose[CgEntityQuery.PITCH];
         intent((float) pose[CgEntityQuery.YAW]);
+        motion(partialTick, dt, (float) pose[CgEntityQuery.BODY_YAW]);
         air(dt);
+        groundDistance = ground(world, pose);
         if (now.hurtTime > was.hurtTime) {
             events |= HURT;
             hurtSeconds = 0f;
@@ -125,6 +144,8 @@ public final class CgEntityState {
         primed = false;
         events = 0;
         swimAmount = useSeconds = airSeconds = landHeight = input = inputDirection = 0f;
+        lastPartialTick = turnRate = groundDistance = 0f;
+        tickX = tickY = tickZ = lastTickX = lastTickY = lastTickZ = velocityX = velocityY = velocityZ = 0;
         inputFromPlayer = sprintHeld = jumpHeld = false;
         hurtSeconds = Float.POSITIVE_INFINITY;
         arms[MAIN] = arms[OFF] = ARM_EMPTY;
@@ -157,6 +178,36 @@ public final class CgEntityState {
         }
         input = Math.min(1f, (float) Math.sqrt(strafe * strafe + forward * forward));
         inputDirection = input == 0f ? 0f : (float) Math.toDegrees(Math.atan2(strafe, forward));
+    }
+
+    /**
+     * The frame's velocity, between the last two ticks' movement as the drawn position is between the last two
+     * positions. A tick has passed when the partial tick wraps, or on a server (always at 1) at each update.
+     */
+    private void motion(float partialTick, float dt, float yaw) {
+        if (partialTick < lastPartialTick || partialTick >= 1f || now.moveX != tickX || now.moveY != tickY
+                || now.moveZ != tickZ) {
+            lastTickX = tickX;
+            lastTickY = tickY;
+            lastTickZ = tickZ;
+            tickX = now.moveX;
+            tickY = now.moveY;
+            tickZ = now.moveZ;
+        }
+        lastPartialTick = partialTick;
+        velocityX = (lastTickX + (tickX - lastTickX) * partialTick) * TICKS_PER_SECOND;
+        velocityY = (lastTickY + (tickY - lastTickY) * partialTick) * TICKS_PER_SECOND;
+        velocityZ = (lastTickZ + (tickZ - lastTickZ) * partialTick) * TICKS_PER_SECOND;
+        if (dt > 0f) turnRate = wrap(yaw - bodyYaw) / dt;
+        bodyYaw = yaw;
+    }
+
+    /** Its feet's height over the first surface under them; 0 on the ground, infinite where none is found. */
+    private float ground(CgWorldQuery world, double[] pose) {
+        if (now.has(CgEntityFacts.GROUNDED)) return 0f;
+        double feet = pose[CgEntityQuery.Y];
+        double floor = CgWorldQueries.groundBelow(world, pose[CgEntityQuery.X], feet, pose[CgEntityQuery.Z], GROUND_REACH);
+        return Double.isNaN(floor) ? Float.POSITIVE_INFINITY : (float) Math.max(0, feet - floor);
     }
 
     /** Leaving the ground and touching it again, with the highest point between: what a landing's height is from. */
@@ -241,14 +292,48 @@ public final class CgEntityState {
         return events;
     }
 
-    /** Its speed along the ground, blocks a second, over its last tick. */
+    /** Its speed along the ground, blocks a second, smooth across the frame. */
     public float speed() {
-        return (float) Math.sqrt(now.moveX * now.moveX + now.moveZ * now.moveZ) * TICKS_PER_SECOND;
+        return (float) Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
     }
 
-    /** Its vertical speed, blocks a second, over its last tick: up positive. */
+    /** Its vertical speed, blocks a second, smooth across the frame: up positive. */
     public float verticalSpeed() {
-        return (float) now.moveY * TICKS_PER_SECOND;
+        return (float) velocityY;
+    }
+
+    /**
+     * Which way it moves against its body's facing, degrees: 0 ahead, 90 to its left, 180 back; 0 standing. What
+     * orientation warping turns the legs by, and what picks a start or stop clip's direction.
+     */
+    public float moveDirection() {
+        double still = MOVING * TICKS_PER_SECOND;
+        if (velocityX * velocityX + velocityZ * velocityZ < still * still) return 0f;
+        double yaw = Math.toRadians(bodyYaw), c = Math.cos(yaw), sn = Math.sin(yaw);
+        return (float) Math.toDegrees(Math.atan2(velocityX * c + velocityZ * sn, -velocityX * sn + velocityZ * c));
+    }
+
+    /**
+     * How fast its ground speed changes, blocks a second a second: positive speeding up, negative slowing. From its last
+     * two ticks, so it holds for a tick: what tells a start from a run and a stop from a walk.
+     */
+    public float acceleration() {
+        double latest = Math.sqrt(tickX * tickX + tickZ * tickZ);
+        double before = Math.sqrt(lastTickX * lastTickX + lastTickZ * lastTickZ);
+        return (float) (latest - before) * TICKS_PER_SECOND * TICKS_PER_SECOND;
+    }
+
+    /** How fast its body turns, degrees a second: positive to its left. Minecraft's yaw grows turning right. */
+    public float turnRate() {
+        return -turnRate;
+    }
+
+    /**
+     * How high its feet are over the first surface under them, blocks: 0 on the ground, infinite where nothing is found
+     * within 64 blocks or its level has no blocks to ask. What a landing anticipates by.
+     */
+    public float groundDistance() {
+        return groundDistance;
     }
 
     public boolean living() {
