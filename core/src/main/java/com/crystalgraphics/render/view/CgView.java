@@ -380,6 +380,15 @@ public final class CgView {
         jitterY = (halton(i, 3) - 0.5f) * 2f / height;
     }
 
+    /** This frame's jitter in normalized device coordinates, what its projection moved by: 0 when it is not jittering. */
+    public float jitterNdcX() {
+        return jittering ? jitterX : 0f;
+    }
+
+    public float jitterNdcY() {
+        return jittering ? jitterY : 0f;
+    }
+
     /** This frame's jitter in texels, x and y: 0 when it is not jittering. */
     public float jitterTexelsX() {
         return jittering ? jitterX * width * 0.5f : 0f;

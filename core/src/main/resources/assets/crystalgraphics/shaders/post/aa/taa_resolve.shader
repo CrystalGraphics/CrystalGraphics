@@ -20,6 +20,7 @@ Properties {
     _History  ("Last frame's resolve", sampler2D) = "black"
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
     _Resolve  ("x this frame's least share, y its share at speed, z 1 with a history to blend", vec4) = (0.04, 0.2, 1, 0)
+    _Jitter   ("xy this frame's jitter in normalized device coordinates", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -87,7 +88,9 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec3 result = current;
     if (_Resolve.z > 0.5) {
         vec2 nearUv = (vec2(nearest) + 0.5) / size;
-        vec2 motion = cg_Velocity(_Velocity, nearUv, texelFetch(cg_DepthBuffer, nearest, 0).r) * 0.5;
+        // The velocity is measured from where the jittered projection put the surface: less the jitter, where it stood,
+        // so a still picture fetches its history in place rather than shaken by the jitter
+        vec2 motion = (cg_Velocity(_Velocity, nearUv, texelFetch(cg_DepthBuffer, nearest, 0).r) - _Jitter.xy) * 0.5;
         vec2 from = (vec2(at) + 0.5) / size - motion;
         if (all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0)))) {
             vec3 history = taa_ycocg(taa_history(from, size));

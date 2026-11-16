@@ -57,11 +57,14 @@ public final class CgTemporalAA {
         CgGraphTexture history = state.history(HISTORY, new CgTextureDesc(input.width(), input.height(), CgFormat.RGBA16_FLOAT),
                 ctx.recording());
         boolean blend = !state.fresh(HISTORY) && view.historyValid();
-        resolve.sampler("_History", 0, history.previous()).vec4("_Resolve", SHARE, SHARE_MOVING, blend ? 1f : 0f, 0f);
+        // The newest version, last frame's: this frame's is the copy below. previous() would be the frame before that,
+        // as it is in a pass writing the history itself
+        resolve.sampler("_History", 0, history).vec4("_Resolve", SHARE, SHARE_MOVING, blend ? 1f : 0f, 0f)
+                .vec4("_Jitter", view.jitterNdcX(), view.jitterNdcY(), 0f, 0f);
         CgGraphTexture velocity = ctx.scene().velocity();
         if (velocity != null) resolve.sampler("_Velocity", 1, velocity);
         CgScreenTexture out = ctx.texture("cg.taa.out", input.width(), input.height(), CgFormat.RGBA16_FLOAT);
-        ctx.screen(resolve).name("taa.resolve").from(input).reads(history.previous()).reads(velocity).reads(ctx.depth()).into(out);
+        ctx.screen(resolve).name("taa.resolve").from(input).reads(history).reads(velocity).reads(ctx.depth()).into(out);
         // The chain may draw over its picture in place: the history keeps a copy of its own
         ctx.screen(copy).name("taa.history").from(out).into(CgScreenTexture.of(history));
         return out;
