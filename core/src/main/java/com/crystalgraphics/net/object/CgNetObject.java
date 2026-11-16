@@ -76,6 +76,8 @@ public final class CgNetObject {
     final long[] ownerHas;
     boolean anyDirty;
     boolean moved;
+    /** Server: an entity's persisted object changed since the entity was last saved. */
+    boolean unsavedOnEntity;
 
     long spawnTick;
     int lifetime = -1;

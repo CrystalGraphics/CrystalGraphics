@@ -95,6 +95,8 @@ public final class CgNetType {
     private static final Map<String, CgNetType> BY_NAME = new ConcurrentHashMap<>();
     /** The types {@link Builder#onEntities} put on entities: what an entity's arrival asks. */
     static final List<CgNetType> ON_ENTITIES = new CopyOnWriteArrayList<>();
+    /** The persisted per-holder types: what an entity being saved is asked for. */
+    static final List<CgNetType> SAVED_ON_ENTITIES = new CopyOnWriteArrayList<>();
     /** The types that have had an object or a refusal: the per-tick counters' loop, never every declared type. */
     static final List<CgNetType> USED = new CopyOnWriteArrayList<>();
 
@@ -407,6 +409,7 @@ public final class CgNetType {
                 REGISTERED.add(type);
                 BY_NAME.put(name, type);
                 if (type.entityTypes != null) ON_ENTITIES.add(type);
+                if (type.persisted && type.perHolder) SAVED_ON_ENTITIES.add(type);
                 if (type.persisted) CgNetObjects.declaredLate(type);
                 return type;
             }

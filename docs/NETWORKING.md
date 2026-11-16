@@ -903,8 +903,12 @@ the server stops and every five minutes, and come back when it starts again, bef
 - Each object keeps its anchor, owner, fields (`serverOnly()` ones too) and age; a server behaviour is made again and
   hears `spawned` with that age.
 - **An entity's object is saved with the entity**: a per-holder type's object on an entity other than a player (`of(entity)`,
-  or `onEntities`) is written into the entity's own saved data as it changes, and read back when the entity is loaded and
-  its object made. It travels with the entity through chunk unloads and is gone when the entity is.
+  or `onEntities`) is written into the entity's own saved data as the game saves the entity (a chunk unloading, an
+  autosave, the server stopping), and read back when the entity is loaded and its object made. It travels with the
+  entity through chunk unloads and is gone when the entity is.
+- **A change costs a flag**: however often a field changes, it is encoded once, at the entity's save, every type of that
+  entity in one write; an entity with nothing changed is saved as Minecraft saves it. (Forge 1.13.2 and 1.14.3, which
+  load no mixins, write at the tick a change happens instead.)
 
   ```java
   public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage");

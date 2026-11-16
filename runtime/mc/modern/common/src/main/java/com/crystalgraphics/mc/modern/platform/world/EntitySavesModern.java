@@ -17,7 +17,7 @@ import net.minecraft.world.entity.Entity;
  * {@code EntitySaveHook} adds and saves. Server thread.
  *
  * <pre>{@code
- * CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(Entity::getPersistentData));   // a loader's entry
+ * CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(Entity::getPersistentData, true));   // a loader's entry
  * }</pre>
  */
 public final class EntitySavesModern implements CgEntitySaves.Host {
@@ -26,10 +26,20 @@ public final class EntitySavesModern implements CgEntitySaves.Host {
     public static final String KEY = "crystalgraphics";
 
     private final Function<Entity, CompoundTag> root;
+    private final boolean hooked;
 
-    /** {@code root}: the compound, saved with an entity, that the key lives in. */
-    public EntitySavesModern(Function<Entity, CompoundTag> root) {
+    /**
+     * {@code root}: the compound, saved with an entity, that the key lives in; {@code hooked}: whether the loader's
+     * {@code EntitySaveHook} calls {@link CgEntitySaves#saving} at the head of each entity's save.
+     */
+    public EntitySavesModern(Function<Entity, CompoundTag> root, boolean hooked) {
         this.root = root;
+        this.hooked = hooked;
+    }
+
+    @Override
+    public boolean savesWhenSaved() {
+        return hooked;
     }
 
     @Override
