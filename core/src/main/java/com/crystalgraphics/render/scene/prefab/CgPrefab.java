@@ -2,6 +2,7 @@ package com.crystalgraphics.render.scene.prefab;
 
 import com.crystalgraphics.render.post.settings.CgPostBlendable;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.api.animation.CgSkeletonDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -320,10 +321,17 @@ public final class CgPrefab {
             this.followPose = followPose;
         }
 
-        /** Its mesh, read the first time it is asked where it is a file's. */
+        /**
+         * Its mesh, read the first time it is asked where it is a file's, with the virtual bones and sockets of the
+         * skeleton its settings name ({@link CgSkeletonDefinition#ofMesh}).
+         */
         public CgSkeletalMesh mesh() {
             CgSkeletalMesh m = mesh;
-            if (m == null) mesh = m = CgMeshLoader.skeletal(path);
+            if (m == null) {
+                m = CgMeshLoader.skeletal(path);
+                CgSkeletonDefinition skeleton = CgSkeletonDefinition.ofMesh(path);
+                mesh = m = skeleton == null ? m : skeleton.applyTo(m);
+            }
             return m;
         }
 

@@ -1,0 +1,14 @@
+# Goku as an actor, for /cgc actor goku: the humanoid template on his Kakarot clips, his arms by what he holds.
+_v: 1
+prefab: kk:goku
+anim_graph: kk:goku
+outline: { render_custom_depth: true, custom_depth_stencil_value: 1, post: kk:Renderer/BattleOutline }   # Kakarot's battle outline
+post: [kk:Art/BG/Area02/PostProcess/Area02_CharaColor]   # the ocean arena's character colour, on him alone
+item_layers:
+  - { item: minecraft:shield, layer: upper_body, graph: kk:goku_guard_arms }
+  - { item: minecraft:compass, layer: upper_body, graph: kk:goku_radar_arms }
+  - { item: minecraft:clock, layer: upper_body, graph: kk:goku_radar_arms }
+  - { item: "#minecraft:swords", layer: upper_body, graph: kk:goku_charge_arms }
+  - { item: minecraft:diamond_sword, layer: upper_body, graph: kk:goku_charge_arms }
+  - { item: minecraft:iron_sword, layer: upper_body, graph: kk:goku_charge_arms }
+  - { item: minecraft:bow, layer: upper_body, graph: kk:goku_charge_arms }

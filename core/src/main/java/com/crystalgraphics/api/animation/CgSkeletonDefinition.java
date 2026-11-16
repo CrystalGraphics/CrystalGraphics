@@ -1,12 +1,21 @@
 package com.crystalgraphics.api.animation;
 
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
+import com.crystalgraphics.util.io.CgIO;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import javax.annotation.Nullable;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -59,6 +68,52 @@ public record CgSkeletonDefinition(String id, List<CgSocket> sockets, List<CgVir
         List<CgSocket> out = new ArrayList<>(sockets.size());
         for (CgSocket s : sockets) if (skeleton.indexOfIgnoringCase(s.bone()) >= 0) out.add(s);
         return out;
+    }
+
+    /**
+     * {@code mesh} with this skeleton's virtual bones, then its sockets on the bones it has: Unreal's skeletal mesh
+     * carrying its {@code USkeleton}.
+     */
+    public CgSkeletalMesh applyTo(CgSkeletalMesh mesh) {
+        CgSkeletalMesh withBones = mesh.withVirtualBones(virtualBones);
+        return withBones.withSockets(socketsOn(withBones.skeleton()));
+    }
+
+    /**
+     * The skeleton a mesh file's settings name: {@code skeleton} in the file beside it of the same name,
+     * {@code .yaml}, read in its namespace's {@code units.yaml}. Null where the mesh has no settings or they name none.
+     * Worker-safe.
+     *
+     * <pre>{@code
+     * // models/hero.yaml beside models/hero.glb:  _v: 1
+     * //                                           skeleton: mymod:hero      (skeletons/hero.yaml)
+     * CgSkeletonDefinition d = CgSkeletonDefinition.ofMesh("mymod:models/hero.glb");
+     * CgSkeletalMesh hero = d == null ? mesh : d.applyTo(mesh);
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where the settings name a skeleton with no file
+     */
+    @Nullable
+    public static CgSkeletonDefinition ofMesh(String meshPath) {
+        int colon = meshPath.indexOf(':'), dot = meshPath.lastIndexOf('.');
+        if (colon < 0 || dot < colon) return null;
+        Map<?, ?> settings = yaml(meshPath.substring(0, dot) + ".yaml");
+        if (settings == null || !(settings.get("skeleton") instanceof String id) || id.indexOf(':') < 0) return null;
+        String ns = id.substring(0, id.indexOf(':'));
+        Map<?, ?> tree = yaml(ns + ":skeletons/" + id.substring(ns.length() + 1) + ".yaml");
+        if (tree == null) throw new IllegalArgumentException(meshPath + "'s settings name skeleton " + id + ", which has no file");
+        Map<?, ?> units = yaml(ns + ":units.yaml");
+        return compile(id, tree, units == null ? CgUnits.HOST : CgUnits.of(units.get("units"), CgUnits.HOST));
+    }
+
+    @Nullable
+    private static Map<?, ?> yaml(String path) {
+        try (InputStream in = CgIO.openStream(path)) {
+            if (in == null) return null;
+            return CgAssetYaml.read(new String(in.readAllBytes(), StandardCharsets.UTF_8)) instanceof Map<?, ?> m ? m : null;
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     /** Registers {@link #COMPILER} as the skeleton kind's. */

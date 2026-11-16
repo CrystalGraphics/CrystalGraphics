@@ -459,6 +459,9 @@ nodes:
 - **Over the states**: an `upper_body` linked layer (empty: the states' own pose), which an actor's `item_layers` fill
   with a weapon's arms; an `UpperBody` slot; the swing, held at `entity.swing` (0 to 1) from the `spine_01` branch while
   `entity.swinging`; and `DefaultSlot` over everything, for whole-body moves and reactions.
+- **The head turns where the entity looks**: `head` is turned in component space by `entity.head_yaw` (left
+  positive) and `entity.head_pitch` (down positive), as Minecraft turns its model's head away from its body; the body
+  itself faces the entity's body yaw. A body facing +z with a `head` bone needs nothing more.
 - **The swing's mask names `spine_01`**, the standard humanoid's: a body with other bone names overrides `with_swing`'s
   layers in its child, as any node.
 - **Bound as it is, it fails** naming one of its clips (`crystalgraphics:humanoid/<node>`): they are placeholders.

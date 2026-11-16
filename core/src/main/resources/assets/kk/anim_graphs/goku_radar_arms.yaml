@@ -1,0 +1,10 @@
+# Goku holding the Dragon Radar: the template's upper_body layer, from spine_01 up, while Goku holds its item.
+_v: 1
+output: out
+layers:
+  upper_body: { inputs: [pose], output: arms }
+nodes:
+  out: { kind: ref_pose }
+  body: { kind: linked_input_pose, name: pose }
+  hold: { kind: sequence_player, clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_Radar_02LP, loop: true }
+  arms: { kind: layered_blend, base: body, layers: [ { pose: hold, mask: { branches: [ { bone: spine_01 } ] } } ] }

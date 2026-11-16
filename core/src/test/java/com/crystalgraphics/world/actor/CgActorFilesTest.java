@@ -67,6 +67,21 @@ public class CgActorFilesTest {
     }
 
     @Test
+    public void aFileBindingNothingWaitsForCodeAndCarriesItsOutline() {
+        CgActorFiles.Definition d = compile("filetest:hero", """
+                prefab: mymod:hero
+                outline: { render_custom_depth: true, custom_depth_stencil_value: 3 }
+                post: [mymod:stage/chara_colour]
+                """);
+        assertFalse(d.localPlayer());
+        assertTrue("bound by code or /cgc actor, never by type", d.entities().isEmpty());
+        assertEquals(3, d.outline());
+        assertEquals(List.of("mymod:stage/chara_colour"), d.post());
+        assertTrue("none unless named", compile("filetest:plain", "prefab: mymod:hero\n").post().isEmpty());
+        assertEquals("no outline unless its body writes custom depth", -1, compile("filetest:plain", "prefab: mymod:hero\n").outline());
+    }
+
+    @Test
     public void heldItemsChooseEachLayersGraphTheMainHandFirst() {
         CgPlatform.provide(CgItems.HOST, ITEMS);
         try {
@@ -118,7 +133,7 @@ public class CgActorFilesTest {
     public void aFileFailsAtLoadByName() {
         String[][] cases = {
                 {"filetest:both", "binds: { local_player: true, entities: [ mymod:golem ] }\nprefab: mymod:golem\n", "binds"},
-                {"filetest:neither", "binds: {}\nprefab: mymod:golem\n", "binds"},
+                {"filetest:overlay", "prefab: mymod:golem\noutline: { render_custom_depth: true, overlay: mymod:ink }\n", "outline.overlay"},
                 {"filetest:event", "binds: { local_player: true }\nprefab: mymod:golem\nreactions: [ { event: sneezed, sequence: mymod:s } ]\n",
                         "reactions[0]"},
                 {"filetest:rule", "binds: { local_player: true }\nprefab: mymod:golem\n"

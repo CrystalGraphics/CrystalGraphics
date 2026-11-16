@@ -31,6 +31,19 @@ public final class CgBodyKinds {
 
     // ── Prefab ───────────────────────────────────────────────────────────────────────────
 
+    /** A node's skeletal mesh: its file, the clip it plays at spawn, or a node before it whose pose it is drawn in. */
+    static final CgType NODE_SKELETAL = CgTypes.struct("crystalgraphics:prefab.skeletal")
+            .property("mesh", CgValueType.binaryRef("models")).required().flags(CgPropertyFlag.STRUCTURAL)
+            .property("play", STRING)
+            .property("follow_pose", STRING).flags(CgPropertyFlag.STRUCTURAL)
+            .register();
+
+    /** A node's effect: the system it plays, from its spawn unless {@code auto} is false. */
+    static final CgType NODE_EFFECT = CgTypes.struct("crystalgraphics:prefab.effect")
+            .property("effect", soft("system")).required()
+            .property("auto", BOOL).defaultValue(true)
+            .register();
+
     static final CgType NODE = CgTypes.element("crystalgraphics:prefab.node")
             .property("name", STRING).required().flags(CgPropertyFlag.LOCKED)
             .property("parent", STRING).flags(CgPropertyFlag.STRUCTURAL)
@@ -40,6 +53,9 @@ public final class CgBodyKinds {
             .property("opacity", FLOAT).defaultValue(1).flags(CgPropertyFlag.KEYABLE)
             .property("values", mapOfValues())
             .property("meshes", CgValueType.listOf(CgValueType.struct(CgCommonStructs.MESH_SLOT))).flags(CgPropertyFlag.STRUCTURAL)
+            .property("skeletal", CgValueType.struct(NODE_SKELETAL)).flags(CgPropertyFlag.STRUCTURAL)
+            .property("materials", CgValueType.listOf(hard("material"))).flags(CgPropertyFlag.STRUCTURAL)
+            .property("effect", CgValueType.struct(NODE_EFFECT)).flags(CgPropertyFlag.STRUCTURAL)
             .register();
 
     /** {@code prefabs/}: nodes, each with a rest transform, opacity, meshes and materials. */
@@ -827,6 +843,18 @@ public final class CgBodyKinds {
             .property("render_custom_depth", BOOL)
             .property("custom_depth_stencil_value", INT).range(0, 255)
             .property("overlay", hard("material"))
+            .property("post", hard("material"))
+            .property("colour", CgValueType.COLOUR)
+            .property("strength", FLOAT)
+            .property("slot_parameter", STRING)
+            .property("slot_colours", CgValueType.listOf(STRING))
+            .register();
+
+    /** The material parameters a role's rim keys: each a parameter name, the material's own value until keyed. */
+    static final CgType RIM = CgTypes.struct("crystalgraphics:rig.rim")
+            .property("strength", STRING)
+            .property("power", STRING)
+            .property("colour", STRING)
             .register();
 
     /** {@code rigs/}: a skeleton read for retargeting ({@code UIKRigDefinition}). */
@@ -839,6 +867,7 @@ public final class CgBodyKinds {
             .property("carried", CgValueType.listOf(STRING))
             .property("on_missing", CgValueType.enumOf("keep_host", "refuse"))
             .property("outline", CgValueType.struct(OUTLINE))
+            .property("rim", CgValueType.struct(RIM))
             .register();
 
     static final CgType POSES = CgTypes.struct("crystalgraphics:retargeter.poses")
@@ -949,7 +978,7 @@ public final class CgBodyKinds {
 
     // ── Actor ────────────────────────────────────────────────────────────────────────────
 
-    /** What an actor draws: the local player, or entities by type id. */
+    /** What an actor draws: the local player, or entities by type id; absent, whatever code binds it to. */
     static final CgType ACTOR_BINDS = CgTypes.struct("crystalgraphics:actor.binds")
             .property("local_player", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
             .property("entities", CgValueType.listOf(CgValueType.NAMESPACED_ID)).flags(CgPropertyFlag.HEADLESS)
@@ -973,10 +1002,12 @@ public final class CgBodyKinds {
 
     /**
      * {@code actors/}: what draws an entity, a Character Blueprint's defaults: the entities it binds, its prefab, the
-     * graph its body runs, the body whose root motion moves the entity, and its reactions to the entity's events.
+     * graph its body runs, the body whose root motion moves the entity, its reactions to the entity's events, its
+     * outline, and the post materials drawn on its bodies alone in its kit's look ({@code post}: a stage's character
+     * colour, each a {@code #domain post} material before translucency).
      */
     public static final CgType ACTOR = CgTypes.kind("crystalgraphics:actor").folder("actors").version(1)
-            .property("binds", CgValueType.struct(ACTOR_BINDS)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("binds", CgValueType.struct(ACTOR_BINDS)).flags(CgPropertyFlag.HEADLESS)
             .property("prefab", soft("prefab")).required().flags(CgPropertyFlag.HEADLESS)
             .property("anim_graph", soft("anim_graph")).flags(CgPropertyFlag.HEADLESS)
             .property("rig", soft("rig")).flags(CgPropertyFlag.HEADLESS)
@@ -984,6 +1015,8 @@ public final class CgBodyKinds {
             .property("keep_vanilla_model", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
             .property("reactions", CgValueType.listOf(CgValueType.struct(ACTOR_REACTION))).flags(CgPropertyFlag.HEADLESS)
             .property("item_layers", CgValueType.listOf(CgValueType.struct(ACTOR_ITEM_LAYER))).flags(CgPropertyFlag.HEADLESS)
+            .property("outline", CgValueType.struct(OUTLINE)).flags(CgPropertyFlag.HEADLESS)
+            .property("post", CgValueType.listOf(hard("material"))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     static void register() {

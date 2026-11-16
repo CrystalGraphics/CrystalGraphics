@@ -59,6 +59,9 @@ static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
 
 - **A skeletal node is a `CgSkeletalMeshComponent`** when spawned, playing its clip; a clip its mesh lacks is refused at
   `spawn()`, naming it. `followPose` names a skeletal node before it, `parent(name, socket)` one too.
+- **A skeletal node's mesh carries its skeleton**: the settings file beside it (`models/hero.yaml` for
+  `models/hero.glb`) names a `skeleton` asset, whose virtual bones and sockets the mesh takes as it loads
+  (`CgSkeletonDefinition.ofMesh`).
 - **An effect node plays through `CgPrefabEffects.HOST`**, which `CgVfx.install` fills: the system plays in the world's
   VFX, following the node, and stops when the instance is removed. Without VFX installed it warns once and plays nothing.
 - **A post node is a `CgPostVolume`** riding the node: its look full within its radius of where the node stands and
@@ -695,6 +698,15 @@ item_layers:                                # a held item gives a linked anim la
   - { item: "#minecraft:swords", layer: upper_body, graph: mymod:golem_sword_arms }
   - { item: minecraft:bow, layer: upper_body, graph: mymod:golem_bow_arms }
   - { item: minecraft:shield, layer: off_arm, graph: mymod:golem_shield_arm }
+outline: { render_custom_depth: true, custom_depth_stencil_value: 1, post: mymod:renderer/outline }   # round its body
+```
+
+A file with no `binds` draws nothing until it is bound: the client's player wears it with `/cgc actor <name>` (the
+id's last part, `golem` here) or from code.
+
+```java
+CgEntityActors.Registration hero = CgActorFiles.bindLocalPlayer("mymod:hero");   // the client's player, as mymod:hero
+hero.close();                                                                    // its own model again
 ```
 
 The same registration in Java, for an actor with code of its own or none (`plain()`):
@@ -720,9 +732,17 @@ CgEntityActors.register("mymod:golem", CgEntityActors.plain()).prefab("mymod:gol
   `item` is an item id or `#` an item tag (every item in it; a tag matches nothing before 1.13, which has none); an id
   no mod registers matches nothing and is no error. In Java: `.itemLayer(new CgItemLayer(item, layer, graph))`.
 - **The body** is the `root_motion` node's, else the first skeletal mesh the actor added, else its prefab's first.
-- **What it plays loads with its prefab**, behind the loading screen: its graph and its reactions' sequences.
+- **Its graphs' clips** are its body's mesh's own by name, else clip files by id: `mymod:anims/golem/walk` is
+  `assets/mymod/anims/golem/walk.glb`, its first clip.
+- **An outline** makes its body's skeletal meshes write the custom stencil, and on a client the engine's outline
+  (`CgOutline`) is drawn round that stencil while any such actor lives: in `post`'s look, a material on the outline
+  shader (a game's battle outline), else the engine's, black. Actors writing one stencil share one outline, in its first
+  holder's look. In Java: `.outline(1, "mymod:renderer/outline")`.
+- **What it plays loads with its prefab**, behind the loading screen: its graph, its item layers' graphs, the clip
+  files they name and its reactions' sequences; a file bound on demand's too.
 - **Fails at load, naming the file**: a prefab, graph, rig or sequence no file declares, an unknown event, a rule
-  naming a property no entity has, `binds` with neither form or both, and an entity type two actors bind.
+  naming a property no entity has, `binds` with both forms, an outline with more than its custom depth, stencil and `post` (the rig's `overlay` and colours), and an entity type two actors
+  bind.
 
 ## Drawing a palette yourself
 
