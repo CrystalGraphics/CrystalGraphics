@@ -1,5 +1,9 @@
 package com.crystalgraphics.mc.modern.fabric;
 
+import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
+import com.crystalgraphics.mc.modern.platform.world.SavedEntity;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.net.NetworkModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
@@ -60,6 +64,8 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
         LogManager.getLogger("CrystalGraphics").info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsFabricCommon.class));
         PlatformServiceModern.install(ModLoaderFabric.INSTANCE);
+        // what the engine saves with an entity, in the compound EntitySaveHook keeps on it
+        CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((SavedEntity) entity).crystalgraphics$saved()));
         CgEngineLifecycle.preInit();
         CgEngineLifecycle.init(Network.get());
         Network.registerServerReceiver();

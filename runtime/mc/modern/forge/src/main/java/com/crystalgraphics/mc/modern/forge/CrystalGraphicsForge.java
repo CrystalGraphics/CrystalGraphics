@@ -1,6 +1,10 @@
 package com.crystalgraphics.mc.modern.forge;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.world.CgEntitySaves;
+import net.minecraftforge.common.extensions.IForgeEntity;
 import com.crystalgraphics.mc.modern.platform.CrystalGraphics;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
@@ -199,6 +203,13 @@ public final class CrystalGraphicsForge implements VariantEntry {
                 })));
         *///?}
         PlatformServiceModern.install(ModLoaderForge.INSTANCE);
+        // what the engine saves with an entity, in Forge's persistent data: through IForgeEntity, which the compile
+        // classpath of 26 and of 1.13.2-1.14.3 does not show on Entity though the patched Entity implements it
+        //? if >=1.14.4 {
+        CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getPersistentData()));
+        //?} else {
+        /*CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IForgeEntity) entity).getEntityData()));
+        *///?}
         if (FMLEnvironment.dist == Dist.CLIENT) PlatformServiceModern.installClient();
         CgEngineLifecycle.preInit();
         CgEngineLifecycle.init(Network.register());

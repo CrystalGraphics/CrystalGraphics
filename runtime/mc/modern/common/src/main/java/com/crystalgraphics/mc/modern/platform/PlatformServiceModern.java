@@ -1,5 +1,6 @@
 package com.crystalgraphics.mc.modern.platform;
 
+import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
 // 26.3 ships SDL3 and no GLFW, so a 26.3 node cannot even load the GLFW pair.
@@ -168,6 +169,9 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgClipboard.HOST, new ClipboardGlfw(PlatformServiceModern::windowHandle));
         //?}
         CgPlatform.provide(CgHostResources.HOST, HostResourcesModern.INSTANCE);
+        //? if >=1.14.4 {
+        CgVanillaPoses.hosted();   // each loader's VanillaPoseHook; Forge 1.13.2 and 1.14.3 load no mixins
+        //?}
         // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
         CgEngineLifecycle.clientStarting();
     }

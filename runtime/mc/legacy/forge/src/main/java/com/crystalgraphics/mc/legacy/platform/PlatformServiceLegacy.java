@@ -1,5 +1,8 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.legacy.platform.world.EntitySavesLegacy;
+import com.crystalgraphics.world.CgEntitySaves;
+import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
 import com.crystalgraphics.lwjgl2.Lwjgl2AudioOutput;
@@ -99,6 +102,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgGameClasses.HOST, new GameClassesLegacy());
         CgPlatform.provide(CgLevels.HOST, LevelsLegacy.INSTANCE);
         CgPlatform.provide(CgEntityMovement.HOST, EntityMovementLegacy.INSTANCE);
+        CgPlatform.provide(CgEntitySaves.HOST, EntitySavesLegacy.INSTANCE);
         // both sides: entities joining a server's levels, for their actors there
         MinecraftForge.EVENT_BUS.register(new ServerActorsLegacy());
         CgPlatform.provide(CgPlayers.HOST, PlayersLegacy.INSTANCE);
@@ -146,6 +150,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         MinecraftForge.EVENT_BUS.register(screenInput);
         FMLCommonHandler.instance().bus().register(screenInput);
         MinecraftForge.EVENT_BUS.register(new LoadingScreenLegacy());
+        CgVanillaPoses.hosted();   // VanillaPoseHook
         // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
         CgEngineLifecycle.clientStarting();
     }

@@ -32,10 +32,13 @@ import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.format.CgFiles;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbtOps;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
 
@@ -463,7 +466,11 @@ public final class CgNetObjects {
                 serverEnded(obj);
                 continue;
             }
-            if (obj.anyDirty || obj.moved) markUnsaved(obj.type);
+            if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
+                if (obj.anyDirty) store(obj);
+            } else if (obj.anyDirty || obj.moved) {
+                markUnsaved(obj.type);
+            }
             send(obj);
             obj.clearDirty();
             LIVE.set(keep++, obj);
@@ -1156,7 +1163,8 @@ public final class CgNetObjects {
 
     private static boolean save(CgNetType type, Path world) {
         List<CgNetObject> objects = new ArrayList<>();
-        for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive()) objects.add(obj);
+        // an entity's are saved with the entity
+        for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY) objects.add(obj);
         Path file = file(world, type);
         try {
             CgFiles.write(file, new SavedObjects(type), objects);
@@ -1165,6 +1173,65 @@ public final class CgNetObjects {
             LOGGER.error("[cg-net] could not save {} to {}", type.name, file, failed);
             return false;
         }
+    }
+
+    /** {@code obj}'s set fields as a map by name, as they are saved; a {@code local()} field never is. */
+    @SuppressWarnings("unchecked")
+    private static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
+        CgNetField<?>[] all = obj.type.fields;
+        CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
+        for (int i = 0; i < all.length; i++) {
+            CgNetField<Object> field = (CgNetField<Object>) all[i];
+            if (!CgNetObject.has(obj.set, i) || field.local) continue;
+            if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
+                fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
+                continue;
+            }
+            fields.field(field.name, field.codec, field.kind == CgNetField.Kind.CODEC ? obj.refs[i] : field.box(obj.bits[i]));
+        }
+        return fields.build();
+    }
+
+    /** The fields {@link #encodeFields} wrote, set on {@code obj}; a field it does not name keeps its fallback. */
+    private static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
+        CgNetField<?>[] all = obj.type.fields;
+        CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, in);
+        for (int i = 0; i < all.length; i++) {
+            CgNetField<?> field = all[i];
+            if (field.local || !fields.has(field.name)) continue;
+            T raw = fields.raw(field.name);
+            if (field.kind == CgNetField.Kind.CODEC && Objects.equals(raw, ops.empty())) {
+                obj.refs[i] = null;
+            } else {
+                Object value = field.codec.decode(ops, raw);
+                if (field.kind == CgNetField.Kind.CODEC) obj.refs[i] = value;
+                else obj.bits[i] = field.bitsOf(value);
+            }
+            CgNetObject.mark(obj.set, i);
+        }
+    }
+
+    /**
+     * A persisted type's new object on {@code entity}, its values set from what the entity saved; a value that no longer
+     * decodes is logged and left at its fallback. Before it starts.
+     */
+    static void restore(CgNetObject obj, Object entity) {
+        CgNbtCompound saved = CgEntitySaves.read(entity);
+        if (!saved.has(obj.type.name)) return;
+        try {
+            decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
+        } catch (RuntimeException failed) {
+            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", entity, obj.type.name, failed);
+        }
+    }
+
+    /** An entity's object of a persisted type changed: its values saved with the entity, under the type's name. */
+    private static void store(CgNetObject obj) {
+        Object entity = obj.entity();
+        if (entity == null) return;
+        CgNbtCompound saved = CgEntitySaves.read(entity);
+        saved.put(obj.type.name, encodeFields(CgNbtOps.INSTANCE, obj));
+        CgEntitySaves.write(entity, saved);
     }
 
     /** One type's live objects as its save file holds them; a decoded object is live but not yet registered. */
@@ -1181,23 +1248,13 @@ public final class CgNetObjects {
         public <T> T encode(CgDynamicOps<T> ops, List<CgNetObject> objects) {
             List<T> out = new ArrayList<>(objects.size());
             for (CgNetObject obj : objects) {
-                CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
-                for (int i = 0; i < type.fields.length; i++) {
-                    if (!CgNetObject.has(obj.set, i)) continue;
-                    CgNetField<Object> field = (CgNetField<Object>) type.fields[i];
-                    if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
-                        fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
-                        continue;
-                    }
-                    fields.field(field.name, field.codec, field.kind == CgNetField.Kind.CODEC ? obj.refs[i] : field.box(obj.bits[i]));
-                }
                 CgCodecs.MapCodecBuilder<T> o = CgCodecs.map(ops).field("k", CgCodecs.INT, obj.kind.ordinal())
                         .optional("d", CgCodecs.STRING, obj.dimension, null)
                         .field("x", CgCodecs.DOUBLE, obj.x).field("y", CgCodecs.DOUBLE, obj.y).field("z", CgCodecs.DOUBLE, obj.z)
                         .optional("o", CgCodecs.UUID, obj.owner, null)
                         .optional("p", CgCodecs.UUID, obj.player, null)
                         .field("a", CgCodecs.LONG, obj.age())
-                        .raw("f", fields.build());
+                        .raw("f", encodeFields(ops, obj));
                 if (obj.lifetime > 0) o.field("l", CgCodecs.INT, (int) Math.max(1, obj.lifetime - obj.age()));
                 if (obj.kind == CgAnchor.Kind.CHUNK) o.field("cx", CgCodecs.INT, obj.chunkX).field("cz", CgCodecs.INT, obj.chunkZ);
                 out.add(o.build());
@@ -1217,20 +1274,7 @@ public final class CgNetObjects {
                 CgNetObject obj = new CgNetObject(type, anchor);
                 obj.owner = o.optional("o", CgCodecs.UUID, null);
                 int lifetime = o.optional("l", CgCodecs.INT, -1);
-                CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, o.raw("f"));
-                for (int i = 0; i < type.fields.length; i++) {
-                    CgNetField<?> field = type.fields[i];
-                    if (!fields.has(field.name)) continue;
-                    T raw = fields.raw(field.name);
-                    if (field.kind == CgNetField.Kind.CODEC && Objects.equals(raw, ops.empty())) {
-                        obj.refs[i] = null;
-                    } else {
-                        Object value = field.codec.decode(ops, raw);
-                        if (field.kind == CgNetField.Kind.CODEC) obj.refs[i] = value;
-                        else obj.bits[i] = field.bitsOf(value);
-                    }
-                    CgNetObject.mark(obj.set, i);
-                }
+                decodeFields(ops, o.raw("f"), obj);
                 obj.live(nextId++, tick - o.optional("a", CgCodecs.LONG, 0L));
                 obj.lifetime = lifetime;
                 obj.behaviourPending = true;

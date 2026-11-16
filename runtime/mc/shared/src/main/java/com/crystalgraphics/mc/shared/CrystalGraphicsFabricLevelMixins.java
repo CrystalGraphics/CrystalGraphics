@@ -10,8 +10,8 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsFabricLevelMixins extends VariantMixins {
 
     public CrystalGraphicsFabricLevelMixins() {
-        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "FrameEndHook", "LevelViewHook", "CameraHook", "HandHook", "FovHook", "ExplosionHook", "LevelEventHook", "SoundVolumeHook",
+        super("crystalgraphics", new String[]{"ChunkWriteHook", "EntitySaveHook"}, "FrameEndHook", "LevelViewHook", "CameraHook", "HandHook", "FovHook", "ExplosionHook", "LevelEventHook", "SoundVolumeHook",
                 "TransparentPassHook", "FirstScreenHook",
-                "EntityRendererHook", "ActorRenderHook");
+                "EntityRendererHook", "ActorRenderHook", "VanillaPoseHook");
     }
 }

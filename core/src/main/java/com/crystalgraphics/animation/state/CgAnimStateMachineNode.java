@@ -326,6 +326,11 @@ public final class CgAnimStateMachineNode extends CgAnimNode {
 
         // ── what a tool reads ────────────────────────────────────────────────────────────
 
+        /** Its machine's name. */
+        public String machineName() {
+            return machine.name();
+        }
+
         /** The state it is in. */
         public String currentState() {
             return machine.states().get(current).name();

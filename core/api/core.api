@@ -284,6 +284,10 @@ com/crystalgraphics/animation/blend/CgInertializationNode
   field public,static,final KIND Lcom/crystalgraphics/animation/graph/CgAnimNodeKind;
   method public toString ()Ljava/lang/String;
   method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/blend/CgInertializationNode;
+com/crystalgraphics/animation/debug/CgAnimDebug
+  access public,final
+  extends java/lang/Object
+  method public,static describe (Ljava/lang/String;Lcom/crystalgraphics/animation/CgAnimInstance;Lcom/crystalgraphics/tag/CgTagCounts;Ljava/lang/StringBuilder;)V
 com/crystalgraphics/animation/dynamics/CgAnimPhys
   access public,final
   extends java/lang/Object
@@ -1815,6 +1819,7 @@ com/crystalgraphics/animation/state/CgAnimStateMachineNode$Machine
   method public event (Ljava/lang/String;)Z
   method public get (Lcom/crystalgraphics/animation/graph/CgAnimVariable;)F
   method public initialize (Lcom/crystalgraphics/animation/graph/CgAnimGraphInstance;)V
+  method public machineName ()Ljava/lang/String;
   method public stateTime ()F
   method public stateWeight (Ljava/lang/String;)F
   method public timeRemaining ()F
@@ -6127,6 +6132,12 @@ com/crystalgraphics/command/CgActorCommands
   method public <init> ()V
   method public build (Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
   method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)V
+com/crystalgraphics/command/CgAnimDebugCommands
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/platform/command/CgCommands$Contribution
+  method public <init> ()V
+  method public build (Lcom/mojang/brigadier/CommandDispatcher;Ljava/util/function/Function;)V
 com/crystalgraphics/command/CgCoreActions
   access public,final
   extends java/lang/Object
@@ -24759,6 +24770,18 @@ com/crystalgraphics/world/CgEntityQueries
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static requireId (Ljava/lang/Object;)I
+com/crystalgraphics/world/CgEntitySaves
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
+com/crystalgraphics/world/CgEntitySaves$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/world/CgEntitySaves$Host;
+  method public,abstract read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,abstract write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
 com/crystalgraphics/world/CgEntityTags
   access public,final
   extends java/lang/Object
@@ -24831,6 +24854,10 @@ com/crystalgraphics/world/actor/CgActorFiles$Definition
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/world/actor/CgAnimDebugOverlay
+  access public,final
+  extends java/lang/Object
+  method public,static toggle ()Z
 com/crystalgraphics/world/actor/CgEntity
   access public,final
   extends java/lang/Object

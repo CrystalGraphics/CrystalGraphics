@@ -1,5 +1,8 @@
 package com.crystalgraphics.mc.v1710.platform;
 
+import com.crystalgraphics.mc.v1710.platform.world.EntitySaves1710;
+import com.crystalgraphics.world.CgEntitySaves;
+import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import net.minecraftforge.client.ClientCommandHandler;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
@@ -100,6 +103,7 @@ public final class PlatformService1710 implements CgPlatformService {
         CgPlatform.provide(CgGameClasses.HOST, new GameClasses1710());
         CgPlatform.provide(CgLevels.HOST, Levels1710.INSTANCE);
         CgPlatform.provide(CgEntityMovement.HOST, EntityMovement1710.INSTANCE);
+        CgPlatform.provide(CgEntitySaves.HOST, EntitySaves1710.INSTANCE);
         // both sides: entities joining a server's levels, for their actors there
         MinecraftForge.EVENT_BUS.register(new ServerActors1710());
         CgPlatform.provide(CgPlayers.HOST, Players1710.INSTANCE);
@@ -158,6 +162,7 @@ public final class PlatformService1710 implements CgPlatformService {
             // The render tick is on FML's bus; the mixin hook (MixinGuiScreen) takes the tick-time drain.
             FMLCommonHandler.instance().bus().register(new ScreenInput1710());
             MinecraftForge.EVENT_BUS.register(new LoadingScreen1710());
+            CgVanillaPoses.hosted();   // VanillaPoseHook
             // The graphics start's GL-free work, begun behind mod loading rather than at the first frame
             CgEngineLifecycle.clientStarting();
         }
