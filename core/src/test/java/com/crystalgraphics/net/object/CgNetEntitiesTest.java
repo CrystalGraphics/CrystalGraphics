@@ -7,16 +7,22 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.IntConsumer;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.world.CgEntitySaves;
 
 /** An entity's properties: a type on entities, its local fields kept on each side and never sent, its objects made and ended with the entity. */
 public class CgNetEntitiesTest {
@@ -119,6 +125,47 @@ public class CgNetEntitiesTest {
         assertEquals("a local field is never sent", 0, (int) client.get(GEAR));
         client.setInt(GEAR, 2);
         assertEquals("and a client writes its own", 2, (int) client.get(GEAR));
+    }
+
+    /** Saved with the entity: a field's value, never a local one's. */
+    static final CgNetField<Integer> RAGE_LEVEL = CgNetField.ofInt("level");
+    static final CgNetField<String> RAGE_TARGET = CgNetField.of("target", CgCodecs.STRING);
+    static final CgNetField<Integer> RAGE_TICKS = CgNetField.ofInt("ticks").local();
+    static final CgNetType RAGE = CgNetType.define("entitytest:rage").fields(RAGE_LEVEL, RAGE_TARGET, RAGE_TICKS)
+            .onEntities(type -> type.equals("test:zombie")).persisted().build();
+
+    @Test
+    public void aPersistedTypeOnEntitiesIsSavedWithTheEntityAndBackWithIt() {
+        Map<Object, CgNbtCompound> saves = new IdentityHashMap<>();
+        CgPlatform.provide(CgEntitySaves.HOST, new CgEntitySaves.Host() {
+            @Override public CgNbtCompound read(Object entity) { return saves.get(entity); }
+            @Override public void write(Object entity, CgNbtCompound data) { saves.put(entity, data); }
+        });
+        try {
+            CgNetTestRig.Entity e = zombie();
+            rig.tick(1);
+            assertNull("nothing saved until it changes", saves.get(e));
+            RAGE.find(e).setInt(RAGE_LEVEL, 5).set(RAGE_TARGET, "steve").setInt(RAGE_TICKS, 9);
+            rig.tick(1);
+            CgNbtCompound saved = saves.get(e);
+            assertNotNull("saved with the entity as it changed", saved);
+            CgNbtCompound rage = (CgNbtCompound) saved.get(RAGE.name());
+            assertEquals(5, (int) rage.get("level", CgCodecs.INT));
+            assertEquals("steve", rage.get("target", CgCodecs.STRING));
+            assertTrue("a local field is never saved", !rage.has("ticks"));
+
+            // the game loads the entity again: a new one, holding what it saved
+            CgNetTestRig.Entity loaded = rig.entity(0, 64, 0);
+            alive.add(loaded);
+            saves.put(loaded, saved);
+            CgNetEntities.enteredServer(loaded, "test:zombie");
+            CgNetObject back = RAGE.find(loaded);
+            assertEquals("back as it was", 5, back.getInt(RAGE_LEVEL));
+            assertEquals("steve", back.get(RAGE_TARGET));
+            assertEquals("a local field starts afresh", 0, back.getInt(RAGE_TICKS));
+        } finally {
+            CgPlatform.provide(CgEntitySaves.HOST, null);
+        }
     }
 
     @Test

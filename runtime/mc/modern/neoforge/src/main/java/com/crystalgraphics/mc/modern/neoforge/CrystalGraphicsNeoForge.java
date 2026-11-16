@@ -1,6 +1,10 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
+import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.world.CgEntitySaves;
+import net.neoforged.neoforge.common.extensions.IEntityExtension;
 import com.crystalgraphics.mc.modern.platform.KeyBindingsModern;
 import com.crystalgraphics.mc.modern.platform.LifecycleModern;
 import com.crystalgraphics.mc.modern.platform.PlatformServiceModern;
@@ -108,6 +112,9 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         LogUtils.getLogger().info("[cg] {}: {}", CrashVariant.LABEL,
                 CrashVariant.report(CrystalGraphicsNeoForge.class));
         PlatformServiceModern.install(ModLoaderNeoForge.INSTANCE);
+        // what the engine saves with an entity, in NeoForge's persistent data: through IEntityExtension, which the compile
+        // classpath of 1.20.2-1.20.3 does not show on Entity
+        CgPlatform.provide(CgEntitySaves.HOST, new EntitySavesModern(entity -> ((IEntityExtension) entity).getPersistentData()));
         if (FmlSide.isClient(FMLLoader.class)) PlatformServiceModern.installClient();
         CgEngineLifecycle.preInit();
         CgEngineLifecycle.init(Network.get());

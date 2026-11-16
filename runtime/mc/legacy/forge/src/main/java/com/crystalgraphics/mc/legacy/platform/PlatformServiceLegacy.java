@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform;
 
+import com.crystalgraphics.mc.legacy.platform.world.EntitySavesLegacy;
+import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.mc.model.CgVanillaPoses;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lwjgl2.JOrbisDecoder;
@@ -100,6 +102,7 @@ public final class PlatformServiceLegacy implements CgPlatformService {
         CgPlatform.provide(CgGameClasses.HOST, new GameClassesLegacy());
         CgPlatform.provide(CgLevels.HOST, LevelsLegacy.INSTANCE);
         CgPlatform.provide(CgEntityMovement.HOST, EntityMovementLegacy.INSTANCE);
+        CgPlatform.provide(CgEntitySaves.HOST, EntitySavesLegacy.INSTANCE);
         // both sides: entities joining a server's levels, for their actors there
         MinecraftForge.EVENT_BUS.register(new ServerActorsLegacy());
         CgPlatform.provide(CgPlayers.HOST, PlayersLegacy.INSTANCE);

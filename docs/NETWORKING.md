@@ -902,8 +902,23 @@ the server stops and every five minutes, and come back when it starts again, bef
 
 - Each object keeps its anchor, owner, fields (`serverOnly()` ones too) and age; a server behaviour is made again and
   hears `spawned` with that age.
-- **Not saved**: fired objects, and objects anchored on an entity (`persisted()` with `CgAnchor.on` throws). Anchor
-  to a point, a chunk or a player instead.
+- **An entity's object is saved with the entity**: a per-holder type's object on an entity other than a player (`of(entity)`,
+  or `onEntities`) is written into the entity's own saved data as it changes, and read back when the entity is loaded and
+  its object made. It travels with the entity through chunk unloads and is gone when the entity is.
+
+  ```java
+  public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage");
+  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE)
+          .onEntities(type -> type.equals("minecraft:zombie")).persisted().build();
+
+  FURY.of(zombie).setInt(RAGE, 3);    // server: still 3 when the zombie's chunk loads again
+  ```
+
+  It is kept under the key `crystalgraphics`, each type under its name: inside the loader's persistent entity data on
+  Forge, NeoForge and Forge before 1.13, and as a key of the entity's own on Fabric. A field that no longer reads is
+  logged and starts from its fallback.
+- **Not saved**: fired objects, `local()` fields, and objects spawned on an entity by hand (`spawn(CgAnchor.on(entity))`
+  of a persisted type throws: an entity saves one object of a type, a per-holder one).
 
 ---
 

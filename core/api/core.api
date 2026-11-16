@@ -24699,6 +24699,18 @@ com/crystalgraphics/world/CgEntityQueries
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
   method public,static position (Ljava/lang/Object;[D)Z
   method public,static requireId (Ljava/lang/Object;)I
+com/crystalgraphics/world/CgEntitySaves
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
+com/crystalgraphics/world/CgEntitySaves$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/world/CgEntitySaves$Host;
+  method public,abstract read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,abstract write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
 com/crystalgraphics/world/CgEntityTags
   access public,final
   extends java/lang/Object

@@ -270,7 +270,15 @@ public final class CgNetType {
             return this;
         }
 
-        /** Saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. */
+        /**
+         * Saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. A per-holder
+         * type's object on an entity other than a player is saved with that entity instead ({@code CgEntitySaves}): it
+         * travels with the entity through chunk unloads and dies with it.
+         *
+         * <pre>{@code
+         * RAGE = CgNetType.define("mymod:rage").fields(LEVEL).onEntities(t -> t.equals("minecraft:zombie")).persisted().build();
+         * }</pre>
+         */
         public Builder persisted() {
             persisted = true;
             return this;
@@ -420,9 +428,9 @@ public final class CgNetType {
         if (anchor.predictionOnly()) {
             throw new IllegalArgumentException(anchor + " names no level: it is for a client's predict(), not the server");
         }
-        if (persisted && anchor.kind == CgAnchor.Kind.ENTITY) {
-            throw new IllegalArgumentException(name + " is persisted, and an entity-anchored object is not yet: "
-                    + "anchor it to a point, a chunk or a player");
+        if (persisted && anchor.kind == CgAnchor.Kind.ENTITY && !perHolder) {
+            throw new IllegalArgumentException(name + " is persisted, and an entity saves one object of a type: make it per "
+                    + "holder (of(entity)), or anchor it to a point, a chunk or a player");
         }
         return new CgNetObject(this, anchor);
     }
@@ -542,6 +550,8 @@ public final class CgNetType {
         obj = create(anchor != null ? anchor : CgAnchor.on(entity));
         obj.holderKey = key;
         holders.put(key, obj);
+        // an entity's saved values, from its own saved data: what it held when the game last saved it
+        if (persisted && anchor == null) CgNetObjects.restore(obj, entity);
         return obj.start();
     }
 
