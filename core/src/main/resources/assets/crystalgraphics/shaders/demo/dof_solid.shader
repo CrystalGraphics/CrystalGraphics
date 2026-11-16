@@ -8,7 +8,8 @@ struct v2f {
 };
 
 void vertex(inout CgVertex v, out v2f o) {
-    o.worldPos = (CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz;
+    // Absolute: a world pass's world space is measured from the camera
+    o.worldPos = CG_ABSOLUTE_WORLD_POS((CG_OBJECT_TO_WORLD * vec4(cg_Position, 1.0)).xyz);
 }
 
 void surface(in v2f i, inout CgSurface s) {
