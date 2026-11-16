@@ -3,6 +3,7 @@ package com.crystalgraphics.render.post;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.debug.CgPostDebug;
@@ -79,6 +80,7 @@ public final class CgPost {
     final CgTemporalSuperResolution tsr = new CgTemporalSuperResolution();
     final CgSpatialUpscale spatialUpscale = new CgSpatialUpscale();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
+    final CgLookWeights lookWeights = new CgLookWeights();
     /** {@code crystalgraphics.post.debug}'s view, as {@link #debugView} named it; null when unset. */
     @Nullable
     private CgPostDebug debug;

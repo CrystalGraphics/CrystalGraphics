@@ -69,6 +69,8 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     private Level[] levelViews = new Level[0];
     @Nullable
     private Stencil stencilView;
+    @Nullable
+    private Depth depthView;
     /** Its screen value ({@link CgScreenTexture#of}), made at first ask. */
     @Nullable
     CgScreenTexture screen;
@@ -266,11 +268,33 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         return stencilView;
     }
 
-    /** The graph texture binding {@code texture} samples: itself, or a level, attachment or stencil view's; null for any other. */
+    /**
+     * Its depth, as a texture a kernel or draw samples: Unreal's SceneDepth or CustomDepth SRV. The texture itself
+     * samples its colour, so a depth target bound bare is refused ({@code CgDispatch#texture}); {@link #current()}'s is
+     * the open target's depth.
+     *
+     * <pre>{@code
+     * d.texture("_SceneDepth", ctx.depth().sampledDepth());                  // the frame's depth, near 1 far 0
+     * d.texture("_CustomDepth", custom.sampledDepth()).texture("_CustomStencil", custom.stencil());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Read as the whole texture for ordering, as {@link #stencil} is.</li>
+     *   <li>Binds nothing where the storage's depth is not sampleable (a host's attach-only depth): the default.</li>
+     * </ul>
+     */
+    public Depth sampledDepth() {
+        if (desc != null && !desc.isDepth()) throw new IllegalArgumentException(this + " has no depth");
+        if (depthView == null) depthView = new Depth(this);
+        return depthView;
+    }
+
+    /** The graph texture binding {@code texture} samples: itself, or a level, attachment, stencil or depth view's; null for any other. */
     @Nullable
     static CgGraphTexture sampled(@Nullable CgTexture texture) {
         if (texture instanceof CgGraphTexture graph) return graph;
         if (texture instanceof Level view) return view.texture;
+        if (texture instanceof Depth view) return view.texture;
         return texture instanceof Stencil view ? view.texture : null;
     }
 
@@ -429,6 +453,50 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
         @Override
         public String toString() {
             return texture + " level " + level;
+        }
+    }
+
+    /** The depth of a graph texture, sampled: {@link CgGraphTexture#sampledDepth}. */
+    public static final class Depth implements CgTexture {
+
+        private final CgGraphTexture texture;
+
+        private Depth(CgGraphTexture texture) {
+            this.texture = texture;
+        }
+
+        public CgGraphTexture texture() {
+            return texture;
+        }
+
+        @Override
+        @Nullable
+        public CgTextureView rhiView() {
+            if (CgGraphCheck.on()) CgGraphCheck.bound(texture);
+            CgGraphStorage storage = texture.storage();
+            CgTexture depth = storage == null ? null : storage.sampledDepth();
+            return depth == null ? null : depth.rhiView();
+        }
+
+        /** Nearest: a depth filtered across an edge is a distance nothing stands at. */
+        @Override
+        public CgSampler sampler() {
+            return CgSampler.NEAREST_CLAMP;
+        }
+
+        @Override
+        public int getWidth() {
+            return texture.getWidth();
+        }
+
+        @Override
+        public int getHeight() {
+            return texture.getHeight();
+        }
+
+        @Override
+        public String toString() {
+            return texture + " depth";
         }
     }
 

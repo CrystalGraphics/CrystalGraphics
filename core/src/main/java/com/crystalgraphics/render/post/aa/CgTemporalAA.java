@@ -3,6 +3,7 @@ package com.crystalgraphics.render.post.aa;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
@@ -46,8 +47,12 @@ public final class CgTemporalAA implements CgUpscaler {
     public static final String SHADER = "crystalgraphics:shaders/post/aa/taa_resolve.shader";
     /** The resolved colour, out of the history into the chain's picture. */
     public static final String OUTPUT = "crystalgraphics:shaders/post/aa/taa_output.shader";
+    /** The look weights' resolve beside the colour's ({@code CgLookWeights}). */
+    public static final String LOOK = "crystalgraphics:shaders/post/aa/taa_look.shader";
     private static final CgViewState.HistoryKey HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa");
-    private static final int GPU_RESOLVE = CgGpuTrace.name("post.taa.resolve"), GPU_OUTPUT = CgGpuTrace.name("post.taa.output");
+    private static final int GPU_RESOLVE = CgGpuTrace.name("post.taa.resolve"), GPU_OUTPUT = CgGpuTrace.name("post.taa.output"),
+            GPU_LOOK = CgGpuTrace.name("post.taa.look");
+    private static final CgViewState.HistoryKey LOOK_HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa_look");
     /** The jitter's sequence: Unreal's {@code r.TemporalAASamples} 8. */
     private static final int SAMPLES = 8;
     /** This frame's least share of the blend, its share once a texel moves 8 texels a frame, and where its fetch is ambiguous. */
@@ -62,7 +67,7 @@ public final class CgTemporalAA implements CgUpscaler {
     private static volatile boolean sharpening = true;
 
     private final CgTemporalGlow glow = new CgTemporalGlow(new CgViewState.HistoryKey("crystalgraphics:taa_glow"));
-    private CgMaterialInstance resolve, output;
+    private CgMaterialInstance resolve, output, look;
 
     /**
      * The resolve and its jitter on or off together on {@code view}: a developer's switch, the harness's and the render
@@ -152,11 +157,31 @@ public final class CgTemporalAA implements CgUpscaler {
         CgScreenTexture out = ctx.texture("cg.taa.out", input.width(), input.height(), CgFormat.RGBA16_FLOAT);
         ctx.screen(resolve).name("taa.resolve").timed(GPU_RESOLVE).from(input).reads(history.previous()).reads(velocity).reads(responsive)
                 .reads(ctx.depth()).into(CgScreenTexture.of(history));
+        resolveLooks(ctx, history, velocity, responsive, blend, input.width(), input.height());
         // The chain may draw over its picture in place: it gets a copy, without the history's age
         output.sampler("_History", 0, history).vec4("_Sharpen", sharpness(), covers, 0f, 0f);
         if (velocity != null) output.sampler("_Velocity", 1, velocity);
         if (responsive != null) output.sampler("_Responsive", 2, responsive);
         ctx.screen(output).name("taa.output").timed(GPU_OUTPUT).from(input).reads(history).reads(velocity).reads(responsive).into(out);
         return out;
+    }
+
+    /** The look weights resolved at the colour's share ({@link #LOOK}), published as {@code CgLookWeights.RESOLVED}. */
+    private void resolveLooks(CgPostContext ctx, CgGraphTexture history, @Nullable CgGraphTexture velocity,
+                              @Nullable CgGraphTexture responsive, boolean blend, int w, int h) {
+        CgGraphTexture weights = ctx.view().read(CgLookWeights.KEY);
+        if (weights == null) return;
+        if (look == null) look = CgMaterial.load(LOOK).instance();
+        CgViewState state = ctx.view().state();
+        CgGraphTexture looks = state.history(LOOK_HISTORY, new CgTextureDesc(w, h, CgFormat.RGBA8_UNORM), ctx.recording());
+        boolean blendLooks = blend && !state.fresh(LOOK_HISTORY);
+        look.sampler("_History", 0, history).sampler("_PrevLook", 1, looks.previous())
+                .vec4("_Resolve", SHARE, SHARE_MOVING, blendLooks ? 1f : 0f, SHARE_AMBIGUOUS)
+                .vec4("_Jitter", ctx.view().jitterNdcX(), ctx.view().jitterNdcY(), 0f, 0f);
+        if (velocity != null) look.sampler("_Velocity", 2, velocity);
+        if (responsive != null) look.sampler("_Responsive", 3, responsive);
+        ctx.screen(look).name("taa.look").timed(GPU_LOOK).from(CgScreenTexture.of(weights)).reads(history).reads(looks.previous())
+                .reads(velocity).reads(responsive).reads(ctx.depth()).into(CgScreenTexture.of(looks));
+        ctx.view().publish(CgLookWeights.RESOLVED, looks);
     }
 }

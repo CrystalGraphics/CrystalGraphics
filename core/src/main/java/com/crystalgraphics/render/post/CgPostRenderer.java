@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
@@ -104,6 +105,7 @@ public final class CgPostRenderer {
         CgBloom.precache();
         CgTemporalSuperResolution.precache();
         CgFilmLut.precache();
+        CgLookWeights.precache();
     }
 
     /**
@@ -242,6 +244,7 @@ public final class CgPostRenderer {
             }
             CgUpscaler upscaler = CgTemporalAA.shows(view) ? post.upscaler(view.antiAliasing()) : null;
             post.translucency.compose(ctx, picture, upscaler == null || !upscaler.composesTranslucency());
+            post.lookWeights.record(ctx, picture, upscaler != null && upscaler.composesTranslucency());
             CgGraphTexture glow = null;
             if (upscaler != null) {
                 try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporal")) {

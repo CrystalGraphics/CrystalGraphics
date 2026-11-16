@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.translucency;
 
+import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.api.state.CgBlendState;
@@ -20,6 +21,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
@@ -42,10 +44,11 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The layer passes: what a primitive graded by a look of its own ({@code grade(look)}) draws, drawn again into that
- * look's layer, which post grades and composites ({@link CgGradeLayers}); and separate translucency drawn into a layer
- * of its own after every other translucent draw, unbent by distortion (Unreal's {@code TranslucencyAfterDOF},
- * {@link CgSeparateTranslucency}). The scene renderer's feature.
+ * The layer passes: each look's channel this firing ({@link CgLookChannels}), and what a translucent row graded by a look
+ * of its own ({@code grade(look)}) draws, drawn again into that channel's layer as the light it added and the cover it
+ * laid, which the look weights read; and separate translucency drawn into a layer of its own after every other
+ * translucent draw, unbent by distortion (Unreal's {@code TranslucencyAfterDOF}, {@link CgSeparateTranslucency}). A
+ * graded solid is not drawn here: its look is in custom depth's stencil ({@code CgLookIds}). The scene renderer's feature.
  *
  * <pre>{@code
  * boolean layered = layers.prepare(firing, passes, constants);    // before the translucent passes
@@ -64,19 +67,22 @@ public final class CgLayerPasses {
 
     private static final Logger LOGGER = LogManager.getLogger("CgLayerPasses");
     private static final CgFormat GRADE_FORMAT = CgFormat.RGBA16_FLOAT;
-    private static final int GPU_GRADE = CgGpuTrace.name("scene.gradeLayers"), GPU_SEPARATE = CgGpuTrace.name("scene.separateTranslucency");
+    private static final int GPU_GRADE = CgGpuTrace.name("scene.channels"), GPU_SEPARATE = CgGpuTrace.name("scene.separateTranslucency");
     /** Graded draws drawn once, their layer the translucent passes' second output; drawn again into a layer. */
     private static final int LAYER_ONCE = CgTrace.name("scene.graded-once"), LAYER_AGAIN = CgTrace.name("scene.graded-again");
     /** Each pipeline's layer form, interned; the pipeline itself where it has none (a multiply). */
     private static final Map<CgPipeline, CgPipeline> LAYER_FORMS = new ConcurrentHashMap<>();
 
     private final CgSceneRenderer renderer;
-    private final CgGradeLayers gradeLayers = new CgGradeLayers();
+    private final CgLookChannels channels = new CgLookChannels();
     private final CgSeparateTranslucency separate = new CgSeparateTranslucency();
-    /** Each slot's look, kept while it draws so its baked table stays baked; and whether it is in view this firing. */
-    private final CgPostSettings[] slots = new CgPostSettings[CgGradeLayers.MAX];
-    private final boolean[] seen = new boolean[CgGradeLayers.MAX];
-    private final CgGraphTexture[] targets = new CgGraphTexture[CgGradeLayers.MAX], apartTargets = new CgGraphTexture[CgGradeLayers.MAX];
+    /** Each channel's look, kept while it draws so its baked table stays baked; and whether it is in view this firing. */
+    private final CgPostSettings[] slots = new CgPostSettings[CgLookChannels.MAX];
+    private final int[] slotIds = new int[CgLookChannels.MAX];
+    /** Whether each channel has a translucent row this firing: a layer to draw. */
+    private final boolean[] translucent = new boolean[CgLookChannels.MAX];
+    private final boolean[] seen = new boolean[CgLookChannels.MAX];
+    private final CgGraphTexture[] targets = new CgGraphTexture[CgLookChannels.MAX], apartTargets = new CgGraphTexture[CgLookChannels.MAX];
     @Nullable
     private CgGraphTexture separateTarget;
     private int outputSlot = -1;
@@ -85,22 +91,21 @@ public final class CgLayerPasses {
     private CgMeshBatches rows;
     private boolean merge, gradesWarned, depthWarned, multiplyWarned;
     /** The merged lists this firing's layer passes draw: each read when the recording is built, so one a pass. */
-    private CgDrawCommands[] lists = new CgDrawCommands[CgGradeLayers.MAX * 2 + 1];
+    private CgDrawCommands[] lists = new CgDrawCommands[CgLookChannels.MAX * 2 + 1];
     private int listsUsed;
-    /** Per slot, its layer's form: the rest of its draws, its separate ones, and over what the passes carried. */
-    private final SlotForm[] main = new SlotForm[CgGradeLayers.MAX], apart = new SlotForm[CgGradeLayers.MAX],
-            over = new SlotForm[CgGradeLayers.MAX], covers = new SlotForm[CgGradeLayers.MAX];
-    private final SlotForm separateAll = new SlotForm(-1, true, false, false);
+    /** Per channel, its layer's form: the rest of its draws, its separate ones, and over what the passes carried. */
+    private final SlotForm[] main = new SlotForm[CgLookChannels.MAX], apart = new SlotForm[CgLookChannels.MAX],
+            over = new SlotForm[CgLookChannels.MAX];
+    private final SlotForm separateAll = new SlotForm(-1, true, false);
     /** A separate row that cannot go apart (its blend multiplies): drawn in the scene as the after-distortion pass draws. */
     private final CgCommandForm inScene = (rows, b, p) -> layered(p) == null && p.pass() != CgRenderPassVariant.EMISSIVE ? p : null;
 
     public CgLayerPasses(CgSceneRenderer renderer) {
         this.renderer = renderer;
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            main[k] = new SlotForm(k, false, false, false);
-            apart[k] = new SlotForm(k, true, false, false);
-            over[k] = new SlotForm(k, false, true, false);
-            covers[k] = new SlotForm(k, false, false, true);
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            main[k] = new SlotForm(k, false, false);
+            apart[k] = new SlotForm(k, true, false);
+            over[k] = new SlotForm(k, false, true);
         }
     }
 
@@ -120,16 +125,16 @@ public final class CgLayerPasses {
     }
 
     /**
-     * This firing's looks given slots and their layers made, before its translucent passes: the slot with the most
-     * translucent rows the device can carry becomes the passes' second output, its layer cleared with the covers of its
-     * solids, which are behind every translucent fragment over them. False with no graded row in view, or a host
-     * lending no depth to share.
+     * This firing's looks given channels, and their layers made, before its translucent passes: the channel with the
+     * most translucent rows the device can carry becomes the passes' second output, its layer cleared. False with no
+     * graded row in view, or a host lending no depth to share.
      */
     public boolean prepare(CgStageFiring firing, CgViewPasses passes, CgPassConstants constants) {
         outputSlot = -1;
         listsUsed = 0;
         Arrays.fill(seen, false);
-        gradeLayers.reset();
+        Arrays.fill(translucent, false);
+        channels.reset();
         separate.reset();
         rows = passes.visibility().batches();
         merge = firing.view().flag(CgSceneRenderer.MERGE_EMISSION);
@@ -140,17 +145,24 @@ public final class CgLayerPasses {
         for (int b = 0; b < n; b++) {
             CgPostSettings look = look(rows, b);
             if (look == null) continue;
-            int k = slotOf(look);
+            int id = CgLookIds.of(look);
+            if (id == 0) continue;
+            int k = slotOf(id);
             if (k < 0) {
-                for (int s = 0; s < CgGradeLayers.MAX && k < 0; s++) if (!seen[s]) k = s;
+                for (int s = 0; s < CgLookChannels.MAX && k < 0; s++) if (!seen[s]) k = s;
                 if (k < 0) {
-                    if (!gradesWarned) LOGGER.warn("More than {} graded looks in one frame: the rest keep the frame's look", CgGradeLayers.MAX);
+                    if (!gradesWarned) {
+                        LOGGER.warn("More than {} looks graded in one frame: {} keeps the frame's look, the channels holding {}",
+                                CgLookChannels.MAX, look, Arrays.toString(slots));
+                    }
                     gradesWarned = true;
                     continue;
                 }
-                slots[k] = look;
+                slots[k] = CgLookIds.look(id);
+                slotIds[k] = id;
             }
             seen[k] = any = true;
+            if (CgSceneRenderer.queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD) translucent[k] = true;
         }
         if (!any) return false;
         if (!firing.host().target().lendsAttachments()) {
@@ -160,8 +172,8 @@ public final class CgLayerPasses {
         }
         CgView view = firing.view();
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (!seen[k]) continue;
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            if (!translucent[k]) continue;
             if (targets[k] == null || targets[k].getWidth() != w || targets[k].getHeight() != h) {
                 targets[k] = CgGraphTexture.transientTexture("cg_grade_layer" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
                 apartTargets[k] = CgGraphTexture.transientTexture("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
@@ -169,36 +181,35 @@ public final class CgLayerPasses {
         }
         if (!CgExecutor.drawsOnDevice()) return true;
         int best = 0;
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (!seen[k]) continue;
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            if (!translucent[k]) continue;
             int count = 0;
-            for (int b = 0; b < n; b++) if (look(rows, b) == slots[k] && carriable(rows, b)) count++;
+            for (int b = 0; b < n; b++) if (inSlot(rows, b, k) && carriable(rows, b)) count++;
             if (count > best) {
                 best = count;
                 outputSlot = k;
             }
         }
         if (outputSlot < 0) return true;
-        for (int b = 0; b < n; b++) carried[b] = look(rows, b) == slots[outputSlot] && carriable(rows, b);
-        // Its layer cleared, its solids' covers in it first: drawn here, so the layer passes leave them out
-        CgDrawCommands solids = layerList(firing.recording(), passes, covers[outputSlot]);
-        for (int b = 0; b < n; b++) {
-            if (look(rows, b) == slots[outputSlot] && CgSceneRenderer.queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD) carried[b] = true;
-        }
-        layerPass(firing, constants, targets[outputSlot], false, GPU_GRADE).add(solids).end();
+        for (int b = 0; b < n; b++) carried[b] = inSlot(rows, b, outputSlot) && carriable(rows, b);
+        // Its layer cleared here: the translucent passes write into it as they draw
+        firing.recording().raster("scene.gradeLayerClear").color(targets[outputSlot], CgLoad.CLEAR).end();
         return true;
     }
 
     /**
-     * Each look's draws into its layer, tested against the scene's depth and writing none: what they add
-     * premultiplied, and in alpha how much of what is behind them they cover. The output slot's layer holds what the
-     * passes carried already: the rest is added over it. Published in the view as {@link CgGradeLayers#KEY}.
+     * Each look's translucent draws into its channel's layer, tested against the scene's depth and writing none: what
+     * they add premultiplied, and in alpha how much of what is behind them they cover. The output channel's layer holds
+     * what the passes carried already: the rest is added over it. Published in the view as {@link CgLookChannels#KEY},
+     * with every channel's look and id, solids' too.
      */
     public void record(CgStageFiring firing, CgViewPasses passes, CgPassConstants constants) {
         CgRecording rec = firing.recording();
         int once = 0, again = 0;
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
             if (!seen[k]) continue;
+            channels.setLook(k, slots[k], slotIds[k]);
+            if (!translucent[k]) continue;
             boolean output = k == outputSlot;
             CgDrawCommands rest = layerList(rec, passes, output ? over[k] : main[k]);
             again += rest.size();
@@ -208,14 +219,13 @@ public final class CgLayerPasses {
                 layerPass(firing, constants, apartTargets[k], false, GPU_GRADE).add(apartDraws).end();
                 separate.layers[k] = apartTargets[k];
             }
-            gradeLayers.layers[k] = targets[k];
-            gradeLayers.looks[k] = slots[k];
+            channels.setLayer(k, targets[k]);
         }
         if (outputSlot >= 0) for (int b = 0; b < rows.size(); b++) if (carried[b]) once++;
         CgTrace.add(CgChannels.WORLD, LAYER_ONCE, once);
         CgTrace.add(CgChannels.WORLD, LAYER_AGAIN, again);
         outputSlot = -1;
-        firing.view().publish(CgGradeLayers.KEY, gradeLayers);
+        firing.view().publish(CgLookChannels.KEY, channels);
         if (separate.any()) firing.view().publish(CgSeparateTranslucency.KEY, separate);
     }
 
@@ -248,20 +258,17 @@ public final class CgLayerPasses {
         view.publish(CgSeparateTranslucency.KEY, separate);
     }
 
-    /** One slot's draws of every pass type a layer holds, in key order. */
+    /** One channel's translucent draws of every pass type a layer holds, in key order. */
     private CgDrawCommands layerList(CgRecording rec, CgViewPasses passes, SlotForm form) {
         if (listsUsed == lists.length) lists = Arrays.copyOf(lists, listsUsed * 2);
         CgDrawCommands list = lists[listsUsed];
         if (list == null || list.table() != rec.primitives()) lists[listsUsed] = list = new CgDrawCommands(rec.primitives());
         listsUsed++;
         list.clear();
-        list.append(passes.commands(CgEnginePasses.BASE, rec, form));
         list.append(passes.commands(CgEnginePasses.EMISSIVE, rec, form));
-        if (!form.covers) {
-            list.append(passes.commands(CgEnginePasses.TRANSLUCENT, rec, form));
-            list.append(passes.commands(CgEnginePasses.AFTER_DISTORTION, rec, form));
-            list.append(passes.commands(CgEnginePasses.SEPARATE, rec, form));
-        }
+        list.append(passes.commands(CgEnginePasses.TRANSLUCENT, rec, form));
+        list.append(passes.commands(CgEnginePasses.AFTER_DISTORTION, rec, form));
+        list.append(passes.commands(CgEnginePasses.SEPARATE, rec, form));
         list.sort();
         return list;
     }
@@ -278,34 +285,34 @@ public final class CgLayerPasses {
         return pass;
     }
 
-    /** A slot's layer: which of its rows, through which forms. */
+    /** A channel's layer: which of its translucent rows, through which forms. */
     private final class SlotForm implements CgCommandForm {
         final int slot;
-        final boolean apartRows, overCarried, covers;
+        final boolean apartRows, overCarried;
 
-        SlotForm(int slot, boolean apartRows, boolean overCarried, boolean covers) {
+        SlotForm(int slot, boolean apartRows, boolean overCarried) {
             this.slot = slot;
             this.apartRows = apartRows;
             this.overCarried = overCarried;
-            this.covers = covers;
         }
 
         @Nullable
         @Override
         public CgPipeline form(CgMeshBatches rows, int b, CgPipeline p) {
             if ((rows.flags(b) & CgMeshBatches.HALF_RESOLUTION) != 0) return null;
-            if (slot >= 0 && look(rows, b) != slots[slot]) return null;
+            if (slot >= 0 && !inSlot(rows, b, slot)) return null;
             boolean separateRow = separate(rows, b);
             if (separateRow != apartRows) return null;
             if (overCarried && carries(rows, b)) return null;
             boolean solid = CgSceneRenderer.queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD;
-            if (covers && !solid) return null;
+            // A graded solid's look is its custom stencil's, read by the look weights: it has no layer
+            if (slot >= 0 && solid) return null;
             boolean glows = CgSceneRenderer.emits(rows, b);
             if (p.pass() == CgRenderPassVariant.EMISSIVE) {
                 if (!glows) return null;
                 return solid || !(merge && CgSceneRenderer.folds(rows, b)) ? layered(p) : null;
             }
-            // A solid covers what is behind it whatever alpha its fragment writes
+            // A solid apart covers what is behind it whatever alpha its fragment writes
             if (solid) return layered(p.as(CgPipelineForm.SOLID));
             if (glows && merge) {
                 CgPipeline folded = p.as(CgPipelineForm.FOLD);
@@ -350,10 +357,17 @@ public final class CgLayerPasses {
         return rows.layer(b) == CgSortLayer.AFTER_DOF || CgMaterialProxy.of(rows.material(b)).translucencyPass().apart();
     }
 
-    private int slotOf(CgPostSettings look) {
-        for (int k = 0; k < CgGradeLayers.MAX; k++) if (slots[k] == look && seen[k]) return k;
-        for (int k = 0; k < CgGradeLayers.MAX; k++) if (slots[k] == look) return k;
+    /** The channel holding look id {@code id}: the one it held last firing while it is free, so its table stays baked. */
+    private int slotOf(int id) {
+        for (int k = 0; k < CgLookChannels.MAX; k++) if (slotIds[k] == id && seen[k]) return k;
+        for (int k = 0; k < CgLookChannels.MAX; k++) if (slotIds[k] == id && !seen[k]) return k;
         return -1;
+    }
+
+    /** Whether row {@code b} is graded by channel {@code k}'s look. */
+    private boolean inSlot(CgMeshBatches rows, int b, int k) {
+        CgPostSettings look = look(rows, b);
+        return look != null && CgLookIds.of(look) == slotIds[k];
     }
 
     /**

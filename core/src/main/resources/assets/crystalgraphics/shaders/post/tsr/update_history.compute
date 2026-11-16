@@ -33,12 +33,16 @@ Properties {
     _Closest    ("The dilated surface's device depth: y this frame", sampler2D) = "black"
     _ResColor   ("The oldest snapshot's history", sampler2D) = "black"
     _ResValid   ("The oldest snapshot's validity", sampler2D) = "black"
+    _Look       ("x 1 resolving the look weights beside the colour (CgLookWeights); y 1 where their history holds nothing", vec4) = (0, 0, 0, 0)
+    _LookWeights ("This frame's look weights, at the input's size", sampler2D) = "black"
+    _PrevLook   ("Last frame's resolved look weights", sampler2D) = "black"
 }
 
 Images {
     COLOR   ("The history", r11f_g11f_b10f, writeonly)
     VALID   ("Its validity: how many of the samples it may hold it holds", r8, writeonly)
     PICTURE ("The picture, for the rest of the chain", rgba16f, writeonly)
+    LOOK    ("The look weights resolved, as Unreal's TSR resolves scene alpha (with _Look)", rgba8, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr.glsl"
@@ -117,6 +121,8 @@ void update(bool spatial) {
     // Last frame's history at this pixel's last position, bicubic; skipped where nothing of it is kept
     vec3 prevColor = vec3(0.0);
     float prevValid = 0.0;
+    vec4 prevLook = vec4(0.0);
+    bool look = _Look.x > 0.5;
     if (lowRejection > 0.0 && !offScreen) {
         vec4 size = vec4(_Output.xy, _Output.zw);
         vec2 uvs[5];
@@ -129,7 +135,9 @@ void update(bool spatial) {
             if (i == 2) centre = c;
             prevColor += c * weights[i];
             prevValid += (resurrected ? textureLod(_ResValid, at, 0.0).r : textureLod(_PrevValid, at, 0.0).r) * weights[i];
+            if (look) prevLook += textureLod(_PrevLook, at, 0.0) * weights[i];
         }
+        prevLook = clamp(prevLook, 0.0, 1.0);   // the bicubic's overshoot, as the colour's (TSRUpdateHistory.usf 1033-1047)
         // A bright highlight's bicubic overshoots below 0: the centre tap instead
         if (any(lessThan(prevColor, vec3(0.0))) || any(isnan(prevColor))) prevColor = max(centre, vec3(0.0));
         prevValid = max(prevValid, 0.0);
@@ -166,6 +174,7 @@ void update(bool spatial) {
 
     // This frame's five samples round the nearest input pixel, weighed by distance and tone; their box clamps the history
     vec3 filtered = vec3(0.0), lo = vec3(0.0), hi = vec3(0.0);
+    vec4 filteredLook = vec4(0.0), loLook = vec4(0.0), hiLook = vec4(0.0);
     float filteredWeight = 0.0;
     bool moveFar = _Options.y > 0.5;
     for (int i = 0; i < 5; i++) {   // LOOP-BOUND: the five samples
@@ -178,8 +187,16 @@ void update(bool spatial) {
         filteredWeight += w;
         lo = i == 0 ? c : min(lo, c);
         hi = i == 0 ? c : max(hi, c);
+        if (look) {
+            // The weights ride the colour's kernel and box, as TSR's scene alpha does (TSRUpdateHistory.usf 1022, 1227-1240)
+            vec4 lw = texelFetch(_LookWeights, at, 0);
+            filteredLook += lw * w;
+            loLook = i == 0 ? lw : min(loLook, lw);
+            hiLook = i == 0 ? lw : max(hiLook, lw);
+        }
     }
     filtered = min(filtered / filteredWeight, vec3(LARGEST));
+    if (look && filteredWeight > 0.0) filteredLook /= filteredWeight;
 
     // The history clamped into the box, unless the reject pass found clamping needless there
     vec3 clamped = clamp(prevColor, lo, hi);
@@ -203,6 +220,10 @@ void update(bool spatial) {
     color = min(max(color, vec3(0.0)), vec3(TSR_MAX_10BIT_FLOAT));
     COLOR_WRITE(vec4(color, 1.0));
     VALID_WRITE(vec4(valid));
+    if (look) {
+        vec4 lookClamped = mix(clamp(prevLook, loLook, hiLook), prevLook, disableClamp);
+        LOOK_WRITE(_Look.y > 0.5 ? filteredLook : lookClamped * (total * bPrev) + filteredLook * (total * bInput));
+    }
     if (_Options.x > 0.5) PICTURE_WRITE(vec4(color, 1.0));
 }
 

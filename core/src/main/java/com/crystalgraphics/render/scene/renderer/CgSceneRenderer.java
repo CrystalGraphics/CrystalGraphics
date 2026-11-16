@@ -34,6 +34,7 @@ import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
 import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.render.scene.CgScene;
@@ -323,6 +324,7 @@ public final class CgSceneRenderer {
         long now = CgFrameRing.frame();
         if (now == frame) return;
         frame = now;
+        CgLookIds.frame(now);
         if (scene != CgScene.client()) return;
         CgTraceRun.worldFrame();
         CgWorld.client().frame(camera, now);

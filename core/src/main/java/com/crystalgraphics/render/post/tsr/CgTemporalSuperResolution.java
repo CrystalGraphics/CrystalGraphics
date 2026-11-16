@@ -4,6 +4,7 @@ import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -79,7 +80,8 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             MOIRE = new CgViewState.HistoryKey("crystalgraphics:tsr_moire"),
             SNAPSHOT_COLOR = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_color"),
             SNAPSHOT_VALID = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_valid"),
-            SNAPSHOT_GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_guide");
+            SNAPSHOT_GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_snapshot_guide"),
+            LOOK = new CgViewState.HistoryKey("crystalgraphics:tsr_look");
     private static final CgViewState.Key<Snapshots> SNAPSHOTS = new CgViewState.Key<>("crystalgraphics:tsr_snapshots", Snapshots::new);
     private static final int GPU_DILATE = CgGpuTrace.name("post.tsr.dilate"), GPU_DECIMATE = CgGpuTrace.name("post.tsr.decimate"),
             GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_SPATIAL = CgGpuTrace.name("post.tsr.spatial"),
@@ -138,7 +140,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private long lastNanos;
     private int width, height, outWidth, outHeight;
     private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
-            offsets, moving, reprojectedMoire, boundary, jacobian, resurrected, resolved, picture, debugView;
+            offsets, moving, reprojectedMoire, boundary, jacobian, resurrected, resolved, picture, debugView, noLook;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -275,7 +277,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         pass.dispatch(clear, w, h, 1).image("ATOMICS", atomics);
         CgDispatch d = pass.dispatch(dilate, w, h, 1).image("ATOMICS", atomics).image("CLOSEST", closest)
                 .image("DILATE", dilateMask).image("VECTOR", vector).image("MOVING", moving).image("BOUNDARY", boundary)
-                .image("JACOBIAN", jacobian).texture("_SceneDepth", ctx.depth());
+                .image("JACOBIAN", jacobian).texture("_SceneDepth", ctx.depth().sampledDepth());
         if (velocity != null) d.texture("_Velocity", velocity);
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
         if (flicker) flickerValues(d, view, w, refresh);
@@ -345,6 +347,15 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / (MOTION_PIXEL_SPEED * scale), 0f, 0f);
         if (antiAliasSpatially) d.texture("_Offset", offsets);
         if (field) d.texture("_Boundary", boundary).texture("_Jacobian", jacobian).set("_Field", 1f, 0f, 0f, 0f);
+        // The look weights resolved beside the colour, as Unreal's TSR resolves scene alpha
+        CgGraphTexture weights = view.read(CgLookWeights.KEY), lookHistory = null;
+        if (weights != null) {
+            lookHistory = state.history(LOOK, new CgTextureDesc(hw, hh, CgFormat.RGBA8_UNORM), recording);
+            d.image("LOOK", lookHistory).texture("_LookWeights", weights).texture("_PrevLook", lookHistory.previous())
+                    .set("_Look", 1f, cut || state.fresh(LOOK) ? 1f : 0f, 0f, 0f);
+        } else {
+            d.image("LOOK", noLook);
+        }
         if (canResurrect) {
             d.texture("_Closest", closest).texture("_ResColor", snapshotColor.previous())
                     .texture("_ResValid", snapshotValid.previous()).set("_Resurrect", 1f, 0f, 0f, 0f);
@@ -370,6 +381,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             pass.dispatch(resolve, ow, oh, 1).image("PICTURE", output).texture("_History", colorHistory);
             pass.end();
         }
+        if (lookHistory != null) view.publish(CgLookWeights.RESOLVED, lookHistory);
         if (sharpness > 0f) {
             pass = recording.compute("tsr.sharpen").timed(GPU_SHARPEN);
             pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", output)
@@ -496,6 +508,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         boundary = transientTexture("cg_tsr_boundary", w, h, CgFormat.R32_UINT);
         jacobian = transientTexture("cg_tsr_jacobian", w, h, CgFormat.R32_UINT);
         resurrected = transientTexture("cg_tsr_resurrected", w, h, CgFormat.RGB10A2_UNORM);
+        noLook = transientTexture("cg_tsr_no_look", 1, 1, CgFormat.RGBA8_UNORM);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
         resolved = transientTexture("cg_tsr_resolved", ow, oh, CgFormat.RGBA16_FLOAT);
         debugView = transientTexture("cg_tsr_debug_view", ow, oh, CgFormat.RGBA16_FLOAT);

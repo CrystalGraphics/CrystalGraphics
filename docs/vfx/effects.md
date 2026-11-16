@@ -505,15 +505,21 @@ A cue does the same with `look:` ([`networking.md`](networking.md) § *Cues: wha
 
 - **It is read as the kit registers**, its lengths in the kit's `units`; a file that does not validate throws there,
   naming it.
-- **How the grade is laid over the frame**: each kit's draws are drawn again into a layer of their own, the light they
-  add and how much they cover. The composite tones the scene with the layer's bloom by the kit's table and subtracts
-  what it gives for the world behind, so it adds only the effect's part: over open sky a glow brightens it as the kit's
-  curve would, and where nothing of the kit draws the pixel is the frame's, byte for byte.
+- **How the grade is laid over the frame**: each pixel is shared out between the looks drawn there (`CgLookWeights`).
+  A kit's solid draws claim the pixels they are in front on (their look id in custom stencil); its translucent draws
+  are drawn again into a layer of their own, and take the larger of the cover they laid and their share of the pixel's
+  light, so dark smoke counts by what it hides and an aura by what it adds. The temporal step resolves the shares
+  beside the colour. The composite tones the whole pixel by each look's table and mixes the pictures by those shares;
+  where nothing of the kit draws the pixel is the frame's, byte for byte.
 - **Only the tonemapper, grade and bloom are the kit's**: its vignette, flash and impact frame would grade the whole
-  screen, so they are left out. Its effects' light leaves the engine's own bloom, which would bloom it twice.
-- **At most two kits a frame**, and only under the HDR scene; past them a kit's effects keep the frame's look. Draws that
-  multiply what is behind them and half-size draws keep it too, and so do GPU particles merged across effects past
-  `crystalgraphics.vfx.mergeParticlesFrom`. A layer costs a redraw of the kit's draws and, with bloom, a bloom of its own.
+  screen, so they are left out, as are its post materials. Each look blooms the scene by its share; the engine's bloom
+  takes what the looks leave, so nothing blooms twice.
+- **At most four looks a frame**, and only under the HDR scene; past them a kit's draws keep the frame's look, warned
+  once. Draws that multiply what is behind them keep it too, and so do GPU particles merged across effects past
+  `crystalgraphics.vfx.mergeParticlesFrom`. A translucent channel costs a redraw of its draws; each look with bloom
+  adds a chain to the one bloom dispatch.
+- **A colour region grades the scene, a kit's light with it, before any look or bloom**; light drawn over the void
+  past every surface is at far depth, outside any region.
 - **The exposure reaches only materials that scale by it**: an emissive or linear-light shader on a rows-drawn draw
   (`_cg_Exposure`, [`SHADERS.md`](../SHADERS.md)). Lit, sRGB surfaces are left as they are.
 

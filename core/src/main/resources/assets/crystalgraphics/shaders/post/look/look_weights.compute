@@ -1,0 +1,86 @@
+// The look weights (CgLookWeights, R14g), at the size drawn: how much of each pixel is each graded look's, a channel a
+// look (CgLookChannels), the rest the frame's. A graded solid is where custom depth's stencil bits 5-7 hold its look id
+// and custom depth is the scene's depth (Unreal's custom-stencil test, made a weight so the temporal step can resolve
+// it); a channel's translucent draws take the larger of the cover they laid, shared out front to back, and their share
+// of the pixel's light, so dark smoke counts by what it hides and an additive aura by what it adds.
+#pragma kernel Weights 8 8 image
+
+Properties {
+    _Depth         ("View depth from device depth: x / (d + y)", vec4) = (0, 0, 0, 0)
+    _Ids           ("Each channel's look id (CgLookIds), 0 for none", vec4) = (0, 0, 0, 0)
+    _Bound         ("Each channel's textures bound: 1 its layer, 2 its separate translucency", vec4) = (0, 0, 0, 0)
+    _Options       ("x 1 laying in the separate translucency (an upscaler composes it later); y 1 with custom depth", vec4) = (0, 0, 0, 0)
+    _Scene         ("The HDR scene after the translucency", sampler2D) = "black"
+    _Separate      ("The separate translucency, uncomposed: rgb its light, a its cover", sampler2D) = "black"
+    _SceneDepth    ("The scene's depth", sampler2D) = "black"
+    _CustomDepth   ("Custom depth", sampler2D) = "black"
+    _CustomStencil ("Custom depth's stencil: bits 5-7 a graded solid's look id", usampler2D) = "zero"
+    _Layer0        ("Channel 0's translucent light, and in alpha its cover", sampler2D) = "black"
+    _Layer1        ("Channel 1's", sampler2D) = "black"
+    _Layer2        ("Channel 2's", sampler2D) = "black"
+    _Layer3        ("Channel 3's", sampler2D) = "black"
+    _Apart0        ("Channel 0's separate translucency, as its layer", sampler2D) = "black"
+    _Apart1        ("Channel 1's", sampler2D) = "black"
+    _Apart2        ("Channel 2's", sampler2D) = "black"
+    _Apart3        ("Channel 3's", sampler2D) = "black"
+}
+
+Images {
+    WEIGHTS ("Each channel's share of the pixel", rgba8, writeonly)
+}
+
+const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+// Custom depth against the scene's, relative in eye depth: the scene's may be a host's 24-bit depth
+const float SAME_DEPTH = 1.0e-3;
+
+float eye(float device) {
+    return _Depth.x / max(device + _Depth.y, 1.0e-12);
+}
+
+// A channel's layer and its separate translucency in front of it, as one: light added, cover laid. Only what is bound
+// is read: a default texture is 1x1, and a fetch past it is undefined
+vec4 channel(sampler2D layer, sampler2D apart, ivec2 p, float bound) {
+    int b = int(bound + 0.5);
+    vec4 l = (b & 1) != 0 ? texelFetch(layer, p, 0) : vec4(0.0), a = (b & 2) != 0 ? texelFetch(apart, p, 0) : vec4(0.0);
+    return vec4(l.rgb + a.rgb, 1.0 - (1.0 - clamp(l.a, 0.0, 1.0)) * (1.0 - clamp(a.a, 0.0, 1.0)));
+}
+
+void Weights() {
+    ivec2 p = CG_TEXEL.xy;
+    vec3 c = texelFetch(_Scene, p, 0).rgb;
+    if (_Options.x > 0.5) {
+        vec4 s = texelFetch(_Separate, p, 0);
+        c = c * (1.0 - s.a) + s.rgb;
+    }
+    vec4 l[4] = vec4[4](channel(_Layer0, _Apart0, p, _Bound.x), channel(_Layer1, _Apart1, p, _Bound.y),
+            channel(_Layer2, _Apart2, p, _Bound.z), channel(_Layer3, _Apart3, p, _Bound.w));
+    float lit = max(dot(c, LUMA), 1.0e-4);
+    float transmit = 1.0, coverSum = 0.0;
+    for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the four channels
+        transmit *= 1.0 - l[k].a;
+        coverSum += l[k].a;
+    }
+    // The covered part of the pixel shared out by cover (the channels' order between them unknown, taken as even)
+    float covered = 1.0 - transmit;
+    vec4 w = vec4(0.0);
+    for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the four channels
+        float byCover = coverSum > 0.0 ? l[k].a / coverSum * covered : 0.0;
+        w[k] = max(byCover, clamp(dot(l[k].rgb, LUMA) / lit, 0.0, 1.0));
+    }
+    // What the translucency left is the visible graded solid's, where there is one
+    if (_Options.y > 0.5) {
+        uint id = (texelFetch(_CustomStencil, p, 0).r >> 5u) & 7u;
+        if (id != 0u) {
+            float custom = eye(texelFetch(_CustomDepth, p, 0).r), scene = eye(texelFetch(_SceneDepth, p, 0).r);
+            if (abs(custom - scene) <= SAME_DEPTH * scene + 1.0e-4) {
+                float rest = max(1.0 - dot(w, vec4(1.0)), 0.0);
+                for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the four channels
+                    if (uint(_Ids[k] + 0.5) == id) w[k] += rest;
+                }
+            }
+        }
+    }
+    float total = dot(w, vec4(1.0));
+    if (total > 1.0) w /= total;
+    WEIGHTS_WRITE(w);
+}

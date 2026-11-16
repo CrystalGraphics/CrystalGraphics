@@ -7,6 +7,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.bloom.CgBloom;
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.post.tsr.CgTemporalSuperResolution;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
 import com.crystalgraphics.variable.CgVar;
@@ -28,7 +29,7 @@ public final class CgPostDebug {
     private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
     private static final String VELOCITY_SHADER = "crystalgraphics:shaders/post/debug_velocity.shader";
 
-    private static final int OVERDRAW = -2, DISTORTION = -3, VELOCITY = -4, TSR = -5;
+    private static final int OVERDRAW = -2, DISTORTION = -3, VELOCITY = -4, TSR = -5, LOOKS = -6;
 
     /** {@link #OVERDRAW}, {@link #DISTORTION}, {@link #VELOCITY}, else bloom's stage. */
     private final int level;
@@ -47,7 +48,7 @@ public final class CgPostDebug {
                     + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue."
                     + " velocity: what the velocity pass wrote, 0.5 + texels a frame / 32 in red and green, blue where it"
                     + " wrote. tsr.rejection, tsr.samples, tsr.guide, tsr.reprojection, tsr.flicker, tsr.resurrection: TSR's"
-                    + " passes.");
+                    + " passes. looks: the look weights (CgLookWeights), look channels 0-2 in red, green and blue.");
 
     /** The view {@code view} names ({@link #VIEW}'s values); null for empty. Throws on a value it cannot read. */
     public static CgPostDebug of(String view) {
@@ -55,6 +56,7 @@ public final class CgPostDebug {
         if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
         if (view.equals("distortion")) return new CgPostDebug(DISTORTION);
         if (view.equals("velocity")) return new CgPostDebug(VELOCITY);
+        if (view.equals("looks")) return new CgPostDebug(LOOKS);
         if (CgTemporalSuperResolution.debugMode(view) > 0) return new CgPostDebug(TSR);
         if (view.startsWith("level")) {
             try {
@@ -64,7 +66,7 @@ public final class CgPostDebug {
             }
         }
         throw new IllegalArgumentException("crystalgraphics.post.debug=" + view
-                + ": overdraw, distortion, velocity, level<N> or tsr.<rejection|samples|guide|reprojection|flicker|resurrection>");
+                + ": overdraw, distortion, velocity, looks, level<N> or tsr.<rejection|samples|guide|reprojection|flicker|resurrection>");
     }
 
     /** Whether it shows the velocity target: the frame asks for it, every engine solid writing. */
@@ -87,6 +89,9 @@ public final class CgPostDebug {
             responsive = ctx.scene().responsive();
         } else if (level == TSR) {
             source = ctx.view().read(CgTemporalSuperResolution.DEBUG_VIEW);
+            if (source == null) return picture;
+        } else if (level == LOOKS) {
+            source = CgLookWeights.current(ctx.view());
             if (source == null) return picture;
         } else if (level < 0) {
             source = ctx.scene().overdraw();

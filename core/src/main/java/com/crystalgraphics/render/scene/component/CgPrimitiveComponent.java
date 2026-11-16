@@ -3,6 +3,7 @@ package com.crystalgraphics.render.scene.component;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
+import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.CgCustomDepth;
 import com.crystalgraphics.render.meshpass.CgPrimitiveFlag;
 import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
@@ -472,9 +473,12 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
         return self();
     }
 
-    /** What its kept commands were built under: changes with every setting a processor reads. */
+    /**
+     * What its kept commands were built under: changes with every setting a processor reads, and for a graded one with
+     * {@code CgLookIds.epoch()}, as its look's id is in its custom depth stencil.
+     */
     public final int passSettings() {
-        return passSettings;
+        return grade == null ? passSettings : passSettings ^ CgLookIds.epoch() << 20;
     }
 
     /**

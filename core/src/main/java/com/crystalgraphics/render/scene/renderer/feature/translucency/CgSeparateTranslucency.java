@@ -2,6 +2,7 @@ package com.crystalgraphics.render.scene.renderer.feature.translucency;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.view.CgViewKey;
 
@@ -15,7 +16,7 @@ import com.crystalgraphics.render.view.CgViewKey;
  * <pre>{@code
  * CgSeparateTranslucency apart = post.view().read(CgSeparateTranslucency.KEY);
  * if (apart != null && apart.target() != null) over(scene, apart.target());     // scene * (1 - a) + rgb
- * for (int k = 0; k < CgGradeLayers.MAX; k++) {
+ * for (int k = 0; k < CgLookChannels.MAX; k++) {
  *     if (apart.layer(k) != null) over(layers.layer(k), apart.layer(k));        // its graded share, the same way
  * }
  * }</pre>
@@ -33,7 +34,7 @@ public final class CgSeparateTranslucency {
     public static final CgViewKey<CgSeparateTranslucency> KEY = new CgViewKey<>("crystalgraphics:separate_translucency");
 
     CgGraphTexture target;
-    final CgGraphTexture[] layers = new CgGraphTexture[CgGradeLayers.MAX];
+    final CgGraphTexture[] layers = new CgGraphTexture[CgLookChannels.MAX];
 
     /** Every separate draw's light and coverage; null where none drew. */
     @Nullable

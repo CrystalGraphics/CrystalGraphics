@@ -1,11 +1,12 @@
 package com.crystalgraphics.render.post.look;
 
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
-import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
+import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 
 import java.util.EnumSet;
@@ -27,15 +28,15 @@ import java.util.EnumSet;
 public final class CgPostLooks {
 
     private final CgFilmLut lut = new CgFilmLut();
-    /** Each graded layer's table, kept for its slot: a slot keeps its look while it draws, so it bakes once. */
-    private final CgFilmLut[] layerLuts = {new CgFilmLut(), new CgFilmLut()};
+    /** Each look channel's table, kept for its channel: a channel keeps its look while it draws, so it bakes once. */
+    private final CgFilmLut[] lookLuts = {new CgFilmLut(), new CgFilmLut(), new CgFilmLut(), new CgFilmLut()};
     private final CgColorGrade grading = new CgColorGrade();
 
     private static boolean shows(CgPostContext post) {
         CgPostSettings s = post.settings();
         float flashes = CgGraphicsSettings.FLASHES.get();
         return s.flash() * flashes != 0f || s.vignette() > 0f || s.chromatic() > 0f || s.impact() * flashes > 0f
-                || s.fade() > 0f || s.tonemaps() || s.grades() || (post.view().read(CgGradeLayers.KEY) != null);
+                || s.fade() > 0f || s.tonemaps() || s.grades() || (post.view().read(CgLookChannels.KEY) != null);
     }
 
     /**
@@ -81,12 +82,14 @@ public final class CgPostLooks {
         if (s.fade() > 0f) composite.fade(s.fade(), s.fadeR(), s.fadeG(), s.fadeB());
         if (s.tonemaps()) composite.tonemap(lut.texture(post.recording(), s), s.tonemapWeight(), s.tonemapsFilmic());
         else if (s.grades()) composite.grade(grading.constants(s));
-        CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
-        if (layers == null || !post.scene().linear()) return;
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            CgPostSettings look = layers.look(k);
+        CgLookChannels looks = post.view().read(CgLookChannels.KEY);
+        CgGraphTexture weights = CgLookWeights.current(post.view());
+        if (looks == null || weights == null || !post.scene().linear()) return;
+        composite.lookWeights(weights);
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            CgPostSettings look = looks.look(k);
             // Its tonemapper and grade alone: a vignette, flash or impact frame would grade the whole screen
-            if (look != null) composite.layer(k, layers.layer(k), look.tonemaps() ? layerLuts[k].texture(post.recording(), look) : null);
+            if (look != null) composite.look(k, look.tonemaps() ? lookLuts[k].texture(post.recording(), look) : null);
         }
     }
 }

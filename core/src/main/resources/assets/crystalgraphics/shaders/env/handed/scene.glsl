@@ -15,8 +15,9 @@ ivec2 cg_handed_texel(ivec2 size, vec2 uv) {
     return clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1);
 }
 
-// CustomStencil is the stencil of CustomDepth itself, an unsigned integer (CgGraphTexture.stencil()).
-#define CG_CUSTOM_STENCIL(uv) int(texelFetch(_cg_CustomStencil, cg_handed_texel(textureSize(_cg_CustomStencil, 0), (uv)), 0).r)
+// CustomStencil is the stencil of CustomDepth itself, an unsigned integer (CgGraphTexture.stencil()): the mark's bits
+// 0-4 alone, as bits 5-7 hold a graded primitive's look (CgCustomDepth.LOOK_BITS), which no post material compares.
+#define CG_CUSTOM_STENCIL(uv) (int(texelFetch(_cg_CustomStencil, cg_handed_texel(textureSize(_cg_CustomStencil, 0), (uv)), 0).r) & 31)
 
 vec3 cg_handed_world_normal(vec2 uv) {
     vec4 n = texelFetch(_cg_WorldNormal, cg_handed_texel(textureSize(_cg_WorldNormal, 0), uv), 0);

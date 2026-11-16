@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.post.bloom;
 
+import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.view.CgViewKey;
 import java.util.Arrays;
 
@@ -16,7 +17,7 @@ import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
-import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
+import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
@@ -46,7 +47,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *       ({@link #ENGINE_SIZES}): each channel's excess past {@link CgPostSettings#bloomExcessThreshold}, spread as the chain it replaced spread it,
  *       times a volume's {@code bloom}. A look that asks gets Unreal's: its layers, its {@code BloomThreshold} and its
  *       setup.</li>
- *   <li>Each graded layer ({@link CgGradeLayers}) blooms its own light by its own look, in the same dispatches as the
+ *   <li>Each graded look ({@link CgLookChannels}) blooms its own pixels' light by its own look, in the same dispatches as the
  *       frame's: one chain however many looks.</li>
  *   <li>Nothing emitted this firing, nothing recorded.</li>
  *   <li>Settings are read on the render thread and may be written from any: a float, read at most a frame late.</li>
@@ -80,8 +81,8 @@ public final class CgBloom {
      * the height, at 480p); a layer whose stage would be shorter blurs the deepest one this tall. Every stage passes at 1080p.
      */
     static final int SHORTEST_STAGE = 8;
-    /** The blooms one chain runs: the frame's and each graded layer's ({@link CgGradeLayers#MAX}). */
-    static final int BLOOMS = 1 + CgGradeLayers.MAX;
+    /** The blooms one chain runs: the frame's and each graded look's ({@link CgLookChannels#MAX}). */
+    static final int BLOOMS = 1 + CgLookChannels.MAX;
 
     private static final String KERNELS = "crystalgraphics:shaders/post/bloom.compute";
     /** Unreal's bloom format; written from kernels as the media's R16F is. */
@@ -89,11 +90,11 @@ public final class CgBloom {
     private static final int GPU_BLOOM = CgGpuTrace.name("post.bloom");
 
     private final Chain chain = new Chain();
-    /** Each graded layer's bloom in {@link #chain} this frame, or -1: scratch for {@link #record}. */
-    private final int[] layers = new int[CgGradeLayers.MAX];
-    /** The engine's layers, for the frame and for each graded layer: {@link #engine} sets their bloom and threshold. */
+    /** Each graded look's bloom in {@link #chain} this frame, or -1: scratch for {@link #record}. */
+    private final int[] layers = new int[CgLookChannels.MAX];
+    /** The engine's layers, for the frame and for each graded look: {@link #engine} sets their bloom and threshold. */
     private final CgPostSettings engine = engineLayers();
-    private final CgPostSettings[] layerEngine = {engineLayers(), engineLayers()};
+    private final CgPostSettings[] layerEngine = {engineLayers(), engineLayers(), engineLayers(), engineLayers()};
     /** Starts the chain's kernels, as a loading screen does. Render thread. */
     public static void precache() {
         CgCompute kernels = CgCompute.load(KERNELS);
@@ -102,15 +103,15 @@ public final class CgBloom {
 
     /** Engine side, the chain's: whether it blooms this firing. */
     public boolean shows(CgPostContext post) {
-        return post.settings().bloomIntensity() > 0f && ((post.view().read(CgGradeLayers.KEY) != null) || post.settings().bloom() > 0f);
+        return post.settings().bloomIntensity() > 0f && ((post.view().read(CgLookChannels.KEY) != null) || post.settings().bloom() > 0f);
     }
 
     /**
      * Whether the frame's bloom would take an excess already taken ({@link #record}'s {@code excess}): the engine's own
-     * layers, with no graded layer, whose light the frame's bloom takes out of the scene's.
+     * layers, with no graded look, whose light the frame's bloom takes by the look weights.
      */
     public static boolean takesExcess(CgPostContext post) {
-        return !post.settings().bloomsGaussian() && post.view().read(CgGradeLayers.KEY) == null;
+        return !post.settings().bloomsGaussian() && post.view().read(CgLookChannels.KEY) == null;
     }
 
     /** The threshold the frame's engine layers subtract: what an {@code excess} handed to {@link #record} was taken past. */
@@ -124,17 +125,17 @@ public final class CgBloom {
      * threshold (temporal AA's glow, {@code CgTemporalAA.glow}).
      */
     public void record(CgPostContext post, CgGraphTexture scene, @Nullable CgGraphTexture excess, CgPostComposite composite) {
-        CgGradeLayers graded = post.view().read(CgGradeLayers.KEY);
+        CgLookChannels graded = post.view().read(CgLookChannels.KEY);
         CgPostSettings s = post.settings();
         float intensity = s.bloomIntensity(), threshold = s.bloomExcessThreshold();
         Chain c = chain;
         boolean excessed = excess != null && takesExcess(post);
-        c.begin(excessed ? excess : scene, graded, excessed);
+        c.begin(excessed ? excess : scene, graded != null ? CgLookWeights.current(post.view()) : null, excessed);
         int frame = -1;
         if (post.settings().bloom() > 0f) frame = c.add(Chain.FRAME, shape(post.settings(), engine, threshold));
         int[] layer = layers;
         Arrays.fill(layer, -1);
-        for (int k = 0; graded != null && k < CgGradeLayers.MAX; k++) {
+        for (int k = 0; graded != null && k < CgLookChannels.MAX; k++) {
             CgPostSettings look = graded.look(k);
             if (look == null || look.bloom() <= 0f) continue;
             float t = look.overrides(CgPostSettings.BLOOM_THRESHOLD) ? look.bloomThreshold() : threshold;
@@ -146,8 +147,8 @@ public final class CgBloom {
             composite.bloom(c.glow(frame), intensity, s.bloomR(), s.bloomG(), s.bloomB(), s.bloomConserving());
             composite.linear();
         }
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (layer[k] >= 0) composite.layerBloom(k, c.glow(layer[k]), intensity);
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            if (layer[k] >= 0) composite.lookBloom(k, c.glow(layer[k]), intensity);
         }
     }
 
@@ -217,20 +218,21 @@ public final class CgBloom {
     private static final class Chain {
 
         static final String[] NAMES = {"Source", "Down", "Across", "Layer"};
-        /** What a bloom reads: the frame's scene less the graded layers' light, or a graded layer's own. */
+        /** What a bloom reads: the frame's scene by what the looks leave, or by look k's weight ({@link #LAYER0} + k). */
         static final int FRAME = 0, LAYER0 = 1;
         /** {@code bloom.compute}'s rows: a bloom's source rows, then a block a stage and bloom. */
         static final int SOURCE_ROWS = 2, BLOCK = 2 + 2 * MAX_TAPS, ROWS = SOURCE_ROWS * BLOOMS + STAGES * BLOOMS * BLOCK;
-        private static final String[] OUT = {"OUT0", "OUT1", "OUT2"}, IN = {"_In0", "_In1", "_In2"},
-                ADD = {"_Add0", "_Add1", "_Add2"};
+        private static final String[] OUT = {"OUT0", "OUT1", "OUT2", "OUT3", "OUT4"},
+                IN = {"_In0", "_In1", "_In2", "_In3", "_In4"}, ADD = {"_Add0", "_Add1", "_Add2", "_Add3", "_Add4"};
 
         private final Bloom[] blooms = {new Bloom(), new Bloom(), new Bloom()};
         private int count;
         private CgGraphTexture scene;
         /** Whether {@link #scene} is an excess already taken, for the frame's bloom. */
         private boolean excessed;
+        /** The look weights a bloom's light is the scene by ({@code CgLookWeights}); null without graded looks. */
         @Nullable
-        private CgGradeLayers graded;
+        private CgGraphTexture weights;
         private final float[] rows = new float[ROWS * 4], uploaded = new float[ROWS * 4];
         private CgGraphBuffer buffer;
         private final CgKernel[] kernels = new CgKernel[NAMES.length];
@@ -238,9 +240,9 @@ public final class CgBloom {
         /** A 1x1 target a dispatch binds where it runs fewer blooms than it declares. */
         private CgGraphTexture unused;
 
-        void begin(CgGraphTexture scene, @Nullable CgGradeLayers graded, boolean excessed) {
+        void begin(CgGraphTexture scene, @Nullable CgGraphTexture weights, boolean excessed) {
             this.scene = scene;
-            this.graded = graded;
+            this.weights = weights;
             this.excessed = excessed;
             count = 0;
         }
@@ -288,8 +290,7 @@ public final class CgBloom {
             if (unused == null) unused = CgGraphTexture.transientTexture("cg_bloom_unused", new CgTextureDesc(1, 1, FORMAT));
             CgComputePass pass = recording.compute("cg.bloom").timed(GPU_BLOOM);
             CgDispatch d = pass.dispatch(kernels[0], width, height, count).bind("ROWS", buffer).texture("_Scene", scene);
-            if (graded != null && graded.layer(0) != null) d.texture("_Layer0", graded.layer(0));
-            if (graded != null && graded.layer(1) != null) d.texture("_Layer1", graded.layer(1));
+            if (weights != null) d.texture("_Weights", weights);
             outs(d, -1, Pass.SOURCE);
             for (int k = 0; k < deepest; k++) {
                 d = pass.dispatch(kernels[1], Math.max(1, width >> (k + 1)), Math.max(1, height >> (k + 1)), count);
@@ -355,9 +356,7 @@ public final class CgBloom {
         }
 
         private CgGraphTexture sourceOf(int source) {
-            if (source == FRAME || graded == null) return scene;
-            CgGraphTexture layer = graded.layer(source - LAYER0);
-            return layer != null ? layer : scene;
+            return scene;
         }
 
         /** Row {@code row}'s four floats. */
@@ -374,7 +373,7 @@ public final class CgBloom {
             buffer = null;
             unused = null;
             scene = null;
-            graded = null;
+            weights = null;
             count = 0;
         }
 
@@ -431,10 +430,8 @@ public final class CgBloom {
                 boolean unreal = !look.bloomsExcess();
                 // The excess form subtracts its threshold, so Unreal's -1 (the whole scene) is 0 there
                 float threshold = unreal ? look.bloomThreshold() : Math.max(0f, look.bloomThreshold());
-                boolean frame = source == FRAME && graded != null;
                 chain.put(slot * SOURCE_ROWS, source, threshold, unreal ? 1f : 0f, chain.excessed && source == FRAME ? 1f : 0f);
-                chain.put(slot * SOURCE_ROWS + 1, frame && graded.layer(0) != null ? 1f : 0f,
-                        frame && graded.layer(1) != null ? 1f : 0f, 0f, 0f);
+                chain.put(slot * SOURCE_ROWS + 1, chain.weights != null ? 1f : 0f, 0f, 0f, 0f);
                 float tintScale = look.bloom() / STAGES;
                 int last = -1;
                 for (int stage = STAGES - 1; stage >= 0; stage--) {

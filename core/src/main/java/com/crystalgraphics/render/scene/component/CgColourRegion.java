@@ -21,7 +21,7 @@ import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
+import com.crystalgraphics.render.scene.renderer.feature.translucency.CgSeparateTranslucency;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLight;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
 import com.crystalgraphics.api.material.CgMaterialInstance;
@@ -101,7 +101,7 @@ public final class CgColourRegion extends CgPrimitiveComponent<CgColourRegion> {
     private final CgMaterialInstances materials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance material = materials.of(materials.material());
     private final CgPostMaterial draw = CgPostMaterial.drawer(material);
-    /** The same grade over a graded layer: its offsets by the layer's coverage ({@code _Coverage}). */
+    /** The same grade over the separate translucency: its offsets by the layer's coverage ({@code _Coverage}). */
     private final CgMaterialInstances layerMaterials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance layerMaterial = layerMaterials.of(layerMaterials.material());
     private final CgPostMaterial layerDraw = CgPostMaterial.drawer(layerMaterial);
@@ -251,7 +251,7 @@ public final class CgColourRegion extends CgPrimitiveComponent<CgColourRegion> {
         return tint;
     }
 
-    /** Engine side, its chains' at {@code TRANSLUCENT}: grades {@code input} (and each graded layer) inside its shape. */
+    /** Engine side, its chains' at {@code TRANSLUCENT}: grades {@code input} and the separate translucency inside its shape. */
     public void draw(CgPostContext post, CgScreenTexture input) {
         keywords();
         if (!visible || intensity <= 0f || !draw.shows(post)) return;
@@ -289,14 +289,13 @@ public final class CgColourRegion extends CgPrimitiveComponent<CgColourRegion> {
         skyLight = CgSceneLight.sky(light);
         write(material);
         draw.draw(post, input);
-        // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
-        CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
-        if (layers == null) return;
+        // The separate translucency's light is the scene's, laid after this point (CgTranslucencyComposition, or the
+        // upscaler): Unreal grades the scene before bloom, effects' light with it
+        CgSeparateTranslucency apart = post.view().read(CgSeparateTranslucency.KEY);
+        if (apart == null || apart.target() == null) return;
         write(layerMaterial);
         layerMaterial.set1f("_Coverage", 1f);
-        for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            if (layers.look(k) != null) layerDraw.drawOver(post, layers.layer(k));
-        }
+        layerDraw.drawOver(post, apart.target());
     }
 
     @Override

@@ -22,9 +22,9 @@
 //   SCENE      reads the linear HDR scene (_Scene) instead of the target, past white rolled toward white keeping its
 //              hue, then clamped; a value within 0.1 of an 8-bit code
 //              is what the scene decoded from the host, written back exact rather than dithered
-//   LAYERS     with SCENE, graded layers (CgGradeLayers): each layer's light, toned by its own table (_Layer0Lut) with
-//              its own bloom, added over the frame's look as only what it contributes: its tone of the scene less its
-//              tone of what is behind it, less the frame's tone of the same. A pixel no layer reaches is unchanged
+//   LOOKS      with SCENE, graded looks (CgLookWeights): each look tones the whole pixel by its own table (_Look0Lut)
+//              or the roll, its own bloom with the rest, and the results mix by each look's share of the pixel's light;
+//              the frame's look takes what the looks leave. A pixel no look reaches is the frame's alone
 #domain global
 #include "crystalgraphics:shaders/post/impact.glsl"
 Material { SceneColorMargin 0.02  Media On }
@@ -40,7 +40,7 @@ Keywords {
     FADE ("FADE", switched)
     TONEMAP ("TONEMAP")
     GRADE ("GRADE")
-    LAYERS ("LAYERS", switched)
+    LOOKS ("LOOKS", switched)
 }
 
 RenderState {
@@ -92,14 +92,19 @@ Properties {
     _GradeH4   ("Highlights: offset", vec4) = (0, 0, 0, 0)
     _GradeRange ("x: where shadows end; y: where highlights begin", vec4) = (0.09, 0.5, 0, 0)
     _GradeTint ("The scene tint, after the roll", vec4) = (1, 1, 1, 0)
-    _Layer0      ("Graded layer 0: rgb the light it added, a its cover", sampler2D) = "black"
-    _Layer1      ("Graded layer 1", sampler2D) = "black"
-    _Layer0Bloom ("Layer 0's own bloom", sampler2D) = "black"
-    _Layer1Bloom ("Layer 1's own bloom", sampler2D) = "black"
-    _Layer0Lut   ("Layer 0's tonemapper table", sampler3D) = "black"
-    _Layer1Lut   ("Layer 1's tonemapper table", sampler3D) = "black"
-    _LayerParams0 ("Layer 0: x 1 where drawn; y its bloom's strength; z 1 where its table tones it", vec4) = (0, 0, 0, 0)
-    _LayerParams1 ("Layer 1, as layer 0", vec4) = (0, 0, 0, 0)
+    _LookWeights ("The look weights (CgLookWeights): each channel's share of the pixel", sampler2D) = "black"
+    _Look0Bloom  ("Look 0's own bloom", sampler2D) = "black"
+    _Look1Bloom  ("Look 1's", sampler2D) = "black"
+    _Look2Bloom  ("Look 2's", sampler2D) = "black"
+    _Look3Bloom  ("Look 3's", sampler2D) = "black"
+    _Look0Lut    ("Look 0's tonemapper table", sampler3D) = "black"
+    _Look1Lut    ("Look 1's", sampler3D) = "black"
+    _Look2Lut    ("Look 2's", sampler3D) = "black"
+    _Look3Lut    ("Look 3's", sampler3D) = "black"
+    _LookParams0 ("Look 0: x 1 in use; y its bloom's strength; z 1 where its table tones it, else the roll", vec4) = (0, 0, 0, 0)
+    _LookParams1 ("Look 1, as look 0", vec4) = (0, 0, 0, 0)
+    _LookParams2 ("Look 2, as look 0", vec4) = (0, 0, 0, 0)
+    _LookParams3 ("Look 3, as look 0", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -212,31 +217,36 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec3 b = vec3(0.0);
 #endif
     vec3 encoded = frame_tone(c, b, i.uv);
-#if defined(LAYERS) && defined(SCENE)
-    // Each graded layer adds what it contributes as its own look tones it, in place of how the frame's tones it:
-    // its look over the scene, less its look over what is behind it, less the frame's two of the same.
-    vec3 framed = encoded;
-    if (_LayerParams0.x > 0.5) {
-        vec4 e = texelFetch(_Layer0, ivec2(gl_FragCoord.xy), 0);
-        float a = clamp(e.a, 0.0, 0.999);
-        vec3 bg = max((c - e.rgb) / (1.0 - a), vec3(0.0));
-        vec3 lit = c + textureLod(_Layer0Bloom, i.uv, 0.0).rgb * _LayerParams0.y;
-        vec3 own = _LayerParams0.z > 0.5
-                ? (textureLod(_Layer0Lut, post_lut_at(lit), 0.0).rgb - textureLod(_Layer0Lut, post_lut_at(bg), 0.0).rgb * (1.0 - a)) * 1.05
-                : post_encode_srgb(post_roll(lit)) - post_encode_srgb(post_roll(bg)) * (1.0 - a);
-        encoded += own - (framed - frame_tone(bg, b, i.uv) * (1.0 - a));
+#if defined(LOOKS) && defined(SCENE)
+    // Each graded look tones the whole pixel, its own bloom and every other over it; the finished pictures mix by each
+    // look's share of the pixel's light (CgLookWeights), the frame's look taking the rest: exact for a pixel of one look
+    {
+        vec4 w = textureLod(_LookWeights, i.uv, 0.0);
+        vec3 lb0 = _LookParams0.x > 0.5 ? textureLod(_Look0Bloom, i.uv, 0.0).rgb * _LookParams0.y : vec3(0.0);
+        vec3 lb1 = _LookParams1.x > 0.5 ? textureLod(_Look1Bloom, i.uv, 0.0).rgb * _LookParams1.y : vec3(0.0);
+        vec3 lb2 = _LookParams2.x > 0.5 ? textureLod(_Look2Bloom, i.uv, 0.0).rgb * _LookParams2.y : vec3(0.0);
+        vec3 lb3 = _LookParams3.x > 0.5 ? textureLod(_Look3Bloom, i.uv, 0.0).rgb * _LookParams3.y : vec3(0.0);
+        vec3 looksBloom = lb0 + lb1 + lb2 + lb3;
+        vec3 frameBloom = b * _Intensity;
+        vec3 total = c + frameBloom + looksBloom;
+#ifdef FLASH
+        total *= _Exposure;
+#endif
+        const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+        vec4 share = vec4(dot(w.x * c + lb0, LUMA), dot(w.y * c + lb1, LUMA), dot(w.z * c + lb2, LUMA), dot(w.w * c + lb3, LUMA));
+        float frameShare = dot(max(1.0 - dot(w, vec4(1.0)), 0.0) * c + frameBloom, LUMA);
+        float sum = dot(share, vec4(1.0)) + frameShare;
+        if (sum > 1.0e-6) {
+            share /= sum;
+            vec3 framed = frame_tone(c + looksBloom, b, i.uv);
+            vec3 mixed = framed * (frameShare / sum);
+            mixed += share.x * (_LookParams0.z > 0.5 ? textureLod(_Look0Lut, post_lut_at(total), 0.0).rgb * 1.05 : post_encode_srgb(post_roll(total)));
+            mixed += share.y * (_LookParams1.z > 0.5 ? textureLod(_Look1Lut, post_lut_at(total), 0.0).rgb * 1.05 : post_encode_srgb(post_roll(total)));
+            mixed += share.z * (_LookParams2.z > 0.5 ? textureLod(_Look2Lut, post_lut_at(total), 0.0).rgb * 1.05 : post_encode_srgb(post_roll(total)));
+            mixed += share.w * (_LookParams3.z > 0.5 ? textureLod(_Look3Lut, post_lut_at(total), 0.0).rgb * 1.05 : post_encode_srgb(post_roll(total)));
+            encoded = max(mixed, vec3(0.0));
+        }
     }
-    if (_LayerParams1.x > 0.5) {
-        vec4 e = texelFetch(_Layer1, ivec2(gl_FragCoord.xy), 0);
-        float a = clamp(e.a, 0.0, 0.999);
-        vec3 bg = max((c - e.rgb) / (1.0 - a), vec3(0.0));
-        vec3 lit = c + textureLod(_Layer1Bloom, i.uv, 0.0).rgb * _LayerParams1.y;
-        vec3 own = _LayerParams1.z > 0.5
-                ? (textureLod(_Layer1Lut, post_lut_at(lit), 0.0).rgb - textureLod(_Layer1Lut, post_lut_at(bg), 0.0).rgb * (1.0 - a)) * 1.05
-                : post_encode_srgb(post_roll(lit)) - post_encode_srgb(post_roll(bg)) * (1.0 - a);
-        encoded += own - (framed - frame_tone(bg, b, i.uv) * (1.0 - a));
-    }
-    encoded = max(encoded, vec3(0.0));
 #endif
 #ifdef IMPACT
     vec3 impact;

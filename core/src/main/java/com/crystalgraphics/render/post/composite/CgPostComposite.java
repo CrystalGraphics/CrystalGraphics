@@ -6,6 +6,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.api.material.CgMaterialValues;
+import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -70,9 +71,10 @@ public final class CgPostComposite {
     private int active;
     private boolean copy;
     private final Inputs inputs = new Inputs();
-    private static final int LAYER_SLOTS = 2;
-    private static final String[] LAYER = {"_Layer0", "_Layer1"}, LAYER_BLOOM = {"_Layer0Bloom", "_Layer1Bloom"},
-            LAYER_LUT = {"_Layer0Lut", "_Layer1Lut"}, LAYER_PARAMS = {"_LayerParams0", "_LayerParams1"};
+    private static final int LOOK_SLOTS = CgLookChannels.MAX;
+    private static final String[] LOOK_BLOOM = {"_Look0Bloom", "_Look1Bloom", "_Look2Bloom", "_Look3Bloom"},
+            LOOK_LUT = {"_Look0Lut", "_Look1Lut", "_Look2Lut", "_Look3Lut"},
+            LOOK_PARAMS = {"_LookParams0", "_LookParams1", "_LookParams2", "_LookParams3"};
 
     /** Writes the inputs into the chosen variant's instance. */
     private void write(CgMaterialValues b) {
@@ -94,12 +96,12 @@ public final class CgPostComposite {
                 .vec4("_Fade", inputs.fadeR, inputs.fadeG, inputs.fadeB, inputs.fade);
         float[] g = inputs.grade;
         for (int i = 0; i < GRADE.length; i++) b.vec4(GRADE[i], g[i * 4], g[i * 4 + 1], g[i * 4 + 2], g[i * 4 + 3]);
-        for (int k = 0; k < LAYER_SLOTS; k++) {
-            if (inputs.layers[k] != null) b.sampler(LAYER[k], 0, inputs.layers[k]);
-            if (inputs.layerBlooms[k] != null) b.sampler(LAYER_BLOOM[k], 0, inputs.layerBlooms[k]);
-            if (inputs.layerLuts[k] != null) b.sampler(LAYER_LUT[k], 0, inputs.layerLuts[k]);
-            b.vec4(LAYER_PARAMS[k], inputs.layers[k] != null ? 1f : 0f, inputs.layerBlooms[k] != null ? inputs.layerIntensity[k] : 0f,
-                    inputs.layerLuts[k] != null ? 1f : 0f, 0f);
+        if (inputs.weights != null) b.sampler("_LookWeights", 0, inputs.weights);
+        for (int k = 0; k < LOOK_SLOTS; k++) {
+            if (inputs.lookBlooms[k] != null) b.sampler(LOOK_BLOOM[k], 0, inputs.lookBlooms[k]);
+            if (inputs.lookLuts[k] != null) b.sampler(LOOK_LUT[k], 0, inputs.lookLuts[k]);
+            b.vec4(LOOK_PARAMS[k], inputs.looks[k] ? 1f : 0f, inputs.lookBlooms[k] != null ? inputs.lookIntensity[k] : 0f,
+                    inputs.lookLuts[k] != null ? 1f : 0f, 0f);
         }
     }
 
@@ -115,13 +117,15 @@ public final class CgPostComposite {
         CgImpactFrame frame = CgImpactFrame.NEGATIVE;
         int seed;
         final float[] grade = new float[GRADE.length * 4];
-        final CgGraphTexture[] layers = new CgGraphTexture[LAYER_SLOTS], layerBlooms = new CgGraphTexture[LAYER_SLOTS];
-        final CgTexture[] layerLuts = new CgTexture[LAYER_SLOTS];
-        final float[] layerIntensity = new float[LAYER_SLOTS];
+        final boolean[] looks = new boolean[LOOK_SLOTS];
+        final CgGraphTexture[] lookBlooms = new CgGraphTexture[LOOK_SLOTS];
+        final CgTexture[] lookLuts = new CgTexture[LOOK_SLOTS];
+        final float[] lookIntensity = new float[LOOK_SLOTS];
+        CgGraphTexture weights;
 
         boolean same(Inputs o) {
-            return Arrays.equals(layers, o.layers) && Arrays.equals(layerBlooms, o.layerBlooms) && Arrays.equals(layerLuts, o.layerLuts)
-                    && Arrays.equals(layerIntensity, o.layerIntensity) && scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
+            return Arrays.equals(looks, o.looks) && Arrays.equals(lookBlooms, o.lookBlooms) && Arrays.equals(lookLuts, o.lookLuts)
+                    && Arrays.equals(lookIntensity, o.lookIntensity) && weights == o.weights && scene == o.scene && bloom == o.bloom && subject == o.subject && lut == o.lut && intensity == o.intensity && r == o.r && g == o.g
                     && b == o.b && conserve == o.conserve && exposure == o.exposure && vignette == o.vignette
                     && tonemapWeight == o.tonemapWeight && filmic == o.filmic
                     && chromatic == o.chromatic && impact == o.impact && frame == o.frame && seed == o.seed
@@ -154,17 +158,19 @@ public final class CgPostComposite {
             fadeG = o.fadeG;
             fadeB = o.fadeB;
             System.arraycopy(o.grade, 0, grade, 0, grade.length);
-            System.arraycopy(o.layers, 0, layers, 0, LAYER_SLOTS);
-            System.arraycopy(o.layerBlooms, 0, layerBlooms, 0, LAYER_SLOTS);
-            System.arraycopy(o.layerLuts, 0, layerLuts, 0, LAYER_SLOTS);
-            System.arraycopy(o.layerIntensity, 0, layerIntensity, 0, LAYER_SLOTS);
+            System.arraycopy(o.looks, 0, looks, 0, LOOK_SLOTS);
+            System.arraycopy(o.lookBlooms, 0, lookBlooms, 0, LOOK_SLOTS);
+            System.arraycopy(o.lookLuts, 0, lookLuts, 0, LOOK_SLOTS);
+            System.arraycopy(o.lookIntensity, 0, lookIntensity, 0, LOOK_SLOTS);
+            weights = o.weights;
         }
 
         void clearLayers() {
-            Arrays.fill(layers, null);
-            Arrays.fill(layerBlooms, null);
-            Arrays.fill(layerLuts, null);
-            Arrays.fill(layerIntensity, 0f);
+            Arrays.fill(looks, false);
+            Arrays.fill(lookBlooms, null);
+            Arrays.fill(lookLuts, null);
+            Arrays.fill(lookIntensity, 0f);
+            weights = null;
         }
     }
 
@@ -279,24 +285,30 @@ public final class CgPostComposite {
     }
 
     /**
-     * Lays graded layer {@code k}'s light ({@code CgGradeLayers}) over the frame's look as its own look tones it: by
-     * {@code lut} ({@code CgFilmLut}), or with none by the roll to white, adding only what it contributes. Wants the HDR
-     * scene ({@link #scene}). Its bloom is {@link #layerBloom}.
+     * Tones the pixels of graded look channel {@code k} ({@code CgLookChannels}) by its own look: by {@code lut}
+     * ({@code CgFilmLut}), or with none by the roll to white, mixed with the frame's look and the others by each one's
+     * share of the pixel's light ({@link #lookWeights}). Wants the HDR scene ({@link #scene}). Its bloom is {@link #lookBloom}.
      *
      * <pre>{@code
-     * composite.layer(k, layers.layer(k), lut.texture(post.recording(), layers.look(k)));   // the looks step
+     * composite.lookWeights(weights).look(k, lut.texture(post.recording(), looks.look(k)));   // the looks step
      * }</pre>
      */
-    public CgPostComposite layer(int k, CgGraphTexture layer, @Nullable CgTexture lut) {
-        inputs.layers[k] = layer;
-        inputs.layerLuts[k] = lut;
-        return on(CgCompositeFeature.LAYERS);
+    public CgPostComposite look(int k, @Nullable CgTexture lut) {
+        inputs.looks[k] = true;
+        inputs.lookLuts[k] = lut;
+        return on(CgCompositeFeature.LOOKS);
     }
 
-    /** Graded layer {@code k}'s own bloom, {@code glow} times {@code intensity}, toned with its light ({@link #layer}). */
-    public CgPostComposite layerBloom(int k, CgGraphTexture glow, float intensity) {
-        inputs.layerBlooms[k] = glow;
-        inputs.layerIntensity[k] = intensity;
+    /** The look weights ({@code CgLookWeights}): each look channel's share of each pixel. */
+    public CgPostComposite lookWeights(CgGraphTexture weights) {
+        inputs.weights = weights;
+        return this;
+    }
+
+    /** Look channel {@code k}'s own bloom, {@code glow} times {@code intensity}, toned with its pixels ({@link #look}). */
+    public CgPostComposite lookBloom(int k, CgGraphTexture glow, float intensity) {
+        inputs.lookBlooms[k] = glow;
+        inputs.lookIntensity[k] = intensity;
         return this;
     }
 

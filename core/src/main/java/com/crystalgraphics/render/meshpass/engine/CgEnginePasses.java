@@ -197,10 +197,13 @@ public final class CgEnginePasses {
 
     /**
      * A marked primitive's depth, writing its stencil: a translucent one only where its material writes depth, as
-     * Unreal's {@code UseDefaultMaterial} path takes it (CustomDepthRendering.cpp:560-591).
+     * Unreal's {@code UseDefaultMaterial} path takes it (CustomDepthRendering.cpp:560-591). A graded solid row is drawn
+     * too, its look id in the stencil's bits 5-7 ({@link CgCustomDepth#withLook}): the record the look weights read.
      */
     private static void customDepth(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
         CgCustomDepth mark = primitive.customDepth();
+        int look = (batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 ? batch.look() : 0;
+        if (look != 0) mark = (mark == null ? CgCustomDepth.DEPTH : mark).withLook(look);
         if (mark == null || (batch.relevance() & CgPrimitiveRelevance.DEPTH) == 0) return;
         CgPipeline depth = depthPipeline(batch.material());
         if (depth != null) out.draw(batch, batch.material(), depth.withState(stencilled(depth.state(), mark)));
@@ -256,13 +259,14 @@ public final class CgEnginePasses {
     /**
      * {@code own} writing custom depth: depth tested near-or-equal and written, the stencil set to the mark's value in
      * its mask's bits, kept where depth fails under the full mask and replaced under a partial one
-     * ({@code GetCustomDepthStencilState}, CustomDepthRendering.cpp:534-557).
+     * ({@code GetCustomDepthStencilState}, CustomDepthRendering.cpp:534-557). A mark carrying a look is always kept
+     * where depth fails: a look id written behind would claim the pixel of what is in front.
      */
     private static CgRenderState stencilled(CgRenderState own, CgCustomDepth mark) {
         return STENCILLED.computeIfAbsent(own, s -> new ConcurrentHashMap<>()).computeIfAbsent(mark, m -> {
             CgRenderState depth = own.withDepth(CgDepthState.TEST_WRITE);
-            return m.writeMask() == 0 ? depth
-                    : depth.withStencil(CgStencilState.write(m.value(), m.writeMask(), m.writeMask() != 0xFF));
+            boolean replaceOnFail = m.look() == 0 && m.writeMask() != CgCustomDepth.MARK_BITS;
+            return m.writeMask() == 0 ? depth : depth.withStencil(CgStencilState.write(m.value(), m.writeMask(), replaceOnFail));
         });
     }
 }

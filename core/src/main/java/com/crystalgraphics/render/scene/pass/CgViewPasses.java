@@ -20,6 +20,7 @@ import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.CgMeshBatch;
 import com.crystalgraphics.render.meshpass.CgMeshPassCommands;
 import com.crystalgraphics.render.meshpass.CgMeshPassType;
@@ -512,6 +513,11 @@ public final class CgViewPasses {
         @Override
         public boolean separate() {
             return rows.layer(b) == CgSortLayer.AFTER_DOF;
+        }
+
+        @Override
+        public int look() {
+            return CgLookIds.of(rows.grade(b));
         }
     }
 }

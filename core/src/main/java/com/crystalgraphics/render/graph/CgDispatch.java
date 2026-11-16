@@ -341,6 +341,9 @@ public final class CgDispatch {
         int unit = kernel.compute().properties().samplerUnit(name);
         if (unit < 0) throw new IllegalArgumentException(source.path() + " has no sampler property '" + name + "'");
         CgGraphTexture graph = CgGraphTexture.sampled(texture);
+        if (texture == graph && graph.desc() != null && graph.desc().isDepth()) {
+            throw new IllegalArgumentException("'" + name + "' binds " + texture + ", a depth target: bind its sampledDepth()");
+        }
         if (graph != null && graph.isArray()) {
             throw new IllegalArgumentException("'" + name + "' binds " + texture + ", an array: materials sample arrays, kernels do not");
         }

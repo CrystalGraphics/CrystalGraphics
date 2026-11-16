@@ -12163,6 +12163,7 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public level (I)Lcom/crystalgraphics/render/graph/CgGraphTexture$Level;
   method public previous ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public sampledDepth ()Lcom/crystalgraphics/render/graph/CgGraphTexture$Depth;
   method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public stencil ()Lcom/crystalgraphics/render/graph/CgGraphTexture$Stencil;
   method public storage ()Lcom/crystalgraphics/render/graph/CgGraphStorage;
@@ -12173,6 +12174,16 @@ com/crystalgraphics/render/graph/CgGraphTexture
   method public,static imported (Ljava/lang/String;Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static requested (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static transientTexture (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+com/crystalgraphics/render/graph/CgGraphTexture$Depth
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/texture/CgTexture
+  method public getHeight ()I
+  method public getWidth ()I
+  method public rhiView ()Lcom/crystalgraphics/platform/rhi/resource/CgTextureView;
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
+  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public toString ()Ljava/lang/String;
 com/crystalgraphics/render/graph/CgGraphTexture$Kind
   access public,final,enum
   extends java/lang/Enum
@@ -12507,6 +12518,36 @@ com/crystalgraphics/render/host/CgWorldAtmosphere
   extends java/lang/Object
   field public,static,final SUN_SHARE Lcom/crystalgraphics/variable/CgVar$Num;
   method public,static apply (Lcom/crystalgraphics/render/host/CgHostEnvironment;Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/draw/CgPassConstants;
+com/crystalgraphics/render/look/CgLookChannels
+  access public,final
+  extends java/lang/Object
+  field public,static,final KEY Lcom/crystalgraphics/render/view/CgViewKey;
+  field public,static,final MAX I
+  method public <init> ()V
+  method public any ()Z
+  method public id (I)I
+  method public layer (I)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public look (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public reset ()V
+  method public setLayer (ILcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public setLook (ILcom/crystalgraphics/render/post/settings/CgPostSettings;I)V
+com/crystalgraphics/render/look/CgLookIds
+  access public,final
+  extends java/lang/Object
+  field public,static,final MOST I
+  method public,static epoch ()I
+  method public,static frame (J)V
+  method public,static look (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public,static of (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)I
+com/crystalgraphics/render/look/CgLookWeights
+  access public,final
+  extends java/lang/Object
+  field public,static,final KEY Lcom/crystalgraphics/render/view/CgViewKey;
+  field public,static,final RESOLVED Lcom/crystalgraphics/render/view/CgViewKey;
+  method public <init> ()V
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Z)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static current (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static precache ()V
 com/crystalgraphics/render/mesh/CgMeshStore
   access public,final
   extends java/lang/Object
@@ -12545,8 +12586,13 @@ com/crystalgraphics/render/meshpass/CgCustomDepth
   access public,final
   extends java/lang/Object
   field public,static,final DEPTH Lcom/crystalgraphics/render/meshpass/CgCustomDepth;
+  field public,static,final LOOK_BITS I
+  field public,static,final LOOK_SHIFT I
+  field public,static,final MARK_BITS I
+  method public look ()I
   method public toString ()Ljava/lang/String;
   method public value ()I
+  method public withLook (I)Lcom/crystalgraphics/render/meshpass/CgCustomDepth;
   method public writeMask ()I
   method public,static stencil (I)Lcom/crystalgraphics/render/meshpass/CgCustomDepth;
   method public,static stencil (II)Lcom/crystalgraphics/render/meshpass/CgCustomDepth;
@@ -12558,6 +12604,7 @@ com/crystalgraphics/render/meshpass/CgMeshBatch
   field public,static,final CASTS_SHADOW I
   field public,static,final HALF_RESOLUTION I
   method public,abstract flags ()I
+  method public,abstract look ()I
   method public,abstract material ()Lcom/crystalgraphics/api/material/CgMaterialInterface;
   method public,abstract mesh ()Lcom/crystalgraphics/api/mesh/CgMesh;
   method public,abstract relevance ()I
@@ -12752,6 +12799,7 @@ com/crystalgraphics/render/post/CgScreenPass
 com/crystalgraphics/render/post/aa/CgTemporalAA
   access public,final
   extends java/lang/Object
+  field public,static,final LOOK Ljava/lang/String;
   field public,static,final OUTPUT Ljava/lang/String;
   field public,static,final SHADER Ljava/lang/String;
   implements com/crystalgraphics/render/post/upscale/CgUpscaler
@@ -12793,7 +12841,7 @@ com/crystalgraphics/render/post/composite/CgCompositeFeature
   field public,static,final FLASH Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   field public,static,final GRADE Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   field public,static,final IMPACT Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
-  field public,static,final LAYERS Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
+  field public,static,final LOOKS Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   field public,static,final TONEMAP Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   field public,static,final VIGNETTE Lcom/crystalgraphics/render/post/composite/CgCompositeFeature;
   method public blend ()Z
@@ -12821,9 +12869,10 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public grade ([F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public impact (Lcom/crystalgraphics/render/post/settings/CgImpact;FFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public impact (Lcom/crystalgraphics/render/post/settings/CgImpactFrame;FIFFLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public layer (ILcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public layerBloom (ILcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public look (ILcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public lookBloom (ILcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public lookWeights (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/draw/CgPassConstants;)V
   method public release ()V
   method public scene (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
@@ -14428,14 +14477,6 @@ com/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia$Injector
   method public holds ()Z
   method public upload (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;)V
   method public,abstract inject (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;)Z
-com/crystalgraphics/render/scene/renderer/feature/translucency/CgGradeLayers
-  access public,final
-  extends java/lang/Object
-  field public,static,final KEY Lcom/crystalgraphics/render/view/CgViewKey;
-  field public,static,final MAX I
-  method public <init> ()V
-  method public layer (I)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public look (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
 com/crystalgraphics/render/scene/renderer/feature/translucency/CgHalfResolution
   access public,final
   extends java/lang/Object

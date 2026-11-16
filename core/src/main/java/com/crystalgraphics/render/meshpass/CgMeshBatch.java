@@ -36,4 +36,7 @@ public interface CgMeshBatch {
 
     /** Whether its layer puts it in the separate translucency's target: {@code CgSortLayer.AFTER_DOF}. */
     boolean separate();
+
+    /** The look its row is graded by, as its id ({@code CgLookIds}, 1 to 7); 0 for the frame's look. */
+    int look();
 }
