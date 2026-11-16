@@ -33,6 +33,7 @@ import java.util.function.Supplier;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgShadingModels;
 import com.crystalgraphics.audio.CgKitSounds;
 import com.crystalgraphics.audio.CgSubtitleStyle;
 import com.crystalgraphics.vfx.look.CgVfxKitLook;
@@ -332,12 +333,14 @@ public final class CgAssetRegistry {
             }
         }
         // The kit's tables, read here as each registry is safe on any thread: before any cue or sequence compiles, a
-        // cue's tag must be declared, a game's cue name resolves through its sound table, a subtitle through its strings
+        // cue's tag must be declared, a game's cue name resolves through its sound table, a subtitle through its strings,
+        // a material through its shading models
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.MISC, SCAN_TABLES)) {
             declareTags(found, CgTagRegistry.global());
             CgKitSounds.registerKit(root);
             CgKitStrings.registerKit(namespace, root);
             CgSubtitleStyle.registerKit(namespace, root);
+            CgShadingModels.registerKit(namespace, root);
         }
         Path index = root.resolve("content.yaml"), unitsFile = root.resolve("units.yaml");
         CgUnits kitUnits = Files.isRegularFile(unitsFile) ? readUnits(unitsFile) : null;

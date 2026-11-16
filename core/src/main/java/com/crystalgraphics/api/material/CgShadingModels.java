@@ -82,14 +82,14 @@ public final class CgShadingModels {
         }
         CgShadingModel had = BY_ID.get(model.id());
         if (had != null) {
-            if (had.equals(model)) return;
+            // the same model again, or the one it was aliased to when another kit named it first
+            if (had.equals(model) || sameProgram(had, model)) return;
             throw new IllegalArgumentException("shading model " + model.id() + " is registered already, as " + had);
         }
         CgShadingModel at = BY_INDEX.get(model.index());
         if (at != null) {
             // Two kits of one game name one model: the same program under a second id
-            if (at.index() == model.index() && at.base().equals(model.base()) && Objects.equals(at.keyword(), model.keyword())
-                    && Objects.equals(at.library(), model.library())) {
+            if (sameProgram(at, model)) {
                 BY_ID.put(model.id(), at);
                 return;
             }
@@ -97,6 +97,12 @@ public final class CgShadingModels {
         }
         BY_ID.put(model.id(), model);
         BY_INDEX.put(model.index(), model);
+    }
+
+    /** Whether {@code a} and {@code b} compile one program: the same index, base, keyword and library, whatever their ids. */
+    private static boolean sameProgram(CgShadingModel a, CgShadingModel b) {
+        return a.index() == b.index() && a.base().equals(b.base()) && Objects.equals(a.keyword(), b.keyword())
+                && Objects.equals(a.library(), b.library());
     }
 
     /**
