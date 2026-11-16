@@ -1,9 +1,10 @@
 // Temporal AA's glow (CgTemporalAA.glow): bloom's light, each jittered frame's excess past bloom's threshold, followed
 // by the resolve's motion and averaged over the jitter's frames. Thresholded after the resolve, a light thinner than a
 // texel, spread to its coverage, falls under the threshold and loses its glow; thresholded per frame and averaged, it
-// glows as it does without temporal AA, and holds still from frame to frame. A texel's average excess never passes its
-// average light, which the resolve has: the glow is held under the resolved picture's brightest round the texel, so a
-// light that has moved away leaves no glow behind it, while one still there keeps all of its own.
+// glows as it does without temporal AA, and holds still from frame to frame. The glow is held under what the resolved
+// light allows: a light x over coverage c on a background b averages L = c x + (1 - c) b, its excess at most
+// L - min(threshold, b). With L the resolved 3x3's brightest and b its dimmest, a light still there keeps all of its
+// own glow, and a texel showing plain background, however bright, keeps none: a light that moved off it leaves no trail.
 #domain global
 #include "crystalgraphics:shaders/env/material/post.glsl"
 #include "crystalgraphics:shaders/lib/velocity.glsl"
@@ -56,11 +57,14 @@ void fragment(in v2f i, out vec4 fragColor) {
         vec2 back = cg_Velocity(_Velocity, (vec2(nearest) + 0.5) / size, texelFetch(cg_DepthBuffer, nearest, 0).r) - _Jitter.xy;
         vec2 from = (vec2(at) + 0.5) / size - back * 0.5;
         if (all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0)))) {
-            // The resolve is unjittered and this frame's samples sit up to half a texel off theirs: its 3x3's brightest
-            vec3 bound = vec3(0.0);
+            // The resolve is unjittered and this frame's samples sit up to half a texel off theirs: its 3x3
+            vec3 brightest = vec3(0.0), dimmest = vec3(65504.0);
             for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3 round the texel
-                bound = max(bound, texelFetch(_Resolved, clamp(at + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).rgb);
+                vec3 c = texelFetch(_Resolved, clamp(at + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).rgb;
+                brightest = max(brightest, c);
+                dimmest = min(dimmest, c);
             }
+            vec3 bound = max(brightest - min(vec3(_Glow.y), dimmest), vec3(0.0));
             result = mix(min(textureLod(_History, from, 0.0).rgb, bound), excess, responsive ? max(_Glow.x, 0.25) : _Glow.x);
         }
     }
