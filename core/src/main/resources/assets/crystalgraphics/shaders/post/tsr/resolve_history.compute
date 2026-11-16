@@ -1,0 +1,45 @@
+// TSR's resolve pass (CgTemporalSuperResolution, Ultra): the history, kept at twice the output size, brought down to it.
+// Each output pixel weighs the 4x4 history pixels round it by a Mitchell-Netravali filter (B = C = 1/3: Mitchell and
+// Netravali, 1988), in the tone-weighted space so a highlight does not ring, and is held inside the footprint's box.
+#pragma kernel Resolve 8 8 image
+
+Properties {
+    _History ("The history, at twice the output size", sampler2D) = "black"
+}
+
+Images {
+    PICTURE ("The picture, at the output size", rgba16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr.glsl"
+
+// Mitchell-Netravali at d history pixels from the output pixel's centre
+float mitchell(float d) {
+    const float B = 1.0 / 3.0, C = 1.0 / 3.0;
+    if (d < 1.0) return ((12.0 - 9.0 * B - 6.0 * C) * d * d * d + (-18.0 + 12.0 * B + 6.0 * C) * d * d + (6.0 - 2.0 * B)) / 6.0;
+    if (d < 2.0) return ((-B - 6.0 * C) * d * d * d + (6.0 * B + 30.0 * C) * d * d + (-12.0 * B - 48.0 * C) * d + (8.0 * B + 24.0 * C)) / 6.0;
+    return 0.0;
+}
+
+void Resolve() {
+    ivec2 o = CG_TEXEL.xy;
+    ivec2 last = textureSize(_History, 0) - 1;
+    ivec2 base = o * 2 - 1;
+    float near = mitchell(0.5), far = mitchell(1.5);
+    float taps[4] = float[4](far, near, near, far);
+    vec3 sum = vec3(0.0), lo = vec3(65504.0), hi = vec3(0.0);
+    float total = 0.0;
+    for (int y = 0; y < 4; y++) {   // LOOP-BOUND: the 4x4 footprint
+        for (int x = 0; x < 4; x++) {
+            vec3 c = texelFetch(_History, clamp(base + ivec2(x, y), ivec2(0), last), 0).rgb;
+            lo = min(lo, c);
+            hi = max(hi, c);
+            float w = taps[x] * taps[y];
+            sum += c * (w * tsr_tone_weight(c));
+            total += w;
+        }
+    }
+    vec3 ldr = sum / total;
+    vec3 c = ldr * (4.0 / max(1.0 - tsr_luma4(ldr), 1.0 / 65504.0));
+    PICTURE_WRITE(vec4(clamp(c, lo, hi), 1.0));
+}

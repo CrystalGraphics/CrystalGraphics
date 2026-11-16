@@ -10,7 +10,7 @@
 
 Properties {
     _Input      ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
-    _Output     ("The output size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Output     ("The history's size (the output's, or twice it at Ultra), and its inverse", vec4) = (1, 1, 1, 1)
     _Jitter     ("Jitter in input pixels; z 1 on a camera cut", vec4) = (0, 0, 0, 0)
     _Frame      ("x the frame index, the dither's", vec4) = (0, 0, 0, 0)
     _History    ("x samples kept at most, y its inverse, z the validity a rejected pixel keeps, w the input's pixels per history pixel", vec4) = (16, 0.0625, 0.875, 1)
@@ -21,7 +21,7 @@ Properties {
     _PrevColor  ("Last frame's history", sampler2D) = "black"
     _PrevValid  ("Last frame's validity", sampler2D) = "black"
     _Offset     ("The spatial anti-aliasing's offset and noise filtering (UpdateSpatial)", usampler2D) = "zero"
-    _Options    ("x 1 where it writes the picture (no sharpen or resolve pass after it); y 1 moves the far samples toward the nearest corner (High and up)", vec4) = (1, 0, 0, 0)
+    _Options    ("x 1 where it writes the picture (no resolve or sharpen pass after it); y 1 moves the far samples toward the nearest corner (High and up)", vec4) = (1, 0, 0, 0)
     _Field      ("x 1 reading the reprojection field (High and up)", vec4) = (0, 0, 0, 0)
     _Boundary   ("The reprojection field's boundary (tsr_encode_boundary)", usampler2D) = "zero"
     _Jacobian   ("The motion's Jacobian (tsr_encode_jacobian)", usampler2D) = "zero"

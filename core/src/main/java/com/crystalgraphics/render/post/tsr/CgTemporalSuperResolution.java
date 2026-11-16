@@ -63,6 +63,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             SPATIAL = "crystalgraphics:shaders/post/tsr/spatial_anti_aliasing.compute",
             UPDATE = "crystalgraphics:shaders/post/tsr/update_history.compute",
             SHARPEN = "crystalgraphics:shaders/post/tsr/sharpen.compute",
+            RESOLVE = "crystalgraphics:shaders/post/tsr/resolve_history.compute",
             FLICKER = "crystalgraphics:shaders/post/tsr/measure_flickering_luma.compute",
             VISUALIZE = "crystalgraphics:shaders/post/tsr/visualize.compute";
     /** This frame's debug view, at the output size, published while {@code crystalgraphics.post.debug} names one. */
@@ -78,6 +79,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private static final int GPU_DILATE = CgGpuTrace.name("post.tsr.dilate"), GPU_DECIMATE = CgGpuTrace.name("post.tsr.decimate"),
             GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_SPATIAL = CgGpuTrace.name("post.tsr.spatial"),
             GPU_UPDATE = CgGpuTrace.name("post.tsr.update"), GPU_SHARPEN = CgGpuTrace.name("post.tsr.sharpen"),
+            GPU_RESOLVE = CgGpuTrace.name("post.tsr.resolve"),
             GPU_FLICKER = CgGpuTrace.name("post.tsr.flicker");
 
     /** The most samples a history pixel holds ({@code r.TSR.History.SampleCount}). */
@@ -119,14 +121,14 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private final Matrix4f clipToPrev = new Matrix4f(), clipToWorld = new Matrix4f(), prevClipToWorld = new Matrix4f(),
             turnToPrev = new Matrix4f();
     private final Vector4f column = new Vector4f();
-    private CgKernel clear, dilate, decimate, reject, rejectSpatial, rejectFlicker, spatial, update, updateSpatial, sharpen,
+    private CgKernel clear, dilate, decimate, reject, rejectSpatial, rejectFlicker, spatial, update, updateSpatial, sharpen, resolve,
             measure, visualize;
     /** The view state's frame index the flicker luma was last measured in, and when the last frame was resolved. */
     private int measuredFrame = -1;
     private long lastNanos;
     private int width, height, outWidth, outHeight;
     private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
-            offsets, moving, reprojectedMoire, boundary, jacobian, picture, debugView;
+            offsets, moving, reprojectedMoire, boundary, jacobian, resolved, picture, debugView;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -141,6 +143,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgCompute.load(UPDATE).kernel("Update").precache();
         CgCompute.load(UPDATE).kernel("UpdateSpatial").precache();
         CgCompute.load(SHARPEN).kernel("Sharpen").precache();
+        CgCompute.load(RESOLVE).kernel("Resolve").precache();
     }
 
     @Override
@@ -213,6 +216,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             update = CgCompute.load(UPDATE).kernel("Update");
             updateSpatial = CgCompute.load(UPDATE).kernel("UpdateSpatial");
             sharpen = CgCompute.load(SHARPEN).kernel("Sharpen");
+            resolve = CgCompute.load(RESOLVE).kernel("Resolve");
         }
         CgQuality quality = CgGraphicsSettings.ANTI_ALIASING.get();
         boolean antiAliasSpatially = quality.atLeast(CgQuality.MEDIUM);
@@ -227,8 +231,10 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgRecording recording = ctx.recording();
         int w = input.width(), h = input.height(), ow = Math.max(w, view.outputWidth()), oh = Math.max(h, view.outputHeight());
         size(w, h, ow, oh);
-        CgGraphTexture colorHistory = state.history(COLOR, new CgTextureDesc(ow, oh, CgFormat.RG11B10_UFLOAT), recording);
-        CgGraphTexture validHistory = state.history(VALID, new CgTextureDesc(ow, oh, CgFormat.R8_UNORM), recording);
+        // Ultra keeps the history at twice the output size (r.TSR.History.ScreenPercentage 200), resolved down after
+        int scale = quality.atLeast(CgQuality.ULTRA) ? 2 : 1, hw = ow * scale, hh = oh * scale;
+        CgGraphTexture colorHistory = state.history(COLOR, new CgTextureDesc(hw, hh, CgFormat.RG11B10_UFLOAT), recording);
+        CgGraphTexture validHistory = state.history(VALID, new CgTextureDesc(hw, hh, CgFormat.R8_UNORM), recording);
         CgGraphTexture guideHistory = state.history(GUIDE, new CgTextureDesc(w, h, CgFormat.RGB10A2_UNORM), recording);
         CgGraphTexture moireHistory = flicker ? state.history(MOIRE, new CgTextureDesc(w, h, CgFormat.RGBA8_UNORM), recording) : null;
         CgGraphTexture flickerLuma = flicker ? state.history(FLICKER_LUMA, new CgTextureDesc(w, h, CgFormat.R8_UNORM), recording) : null;
@@ -295,24 +301,33 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             pass.end();
         }
 
-        float toHistory = (float) ow / w, hysteresis = 1f / HISTORY_SAMPLES;
+        // A history pixel 1/scale^2 the output's area holds that share of the samples: its count and the rejected and
+        // moving counts scale down with it
+        float samples = HISTORY_SAMPLES / (float) (scale * scale), toHistory = (float) hw / w, hysteresis = 1f / samples;
         pass = recording.compute("tsr.update").timed(GPU_UPDATE);
-        d = pass.dispatch(antiAliasSpatially ? updateSpatial : update, ow, oh, 1).image("COLOR", colorHistory).image("VALID", validHistory).image("PICTURE", picture)
+        d = pass.dispatch(antiAliasSpatially ? updateSpatial : update, hw, hh, 1).image("COLOR", colorHistory).image("VALID", validHistory).image("PICTURE", picture)
                 .texture("_Color", color).texture("_Rejection", rejection).texture("_Vector", filled)
                 .texture("_PrevColor", colorHistory.previous()).texture("_PrevValid", validHistory.previous())
-                .set("_Input", w, h, 1f / w, 1f / h).set("_Output", ow, oh, 1f / ow, 1f / oh)
+                .set("_Input", w, h, 1f / w, 1f / h).set("_Output", hw, hh, 1f / hw, 1f / hh)
                 .set("_Jitter", jx, jy, cutFlag, 0f).set("_Frame", frame, 0f, 0f, 0f)
-                .set("_History", HISTORY_SAMPLES, hysteresis, 1f - REJECTED_SAMPLES * hysteresis, toHistory)
-                .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / MOTION_PIXEL_SPEED, 0f, 0f);
+                .set("_History", samples, hysteresis, 1f - REJECTED_SAMPLES / (float) (scale * scale) * hysteresis, toHistory)
+                .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / (MOTION_PIXEL_SPEED * scale), 0f, 0f);
         if (antiAliasSpatially) d.texture("_Offset", offsets);
         if (field) d.texture("_Boundary", boundary).texture("_Jacobian", jacobian).set("_Field", 1f, 0f, 0f, 0f);
         float sharpness = CgTemporalAA.sharpness();
-        d.set("_Options", sharpness > 0f ? 0f : 1f, quality.atLeast(CgQuality.HIGH) ? 1f : 0f, 0f, 0f);
+        d.set("_Options", sharpness > 0f || scale > 1 ? 0f : 1f, quality.atLeast(CgQuality.HIGH) ? 1f : 0f, 0f, 0f);
         pass.end();
 
+        CgGraphTexture output = colorHistory;
+        if (scale > 1) {
+            output = sharpness > 0f ? resolved : picture;
+            pass = recording.compute("tsr.resolve").timed(GPU_RESOLVE);
+            pass.dispatch(resolve, ow, oh, 1).image("PICTURE", output).texture("_History", colorHistory);
+            pass.end();
+        }
         if (sharpness > 0f) {
             pass = recording.compute("tsr.sharpen").timed(GPU_SHARPEN);
-            pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", colorHistory)
+            pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", output)
                     .set("_Sharpen", sharpness, 0f, 0f, 0f);
             pass.end();
         }
@@ -397,6 +412,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         boundary = transientTexture("cg_tsr_boundary", w, h, CgFormat.R32_UINT);
         jacobian = transientTexture("cg_tsr_jacobian", w, h, CgFormat.R32_UINT);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
+        resolved = transientTexture("cg_tsr_resolved", ow, oh, CgFormat.RGBA16_FLOAT);
         debugView = transientTexture("cg_tsr_debug_view", ow, oh, CgFormat.RGBA16_FLOAT);
     }
 
