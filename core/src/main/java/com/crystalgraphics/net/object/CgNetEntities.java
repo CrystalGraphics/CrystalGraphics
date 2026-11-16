@@ -5,6 +5,8 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
 import javax.annotation.Nullable;
@@ -22,14 +24,28 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**
- * The objects on entities ({@link CgNetType.Builder#onEntities}), on each side, and the world subsystem that runs
- * their behaviours: on the server each tick in {@code NET_IN}, on a client each frame in {@code BEGIN}, so a property is
+ * Entities on each side as the engine keeps them: where a host says an entity came or went, the objects on entities
+ * ({@link CgNetType.Builder#onEntities}: an entity's properties) made and ended, and the world subsystem that runs their
+ * behaviours, on the server each tick in {@code NET_IN}, on a client each frame in {@code BEGIN}, so a property is
  * current before the frame's actors and plays read it.
+ *
+ * <pre>{@code
+ * // a host's client, from its level's entity join and leave events
+ * CgNetEntities.entered(entity.getId(), "minecraft:zombie");
+ * CgNetEntities.left(entity.getId());
+ *
+ * // its server
+ * CgNetEntities.enteredServer(entity, "minecraft:zombie");
+ * CgNetEntities.leftServer(entity);
+ *
+ * // anything else that keeps something per entity hears them, after the entity's properties are made
+ * CgNetEntities.listen(new CgNetEntities.Listener() { ... });
+ * }</pre>
  *
  * <ul>
  *   <li>A local type's objects never touch the wire: each side makes and keeps its own, made as the entity enters
- *       ({@link CgNetObjects#entityEntered}) and ended as it leaves, or when its host no longer has it (a host with no
- *       leave event).</li>
+ *       and ended as it leaves, or when its host no longer has it (Forge before 1.13 has no leave event, and its host
+ *       leaves {@code left} uncalled).</li>
  *   <li>A sent type's object is the server's, made as the entity enters; a client's copy arrives over the wire, and
  *       its frame is run here like a local one's.</li>
  *   <li>Added to its world by the first entity that gets an object; a client's local objects end when its level
@@ -57,10 +73,63 @@ public final class CgNetEntities extends CgWorldSubsystem {
     @Nullable
     private static volatile CgNetEntities clientWorld, serverWorld;
 
+    /**
+     * What else keeps something per entity: told after the entity's properties are made, before they end. Called on the
+     * side's thread.
+     */
+    public interface Listener {
+        /** Entity {@code id} of {@code type} joined the client's level; a null type is one the host's registry lacks. */
+        default void entered(int id, @Nullable String type) {
+        }
+
+        default void left(int id) {
+        }
+
+        /** {@code entity}, the host's own object, joined one of the server's levels. */
+        default void enteredServer(Object entity, @Nullable String type) {
+        }
+
+        default void leftServer(Object entity) {
+        }
+    }
+
+    private static final List<Listener> LISTENERS = new CopyOnWriteArrayList<>();
+
     private CgTickFunction run;
     private int levelEpoch;
 
     private CgNetEntities() {
+    }
+
+    // ── Entities coming and going: the host's ───────────────────────────────────────────────────
+
+    /** Has {@code listener} hear every entity come and go from now, on both sides. At init. */
+    public static void listen(Listener listener) {
+        LISTENERS.add(Objects.requireNonNull(listener, "listener"));
+    }
+
+    /** The host's: entity {@code id} of {@code type} joined the client's level. The client thread. */
+    public static void entered(int id, @Nullable String type) {
+        if (type != null) attach(false, null, id, type);
+        for (Listener l : LISTENERS) l.entered(id, type);
+    }
+
+    /** The host's: entity {@code id} left the client's level. */
+    public static void left(int id) {
+        for (Listener l : LISTENERS) l.left(id);
+        detach(false, null, id);
+    }
+
+    /** The host's: {@code entity}, its own object, of {@code type} joined one of the server's levels. The server thread. */
+    public static void enteredServer(Object entity, @Nullable String type) {
+        if (type != null) attach(true, entity, -1, type);
+        for (Listener l : LISTENERS) l.enteredServer(entity, type);
+    }
+
+    /** The host's: {@code entity} left the server's level. */
+    public static void leftServer(Object entity) {
+        for (Listener l : LISTENERS) l.leftServer(entity);
+        detach(true, entity, -1);
     }
 
     // ── The store ───────────────────────────────────────────────────────────────────────────────
@@ -138,7 +207,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
     }
 
     /** {@code entity} (server) or entity {@code id} (client) of {@code entityType} appeared: its types' objects made. */
-    static void entered(boolean onServer, @Nullable Object entity, int id, String entityType) {
+    private static void attach(boolean onServer, @Nullable Object entity, int id, String entityType) {
         for (CgNetType type : CgNetType.REGISTERED) {
             if (type.entityTypes == null || !type.entityTypes.test(entityType)) continue;
             ensure(onServer);
@@ -152,7 +221,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
     }
 
     /** {@code entity} or entity {@code id} left this side: its local objects end; a sent one ends with its anchor. */
-    static void left(boolean onServer, @Nullable Object entity, int id) {
+    private static void detach(boolean onServer, @Nullable Object entity, int id) {
         for (Side s : onServer ? serverSides : clientSides) {
             if (s == null) continue;
             CgNetObject obj = onServer ? s.byEntity.remove(entity) : id < 0 ? null : s.byId.remove(id + 1);

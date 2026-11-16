@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.render.host.CgStageHost;
-import com.crystalgraphics.world.CgEntityLifecycle;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.mc.modern.platform.world.LevelEntityQueryModern;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -333,12 +333,12 @@ public final class LifecycleModern {
      * }</pre>
      */
     public static void entityJoinedServer(Entity entity) {
-        CgEntityLifecycle.enteredServer(entity, LevelEntityQueryModern.typeOf(entity));
+        CgNetEntities.enteredServer(entity, LevelEntityQueryModern.typeOf(entity));
     }
 
     /** An entity left one of the server's levels: {@link #entityJoinedServer}'s pair, where the loader has the event. */
     public static void entityLeftServer(Entity entity) {
-        CgEntityLifecycle.leftServer(entity);
+        CgNetEntities.leftServer(entity);
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
@@ -93,7 +94,7 @@ public class CgEntityActorsTest {
 
     @After
     public void leave() {
-        CgEntityActors.left(7);
+        CgNetEntities.left(7);
         if (registration != null) registration.close();
         CgPlatform.provide(CgLevels.HOST, null);
     }
@@ -102,9 +103,9 @@ public class CgEntityActorsTest {
     public void anActorFollowsItsEntityUntilItLeaves() {
         Counting actor = new Counting();
         registration = CgEntityActors.register("test:walker", () -> actor);
-        CgEntityActors.entered(8, "test:nobody");                     // a type with no actor: the host's
+        CgNetEntities.entered(8, "test:nobody");                     // a type with no actor: the host's
         assertNull(CgEntityActors.actor(8));
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertSame(actor, CgEntityActors.actor(7));
         assertTrue("it replaces the vanilla model", CgEntityActors.replacesModel(7));
         assertEquals(1, actor.spawned);
@@ -119,7 +120,7 @@ public class CgEntityActorsTest {
         assertEquals(3, actor.ticks);
         assertTrue("its flags read", actor.sprinting);
 
-        CgEntityActors.left(7);
+        CgNetEntities.left(7);
         assertEquals(1, actor.removed);
         assertTrue("its root removed with it", root.removed());
         assertNull(CgEntityActors.actor(7));
@@ -136,7 +137,7 @@ public class CgEntityActorsTest {
             }
         };
         registration = CgEntityActors.register("test:walker", () -> actor);
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         CgWorld.client().frame(null);
         assertEquals(0, hurt[0]);
         walker.hurtTime = 10;
@@ -155,7 +156,7 @@ public class CgEntityActorsTest {
     public void anEntityTheHostNoLongerAnswersTakesItsActorWithItAndTheHostsDrawsAreStamped() {
         Counting actor = new Counting();
         registration = CgEntityActors.register("test:walker", () -> actor);
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertEquals("never drawn by the host yet", -1, actor.entity().hostFrame());
         CgWorld.client().frame(null);
         CgEntityActors.replacesModel(7);
@@ -172,7 +173,7 @@ public class CgEntityActorsTest {
     public void anEntityBindingBeatsItsTypeAndClosingItGivesTheEntityBack() {
         Counting byType = new Counting(), bound = new Counting();
         registration = CgEntityActors.register("test:walker", () -> byType);
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertSame(byType, CgEntityActors.actor(7));
 
         CgEntityActors.Registration binding = CgEntityActors.bind(7, () -> bound);
@@ -187,7 +188,7 @@ public class CgEntityActorsTest {
         assertEquals(1, byType.removed);
         assertTrue(CgEntityActors.replacesModel(7));
 
-        CgEntityActors.entered(7, "test:walker");                      // the host announces it again: still the binding's
+        CgNetEntities.entered(7, "test:walker");                      // the host announces it again: still the binding's
         assertSame(bound, CgEntityActors.actor(7));
 
         binding.close();
@@ -205,7 +206,7 @@ public class CgEntityActorsTest {
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("test:walker"));
         }
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertFalse("kept: drawn beside its actor", CgEntityActors.replacesModel(7));
     }
 }

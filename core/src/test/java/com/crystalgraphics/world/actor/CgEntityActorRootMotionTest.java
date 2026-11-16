@@ -31,6 +31,7 @@ import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityMovement;
@@ -230,7 +231,7 @@ public class CgEntityActorRootMotionTest {
 
     @After
     public void tearDown() {
-        if (mob != null) CgEntityActors.leftServer(mob);
+        if (mob != null) CgNetEntities.leftServer(mob);
         mob = null;
         registration.close();
         CgPlatform.provide(CgLevels.HOST, CgLevels.Host.NONE);
@@ -244,7 +245,7 @@ public class CgEntityActorRootMotionTest {
         CgWorld server = CgWorld.serverWorld();
         CgSequencer sequencer = CgSequencer.of(server);
         if (sequencer == null) sequencer = server.add(new CgSequencer());
-        CgEntityActors.enteredServer(m, "test:fighter");
+        CgNetEntities.enteredServer(m, "test:fighter");
         Fighter actor = (Fighter) CgEntityActors.serverActor(m.id);
         assertNotNull("the server's actor", actor);
         assertTrue("built for the server", actor.server());

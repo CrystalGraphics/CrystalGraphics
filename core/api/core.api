@@ -9757,6 +9757,18 @@ com/crystalgraphics/net/object/CgNetCommand$Handler
 com/crystalgraphics/net/object/CgNetEntities
   access public,final
   extends com/crystalgraphics/frame/CgWorldSubsystem
+  method public,static entered (ILjava/lang/String;)V
+  method public,static enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
+  method public,static left (I)V
+  method public,static leftServer (Ljava/lang/Object;)V
+  method public,static listen (Lcom/crystalgraphics/net/object/CgNetEntities$Listener;)V
+com/crystalgraphics/net/object/CgNetEntities$Listener
+  access public,abstract,interface
+  extends java/lang/Object
+  method public entered (ILjava/lang/String;)V
+  method public enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
+  method public left (I)V
+  method public leftServer (Ljava/lang/Object;)V
 com/crystalgraphics/net/object/CgNetEvent
   access public,final
   extends java/lang/Object
@@ -9863,10 +9875,6 @@ com/crystalgraphics/net/object/CgNetObjects
   method public,static bind (Lcom/crystalgraphics/net/protocol/CgProtocolConnection;)V
   method public,static budget ()I
   method public,static budget (I)V
-  method public,static entityEntered (ILjava/lang/String;)V
-  method public,static entityEntered (Ljava/lang/Object;Ljava/lang/String;)V
-  method public,static entityLeft (I)V
-  method public,static entityLeft (Ljava/lang/Object;)V
   method public,static find (I)Lcom/crystalgraphics/net/object/CgNetObject;
   method public,static namespaces ()Ljava/util/Map;
   method public,static report ()Ljava/lang/String;
@@ -24420,13 +24428,6 @@ com/crystalgraphics/world/CgEntityFields$Source
   method public,abstract onServer ()Z
   method public,abstract state ()Lcom/crystalgraphics/world/CgEntityState;
   method public,abstract tags ()Lcom/crystalgraphics/tag/CgTagCounts;
-com/crystalgraphics/world/CgEntityLifecycle
-  access public,final
-  extends java/lang/Object
-  method public,static entered (ILjava/lang/String;)V
-  method public,static enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
-  method public,static left (I)V
-  method public,static leftServer (Ljava/lang/Object;)V
 com/crystalgraphics/world/CgEntityNetField
   access public,final
   extends java/lang/Object
@@ -24599,10 +24600,6 @@ com/crystalgraphics/world/actor/CgEntityActors
   method public,static actor (I)Lcom/crystalgraphics/world/actor/CgEntityActor;
   method public,static bind (ILjava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static bindLocalPlayer (Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
-  method public,static entered (ILjava/lang/String;)V
-  method public,static enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
-  method public,static left (I)V
-  method public,static leftServer (Ljava/lang/Object;)V
   method public,static preload (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static registered (Ljava/lang/String;)Z

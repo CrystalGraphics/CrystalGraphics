@@ -358,31 +358,6 @@ public final class CgNetObjects {
         Arrays.fill(unsaved, false);
     }
 
-    // ── Entities, as the host sees them come and go ─────────────────────────────────────────────
-
-    /**
-     * Server: {@code entity}, of type {@code entityType} ({@code minecraft:zombie}), joined a level: every type
-     * {@link CgNetType.Builder#onEntities on its entities} gets its object. From the host, through
-     * {@code CgEntityLifecycle}.
-     */
-    public static void entityEntered(Object entity, String entityType) {
-        CgNetEntities.entered(true, entity, -1, entityType);
-    }
-
-    /** Server: {@code entity} left its level: its local objects end; a sent one ends with its anchor. */
-    public static void entityLeft(Object entity) {
-        CgNetEntities.left(true, entity, -1);
-    }
-
-    /** A client: entity {@code id} of {@code entityType} appeared in its level: its local types' objects are made. */
-    public static void entityEntered(int id, String entityType) {
-        CgNetEntities.entered(false, null, id, entityType);
-    }
-
-    /** A client: entity {@code id} left its level. */
-    public static void entityLeft(int id) {
-        CgNetEntities.left(false, null, id);
-    }
 
     // ── Each server tick ────────────────────────────────────────────────────────────────────────
 

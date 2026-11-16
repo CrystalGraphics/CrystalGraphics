@@ -1,7 +1,7 @@
 package com.crystalgraphics.mc.v1710.platform.actor;
 
 import com.crystalgraphics.mc.v1710.platform.world.LevelEntityQuery1710;
-import com.crystalgraphics.world.CgEntityLifecycle;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.world.actor.CgEntityActors;
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
 import net.minecraft.client.renderer.entity.Render;
@@ -26,7 +26,7 @@ public final class Actors1710 {
         @SubscribeEvent
         public void onJoin(EntityJoinWorldEvent event) {
             if (event.world.isRemote) {
-                CgEntityLifecycle.entered(event.entity.getEntityId(), LevelEntityQuery1710.typeOf(event.entity));
+                CgNetEntities.entered(event.entity.getEntityId(), LevelEntityQuery1710.typeOf(event.entity));
             }
         }
     }

@@ -16,6 +16,7 @@ import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.scene.CgScene;
@@ -72,11 +73,11 @@ import java.util.function.Supplier;
  * <p>What a host does, from its entity events (a harness scene's fake entities do the same):</p>
  *
  * <pre>{@code
- * CgEntityLifecycle.entered(entity.getId(), "mymod:dragon");     // joined the client's level: its actor spawns
+ * CgNetEntities.entered(entity.getId(), "mymod:dragon");         // joined the client's level: its actor spawns
  * if (CgEntityActors.replacesModel(entity.getId())) ...           // the entity renderer: its actor draws it
- * CgEntityLifecycle.left(entity.getId());                        // left the level, where the host has the event
- * CgEntityLifecycle.enteredServer(entity, "mymod:dragon");      // joined a server level: the server's actor
- * CgEntityLifecycle.leftServer(entity);
+ * CgNetEntities.left(entity.getId());                            // left the level, where the host has the event
+ * CgNetEntities.enteredServer(entity, "mymod:dragon");          // joined a server level: the server's actor
+ * CgNetEntities.leftServer(entity);
  * }</pre>
  *
  * <ul>
@@ -310,11 +311,18 @@ public final class CgEntityActors extends CgWorldSubsystem {
         return TYPES.containsKey(type);
     }
 
-    /**
-     * {@code CgEntityLifecycle}'s: entity {@code id} of {@code type} joined the client's level. Nothing where its type has no actor, or
-     * is null (an entity class the host's registry does not hold).
-     */
-    public static void entered(int id, @Nullable String type) {
+    // what the host says of entities, through CgNetEntities, after their properties are made
+    static {
+        CgNetEntities.listen(new CgNetEntities.Listener() {
+            @Override public void entered(int id, @Nullable String type) { CgEntityActors.entered(id, type); }
+            @Override public void left(int id) { CgEntityActors.left(id); }
+            @Override public void enteredServer(Object entity, @Nullable String type) { CgEntityActors.enteredServer(entity, type); }
+            @Override public void leftServer(Object entity) { CgEntityActors.leftServer(entity); }
+        });
+    }
+
+    /** Entity {@code id} of {@code type} joined the client's level: nothing where its type has no actor, or is null. */
+    private static void entered(int id, @Nullable String type) {
         Registration r = type == null ? null : TYPES.get(type);
         if (r == null || bound(id)) return;
         CgEntityActors actors = client;
@@ -322,17 +330,13 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actors.spawn(id, type, r, null);
     }
 
-    /** {@code CgEntityLifecycle}'s: entity {@code id} left the client's level. */
-    public static void left(int id) {
+    private static void left(int id) {
         CgEntityActors actors = client;
         if (actors != null) actors.despawn(id);
     }
 
-    /**
-     * {@code CgEntityLifecycle}'s: {@code entity} (its own object) of {@code type} joined one of the server's levels. Nothing where its
-     * type has no actor. The server's game thread.
-     */
-    public static void enteredServer(Object entity, @Nullable String type) {
+    /** {@code entity} (the host's own object) of {@code type} joined one of the server's levels. The server thread. */
+    private static void enteredServer(Object entity, @Nullable String type) {
         Registration r = type == null ? null : TYPES.get(type);
         int id = CgEntityQueries.idOf(entity);
         if (r == null || id < 0) return;
@@ -341,8 +345,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actors.spawn(id, type, r, entity);
     }
 
-    /** {@code CgEntityLifecycle}'s: {@code entity} left the server's level. */
-    public static void leftServer(Object entity) {
+    private static void leftServer(Object entity) {
         CgEntityActors actors = server;
         int id = CgEntityQueries.idOf(entity);
         if (actors != null && id >= 0) actors.despawn(id);

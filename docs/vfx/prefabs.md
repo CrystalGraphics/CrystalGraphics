@@ -556,7 +556,7 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern")
 - **An actor leaves with its entity**: the frame the client's entity query no longer finds it, or sooner where the
   host has a leave event. `CgEntity.hostFrame()` is the frame the host's renderer last reached it: behind while the host
   culls it.
-- **What a host does**: `CgEntityLifecycle.entered(id, type)` when an entity joins the client's level, `left(id)` when it
+- **What a host does**: `CgNetEntities.entered(id, type)` when an entity joins the client's level, `left(id)` when it
   leaves (its properties and its actor both hear it), and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
   entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
 - **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
@@ -591,7 +591,7 @@ sequencer.play(LUNGE, Map.of("caster", role));
 - **The entity's own movement still runs**: its AI and its gravity. Hold its AI still while a move plays.
 - **The travel is the body's**: its component's world transform puts the clip's motion in the world, so a body
   scaled or lifted under the root moves the entity by what is drawn.
-- **What a host does on the server**: `CgEntityLifecycle.enteredServer(entity, type)` when an entity joins a server level
+- **What a host does on the server**: `CgNetEntities.enteredServer(entity, type)` when an entity joins a server level
   and `leftServer(entity)` where the loader has a leave event, both sides; and the entity's movement through
   `CgEntityMovement`, the entity's own members on every era (`move` places it unswept on Forge 1.13.2).
 - **The rest of a move's motion** is `CgEntityMovement`'s too, on the side that owns the entity: `push` for a

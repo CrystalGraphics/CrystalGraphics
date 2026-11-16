@@ -78,7 +78,7 @@ public class CgNetEntitiesTest {
     private CgNetTestRig.Entity zombie() {
         CgNetTestRig.Entity e = rig.entity(0, 64, 0);
         alive.add(e);
-        CgNetObjects.entityEntered(e, "test:zombie");
+        CgNetEntities.enteredServer(e, "test:zombie");
         return e;
     }
 
@@ -94,7 +94,7 @@ public class CgNetEntitiesTest {
         rig.tick(2);
         assertEquals("nothing of it goes on the wire", 0, rig.client(0).visible(MOTION).size());
 
-        CgNetEntities.entered(false, null, e.id(), "test:zombie");
+        CgNetEntities.entered(e.id(), "test:zombie");
         CgNetObject client = MOTION.findOnClient(e.id());
         assertNotNull("the client makes its own", client);
         assertNotSame(server, client);
@@ -131,7 +131,7 @@ public class CgNetEntitiesTest {
         assertEquals(List.of("ended"), HEARD);
 
         CgNetTestRig.Entity f = zombie();
-        CgNetObjects.entityLeft(f);
+        CgNetEntities.leftServer(f);
         assertNull("or at once, where the host says", MOTION.find(f));
     }
 

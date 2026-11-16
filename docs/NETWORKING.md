@@ -718,7 +718,7 @@ KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on t
 - **Behaviours run before the frame's actors read them**: on the server each tick (`NET_IN`), on a client each frame
   (`BEGIN`, a behaviour's `frame`). A client's local objects end when its level changes, or when its host no longer
   has the entity (Forge before 1.13 says nothing when an entity leaves).
-- **Hosts say when entities come and go once**, through `CgEntityLifecycle`; a type declared at init hears every
+- **Hosts say when entities come and go once**, through `CgNetEntities`; a type declared at init hears every
   entity from then.
 
 ---
