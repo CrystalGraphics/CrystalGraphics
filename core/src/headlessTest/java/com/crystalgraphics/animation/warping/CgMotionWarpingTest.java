@@ -106,6 +106,11 @@ public class CgMotionWarpingTest {
     static Mover play(CgWarpWindow window, double x, double z, float yaw) {
         Mover mover = new Mover(mesh(rush(window)));
         mover.body.motionWarping().target("opponent", x, 0, z, yaw);
+        return run(mover);
+    }
+
+    /** Plays its rush to the end as a sequence's montage, moving it by the root motion each frame. */
+    static Mover run(Mover mover) {
         CgSequencer sequencer = new CgWorld().add(new CgSequencer());
         CgSequenceDefinition d = CgSequenceDefinition.compile(CgAssetData.of("test:rush", CgSequenceKinds.SEQUENCE,
                 (Map<?, ?>) CgAssetYaml.read("_v: 1\ntick_resolution: 1000\ndisplay_rate: 16\nrange: [0, 1250]\n"
@@ -146,6 +151,17 @@ public class CgMotionWarpingTest {
             assertEquals(at, target[1], m.at.z, 0.01);
             assertEquals(at, 0.0, m.at.y, 1e-4);
         }
+    }
+
+    @Test
+    public void itStopsItsStandOffShortOfItsTarget() {
+        Mover m = new Mover(mesh(rush(CgWarpWindow.of("opponent", 0f, 1f).noRotation())));
+        m.body.motionWarping().target("opponent", 6, 0, 3, 0f).standOff("opponent", 0.9f);
+        run(m);
+        double gap = Math.hypot(6 - m.at.x, 3 - m.at.z);
+        assertEquals("at " + m.at, 0.9, gap, 0.01);
+        // on the line it came in on: from the origin toward the target
+        assertEquals("at " + m.at, Math.atan2(3, 6), Math.atan2(m.at.z, m.at.x), 0.01);
     }
 
     @Test

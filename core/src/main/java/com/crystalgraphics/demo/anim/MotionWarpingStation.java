@@ -14,6 +14,7 @@ import org.joml.Vector3f;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgClipModifiers;
+import com.crystalgraphics.api.animation.CgSkeleton;
 import com.crystalgraphics.api.animation.CgWarpWindow;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
@@ -31,62 +32,83 @@ import com.crystalgraphics.sequence.animation.CgSequenceSkeletal;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 
 /**
- * Goku's back attack landing on an opponent wherever they stand. His clip dives a fixed path; its first second is a
- * warp window toward "opponent", so each round, with the opponent somewhere new (nearer or further than the clip
- * reaches, left or right of its line), the dive is bent to end on them, its pacing kept. The clip's travel is on his
- * pelvis; it is moved onto his root at load (encode root bone), so it is root motion to warp.
+ * Goku's lunging strike landing on an opponent wherever they stand. Two lanes side by side, each with an opponent at
+ * the same distance and angle: on the left his lunge is motion warped toward the opponent, stopping at arm's length;
+ * on the right it plays as drawn, so it falls short, overshoots or misses wide. Each round the opponents stand
+ * somewhere new.
  *
- * <ul>
- *   <li>Grey: where the clip alone would take him from where he starts. Cyan: where he went. A ring: the opponent.</li>
- *   <li>Moving: the opponent sidesteps while he dives, and the window re-aims every frame.</li>
- * </ul>
+ * <p>The clip is Kakarot's {@code CMB_S_Range05_Cut}: a crouch, a 2.6 m lunge in 0.37 s, the strike held. Its travel
+ * is on the pelvis, so it is moved onto the root at load (encode root bone); the lunge is its warp window, the target
+ * stood off 0.9 m (where the fist meets the opponent), and he turns to face them as he goes.</p>
  *
- * <p>Keys: Left/Right how far the opponent stands, Up the opponent sidestepping, Down warping on/off, ` the paths,
- * \ a round now.</p>
+ * <p>Keys: Left/Right how far the opponents stand, Up the left opponent sidestepping mid-lunge, Down the stand-off,
+ * ` the paths, \ a round now.</p>
  */
 final class MotionWarpingStation implements AnimDemoStation {
 
-    /** The window: the dive is over by then. */
-    private static final float WINDOW_END = 1.0f;
-    /** The opponent's distance, as the clip's reach: random between the first two, or one of the last two. */
-    private static final String[] RANGES = {"anywhere", "near", "far"};
-    private static final int TRAIL = 512;
+    private static final String CLIP = "CMB_S_Range05_Cut";
+    /** The lunge, the clip's seconds: its travel, then the strike connects. */
+    private static final float LUNGE_START = 0.2f, LUNGE_END = 0.6f;
+    /** Where the fist meets the opponent, from their centre, metres. */
+    private static final float STAND_OFF = 0.9f;
+    /** Standing before the lunge, and holding after the clip, seconds. */
+    private static final float LEAD = 0.6f, HOLD = 1.0f;
+    /**
+     * The opponents' distances, metres; 0 for a random one. The clip reaches 2.4 m at 16 m/s at its fastest; past about
+     * 1.5 times that a lunge reads as a teleport (measured: 4.2 m peaks at 22 m/s, 5.5 m at 29), and a game dashes in first.
+     */
+    private static final float[] DISTANCES = {0f, 1.6f, 3.0f, 4.2f};
+    private static final double LANE = 1.9;
+    private static final int TRAIL = 256;
 
     private final CgFont font = CgDefaultFont.bold(36);
     private final Matrix4f step = new Matrix4f();
     private final Vector3f t = new Vector3f();
     private final Quaternionf q = new Quaternionf();
-    private final double[] trail = new double[TRAIL * 3], own = new double[64 * 3];
+    private final double[] own = new double[32 * 3];
     @Nullable
-    private Goku goku;
+    private Lane warped, plain;
     @Nullable
-    private AnimDemoCast.Body opponent;
-    @Nullable
-    private CgSequenceDefinition warped;
-    @Nullable
-    private CgSequencePlayer playing;
-    private CgAnimSequence clip, plainClip;
-    private double x, y, z, startX, startZ, oppX, oppZ, side;
-    private float startYaw, roundClock, roundLength, reach, fitScale;
-    private int range, trailCount, ownCount;
-    private boolean moving, warping = true, paths = true;
+    private CgSequenceDefinition lunge;
+    private CgAnimSequence clip, plainClip, stand;
+    private double x, y, z;
+    private float roundClock, roundLength, reach, fitScale;
+    private int distance, ownCount;
+    private boolean moving, standOff = true, paths = true;
     private String status = "";
 
-    /** Goku as a sequence's caster: its rush is the station's clip whatever the section names. */
-    private final class Goku implements CgSequenceSkeletal {
-        final AnimDemoCast.Body body;
+    /** One lane: a Goku, his opponent, where each stands, and his path. */
+    private final class Lane implements CgSequenceSkeletal {
+        final AnimDemoCast.Body goku;
+        @Nullable
+        final AnimDemoCast.Body opponent;
+        final boolean warps;
+        final double laneX;
+        final double[] trail = new double[TRAIL * 3];
+        int trailCount;
+        double oppX, oppZ, hitX, hitZ;
+        float knock, flash;
+        boolean struck;
+        String verdict = "";
+        @Nullable
+        CgSequencePlayer playing;
 
-        Goku(AnimDemoCast.Body body, Matrix4d fit) {
-            this.body = body;
-            body.instance.placedBy(out -> out.translation(body.x, body.y, body.z).rotateY(body.yaw).mul(fit));
+        Lane(AnimDemoCast cast, @Nullable AnimDemoCast foe, Matrix4d fit, boolean warps, double laneX) {
+            this.warps = warps;
+            this.laneX = laneX;
+            goku = cast.spawn();
+            goku.instance.placedBy(out -> out.translation(goku.x, goku.y, goku.z).rotateY(goku.yaw).mul(fit));
+            goku.instance.play(stand, true);
+            opponent = foe == null ? null : foe.spawn();
+            if (opponent != null && !foe.clips.isEmpty()) opponent.instance.play(foe.clips.get(0).sequence(), true);
         }
 
         @Override public CgAnimInstance instance() {
-            return body.instance;
+            return goku.instance;
         }
 
         @Override public CgAnimSequence clip(String id) {
-            return warping ? clip : plainClip;
+            return warps ? clip : plainClip;
         }
 
         @Override public int slot(String name) {
@@ -97,6 +119,119 @@ final class MotionWarpingStation implements AnimDemoStation {
         }
 
         @Override public void get(int slot, float[] out) {
+        }
+
+        double startX() {
+            return laneX;
+        }
+
+        double startZ() {
+            return z + 3;
+        }
+
+        void reset(double dist, double angle) {
+            if (playing != null) playing.stop();
+            playing = null;
+            oppX = startX() + Math.sin(angle) * dist;
+            oppZ = startZ() + Math.cos(angle) * dist;
+            goku.at(startX(), y, startZ(), (float) Math.PI);
+            trailCount = 0;
+            knock = flash = 0f;
+            struck = false;
+            verdict = "";
+            aim();
+        }
+
+        /** The opponent where it stands, facing where Goku started, and Goku's warp target there. */
+        void aim() {
+            float facing = (float) Math.atan2(startX() - oppX, startZ() - oppZ);
+            if (opponent != null) opponent.at(oppX, y, oppZ, facing);
+            goku.instance.motionWarping().target("opponent", oppX, y, oppZ, facing + (float) Math.PI)
+                    .standOff("opponent", standOff ? STAND_OFF : 0f);
+        }
+
+        void lunge() {
+            playing = CgSequencer.of(CgWorld.client()).play(lunge, Map.of("caster", this));
+        }
+
+        void update(float dt, float clipTime) {
+            if (warps && moving && goku.instance.motionWarping().open() != null) {
+                oppX += 2.5 * dt;
+                aim();
+            }
+            if (goku.instance.montages().consumeRootMotion(1f, step)) {
+                step.getTranslation(t).mul(fitScale).rotateY(goku.yaw);
+                step.getNormalizedRotation(q);
+                goku.at(goku.x + t.x, goku.y + t.y, goku.z + t.z, goku.yaw + (float) (2 * Math.atan2(q.y, q.w)));
+            }
+            if (playing != null && trailCount < TRAIL) {
+                trail[trailCount * 3] = goku.x;
+                trail[trailCount * 3 + 1] = y + 0.05;
+                trail[trailCount * 3 + 2] = goku.z;
+                trailCount++;
+            }
+            // the strike: where the fist is as the lunge ends
+            if (!struck && clipTime >= LUNGE_END) {
+                struck = true;
+                double fx = goku.x + Math.sin(goku.yaw) * STAND_OFF, fz = goku.z + Math.cos(goku.yaw) * STAND_OFF;
+                double miss = Math.hypot(fx - oppX, fz - oppZ);
+                hitX = fx;
+                hitZ = fz;
+                if (miss < 0.45) {
+                    verdict = "HIT";
+                    knock = 1f;
+                    flash = 0.35f;
+                } else {
+                    verdict = String.format(Locale.ROOT, "MISS by %.1f m", miss);
+                }
+            }
+            // knocked back along the blow, easing out
+            if (knock > 0f && opponent != null) {
+                float before = knock;
+                knock = Math.max(0f, knock - dt / 0.35f);
+                double push = 1.4 * (before * before - knock * knock);
+                oppX += Math.sin(goku.yaw) * push;
+                oppZ += Math.cos(goku.yaw) * push;
+                opponent.at(oppX, y, oppZ, goku.yaw + (float) Math.PI);
+            }
+            flash = Math.max(0f, flash - dt);
+        }
+
+        void draw() {
+            int ring = verdict.equals("HIT") ? 0xFFFF4040 : 0xFFFFB040;
+            for (int i = 0; i < 24; i++) {
+                double a = i * Math.PI * 2 / 24, c = Math.PI * 2 / 24;
+                CgCollisionDebug.line(oppX + 0.5 * Math.cos(a), y + 0.03, oppZ + 0.5 * Math.sin(a), oppX + 0.5 * Math.cos(a + c), y + 0.03,
+                        oppZ + 0.5 * Math.sin(a + c), ring);
+            }
+            if (flash > 0f) {
+                double r = 0.3 + (0.35 - flash) * 3;
+                for (int i = 0; i < 16; i++) {
+                    double a = i * Math.PI * 2 / 16;
+                    CgCollisionDebug.line(hitX, y + 1.2, hitZ, hitX + r * Math.cos(a), y + 1.2 + r * Math.sin(a) * 0.6, hitZ + r * Math.sin(a),
+                            0xFFFFF0A0);
+                }
+            }
+            String title = warps ? (standOff ? "warped, stops at arm's length" : "warped onto the target") : "as drawn";
+            CgScene.client().label(title).at(startX(), y + 2.6, startZ()).height(0.24f).font(font).style(CgDemoStyles.LABEL).submit();
+            if (!verdict.isEmpty()) {
+                CgScene.client().label(verdict).at(oppX, y + 2.3, oppZ).height(0.32f).font(font).style(CgDemoStyles.LABEL).submit();
+            }
+            if (!paths) return;
+            for (int i = 1; i < ownCount; i++) {
+                CgCollisionDebug.line(startX() - own[(i - 1) * 3], y + 0.04, startZ() - own[(i - 1) * 3 + 2], startX() - own[i * 3], y + 0.04,
+                        startZ() - own[i * 3 + 2], 0xFF9AA0A8);
+            }
+            for (int i = 1; i < trailCount; i++) {
+                CgCollisionDebug.line(trail[(i - 1) * 3], trail[(i - 1) * 3 + 1], trail[(i - 1) * 3 + 2], trail[i * 3], trail[i * 3 + 1],
+                        trail[i * 3 + 2], warps ? 0xFF40E0FF : 0xFFFFB040);
+            }
+        }
+
+        void remove() {
+            if (playing != null) playing.stop();
+            goku.remove();
+            if (opponent != null) opponent.remove();
         }
     }
 
@@ -112,172 +247,129 @@ final class MotionWarpingStation implements AnimDemoStation {
         this.z = z;
         AnimDemoCast cast = null;
         for (AnimDemoCast c : casts.kitCasts()) {
-            if (c.clip("BTL_BackAtk01_Atk") != null && c.mesh.skeleton().indexOf("pelvis") >= 0) cast = c;
+            if (exact(c, CLIP) != null && c.clip("FLD_Stand") != null && c.mesh.skeleton().indexOf("pelvis") >= 0) cast = c;
         }
         if (cast == null || CgSequencer.of(CgWorld.client()) == null) {
-            status = "\nNo kit character with Kakarot's back attack loaded";
+            status = "\nNo kit character with Kakarot's lunging strike loaded";
             return;
         }
-        CgAnimSequence encoded = CgClipModifiers.encodeRootBone(cast.clip("BTL_BackAtk01_Atk").sequence(), cast.mesh.skeleton(), "root", "pelvis");
-        clip = encoded.with(encoded.settings().withWarpWindows(List.of(CgWarpWindow.of("opponent", 0f, WINDOW_END))));
+        CgSkeleton s = cast.mesh.skeleton();
+        CgAnimSequence encoded = CgClipModifiers.encodeRootBone(exact(cast, CLIP), s, "root", "pelvis");
+        clip = encoded.with(encoded.settings().withWarpWindows(List.of(CgWarpWindow.of("opponent", LUNGE_START, LUNGE_END)
+                .facing(true).rotation(CgWarpWindow.Rotation.SLERP_WITH_CLAMPED_RATE, 0.6f, 540f))));
         plainClip = encoded;
-        Vector3f s = cast.fit.getScale(new Vector3f());
-        fitScale = s.y;
-        Matrix4f path = new Matrix4f();
-        Vector3f end = clip.extractRootMotion(cast.mesh.skeleton(), 0f, WINDOW_END, false, path).getTranslation(new Vector3f());
-        reach = (float) Math.hypot(end.x, end.z) * fitScale;
-        // the clip's own path, in its mesh's space scaled to the world, a point every 1/60 s
-        ownCount = Math.min(64, (int) (WINDOW_END * 60) + 1);
+        stand = cast.clip("FLD_Stand").sequence();
+        fitScale = cast.fit.getScale(new Vector3f()).y;
+        Matrix4f m = new Matrix4f();
+        Vector3f p = new Vector3f();
+        reach = encoded.extractRootMotion(s, 0f, LUNGE_END, false, m).getTranslation(p).length() * fitScale;
+        // the clip's own path from a start facing -z, a point every 1/30 s
+        ownCount = Math.min(32, (int) (LUNGE_END * 30) + 1);
         for (int i = 0; i < ownCount; i++) {
-            Vector3f p = clip.extractRootMotion(cast.mesh.skeleton(), 0f, i * WINDOW_END / (ownCount - 1), false, path).getTranslation(new Vector3f());
+            encoded.extractRootMotion(s, 0f, i * LUNGE_END / (ownCount - 1), false, m).getTranslation(p);
             own[i * 3] = p.x * fitScale;
             own[i * 3 + 2] = p.z * fitScale;
         }
-        // he starts in front, his clip's own dive aimed away from the camera
-        startX = x;
-        startZ = z + 4;
-        startYaw = (float) (Math.PI - Math.atan2(end.x, end.z));
-        goku = new Goku(cast.spawn(), new Matrix4d(cast.fit));
-        goku.body.instance.play(cast.clip("BTL_Guard_02LP") != null ? cast.clip("BTL_Guard_02LP").sequence() : clip, true);
+        Matrix4d fit = new Matrix4d(cast.fit);
         AnimDemoCast foe = casts.humanoid();
-        if (foe != null) {
-            opponent = foe.spawn();
-            if (!foe.clips.isEmpty()) opponent.instance.play(foe.clips.get(0).sequence(), true);
+        warped = new Lane(cast, foe, fit, true, x - LANE);
+        plain = new Lane(cast, foe, fit, false, x + LANE);
+        lunge = sequence("demo:lunge", encoded.duration());
+        roundLength = LEAD + encoded.duration() + HOLD;
+        for (Lane l : new Lane[]{warped, plain}) {
+            for (int i = 0; i < 24; i++) {
+                double a = i * Math.PI * 2 / 24;
+                set.box(l.startX() + 0.45 * Math.cos(a) - 0.04, y - 0.01, l.startZ() + 0.45 * Math.sin(a) - 0.04, l.startX() + 0.45 * Math.cos(a) + 0.04,
+                        y + 0.01, l.startZ() + 0.45 * Math.sin(a) + 0.04, 0xFF6A7A8A);
+            }
         }
-        warped = sequence("demo:motion_warping", clip.duration());
-        roundLength = clip.duration() + 0.8f;
         round();
-        for (int i = 0; i < 40; i++) {
-            double a = i * Math.PI * 2 / 40;
-            set.box(startX + 0.6 * Math.cos(a) - 0.04, y - 0.01, startZ + 0.6 * Math.sin(a) - 0.04, startX + 0.6 * Math.cos(a) + 0.04, y + 0.01,
-                    startZ + 0.6 * Math.sin(a) + 0.04, 0xFF6A7A8A);
-        }
         status = "";
     }
 
-    /** A sequence of one section, its clip the caster's rush. */
+    /** The cast's clip named exactly {@code name}'s ending, not a longer one that contains it. */
+    @Nullable
+    private static CgAnimSequence exact(AnimDemoCast cast, String name) {
+        for (AnimDemoCast.Clip c : cast.clips) {
+            String n = c.name();
+            int dot = n.lastIndexOf('.');
+            if ((dot < 0 ? n : n.substring(0, dot)).endsWith(name)) return c.sequence();
+        }
+        return null;
+    }
+
+    /** A sequence of one section, its clip the caster's lunge. */
     private static CgSequenceDefinition sequence(String id, float seconds) {
         int ms = Math.round(seconds * 1000);
         return CgSequenceDefinition.compile(CgAssetData.of(id, CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(
                 "_v: 1\ntick_resolution: 1000\ndisplay_rate: 60\nrange: [0, " + ms + "]\nroles:\n  - { id: b1, name: caster, kind: caster }\n"
                         + "tracks:\n  - { id: t1, kind: animation, binding: { role: caster }, sections: [ { id: s1, range: [0, " + ms
-                        + "], clip: kk:rush, ease: { in: 100, out: 250 } } ] }\n"), null));
+                        + "], clip: kk:lunge, ease: { in: 150, out: 300 } } ] }\n"), null));
     }
 
-    /** A round: Goku back at his start, the opponent somewhere new, the dive played. */
+    /** A round: both Gokus back at their marks, the opponents somewhere new, at the same distance and angle. */
     private void round() {
         roundClock = 0f;
-        if (playing != null) playing.stop();
-        double far = switch (RANGES[range]) {
-            case "near" -> 0.2;
-            case "far" -> 0.6;
-            default -> 0.2 + 0.4 * Math.random();
-        };
-        double angle = Math.PI + Math.toRadians(-35 + 70 * Math.random());
-        oppX = startX + Math.sin(angle) * reach * far;
-        oppZ = startZ + Math.cos(angle) * reach * far;
-        side = Math.random() < 0.5 ? -1 : 1;
-        goku.body.at(startX, y, startZ, startYaw);
-        place();
-        trailCount = 0;
-        playing = CgSequencer.of(CgWorld.client()).play(warped, Map.of("caster", goku));
-    }
-
-    /** The opponent where it stands, facing Goku, and his warp target there. */
-    private void place() {
-        float facing = (float) Math.atan2(oppX - startX, oppZ - startZ);
-        if (opponent != null) opponent.at(oppX, y, oppZ, facing + (float) Math.PI);
-        // he ends turned along his line of attack
-        goku.body.instance.motionWarping().target("opponent", oppX, y, oppZ, facing);
+        double dist = DISTANCES[distance] > 0f ? DISTANCES[distance] : 1.4 + 2.8 * Math.random();
+        double angle = Math.PI + Math.toRadians(-30 + 60 * Math.random());
+        warped.reset(dist, angle);
+        plain.reset(dist, angle);
     }
 
     @Override
     public float[] view() {
-        return new float[]{0f, 9f, 16f, 0f, -22f};
+        return new float[]{0f, 3.2f, 8.5f, 0f, -14f};
     }
 
     @Override
     public void update(float dt) {
-        if (goku == null) return;
+        if (warped == null) return;
         roundClock += dt;
         if (roundClock > roundLength) round();
-        if (moving && goku.body.instance.motionWarping().open() != null) {
-            oppX += side * 3.0 * dt * Math.cos(startYaw);
-            oppZ -= side * 3.0 * dt * Math.sin(startYaw);
-            place();
+        if (roundClock >= LEAD && warped.playing == null) {
+            warped.lunge();
+            plain.lunge();
         }
-        AnimDemoCast.Body b = goku.body;
-        if (b.instance.montages().consumeRootMotion(1f, step)) {
-            step.getTranslation(t).mul(fitScale).rotateY(b.yaw);
-            step.getNormalizedRotation(q);
-            b.at(b.x + t.x, b.y + t.y, b.z + t.z, b.yaw + (float) (2 * Math.atan2(q.y, q.w)));
-        }
-        if (trailCount < TRAIL) {
-            trail[trailCount * 3] = b.x;
-            trail[trailCount * 3 + 1] = y + 0.05;
-            trail[trailCount * 3 + 2] = b.z;
-            trailCount++;
-        }
-        draw();
-    }
-
-    private void draw() {
-        CgCollisionDebug.mark(oppX, y + 0.02, oppZ, 0, 1, 0, 0xFFFF5050);
-        for (int i = 0; i < 24; i++) {
-            double a = i * Math.PI * 2 / 24, c = Math.PI * 2 / 24;
-            CgCollisionDebug.line(oppX + 0.7 * Math.cos(a), y + 0.03, oppZ + 0.7 * Math.sin(a), oppX + 0.7 * Math.cos(a + c), y + 0.03,
-                    oppZ + 0.7 * Math.sin(a + c), 0xFFFF5050);
-        }
-        CgScene.client().label("opponent").at(oppX, y + 2.4, oppZ).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
-        CgScene.client().label(warping ? "warped dive" : "the clip's own dive").at(goku.body.x, goku.body.y + 2.4, goku.body.z).height(0.3f)
-                .font(font).style(CgDemoStyles.LABEL).submit();
-        if (!paths) return;
-        double c = Math.cos(startYaw), s = Math.sin(startYaw);
-        for (int i = 1; i < ownCount; i++) {
-            double ax = own[(i - 1) * 3], az = own[(i - 1) * 3 + 2], bx = own[i * 3], bz = own[i * 3 + 2];
-            CgCollisionDebug.line(startX + ax * c + az * s, y + 0.04, startZ - ax * s + az * c, startX + bx * c + bz * s, y + 0.04,
-                    startZ - bx * s + bz * c, 0xFF9AA0A8);
-        }
-        for (int i = 1; i < trailCount; i++) {
-            CgCollisionDebug.line(trail[(i - 1) * 3], trail[(i - 1) * 3 + 1], trail[(i - 1) * 3 + 2], trail[i * 3], trail[i * 3 + 1],
-                    trail[i * 3 + 2], 0xFF40E0FF);
+        float clipTime = roundClock - LEAD;
+        for (Lane l : new Lane[]{warped, plain}) {
+            l.update(dt, warped.playing == null ? -1f : clipTime);
+            l.draw();
         }
     }
 
     @Override
     public boolean press(int key, boolean shift) {
-        if (goku == null) return false;
+        if (warped == null) return false;
         switch (key) {
-            case CgKeyCodes.KEY_RIGHT -> range = (range + 1) % RANGES.length;
-            case CgKeyCodes.KEY_LEFT -> range = (range + RANGES.length - 1) % RANGES.length;
+            case CgKeyCodes.KEY_RIGHT -> distance = (distance + 1) % DISTANCES.length;
+            case CgKeyCodes.KEY_LEFT -> distance = (distance + DISTANCES.length - 1) % DISTANCES.length;
             case CgKeyCodes.KEY_UP -> moving = !moving;
-            case CgKeyCodes.KEY_DOWN -> warping = !warping;
+            case CgKeyCodes.KEY_DOWN -> standOff = !standOff;
             case CgKeyCodes.KEY_GRAVE -> paths = !paths;
             case CgKeyCodes.KEY_BACKSLASH -> round();
             default -> {
                 return false;
             }
         }
+        if (key == CgKeyCodes.KEY_RIGHT || key == CgKeyCodes.KEY_LEFT || key == CgKeyCodes.KEY_DOWN) round();
         return true;
     }
 
     @Override
     public String hud() {
-        if (goku == null) return status;
-        return String.format(Locale.ROOT, "\nGoku's back attack: a %.1f m dive in %.1f s, its first second a warp window", reach, WINDOW_END)
-                + "\nLeft/Right: the opponent stands " + RANGES[range] + (range == 0 ? " (a fifth to three fifths of the dive)" : "")
-                + "\nUp: the opponent " + (moving ? "sidesteps as he dives (re-aimed each frame)" : "stands still")
-                + "\nDown: warping " + (warping ? "ON" : "OFF (the clip's own path)") + ", from the next round"
-                + "\n`: paths " + (paths ? "on (grey the clip's, cyan his)" : "off") + "   \\: a round now";
+        if (warped == null) return status;
+        String at = DISTANCES[distance] > 0f ? String.format(Locale.ROOT, "%.1f m", DISTANCES[distance]) : "anywhere from 1.4 to 4.2 m";
+        return String.format(Locale.ROOT, "\nGoku's lunging strike covers %.1f m on its own. Left: warped to the opponent. Right: as drawn", reach)
+                + "\nLeft/Right: the opponents stand " + at
+                + "\nUp: the left opponent " + (moving ? "sidesteps as he lunges (re-aimed every frame)" : "stands still")
+                + "\nDown: stand-off " + (standOff ? String.format(Locale.ROOT, "%.1f m (the fist meets them)", STAND_OFF) : "off (onto their centre)")
+                + "\n`: paths " + (paths ? "on (grey the clip's own, cyan warped, orange as drawn)" : "off") + "   \\: a round now";
     }
 
     @Override
     public void delete() {
-        if (playing != null) playing.stop();
-        if (goku != null) goku.body.remove();
-        if (opponent != null) opponent.remove();
-        goku = null;
-        opponent = null;
-        playing = null;
+        if (warped != null) warped.remove();
+        if (plain != null) plain.remove();
+        warped = plain = null;
     }
 }

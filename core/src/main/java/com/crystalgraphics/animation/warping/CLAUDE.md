@@ -5,7 +5,7 @@
 
 | Type | Role |
 |---|---|
-| `CgMotionWarping` | A character's warp targets by name (`target`, `removeTarget`), and `process`: the root-motion montage's step, inside an open window of its clip, bent toward its target. Translation by a skew warp (the step scaled along the window's remaining motion by the target's reach over the motion's, sheared sideways and up by the angles between); a window with no motion of its own pulls in a straight line from where it opened. Rotation by slerp, clamped slerp, constant rate or the clip's own turn scaled. One per `CgMontages`, `anim.motionWarping()` |
+| `CgMotionWarping` | A character's warp targets by name (`target`, `standOff`: stop short of it toward the character, `removeTarget`), and `process`: the root-motion montage's step, inside an open window of its clip, bent toward its target. Translation by a skew warp (the step scaled along the window's remaining motion by the target's reach over the motion's, sheared sideways and up by the angles between); a window with no motion of its own pulls in a straight line from where it opened. Rotation by slerp, clamped slerp, constant rate or the clip's own turn scaled. One per `CgMontages`, `anim.motionWarping()` |
 
 ## Rules
 
@@ -15,4 +15,4 @@
 - A window opens when play enters it and closes once play passes its end or the clip changes; a loop's wrap is never
   bent.
 - **0 B a step once warm** (`CgMotionWarpingTest.warmItAllocatesNothing`).
-- Gates: `CgMotionWarpingTest` (headless) and `CgMotionWarpingKakarotTest` (Goku's back attack, `core/src/test`).
+- Gates: `CgMotionWarpingTest` (headless) and `CgMotionWarpingKakarotTest` (Goku's back attack, and his lunging strike at arm's length facing his opponent, `core/src/test`).

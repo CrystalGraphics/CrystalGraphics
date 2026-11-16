@@ -49,6 +49,7 @@ public final class CgMotionWarping {
 
     private String[] names = new String[2];
     private double[] targets = new double[2 * 4];
+    private float[] standOffs = new float[2];
     private int targetCount;
     private final Matrix4d placement = new Matrix4d();
     @Nullable
@@ -83,7 +84,9 @@ public final class CgMotionWarping {
             if (targetCount == names.length) {
                 names = Arrays.copyOf(names, targetCount * 2);
                 targets = Arrays.copyOf(targets, targetCount * 2 * 4);
+                standOffs = Arrays.copyOf(standOffs, targetCount * 2);
             }
+            standOffs[targetCount] = 0f;
             i = targetCount++;
             names[i] = name;
         } else if (clip != null && window >= 0 && clip.settings().warpWindows().get(window).target().equals(name)
@@ -104,7 +107,24 @@ public final class CgMotionWarping {
         targetCount--;
         names[i] = names[targetCount];
         System.arraycopy(targets, targetCount * 4, targets, i * 4, 4);
+        standOffs[i] = standOffs[targetCount];
         names[targetCount] = null;
+        return this;
+    }
+
+    /**
+     * Has moves toward target {@code name} stop {@code metres} short of it, on the line from it to the character: a
+     * strike that ends at arm's length instead of inside its opponent. Recomputed each step, so it holds as either
+     * moves. Set after {@link #target}; 0 by default.
+     *
+     * <pre>{@code
+     * anim.motionWarping().target("opponent", x, y, z, yaw).standOff("opponent", 0.9f);
+     * }</pre>
+     */
+    public CgMotionWarping standOff(String name, float metres) {
+        int i = find(name);
+        if (i < 0) throw new IllegalArgumentException("no warp target " + name + ": set it first");
+        standOffs[i] = metres;
         return this;
     }
 
@@ -175,6 +195,11 @@ public final class CgMotionWarping {
         placement.invertAffine(inverse);
         world.set(targets[ti * 4], targets[ti * 4 + 1], targets[ti * 4 + 2]);
         placement.getTranslation(here);
+        if (standOffs[ti] != 0f) {
+            // short of the target, toward where the character stands now
+            double dx = here.x - world.x, dz = here.z - world.z, l = Math.sqrt(dx * dx + dz * dz);
+            if (l > 1e-6) world.add(dx / l * standOffs[ti], 0, dz / l * standOffs[ti]);
+        }
         if (w.ignoreHeight()) world.y = here.y;
         inverse.transformPosition(world);
         target.set((float) world.x, (float) world.y, (float) world.z);

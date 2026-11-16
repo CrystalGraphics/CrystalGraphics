@@ -62,6 +62,13 @@ Matrix4f step = new Matrix4f();
 if (anim.montages().consumeRootMotion(1f, step)) mover.move(step);   // the warped step
 ```
 
+A strike should end at arm's length, not inside its opponent. Give the target a **stand-off**: the move stops that
+far short of it, on the line from the target to the character, recomputed each frame:
+
+```java
+anim.motionWarping().target("opponent", x, y, z, yaw).standOff("opponent", 0.9f);   // where the fist meets them
+```
+
 A target set again while its window is open is aimed at again from where the character stands. A sidestepping
 opponent is caught. `removeTarget("opponent")` makes its windows play the clip's own motion.
 
@@ -101,9 +108,11 @@ the target in a straight line instead.
   last frame never plays that frame's step.
 - **Placement comes from `placedBy`.** Warping reads where the character stands through the instance's `placedBy`, at
   the moment it bends each step. Without it, the character is taken to stand at the origin.
+- **A warp has a believable range.** Bending a 2.4 m lunge onto 4.2 m peaks at 22 m/s against the clip's 16; onto
+  5.5 m, 29, which reads as a teleport. Past about one and a half times a move's own reach, dash in first.
 - **The clip's own pause after the window is its own.** Measure where a move lands as its window closes.
 - Warping allocates nothing once warm.
 
-Gates: `CgMotionWarpingTest` (headless: a 4 m rush landing 2, 8 and 13 m away and off its line, its turn, the data form,
-0 B) and `CgMotionWarpingKakarotTest` (Goku's back attack landing on nine targets from a quarter of its 22 m reach to one
-and a half times it, up to 70 degrees off its line). The anim demo's **Motion warping** station plays it.
+Gates: `CgMotionWarpingTest` (headless: a 4 m rush landing 2, 8 and 13 m away and off its line, a stand-off, its turn,
+the data form, 0 B) and `CgMotionWarpingKakarotTest` (Goku's back attack landing on nine targets from a quarter of its 22 m reach to one
+and a half times it, up to 70 degrees off its line). The anim demo's **Motion warping** station plays Goku's lunging strike in two lanes, warped and as drawn.

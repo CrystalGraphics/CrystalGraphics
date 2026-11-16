@@ -1937,6 +1937,7 @@ com/crystalgraphics/animation/warping/CgMotionWarping
   method public placedBy (Ljava/util/function/Consumer;)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
   method public process (Lcom/crystalgraphics/api/animation/CgAnimSequence;Lcom/crystalgraphics/api/animation/CgSkeleton;FFFLorg/joml/Matrix4f;)V
   method public removeTarget (Ljava/lang/String;)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
+  method public standOff (Ljava/lang/String;F)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
   method public target (Ljava/lang/String;DDDF)Lcom/crystalgraphics/animation/warping/CgMotionWarping;
 com/crystalgraphics/api/PoseStack
   access public

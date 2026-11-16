@@ -55,7 +55,7 @@ public class CgMotionWarpingKakarotTest {
         float yaw;
         /** Where it stood, and its turn, as its window closed. */
         Vector3d landed;
-        float landedYaw;
+        float landedYaw, peak;
 
         Goku(CgSkeletalMesh mesh, CgAnimSequence rush) {
             this.rush = rush;
@@ -111,9 +111,43 @@ public class CgMotionWarpingKakarotTest {
         assertTrue("on his opponent: " + g.landed, Math.hypot(g.landed.x - own.x * 0.6, g.landed.z - own.z * 0.6) < 0.02);
     }
 
+    /**
+     * His lunging strike (a 2.6 m lunge in 0.37 s), its lunge a window that turns him to face the opponent and stops
+     * 0.9 m short of them: the anim demo's motion warping station. Nearer and further, left and right of its line, he
+     * ends at arm's length, facing them.
+     */
+    @Test
+    public void gokusLungeStopsAtArmsLengthFacingHisOpponent() {
+        CgSkeletalMesh mesh = CgMeshLoader.skeletal(KK.resolve("models/Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1.glb").toAbsolutePath().toString());
+        CgAnimSequence raw = CgMeshLoader.sequences(KK.resolve("models/Art/ANM/cpl/C001A/BTL/CMB/C001A_CMB_S_Range05_Cut.glb")
+                .toAbsolutePath().toString()).get(0);
+        CgAnimSequence encoded = CgClipModifiers.encodeRootBone(raw, mesh.skeleton(), "root", "pelvis");
+        CgAnimSequence lunge = encoded.with(encoded.settings().withWarpWindows(List.of(CgWarpWindow.of("opponent", 0.2f, 0.6f)
+                .facing(true).rotation(CgWarpWindow.Rotation.SLERP_WITH_CLAMPED_RATE, 0.6f, 540f))));
+        Goku own = play(mesh, encoded.with(encoded.settings().withWarpWindows(List.of(CgWarpWindow.of("nobody", 0.2f, 0.6f)))), 0, 0, 0f);
+        System.out.printf("Range05's lunge alone: to (%.2f, %.2f), %.1f m/s at its fastest%n", own.landed.x, own.landed.z, own.peak);
+        for (double dist : new double[] {1.6, 3.0, 4.2, 5.5}) {
+            for (double turn : new double[] {-30, 0, 30}) {
+                double a = Math.toRadians(turn), x = Math.sin(a) * dist, z = Math.cos(a) * dist;
+                Goku g = play(mesh, lunge, x, z, 0f, 0.9f);
+                double gap = Math.hypot(x - g.landed.x, z - g.landed.z);
+                double facing = Math.toDegrees(Math.atan2(x - g.landed.x, z - g.landed.z) - g.landedYaw);
+                facing = ((facing + 540) % 360) - 180;
+                System.out.printf("  %.1f m at %+.0f deg: stops %.2f m short, facing %+.1f deg off them, %.1f m/s at its fastest%n", dist, turn,
+                        gap, facing, g.peak);
+                assertEquals(dist + " m at " + turn, 0.9, gap, 0.02);
+                assertEquals(dist + " m at " + turn + " facing", 0.0, facing, 2.0);
+            }
+        }
+    }
+
     private static Goku play(CgSkeletalMesh mesh, CgAnimSequence rush, double x, double z, float yaw) {
+        return play(mesh, rush, x, z, yaw, 0f);
+    }
+
+    private static Goku play(CgSkeletalMesh mesh, CgAnimSequence rush, double x, double z, float yaw, float standOff) {
         Goku g = new Goku(mesh, rush);
-        g.body.motionWarping().target("opponent", x, 0, z, yaw);
+        g.body.motionWarping().target("opponent", x, 0, z, yaw).standOff("opponent", standOff);
         CgSequencer sequencer = new CgWorld().add(new CgSequencer());
         int ms = Math.round(rush.duration() * 1000);
         CgSequenceDefinition d = CgSequenceDefinition.compile(CgAssetData.of("test:rush", CgSequenceKinds.SEQUENCE,
@@ -137,6 +171,7 @@ public class CgMotionWarpingKakarotTest {
                 g.at.add(t.x, t.y, t.z);
                 step.getNormalizedRotation(q);
                 g.yaw += (float) (2 * Math.atan2(q.y, q.w));
+                g.peak = Math.max(g.peak, (float) (Math.hypot(t.x, t.z) / DT));
             }
             boolean open = g.body.motionWarping().open() != null;
             if (wasOpen && !open && g.landed == null) {
