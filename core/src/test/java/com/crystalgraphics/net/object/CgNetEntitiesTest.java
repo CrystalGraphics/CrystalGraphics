@@ -143,6 +143,7 @@ public class CgNetEntitiesTest {
             @Override public CgNbtCompound read(Object entity) { return saves.get(entity); }
             @Override public void write(Object entity, CgNbtCompound data) { saves.put(entity, data); }
             @Override public boolean savesWhenSaved() { return false; }
+            @Override public String[] savedPath() { return null; }
         });
         try {
             CgNetTestRig.Entity e = zombie();
@@ -189,6 +190,7 @@ public class CgNetEntitiesTest {
             @Override public CgNbtCompound read(Object entity) { return saves.get(entity); }
             @Override public void write(Object entity, CgNbtCompound data) { writes[0]++; saves.put(entity, data); }
             @Override public boolean savesWhenSaved() { return true; }
+            @Override public String[] savedPath() { return null; }
         });
         try {
             CgNetTestRig.Entity e = zombie();

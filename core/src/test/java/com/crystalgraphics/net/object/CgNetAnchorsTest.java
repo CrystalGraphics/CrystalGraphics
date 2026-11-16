@@ -1,13 +1,28 @@
 package com.crystalgraphics.net.object;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.nbt.CgNbt;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.world.CgEntitySaves;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -34,9 +49,22 @@ public class CgNetAnchorsTest {
 
     private final List<String> heard = new ArrayList<>();
     private CgNetTestRig rig;
+    /** What the game saves with each player, by profile: their file outlives their entity, as playerdata does. */
+    private final Map<Object, CgNbtCompound> playerSaves = new HashMap<>();
 
     @Before
     public void setUp() {
+        CgPlatform.provide(CgEntitySaves.HOST, new CgEntitySaves.Host() {
+            @Override public CgNbtCompound read(Object entity) { return playerSaves.get(key(entity)); }
+            @Override public void write(Object entity, CgNbtCompound data) { playerSaves.put(key(entity), data); }
+            @Override public boolean savesWhenSaved() { return false; }
+            @Override public String[] savedPath() { return new String[] {"ForgeData", "crystalgraphics"}; }
+
+            private Object key(Object entity) {
+                UUID player = CgPlayers.idOf(entity);
+                return player != null ? player : entity;
+            }
+        });
         rig = CgNetTestRig.of(3).saveTo(world.getRoot().toPath());
         for (CgNetType type : new CgNetType[]{AURA, QUEST, BADGE, MANA, WARD, WARDS}) {
             type.onClient(obj -> new CgNetBehaviour() {
@@ -51,6 +79,7 @@ public class CgNetAnchorsTest {
 
     @After
     public void tearDown() {
+        CgPlatform.provide(CgEntitySaves.HOST, null);
         rig.close();
     }
 
@@ -137,7 +166,7 @@ public class CgNetAnchorsTest {
     }
 
     @Test
-    public void aPlayersObjectEndsAtDeathUnlessCopiedAndWhenTheyLeaveUnlessPersisted() {
+    public void aPlayersObjectEndsAtDeathUnlessCopiedAndWhenTheyLeaveSavedWithThemIfPersisted() {
         QUEST.spawn(CgAnchor.player(rig.client(0).id())).start();
         CgNetObject mana = MANA.of(rig.client(0).id()).setInt(CURRENT, 40);
         rig.tick(1);
@@ -154,10 +183,13 @@ public class CgNetAnchorsTest {
         rig.client(0).disconnect();
         rig.tick(1);
         assertEquals(0, QUEST.size());
-        assertTrue("persisted: dormant while they are away", mana.isDormant());
+        assertTrue("persisted: it leaves with them, saved in their own data", mana.isRemoved());
+        assertEquals(40, (int) ((CgNbtCompound) playerSaves.get(rig.client(0).id()).get(MANA.name())).get("current", CgCodecs.INT));
         rig.client(0).connect();
         rig.tick(3);
-        assertFalse(mana.isDormant());
+        CgNetObject back = MANA.of(rig.client(0).id());
+        assertEquals("read back as they return", 40, back.getInt(CURRENT));
+        rig.tick(1);
         assertEquals(40, rig.client(0).visible(MANA).get(0).getInt(CURRENT));
     }
 
@@ -174,9 +206,44 @@ public class CgNetAnchorsTest {
         rig.restart().tick(3);
         CgNetObject again = MANA.of(rig.client(0).id());
         assertEquals("loaded, not made anew", 70, again.getInt(CURRENT));
+        assertEquals("each comes back with its player", 20, MANA.of(rig.client(1).id()).getInt(CURRENT));
         assertEquals(2, MANA.size());
+        rig.tick(1);
         assertEquals(70, rig.client(0).visible(MANA).get(0).getInt(CURRENT));
         assertEquals("theirs alone", 20, rig.client(1).visible(MANA).get(0).getInt(CURRENT));
+    }
+
+    @Test
+    public void anOfflinePlayersObjectIsReadFromTheirFileAndWrittenBack() throws IOException {
+        UUID away = rig.client(1).id();
+        rig.client(1).disconnect();
+        rig.tick(2);
+        // their file, as the game keeps it in playerdata: the game's own data beside ours, under Forge's key
+        CgNbtCompound mine = new CgNbtCompound().put(MANA.name(), new CgNbtCompound().put("current", 55));
+        CgNbtCompound file = new CgNbtCompound().put("Health", 20f)
+                .put("ForgeData", new CgNbtCompound().put("other_mod", 1).put("crystalgraphics", mine));
+        Path data = world.getRoot().toPath().resolve("playerdata");
+        Files.createDirectories(data);
+        try (OutputStream out = Files.newOutputStream(data.resolve(away + ".dat"))) {
+            CgNbt.writeBinary(out, file);
+        }
+
+        CgNetObject mana = MANA.of(away);
+        assertEquals("read from their file while they are away", 55, mana.getInt(CURRENT));
+        mana.setInt(CURRENT, 60);
+        rig.tick(2);
+        assertFalse("waits for them, not ended", mana.isRemoved());
+
+        rig.restart().tick(1);
+        CgNbtCompound written;
+        try (InputStream in = Files.newInputStream(data.resolve(away + ".dat"))) {
+            written = CgNbt.readBinary(in);
+        }
+        CgNbtCompound forge = (CgNbtCompound) written.get("ForgeData");
+        assertEquals("written back into their file as the server stopped", 60,
+                (int) ((CgNbtCompound) ((CgNbtCompound) forge.get("crystalgraphics")).get(MANA.name())).get("current", CgCodecs.INT));
+        assertEquals("the rest of it as it was", 1, (int) forge.get("other_mod", CgCodecs.INT));
+        assertEquals(20f, written.get("Health", CgCodecs.FLOAT), 0f);
     }
 
     @Test

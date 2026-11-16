@@ -646,8 +646,9 @@ thing:
   whose objects differ, as a cue's do, sets it per object.
 - **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server.
   `obj.entity()` is the entity on either side: the server's, or the one of `obj.entityId()` in a client's level.
-- **A player who is away** (logged out) leaves a player-anchored object waiting, `obj.isDormant()`, unless the type
-  is not persisted, when it ends.
+- **A player who is away** (logged out) takes their per-holder objects with them: one that saves is written into their
+  own file as they leave and read back as they return ([§13](#13-saving-with-the-world)); the rest end. A spawned
+  object anchored on them that saves waits, `obj.isDormant()`, in the world's file.
 - **A rule of your own** replaces the anchor's: `.visibleTo((obj, peer) -> sameTeam(peer.id(), obj))` on the type,
   asked once a tick per object and player. Never across dimensions.
 - **On the server, `obj.level()`** is the level it is in, for what your code asks of the world:
@@ -672,7 +673,14 @@ bar.setInt(MANA, Math.min(bar.getInt(MAX), bar.getInt(MANA) + 1));
 CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 ```
 
-- `of(player)` takes a player entity or a profile id, online or not; `of(entity)` any other entity.
+- `of(player)` takes a player entity or a profile id, online or not; `of(entity)` any other entity. For a player who
+  is away, a type that saves reads their file in the world's `playerdata`, and what you change is written back into it
+  with the world's next save (every player who ever joined has one):
+
+  ```java
+  CgNetObject bar = MANA_BAR.of(offlineId);           // server: their saved mana, read from playerdata/<uuid>.dat
+  bar.setInt(MANA, 100);                               // in their file by the next save; theirs as they join
+  ```
 - **`find(holder)`** only looks, on either side: on a server the holder's object if it has one (null, and nothing
   made, if not); on a client this client's copy of it, null until it arrives. A client reaches its own object, to
   send it a command, with `find(localPlayer)`.
@@ -909,14 +917,15 @@ public static final CgNetType TURRET = CgNetType.define("mymod:turret").fields(C
 `persisted()` on the type saves every field it lists (a cue's, whose fields are shared with every other cue, is saved
 this way). A type that saves any field keeps its objects: they are saved with the world, under its folder
 (`crystalgraphics/objects/`), when the server stops and every five minutes, and come back when it starts again, before
-any player joins; a player's waits while they are away.
+any player joins. An entity's and a player's per-holder ones are saved with them instead (below).
 
 - Each object keeps its anchor, owner, saved fields (`serverOnly()` ones too) and age; a server behaviour is made
   again and hears `spawned` with that age, its other fields at their fallbacks.
-- **An entity's object is saved with the entity**: a per-holder type's object on an entity other than a player (`of(entity)`,
-  or `onEntities`) is written into the entity's own saved data as the game saves the entity (a chunk unloading, an
-  autosave, the server stopping), and read back when the entity is loaded and its object made. It travels with the
-  entity through chunk unloads and is gone when the entity is.
+- **An entity's or a player's object is saved with them**: a per-holder type's object (`of(entity)`, `of(player)`,
+  or `onEntities`) is written into the entity's own saved data as the game saves it (a chunk unloading, a player
+  leaving, an autosave, the server stopping), and read back when its object is made. A player's is in
+  `playerdata/<uuid>.dat`, beside their inventory, so any NBT editor opens it; an entity's travels with it through
+  chunk unloads and is gone when it is.
 - **A change costs a flag**: however often a saved field changes, it is encoded once, at the entity's save, every type
   of that entity in one write; a change to a field not saved costs nothing, and an entity with nothing changed is
   saved as Minecraft saves it. (Forge 1.13.2 and 1.14.3, which
@@ -934,6 +943,8 @@ any player joins; a player's waits while they are away.
   It is kept under the key `crystalgraphics`, each type under its name: inside the loader's persistent entity data on
   Forge, NeoForge and Forge before 1.13, and as a key of the entity's own on Fabric. A field that no longer reads is
   logged and starts from its fallback.
+- **Elsewhere, in the world's file** (`crystalgraphics/objects/`): objects at a point, a chunk's, a dimension's, and
+  objects spawned on a player by hand (several of a type may be).
 - **Not saved**: fields not persisted, `local()` fields (`persisted()` on one throws), fired objects, and objects spawned
   on an entity by hand (`spawn(CgAnchor.on(entity))` of a type that saves throws: an entity saves one object of a
   type, a per-holder one).

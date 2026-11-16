@@ -78,6 +78,8 @@ public final class CgNetObject {
     boolean moved;
     /** Server: an entity's persisted object changed since the entity was last saved. */
     boolean unsavedOnEntity;
+    /** Server: a player's object made while they are away, from their file; dormant until they join. */
+    boolean offline;
 
     long spawnTick;
     int lifetime = -1;

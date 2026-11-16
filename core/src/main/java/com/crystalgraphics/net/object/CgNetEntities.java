@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Function;
 
@@ -20,6 +21,7 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 import com.crystalgraphics.serialization.nbt.CgNbtOps;
 import com.crystalgraphics.world.CgEntityQueries;
@@ -330,7 +332,66 @@ public final class CgNetEntities extends CgWorldSubsystem {
      * the entity is next saved, or now where the host has no hook; any other costs nothing here.
      */
     static void changed(CgNetObject obj) {
-        if (!obj.type.persisted || obj.kind != CgAnchor.Kind.ENTITY || !savedChanged(obj)) return;
+        if (!obj.type.persisted || !savedWith(obj) || !savedChanged(obj)) return;
+        unsaved(obj);
+    }
+
+    /** Server: a player's object made while they are away, its values from their file; dormant until they join. */
+    static void restoreOffline(CgNetObject obj, UUID player) {
+        obj.offline = true;
+        CgNbtCompound saved = CgEntitySaves.readOffline(CgNetObjects.server(), player);
+        if (saved == null || !saved.has(obj.type.name)) return;
+        try {
+            CgNetObjects.decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
+        } catch (RuntimeException failed) {
+            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", player, obj.type.name, failed);
+        }
+    }
+
+    /**
+     * Server, with the world's save and as it stops: what changed on players who are away goes into their files, each
+     * player's types in one write. One with no file (never joined) keeps its changes until they join.
+     */
+    static void flushOffline(List<CgNetObject> live) {
+        if (unsavedOnEntities == 0) return;
+        Map<UUID, CgNbtCompound> files = null;
+        for (int i = 0; i < live.size(); i++) {
+            CgNetObject obj = live.get(i);
+            if (!obj.offline || !obj.unsavedOnEntity) continue;
+            if (files == null) files = new HashMap<>();
+            CgNbtCompound saved = files.computeIfAbsent(obj.player, p -> {
+                CgNbtCompound read = CgEntitySaves.readOffline(CgNetObjects.server(), p);
+                return read != null ? read : new CgNbtCompound();
+            });
+            saved.put(obj.type.name, CgNetObjects.encodeFields(CgNbtOps.INSTANCE, obj));
+        }
+        if (files == null) return;
+        for (Map.Entry<UUID, CgNbtCompound> f : files.entrySet()) {
+            if (!CgEntitySaves.writeOffline(CgNetObjects.server(), f.getKey(), f.getValue())) continue;
+            for (int i = 0; i < live.size(); i++) {
+                CgNetObject obj = live.get(i);
+                if (obj.offline && obj.unsavedOnEntity && f.getKey().equals(obj.player)) {
+                    obj.unsavedOnEntity = false;
+                    unsavedOnEntities--;
+                }
+            }
+        }
+    }
+
+    /** Server: a player's object now rides a new entity, whose save holds none of it: all of it goes into the next. */
+    static void newHolder(CgNetObject obj) {
+        if (obj.type.persisted && savedWith(obj)) unsaved(obj);
+    }
+
+    /**
+     * Whether it is saved with what it lives on: an entity's, or a player's per-holder one, in their own data; a player's
+     * spawned ones, several of a type, stay in the world's file.
+     */
+    static boolean savedWith(CgNetObject obj) {
+        return obj.kind == CgAnchor.Kind.ENTITY || obj.kind == CgAnchor.Kind.PLAYER && obj.holderKey != null;
+    }
+
+    private static void unsaved(CgNetObject obj) {
         if (!obj.unsavedOnEntity) {
             obj.unsavedOnEntity = true;
             unsavedOnEntities++;
@@ -350,10 +411,13 @@ public final class CgNetEntities extends CgWorldSubsystem {
         // a client saves entities too (a creative pick): the server's objects are the server thread's alone
         if (unsavedOnEntities == 0 || CgNetwork.side() != CgNetwork.Side.SERVER) return;
         CgNbtCompound saved = null;
+        // a player's objects are held by profile, an entity's by the entity
+        UUID player = CgPlayers.idOf(entity);
+        Object key = player != null ? player : entity;
         List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
         for (int i = 0; i < types.size(); i++) {
             CgNetType type = types.get(i);
-            CgNetObject obj = type.holders.get(entity);
+            CgNetObject obj = type.holders.get(key);
             if (obj == null || !obj.unsavedOnEntity) continue;
             if (saved == null) saved = CgEntitySaves.read(entity);
             saved.put(type.name, CgNetObjects.encodeFields(CgNbtOps.INSTANCE, obj));
@@ -377,6 +441,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
      * changed on entities goes into their compounds now.
      */
     static void stopping(List<CgNetObject> live) {
+        flushOffline(live);
         for (int i = 0; i < live.size() && unsavedOnEntities > 0; i++) {
             CgNetObject obj = live.get(i);
             Object entity = obj.unsavedOnEntity ? obj.entity() : null;

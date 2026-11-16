@@ -29,6 +29,11 @@ public final class EntitySaves1710 implements CgEntitySaves.Host {
     }
 
     @Override
+    public String[] savedPath() {
+        return new String[] {"ForgeData", KEY};   // where Forge saves its entity data in the entity's file
+    }
+
+    @Override
     public boolean savesWhenSaved() {
         return true;   // EntitySaveHook, at the head of writeToNBT
     }

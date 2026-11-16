@@ -10083,6 +10083,11 @@ com/crystalgraphics/net/object/CgNetWire$Out
   method public,abstract writeLong (J)V
   method public,abstract writeVarInt (I)V
   method public,abstract writeZigZag (J)V
+com/crystalgraphics/net/object/CgPlayerSavesProbe
+  access public,final
+  extends java/lang/Object
+  method public,static install ()V
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/net/object/CgPredictionKey
   access public,final
   extends java/lang/Object
@@ -24778,13 +24783,16 @@ com/crystalgraphics/world/CgEntitySaves
   field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
   method public,static hooked ()Z
   method public,static read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,static readOffline (Ljava/lang/Object;Ljava/util/UUID;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
   method public,static saving (Ljava/lang/Object;)V
   method public,static write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
+  method public,static writeOffline (Ljava/lang/Object;Ljava/util/UUID;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)Z
 com/crystalgraphics/world/CgEntitySaves$Host
   access public,abstract,interface
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/world/CgEntitySaves$Host;
   method public,abstract read (Ljava/lang/Object;)Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;
+  method public,abstract savedPath ()[Ljava/lang/String;
   method public,abstract savesWhenSaved ()Z
   method public,abstract write (Ljava/lang/Object;Lcom/crystalgraphics/serialization/nbt/CgNbtCompound;)V
 com/crystalgraphics/world/CgEntityTags

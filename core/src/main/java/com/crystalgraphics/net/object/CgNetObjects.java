@@ -378,7 +378,10 @@ public final class CgNetObjects {
             for (int v = 0; v < VIEWERS.size(); v++) VIEWERS.get(v).flush();
         }
         trace(types);
-        if (started && tick % SAVE_EVERY == 0) save();
+        if (started && tick % SAVE_EVERY == 0) {
+            save();
+            CgNetEntities.flushOffline(LIVE);
+        }
         CgNetEntities.tickEnded();
     }
 
@@ -466,7 +469,7 @@ public final class CgNetObjects {
                 serverEnded(obj);
                 continue;
             }
-            if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
+            if (obj.type.persisted && CgNetEntities.savedWith(obj)) {
                 if (obj.anyDirty) CgNetEntities.changed(obj);
             } else if (obj.anyDirty || obj.moved) {
                 markUnsaved(obj.type);
@@ -622,13 +625,21 @@ public final class CgNetObjects {
             case PLAYER: {
                 Viewer viewer = VIEWERS_BY_ID.get(obj.player);
                 Object player = viewer == null ? null : viewer.peer.player();
-                if (viewer == null && !obj.type.persisted) {
+                // gone: a per-holder object that saves wrote its values into the player's own data as they left, and
+                // reads them back as they return; one made while they are away (from their file) waits for them, and a
+                // spawned one that saves waits in the world's file
+                if (viewer == null && !obj.offline && (obj.holderKey != null || !obj.type.persisted)) {
                     obj.kill();
                     return;
                 }
                 if (player != null && !obj.type.copyOnDeath && !CgEntityQueries.alive(player)) {
                     obj.despawn();
                     return;
+                }
+                // a new player entity (joined, respawned) saves nothing of it yet: all of it goes into the next save
+                if (player != null && player != obj.holder) {
+                    obj.offline = false;
+                    CgNetEntities.newHolder(obj);
                 }
                 obj.holder = player;
                 obj.dormant = player == null;
@@ -1163,8 +1174,10 @@ public final class CgNetObjects {
 
     private static boolean save(CgNetType type, Path world) {
         List<CgNetObject> objects = new ArrayList<>();
-        // an entity's are saved with the entity
-        for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY) objects.add(obj);
+        // an entity's, and a player's per-holder ones, are saved with them
+        for (CgNetObject obj : LIVE) {
+            if (obj.type == type && obj.isLive() && !CgNetEntities.savedWith(obj)) objects.add(obj);
+        }
         Path file = file(world, type);
         try {
             CgFiles.write(file, new SavedObjects(type), objects);
