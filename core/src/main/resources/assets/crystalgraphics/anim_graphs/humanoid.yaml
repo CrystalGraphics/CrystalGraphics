@@ -1,0 +1,105 @@
+# The humanoid template: Minecraft's set of a humanoid's states, driven by the entity's own properties, for any
+# humanoid body. A child graph names it as its parent and gives each state's node its clip:
+#
+#   _v: 1
+#   parent: crystalgraphics:humanoid
+#   nodes:
+#     idle: { clip: mymod:hero/idle }
+#     walk: { clip: mymod:hero/walk }
+#
+# Its clips name nothing of their own (crystalgraphics:humanoid/<state>): bound as it is, it fails naming the first.
+_v: 1
+variables:
+  speed: { type: float }
+  sprinting: { type: bool }
+  sneaking: { type: bool }
+  airborne: { type: bool }
+  swimming: { type: bool }
+  crawling: { type: bool }
+  gliding: { type: bool }
+  riding: { type: bool }
+  sleeping: { type: bool }
+  dead: { type: bool }
+  swing: { type: float }
+  swinging: { type: float }
+entity:
+  speed: entity.speed
+  sprinting: entity.sprinting
+  sneaking: entity.sneaking
+  airborne: entity.airborne
+  swimming: entity.swimming
+  crawling: entity.crawling
+  gliding: entity.gliding
+  riding: entity.riding
+  sleeping: entity.sleeping
+  dead: entity.dead
+  swing: entity.swing
+  swinging: entity.swinging
+output: out
+nodes:
+  out: { kind: inertialization, source: full_body }
+  full_body: { kind: slot, source: with_swing }                      # DefaultSlot: whole-body moves and reactions
+  with_swing: { kind: layered_blend, base: upper_body_slot, layers: [ { pose: swing, mask: { branches: [ { bone: spine_01 } ] }, weight: swinging } ] }
+  upper_body_slot: { kind: slot, slot_name: UpperBody, source: upper_body }
+  upper_body: { kind: linked_anim_layer, layer: upper_body, inputs: { pose: locomotion } }   # a held item's layer (actor item_layers)
+  upper_body_default: { kind: linked_input_pose, name: pose }
+  locomotion: { kind: state_machine, machine: locomotion }
+  swing: { kind: sequence_evaluator, clip: crystalgraphics:humanoid/swing, time: swing, normalized: true }   # Minecraft's swing progress
+  idle: { kind: sequence_player, clip: crystalgraphics:humanoid/idle, loop: true }
+  walk: { kind: sequence_player, clip: crystalgraphics:humanoid/walk, loop: true }
+  run: { kind: sequence_player, clip: crystalgraphics:humanoid/run, loop: true }
+  sneak_idle: { kind: sequence_player, clip: crystalgraphics:humanoid/sneak_idle, loop: true }
+  sneak_walk: { kind: sequence_player, clip: crystalgraphics:humanoid/sneak_walk, loop: true }
+  fall: { kind: sequence_player, clip: crystalgraphics:humanoid/fall, loop: true }
+  swim: { kind: sequence_player, clip: crystalgraphics:humanoid/swim, loop: true }
+  crawl: { kind: sequence_player, clip: crystalgraphics:humanoid/crawl, loop: true }
+  glide: { kind: sequence_player, clip: crystalgraphics:humanoid/glide, loop: true }
+  ride: { kind: sequence_player, clip: crystalgraphics:humanoid/ride, loop: true }
+  sleep: { kind: sequence_player, clip: crystalgraphics:humanoid/sleep, loop: true }
+  dead: { kind: sequence_player, clip: crystalgraphics:humanoid/dead }
+layers:
+  upper_body: { inputs: [pose], output: upper_body_default }
+machines:
+  locomotion:
+    initial: idle
+    states:
+      idle: { pose: idle }
+      walk: { pose: walk }
+      run: { pose: run }
+      sneak_idle: { pose: sneak_idle }
+      sneak_walk: { pose: sneak_walk }
+      fall: { pose: fall }
+      swim: { pose: swim }
+      crawl: { pose: crawl }
+      glide: { pose: glide }
+      ride: { pose: ride }
+      sleep: { pose: sleep }
+      dead: { pose: dead }
+      choose: { entry_rule: { all: [] } }                             # a conduit: every state leaves through it
+    transitions:
+      # each state, once its own rule stops holding or a state above it starts
+      - { from: dead, to: choose, rule: { any: [ { not: { variable: dead, op: '==', value: true } } ] }, crossfade: 0 }
+      - { from: sleep, to: choose, rule: { any: [ { not: { variable: sleeping, op: '==', value: true } }, { variable: dead, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: ride, to: choose, rule: { any: [ { not: { variable: riding, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: glide, to: choose, rule: { any: [ { not: { variable: gliding, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: swim, to: choose, rule: { any: [ { not: { variable: swimming, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: crawl, to: choose, rule: { any: [ { not: { variable: crawling, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: fall, to: choose, rule: { any: [ { not: { variable: airborne, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: sneak_walk, to: choose, rule: { any: [ { not: { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true }, { variable: airborne, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: sneak_idle, to: choose, rule: { any: [ { not: { variable: sneaking, op: '==', value: true } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true }, { variable: airborne, op: '==', value: true }, { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] } ] }, crossfade: 0 }
+      - { from: run, to: choose, rule: { any: [ { not: { all: [ { variable: sprinting, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true }, { variable: airborne, op: '==', value: true }, { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, { variable: sneaking, op: '==', value: true } ] }, crossfade: 0 }
+      - { from: walk, to: choose, rule: { any: [ { not: { variable: speed, op: '>', value: 0.3 } }, { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true }, { variable: airborne, op: '==', value: true }, { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, { variable: sneaking, op: '==', value: true }, { all: [ { variable: sprinting, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] } ] }, crossfade: 0 }
+      - { from: idle, to: choose, rule: { any: [ { variable: dead, op: '==', value: true }, { variable: sleeping, op: '==', value: true }, { variable: riding, op: '==', value: true }, { variable: gliding, op: '==', value: true }, { variable: swimming, op: '==', value: true }, { variable: crawling, op: '==', value: true }, { variable: airborne, op: '==', value: true }, { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, { variable: sneaking, op: '==', value: true }, { all: [ { variable: sprinting, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, { variable: speed, op: '>', value: 0.3 } ] }, crossfade: 0 }
+      # then the first that holds, in this order
+      - { from: choose, to: dead, rule: { variable: dead, op: '==', value: true }, crossfade: 0.15, priority: 0 }
+      - { from: choose, to: sleep, rule: { variable: sleeping, op: '==', value: true }, crossfade: 0.2, priority: 1 }
+      - { from: choose, to: ride, rule: { variable: riding, op: '==', value: true }, crossfade: 0.2, priority: 2 }
+      - { from: choose, to: glide, rule: { variable: gliding, op: '==', value: true }, crossfade: 0.2, priority: 3 }
+      - { from: choose, to: swim, rule: { variable: swimming, op: '==', value: true }, crossfade: 0.25, priority: 4 }
+      - { from: choose, to: crawl, rule: { variable: crawling, op: '==', value: true }, crossfade: 0.25, priority: 5 }
+      - { from: choose, to: fall, rule: { variable: airborne, op: '==', value: true }, crossfade: 0.15, priority: 6 }
+      - { from: choose, to: sneak_walk, rule: { all: [ { variable: sneaking, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, crossfade: 0.2, priority: 7 }
+      - { from: choose, to: sneak_idle, rule: { variable: sneaking, op: '==', value: true }, crossfade: 0.2, priority: 8 }
+      - { from: choose, to: run, rule: { all: [ { variable: sprinting, op: '==', value: true }, { variable: speed, op: '>', value: 0.3 } ] }, crossfade: 0.2, priority: 9 }
+      - { from: choose, to: walk, rule: { variable: speed, op: '>', value: 0.3 }, crossfade: 0.2, priority: 10 }
+      - { from: choose, to: idle, rule: { all: [] }, crossfade: 0.2, priority: 11 }

@@ -414,6 +414,55 @@ nodes:
   run:  { blend_space: mymod:goku/run }
 ```
 
+### The humanoid template: `crystalgraphics:humanoid`
+
+The engine ships a graph for any humanoid body, Minecraft's own set of states driven by the entity's properties: give
+it your clips in a child graph and an actor plays a full character with no graph of your own.
+
+```yaml
+# anim_graphs/mymod/knight.yaml
+_v: 1
+parent: crystalgraphics:humanoid
+nodes:
+  idle:       { clip: mymod:knight/idle }
+  walk:       { clip: mymod:knight/walk }
+  run:        { clip: mymod:knight/run }
+  sneak_idle: { clip: mymod:knight/crouch }
+  sneak_walk: { clip: mymod:knight/crouch_walk }
+  fall:       { clip: mymod:knight/fall }
+  swim:       { clip: mymod:knight/swim }
+  crawl:      { clip: mymod:knight/crawl }
+  glide:      { clip: mymod:knight/glide }
+  ride:       { clip: mymod:knight/sit }
+  sleep:      { clip: mymod:knight/sleep }
+  dead:       { clip: mymod:knight/death }
+  swing:      { clip: mymod:knight/swing }   # held at Minecraft's own swing progress, over the upper body
+```
+
+| Node | Plays while (`entity.*`), the first that holds | Loops |
+|---|---|---|
+| `dead` | `dead` | no |
+| `sleep` | `sleeping` | yes |
+| `ride` | `riding` | yes |
+| `glide` | `gliding` | yes |
+| `swim` | `swimming` | yes |
+| `crawl` | `crawling` | yes |
+| `fall` | `airborne` | yes |
+| `sneak_walk` | `sneaking` and `speed` over 0.3 | yes |
+| `sneak_idle` | `sneaking` | yes |
+| `run` | `sprinting` and `speed` over 0.3 | yes |
+| `walk` | `speed` over 0.3 blocks a second | yes |
+| `idle` | otherwise | yes |
+
+- **Each state leaves** once its own rule stops holding or a state above it starts, through a conduit, then into the
+  first state that holds.
+- **Over the states**: an `upper_body` linked layer (empty: the states' own pose), which an actor's `item_layers` fill
+  with a weapon's arms; an `UpperBody` slot; the swing, held at `entity.swing` (0 to 1) from the `spine_01` branch while
+  `entity.swinging`; and `DefaultSlot` over everything, for whole-body moves and reactions.
+- **The swing's mask names `spine_01`**, the standard humanoid's: a body with other bone names overrides `with_swing`'s
+  layers in its child, as any node.
+- **Bound as it is, it fails** naming one of its clips (`crystalgraphics:humanoid/<node>`): they are placeholders.
+
 ## Linked layers and linked graphs
 
 A **layer** is a named part of a graph that another graph may play instead: a sword's arms over a hero's locomotion,
