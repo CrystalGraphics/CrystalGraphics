@@ -15,6 +15,7 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.animation.graph.CgAnimGraph;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
+import com.crystalgraphics.tag.CgTagCounts;
 
 /**
  * The standard variables: everything an entity's {@link CgEntityState} says, named for a graph to read, so a graph needs
@@ -171,34 +172,49 @@ public final class CgEntityVariables {
      * }</pre>
      */
     public static CgAnimInstance.Update feed(CgEntityState state) {
-        return new Feed(Objects.requireNonNull(state, "state"));
+        return feed(state, new CgTagCounts());
+    }
+
+    /**
+     * As {@link #feed(CgEntityState)}, the graph's {@code tags:} bindings read from {@code tags}: the entity's owned
+     * tags, kept current by their owner (an actor's are {@code CgEntityTags}', on its side).
+     */
+    public static CgAnimInstance.Update feed(CgEntityState state, CgTagCounts tags) {
+        return new Feed(Objects.requireNonNull(state, "state"), Objects.requireNonNull(tags, "tags"));
     }
 
     private static final class Feed implements CgAnimInstance.Update {
 
         private final CgEntityState state;
+        private final CgTagCounts tags;
         @Nullable
         private CgAnimGraph bound;
-        private CgAnimVariable<?>[] targets = new CgAnimVariable<?>[0];
+        private CgAnimVariable<?>[] targets = new CgAnimVariable<?>[0], tagTargets = new CgAnimVariable<?>[0];
         private CgEntityVariable[] sources = new CgEntityVariable[0];
+        private CgAnimGraph.TagBinding[] tagSources = new CgAnimGraph.TagBinding[0];
 
-        Feed(CgEntityState state) {
+        Feed(CgEntityState state, CgTagCounts tags) {
             this.state = state;
+            this.tags = tags;
         }
 
         @Override
-        @SuppressWarnings("unchecked")
         public void update(CgAnimInstance anim, float seconds) {
             CgAnimGraph graph = anim.graph().graph();
             if (graph != bound) bind(graph);
-            for (int i = 0; i < targets.length; i++) {
-                float v = sources[i].reader().read(state);
-                CgAnimVariable<?> t = targets[i];
-                switch (t.type()) {
-                    case FLOAT -> anim.set((CgAnimVariable<Float>) t, v);
-                    case BOOL -> anim.set((CgAnimVariable<Boolean>) t, v != 0f);
-                    case INT -> anim.set((CgAnimVariable<Integer>) t, (int) v);
-                }
+            for (int i = 0; i < targets.length; i++) set(anim, targets[i], sources[i].reader().read(state));
+            for (int i = 0; i < tagTargets.length; i++) {
+                CgAnimGraph.TagBinding b = tagSources[i];
+                set(anim, tagTargets[i], b.as().value(tags.count(b.tag())));
+            }
+        }
+
+        @SuppressWarnings("unchecked")
+        private static void set(CgAnimInstance anim, CgAnimVariable<?> t, float v) {
+            switch (t.type()) {
+                case FLOAT -> anim.set((CgAnimVariable<Float>) t, v);
+                case BOOL -> anim.set((CgAnimVariable<Boolean>) t, v != 0f);
+                case INT -> anim.set((CgAnimVariable<Integer>) t, (int) v);
             }
         }
 
@@ -211,6 +227,14 @@ public final class CgEntityVariables {
             for (Map.Entry<String, CgEntityVariable> e : entity.entrySet()) {
                 targets[i] = graph.variables().get(graph.variable(e.getKey()));
                 sources[i++] = e.getValue();
+            }
+            Map<String, CgAnimGraph.TagBinding> byTag = graph.tags();
+            tagTargets = new CgAnimVariable<?>[byTag.size()];
+            tagSources = new CgAnimGraph.TagBinding[byTag.size()];
+            i = 0;
+            for (Map.Entry<String, CgAnimGraph.TagBinding> e : byTag.entrySet()) {
+                tagTargets[i] = graph.variables().get(graph.variable(e.getKey()));
+                tagSources[i++] = e.getValue();
             }
         }
     }

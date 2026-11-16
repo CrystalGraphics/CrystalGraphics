@@ -15,6 +15,7 @@ import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.frame.CgFrameBoundary;
 import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.sequence.net.CgSequenceNet;
+import com.crystalgraphics.world.CgEntityTags;
 import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
@@ -157,6 +158,7 @@ public final class CgNetwork {
         CgTagNet.install();
         CgCueNet.install();
         CgSequenceNet.install();
+        CgEntityTags.install();
         return true;
     }
 

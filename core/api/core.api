@@ -384,6 +384,7 @@ com/crystalgraphics/animation/graph/CgAnimGraph
   method public saves ()Ljava/util/Map;
   method public skeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public slots ()Ljava/util/List;
+  method public tags ()Ljava/util/Map;
   method public toString ()Ljava/lang/String;
   method public variable (Ljava/lang/String;)I
   method public variables ()Ljava/util/List;
@@ -398,6 +399,8 @@ com/crystalgraphics/animation/graph/CgAnimGraph$Builder
   method public layer (Lcom/crystalgraphics/animation/graph/CgAnimGraph$Layer;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public output (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public save (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
+  method public tag (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
+  method public tag (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public variables ([Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
 com/crystalgraphics/animation/graph/CgAnimGraph$Layer
   access public,final,record
@@ -415,6 +418,26 @@ com/crystalgraphics/animation/graph/CgAnimGraph$Layer
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimNode;[Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Layer;
+com/crystalgraphics/animation/graph/CgAnimGraph$TagAs
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOOL Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  field public,static,final COUNT Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  field public,static,final FLOAT Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  method public fits (Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;)Z
+  method public value (I)F
+  method public,static of (Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  method public,static values ()[Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+com/crystalgraphics/animation/graph/CgAnimGraph$TagBinding
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;)V
+  method public as ()Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;
+  method public tag ()Lcom/crystalgraphics/tag/CgGameplayTag;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/animation/graph/CgAnimGraphCodec
   access public,final
   extends java/lang/Object
@@ -17281,6 +17304,21 @@ com/crystalgraphics/tag/CgTagContainer
   method public size ()I
   method public tags ()Ljava/util/List;
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/tag/CgTagCounts
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public clear ()V
+  method public count (Lcom/crystalgraphics/tag/CgGameplayTag;)I
+  method public countAt (I)I
+  method public explicitCount (Lcom/crystalgraphics/tag/CgGameplayTag;)I
+  method public has (Lcom/crystalgraphics/tag/CgGameplayTag;)Z
+  method public set (Lcom/crystalgraphics/tag/CgTagCounts;)V
+  method public size ()I
+  method public tag (I)Lcom/crystalgraphics/tag/CgGameplayTag;
+  method public toString ()Ljava/lang/String;
+  method public update (Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
+  method public version ()I
 com/crystalgraphics/tag/CgTagException
   access public,final
   extends java/lang/RuntimeException
@@ -24326,6 +24364,19 @@ com/crystalgraphics/world/CgEntityState
   method public using (I)Z
   method public vehicle ()I
   method public verticalSpeed ()F
+com/crystalgraphics/world/CgEntityTags
+  access public,final
+  extends java/lang/Object
+  method public,static add (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)V
+  method public,static add (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)V
+  method public,static client (I)Lcom/crystalgraphics/tag/CgTagCounts;
+  method public,static count (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)I
+  method public,static hold (I)Lcom/crystalgraphics/tag/CgTagCounts;
+  method public,static install ()V
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/tag/CgTagCounts;
+  method public,static release (I)V
+  method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)Z
+  method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
 com/crystalgraphics/world/CgEntityVariable
   access public,final,record
   extends java/lang/Record
@@ -24394,6 +24445,7 @@ com/crystalgraphics/world/CgEntityVariables
   field public,static,final VERTICAL_SPEED Lcom/crystalgraphics/world/CgEntityVariable;
   method public,static all ()Ljava/util/Collection;
   method public,static feed (Lcom/crystalgraphics/world/CgEntityState;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
+  method public,static feed (Lcom/crystalgraphics/world/CgEntityState;Lcom/crystalgraphics/tag/CgTagCounts;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/world/CgEntityVariable;
 com/crystalgraphics/world/CgWorldQueries
   access public,final
@@ -24423,6 +24475,7 @@ com/crystalgraphics/world/actor/CgEntity
   method public pose (I)D
   method public present ()Z
   method public state ()Lcom/crystalgraphics/world/CgEntityState;
+  method public tags ()Lcom/crystalgraphics/tag/CgTagCounts;
   method public toString ()Ljava/lang/String;
   method public type ()Ljava/lang/String;
   method public x ()D

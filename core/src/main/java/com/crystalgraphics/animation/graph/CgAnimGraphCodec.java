@@ -25,6 +25,9 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.tag.CgGameplayTag;
+import com.crystalgraphics.tag.CgTagException;
+import com.crystalgraphics.tag.CgTagRegistry;
 import com.crystalgraphics.world.CgEntityVariable;
 import com.crystalgraphics.world.CgEntityVariables;
 
@@ -45,6 +48,8 @@ import com.crystalgraphics.world.CgEntityVariables;
  *   jog: { kind: sequence_player, clip: mymod:hero/jog, loop: true }
  * entity:
  *   run: entity.input               # set each frame by the entity's actor
+ * tags:
+ *   flying: { tag: mymod:state.flying }       # a bool: owned; an int: its count
  * }</pre>
  *
  * <pre>{@code
@@ -130,6 +135,22 @@ public final class CgAnimGraphCodec {
                 CgEntityVariable source = CgEntityVariables.of(String.valueOf(e.getValue()));
                 if (source == null) throw new CgAssetException(at + ": " + e.getValue() + " is no entity variable");
                 b.entity(v, source);
+            }
+        }
+        if (tree.get("tags") instanceof Map<?, ?> tags) {
+            for (Map.Entry<?, ?> e : tags.entrySet()) {
+                String name = String.valueOf(e.getKey()), at = id + ": tags." + name;
+                CgAnimVariable<?> v = r.variables.get(name);
+                if (v == null) throw new CgAssetException(at + ": the graph declares no variable " + name);
+                Map<?, ?> m = (Map<?, ?>) e.getValue();
+                CgGameplayTag tag;
+                try {
+                    tag = CgTagRegistry.global().require(r.string(at, m, "tag"));
+                } catch (CgTagException ex) {
+                    throw new CgAssetException(at + ".tag: " + ex.getMessage());
+                }
+                b.tag(v, tag, m.get("as") == null ? CgAnimGraph.TagAs.of(v.type())
+                        : CgAnimGraph.TagAs.valueOf(String.valueOf(m.get("as")).toUpperCase(Locale.ROOT)));
             }
         }
         if (tree.get("inputs") instanceof List<?> ins) for (Object in : ins) b.inputs(String.valueOf(in));
@@ -476,6 +497,17 @@ public final class CgAnimGraphCodec {
             Map<String, Object> entity = new LinkedHashMap<>();
             for (Map.Entry<String, CgEntityVariable> e : graph.entity().entrySet()) entity.put(e.getKey(), e.getValue().name());
             tree.put("entity", entity);
+        }
+        if (!graph.tags().isEmpty()) {
+            Map<String, Object> tags = new LinkedHashMap<>();
+            for (Map.Entry<String, CgAnimGraph.TagBinding> e : graph.tags().entrySet()) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("tag", e.getValue().tag().name());
+                CgAnimVariable<?> v = graph.variables().get(graph.variable(e.getKey()));
+                if (e.getValue().as() != CgAnimGraph.TagAs.of(v.type())) m.put("as", e.getValue().as().name().toLowerCase(Locale.ROOT));
+                tags.put(e.getKey(), m);
+            }
+            tree.put("tags", tags);
         }
         if (!graph.inputs().isEmpty()) tree.put("inputs", new ArrayList<>(graph.inputs()));
         tree.put("output", output);

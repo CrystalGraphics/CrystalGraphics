@@ -14,6 +14,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.world.CgEntityVariable;
 
 /**
@@ -51,6 +52,8 @@ import com.crystalgraphics.world.CgEntityVariable;
  *       and the graph does not declare, each fails, naming it.</li>
  *   <li>{@link Builder#entity} binds a variable to a standard one ({@code CgEntityVariables}): an entity actor then sets
  *       it every frame, and no code does.</li>
+ *   <li>{@link Builder#tag} binds a variable to a gameplay tag the entity owns ({@code CgEntityTags}): set every frame
+ *       from its count, as Unreal's gameplay tag property map sets a property.</li>
  *   <li>{@link #single} is a graph of one clip over the default slot: what an instance runs until it is given one.</li>
  * </ul>
  */
@@ -72,6 +75,42 @@ public final class CgAnimGraph {
     private final List<String> inputs;
     private final Map<String, Layer> layers;
     private final Map<String, CgEntityVariable> entity;
+    private final Map<String, TagBinding> tags;
+
+    /**
+     * How a tag's count becomes a variable's value: Unreal's choice by the property's type, named. {@code BOOL} whether
+     * it is owned, {@code COUNT} its count, {@code FLOAT} its count as a number.
+     */
+    public enum TagAs {
+        BOOL, COUNT, FLOAT;
+
+        /** What a variable of {@code type} takes when a binding says nothing. */
+        public static TagAs of(CgAnimVariable.Type type) {
+            return switch (type) {
+                case BOOL -> BOOL;
+                case INT -> COUNT;
+                case FLOAT -> FLOAT;
+            };
+        }
+
+        /** Whether a variable of {@code type} can take it: its own type, or a float, which takes any. */
+        public boolean fits(CgAnimVariable.Type type) {
+            return type == CgAnimVariable.Type.FLOAT || of(type) == this;
+        }
+
+        /** {@code count} as the value a variable holds. */
+        public float value(int count) {
+            return this == BOOL ? (count > 0 ? 1f : 0f) : count;
+        }
+    }
+
+    /** A variable's gameplay tag and how its count becomes the value. */
+    public record TagBinding(CgGameplayTag tag, TagAs as) {
+        public TagBinding {
+            Objects.requireNonNull(tag, "tag");
+            Objects.requireNonNull(as, "as");
+        }
+    }
 
     /**
      * A layer: a named part of the graph another graph may play instead, Unreal's anim layer function. Its output reads
@@ -113,12 +152,12 @@ public final class CgAnimGraph {
 
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
                         CgAnimNode output, CgSequencePlayerNode single) {
-        this(id, skeleton, variables, saves, output, single, List.of(), Map.of(), Map.of());
+        this(id, skeleton, variables, saves, output, single, List.of(), Map.of(), Map.of(), Map.of());
     }
 
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
                         CgAnimNode output, CgSequencePlayerNode single, List<String> inputs, Map<String, Layer> layers,
-                        Map<String, CgEntityVariable> entity) {
+                        Map<String, CgEntityVariable> entity, Map<String, TagBinding> tags) {
         this.id = id;
         this.skeleton = skeleton;
         this.inputs = List.copyOf(inputs);
@@ -140,6 +179,18 @@ public final class CgAnimGraph {
             }
         }
         this.entity = Collections.unmodifiableMap(new LinkedHashMap<>(entity));
+        for (Map.Entry<String, TagBinding> e : tags.entrySet()) {
+            Integer at = variableIndex.get(e.getKey());
+            if (at == null) throw new IllegalArgumentException(id + ": tags." + e.getKey() + " binds a variable the graph does not declare");
+            if (entity.containsKey(e.getKey())) {
+                throw new IllegalArgumentException(id + ": " + e.getKey() + " is bound both to an entity variable and to a tag");
+            }
+            if (!e.getValue().as().fits(this.variables.get(at).type())) {
+                throw new IllegalArgumentException(id + ": tags." + e.getKey() + ": " + this.variables.get(at) + " cannot take "
+                        + e.getValue().tag() + " as " + e.getValue().as().name().toLowerCase(Locale.ROOT));
+            }
+        }
+        this.tags = Collections.unmodifiableMap(new LinkedHashMap<>(tags));
         this.saves = Collections.unmodifiableMap(new LinkedHashMap<>(saves));
         this.output = Objects.requireNonNull(output, "output");
         this.single = single;
@@ -290,6 +341,11 @@ public final class CgAnimGraph {
         return entity;
     }
 
+    /** Its variables set each frame from a gameplay tag the entity owns, by variable name. */
+    public Map<String, TagBinding> tags() {
+        return tags;
+    }
+
     /** Its layers by name: what it plays itself, and what it offers another graph's layer nodes. */
     public Map<String, Layer> layers() {
         return layers;
@@ -315,6 +371,7 @@ public final class CgAnimGraph {
         private final List<String> inputs = new ArrayList<>();
         private final Map<String, Layer> layers = new LinkedHashMap<>();
         private final Map<String, CgEntityVariable> entity = new LinkedHashMap<>();
+        private final Map<String, TagBinding> tags = new LinkedHashMap<>();
         private CgAnimNode output;
 
         private Builder(String id, CgSkeleton skeleton) {
@@ -370,6 +427,29 @@ public final class CgAnimGraph {
             return this;
         }
 
+        /**
+         * Has {@code variable} set every frame from {@code tag}'s count on the entity an actor animates with this graph
+         * ({@code CgEntityTags}), as its type takes it: a bool whether the tag is owned, an int its count, a float the
+         * count. Unreal's gameplay tag property map.
+         *
+         * <pre>{@code
+         * builder.variables(FLYING).tag(FLYING, CgTagRegistry.global().require("mymod:state.flying"));
+         * }</pre>
+         *
+         * A tag counts the tags under it: {@code mymod:state.flying} is owned while {@code mymod:state.flying.fast} is.
+         */
+        public Builder tag(CgAnimVariable<?> variable, CgGameplayTag tag) {
+            return tag(variable, tag, TagAs.of(variable.type()));
+        }
+
+        /** As {@link #tag(CgAnimVariable, CgGameplayTag)}, its count taken {@code as} said: a float can take a bool. */
+        public Builder tag(CgAnimVariable<?> variable, CgGameplayTag tag, TagAs as) {
+            if (tags.put(variable.name(), new TagBinding(tag, as)) != null) {
+                throw new IllegalArgumentException(id + " binds " + variable.name() + " to a tag twice");
+            }
+            return this;
+        }
+
         /** Declares {@code layer}: its own, and one a graph linking this one's layers may take. */
         public Builder layer(Layer layer) {
             if (layers.put(layer.name(), layer) != null) throw new IllegalArgumentException(id + " declares layer " + layer.name() + " twice");
@@ -379,11 +459,12 @@ public final class CgAnimGraph {
         /**
          * @throws IllegalArgumentException for no output, a cycle, a node read twice, an unsaved cached pose, an
          *                                  undeclared variable, or a layer or input pose the graph does not declare,
-         *                                  or an entity binding to an undeclared variable or of a type it cannot take
+         *                                  or an entity or tag binding to an undeclared variable or of a type it
+         *                                  cannot take
          */
         public CgAnimGraph build() {
             if (output == null) throw new IllegalArgumentException(id + " has no output");
-            return new CgAnimGraph(id, skeleton, variables, saves, output, null, inputs, layers, entity);
+            return new CgAnimGraph(id, skeleton, variables, saves, output, null, inputs, layers, entity, tags);
         }
     }
 }

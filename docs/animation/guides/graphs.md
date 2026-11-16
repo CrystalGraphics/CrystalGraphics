@@ -95,6 +95,29 @@ anim.onUpdate(CgEntityVariables.feed(state));   // code with a CgEntityState of 
 - A graph's own variable keeps its name: a state machine's rule reads `speed`, never `entity.speed`, so the same graph
   runs fed by an entity or by a hand-written `onUpdate`.
 
+**A tag the entity owns** (`CgEntityTags`, [`docs/vfx/networking.md`](../../vfx/networking.md) § *Tags an entity
+owns*) feeds a variable the same way: Unreal's gameplay tag property map. A bool is whether the tag is owned, an int
+its count, a float its count; `as` says otherwise for a float. A tag counts the tags under it.
+
+```yaml
+variables:
+  flying: { type: bool }
+  stacks: { type: int }
+  stunned: { type: float }
+tags:
+  flying: { tag: mymod:state.flying }               # owned, mymod:state.flying.fast included
+  stacks: { tag: mymod:buff.rage }                  # its count
+  stunned: { tag: mymod:state.stunned, as: bool }   # 0 or 1, into a float a blend reads
+```
+
+```java
+builder.variables(FLYING).tag(FLYING, CgTagRegistry.global().require("mymod:state.flying"));
+anim.onUpdate(CgEntityVariables.feed(state, tags));     // without an actor: the tags you keep, a CgTagCounts
+```
+
+- **Each fails at load, naming it**: a tag no one declared, an undeclared variable, an `as` its type cannot take, or a
+  variable bound both to an entity variable and to a tag.
+
 ### The nodes
 
 | Node | Unreal | Does |

@@ -29,6 +29,9 @@ import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.tag.CgGameplayTag;
+import com.crystalgraphics.tag.CgTagCounts;
+import com.crystalgraphics.tag.CgTagRegistry;
 
 /** A graph's {@code entity:} bindings: fed from an entity's state each frame, written and read, refused at load. */
 public class CgEntityVariablesTest {
@@ -159,6 +162,56 @@ public class CgEntityVariablesTest {
             assertEquals(v, CgEntityVariables.of(v.name()));
         }
         assertTrue(seen.size() >= 40);
+    }
+
+    @Test
+    public void ownedTagsFeedBoolsCountsAndFloats() {
+        CgGameplayTag flying = CgTagRegistry.global().register("vartest:state.flying");
+        CgGameplayTag fast = CgTagRegistry.global().register("vartest:state.flying.fast");
+        CgAnimVariable<Boolean> isFlying = CgAnimVariable.bool("is_flying");
+        CgAnimVariable<Integer> stacks = CgAnimVariable.integer("stacks");
+        CgAnimVariable<Float> owned = CgAnimVariable.floating("owned");
+        CgAnimGraph graph = CgAnimGraph.builder("test:tags", BONES).variables(isFlying, stacks, owned)
+                .tag(isFlying, flying).tag(stacks, fast).tag(owned, flying, CgAnimGraph.TagAs.BOOL)
+                .output(CgRefPoseNode.create()).build();
+        CgTagCounts tags = new CgTagCounts();
+        CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
+        anim.onUpdate(CgEntityVariables.feed(new CgEntityState(), tags));
+        anim.tick(0.05f);
+        assertTrue(!anim.graph().is(isFlying));
+        tags.update(fast, 2);
+        anim.tick(0.05f);
+        assertTrue("a parent is owned through its child", anim.graph().is(isFlying));
+        assertEquals(2f, anim.graph().get(stacks), 0f);
+        assertEquals("a float taking the tag as a bool", 1f, anim.graph().get(owned), 0f);
+
+        String yaml = CgAssetYaml.write(CgAnimGraphCodec.toTree(graph), CgBodyKinds.ANIM_GRAPH);
+        assertTrue(yaml, yaml.contains("tag: vartest:state.flying") && yaml.contains("as: bool")
+                && !yaml.contains("as: count"));
+        CgAnimGraph data = CgAnimGraphCodec.compile(asset(yaml), null).graph(BONES, id -> null);
+        assertEquals(graph.tags(), data.tags());
+        assertEquals(yaml, CgAssetYaml.write(CgAnimGraphCodec.toTree(data), CgBodyKinds.ANIM_GRAPH));
+    }
+
+    @Test
+    public void aTagBindingFailsAtLoadNamingIt() {
+        CgTagRegistry.global().register("vartest:state.stunned");
+        String head = """
+                _v: 1
+                variables:
+                  stunned: { type: bool }
+                output: pose
+                nodes:
+                  pose: { kind: ref_pose }
+                """;
+        String[][] cases = {
+                {"tags:\n  stunned: { tag: vartest:state.stunnd }\n", "tags.stunned.tag"},
+                {"tags:\n  stunned: { tag: vartest:state.stunned, as: count }\n", "cannot take"}};
+        for (String[] c : cases) {
+            CgAssetException e = assertThrows(c[1], CgAssetException.class,
+                    () -> CgAnimGraphCodec.compile(asset(head + c[0]), null).graph(BONES, id -> null));
+            assertTrue(e.getMessage(), e.getMessage().contains(c[1]));
+        }
     }
 
     /** A host whose one entity does what the test sets. */

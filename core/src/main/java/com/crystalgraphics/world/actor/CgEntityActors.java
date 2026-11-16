@@ -24,6 +24,7 @@ import com.crystalgraphics.animation.CgAnimation;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgEntityTags;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -474,6 +475,8 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actor.entity = entity;
         actor.server = world().server();
         actor.host = host;
+        entity.heldTags = !(actor.server && host != null);
+        entity.tags = entity.heldTags ? CgEntityTags.hold(id) : CgEntityTags.of(host);
         CgScene scene = actor.scene();
         actor.root = scene.root().spawn();
         Live l = new Live(entity, actor, !r.keepVanillaModel, r, host);
@@ -489,6 +492,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         } catch (RuntimeException e) {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
             actor.removeAll();
+            if (entity.heldTags) CgEntityTags.release(id);
             return false;
         }
         order.add(l);
@@ -522,6 +526,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             LOGGER.error("the actor of {} failed while removed", l.entity, e);
         }
         l.actor.removeAll();
+        if (l.entity.heldTags) CgEntityTags.release(l.entity.id());
     }
 
     private void clear() {

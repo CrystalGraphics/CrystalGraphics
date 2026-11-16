@@ -1,6 +1,7 @@
 package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.tag.CgTagCounts;
 import com.crystalgraphics.world.CgEntityState;
 
 /**
@@ -26,6 +27,10 @@ public final class CgEntity {
     private final String type;
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     final CgEntityState state = new CgEntityState();
+    /** Its owned tags, on its side: the server's counts, or a client's mirror of them. Set at spawn. */
+    CgTagCounts tags = new CgTagCounts();
+    /** Whether {@link #tags} is a client's mirror held for it, let go when its actor ends. */
+    boolean heldTags;
     int flags;
     boolean present;
     long hostFrame = -1;
@@ -82,6 +87,14 @@ public final class CgEntity {
      */
     public CgEntityState state() {
         return state;
+    }
+
+    /**
+     * The gameplay tags it owns, with counts ({@code CgEntityTags}): on a server its own, on a client what its server last
+     * sent. Read them; change them on the server through {@code CgEntityTags.add}.
+     */
+    public CgTagCounts tags() {
+        return tags;
     }
 
     /** Its state bits ({@link CgEntityQuery#ALIVE}, {@link CgEntityQuery#SNEAKING}, ...). */

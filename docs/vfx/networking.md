@@ -69,6 +69,30 @@ CgGameplayTag tag = CgTagNet.fromServer().fromWire(in.readVarInt());   // null: 
 - A client missing a tag the server has logs it once; its index reads as `null`.
 - `CgTagLink.bits()` is the width that holds every index and `invalid()`, the index meaning "no tag".
 
+## Tags an entity owns
+
+`CgEntityTags` gives any of the game's entities gameplay tags with counts, on the server, and every client tracking the
+entity is sent them: Unreal's loose gameplay tags on an ability system component. A tag added twice is owned until
+removed twice, so two sources can grant one tag; asked about a tag, the counts include every tag under it.
+
+```java
+static final CgGameplayTag FLYING = CgTagRegistry.global().register("mymod:state.flying");
+static final CgGameplayTag FAST = CgTagRegistry.global().register("mymod:state.flying.fast");
+
+CgEntityTags.add(entity, FAST);                     // server
+CgEntityTags.count(entity, FLYING);                 // 1: its child counts
+CgEntityTags.remove(entity, FAST);
+CgEntityTags.client(entityId).has(FLYING);          // a client: what the server last sent
+```
+
+- **A graph reads them with no code**: its `tags:` block ([`../animation/guides/graphs.md`](../animation/guides/graphs.md)
+  § *Variables an entity fills*) sets a variable from a tag's count each frame, on both sides.
+- They cross the wire as the table's indices, above: declare a tag before setting it.
+- **They end with the entity**: its death, its leaving the level or its dimension. A client joining later is sent the
+  counts as they stand.
+- `remove` of a tag the entity does not own explicitly answers false and changes nothing: a parent is never removed
+  through its child.
+
 ## Cues: what a gameplay moment plays
 
 A cue is what plays when gameplay says *this happened*: a hit, a charge, a beam. Gameplay names it by its tag and
