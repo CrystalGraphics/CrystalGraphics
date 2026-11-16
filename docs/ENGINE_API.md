@@ -264,11 +264,12 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   at, `outputWidth()`/`outputHeight()` its target's; every scene texture and history is the smaller size, `OVERLAY` the
   full one. A view whose host draws a world of its own (Minecraft's: `CgHostFrame.drawsWorld()`) draws at 100%, warned
   once; the harness and `renderPicture`/`renderInto` views draw at any.
-- **`antiAliasing(CgAntiAliasing)`** picks the temporal step under the `temporalAA` show flag: `TAA` (the default)
-  resolves at the size drawn, and a view below 100% is then stretched by its upscale filter; `TSR` rebuilds a world
-  drawn at 25-100% to the full size from its jittered frames (temporal super resolution), and what the chain draws after
-  it runs at the output size. The player's `CgGraphicsSettings.ANTI_ALIASING` sets how much TSR does where it drops a
-  pixel's history.
+- **`antiAliasing(CgAntiAliasing)`** picks the temporal step under the `temporalAA` show flag: `TSR` (the default)
+  rebuilds a world drawn at 25-100% to the full size from its jittered frames (temporal super resolution), and what the
+  chain draws after it runs at the output size; `TAA` resolves at the size drawn, and a view below 100% is then
+  stretched by its upscale filter. The player's `CgGraphicsSettings.ANTI_ALIASING` sets how much TSR does: Medium adds
+  spatial anti-aliasing and history resurrection, High the flicker heuristic and the reprojection field, Ultra a history
+  at twice the output size. Its GPU cost at a 1440p output is `temporal-upscale-timing`'s.
 - The main view's camera, size and environment are its host's, refilled each frame: read them, never set them.
 - `textures()` and `publish`/`read` (`CgViewKey`) reset when the view's draw begins: they hand values within one
   draw, from one stage to a later one. A hand-off across frames goes in `state()` (`CgViewState`).

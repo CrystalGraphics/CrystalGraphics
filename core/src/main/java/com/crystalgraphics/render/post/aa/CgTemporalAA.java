@@ -10,6 +10,7 @@ import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;
 
@@ -46,6 +47,7 @@ public final class CgTemporalAA implements CgUpscaler {
     /** The resolved colour, out of the history into the chain's picture. */
     public static final String OUTPUT = "crystalgraphics:shaders/post/aa/taa_output.shader";
     private static final CgViewState.HistoryKey HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa");
+    private static final int GPU_RESOLVE = CgGpuTrace.name("post.taa.resolve"), GPU_OUTPUT = CgGpuTrace.name("post.taa.output");
     /** The jitter's sequence: Unreal's {@code r.TemporalAASamples} 8. */
     private static final int SAMPLES = 8;
     /** This frame's least share of the blend, its share once a texel moves 8 texels a frame, and where its fetch is ambiguous. */
@@ -148,13 +150,13 @@ public final class CgTemporalAA implements CgUpscaler {
         if (velocity != null) resolve.sampler("_Velocity", 1, velocity);
         if (responsive != null) resolve.sampler("_Responsive", 2, responsive);
         CgScreenTexture out = ctx.texture("cg.taa.out", input.width(), input.height(), CgFormat.RGBA16_FLOAT);
-        ctx.screen(resolve).name("taa.resolve").from(input).reads(history.previous()).reads(velocity).reads(responsive)
+        ctx.screen(resolve).name("taa.resolve").timed(GPU_RESOLVE).from(input).reads(history.previous()).reads(velocity).reads(responsive)
                 .reads(ctx.depth()).into(CgScreenTexture.of(history));
         // The chain may draw over its picture in place: it gets a copy, without the history's age
         output.sampler("_History", 0, history).vec4("_Sharpen", sharpness(), covers, 0f, 0f);
         if (velocity != null) output.sampler("_Velocity", 1, velocity);
         if (responsive != null) output.sampler("_Responsive", 2, responsive);
-        ctx.screen(output).name("taa.output").from(input).reads(history).reads(velocity).reads(responsive).into(out);
+        ctx.screen(output).name("taa.output").timed(GPU_OUTPUT).from(input).reads(history).reads(velocity).reads(responsive).into(out);
         return out;
     }
 }

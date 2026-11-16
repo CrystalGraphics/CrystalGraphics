@@ -102,13 +102,20 @@ public final class CgScreenPass {
         return this;
     }
 
-    /** Engine side: the material's pass to draw, rather than its first; a GPU zone to time it under. */
+    /** Engine side: the material's pass to draw, rather than its first. */
     CgScreenPass pipeline(CgPipeline pipeline) {
         this.pipeline = pipeline;
         return this;
     }
 
-    CgScreenPass timed(int zone) {
+    /**
+     * Times the pass under GPU zone {@code zone} ({@code CgGpuTrace.name}), as the chain's own passes are.
+     *
+     * <pre>{@code
+     * ctx.screen(resolve).name("taa.resolve").timed(GPU_RESOLVE).from(input).into(out);
+     * }</pre>
+     */
+    public CgScreenPass timed(int zone) {
         this.zone = zone;
         return this;
     }

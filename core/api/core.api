@@ -12747,6 +12747,7 @@ com/crystalgraphics/render/post/CgScreenPass
   method public name (Ljava/lang/String;)Lcom/crystalgraphics/render/post/CgScreenPass;
   method public over (Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public reads (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/CgScreenPass;
+  method public timed (I)Lcom/crystalgraphics/render/post/CgScreenPass;
   method public weight (F)Lcom/crystalgraphics/render/post/CgScreenPass;
 com/crystalgraphics/render/post/aa/CgTemporalAA
   access public,final
