@@ -158,7 +158,7 @@ public class CgEntityVariablesTest {
     public void everyNameIsUniqueAndUnderEntity() {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (CgEntityVariable v : CgEntityVariables.all()) {
-            assertTrue(v.name(), v.name().startsWith("entity.") && seen.add(v.name()));
+            assertTrue(v.name(), (v.name().startsWith("entity.") || v.name().contains(":")) && seen.add(v.name()));
             assertEquals(v, CgEntityVariables.of(v.name()));
         }
         assertTrue(seen.size() >= 40);
@@ -212,6 +212,41 @@ public class CgEntityVariablesTest {
                     () -> CgAnimGraphCodec.compile(asset(head + c[0]), null).graph(BONES, id -> null));
             assertTrue(e.getMessage(), e.getMessage().contains(c[1]));
         }
+    }
+
+    private static final CgEntityVariable GEAR = CgEntityVariables.register("vartest:gear", CgAnimVariable.Type.INT,
+            (state, entity) -> entity instanceof int[] g ? g[0] : 0);
+
+    @Test
+    public void aModsVariableIsReadOffTheEntityAndNamedInAFile() {
+        int[] host = {3};                                   // stands for the loader's entity a mod reads its state from
+        CgAnimVariable<Integer> gear = CgAnimVariable.integer("gear");
+        String yaml = """
+                _v: 1
+                variables:
+                  gear: { type: int }
+                entity:
+                  gear: vartest:gear
+                output: pose
+                nodes:
+                  pose: { kind: ref_pose }
+                """;
+        CgAnimGraph graph = CgAnimGraphCodec.compile(asset(yaml), null).graph(BONES, id -> null);
+        assertEquals(GEAR, graph.entity().get("gear"));
+        CgEntityState state = new CgEntityState();
+        CgTagCounts tags = new CgTagCounts();
+        CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
+        anim.onUpdate(CgEntityVariables.feed(new CgEntityVariables.Source() {
+            @Override public CgEntityState state() { return state; }
+            @Override public CgTagCounts tags() { return tags; }
+            @Override public Object entity() { return host; }
+            @Override public float[] replicated() { return null; }
+        }));
+        anim.tick(0.05f);
+        assertEquals(3f, anim.graph().get(gear), 0f);
+        host[0] = 4;
+        anim.tick(0.05f);
+        assertEquals(4f, anim.graph().get(gear), 0f);
     }
 
     /** A host whose one entity does what the test sets. */

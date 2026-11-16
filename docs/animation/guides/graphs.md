@@ -95,6 +95,24 @@ anim.onUpdate(CgEntityVariables.feed(state));   // code with a CgEntityState of 
 - A graph's own variable keeps its name: a state machine's rule reads `speed`, never `entity.speed`, so the same graph
   runs fed by an entity or by a hand-written `onUpdate`.
 
+**A mod's own value** joins them under its namespace, read off the loader's entity on each side, or read on the
+server alone and sent to the clients that see the entity (`replicated()`, for what only the server knows). A graph binds
+it as it binds a standard one.
+
+```java
+public static final CgEntityVariable KI = CgEntityVariables.register("mymod:ki", CgAnimVariable.Type.FLOAT,
+        (state, entity) -> Mana.ki(entity)).replicated();
+```
+
+```yaml
+entity:
+  ki: mymod:ki
+```
+
+- A mod's name is `namespace:path`, registered at load before a graph naming it loads, once. `entity.` is the engine's.
+- A replicated value is sent when it changes, once a tick, for each entity an actor animates on the server; a client
+  reads 0 until the first arrives, and a client joining later is sent it as it stands.
+
 **A tag the entity owns** (`CgEntityTags`, [`docs/vfx/networking.md`](../../vfx/networking.md) § *Tags an entity
 owns*) feeds a variable the same way: Unreal's gameplay tag property map. A bool is whether the tag is owned, an int
 its count, a float its count; `as` says otherwise for a float. A tag counts the tags under it.

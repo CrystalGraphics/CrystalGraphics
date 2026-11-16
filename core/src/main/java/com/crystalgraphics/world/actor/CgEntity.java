@@ -1,8 +1,12 @@
 package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import javax.annotation.Nullable;
+
 import com.crystalgraphics.tag.CgTagCounts;
+import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityState;
+import com.crystalgraphics.world.CgEntityVariables;
 
 /**
  * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
@@ -21,7 +25,7 @@ import com.crystalgraphics.world.CgEntityState;
  *   <li>Its numbers hold until the next frame's refresh; a field holding a {@code CgEntity} sees them change.</li>
  * </ul>
  */
-public final class CgEntity {
+public final class CgEntity implements CgEntityVariables.Source {
 
     private final int id;
     private final String type;
@@ -31,6 +35,12 @@ public final class CgEntity {
     CgTagCounts tags = new CgTagCounts();
     /** Whether {@link #tags} is a client's mirror held for it, let go when its actor ends. */
     boolean heldTags;
+    /** The server's entity, on a server; null on a client, which looks its own up. */
+    @Nullable
+    Object serverHost;
+    /** On a client, the replicated variables' values its server sent; null on a server. */
+    @Nullable
+    float[] replicated;
     int flags;
     boolean present;
     long hostFrame = -1;
@@ -85,6 +95,7 @@ public final class CgEntity {
      * What it is doing this frame, for its animation: speed, ground and air, swimming, riding, its hands' items and arm
      * poses, uses and swings, and this frame's events (a jump, a landing, a hit). The same on every version and side.
      */
+    @Override
     public CgEntityState state() {
         return state;
     }
@@ -93,8 +104,26 @@ public final class CgEntity {
      * The gameplay tags it owns, with counts ({@code CgEntityTags}): on a server its own, on a client what its server last
      * sent. Read them; change them on the server through {@code CgEntityTags.add}.
      */
+    @Override
     public CgTagCounts tags() {
         return tags;
+    }
+
+    /**
+     * The loader's own entity on this side: the server's, or the client's copy looked up by id; null where the client
+     * has none loaded. What a mod's entity variable reads.
+     */
+    @Override
+    @Nullable
+    public Object entity() {
+        return serverHost != null ? serverHost : CgEntityQueries.client().entity(id);
+    }
+
+    /** On a client, the server's replicated variable values; null on a server. */
+    @Override
+    @Nullable
+    public float[] replicated() {
+        return replicated;
     }
 
     /** Its state bits ({@link CgEntityQuery#ALIVE}, {@link CgEntityQuery#SNEAKING}, ...). */

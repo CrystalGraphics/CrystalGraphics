@@ -24378,20 +24378,19 @@ com/crystalgraphics/world/CgEntityTags
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)Z
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
 com/crystalgraphics/world/CgEntityVariable
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;Lcom/crystalgraphics/world/CgEntityVariable$Reader;)V
+  access public,final
+  extends java/lang/Object
   method public feeds (Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;)Z
+  method public isReplicated ()Z
   method public name ()Ljava/lang/String;
   method public reader ()Lcom/crystalgraphics/world/CgEntityVariable$Reader;
+  method public replicated ()Lcom/crystalgraphics/world/CgEntityVariable;
+  method public toString ()Ljava/lang/String;
   method public type ()Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/world/CgEntityVariable$Reader
   access public,abstract,interface
   extends java/lang/Object
-  method public,abstract read (Lcom/crystalgraphics/world/CgEntityState;)F
+  method public,abstract read (Lcom/crystalgraphics/world/CgEntityState;Ljava/lang/Object;)F
 com/crystalgraphics/world/CgEntityVariables
   access public,final
   extends java/lang/Object
@@ -24444,9 +24443,23 @@ com/crystalgraphics/world/CgEntityVariables
   field public,static,final USING Lcom/crystalgraphics/world/CgEntityVariable;
   field public,static,final VERTICAL_SPEED Lcom/crystalgraphics/world/CgEntityVariable;
   method public,static all ()Ljava/util/Collection;
+  method public,static client (ILcom/crystalgraphics/world/CgEntityVariable;)F
   method public,static feed (Lcom/crystalgraphics/world/CgEntityState;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
   method public,static feed (Lcom/crystalgraphics/world/CgEntityState;Lcom/crystalgraphics/tag/CgTagCounts;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
+  method public,static feed (Lcom/crystalgraphics/world/CgEntityVariables$Source;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
+  method public,static hold (I)[F
+  method public,static install ()V
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/world/CgEntityVariable;
+  method public,static register (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;Lcom/crystalgraphics/world/CgEntityVariable$Reader;)Lcom/crystalgraphics/world/CgEntityVariable;
+  method public,static release (I)V
+  method public,static serve (Ljava/lang/Object;Lcom/crystalgraphics/world/CgEntityState;)V
+com/crystalgraphics/world/CgEntityVariables$Source
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract entity ()Ljava/lang/Object;
+  method public,abstract replicated ()[F
+  method public,abstract state ()Lcom/crystalgraphics/world/CgEntityState;
+  method public,abstract tags ()Lcom/crystalgraphics/tag/CgTagCounts;
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object
@@ -24465,7 +24478,9 @@ com/crystalgraphics/world/CgWorldQueries
 com/crystalgraphics/world/actor/CgEntity
   access public,final
   extends java/lang/Object
+  implements com/crystalgraphics/world/CgEntityVariables$Source
   method public bodyYaw ()F
+  method public entity ()Ljava/lang/Object;
   method public flag (I)Z
   method public flags ()I
   method public headYaw ()F
@@ -24474,6 +24489,7 @@ com/crystalgraphics/world/actor/CgEntity
   method public pitch ()F
   method public pose (I)D
   method public present ()Z
+  method public replicated ()[F
   method public state ()Lcom/crystalgraphics/world/CgEntityState;
   method public tags ()Lcom/crystalgraphics/tag/CgTagCounts;
   method public toString ()Ljava/lang/String;

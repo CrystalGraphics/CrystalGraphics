@@ -190,7 +190,7 @@ public abstract class CgEntityActor {
 
     /** Has {@code body}'s graph's {@code entity} bindings set from this actor's entity, each frame before it runs. */
     final void feed(CgSkeletalMeshComponent body) {
-        body.anim().onUpdate(CgEntityVariables.feed(entity.state(), entity.tags()));
+        body.anim().onUpdate(CgEntityVariables.feed(entity));
     }
 
     /** Removes what it added and its prefab, the root last. */
