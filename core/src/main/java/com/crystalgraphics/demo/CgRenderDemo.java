@@ -79,6 +79,7 @@ import java.util.function.Supplier;
  * lights    CgLightsDemo: a light show of every kind of world light, particle lights and lightning; best at night
  * shadows   CgShadowsDemo: every caster on every receiver, our objects, the player, mobs and Minecraft's blocks and torches
  * anim      CgAnimDemo: a station per animation feature, the bundled humanoids beside actors.yaml's kit characters
+ * dof       CgDepthOfFieldDemo: depth of field to play with, its lens on the arrows, F, B, Home, End, PgUp/PgDn, Insert
  *
  * H    the HUD on or off
  * N    the next scene, placed ahead of the camera; Shift+N the previous one
@@ -123,7 +124,7 @@ public final class CgRenderDemo {
     private static final Logger LOGGER = LogManager.getLogger("CgRenderDemo");
 
     private static final String MODE = CgVar.text("crystalgraphics.demo", "", CgVar.DEV | CgVar.RESTART,
-            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass, text, anim) starts on it;"
+            "false draws no world demo; a scene's name (blasts, beams, modules, fluid, blast, collision, lights, shadows, glass, text, anim, dof) starts on it;"
                     + " empty on"
                     + " blasts.").get();
     private static final boolean ENABLED = !"false".equals(MODE);
@@ -200,6 +201,7 @@ public final class CgRenderDemo {
             new Kind("glass", 22, this::glass),
             new Kind("text", 14, this::text),
             new Kind("anim", 6, this::anim),
+            new Kind("dof", 6, this::dof),
     };
 
     private boolean installed;
@@ -240,7 +242,7 @@ public final class CgRenderDemo {
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
             CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X},
-            CgVfxDemoControls.KEYS, CgAnimDemo.KEYS);
+            CgVfxDemoControls.KEYS, CgAnimDemo.KEYS, CgDepthOfFieldDemo.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
     private boolean hudShown = true;
@@ -750,6 +752,46 @@ public final class CgRenderDemo {
             @Override
             public boolean press(int key, boolean shift) {
                 return anim.press(key, shift);
+            }
+        };
+    }
+
+    private Scene dof() {
+        CgDepthOfFieldDemo dof = new CgDepthOfFieldDemo();
+        return new Scene() {
+            @Override
+            public void submit(CgScene scene, CgCamera view, double x, double y, double z, double seconds) {
+                dof.submit(scene, view, x, y, z, seconds);
+            }
+
+            @Override
+            public void precache() {
+                dof.precache();
+            }
+
+            @Override
+            public boolean ready() {
+                return dof.ready();
+            }
+
+            @Override
+            public void clear() {
+                dof.clear();
+            }
+
+            @Override
+            public void delete() {
+                dof.delete();
+            }
+
+            @Override
+            public String hud() {
+                return dof.hud();
+            }
+
+            @Override
+            public boolean press(int key, boolean shift) {
+                return dof.press(key, shift);
             }
         };
     }
