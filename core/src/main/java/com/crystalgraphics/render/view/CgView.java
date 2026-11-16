@@ -518,13 +518,14 @@ public final class CgView {
     /**
      * Engine side, the post renderer's: whether this frame's world passes are drawn jittered, from its prepare to the
      * end of its chain, so what draws after (the overlay) is not, and over how many frames the sequence runs. Sets this
-     * frame's offset, a Halton (2, 3) point within half a texel of the size the world draws at, from its frame index.
+     * frame's offset, a Halton (2, 3) point within half a texel of the size the world draws at; the sequence starts over
+     * on a camera cut ({@link CgViewState#jitterIndex}).
      */
     public void jittering(boolean on, int samples) {
         jittering = on && width > 0 && height > 0;
         jitterSamples = Math.max(1, samples);
         if (!jittering) return;
-        int i = Math.floorMod(state.frameIndex(), jitterSamples) + 1;
+        int i = state.jitterIndex(jitterSamples, !historyValid) + 1;
         jitterX = (halton(i, 2) - 0.5f) * 2f / width;
         jitterY = (halton(i, 3) - 0.5f) * 2f / height;
     }

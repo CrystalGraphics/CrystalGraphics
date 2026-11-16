@@ -83,6 +83,8 @@ public final class CgViewState {
     private final boolean keepsHistory;
     private long frame = Long.MIN_VALUE, previousFrame = Long.MIN_VALUE;
     private int frameIndex = -1;
+    private int jitterIndex = -1;
+    private long jitterFrame = Long.MIN_VALUE;
 
     CgViewState(boolean keepsHistory) {
         this.keepsHistory = keepsHistory;
@@ -123,6 +125,18 @@ public final class CgViewState {
     }
 
     /**
+     * Engine side: this frame's place, from 0, in a jitter sequence of {@code samples}: last frame's plus one, wrapping,
+     * and 0 on a camera cut (Unreal's {@code TemporalAASampleIndex}). Advances once per host frame, however often asked.
+     */
+    public int jitterIndex(int samples, boolean cut) {
+        if (jitterFrame != frame) {
+            jitterFrame = frame;
+            jitterIndex = cut || jitterIndex + 1 >= samples ? 0 : jitterIndex + 1;
+        }
+        return jitterIndex;
+    }
+
+    /**
      * {@code key}'s history in this view, of {@code desc}: its storage kept from frame to frame while the description
      * holds, made again (the old released in {@code recording}) when it changes. {@link CgGraphTexture#history}'s rules
      * hold: a raster pass into it or a dispatch writing it as an image makes its next version, {@code previous()} samples
@@ -150,8 +164,8 @@ public final class CgViewState {
     /** Every record and stamp dropped: at context teardown, when what they held is gone with the context. */
     void forget() {
         records.clear();
-        frame = previousFrame = Long.MIN_VALUE;
-        frameIndex = -1;
+        frame = previousFrame = jitterFrame = Long.MIN_VALUE;
+        frameIndex = jitterIndex = -1;
     }
 
     /**

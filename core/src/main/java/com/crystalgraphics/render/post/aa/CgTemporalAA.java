@@ -46,11 +46,6 @@ public final class CgTemporalAA implements CgUpscaler {
     /** The resolved colour, out of the history into the chain's picture. */
     public static final String OUTPUT = "crystalgraphics:shaders/post/aa/taa_output.shader";
     private static final CgViewState.HistoryKey HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa");
-    /** Bloom's light averaged over the jitter's frames ({@link #glow}). */
-    public static final String GLOW = "crystalgraphics:shaders/post/aa/taa_glow.shader";
-    private static final CgViewState.HistoryKey GLOW_HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa_glow");
-    /** The glow's share of each frame: two jitter cycles' worth, so a light one sample in eight lands on holds still. */
-    private static final float GLOW_SHARE = 1f / 16f;
     /** The jitter's sequence: Unreal's {@code r.TemporalAASamples} 8. */
     private static final int SAMPLES = 8;
     /** This frame's least share of the blend, its share once a texel moves 8 texels a frame, and where its fetch is ambiguous. */
@@ -64,7 +59,8 @@ public final class CgTemporalAA implements CgUpscaler {
     private static final float SHARPEN_STOPS = -0.202f;
     private static volatile boolean sharpening = true;
 
-    private CgMaterialInstance resolve, output, glow;
+    private final CgTemporalGlow glow = new CgTemporalGlow(new CgViewState.HistoryKey("crystalgraphics:taa_glow"));
+    private CgMaterialInstance resolve, output;
 
     /**
      * The resolve and its jitter on or off together on {@code view}: a developer's switch, the harness's and the render
@@ -106,37 +102,10 @@ public final class CgTemporalAA implements CgUpscaler {
         return view.showFlags().temporalAA() && view.textures().linear();
     }
 
-    /**
-     * Bloom's light: {@code input}'s excess past {@code threshold}, this frame's jittered picture's, followed by the
-     * resolve's motion and averaged over the jitter's frames, into a history of the view's it answers. Thresholded after
-     * the resolve, a light thinner than a texel falls under the threshold at its coverage and loses its glow; this keeps
-     * the glow it has without temporal AA. {@code input} is the picture {@link #apply} resolved, {@code resolved} what it
-     * answered: the glow is held under it, so a light that moved leaves no glow behind.
-     *
-     * <pre>{@code
-     * CgScreenTexture before = picture;
-     * picture = temporalAA.apply(ctx, picture);
-     * CgGraphTexture light = temporalAA.bloomLight(ctx, before, picture, bloomThreshold);   // bloom's source, the excess taken
-     * }</pre>
-     */
+    /** Bloom's light averaged over the jitter's frames ({@link CgTemporalGlow}). */
     @Override
     public CgGraphTexture bloomLight(CgPostContext ctx, CgScreenTexture input, CgScreenTexture resolved, float threshold) {
-        if (glow == null) glow = CgMaterial.load(GLOW).instance();
-        CgView view = ctx.view();
-        CgViewState state = view.state();
-        CgGraphTexture history = state.history(GLOW_HISTORY, new CgTextureDesc(input.width(), input.height(), CgFormat.RGBA16_FLOAT),
-                ctx.recording());
-        boolean blend = !state.fresh(GLOW_HISTORY) && view.historyValid();
-        CgGraphTexture velocity = ctx.scene().velocity();
-        glow.sampler("_History", 0, history.previous()).vec4("_Glow", GLOW_SHARE, threshold, blend ? 1f : 0f, 0f)
-                .vec4("_Jitter", view.jitterNdcX(), view.jitterNdcY(), coversEngine(ctx, velocity), 0f);
-        CgGraphTexture responsive = ctx.scene().responsive();
-        if (velocity != null) glow.sampler("_Velocity", 1, velocity);
-        glow.sampler("_Resolved", 2, resolved.texture());
-        if (responsive != null) glow.sampler("_Responsive", 3, responsive);
-        ctx.screen(glow).name("taa.glow").from(input).reads(history.previous()).reads(velocity).reads(responsive)
-                .reads(ctx.depth()).reads(resolved.texture()).into(CgScreenTexture.of(history));
-        return history;
+        return glow.record(ctx, input, resolved, threshold);
     }
 
     @Override
@@ -167,7 +136,7 @@ public final class CgTemporalAA implements CgUpscaler {
                 ctx.recording());
         boolean blend = !state.fresh(HISTORY) && view.historyValid();
         CgGraphTexture velocity = ctx.scene().velocity();
-        float covers = coversEngine(ctx, velocity);
+        float covers = CgTemporalGlow.coversEngine(ctx, velocity);
         resolve.sampler("_History", 0, history.previous()).vec4("_Resolve", SHARE, SHARE_MOVING, blend ? 1f : 0f, SHARE_AMBIGUOUS)
                 .vec4("_Jitter", view.jitterNdcX(), view.jitterNdcY(), covers, 0f);
         CgGraphTexture responsive = ctx.scene().responsive();
@@ -182,13 +151,5 @@ public final class CgTemporalAA implements CgUpscaler {
         if (responsive != null) output.sampler("_Responsive", 2, responsive);
         ctx.screen(output).name("taa.output").from(input).reads(history).reads(velocity).reads(responsive).into(out);
         return out;
-    }
-
-    /**
-     * 1 where every engine solid wrote velocity this frame ({@code requestVelocityWithStill}): a texel nothing wrote round
-     * is then one the engine did not draw, which comes through as it came. 0 without it: every texel is the engine's.
-     */
-    private static float coversEngine(CgPostContext ctx, @Nullable CgGraphTexture velocity) {
-        return velocity != null && ctx.view().textures().velocityWithStill() ? 1f : 0f;
     }
 }

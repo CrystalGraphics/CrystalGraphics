@@ -7,6 +7,8 @@
 
 // The largest a float of the history's R11G11B10 holds (its 10-bit channel's top).
 const float TSR_MAX_10BIT_FLOAT = 64512.0;
+// The least luma box, in the shading space, whose aliasing is worth anti-aliasing spatially.
+const float TSR_MIN_ALIASING_LUMA = 0.05;
 
 vec2 tsr_screen(vec2 pixel, vec4 size) {
     return (pixel + 0.5) * size.zw * 2.0 - 1.0;
@@ -53,6 +55,23 @@ float tsr_tone_weight(float luma4) {
 
 float tsr_tone_weight(vec3 c) {
     return tsr_tone_weight(tsr_luma4(c));
+}
+
+// The luma the spatial anti-aliasing follows edges in: Rec. 601's, in x / (x + 0.5).
+float tsr_spatial_luma(vec3 linear) {
+    float luma = dot(linear, vec3(0.299, 0.587, 0.114));
+    return luma / (0.5 + luma);
+}
+
+// The spatial anti-aliasing's offset across an edge, -0.5 to 0.5 input pixels an axis, in 4 bits each (x low, y high;
+// 8 is no offset, steps of 1/14).
+uint tsr_encode_offset(vec2 offset) {
+    uvec2 q = uvec2(clamp(ivec2(round(offset * 14.0)) + 8, 1, 15));
+    return q.x | (q.y << 4u);
+}
+
+vec2 tsr_decode_offset(uint encoded) {
+    return (vec2(encoded & 15u, (encoded >> 4u) & 15u) - 8.0) * (1.0 / 14.0);
 }
 
 // -- Dither --------------------------------------------------------------------------------------------------------

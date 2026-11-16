@@ -1,5 +1,5 @@
-// Temporal AA's glow (CgTemporalAA.glow): bloom's light, each jittered frame's excess past bloom's threshold, followed
-// by the resolve's motion and averaged over the jitter's frames. Thresholded after the resolve, a light thinner than a
+// A temporal upscaler's glow (CgTemporalGlow): bloom's light, each jittered frame's excess past bloom's threshold,
+// followed by the resolve's motion and averaged over the jitter's frames, at the size drawn. Thresholded after the resolve, a light thinner than a
 // texel, spread to its coverage, falls under the threshold and loses its glow; thresholded per frame and averaged, it
 // glows as it does without temporal AA, and holds still from frame to frame. The glow is held under what the resolved
 // light allows: a light x over coverage c on a background b averages L = c x + (1 - c) b, its excess at most
@@ -19,7 +19,7 @@ RenderState {
 
 Properties {
     _History  ("Last frame's glow", sampler2D) = "black"
-    _Resolved ("This frame's resolve, the glow's bound", sampler2D) = "black"
+    _Resolved ("This frame's resolve, the glow's bound: the size drawn or the output's", sampler2D) = "black"
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
     _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
     _Glow     ("x this frame's share, y bloom's threshold, z 1 with a history to blend", vec4) = (0.0625, 1, 1, 0)
@@ -57,10 +57,15 @@ void fragment(in v2f i, out vec4 fragColor) {
         vec2 back = cg_Velocity(_Velocity, (vec2(nearest) + 0.5) / size, texelFetch(cg_DepthBuffer, nearest, 0).r) - _Jitter.xy;
         vec2 from = (vec2(at) + 0.5) / size - back * 0.5;
         if (all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0)))) {
-            // The resolve is unjittered and this frame's samples sit up to half a texel off theirs: its 3x3
+            // The resolve is unjittered and this frame's samples sit up to half a texel off theirs: its 3x3, a texel of
+            // this frame's apart where it is upscaled
+            ivec2 resolvedLast = textureSize(_Resolved, 0) - 1;
+            vec2 scale = vec2(resolvedLast + 1) / size;
+            ivec2 centre = ivec2((vec2(at) + 0.5) * scale), apart = max(ivec2(round(scale)), ivec2(1));
             vec3 brightest = vec3(0.0), dimmest = vec3(65504.0);
             for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3 round the texel
-                vec3 c = texelFetch(_Resolved, clamp(at + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).rgb;
+                ivec2 q = clamp(centre + ivec2(k % 3 - 1, k / 3 - 1) * apart, ivec2(0), resolvedLast);
+                vec3 c = texelFetch(_Resolved, q, 0).rgb;
                 brightest = max(brightest, c);
                 dimmest = min(dimmest, c);
             }

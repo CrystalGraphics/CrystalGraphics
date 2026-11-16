@@ -4,8 +4,10 @@
 // both agree on survives), both are blurred to the scale the history is kept at, and the energy a clamp of the history
 // into this frame's box would take, against how much the frame itself varies, is the rejection (variance clipping:
 // Salvi, An Excursion in Temporal Supersampling, 2016). Writes next frame's guide, the rejection the update pass blends
-// by, and this frame's colour for it.
+// by, and this frame's colour for it; RejectSpatial (Medium and up) also the luma and the mask the spatial
+// anti-aliasing reads: where the history is mostly dropped and the contrast would show a stair.
 #pragma kernel Reject 16 16 general
+#pragma kernel RejectSpatial 16 16 general
 
 Properties {
     _Input    ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
@@ -21,6 +23,8 @@ Images {
     GUIDE     ("Next frame's guide; a this frame's uncertainty", rgb10_a2, writeonly)
     REJECTION ("x the rejection, y the clamp it may skip, z less the validity it may keep, w 1/255 where seen", rgba8, writeonly)
     COLOR     ("This frame's picture, for the update pass", r11f_g11f_b10f, writeonly)
+    LUMA      ("This frame's luma for the spatial anti-aliasing (tsr_spatial_luma)", r16f, writeonly)
+    AA_MASK   ("1 where the spatial anti-aliasing runs", r8, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr.glsl"
@@ -28,7 +32,6 @@ Images {
 const int TILE = 32, LANES = 16;
 const float QUANTIZATION = 0.5 / 1024.0;          // a 10-bit backbuffer's half step: the least box
 const float FILTERING = 1.0 / (1.0 + 4.0 * 0.5 + 4.0 * 0.25);   // the 3x3 blur's centre weight
-const float MIN_ALIASING_LUMA = 0.05;
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 const float LARGEST = 65504.0 * 0.25;
 const uint OFF_SCREEN_OR_DISOCCLUDED = 1u | 2u | 32u;
@@ -132,7 +135,9 @@ void max_rgb_min_a(inout vec4 x[4]) {
     for (int e = 0; e < 4; e++) x[e] = vec4(hi[e].rgb, lo[e].a);   // LOOP-BOUND: four elements
 }
 
-void Reject() {
+// The whole decision, storing the guide, the rejection and the colour; per element, its pixel, whether this tile wrote
+// it, and what the spatial anti-aliasing needs of it.
+void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool antiAlias[4]) {
     ivec2 size = ivec2(_Input.xy);
     int border = int(_Reject.y);
     ivec2 origin = CG_GROUP_ID.xy * int(_Reject.z) - border;
@@ -163,7 +168,7 @@ void Reject() {
     min_max(c0, lo, hi);
     bool aliasing[4];
     for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
-        aliasing[e] = dot(hi[e].rgb - lo[e].rgb, LUMA) > MIN_ALIASING_LUMA;
+        aliasing[e] = dot(hi[e].rgb - lo[e].rgb, LUMA) > TSR_MIN_ALIASING_LUMA;
         c2[e] = clamp(h0[e], lo[e], hi[e]);
         h2[e] = h0[e];
         inner[e] = c0[e];
@@ -223,6 +228,10 @@ void Reject() {
     for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
         ivec2 local = local_of(e);
         ivec2 p = origin + local;
+        pixels[e] = p;
+        wrote[e] = false;
+        luma[e] = 0.0;
+        antiAlias[e] = false;
         if (any(lessThan(local, ivec2(border))) || any(greaterThanEqual(local, ivec2(TILE - border)))
                 || any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) continue;
         vec3 in3 = tsr_perceptual(scene[e].rgb), h3 = tsr_perceptual(tsr_from_guide(history[e].rgb));
@@ -239,5 +248,27 @@ void Reject() {
                 disoccluded[e] ? 0.0 : 1.0 / 255.0));
         vec3 colour = min(scene[e].rgb, vec3(TSR_MAX_10BIT_FLOAT));
         COLOR_STORE(p, vec4(tsr_dither_float(colour, random, vec3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)), 1.0));
+        wrote[e] = true;
+        luma[e] = tsr_spatial_luma(colour);
+        antiAlias[e] = aliasing[e] && (rejection[e] < 0.25 || disoccluded[e]);
+    }
+}
+
+void Reject() {
+    ivec2 pixels[4];
+    bool wrote[4], antiAlias[4];
+    float luma[4];
+    decide(pixels, wrote, luma, antiAlias);
+}
+
+void RejectSpatial() {
+    ivec2 pixels[4];
+    bool wrote[4], antiAlias[4];
+    float luma[4];
+    decide(pixels, wrote, luma, antiAlias);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        if (!wrote[e]) continue;
+        LUMA_STORE(pixels[e], vec4(luma[e]));
+        AA_MASK_STORE(pixels[e], vec4(antiAlias[e] ? 1.0 : 0.0));
     }
 }

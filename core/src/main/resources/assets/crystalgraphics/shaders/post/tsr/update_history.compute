@@ -3,8 +3,10 @@
 // weighed by how near each lands to the output pixel's centre after the jitter, so over the frames every output pixel
 // gathers samples from across it: the picture is rebuilt at the output size from frames drawn smaller. How much of the
 // history is kept follows how many samples it already holds (its validity, up to 16) and the reject pass's rejection.
-// Karis, High Quality Temporal Supersampling, 2014.
+// Karis, High Quality Temporal Supersampling, 2014. UpdateSpatial (Medium and up) moves the samples of a pixel whose
+// history is dropped across its edge by the spatial anti-aliasing's offset.
 #pragma kernel Update 8 8 image
+#pragma kernel UpdateSpatial 8 8 image
 
 Properties {
     _Input      ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
@@ -18,6 +20,7 @@ Properties {
     _Vector     ("The motion each pixel's history is fetched by", sampler2D) = "black"
     _PrevColor  ("Last frame's history", sampler2D) = "black"
     _PrevValid  ("Last frame's validity", sampler2D) = "black"
+    _Offset     ("The spatial anti-aliasing's offset and noise filtering (UpdateSpatial)", usampler2D) = "zero"
 }
 
 Images {
@@ -33,7 +36,7 @@ const float LARGEST = 65504.0 * 0.25;
 // The plus-shaped 3x3: the nearest input pixel and its four neighbours.
 const ivec2 PLUS[5] = ivec2[5](ivec2(0, 0), ivec2(0, -1), ivec2(-1, 0), ivec2(0, 1), ivec2(1, 0));
 
-void Update() {
+void update(bool spatial) {
     ivec2 o = CG_TEXEL.xy;
     bool cut = _Jitter.z > 0.5;
     vec2 uv = (vec2(o) + 0.5) * _Output.zw;
@@ -74,6 +77,17 @@ void Update() {
         prevValid = max(prevValid, 0.0);
     }
 
+    // Where the history is dropped, this frame's samples move across their edge; a noisy neighbourhood widens the kernel
+    float noise = 0.0;
+    if (spatial) {
+        uvec2 aa = texelFetch(_Offset, k, 0).xy;
+        noise = float(aa.y) / 255.0;
+        float moved = offScreen || disoccluded ? 1.0 : clamp(1.0 - lowRejection * 4.0, 0.0, 1.0);
+        inputAt += tsr_decode_offset(aa.x) * moved;
+        nearestCentre = floor(inputAt) + 0.5;
+        k = clamp(ivec2(inputAt), ivec2(0), last);
+    }
+
     // How this frame's samples and the history weigh
     vec2 dKO = inputAt - nearestCentre;
     float samples = _History.x, hysteresis = _History.y, toHistory = _History.w;
@@ -87,8 +101,8 @@ void Update() {
     float isRefining = rejectedPrev < refiningPrev ? 0.0 : 1.0;
     isRefining = min(isRefining, clamp(clampedValid * samples, 0.0, 1.0));
     float kernelLerp = offScreen || disoccluded ? 0.0 : clamp(lowRejection * 16.0 - 13.0, 0.0, 1.0) * isRefining;
-    float kernelToHistory = mix(1.0, toHistory, kernelLerp);
-    float current = tsr_sample_weight(kernelToHistory, dKO, 0.0) * hysteresis;
+    float kernelToHistory = mix(1.0 - 0.5 * noise, toHistory, kernelLerp);
+    float current = tsr_sample_weight(mix(1.0, toHistory, kernelLerp), dKO, 0.0) * hysteresis;
     float prevWeight = min((current > 0.0 ? current : coarse) * (1.0 - minRejectionBlend) / minRejectionBlend, clampedValid);
     prevWeight = min(prevWeight, 1.0 - current);
 
@@ -129,4 +143,12 @@ void Update() {
     COLOR_WRITE(vec4(color, 1.0));
     VALID_WRITE(vec4(valid));
     PICTURE_WRITE(vec4(color, 1.0));
+}
+
+void Update() {
+    update(false);
+}
+
+void UpdateSpatial() {
+    update(true);
 }

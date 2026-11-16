@@ -12751,7 +12751,6 @@ com/crystalgraphics/render/post/CgScreenPass
 com/crystalgraphics/render/post/aa/CgTemporalAA
   access public,final
   extends java/lang/Object
-  field public,static,final GLOW Ljava/lang/String;
   field public,static,final OUTPUT Ljava/lang/String;
   field public,static,final SHADER Ljava/lang/String;
   implements com/crystalgraphics/render/post/upscale/CgUpscaler
@@ -12766,6 +12765,12 @@ com/crystalgraphics/render/post/aa/CgTemporalAA
   method public,static sharpening ()Z
   method public,static sharpening (Z)V
   method public,static shows (Lcom/crystalgraphics/render/view/CgView;)Z
+com/crystalgraphics/render/post/aa/CgTemporalGlow
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHADER Ljava/lang/String;
+  method public <init> (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;)V
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
@@ -13158,6 +13163,7 @@ com/crystalgraphics/render/post/tsr/CgTemporalSuperResolution
   implements com/crystalgraphics/render/post/upscale/CgUpscaler
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public jitterSamples (F)I
   method public materialMipBias (F)F
   method public minFraction ()F
@@ -14878,6 +14884,7 @@ com/crystalgraphics/render/view/CgViewState
   method public fresh (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;)Z
   method public get (Lcom/crystalgraphics/render/view/CgViewState$Key;)Ljava/lang/Object;
   method public history (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public jitterIndex (IZ)I
   method public keepsHistory ()Z
 com/crystalgraphics/render/view/CgViewState$HistoryKey
   access public,final
@@ -16482,6 +16489,7 @@ com/crystalgraphics/serialization/nbt/CgNbtValue
 com/crystalgraphics/settings/CgGraphicsSettings
   access public,final
   extends java/lang/Object
+  field public,static,final ANTI_ALIASING Lcom/crystalgraphics/settings/CgSetting$Choice;
   field public,static,final DENSITY Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final FILE Lcom/crystalgraphics/settings/CgSettings;
   field public,static,final FLASHES Lcom/crystalgraphics/settings/CgSetting$Number;

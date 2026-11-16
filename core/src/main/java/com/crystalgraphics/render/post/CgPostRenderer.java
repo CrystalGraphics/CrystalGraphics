@@ -8,6 +8,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.aa.CgTemporalAA;
+import com.crystalgraphics.render.post.aa.CgTemporalGlow;
 import com.crystalgraphics.render.post.tsr.CgTemporalSuperResolution;
 import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
@@ -73,7 +74,7 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW, CgViewRenderTarget.fillShader()};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalGlow.SHADER, CgViewRenderTarget.fillShader()};
 
     private static boolean installed;
     @Nullable
@@ -239,13 +240,13 @@ public final class CgPostRenderer {
                     CgUpscaler upscaler = post.upscaler(view.antiAliasing());
                     CgScreenTexture jittered = picture;
                     picture = upscaler.apply(ctx, picture);
-                    // Answered at the output size: what records after runs there
-                    if (upscaler.presents(view.resolutionFraction()) && firing.scaled()) firing.present();
                     // Bloom's light, taken per jittered frame and averaged: past the resolve, a light thinner than a texel
                     // falls under bloom's threshold at its coverage and loses its glow
                     if (post.bloom.shows(ctx) && CgBloom.takesExcess(ctx)) {
                         glow = upscaler.bloomLight(ctx, jittered, picture, CgBloom.excessThreshold(ctx));
                     }
+                    // Answered at the output size: what records after runs there
+                    if (upscaler.presents(view.resolutionFraction()) && firing.scaled()) firing.present();
                 }
                 ctx.input(picture);
             }

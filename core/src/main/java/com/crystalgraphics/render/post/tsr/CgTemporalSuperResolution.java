@@ -10,9 +10,12 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
+import com.crystalgraphics.render.post.aa.CgTemporalGlow;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.settings.CgQuality;
 import com.crystalgraphics.trace.CgGpuTrace;
 import org.joml.Matrix4f;
 import org.joml.Vector4f;
@@ -33,13 +36,18 @@ import org.joml.Vector4f;
  *
  * <p>At 100% it resolves at the size drawn, as temporal AA does, with its own rejection.</p>
  *
+ * <p>The player's {@link CgGraphicsSettings#ANTI_ALIASING} sets how much it does where it drops a pixel's history:
+ * from Medium a spatial anti-aliasing smooths that pixel's edge the frame it is seen, and Ultra follows each edge 8 pixels
+ * each way rather than 3.</p>
+ *
  * <ul>
  *   <li>Engine views only: a host drawing its world itself (Minecraft) stays at 100%, and its own draws are not
  *       jittered.</li>
  *   <li>The history lives on the view's state ({@code CgViewState}); a camera cut, a resize, or a view that did not draw
  *       last frame starts it over.</li>
  *   <li>Its passes, in order: dilate the velocity and scatter each surface to where it was (disocclusion), reproject last
- *       frame's guide, measure the rejection, update the history. Each is timed ({@code post.tsr.*}).</li>
+ *       frame's guide, measure the rejection, anti-alias spatially (Medium and up), update the history. Each is timed
+ *       ({@code post.tsr.*}).</li>
  * </ul>
  */
 public final class CgTemporalSuperResolution implements CgUpscaler {
@@ -47,12 +55,14 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private static final String DILATE = "crystalgraphics:shaders/post/tsr/dilate_velocity.compute",
             DECIMATE = "crystalgraphics:shaders/post/tsr/decimate_history.compute",
             REJECT = "crystalgraphics:shaders/post/tsr/reject_shading.compute",
+            SPATIAL = "crystalgraphics:shaders/post/tsr/spatial_anti_aliasing.compute",
             UPDATE = "crystalgraphics:shaders/post/tsr/update_history.compute";
     private static final CgViewState.HistoryKey COLOR = new CgViewState.HistoryKey("crystalgraphics:tsr_color"),
             VALID = new CgViewState.HistoryKey("crystalgraphics:tsr_valid"),
             GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_guide");
     private static final int GPU_DILATE = CgGpuTrace.name("post.tsr.dilate"), GPU_DECIMATE = CgGpuTrace.name("post.tsr.decimate"),
-            GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_UPDATE = CgGpuTrace.name("post.tsr.update");
+            GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_SPATIAL = CgGpuTrace.name("post.tsr.spatial"),
+            GPU_UPDATE = CgGpuTrace.name("post.tsr.update");
 
     /** The most samples a history pixel holds ({@code r.TSR.History.SampleCount}). */
     static final float HISTORY_SAMPLES = 16f;
@@ -66,6 +76,8 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
      * frame at 50%, a border of 7 rejects no differently, at twice the cost.
      */
     static final int TILE = 32, TILE_BORDER = 3;
+    /** How far the spatial anti-aliasing follows an edge each way, below Ultra and at it ({@code r.TSR.RejectionAntiAliasingQuality}). */
+    static final int SPATIAL_STEPS = 3, SPATIAL_STEPS_ULTRA = 8;
     /** The least fraction it rebuilds from. */
     static final float MIN_FRACTION = 0.25f;
     /** The jitter's base sequence, and the primes it is rounded up to. */
@@ -76,11 +88,13 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     /** The material mip bias's offset and floor ({@code r.ViewTextureMipBias.Offset} and {@code .Min}). */
     private static final float MIP_BIAS_OFFSET = -0.3f, MIP_BIAS_MIN = -2f;
 
+    private final CgTemporalGlow glow = new CgTemporalGlow(new CgViewState.HistoryKey("crystalgraphics:tsr_glow"));
     private final Matrix4f clipToPrev = new Matrix4f();
     private final Vector4f column = new Vector4f();
-    private CgKernel clear, dilate, decimate, reject, update;
+    private CgKernel clear, dilate, decimate, reject, rejectSpatial, spatial, update, updateSpatial;
     private int width, height, outWidth, outHeight;
-    private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, picture;
+    private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
+            offsets, picture;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -88,7 +102,10 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgCompute.load(DILATE).kernel("Dilate").precache();
         CgCompute.load(DECIMATE).kernel("Decimate").precache();
         CgCompute.load(REJECT).kernel("Reject").precache();
+        CgCompute.load(REJECT).kernel("RejectSpatial").precache();
+        CgCompute.load(SPATIAL).kernel("Spatial").precache();
         CgCompute.load(UPDATE).kernel("Update").precache();
+        CgCompute.load(UPDATE).kernel("UpdateSpatial").precache();
     }
 
     @Override
@@ -122,6 +139,12 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         return true;
     }
 
+    /** Bloom's light averaged over the jitter's frames at the size drawn ({@link CgTemporalGlow}). */
+    @Override
+    public CgGraphTexture bloomLight(CgPostContext ctx, CgScreenTexture input, CgScreenTexture resolved, float threshold) {
+        return glow.record(ctx, input, resolved, threshold);
+    }
+
     @Override
     public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input) {
         if (clear == null) {
@@ -129,8 +152,13 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             dilate = CgCompute.load(DILATE).kernel("Dilate");
             decimate = CgCompute.load(DECIMATE).kernel("Decimate");
             reject = CgCompute.load(REJECT).kernel("Reject");
+            rejectSpatial = CgCompute.load(REJECT).kernel("RejectSpatial");
+            spatial = CgCompute.load(SPATIAL).kernel("Spatial");
             update = CgCompute.load(UPDATE).kernel("Update");
+            updateSpatial = CgCompute.load(UPDATE).kernel("UpdateSpatial");
         }
+        CgQuality quality = CgGraphicsSettings.ANTI_ALIASING.get();
+        boolean antiAliasSpatially = quality.atLeast(CgQuality.MEDIUM);
         CgView view = ctx.view();
         CgViewState state = view.state();
         CgRecording recording = ctx.recording();
@@ -167,22 +195,33 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         float least = 1f / (1f + HISTORY_SAMPLES / (fraction * fraction));
         int stride = TILE - 2 * TILE_BORDER;
         pass = recording.compute("tsr.reject").timed(GPU_REJECT);
-        pass.dispatchGroups(reject, (w + stride - 1) / stride, (h + stride - 1) / stride, 1).image("GUIDE", guideHistory)
+        d = pass.dispatchGroups(antiAliasSpatially ? rejectSpatial : reject, (w + stride - 1) / stride,
+                        (h + stride - 1) / stride, 1).image("GUIDE", guideHistory)
                 .image("REJECTION", rejection).image("COLOR", color).texture("_Color", input.texture())
                 .texture("_Guide", reprojected).texture("_Mask", mask).set("_Input", w, h, 1f / w, 1f / h)
                 .set("_Jitter", jx, jy, cutFlag, 0f).set("_Frame", frame, 0f, 0f, 0f)
                 .set("_Reject", least, TILE_BORDER, stride, 0f);
+        if (antiAliasSpatially) d.image("LUMA", luma).image("AA_MASK", aaMask);
         pass.end();
+
+        if (antiAliasSpatially) {
+            int steps = quality.atLeast(CgQuality.ULTRA) ? SPATIAL_STEPS_ULTRA : SPATIAL_STEPS;
+            pass = recording.compute("tsr.spatial").timed(GPU_SPATIAL);
+            pass.dispatch(spatial, w, h, 1).image("OFFSET", offsets).texture("_Luma", luma).texture("_AAMask", aaMask)
+                    .set("_Input", w, h, 1f / w, 1f / h).set("_Spatial", steps, 0f, 0f, 0f);
+            pass.end();
+        }
 
         float toHistory = (float) ow / w, hysteresis = 1f / HISTORY_SAMPLES;
         pass = recording.compute("tsr.update").timed(GPU_UPDATE);
-        pass.dispatch(update, ow, oh, 1).image("COLOR", colorHistory).image("VALID", validHistory).image("PICTURE", picture)
+        d = pass.dispatch(antiAliasSpatially ? updateSpatial : update, ow, oh, 1).image("COLOR", colorHistory).image("VALID", validHistory).image("PICTURE", picture)
                 .texture("_Color", color).texture("_Rejection", rejection).texture("_Vector", filled)
                 .texture("_PrevColor", colorHistory.previous()).texture("_PrevValid", validHistory.previous())
                 .set("_Input", w, h, 1f / w, 1f / h).set("_Output", ow, oh, 1f / ow, 1f / oh)
                 .set("_Jitter", jx, jy, cutFlag, 0f).set("_Frame", frame, 0f, 0f, 0f)
                 .set("_History", HISTORY_SAMPLES, hysteresis, 1f - REJECTED_SAMPLES * hysteresis, toHistory)
                 .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / MOTION_PIXEL_SPEED, 0f, 0f);
+        if (antiAliasSpatially) d.texture("_Offset", offsets);
         pass.end();
         return CgScreenTexture.of(picture);
     }
@@ -218,6 +257,9 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         mask = transientTexture("cg_tsr_mask", w, h, CgFormat.RG8_UNORM);
         rejection = transientTexture("cg_tsr_rejection", w, h, CgFormat.RGBA8_UNORM);
         color = transientTexture("cg_tsr_color", w, h, CgFormat.RG11B10_UFLOAT);
+        luma = transientTexture("cg_tsr_luma", w, h, CgFormat.R16_FLOAT);
+        aaMask = transientTexture("cg_tsr_aa_mask", w, h, CgFormat.R8_UNORM);
+        offsets = transientTexture("cg_tsr_offsets", w, h, CgFormat.RG8_UINT);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
     }
 
