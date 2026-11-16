@@ -230,6 +230,40 @@ public class CgEntityStateTest {
         assertFalse(state.happened(CgEntityState.MOUNTED));
     }
 
+    @Test
+    public void inputFromThePlayer() {
+        host.facts.bits |= CgEntityFacts.INPUT | CgEntityFacts.INPUT_SPRINT;
+        host.facts.inputStrafe = 1f;
+        host.facts.inputForward = 1f;
+        step();
+        assertTrue(state.inputFromPlayer());
+        assertEquals("a diagonal is no faster than a straight", 1f, state.input(), 1e-6);
+        assertEquals(45f, state.inputDirection(), 1e-4);
+        assertTrue(state.sprintHeld());
+        assertFalse(state.jumpHeld());
+    }
+
+    @Test
+    public void intentReadFromMovement() {
+        // yaw 90 faces -x (Minecraft's yaw 0 faces +z); moving -x is ahead, moving -z is to its right
+        pose[CgEntityQuery.YAW] = 90;
+        host.facts.moveX = -0.2;
+        step();
+        assertFalse(state.inputFromPlayer());
+        assertEquals(1f, state.input(), 1e-6);
+        assertEquals(0f, state.inputDirection(), 1e-3);
+        host.facts.moveX = 0;
+        host.facts.moveZ = -0.2;
+        step();
+        assertEquals(-90f, state.inputDirection(), 1e-3);
+        host.facts.bits |= CgEntityFacts.SNEAKING;
+        step();
+        assertEquals("sneaking, as Minecraft scales its input", 0.3f, state.input(), 1e-6);
+        host.facts.moveZ = 0.001;
+        step();
+        assertEquals("friction's last drift is standing", 0f, state.input(), 0f);
+    }
+
     /** A host whose one entity does what the test sets. */
     private static final class Script implements CgEntityQuery {
         final CgEntityFacts facts = new CgEntityFacts();
@@ -251,6 +285,8 @@ public class CgEntityStateTest {
             out.useHand = facts.useHand;
             out.useTicks = facts.useTicks;
             out.useLength = facts.useLength;
+            out.inputStrafe = facts.inputStrafe;
+            out.inputForward = facts.inputForward;
             System.arraycopy(facts.item, 0, out.item, 0, 2);
             System.arraycopy(facts.use, 0, out.use, 0, 2);
             return true;

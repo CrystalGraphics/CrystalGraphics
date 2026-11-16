@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.world.World;
@@ -31,6 +33,18 @@ public final class EntityQueryLegacy extends LevelEntityQueryLegacy {
     @Override
     boolean isLocal(Entity e) {
         return e == ClientLegacy.player();
+    }
+
+    /** The local player's keys: its movement input's impulses, jump, and the sprint key. */
+    @Override
+    void input(Entity e, CgEntityFacts out) {
+        EntityPlayerSP p = ClientLegacy.player();
+        if (p == null || e != p) return;
+        out.inputStrafe = p.movementInput.moveStrafe;
+        out.inputForward = p.movementInput.moveForward;
+        boolean sprint = Minecraft.getMinecraft().gameSettings.keyBindSprint.isKeyDown();
+        out.bits |= CgEntityFacts.INPUT | (p.movementInput.jump ? CgEntityFacts.INPUT_JUMP : 0)
+                | (sprint ? CgEntityFacts.INPUT_SPRINT : 0);
     }
 
     @Override

@@ -643,6 +643,11 @@ if (entities.pose(id, partialTick, pose)) state.update(entities, id, partialTick
 - **What a version lacks reads as not happening**: no swimming pose before 1.13, no gliding and no off hand before
   1.10.2, no charged crossbow before 1.14.3. Items are the host's raw ids, the same item for the session.
 - **The swim amount** eases 0 to 1 over 0.45 s into the swimming pose and back, as Minecraft's own does.
+- **Intent is not speed.** `input()` (0 to 1) and `inputDirection()` (degrees against the facing, 90 to the left) are
+  how hard and where it means to move: what a locomotion graph keys its gait on, since a slope or a shove changes its
+  speed. They are the player's own keys or stick on its client, and on a 1.21.3+ server from the player's input packet
+  (`inputFromPlayer()`), with `sprintHeld()` and `jumpHeld()`. Anywhere else they are read from its movement against its
+  facing: 1 moving (0.3 sneaking, as Minecraft's input), 0 standing, the sprint key as whether it sprints.
 - **What a host does**: `CgEntityQuery.facts(id, partialTick, out)`, the entity's facts as `CgEntityFacts` (bits, how
   far it moved over its tick, its vehicle, Minecraft's hurt and death countdowns, the swing, the use, each hand's item
   and use animation). Core turns them into the state; a host never decides an event.

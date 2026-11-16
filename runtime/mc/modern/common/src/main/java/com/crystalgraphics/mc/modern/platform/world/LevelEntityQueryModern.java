@@ -39,6 +39,10 @@ import net.minecraft.server.level.ServerLevel;
 //? if >=1.19.3 {
 import net.minecraft.world.level.entity.EntityTypeTest;
 //?}
+//? if >=1.21.3 {
+/*import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.player.Input;
+*///?}
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -382,7 +386,20 @@ public class LevelEntityQueryModern implements CgEntityQuery {
         out.vehicle = vehicle == null ? -1 : vehicle.getId();
         if (e instanceof LivingEntity) f |= living((LivingEntity) e, partialTick, out);
         out.bits |= f;
+        input(e, out);
         return true;
+    }
+
+    /** A player's own input, where this side has it: a server player's last input packet, from 1.21.3. */
+    void input(Entity e, CgEntityFacts out) {
+        //? if >=1.21.3 {
+        /*if (!(e instanceof ServerPlayer)) return;
+        Input in = ((ServerPlayer) e).getLastClientInput();
+        out.inputStrafe = (in.left() ? 1f : 0f) - (in.right() ? 1f : 0f);
+        out.inputForward = (in.forward() ? 1f : 0f) - (in.backward() ? 1f : 0f);
+        out.bits |= CgEntityFacts.INPUT | (in.jump() ? CgEntityFacts.INPUT_JUMP : 0)
+                | (in.sprint() ? CgEntityFacts.INPUT_SPRINT : 0);
+        *///?}
     }
 
     private static int living(LivingEntity e, float partialTick, CgEntityFacts out) {

@@ -50,6 +50,10 @@ public final class CgEntityState {
     public static final int MAIN = CgEntityFacts.MAIN, OFF = CgEntityFacts.OFF;
 
     private static final float TICKS_PER_SECOND = 20f;
+    /** Below this a tick's movement is standing still, blocks: what friction leaves of a stop. */
+    private static final double MOVING = 0.01;
+    /** What sneaking scales Minecraft's input by ({@code Input.tick}'s 0.3, the sneaking speed attribute's default). */
+    private static final float SNEAK_INPUT = 0.3f;
     /** Minecraft eases its swim amount 0.09 a tick toward the swim pose ({@code LivingEntity.updateSwimAmount}). */
     private static final float SWIM_EASE = 0.09f * TICKS_PER_SECOND;
 
@@ -61,6 +65,8 @@ public final class CgEntityState {
     private int events;
     private float swimAmount, hurtSeconds = Float.POSITIVE_INFINITY, useSeconds, airSeconds, landHeight;
     private float headYaw, headPitch;
+    private float input, inputDirection;
+    private boolean inputFromPlayer, sprintHeld, jumpHeld;
     private double peakY;
 
     /**
@@ -92,6 +98,7 @@ public final class CgEntityState {
         }
         headYaw = wrap((float) (pose[CgEntityQuery.HEAD_YAW] - pose[CgEntityQuery.BODY_YAW]));
         headPitch = (float) pose[CgEntityQuery.PITCH];
+        intent((float) pose[CgEntityQuery.YAW]);
         air(dt);
         if (now.hurtTime > was.hurtTime) {
             events |= HURT;
@@ -117,9 +124,39 @@ public final class CgEntityState {
         was.clear();
         primed = false;
         events = 0;
-        swimAmount = useSeconds = airSeconds = landHeight = 0f;
+        swimAmount = useSeconds = airSeconds = landHeight = input = inputDirection = 0f;
+        inputFromPlayer = sprintHeld = jumpHeld = false;
         hurtSeconds = Float.POSITIVE_INFINITY;
         arms[MAIN] = arms[OFF] = ARM_EMPTY;
+    }
+
+    /**
+     * What it means to do: the player's own input where the host has it, else its movement against its facing, read back
+     * through Minecraft's {@code moveRelative} (strafe s and forward f become x = s cos - f sin, z = f cos + s sin).
+     */
+    private void intent(float yawDegrees) {
+        float strafe, forward;
+        inputFromPlayer = now.has(CgEntityFacts.INPUT);
+        if (inputFromPlayer) {
+            strafe = now.inputStrafe;
+            forward = now.inputForward;
+            sprintHeld = now.has(CgEntityFacts.INPUT_SPRINT);
+            jumpHeld = now.has(CgEntityFacts.INPUT_JUMP);
+        } else {
+            double yaw = Math.toRadians(yawDegrees), c = Math.cos(yaw), sn = Math.sin(yaw);
+            double mx = now.moveX, mz = now.moveZ, length = Math.sqrt(mx * mx + mz * mz);
+            sprintHeld = now.has(CgEntityFacts.SPRINTING);
+            jumpHeld = false;
+            if (length < MOVING) {
+                strafe = forward = 0f;
+            } else {
+                float scale = (now.has(CgEntityFacts.SNEAKING) ? SNEAK_INPUT : 1f) / (float) length;
+                strafe = (float) (mx * c + mz * sn) * scale;
+                forward = (float) (-mx * sn + mz * c) * scale;
+            }
+        }
+        input = Math.min(1f, (float) Math.sqrt(strafe * strafe + forward * forward));
+        inputDirection = input == 0f ? 0f : (float) Math.toDegrees(Math.atan2(strafe, forward));
     }
 
     /** Leaving the ground and touching it again, with the highest point between: what a landing's height is from. */
@@ -304,6 +341,35 @@ public final class CgEntityState {
     /** Its head's pitch, degrees: down positive. */
     public float headPitch() {
         return headPitch;
+    }
+
+    /**
+     * How hard it means to move, 0 to 1: the player's stick or keys (a sneak's 0.3 included) where the host has them,
+     * else 1 while it moves on its own (0.3 sneaking) and 0 standing. What a locomotion graph keys its gait on, rather
+     * than its speed, which a slope or a shove changes.
+     */
+    public float input() {
+        return input;
+    }
+
+    /** Which way it means to move against its facing, degrees: 0 ahead, 90 to its left, -90 to its right, 180 back. */
+    public float inputDirection() {
+        return inputDirection;
+    }
+
+    /** Whether {@link #input} is the player's own input rather than read from its movement. */
+    public boolean inputFromPlayer() {
+        return inputFromPlayer;
+    }
+
+    /** The sprint key held, where the player's input says; else whether it sprints. */
+    public boolean sprintHeld() {
+        return sprintHeld;
+    }
+
+    /** The jump key held, where the player's input says; else false. */
+    public boolean jumpHeld() {
+        return jumpHeld;
     }
 
     /** Whether its main hand is its left. */

@@ -24289,7 +24289,11 @@ com/crystalgraphics/world/CgEntityState
   method public headPitch ()F
   method public headYaw ()F
   method public inWater ()Z
+  method public input ()F
+  method public inputDirection ()F
+  method public inputFromPlayer ()Z
   method public item (I)I
+  method public jumpHeld ()Z
   method public landHeight ()F
   method public leftHanded ()Z
   method public living ()Z
@@ -24301,6 +24305,7 @@ com/crystalgraphics/world/CgEntityState
   method public sneaking ()Z
   method public speed ()F
   method public spinAttack ()Z
+  method public sprintHeld ()Z
   method public sprinting ()Z
   method public swimAmount ()F
   method public swimming ()Z

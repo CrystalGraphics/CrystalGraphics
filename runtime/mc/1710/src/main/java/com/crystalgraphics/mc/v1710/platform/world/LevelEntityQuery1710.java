@@ -253,7 +253,12 @@ public class LevelEntityQuery1710 implements CgEntityQuery {
         out.vehicle = e.ridingEntity == null ? -1 : e.ridingEntity.getEntityId();
         if (e instanceof EntityLivingBase) f |= living((EntityLivingBase) e, partialTick, out);
         out.bits |= f;
+        input(e, out);
         return true;
+    }
+
+    /** A player's own input, where this side has it: the client's, for its own player. */
+    void input(Entity e, CgEntityFacts out) {
     }
 
     private static int living(EntityLivingBase e, float partialTick, CgEntityFacts out) {

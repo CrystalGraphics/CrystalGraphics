@@ -27,6 +27,13 @@ public final class CgEntityFacts {
             GLIDING = 1 << 5, SPIN_ATTACK = 1 << 6, IN_WATER = 1 << 7, SLEEPING = 1 << 8, DEAD = 1 << 9,
             SWINGING = 1 << 10, USING = 1 << 11, LEFT_HANDED = 1 << 12, CHARGED_MAIN = 1 << 13, CHARGED_OFF = 1 << 14;
 
+    /**
+     * {@link #bits} of a player's own input, where the host has it: {@code INPUT} that {@link #inputStrafe} and
+     * {@link #inputForward} are the player's keys or stick, with the jump and sprint keys beside them. The local player's
+     * on its client; a player's on a 1.21.3+ server, from its input packet. Absent, core derives intent from movement.
+     */
+    public static final int INPUT = 1 << 15, INPUT_JUMP = 1 << 16, INPUT_SPRINT = 1 << 17;
+
     /** Hands, as {@link #item}, {@link #use}, {@link #swingHand} and {@link #useHand} index them. */
     public static final int MAIN = 0, OFF = 1;
 
@@ -57,6 +64,12 @@ public final class CgEntityFacts {
     /** Each hand's item, by raw registry id (0 for empty), and how it looks in use ({@code USE_}). */
     public final int[] item = new int[2], use = new int[2];
 
+    /**
+     * The player's movement input, -1 to 1 each, as Minecraft's own input reads it: strafe positive to the left, forward
+     * positive ahead; a sneak's slowing already in it. Meaningful only with {@link #INPUT}.
+     */
+    public float inputStrafe, inputForward;
+
     /** Whether every bit of {@code bit} is set. */
     public boolean has(int bit) {
         return (bits & bit) == bit;
@@ -68,7 +81,7 @@ public final class CgEntityFacts {
         moveX = moveY = moveZ = y = 0;
         vehicle = -1;
         hurtTime = deathTime = 0;
-        swing = 0f;
+        swing = inputStrafe = inputForward = 0f;
         swingHand = useHand = MAIN;
         useTicks = -1;
         useLength = 0;

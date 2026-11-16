@@ -3280,6 +3280,8 @@ com/crystalgraphics/platform/world/CgEntityFacts
   field public bits I
   field public deathTime I
   field public hurtTime I
+  field public inputForward F
+  field public inputStrafe F
   field public moveX D
   field public moveY D
   field public moveZ D
@@ -3297,6 +3299,9 @@ com/crystalgraphics/platform/world/CgEntityFacts
   field public,static,final DEAD I
   field public,static,final GLIDING I
   field public,static,final GROUNDED I
+  field public,static,final INPUT I
+  field public,static,final INPUT_JUMP I
+  field public,static,final INPUT_SPRINT I
   field public,static,final IN_WATER I
   field public,static,final LEFT_HANDED I
   field public,static,final LIVING I
