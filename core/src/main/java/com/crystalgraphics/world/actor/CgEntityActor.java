@@ -1,9 +1,14 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
+import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
+import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 
@@ -46,8 +51,22 @@ import java.util.List;
  *       }</pre></li>
  *   <li>The root stands at the entity's feet, turned by its body yaw ({@code -bodyYaw} about up): +z, a glTF mesh's
  *       front, faces the entity's facing.</li>
- *   <li>The client world's thread. {@code tick} runs in {@code PLAYS}, before {@code POSE}.</li>
+ *   <li>Its side's game thread. On a client {@code tick} runs in {@code PLAYS}, before {@code POSE}; on a server in
+ *       {@code GAMEPLAY}, each tick.</li>
  * </ul>
+ *
+ * <p><b>Both sides.</b> A registered type's actor spawns on the server too, for each entity of the type in the server's
+ * levels, with the same code: there its components live in {@link CgScene#server()}, never drawn, its skeletal meshes
+ * posed each tick for their bones, sockets and root motion. {@link #server()} tells the two apart where they differ.</p>
+ *
+ * <p><b>Root motion moves its entity</b>, as Unreal's character is moved by its mesh's: name the body whose montages
+ * carry it. The server's actor moves its entity, swept against blocks, then turns it; on a client only the local
+ * player's actor moves its entity, at once, and any other follows its server.</p>
+ * <pre>{@code
+ * @Override protected void onSpawn(CgEntity fighter) {
+ *     body = rootMotion(add(scene().skeletal(FIGHTER).materials(SKINS::get)));
+ * }
+ * }</pre>
  *
  * <p>An actor registered with a prefab has it spawned on its root before {@code onSpawn}; its code keeps only
  * behaviour:</p>
@@ -67,8 +86,17 @@ public abstract class CgEntityActor {
     CgSceneRoot root;
     @Nullable
     CgPrefabInstance prefab;
+    boolean server;
+    /** The host's entity, where its side has it: the server's always, a client's looked up when it moves. */
+    @Nullable
+    Object host;
+    @Nullable
+    private CgSkeletalMeshComponent rootMotion;
+    private final Matrix4f step = new Matrix4f(), toWorld = new Matrix4f();
+    private final Vector3f t = new Vector3f();
+    private final Quaternionf q = new Quaternionf();
 
-    /** The entity appeared on this client: make its components. */
+    /** The entity appeared on this side: make its components. */
     protected abstract void onSpawn(CgEntity entity);
 
     /** Each frame, its root already where the entity is: change its components. Draws nothing itself. */
@@ -79,9 +107,47 @@ public abstract class CgEntityActor {
     protected void onRemove(CgEntity entity) {
     }
 
-    /** The scene its components live in: the client's. */
+    /** The scene its components live in: the client's, or on a server {@link CgScene#server()}, never drawn. */
     protected final CgScene scene() {
-        return CgScene.client();
+        return server ? CgScene.server() : CgScene.client();
+    }
+
+    /** Whether it is the server's actor of its entity rather than a client's. */
+    protected final boolean server() {
+        return server;
+    }
+
+    /**
+     * Has {@code body}'s montages' root motion move its entity from now on (Unreal's character movement), and answers
+     * it. Its component's world transform puts the clip's motion in the world, so a body scaled or lifted under the
+     * root moves by what is drawn.
+     *
+     * <ul>
+     *   <li>The entity's own movement still runs (its AI, its gravity): a mod holds its AI still while a move plays.</li>
+     *   <li>A client's actor of any entity but its own player gives its root motion up: its server's moves it.</li>
+     * </ul>
+     */
+    protected final <C extends CgSkeletalMeshComponent> C rootMotion(C body) {
+        this.rootMotion = body;
+        return body;
+    }
+
+    /**
+     * This tick's root motion, taken from the body; where {@code moves}, put in the world by the body's transform and
+     * the entity moved by it, then turned. Taken either way, so a copy not moving its entity never carries one over.
+     */
+    final void move(boolean moves) {
+        CgSkeletalMeshComponent body = rootMotion;
+        if (body == null || !body.anim().montages().consumeRootMotion(1f, step) || !moves || host == null) return;
+        float yaw = CgEntityMovement.yaw(host);
+        if (Float.isNaN(yaw)) return;
+        step.getTranslation(t);
+        toWorld.set(body.worldTransform()).transformDirection(t);
+        if (t.x != 0f || t.y != 0f || t.z != 0f) CgEntityMovement.move(host, t.x, t.y, t.z);
+        // the turn after the move, as the clip's root turned (ours turns toward +x, Minecraft's yaw toward -x)
+        step.getNormalizedRotation(q);
+        float turn = (float) (2 * Math.atan2(q.y, q.w));
+        if (turn != 0f) CgEntityMovement.turn(host, yaw - (float) Math.toDegrees(turn));
     }
 
     /** Its root: where the entity stands this frame. */

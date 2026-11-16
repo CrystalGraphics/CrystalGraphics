@@ -20,6 +20,7 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.stage.CgRenderStage;
+import com.crystalgraphics.animation.CgAnimation;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgEntityQueries;
@@ -39,10 +40,10 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
 
 /**
- * Entity actors: which actor draws each entity type, and the actors of the entities on this client. A mod registers an
- * actor class by entity type once, on any era and loader; each host tells it which entities enter and leave, and draws
- * an entity with an actor through it instead of its vanilla model. Unreal's actor spawned for a game object, with its
- * tick.
+ * Entity actors: which actor plays each entity type, and the actors of a side's entities: the client's, and the
+ * server's. A mod registers an actor class by entity type once, on any era and loader; each host tells it which
+ * entities enter and leave on each side, and draws an entity with an actor through it instead of its vanilla model.
+ * Unreal's actor spawned for a game object on the server and on each client, with its tick.
  *
  * <pre>{@code
  * CgEntityActors.register("mymod:dragon", DragonActor::new);                    // at load
@@ -73,7 +74,16 @@ import java.util.function.Supplier;
  * CgEntityActors.entered(entity.getId(), "mymod:dragon");    // joined the client's level
  * if (CgEntityActors.replacesModel(entity.getId())) ...      // the entity renderer: its actor draws it
  * CgEntityActors.left(entity.getId());                       // left the level, where the host has the event
+ * CgEntityActors.enteredServer(entity, "mymod:dragon");     // joined a server level: the server's actor, the same class
+ * CgEntityActors.leftServer(entity);
  * }</pre>
+ *
+ * <ul>
+ *   <li>The server's actors tick in {@code GAMEPLAY}, their roots at their entities' poses this tick, and each tick
+ *       in {@code NET_OUT}, after the tick's sequences, every actor naming a root-motion body moves its entity
+ *       ({@link CgEntityActor#rootMotion}). A client's moves only its own player's entity, each frame once posed.</li>
+ *   <li>Bindings ({@link #bind}, {@link #bindLocalPlayer}) are a client's; a server spawns by type alone.</li>
+ * </ul>
  *
  * <ul>
  *   <li>Each frame in {@code PLAYS}: every actor's root placed at its entity's pose (interpolated to the frame's
@@ -101,6 +111,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
     /** The client world's, while it has one: what the host's per-entity questions read without a lookup. */
     @Nullable
     private static CgEntityActors client;
+    /** The server world's, while it has one. */
+    @Nullable
+    private static CgEntityActors server;
 
     /** An entity type's actor, as registered; closing it unregisters the type (a reload, a scene leaving). */
     public static final class Registration implements AutoCloseable {
@@ -162,12 +175,16 @@ public final class CgEntityActors extends CgWorldSubsystem {
         final CgEntityActor actor;
         final boolean replacesModel;
         final Registration origin;
+        /** The server's: the host's entity, whose level its pose is read from. */
+        @Nullable
+        final Object host;
 
-        Live(CgEntity entity, CgEntityActor actor, boolean replacesModel, Registration origin) {
+        Live(CgEntity entity, CgEntityActor actor, boolean replacesModel, Registration origin, @Nullable Object host) {
             this.entity = entity;
             this.actor = actor;
             this.replacesModel = replacesModel;
             this.origin = origin;
+            this.host = host;
         }
     }
 
@@ -178,7 +195,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
     private Live[] byId = NONE;
     private final Quaternionf turn = new Quaternionf();
     private final double[] probe = new double[CgEntityQuery.POSE_LENGTH];
-    private CgTickFunction tick;
+    private CgTickFunction tick, move;
     private int levelEpoch;
 
     /**
@@ -301,13 +318,41 @@ public final class CgEntityActors extends CgWorldSubsystem {
         if (r == null || bound(id)) return;
         CgEntityActors actors = client;
         if (actors == null) actors = CgWorld.client().add(new CgEntityActors());
-        actors.spawn(id, type, r);
+        actors.spawn(id, type, r, null);
     }
 
     /** The host's: entity {@code id} left the client's level. */
     public static void left(int id) {
         CgEntityActors actors = client;
         if (actors != null) actors.despawn(id);
+    }
+
+    /**
+     * The host's: {@code entity} (its own object) of {@code type} joined one of the server's levels. Nothing where its
+     * type has no actor. The server's game thread.
+     */
+    public static void enteredServer(Object entity, @Nullable String type) {
+        Registration r = type == null ? null : TYPES.get(type);
+        int id = CgEntityQueries.idOf(entity);
+        if (r == null || id < 0) return;
+        CgEntityActors actors = server;
+        if (actors == null) actors = CgWorld.serverWorld().add(new CgEntityActors());
+        actors.spawn(id, type, r, entity);
+    }
+
+    /** The host's: {@code entity} left the server's level. */
+    public static void leftServer(Object entity) {
+        CgEntityActors actors = server;
+        int id = CgEntityQueries.idOf(entity);
+        if (actors != null && id >= 0) actors.despawn(id);
+    }
+
+    /** Entity {@code id}'s actor on the server, or null. */
+    @Nullable
+    public static CgEntityActor serverActor(int id) {
+        CgEntityActors actors = server;
+        Live l = actors == null ? null : actors.find(id);
+        return l == null ? null : l.actor;
     }
 
     /**
@@ -339,16 +384,43 @@ public final class CgEntityActors extends CgWorldSubsystem {
 
     @Override
     protected void initialize() {
+        if (world().server()) {
+            tick = world().schedule().add(CgTickGroup.GAMEPLAY, "crystalgraphics:actors", this::tick).onServer(true);
+            // after the tick's sequences moved their montages, before the tick's changes go out
+            move = world().schedule().add(CgTickGroup.NET_OUT, "crystalgraphics:actors.move", dt -> move(true)).onServer(true);
+            if (world() == CgWorld.serverWorld()) server = this;
+            return;
+        }
         levelEpoch = CgWorldQueries.client().levelEpoch();
         tick = world().schedule().add(CgTickGroup.PLAYS, "crystalgraphics:actors", this::tick).whilePaused(true);
+        move = world().schedule().add(CgTickGroup.POSE, "crystalgraphics:actors.move", dt -> move(false))
+                .after(CgAnimation.of(world()).tickFunction());
         if (world() == CgWorld.client()) client = this;
     }
 
     @Override
     protected void deinitialize() {
         tick.close();
+        move.close();
         clear();
         if (client == this) client = null;
+        if (server == this) server = null;
+    }
+
+    /** Each actor's root motion taken; on a server every actor moves its entity, on a client only the local player's. */
+    private void move(boolean onServer) {
+        if (order.isEmpty()) return;
+        int local = onServer ? -1 : CgEntityQueries.client().localPlayer();
+        for (int i = 0; i < order.size(); i++) {
+            Live l = order.get(i);
+            boolean moves = onServer || local >= 0 && l.entity.id() == local;
+            if (moves && !onServer && l.actor.host == null) l.actor.host = CgEntityQueries.client().entity(local);
+            try {
+                l.actor.move(moves);
+            } catch (RuntimeException e) {
+                LOGGER.error("the actor of {} failed to move its entity", l.entity, e);
+            }
+        }
     }
 
     /** Whether a binding names entity {@code id}: its actor comes from the tick, not from its type. */
@@ -372,7 +444,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             if (l != null && l.origin == b) continue;
             if (!entities.pose(id, 1f, probe)) continue;
             String type = entities.type(id);
-            if (!spawn(id, type == null ? "unknown:entity" : type, b)) b.failed = true;
+            if (!spawn(id, type == null ? "unknown:entity" : type, b, null)) b.failed = true;
         }
     }
 
@@ -393,21 +465,24 @@ public final class CgEntityActors extends CgWorldSubsystem {
         return i < 0 ? null : byId[i];
     }
 
-    private boolean spawn(int id, String type, Registration r) {
+    private boolean spawn(int id, String type, Registration r, @Nullable Object host) {
         // a level's entities join before its first frame: the last level's actors go now, not over the new ones
         syncLevel();
         despawn(id);
         CgEntity entity = new CgEntity(id, type);
         CgEntityActor actor = r.factory.get();
         actor.entity = entity;
-        actor.root = CgScene.client().root().spawn();
-        Live l = new Live(entity, actor, !r.keepVanillaModel, r);
+        actor.server = world().server();
+        actor.host = host;
+        CgScene scene = actor.scene();
+        actor.root = scene.root().spawn();
+        Live l = new Live(entity, actor, !r.keepVanillaModel, r, host);
         refresh(l);
         try {
             if (r.prefab != null) {
                 CgPrefab prefab = prefabRef(r.prefab).get();
                 if (prefab == null) throw new IllegalStateException("its prefab " + r.prefab + " did not load");
-                actor.prefab = CgScene.client().spawn(prefab).attach(actor.root, null).spawn();
+                actor.prefab = scene.spawn(prefab).attach(actor.root, null).spawn();
             }
             actor.onSpawn(entity);
         } catch (RuntimeException e) {
@@ -455,6 +530,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
     }
 
     private void syncLevel() {
+        if (world().server()) return;
         int now = CgWorldQueries.client().levelEpoch();
         if (now == levelEpoch) return;
         levelEpoch = now;
@@ -463,7 +539,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
 
     private void tick(float dt) {
         syncLevel();
-        if (!BINDINGS.isEmpty()) bindings();
+        if (!BINDINGS.isEmpty() && !world().server()) bindings();
         if (order.isEmpty()) return;
         try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, TICK)) {
             boolean removed = false;
@@ -489,11 +565,12 @@ public final class CgEntityActors extends CgWorldSubsystem {
         }
     }
 
-    /** Reads its entity's pose at the frame's partial tick and stands its root there. */
+    /** Reads its entity's pose (a client's at the frame's partial tick, the server's at its tick) and stands its root there. */
     private void refresh(Live l) {
-        CgEntityQuery entities = CgEntityQueries.client();
+        boolean onServer = l.host != null && world().server();
+        CgEntityQuery entities = onServer ? CgEntityQueries.of(l.host) : CgEntityQueries.client();
         CgEntity e = l.entity;
-        e.present = entities.pose(e.id(), CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), e.pose);
+        e.present = entities.pose(e.id(), onServer ? 1f : CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
         // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.

@@ -17,6 +17,8 @@ import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 //?} else {
 /*import net.fabricmc.fabric.api.command.v1.CommandRegistrationCallback;
 *///?}
+import com.crystalgraphics.mc.modern.platform.LifecycleModern;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -69,6 +71,11 @@ public final class CrystalGraphicsFabricCommon implements VariantEntry {
         ServerLifecycleEvents.SERVER_STARTING.register(ServerModern::serverStarting);
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> ServerModern.serverStopping());
         ServerTickEvents.END_SERVER_TICK.register(server -> ServerModern.serverTick());
+        // Entities joining and leaving the server's levels, for their actors there: no unload event before 1.17.1
+        ServerEntityEvents.ENTITY_LOAD.register((entity, level) -> LifecycleModern.entityJoinedServer(entity));
+        //? if >=1.17.1 {
+        ServerEntityEvents.ENTITY_UNLOAD.register((entity, level) -> LifecycleModern.entityLeftServer(entity));
+        //?}
         // Server commands: v2 from 1.19.2 (it adds the registry context), v1 before.
         //? if >=1.19.2 {
         CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> CommandsModern.registerServer(dispatcher));

@@ -92,9 +92,30 @@ public final class CgScene {
         }
     });
 
+    private static final CgScene SERVER = new CgScene("crystalgraphics.scene.server", new CgScenePrimitives.Driver() {
+        @Override
+        public void started() {
+            ServerTicks.of(CgWorld.serverWorld());
+        }
+
+        @Override
+        public void pose(CgAnimInstance anim, boolean on) {
+            if (on) CgAnimation.server().add(anim);
+            else CgAnimation.server().remove(anim);
+        }
+    });
+
     /** The client world's scene. */
     public static CgScene client() {
         return CLIENT;
+    }
+
+    /**
+     * The server world's scene: never drawn. Its skeletal meshes are posed by the server world's animation each tick,
+     * for their bones, sockets and root motion: what an entity actor builds on a server.
+     */
+    public static CgScene server() {
+        return SERVER;
     }
 
     private final CgGpuScene gpu;
@@ -414,6 +435,31 @@ public final class CgScene {
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, UPDATE)) {
                 CLIENT.primitives.update();
             }
+        }
+    }
+
+    /**
+     * The server scene's placement on the server world, each tick in {@code GAMEPLAY}: after the actors stand their
+     * roots at their entities ({@code crystalgraphics:actors} sorts first), before {@code AUTHORITY}'s sequences move
+     * their montages from there. Added with its first skeletal mesh or attachment.
+     */
+    private static final class ServerTicks extends CgWorldSubsystem {
+
+        private CgTickFunction place;
+
+        static void of(CgWorld world) {
+            if (world.subsystem(ServerTicks.class) == null) world.add(new ServerTicks());
+        }
+
+        @Override
+        protected void initialize() {
+            place = world().schedule().add(CgTickGroup.GAMEPLAY, "crystalgraphics:scene.server", dt -> SERVER.primitives.update())
+                    .onServer(true);
+        }
+
+        @Override
+        protected void deinitialize() {
+            place.close();
         }
     }
 }

@@ -3274,6 +3274,33 @@ com/crystalgraphics/platform/world/CgCameraManager$Host
   method public hold (DDDFFFFI)V
   method public release ()V
   method public,abstract offset (FFFFFFF)V
+com/crystalgraphics/platform/world/CgEntityMovement
+  access public,final
+  extends java/lang/Object
+  field public,static,final HOST Lcom/crystalgraphics/platform/CgService;
+  method public,static gravity (Ljava/lang/Object;Z)Z
+  method public,static move (Ljava/lang/Object;DDD)Z
+  method public,static pitch (Ljava/lang/Object;)F
+  method public,static push (Ljava/lang/Object;DDD)Z
+  method public,static resetFall (Ljava/lang/Object;)Z
+  method public,static rotate (Ljava/lang/Object;FF)Z
+  method public,static teleport (Ljava/lang/Object;DDD)Z
+  method public,static turn (Ljava/lang/Object;F)Z
+  method public,static velocity (Ljava/lang/Object;DDD)Z
+  method public,static yaw (Ljava/lang/Object;)F
+com/crystalgraphics/platform/world/CgEntityMovement$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/world/CgEntityMovement$Host;
+  method public,abstract gravity (Ljava/lang/Object;Z)Z
+  method public,abstract move (Ljava/lang/Object;DDD)Z
+  method public,abstract pitch (Ljava/lang/Object;)F
+  method public,abstract push (Ljava/lang/Object;DDD)Z
+  method public,abstract resetFall (Ljava/lang/Object;)Z
+  method public,abstract rotate (Ljava/lang/Object;FF)Z
+  method public,abstract teleport (Ljava/lang/Object;DDD)Z
+  method public,abstract velocity (Ljava/lang/Object;DDD)Z
+  method public,abstract yaw (Ljava/lang/Object;)F
 com/crystalgraphics/platform/world/CgEntityQuery
   access public,abstract,interface
   extends java/lang/Object

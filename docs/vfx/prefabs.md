@@ -562,6 +562,42 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern")
 - **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
   target with a prefab on its root, following it, its model left to the actor, and gone with it.
 
+### On the server too, and moved by its root motion
+
+A registered type's actor spawns on the server as well, for each entity of the type in the server's levels, from the
+same class. There its components live in `CgScene.server()`: never drawn, its skeletal meshes posed each tick for
+their bones, sockets and root motion. `server()` tells the two copies apart where they must differ.
+
+Name the body whose moves carry the entity, and its montages' root motion moves it, as Unreal's character is moved by
+its mesh. The server's actor moves its entity each tick, swept against blocks as the entity's own movement is, then
+turns it. On a client, only the local player's actor moves its entity, at once; any other actor follows its server's
+position.
+
+```java
+public final class FighterActor extends CgEntityActor {
+    private CgSkeletalMeshComponent body;
+
+    @Override protected void onSpawn(CgEntity fighter) {
+        body = rootMotion(add(scene().skeletal(FIGHTER).materials(SKINS::get)));
+    }
+}
+
+// the server, as a move starts: its sequence's montage now carries the entity, onto its target at arm's length
+CgEntityActor actor = CgEntityActors.serverActor(entityId);
+body.anim().motionWarping().target("opponent", x, y, z, yaw).standOff("opponent", 0.9f);
+sequencer.play(LUNGE, Map.of("caster", role));
+```
+
+- **The entity's own movement still runs**: its AI and its gravity. Hold its AI still while a move plays.
+- **The travel is the body's**: its component's world transform puts the clip's motion in the world, so a body
+  scaled or lifted under the root moves the entity by what is drawn.
+- **What a host does on the server**: `CgEntityActors.enteredServer(entity, type)` when an entity joins a server level
+  and `leftServer(entity)` where the loader has a leave event, both sides; and the entity's movement through
+  `CgEntityMovement`, the entity's own members on every era (`move` places it unswept on Forge 1.13.2).
+- **The rest of a move's motion** is `CgEntityMovement`'s too, on the side that owns the entity: `push` for a
+  knockback or a launch, `velocity` and `gravity(false)` to hold a fighter in the air, `resetFall` after a dive,
+  `teleport` for a vanish strike, `rotate` for yaw and pitch.
+
 ## Drawing a palette yourself
 
 By hand, each frame, write the pose's skinning matrices, one a bone in the skeleton's order, then draw the mesh naming

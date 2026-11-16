@@ -59,7 +59,9 @@ com/crystalgraphics/animation/CgAnimation
   method public add (Lcom/crystalgraphics/animation/CgAnimInstance;)Lcom/crystalgraphics/animation/CgAnimInstance;
   method public remove (Lcom/crystalgraphics/animation/CgAnimInstance;)V
   method public size ()I
+  method public tickFunction ()Lcom/crystalgraphics/frame/CgTickFunction;
   method public,static client ()Lcom/crystalgraphics/animation/CgAnimation;
+  method public,static of (Lcom/crystalgraphics/frame/CgWorld;)Lcom/crystalgraphics/animation/CgAnimation;
   method public,static server ()Lcom/crystalgraphics/animation/CgAnimation;
 com/crystalgraphics/animation/CgBonePalettes
   access public,final
@@ -13230,6 +13232,7 @@ com/crystalgraphics/render/scene/CgScene
   method public tubeLight ()Lcom/crystalgraphics/render/scene/component/CgTubeLight;
   method public update ()V
   method public,static client ()Lcom/crystalgraphics/render/scene/CgScene;
+  method public,static server ()Lcom/crystalgraphics/render/scene/CgScene;
 com/crystalgraphics/render/scene/CgScene$Registration
   access public,abstract,interface
   extends java/lang/Object
@@ -14624,6 +14627,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
   method public seed ()J
   method public seed (J)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public seek (D)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public server ()Z
   method public sought ()Z
   method public spawnable (ILcom/crystalgraphics/sequence/CgSequenceTarget;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public spawned (I)Lcom/crystalgraphics/sequence/CgSequenceTarget;
@@ -14722,6 +14726,7 @@ com/crystalgraphics/sequence/animation/CgSequenceAnimationEvaluator
   method public <init> ()V
   method public bind (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceTrack;Lcom/crystalgraphics/sequence/definition/CgSequenceSection;)V
   method public evaluate (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceTrack;Lcom/crystalgraphics/sequence/definition/CgSequenceSection;F)V
+  method public headless ()Z
   method public kind ()Ljava/lang/String;
   method public postEvaluation ()V
   method public stopped (Lcom/crystalgraphics/sequence/CgSequencePlayer;)V
@@ -24286,7 +24291,9 @@ com/crystalgraphics/world/actor/CgEntityActor
   method protected,abstract onSpawn (Lcom/crystalgraphics/world/actor/CgEntity;)V
   method protected,final add (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method protected,final prefab ()Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
+  method protected,final rootMotion (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method protected,final scene ()Lcom/crystalgraphics/render/scene/CgScene;
+  method protected,final server ()Z
   method public <init> ()V
   method public,final entity ()Lcom/crystalgraphics/world/actor/CgEntity;
   method public,final root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
@@ -24298,11 +24305,14 @@ com/crystalgraphics/world/actor/CgEntityActors
   method public,static bind (ILjava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static bindLocalPlayer (Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static entered (ILjava/lang/String;)V
+  method public,static enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
   method public,static left (I)V
+  method public,static leftServer (Ljava/lang/Object;)V
   method public,static preload (Lcom/crystalgraphics/loading/task/CgLoadPlan;)V
   method public,static register (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public,static registered (Ljava/lang/String;)Z
   method public,static replacesModel (I)Z
+  method public,static serverActor (I)Lcom/crystalgraphics/world/actor/CgEntityActor;
   method public,static size ()I
 com/crystalgraphics/world/actor/CgEntityActors$Registration
   access public,final

@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.modern.platform;
 
 import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.world.actor.CgEntityActors;
+import com.crystalgraphics.mc.modern.platform.world.LevelEntityQueryModern;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.CgDepthConvention;
@@ -318,6 +320,25 @@ public final class LifecycleModern {
     public static void entityLeft(Entity entity) {
         WorldEventsModern.left(entity);
         ActorsModern.left(entity);
+    }
+
+    /**
+     * An entity joined one of the server's levels: its type's actor spawns there too. Loaders call it for server levels
+     * only, on both sides (single player's integrated server is a server). Names no client class.
+     *
+     * <pre>{@code
+     * // Forge, NeoForge: EntityJoinLevelEvent (EntityJoinWorldEvent to 1.18.2), when !event.getLevel().isClientSide()
+     * // Fabric: ServerEntityEvents.ENTITY_LOAD
+     * LifecycleModern.entityJoinedServer(entity);
+     * }</pre>
+     */
+    public static void entityJoinedServer(Entity entity) {
+        CgEntityActors.enteredServer(entity, LevelEntityQueryModern.typeOf(entity));
+    }
+
+    /** An entity left one of the server's levels: {@link #entityJoinedServer}'s pair, where the loader has the event. */
+    public static void entityLeftServer(Entity entity) {
+        CgEntityActors.leftServer(entity);
     }
 
     /**
