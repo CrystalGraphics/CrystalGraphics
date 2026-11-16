@@ -109,7 +109,7 @@ public final class CgView {
     private float screenPercentage = 100f, fraction = 1f;
     private boolean screenPercentageAuto, refusedWarned;
     private CgUpscaleFilter upscaleFilter = CgUpscaleFilter.CATMULL_ROM;
-    private CgAntiAliasing antiAliasing = CgAntiAliasing.TAA;
+    private CgAntiAliasing antiAliasing = CgAntiAliasing.TSR;
     /** The jitter's sequence length this frame, and the material mip bias. */
     private int jitterSamples = 8;
     private float materialMipBias;
@@ -124,7 +124,8 @@ public final class CgView {
     private CgPost borrowedPost;
 
     // Last frame's camera, which this frame's is compared with (Unreal's FPreviousViewInfo)
-    private final Matrix4f previous = new Matrix4f(), viewProjection = new Matrix4f(), lastViewProjection = new Matrix4f();
+    private final Matrix4f previous = new Matrix4f(), previousTurn = new Matrix4f(), viewProjection = new Matrix4f(),
+            lastViewProjection = new Matrix4f();
     private double lastX, lastY, lastZ;
     private float lens00, lens11, lens22, lastTime, previousTime;
     private int lastWidth, lastHeight;
@@ -320,7 +321,7 @@ public final class CgView {
 
     /**
      * Its temporal anti-aliasing or upscaling, while its {@code temporalAA} show flag is on (Unreal's
-     * {@code AntiAliasingMethod}): {@link CgAntiAliasing#TAA} by default.
+     * {@code AntiAliasingMethod}): {@link CgAntiAliasing#TSR} by default.
      */
     public CgView antiAliasing(CgAntiAliasing method) {
         antiAliasing = Objects.requireNonNull(method, "method");
@@ -581,6 +582,14 @@ public final class CgView {
     }
 
     /**
+     * {@link #previousViewProjection()} without the camera's move since: where a point would have been had the camera only
+     * turned (Unreal's rotational clip to previous clip). The difference between the two is the parallax the move makes.
+     */
+    public Matrix4f previousTurn() {
+        return previousTurn;
+    }
+
+    /**
      * Draws this view's whole frame into {@code target} now: both world callbacks, its stages and post, through its own
      * camera at the target's size. An editor's viewport, a portal, a capture; the game's view is the hosts' to draw.
      *
@@ -749,6 +758,7 @@ public final class CgView {
         if (lastFrame == hostFrame - 1 && lastTarget == target && lastWidth == width && lastHeight == height
                 && dx * dx + dy * dy + dz * dz < TELEPORT * TELEPORT && sameLens()) {
             previous.set(lastViewProjection).translate((float) dx, (float) dy, (float) dz);
+            previousTurn.set(lastViewProjection);
             historyValid = forward() >= TURN_COS;
             if (historyValid) previousTime = lastTime;
         }

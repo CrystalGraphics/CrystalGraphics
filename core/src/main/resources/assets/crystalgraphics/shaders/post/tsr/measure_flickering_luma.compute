@@ -1,0 +1,19 @@
+// TSR's flicker measure (CgTemporalSuperResolution, High and up), at the render size, before translucency: each
+// pixel's luma in the guide's space, the signal the reject pass watches swing frame to frame. Measured before what is
+// laid over the opaque scene, so a spark or smoke's own change is not taken for flicker.
+#pragma kernel Measure 8 8 image
+
+Properties {
+    _Scene ("The scene, opaque and fogged, before translucency", sampler2D) = "black"
+}
+
+Images {
+    LUMA ("Its luma: the mean of its channels in the shading space, in the guide's", r8, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr.glsl"
+
+void Measure() {
+    vec3 c = max(texelFetch(_Scene, CG_TEXEL.xy, 0).rgb, vec3(0.0));
+    LUMA_WRITE(vec4(sqrt(dot(tsr_to_shading(c), vec3(1.0 / 3.0)))));
+}

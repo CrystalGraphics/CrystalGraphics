@@ -204,8 +204,14 @@ public final class CgPostRenderer {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.surfaces")) {
             post.context.begin(firing, view.state().get(SETTINGS));
             run(post, CgPostPoint.SURFACES, entries, 0, scene(firing));
+            beforeTranslucency(post, view, scene(firing));
             post.ranSurfaces = true;
         }
+    }
+
+    /** The temporal upscaler's look at the scene before translucency ({@link CgUpscaler#beforeTranslucency}). */
+    private static void beforeTranslucency(CgPost post, CgView view, CgScreenTexture scene) {
+        if (CgTemporalAA.shows(view)) post.upscaler(view.antiAliasing()).beforeTranslucency(post.context, scene);
     }
 
     /** After the {@code TRANSLUCENT} stage: the chain, its last step into the host's target, every later stage's again. */
@@ -223,6 +229,7 @@ public final class CgPostRenderer {
                 while (i < entries.length && entries[i].point() == CgPostPoint.SURFACES) i++;
             } else {
                 i = run(post, CgPostPoint.SURFACES, entries, 0, picture);
+                beforeTranslucency(post, view, picture);
             }
             post.ranSurfaces = false;
             i = run(post, CgPostPoint.TRANSLUCENT, entries, i, picture);

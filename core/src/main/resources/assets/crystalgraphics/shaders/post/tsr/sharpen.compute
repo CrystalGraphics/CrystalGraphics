@@ -1,0 +1,26 @@
+// TSR's sharpen pass (CgTemporalSuperResolution), at the output size: the resolved picture sharpened by RCAS
+// (lib/rcas.glsl), as temporal AA's output is, giving back what the history's blend of jittered samples softens.
+#pragma kernel Sharpen 8 8 image
+
+Properties {
+    _Source  ("The resolved picture, at the output size", sampler2D) = "black"
+    _Sharpen ("x RCAS's sharpness, 2^-stops (1 its most)", vec4) = (1, 0, 0, 0)
+}
+
+Images {
+    PICTURE ("The picture, for the rest of the chain", rgba16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/lib/rcas.glsl"
+
+vec3 load(ivec2 q, ivec2 last) {
+    return rcas_encode(texelFetch(_Source, clamp(q, ivec2(0), last), 0).rgb);
+}
+
+void Sharpen() {
+    ivec2 p = CG_TEXEL.xy;
+    ivec2 last = textureSize(_Source, 0) - 1;
+    vec3 sharp = rcas(load(p + ivec2(0, -1), last), load(p + ivec2(-1, 0), last), load(p, last), load(p + ivec2(1, 0), last),
+            load(p + ivec2(0, 1), last), _Sharpen.x);
+    PICTURE_WRITE(vec4(rcas_decode(sharp), 1.0));
+}

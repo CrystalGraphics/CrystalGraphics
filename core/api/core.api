@@ -12764,6 +12764,7 @@ com/crystalgraphics/render/post/aa/CgTemporalAA
   method public,static enabled (Lcom/crystalgraphics/render/view/CgView;)Z
   method public,static sharpening ()Z
   method public,static sharpening (Z)V
+  method public,static sharpness ()F
   method public,static shows (Lcom/crystalgraphics/render/view/CgView;)Z
 com/crystalgraphics/render/post/aa/CgTemporalGlow
   access public,final
@@ -13160,15 +13161,18 @@ com/crystalgraphics/render/post/settings/CgPostSettings$Region
 com/crystalgraphics/render/post/tsr/CgTemporalSuperResolution
   access public,final
   extends java/lang/Object
+  field public,static,final DEBUG_VIEW Lcom/crystalgraphics/render/view/CgViewKey;
   implements com/crystalgraphics/render/post/upscale/CgUpscaler
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public beforeTranslucency (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
   method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public composesTranslucency ()Z
   method public jitterSamples (F)I
   method public materialMipBias (F)F
   method public minFraction ()F
   method public presents (F)Z
+  method public,static debugMode (Ljava/lang/String;)I
   method public,static precache ()V
 com/crystalgraphics/render/post/upscale/CgAntiAliasing
   access public,final,enum
@@ -13197,6 +13201,7 @@ com/crystalgraphics/render/post/upscale/CgUpscaleFilter
 com/crystalgraphics/render/post/upscale/CgUpscaler
   access public,abstract,interface
   extends java/lang/Object
+  method public beforeTranslucency (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
   method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public composesTranslucency ()Z
   method public presents (F)Z
@@ -14832,6 +14837,7 @@ com/crystalgraphics/render/view/CgView
   method public override (Lcom/crystalgraphics/variable/CgVar$Num;F)Lcom/crystalgraphics/render/view/CgView;
   method public pick (FF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public post ()Lcom/crystalgraphics/render/post/CgPost;
+  method public previousTurn ()Lorg/joml/Matrix4f;
   method public previousViewProjection ()Lorg/joml/Matrix4f;
   method public publish (Lcom/crystalgraphics/render/view/CgViewKey;Ljava/lang/Object;)V
   method public read (Lcom/crystalgraphics/render/view/CgViewKey;)Ljava/lang/Object;

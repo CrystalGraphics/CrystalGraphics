@@ -10,10 +10,13 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
+import com.crystalgraphics.render.post.aa.CgTemporalAA;
 import com.crystalgraphics.render.post.aa.CgTemporalGlow;
+import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgSeparateTranslucency;
 import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewKey;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -47,7 +50,8 @@ import org.joml.Vector4f;
  *   <li>The history lives on the view's state ({@code CgViewState}); a camera cut, a resize, or a view that did not draw
  *       last frame starts it over.</li>
  *   <li>Its passes, in order: dilate the velocity and scatter each surface to where it was (disocclusion), reproject last
- *       frame's guide, measure the rejection, anti-alias spatially (Medium and up), update the history. Each is timed
+ *       frame's guide, measure the rejection, anti-alias spatially (Medium and up), update the history, sharpen it (RCAS, with
+ *       temporal AA's switch, {@code CgTemporalAA.sharpening}). Each is timed
  *       ({@code post.tsr.*}).</li>
  * </ul>
  */
@@ -57,13 +61,24 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             DECIMATE = "crystalgraphics:shaders/post/tsr/decimate_history.compute",
             REJECT = "crystalgraphics:shaders/post/tsr/reject_shading.compute",
             SPATIAL = "crystalgraphics:shaders/post/tsr/spatial_anti_aliasing.compute",
-            UPDATE = "crystalgraphics:shaders/post/tsr/update_history.compute";
+            UPDATE = "crystalgraphics:shaders/post/tsr/update_history.compute",
+            SHARPEN = "crystalgraphics:shaders/post/tsr/sharpen.compute",
+            FLICKER = "crystalgraphics:shaders/post/tsr/measure_flickering_luma.compute",
+            VISUALIZE = "crystalgraphics:shaders/post/tsr/visualize.compute";
+    /** This frame's debug view, at the output size, published while {@code crystalgraphics.post.debug} names one. */
+    public static final CgViewKey<CgGraphTexture> DEBUG_VIEW = new CgViewKey<>("crystalgraphics:tsr_debug_view");
+    /** {@code crystalgraphics.post.debug}'s TSR views, by the visualize kernel's mode. */
+    private static final String[] DEBUG_VIEWS = {"", "tsr.rejection", "tsr.samples", "tsr.guide", "tsr.reprojection",
+            "tsr.flicker", "tsr.resurrection"};
     private static final CgViewState.HistoryKey COLOR = new CgViewState.HistoryKey("crystalgraphics:tsr_color"),
             VALID = new CgViewState.HistoryKey("crystalgraphics:tsr_valid"),
-            GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_guide");
+            GUIDE = new CgViewState.HistoryKey("crystalgraphics:tsr_guide"),
+            FLICKER_LUMA = new CgViewState.HistoryKey("crystalgraphics:tsr_flicker_luma"),
+            MOIRE = new CgViewState.HistoryKey("crystalgraphics:tsr_moire");
     private static final int GPU_DILATE = CgGpuTrace.name("post.tsr.dilate"), GPU_DECIMATE = CgGpuTrace.name("post.tsr.decimate"),
             GPU_REJECT = CgGpuTrace.name("post.tsr.reject"), GPU_SPATIAL = CgGpuTrace.name("post.tsr.spatial"),
-            GPU_UPDATE = CgGpuTrace.name("post.tsr.update");
+            GPU_UPDATE = CgGpuTrace.name("post.tsr.update"), GPU_SHARPEN = CgGpuTrace.name("post.tsr.sharpen"),
+            GPU_FLICKER = CgGpuTrace.name("post.tsr.flicker");
 
     /** The most samples a history pixel holds ({@code r.TSR.History.SampleCount}). */
     static final float HISTORY_SAMPLES = 16f;
@@ -79,6 +94,12 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     static final int TILE = 32, TILE_BORDER = 3;
     /** How far the spatial anti-aliasing follows an edge each way, below Ultra and at it ({@code r.TSR.RejectionAntiAliasingQuality}). */
     static final int SPATIAL_STEPS = 3, SPATIAL_STEPS_ULTRA = 8;
+    /**
+     * The flicker heuristic (High and up, {@code r.TSR.ShadingRejection.Flickering.*}): a swing back and forth within this
+     * many frames is flicker, at the frame rate cap and above; slower frames shorten it in proportion. A camera moving
+     * across a surface by the parallax speed in 1080p pixels a frame has it count as moving.
+     */
+    static final float FLICKER_PERIOD = 2f, FLICKER_FRAME_RATE_CAP = 60f, FLICKER_MAX_PARALLAX = 10f;
     /** The least fraction it rebuilds from. */
     static final float MIN_FRACTION = 0.25f;
     /** The jitter's base sequence, and the primes it is rounded up to. */
@@ -90,12 +111,17 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private static final float MIP_BIAS_OFFSET = -0.3f, MIP_BIAS_MIN = -2f;
 
     private final CgTemporalGlow glow = new CgTemporalGlow(new CgViewState.HistoryKey("crystalgraphics:tsr_glow"));
-    private final Matrix4f clipToPrev = new Matrix4f();
+    private final Matrix4f clipToPrev = new Matrix4f(), clipToWorld = new Matrix4f(), prevClipToWorld = new Matrix4f(),
+            turnToPrev = new Matrix4f();
     private final Vector4f column = new Vector4f();
-    private CgKernel clear, dilate, decimate, reject, rejectSpatial, spatial, update, updateSpatial;
+    private CgKernel clear, dilate, decimate, reject, rejectSpatial, rejectFlicker, spatial, update, updateSpatial, sharpen,
+            measure, visualize;
+    /** The view state's frame index the flicker luma was last measured in, and when the last frame was resolved. */
+    private int measuredFrame = -1;
+    private long lastNanos;
     private int width, height, outWidth, outHeight;
     private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
-            offsets, picture;
+            offsets, moving, reprojectedMoire, picture, debugView;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -104,9 +130,12 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgCompute.load(DECIMATE).kernel("Decimate").precache();
         CgCompute.load(REJECT).kernel("Reject").precache();
         CgCompute.load(REJECT).kernel("RejectSpatial").precache();
+        CgCompute.load(REJECT).kernel("RejectFlicker").precache();
+        CgCompute.load(FLICKER).kernel("Measure").precache();
         CgCompute.load(SPATIAL).kernel("Spatial").precache();
         CgCompute.load(UPDATE).kernel("Update").precache();
         CgCompute.load(UPDATE).kernel("UpdateSpatial").precache();
+        CgCompute.load(SHARPEN).kernel("Sharpen").precache();
     }
 
     @Override
@@ -152,6 +181,20 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         return glow.record(ctx, input, resolved, threshold);
     }
 
+    /** From High, the flicker heuristic's luma: measured here, before translucency is laid over the scene. */
+    @Override
+    public void beforeTranslucency(CgPostContext ctx, CgScreenTexture scene) {
+        if (!CgGraphicsSettings.ANTI_ALIASING.get().atLeast(CgQuality.HIGH)) return;
+        if (measure == null) measure = CgCompute.load(FLICKER).kernel("Measure");
+        CgViewState state = ctx.view().state();
+        int w = scene.width(), h = scene.height();
+        CgGraphTexture luma = state.history(FLICKER_LUMA, new CgTextureDesc(w, h, CgFormat.R8_UNORM), ctx.recording());
+        CgComputePass pass = ctx.recording().compute("tsr.flicker").timed(GPU_FLICKER);
+        pass.dispatch(measure, w, h, 1).image("LUMA", luma).texture("_Scene", scene.texture());
+        pass.end();
+        measuredFrame = state.frameIndex();
+    }
+
     @Override
     public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input) {
         if (clear == null) {
@@ -160,20 +203,29 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
             decimate = CgCompute.load(DECIMATE).kernel("Decimate");
             reject = CgCompute.load(REJECT).kernel("Reject");
             rejectSpatial = CgCompute.load(REJECT).kernel("RejectSpatial");
+            rejectFlicker = CgCompute.load(REJECT).kernel("RejectFlicker");
             spatial = CgCompute.load(SPATIAL).kernel("Spatial");
             update = CgCompute.load(UPDATE).kernel("Update");
             updateSpatial = CgCompute.load(UPDATE).kernel("UpdateSpatial");
+            sharpen = CgCompute.load(SHARPEN).kernel("Sharpen");
         }
         CgQuality quality = CgGraphicsSettings.ANTI_ALIASING.get();
         boolean antiAliasSpatially = quality.atLeast(CgQuality.MEDIUM);
         CgView view = ctx.view();
         CgViewState state = view.state();
+        boolean flicker = quality.atLeast(CgQuality.HIGH) && measuredFrame == state.frameIndex();
+        // Below the frame rate cap a frame spans more of the period: the flicker period and parallax scale with it
+        long now = System.nanoTime();
+        float refresh = lastNanos == 0L ? 1f : (now - lastNanos) * 1e-9f * FLICKER_FRAME_RATE_CAP;
+        lastNanos = now;
         CgRecording recording = ctx.recording();
         int w = input.width(), h = input.height(), ow = Math.max(w, view.outputWidth()), oh = Math.max(h, view.outputHeight());
         size(w, h, ow, oh);
         CgGraphTexture colorHistory = state.history(COLOR, new CgTextureDesc(ow, oh, CgFormat.RG11B10_UFLOAT), recording);
         CgGraphTexture validHistory = state.history(VALID, new CgTextureDesc(ow, oh, CgFormat.R8_UNORM), recording);
         CgGraphTexture guideHistory = state.history(GUIDE, new CgTextureDesc(w, h, CgFormat.RGB10A2_UNORM), recording);
+        CgGraphTexture moireHistory = flicker ? state.history(MOIRE, new CgTextureDesc(w, h, CgFormat.RGBA8_UNORM), recording) : null;
+        CgGraphTexture flickerLuma = flicker ? state.history(FLICKER_LUMA, new CgTextureDesc(w, h, CgFormat.R8_UNORM), recording) : null;
         boolean cut = !view.historyValid() || state.fresh(COLOR) || state.fresh(VALID) || state.fresh(GUIDE);
         float jx = view.jitterTexelsX(), jy = view.jitterTexelsY(), cutFlag = cut ? 1f : 0f;
         int frame = state.frameIndex();
@@ -185,16 +237,21 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgComputePass pass = recording.compute("tsr.dilate").timed(GPU_DILATE);
         pass.dispatch(clear, w, h, 1).image("ATOMICS", atomics);
         CgDispatch d = pass.dispatch(dilate, w, h, 1).image("ATOMICS", atomics).image("CLOSEST", closest)
-                .image("DILATE", dilateMask).image("VECTOR", vector).texture("_SceneDepth", ctx.depth());
+                .image("DILATE", dilateMask).image("VECTOR", vector).image("MOVING", moving).texture("_SceneDepth", ctx.depth());
         if (velocity != null) d.texture("_Velocity", velocity);
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
+        if (flicker) flickerValues(d, view, w, refresh);
         pass.end();
 
+        // The guide and moire histories are written by the reject pass, after this one: sampled now, their newest version
+        // is last frame's (previous() would be the frame before)
         pass = recording.compute("tsr.decimate").timed(GPU_DECIMATE);
         d = pass.dispatch(decimate, w, h, 1).image("GUIDE", reprojected).image("FILLED", filled).image("MASK", mask)
-                .texture("_PrevGuide", guideHistory.previous()).texture("_Closest", closest).texture("_Dilate", dilateMask)
-                .texture("_Vector", vector).texture("_Atomics", atomics).set("_Frame", frame, 0f, 0f, 0f);
+                .texture("_PrevGuide", guideHistory).texture("_Closest", closest).texture("_Dilate", dilateMask)
+                .texture("_Vector", vector).texture("_Atomics", atomics).image("MOIRE", reprojectedMoire)
+                .set("_Frame", frame, 0f, 0f, 0f);
         if (responsive != null) d.texture("_Responsive", responsive);
+        if (flicker) d.texture("_PrevMoire", moireHistory).set("_Flicker", 1f, state.fresh(MOIRE) ? 1f : 0f, 0f, 0f);
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
         pass.end();
 
@@ -204,7 +261,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgSeparateTranslucency apart = view.read(CgSeparateTranslucency.KEY);
         CgGraphTexture translucency = apart != null ? apart.target() : null;
         pass = recording.compute("tsr.reject").timed(GPU_REJECT);
-        d = pass.dispatchGroups(antiAliasSpatially ? rejectSpatial : reject, (w + stride - 1) / stride,
+        d = pass.dispatchGroups(flicker ? rejectFlicker : antiAliasSpatially ? rejectSpatial : reject, (w + stride - 1) / stride,
                         (h + stride - 1) / stride, 1).image("GUIDE", guideHistory)
                 .image("REJECTION", rejection).image("COLOR", color).texture("_Color", input.texture())
                 .texture("_Guide", reprojected).texture("_Mask", mask).set("_Input", w, h, 1f / w, 1f / h)
@@ -212,6 +269,11 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_Reject", least, TILE_BORDER, stride, translucency != null ? 1f : 0f);
         if (antiAliasSpatially) d.image("LUMA", luma).image("AA_MASK", aaMask);
         if (translucency != null) d.texture("_Translucency", translucency);
+        if (flicker) {
+            float period = FLICKER_PERIOD / Math.max(refresh, 1f);
+            d.image("MOIRE", moireHistory).texture("_MoireLuma", flickerLuma).texture("_PrevMoire", reprojectedMoire)
+                    .texture("_Moving", moving).set("_Flicker", 1f, 1f - (float) Math.pow(0.95, period), 0f, 0f);
+        }
         pass.end();
 
         if (antiAliasSpatially) {
@@ -232,8 +294,34 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_History", HISTORY_SAMPLES, hysteresis, 1f - REJECTED_SAMPLES * hysteresis, toHistory)
                 .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / MOTION_PIXEL_SPEED, 0f, 0f);
         if (antiAliasSpatially) d.texture("_Offset", offsets);
+        float sharpness = CgTemporalAA.sharpness();
+        d.set("_Options", sharpness > 0f ? 0f : 1f, quality.atLeast(CgQuality.HIGH) ? 1f : 0f, 0f, 0f);
         pass.end();
+
+        if (sharpness > 0f) {
+            pass = recording.compute("tsr.sharpen").timed(GPU_SHARPEN);
+            pass.dispatch(sharpen, ow, oh, 1).image("PICTURE", picture).texture("_Source", colorHistory)
+                    .set("_Sharpen", sharpness, 0f, 0f, 0f);
+            pass.end();
+        }
+        int mode = debugMode(CgPostDebug.VIEW.get());
+        if (mode > 0) {
+            if (visualize == null) visualize = CgCompute.load(VISUALIZE).kernel("Visualize");
+            pass = recording.compute("tsr.visualize");
+            d = pass.dispatch(visualize, ow, oh, 1).image("VIEW", debugView).texture("_Rejection", rejection)
+                    .texture("_Mask", mask).texture("_Valid", validHistory).texture("_Guide", reprojected)
+                    .texture("_Filled", filled).set("_Output", ow, oh, 1f / ow, 1f / oh).set("_Mode", mode, 0f, 0f, 0f);
+            if (moireHistory != null) d.texture("_Moire", moireHistory);
+            pass.end();
+            view.publish(DEBUG_VIEW, debugView);
+        }
         return CgScreenTexture.of(picture);
+    }
+
+    /** The visualize kernel's mode for a {@code crystalgraphics.post.debug} value: 0 where it names no TSR view. */
+    public static int debugMode(String view) {
+        for (int i = 1; i < DEBUG_VIEWS.length; i++) if (DEBUG_VIEWS[i].equals(view)) return i;
+        return 0;
     }
 
     /** The frame's geometry every pass of the first two reads. */
@@ -242,6 +330,28 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         for (int i = 0; i < 4; i++) {
             clipToPrev.getColumn(i, column);
             d.set("_ClipToPrev" + i, column.x, column.y, column.z, column.w);
+        }
+    }
+
+    /**
+     * The dilate pass's is-moving values: this frame's clip to its camera-relative world, last frame's to the same, the clip
+     * to last frame's had the camera only turned, and the parallax speed counting as moving, inverse.
+     */
+    private void flickerValues(CgDispatch d, CgView view, int w, float refresh) {
+        clipToWorld.set(view.camera().projection()).mul(view.camera().view()).invert();
+        view.previousViewProjection().invert(prevClipToWorld);
+        turnToPrev.set(view.previousTurn()).mul(clipToWorld);
+        float maxParallax = Math.max(refresh * FLICKER_MAX_PARALLAX * w / 1920f, 1e-3f);
+        d.set("_Flicker", 1f, 1f / maxParallax, 0f, 0f);
+        columns(d, "_ClipToWorld", clipToWorld);
+        columns(d, "_PrevClipToWorld", prevClipToWorld);
+        columns(d, "_TurnToPrev", turnToPrev);
+    }
+
+    private void columns(CgDispatch d, String name, Matrix4f m) {
+        for (int i = 0; i < 4; i++) {
+            m.getColumn(i, column);
+            d.set(name + i, column.x, column.y, column.z, column.w);
         }
     }
 
@@ -270,7 +380,10 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         luma = transientTexture("cg_tsr_luma", w, h, CgFormat.R16_FLOAT);
         aaMask = transientTexture("cg_tsr_aa_mask", w, h, CgFormat.R8_UNORM);
         offsets = transientTexture("cg_tsr_offsets", w, h, CgFormat.RG8_UINT);
+        moving = transientTexture("cg_tsr_moving", w, h, CgFormat.R8_UNORM);
+        reprojectedMoire = transientTexture("cg_tsr_reprojected_moire", w, h, CgFormat.RGBA8_UNORM);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
+        debugView = transientTexture("cg_tsr_debug_view", ow, oh, CgFormat.RGBA16_FLOAT);
     }
 
     private static CgGraphTexture transientTexture(String name, int w, int h, CgFormat format) {

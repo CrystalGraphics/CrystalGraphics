@@ -60,6 +60,13 @@ public interface CgUpscaler {
         return false;
     }
 
+    /**
+     * Called at the chain's {@code SURFACES} step with the opaque, fogged scene, before translucency lays anything over it:
+     * for a measure that must not see translucency (TSR's flicker luma). Nothing by default.
+     */
+    default void beforeTranslucency(CgPostContext ctx, CgScreenTexture scene) {
+    }
+
     /** Resolves {@code input}, this frame's jittered picture, and answers the chain's picture after it. */
     CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input);
 

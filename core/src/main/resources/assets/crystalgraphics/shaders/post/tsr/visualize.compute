@@ -1,0 +1,63 @@
+// TSR's debug views (CgTemporalSuperResolution, -Dcrystalgraphics.post.debug=tsr.<view>), at the output size: one of
+// its passes' targets as a picture. rejection: red how much history is dropped, green how far the update may skip its
+// clamp, blue disoccluded or off screen. samples: the history's validity, the samples it holds of 16, as a heat ramp.
+// guide: the reprojected guide the reject pass compared against. reprojection: the hole-filled motion the update fetches
+// by (0.5 + pixels a frame / 32), blue where hole filling took the motion of what was in front. flicker: the moire
+// history, red its swings' total variation x 8, green their count of 20, blue its gradient. resurrection: blue where an
+// older frame's history was taken.
+#pragma kernel Visualize 8 8 image
+
+Properties {
+    _Output    ("The output size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Mode      ("x the view: 1 rejection, 2 samples, 3 guide, 4 reprojection, 5 flicker, 6 resurrection", vec4) = (1, 0, 0, 0)
+    _Rejection ("The reject pass's rejection", sampler2D) = "black"
+    _Mask      ("The decimate bits over 255", sampler2D) = "black"
+    _Valid     ("The history's validity", sampler2D) = "black"
+    _Guide     ("The reprojected guide", sampler2D) = "black"
+    _Filled    ("The hole-filled motion", sampler2D) = "black"
+    _Moire     ("The moire history", sampler2D) = "black"
+}
+
+Images {
+    VIEW ("The view", rgba16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr.glsl"
+
+vec4 at(sampler2D t, vec2 uv) {
+    ivec2 size = textureSize(t, 0);
+    return texelFetch(t, clamp(ivec2(uv * vec2(size)), ivec2(0), size - 1), 0);
+}
+
+// Black for none, then blue, cyan, green, yellow, red, white from 0 to 1.
+vec3 heat(float x) {
+    float t = clamp(x, 0.0, 1.0) * 6.0;
+    vec3 ramp[7] = vec3[7](vec3(0.0), vec3(0.0, 0.0, 1.0), vec3(0.0, 1.0, 1.0), vec3(0.0, 1.0, 0.0),
+                           vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0));
+    int k = min(int(t), 5);
+    return mix(ramp[k], ramp[k + 1], t - float(k));
+}
+
+void Visualize() {
+    vec2 uv = (vec2(CG_TEXEL.xy) + 0.5) * _Output.zw;
+    int mode = int(_Mode.x);
+    uint bits = uint(round(at(_Mask, uv).x * 255.0));
+    vec3 c = vec3(0.0);
+    if (mode == 1) {
+        vec4 r = at(_Rejection, uv);
+        c = vec3(1.0 - r.x, r.y, (bits & 3u) != 0u ? 1.0 : 0.0);
+    } else if (mode == 2) {
+        c = heat(at(_Valid, uv).r);
+    } else if (mode == 3) {
+        c = at(_Guide, uv).rgb;
+    } else if (mode == 4) {
+        vec2 px = cg_DecodeVelocity(at(_Filled, uv).xy) * vec2(textureSize(_Filled, 0)) * 0.5;
+        c = vec3(0.5 + px / 32.0, (bits & 8u) != 0u ? 1.0 : 0.0);
+    } else if (mode == 5) {
+        vec4 m = at(_Moire, uv);
+        c = vec3(m.z * 8.0, m.w, m.y);
+    } else if (mode == 6) {
+        c = vec3(0.0, 0.0, (bits & 4u) != 0u ? 1.0 : 0.0) + at(_Guide, uv).rgb * 0.3;
+    }
+    VIEW_WRITE(vec4(c, 1.0));
+}

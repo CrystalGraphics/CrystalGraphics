@@ -92,6 +92,11 @@ public final class CgTemporalAA implements CgUpscaler {
         return sharpening;
     }
 
+    /** RCAS's sharpness for a temporal step's resolved picture ({@code lib/rcas.glsl}), 0 while sharpening is off. */
+    public static float sharpness() {
+        return sharpening ? (float) Math.pow(2.0, -SHARPEN_STOPS) : 0f;
+    }
+
     /** Whether {@code view} asks for the resolve (its show flag). */
     public static boolean enabled(CgView view) {
         return view.showFlags().temporalAA();
@@ -146,7 +151,7 @@ public final class CgTemporalAA implements CgUpscaler {
         ctx.screen(resolve).name("taa.resolve").from(input).reads(history.previous()).reads(velocity).reads(responsive)
                 .reads(ctx.depth()).into(CgScreenTexture.of(history));
         // The chain may draw over its picture in place: it gets a copy, without the history's age
-        output.sampler("_History", 0, history).vec4("_Sharpen", sharpening ? (float) Math.pow(2.0, -SHARPEN_STOPS) : 0f, covers, 0f, 0f);
+        output.sampler("_History", 0, history).vec4("_Sharpen", sharpness(), covers, 0f, 0f);
         if (velocity != null) output.sampler("_Velocity", 1, velocity);
         if (responsive != null) output.sampler("_Responsive", 2, responsive);
         ctx.screen(output).name("taa.output").from(input).reads(history).reads(velocity).reads(responsive).into(out);

@@ -5,9 +5,9 @@ package com.crystalgraphics.render.post.upscale;
  * {@code AntiAliasingMethod}): {@code view.antiAliasing(method)}.
  *
  * <pre>{@code
- * view.showFlags().temporalAA(true);
- * view.antiAliasing(CgAntiAliasing.TAA);
+ * view.showFlags().temporalAA(true);                               // TSR, the default
  * view.antiAliasing(CgAntiAliasing.TSR).screenPercentage(67f);   // drawn at 67%, rebuilt to the full size
+ * view.antiAliasing(CgAntiAliasing.TAA);                         // temporal AA at the size drawn
  * }</pre>
  */
 public enum CgAntiAliasing {

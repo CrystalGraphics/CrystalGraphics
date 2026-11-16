@@ -5,9 +5,11 @@
 // into this frame's box would take, against how much the frame itself varies, is the rejection (variance clipping:
 // Salvi, An Excursion in Temporal Supersampling, 2016). Writes next frame's guide, the rejection the update pass blends
 // by, and this frame's colour for it, the separate translucency composed in; RejectSpatial (Medium and up) also the luma and the mask the spatial
-// anti-aliasing reads: where the history is mostly dropped and the contrast would show a stair.
+// anti-aliasing reads: where the history is mostly dropped and the contrast would show a stair. RejectFlicker (High and
+// up) also watches each pixel's luma swing back and forth over the frames (flicker) and keeps its moire history.
 #pragma kernel Reject 16 16 general
 #pragma kernel RejectSpatial 16 16 general
+#pragma kernel RejectFlicker 16 16 general
 
 Properties {
     _Input    ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
@@ -18,6 +20,10 @@ Properties {
     _Translucency ("The separate translucency, uncomposed: rgb the light it adds, a how much it covers", sampler2D) = "black"
     _Guide    ("Last frame's guide, reprojected; a its uncertainty", sampler2D) = "black"
     _Mask     ("The decimate bits over 255, and the reprojection edge", sampler2D) = "black"
+    _Flicker  ("x 1 watching flicker (RejectFlicker); y the flicker count's fade-in rate", vec4) = (0, 0.0975, 0, 0)
+    _MoireLuma ("This frame's luma before translucency, in the guide's space", sampler2D) = "black"
+    _PrevMoire ("Last frame's moire history, reprojected", sampler2D) = "black"
+    _Moving   ("1 where the surface moves in the world, or the camera's parallax is fast", sampler2D) = "black"
 }
 
 Images {
@@ -26,6 +32,7 @@ Images {
     COLOR     ("This frame's picture, for the update pass", r11f_g11f_b10f, writeonly)
     LUMA      ("This frame's luma for the spatial anti-aliasing (tsr_spatial_luma)", r16f, writeonly)
     AA_MASK   ("1 where the spatial anti-aliasing runs", r8, writeonly)
+    MOIRE     ("x the flicker luma's history in the guide's space; y its gradient; z its total variation; w its count", rgba8, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr.glsl"
@@ -36,6 +43,9 @@ const float FILTERING = 1.0 / (1.0 + 4.0 * 0.5 + 4.0 * 0.25);   // the 3x3 blur'
 const vec3 LUMA = vec3(0.299, 0.587, 0.114);
 const float LARGEST = 65504.0 * 0.25;
 const uint OFF_SCREEN_OR_DISOCCLUDED = 1u | 2u | 32u;
+// The flicker heuristic's least blend of a frame, the most swings it counts, and its 8-bit gradient's step
+const float MIN_BLEND = 0.05, MAX_COUNT = 20.0, ENCODING = 1.0 / 127.0;
+const ivec2 PLUS4[4] = ivec2[4](ivec2(0, -1), ivec2(-1, 0), ivec2(0, 1), ivec2(1, 0));
 
 shared vec4 tile[TILE * TILE];
 
@@ -95,6 +105,21 @@ void min_max(vec4 x[4], out vec4 lo[4], out vec4 hi[4]) {
     }
 }
 
+// The minimum and maximum over the plus: each pixel and its four neighbours.
+void min_max_plus(vec4 x[4], out vec4 lo[4], out vec4 hi[4]) {
+    put(x);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 a = x[e], b = x[e];
+        for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the plus
+            vec4 v = at(local_of(e) + PLUS4[k]);
+            a = min(a, v);
+            b = max(b, v);
+        }
+        lo[e] = a;
+        hi[e] = b;
+    }
+}
+
 // x clamped into the 3x3 box of boundary.
 void clamp_into(inout vec4 x[4], vec4 boundary[4]) {
     vec4 lo[4], hi[4];
@@ -136,15 +161,103 @@ void max_rgb_min_a(inout vec4 x[4]) {
     for (int e = 0; e < 4; e++) x[e] = vec4(hi[e].rgb, lo[e].a);   // LOOP-BOUND: four elements
 }
 
+// The flicker heuristic (High and up), on one channel: the luma measured before translucency, its last frames' history
+// run through the same rejection the colour gets, and how often its change from frame to frame flipped sign while the
+// surface stood still. A pattern finer than the jitter (moire) flips every frame or two; the error it answers widens the
+// colour's clamping box, so that pattern keeps its history rather than being rejected each frame. Where translucency or
+// fog changed the luma since it was measured, that change is not counted. moire: next frame's history.
+void flicker(ivec2 origin, vec3 opaque[4], vec3 final[4], float coverage[4], bool disoccluded[4], out float error[4],
+        out vec4 moire[4]) {
+    ivec2 size = ivec2(_Input.xy);
+    bool cut = _Jitter.z > 0.5;
+    float inputLuma[4], modification[4], prevHistory[4], prevGradient[4], prevVariation[4], prevCount[4], still[4];
+    vec4 v[4], g[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        ivec2 p = clamp(origin + local_of(e), ivec2(0), size - 1);
+        float measured = texelFetch(_MoireLuma, p, 0).r;
+        vec4 prev = texelFetch(_PrevMoire, p, 0);
+        still[e] = 1.0 - texelFetch(_Moving, p, 0).r;
+        inputLuma[e] = measured * measured;
+        vec3 opaqueShading = tsr_to_shading(opaque[e]), finalShading = tsr_to_shading(final[e]);
+        float sceneLuma = dot(opaqueShading, vec3(1.0 / 3.0));
+        float translucencyChange = dot(abs(opaqueShading - finalShading), vec3(1.0 / 3.0));
+        modification[e] = max(max(abs(inputLuma[e] - sceneLuma) - 0.5 / 255.0, 0.0), max(translucencyChange, coverage[e]));
+        prevHistory[e] = prev.x * prev.x;
+        prevGradient[e] = prev.y * (255.0 / 127.0) - 1.0;
+        prevVariation[e] = prev.z * (1.0 - MIN_BLEND) * still[e];
+        prevCount[e] = prev.w * MAX_COUNT * (1.0 - MIN_BLEND) * still[e];
+        v[e] = vec4(inputLuma[e], prevHistory[e], 0.0, 0.0);
+        g[e] = vec4(prevHistory[e], inputLuma[e], 0.0, 0.0);
+    }
+    // Mutual annihilation: x the input clamped toward the history, y the history toward the input
+    clamp_into(g, v);
+    clamp_into(v, g);
+    vec4 filtered[4];
+    for (int e = 0; e < 4; e++) filtered[e] = vec4(v[e].x, modification[e], v[e].y, 0.0);   // LOOP-BOUND: four elements
+    blur(filtered);
+    vec4 box[4], lo[4], hi[4];
+    for (int e = 0; e < 4; e++) box[e] = vec4(filtered[e].x, v[e].x, 0.0, 0.0);   // LOOP-BOUND: four elements
+    min_max(box, lo, hi);
+    vec4 energy[4];
+    float delta[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        float inputBox = hi[e].y - lo[e].y;
+        float clampError = max(QUANTIZATION, inputBox * FILTERING * 0.25) + QUANTIZATION;
+        float fi = filtered[e].x, fh = filtered[e].z;
+        float clamped = clamp(fh, lo[e].x - clampError, hi[e].x + clampError);
+        delta[e] = max(abs(fi - fh), inputBox * FILTERING + QUANTIZATION * 2.0 * FILTERING);
+        float raw = abs(clamped - fh);
+        energy[e] = vec4(raw, 0.0, 0.0, clamp(1.0 - raw / delta[e], 0.0, 1.0));
+    }
+    median(energy);
+    max_rgb_min_a(energy);
+    // The history as the update pass would blend it, against a ghost of it at the least blend: the gradient
+    vec4 lumas[4], plusLo[4], plusHi[4];
+    for (int e = 0; e < 4; e++) lumas[e] = vec4(inputLuma[e]);   // LOOP-BOUND: four elements
+    min_max_plus(lumas, plusLo, plusHi);
+    float gradient[4], flipped[4], next[4];
+    vec4 swing[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        float blendFinal = clamp(1.0 - energy[e].x / delta[e], 0.0, 1.0);
+        float prevKept = mix(clamp(prevHistory[e], plusLo[e].x, plusHi[e].x), prevHistory[e], energy[e].a);
+        float blend = max(1.0 - blendFinal, MIN_BLEND);
+        next[e] = inputLuma[e] * blend - prevKept * (blend - 1.0);
+        float ghost = inputLuma[e] * MIN_BLEND - prevHistory[e] * (MIN_BLEND - 1.0);
+        float grad = next[e] - ghost;
+        grad = sign(grad) * max(abs(grad) - filtered[e].y, 0.0);
+        gradient[e] = grad;
+        bool sameSign = grad * prevGradient[e] > 0.0;
+        bool withinError = abs(grad) < ENCODING || abs(prevGradient[e]) < ENCODING;
+        flipped[e] = sameSign || withinError || cut ? 0.0 : 1.0;
+        swing[e] = vec4(min(abs(prevGradient[e]), abs(grad)) * flipped[e], flipped[e], 0.0, 0.0);
+    }
+    // Dilated twice: the history's nearest-texel reprojection is not exact
+    min_max(swing, lo, hi);
+    min_max(hi, lo, swing);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        float newGradient = prevGradient[e] * (MIN_BLEND - 1.0) * (flipped[e] - 1.0) + gradient[e];
+        float variation = prevVariation[e] + swing[e].x, count = prevCount[e] + swing[e].y;
+        if (disoccluded[e]) newGradient = variation = count = 0.0;
+        float quantized = floor(count * (255.0 / MAX_COUNT)) * (MAX_COUNT / 255.0);
+        float inverse = count > 0.0 ? 1.0 / count : 0.0;
+        variation = variation * quantized * inverse;
+        float fadeIn = clamp(count * _Flicker.y - 0.5, 0.0, 1.0);
+        float err = (abs(variation * inverse) + count * ENCODING) * fadeIn;
+        moire[e] = vec4(sqrt(max(next[e], 0.0)), newGradient * (127.0 / 255.0) + 127.0 / 255.0, variation, quantized / MAX_COUNT);
+        error[e] = clamp(err * still[e] - modification[e], 0.0, 1.0);
+    }
+}
+
 // The whole decision, storing the guide, the rejection and the colour; per element, its pixel, whether this tile wrote
-// it, and what the spatial anti-aliasing needs of it.
-void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool antiAlias[4]) {
+// it, what the spatial anti-aliasing needs of it, and next frame's moire history (with _Flicker).
+void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool antiAlias[4], out vec4 moire[4]) {
     ivec2 size = ivec2(_Input.xy);
     int border = int(_Reject.y);
     ivec2 origin = CG_GROUP_ID.xy * int(_Reject.z) - border;
 
     vec4 scene[4], history[4], uncertainty[4], translucency[4];
-    vec3 final[4];
+    vec3 final[4], opaque[4];
+    float coverage[4];
     float edge[4];
     bool disoccluded[4];
     bool translucent = _Reject.w > 0.5;
@@ -154,7 +267,9 @@ void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool 
         vec4 g = texelFetch(_Guide, p, 0);
         vec2 mask = texelFetch(_Mask, p, 0).xy;
         scene[e] = vec4(c, 0.0);
+        opaque[e] = c;
         translucency[e] = translucent ? textureLod(_Translucency, (vec2(p) + 0.5) * _Input.zw, 0.0) : vec4(0.0);
+        coverage[e] = translucency[e].a;
         final[e] = min(c * (1.0 - translucency[e].a) + translucency[e].rgb, vec3(LARGEST));
         history[e] = g;
         uncertainty[e] = vec4(g.a);
@@ -171,6 +286,13 @@ void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool 
     } else {
         for (int e = 0; e < 4; e++) final[e] = scene[e].rgb;   // LOOP-BOUND: four elements
     }
+
+    float moireError[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        moireError[e] = 0.0;
+        moire[e] = vec4(0.0);
+    }
+    if (_Flicker.x > 0.5) flicker(origin, opaque, final, coverage, disoccluded, moireError, moire);
 
     // In the shading space: the input clamped into the history's box clamped by the input's, and the history clamped
     // into the box of the input clamped into the history's (mutual annihilation)
@@ -220,7 +342,11 @@ void decide(out ivec2 pixels[4], out bool wrote[4], out float luma[4], out bool 
     vec4 energy[4];
     vec3 delta[4];
     for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
-        vec3 clamped = clamp(filteredHistory[e].rgb, lo[e].rgb - clampError[e].rgb, hi[e].rgb + clampError[e].rgb);
+        vec3 boxLo = lo[e].rgb - clampError[e].rgb, boxHi = hi[e].rgb + clampError[e].rgb;
+        // A flickering pixel's box is at least its flicker wide (3 channels' worth of its luma error), so moire keeps
+        vec3 widest = vec3(3.0 * moireError[e]);
+        vec3 stableLo = min(boxLo, boxHi - widest), stableHi = max(boxHi, boxLo + widest);
+        vec3 clamped = clamp(filteredHistory[e].rgb, stableLo, stableHi);
         vec3 box = boxSize[e].rgb * FILTERING + QUANTIZATION * 2.0 * FILTERING;
         delta[e] = max(abs(filteredInput[e].rgb - filteredHistory[e].rgb), box);
         vec3 raw = abs(clamped - filteredHistory[e].rgb);
@@ -273,17 +399,33 @@ void Reject() {
     ivec2 pixels[4];
     bool wrote[4], antiAlias[4];
     float luma[4];
-    decide(pixels, wrote, luma, antiAlias);
+    vec4 moire[4];
+    decide(pixels, wrote, luma, antiAlias, moire);
 }
 
 void RejectSpatial() {
     ivec2 pixels[4];
     bool wrote[4], antiAlias[4];
     float luma[4];
-    decide(pixels, wrote, luma, antiAlias);
+    vec4 moire[4];
+    decide(pixels, wrote, luma, antiAlias, moire);
     for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
         if (!wrote[e]) continue;
         LUMA_STORE(pixels[e], vec4(luma[e]));
         AA_MASK_STORE(pixels[e], vec4(antiAlias[e] ? 1.0 : 0.0));
+    }
+}
+
+void RejectFlicker() {
+    ivec2 pixels[4];
+    bool wrote[4], antiAlias[4];
+    float luma[4];
+    vec4 moire[4];
+    decide(pixels, wrote, luma, antiAlias, moire);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        if (!wrote[e]) continue;
+        LUMA_STORE(pixels[e], vec4(luma[e]));
+        AA_MASK_STORE(pixels[e], vec4(antiAlias[e] ? 1.0 : 0.0));
+        MOIRE_STORE(pixels[e], moire[e]);
     }
 }

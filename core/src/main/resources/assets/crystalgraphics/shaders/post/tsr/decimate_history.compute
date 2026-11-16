@@ -20,12 +20,15 @@ Properties {
     _Vector      ("The dilated motion", sampler2D) = "black"
     _Atomics     ("Last frame's nearest surfaces, scattered", usampler2D) = "zero"
     _Responsive  ("Where the history is to be dropped (a responsive material)", sampler2D) = "black"
+    _Flicker     ("x 1 reprojecting the moire history (High and up); y 1 where it holds nothing of last frame", vec4) = (0, 0, 0, 0)
+    _PrevMoire   ("Last frame's moire history", sampler2D) = "black"
 }
 
 Images {
     GUIDE  ("Last frame's guide, reprojected; a its uncertainty", rgb10_a2, writeonly)
     FILLED ("The motion each pixel's history is fetched by, hole-filled", rg16, writeonly)
     MASK   ("x the decimate bits over 255; y the reprojection edge", rg8, writeonly)
+    MOIRE  ("Last frame's moire history, reprojected (with _Flicker)", rgba8, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
@@ -79,6 +82,13 @@ void Decimate() {
             guide += textureLod(_PrevGuide, clamp(uvs[i], 0.5 * size.zw, 1.0 - 0.5 * size.zw), 0.0) * weights[i];
         }
         guide.rgb = max(guide.rgb, vec3(0.0));   // NaN, and a bicubic's overshoot below 0
+    }
+    // The moire history, its nearest texel within a random half texel: its counts do not blend
+    if (_Flicker.x > 0.5) {
+        ivec2 moireSize = textureSize(_PrevMoire, 0);
+        vec2 e = vec2(tsr_pcg3d(uvec3(ivec3(p, int(_Frame.x)))).xy & 0xFFFFu) / 65536.0;
+        ivec2 at = clamp(ivec2(floor((prevScreen * 0.5 + 0.5) * vec2(moireSize) + e - 0.5)), ivec2(0), moireSize - 1);
+        MOIRE_WRITE(cut || _Flicker.y > 0.5 ? vec4(0.0) : texelFetch(_PrevMoire, at, 0));
     }
 
     // Was this surface there last frame: last frame's nearest surfaces round where it was, against its depth

@@ -15,6 +15,19 @@ Properties {
     _ClipToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
     _SceneDepth  ("The scene's depth", sampler2D) = "black"
     _Velocity    ("The velocity pass's target; 0 where nothing wrote", sampler2D) = "black"
+    _Flicker     ("x 1 writing MOVING (High and up); y the parallax speed in pixels at which the camera counts as moving, inverse", vec4) = (0, 0.1, 0, 0)
+    _ClipToWorld0 ("This frame's unjittered clip to its camera-relative world, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToWorld1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToWorld2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToWorld3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _PrevClipToWorld0 ("Last frame's clip to this frame's camera-relative world, column 0", vec4) = (1, 0, 0, 0)
+    _PrevClipToWorld1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _PrevClipToWorld2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _PrevClipToWorld3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _TurnToPrev0 ("This frame's clip to last frame's had the camera only turned, column 0", vec4) = (1, 0, 0, 0)
+    _TurnToPrev1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _TurnToPrev2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _TurnToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
 }
 
 Images {
@@ -22,6 +35,7 @@ Images {
     CLOSEST ("The dilated surface's device depth last frame", r32f, writeonly)
     DILATE  ("x the reprojection edge in 7 bits, 128 where the motion came from a neighbour; y the depth error", rg8ui, writeonly)
     VECTOR  ("The dilated motion, encoded as the velocity target", rg16, writeonly)
+    MOVING  ("1 where the surface moves in the world, or the camera's parallax over it is fast (with _Flicker)", r8, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
@@ -55,6 +69,23 @@ float depth_error(float c, float e, float w, float n, float s) {
     wS = sn > 0.0 ? wS / sn : 0.0;
     wN = sn > 0.0 ? wN / sn : 0.0;
     return max(dE * wE + dW * wW, dS * wS + dN * wN);
+}
+
+vec3 project(vec4 c0, vec4 c1, vec4 c2, vec4 c3, vec2 screen, float device) {
+    vec4 h = c0 * screen.x + c1 * screen.y + c2 * device + c3;
+    return h.xyz / h.w;
+}
+
+// Whether the surface moves, for the flicker heuristic: its world position against last frame's, past twice a pixel's
+// span; or the camera moving across it fast enough (the parallax its move alone makes) that moire would not hold still.
+float moving(vec2 screen, float device, float closest, float prevClosest, vec2 motion) {
+    vec3 now = project(_ClipToWorld0, _ClipToWorld1, _ClipToWorld2, _ClipToWorld3, screen, closest);
+    vec3 before = project(_PrevClipToWorld0, _PrevClipToWorld1, _PrevClipToWorld2, _PrevClipToWorld3, screen - motion, prevClosest);
+    float span = 2.0 * tsr_pixel_radius(tsr_eye(closest));
+    vec2 cameraPrev = tsr_previous(screen, device).xy;
+    vec2 turnPrev = project(_TurnToPrev0, _TurnToPrev1, _TurnToPrev2, _TurnToPrev3, screen, device).xy;
+    float parallax = 0.5 * length((turnPrev - cameraPrev) * _Input.xy);
+    return max(clamp(length(now - before) / span - 1.0, 0.0, 1.0), clamp(parallax * _Flicker.y - 0.5, 0.0, 1.0));
 }
 
 void Dilate() {
@@ -93,6 +124,7 @@ void Dilate() {
     CLOSEST_STORE(p, vec4(prevClosest));
     DILATE_STORE(p, uvec4(uint(round(edge * 127.0)) | (offset != ivec2(0) ? 0x80u : 0u), encodedError, 0u, 0u));
     VECTOR_STORE(p, vec4(cg_EncodeVelocity(dilated.xy), 0.0, 0.0));
+    if (_Flicker.x > 0.5) MOVING_STORE(p, vec4(moving(screen, c, closest, prevClosest, dilated.xy)));
 
     // Scatter this surface onto the four pixels round where it was last frame, each it covers by a 63rd or more
     vec2 prevPixel = ((screen - dilated.xy) * 0.5 + 0.5) * _Input.xy - 0.5;

@@ -21,6 +21,7 @@ Properties {
     _PrevColor  ("Last frame's history", sampler2D) = "black"
     _PrevValid  ("Last frame's validity", sampler2D) = "black"
     _Offset     ("The spatial anti-aliasing's offset and noise filtering (UpdateSpatial)", usampler2D) = "zero"
+    _Options    ("x 1 where it writes the picture (no sharpen or resolve pass after it); y 1 moves the far samples toward the nearest corner (High and up)", vec4) = (1, 0, 0, 0)
 }
 
 Images {
@@ -35,6 +36,21 @@ const float LARGEST = 65504.0 * 0.25;
 
 // The plus-shaped 3x3: the nearest input pixel and its four neighbours.
 const ivec2 PLUS[5] = ivec2[5](ivec2(0, 0), ivec2(0, -1), ivec2(-1, 0), ivec2(0, 1), ivec2(1, 0));
+
+// The kernel's sample i round the nearest input pixel: the plus, or from High its two far arms moved toward the corner
+// nearest where the output pixel lands (a duplicate of the corner weighs nothing).
+vec2 kernel_offset(int i, vec2 dKO, bool moveFar, out bool duplicate) {
+    duplicate = false;
+    if (!moveFar) return vec2(PLUS[i]);
+    vec2 s = vec2(dKO.x < 0.0 ? -1.0 : 1.0, dKO.y < 0.0 ? -1.0 : 1.0);
+    vec2 square = vec2(abs(dKO.x) < 0.25 ? -1.0 : 1.0, abs(dKO.y) < 0.25 ? -1.0 : 1.0);
+    if (i == 0) return vec2(0.0);
+    if (i == 1) return vec2(s.x, 0.0);
+    if (i == 2) return vec2(0.0, s.y);
+    if (i == 3) return vec2(square.x * s.x, max(square.x, 0.0) * s.y);
+    duplicate = square.x + square.y == 2.0;
+    return vec2(max(square.y, 0.0) * s.x, square.y * s.y);
+}
 
 void update(bool spatial) {
     ivec2 o = CG_TEXEL.xy;
@@ -109,10 +125,13 @@ void update(bool spatial) {
     // This frame's five samples round the nearest input pixel, weighed by distance and tone; their box clamps the history
     vec3 filtered = vec3(0.0), lo = vec3(0.0), hi = vec3(0.0);
     float filteredWeight = 0.0;
-    for (int i = 0; i < 5; i++) {   // LOOP-BOUND: the plus
-        ivec2 at = clamp(k + PLUS[i], ivec2(0), last);
+    bool moveFar = _Options.y > 0.5;
+    for (int i = 0; i < 5; i++) {   // LOOP-BOUND: the five samples
+        bool duplicate;
+        vec2 offset = kernel_offset(i, dKO, moveFar, duplicate);
+        ivec2 at = clamp(k + ivec2(offset), ivec2(0), last);
         vec3 c = texelFetch(_Color, at, 0).rgb;
-        float w = tsr_sample_weight(kernelToHistory, vec2(PLUS[i]) - dKO, 0.005) * tsr_tone_weight(c);
+        float w = duplicate ? 0.0 : tsr_sample_weight(kernelToHistory, offset - dKO, 0.005) * tsr_tone_weight(c);
         filtered += c * w;
         filteredWeight += w;
         lo = i == 0 ? c : min(lo, c);
@@ -142,7 +161,7 @@ void update(bool spatial) {
     color = min(max(color, vec3(0.0)), vec3(TSR_MAX_10BIT_FLOAT));
     COLOR_WRITE(vec4(color, 1.0));
     VALID_WRITE(vec4(valid));
-    PICTURE_WRITE(vec4(color, 1.0));
+    if (_Options.x > 0.5) PICTURE_WRITE(vec4(color, 1.0));
 }
 
 void Update() {
