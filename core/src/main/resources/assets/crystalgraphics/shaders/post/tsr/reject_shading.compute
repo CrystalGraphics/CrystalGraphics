@@ -309,6 +309,10 @@ void measure(vec4 scene[4], vec4 history[4], float moireError[4], out float reje
         vec3 stableLo = min(boxLo, boxHi - widest), stableHi = max(boxHi, boxLo + widest);
         vec3 clamped = clamp(filteredHistory[e].rgb, stableLo, stableHi);
         vec3 box = boxSize[e].rgb * FILTERING + QUANTIZATION * 2.0 * FILTERING;
+        // The flicker widens the box too, each channel by its share of the energy the clamp took
+        vec3 clampedEnergy = abs(clamped - filteredHistory[e].rgb);
+        float clampedSum = clampedEnergy.r + clampedEnergy.g + clampedEnergy.b;
+        if (clampedSum > 0.0) box = max(box, clampedEnergy / clampedSum * (FILTERING * 3.0 * moireError[e]));
         delta[e] = max(abs(filteredInput[e].rgb - filteredHistory[e].rgb), box);
         vec3 raw = abs(clamped - filteredHistory[e].rgb);
         vec3 factor = clamp(1.0 - raw / delta[e], 0.0, 1.0);
