@@ -100,6 +100,11 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
      * across a surface by the parallax speed in 1080p pixels a frame has it count as moving.
      */
     static final float FLICKER_PERIOD = 2f, FLICKER_FRAME_RATE_CAP = 60f, FLICKER_MAX_PARALLAX = 10f;
+    /**
+     * The reprojection field (High and up): a depth edge is anti-aliased where the pixel's own and its dilated motion
+     * differ by this many input pixels a frame at 100%, more as it upscales ({@code r.TSR.ReprojectionField.AntiAliasPixelSpeed}).
+     */
+    static final float FIELD_PIXEL_SPEED = 0.125f;
     /** The least fraction it rebuilds from. */
     static final float MIN_FRACTION = 0.25f;
     /** The jitter's base sequence, and the primes it is rounded up to. */
@@ -121,7 +126,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
     private long lastNanos;
     private int width, height, outWidth, outHeight;
     private CgGraphTexture atomics, closest, dilateMask, vector, reprojected, filled, mask, rejection, color, luma, aaMask,
-            offsets, moving, reprojectedMoire, picture, debugView;
+            offsets, moving, reprojectedMoire, boundary, jacobian, picture, debugView;
 
     /** Starts its kernels compiling, as a loading screen does. Render thread. */
     public static void precache() {
@@ -214,6 +219,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgView view = ctx.view();
         CgViewState state = view.state();
         boolean flicker = quality.atLeast(CgQuality.HIGH) && measuredFrame == state.frameIndex();
+        boolean field = quality.atLeast(CgQuality.HIGH);
         // Below the frame rate cap a frame spans more of the period: the flicker period and parallax scale with it
         long now = System.nanoTime();
         float refresh = lastNanos == 0L ? 1f : (now - lastNanos) * 1e-9f * FLICKER_FRAME_RATE_CAP;
@@ -237,10 +243,15 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         CgComputePass pass = recording.compute("tsr.dilate").timed(GPU_DILATE);
         pass.dispatch(clear, w, h, 1).image("ATOMICS", atomics);
         CgDispatch d = pass.dispatch(dilate, w, h, 1).image("ATOMICS", atomics).image("CLOSEST", closest)
-                .image("DILATE", dilateMask).image("VECTOR", vector).image("MOVING", moving).texture("_SceneDepth", ctx.depth());
+                .image("DILATE", dilateMask).image("VECTOR", vector).image("MOVING", moving).image("BOUNDARY", boundary)
+                .image("JACOBIAN", jacobian).texture("_SceneDepth", ctx.depth());
         if (velocity != null) d.texture("_Velocity", velocity);
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
         if (flicker) flickerValues(d, view, w, refresh);
+        if (field) {
+            float speed = Math.max(FIELD_PIXEL_SPEED / ((float) w / ow), 1f / 64f);
+            d.set("_Field", 1f, speed * speed, 0f, 0f);
+        }
         pass.end();
 
         // The guide and moire histories are written by the reject pass, after this one: sampled now, their newest version
@@ -294,6 +305,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
                 .set("_History", HISTORY_SAMPLES, hysteresis, 1f - REJECTED_SAMPLES * hysteresis, toHistory)
                 .set("_Motion", Math.max(0f, Math.min(1f, 1f - MOTION_SAMPLES * hysteresis)), 1f / MOTION_PIXEL_SPEED, 0f, 0f);
         if (antiAliasSpatially) d.texture("_Offset", offsets);
+        if (field) d.texture("_Boundary", boundary).texture("_Jacobian", jacobian).set("_Field", 1f, 0f, 0f, 0f);
         float sharpness = CgTemporalAA.sharpness();
         d.set("_Options", sharpness > 0f ? 0f : 1f, quality.atLeast(CgQuality.HIGH) ? 1f : 0f, 0f, 0f);
         pass.end();
@@ -382,6 +394,8 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         offsets = transientTexture("cg_tsr_offsets", w, h, CgFormat.RG8_UINT);
         moving = transientTexture("cg_tsr_moving", w, h, CgFormat.R8_UNORM);
         reprojectedMoire = transientTexture("cg_tsr_reprojected_moire", w, h, CgFormat.RGBA8_UNORM);
+        boundary = transientTexture("cg_tsr_boundary", w, h, CgFormat.R32_UINT);
+        jacobian = transientTexture("cg_tsr_jacobian", w, h, CgFormat.R32_UINT);
         picture = transientTexture("cg_tsr_picture", ow, oh, CgFormat.RGBA16_FLOAT);
         debugView = transientTexture("cg_tsr_debug_view", ow, oh, CgFormat.RGBA16_FLOAT);
     }

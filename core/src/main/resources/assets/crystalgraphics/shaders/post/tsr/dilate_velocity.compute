@@ -16,6 +16,7 @@ Properties {
     _SceneDepth  ("The scene's depth", sampler2D) = "black"
     _Velocity    ("The velocity pass's target; 0 where nothing wrote", sampler2D) = "black"
     _Flicker     ("x 1 writing MOVING (High and up); y the parallax speed in pixels at which the camera counts as moving, inverse", vec4) = (0, 0.1, 0, 0)
+    _Field       ("x 1 writing the reprojection field (High and up); y the squared speed difference, in half input pixels, from which a depth edge is anti-aliased", vec4) = (0, 0.0625, 0, 0)
     _ClipToWorld0 ("This frame's unjittered clip to its camera-relative world, column 0", vec4) = (1, 0, 0, 0)
     _ClipToWorld1 ("Column 1", vec4) = (0, 1, 0, 0)
     _ClipToWorld2 ("Column 2", vec4) = (0, 0, 1, 0)
@@ -36,6 +37,8 @@ Images {
     DILATE  ("x the reprojection edge in 7 bits, 128 where the motion came from a neighbour; y the depth error", rg8ui, writeonly)
     VECTOR  ("The dilated motion, encoded as the velocity target", rg16, writeonly)
     MOVING  ("1 where the surface moves in the world, or the camera's parallax over it is fast (with _Flicker)", r8, writeonly)
+    BOUNDARY ("The reprojection field's boundary and the neighbour its motion came from (tsr_encode_boundary; with _Field)", r32ui, writeonly)
+    JACOBIAN ("The motion's Jacobian across the pixel (tsr_encode_jacobian; with _Field)", r32ui, writeonly)
 }
 
 #include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
@@ -52,23 +55,65 @@ uint pack_depth(ivec2 offset, float device) {
     return ((floatBitsToUint(device) << 2u) & ~0xFu) | uint(1 + offset.x) | (uint(1 + offset.y) << 2u);
 }
 
-// A depth's step across a pixel against its neighbours east-west and north-south: how far the surface is from flat
-// there (the bilateral weights favour the side on the same surface).
-float depth_error(float c, float e, float w, float n, float s) {
+// A depth's neighbours along two axes (e, w one way; s, n the other, distance pixels apart), weighed by how far each is on
+// the same surface as the centre: the weights (e, w, s, n, each axis's summing to 1), and how far the surface is from
+// flat there. False where neither axis has a neighbour on the surface. span: the neighbours' distance in pixels.
+bool bilaterals(float c, float e, float w, float s, float n, float span, out vec4 weights, out float error) {
     float varEW = abs(c - (e + w) * 0.5), varSN = abs(c - (s + n) * 0.5);
     float dE = abs(e - c), dW = abs(w - c), dS = abs(s - c), dN = abs(n - c);
     float minE = min(min(abs(e - w), dE), dW), minS = min(min(abs(s - n), dS), dN);
-    float pixel = tsr_pixel_depth_error(c);
+    float pixel = tsr_pixel_depth_error(c) * span;
     float derivE = min(max(minE, pixel), max(minS, 8.0 * pixel));
     float derivS = min(max(minS, pixel), max(minE, 8.0 * pixel));
     float wE = clamp(1.5 - min(dE, varEW) / derivE, 0.0, 1.0), wW = clamp(1.5 - min(dW, varEW) / derivE, 0.0, 1.0);
     float wS = clamp(1.5 - min(dS, varSN) / derivS, 0.0, 1.0), wN = clamp(1.5 - min(dN, varSN) / derivS, 0.0, 1.0);
     float ew = wE + wW, sn = wS + wN;
-    wE = ew > 0.0 ? wE / ew : 0.0;
-    wW = ew > 0.0 ? wW / ew : 0.0;
-    wS = sn > 0.0 ? wS / sn : 0.0;
-    wN = sn > 0.0 ? wN / sn : 0.0;
-    return max(dE * wE + dW * wW, dS * wS + dN * wN);
+    weights = vec4(ew > 0.0 ? vec2(wE, wW) / ew : vec2(0.0), sn > 0.0 ? vec2(wS, wN) / sn : vec2(0.0));
+    error = max(dE * weights.x + dW * weights.y, dS * weights.z + dN * weights.w);
+    return ew > 0.0 || sn > 0.0;
+}
+
+// The motion's Jacobian across the pixel (input pixels of motion per input pixel along x, along y), each side of the 3x3
+// weighed by its depth's bilaterals; from the diagonals, turned back, where the cardinals have none on the surface.
+void jacobian(float z[9], vec2 v[9], out vec2 dx, out vec2 dy) {
+    vec4 w;
+    float error;
+    if (bilaterals(z[4], z[5], z[3], z[7], z[1], 1.0, w, error)) {
+        dx = (v[5] - v[4]) * w.x + (v[4] - v[3]) * w.y;
+        dy = (v[7] - v[4]) * w.z + (v[4] - v[1]) * w.w;
+        return;
+    }
+    bilaterals(z[4], z[8], z[0], z[6], z[2], 1.41421356, w, error);
+    vec2 se = (v[8] - v[4]) * w.x + (v[4] - v[0]) * w.y, sw = (v[6] - v[4]) * w.z + (v[4] - v[2]) * w.w;
+    dx = se * 0.5 - sw * 0.5;
+    dy = se * 0.5 + sw * 0.5;
+}
+
+// The reprojection field's boundary: where the pixel's motion differs from its dilated neighbour's enough to matter, the
+// depth edge through it found and followed three steps each way (tsr.glsl's edge search, on the depth); elsewhere the
+// whole pixel takes the neighbour's motion.
+vec2 field_boundary(ivec2 p, float z[9], vec2 own, vec2 dilated, vec2 prevScreen) {
+    vec2 speed = _Input.xy * (own - dilated);
+    if (dot(speed, speed) <= _Field.y || any(greaterThan(abs(prevScreen), vec2(1.0)))) return TSR_FULL_DILATE;
+    const int steps = 3;
+    float noise, edge;
+    ivec2 along, side;
+    tsr_edge_direction(z[4], z[1], z[7], z[3], z[5], z[0], z[2], z[6], z[8], noise, along, side, edge);
+    vec2 stride = vec2(along) * _Input.zw;
+    vec2 uv = (vec2(p) + 0.5 + vec2(side) * 0.5) * _Input.zw;
+    vec2 uvMin = 0.5 * _Input.zw, uvMax = 1.0 - 0.5 * _Input.zw;
+    float tapsP[TSR_MOST_EDGE_STEPS], tapsN[TSR_MOST_EDGE_STEPS];
+    for (int i = 0; i < TSR_MOST_EDGE_STEPS; i++) {   // LOOP-BOUND: three steps of at most 8
+        tapsP[i] = 0.0;
+        tapsN[i] = 0.0;
+        if (i >= steps) continue;
+        tapsP[i] = textureLod(_SceneDepth, min(uv + stride * float(i + 1), uvMax), 0.0).r;
+        tapsN[i] = textureLod(_SceneDepth, max(uv - stride * float(i + 1), uvMin), 0.0).r;
+    }
+    int lengthP, lengthN;
+    bool growP, growN, shrinkP, shrinkN;
+    tsr_edge_run(z[4], edge, tapsP, tapsN, steps, lengthP, lengthN, growP, growN, shrinkP, shrinkN);
+    return tsr_reprojection_boundary(steps, side, lengthP, lengthN, growP, growN, shrinkP, shrinkN);
 }
 
 vec3 project(vec4 c0, vec4 c1, vec4 c2, vec4 c3, vec2 screen, float device) {
@@ -111,7 +156,11 @@ void Dilate() {
     }
     float closest = uintBitsToFloat((packed & ~0xFu) >> 2u);
     ivec2 offset = ivec2(int(packed & 3u) - 1, int((packed >> 2u) & 3u) - 1);
-    float error = depth_error(c, z[5], z[3], z[1], z[7]);
+    vec4 weights;
+    float error;
+    // With the field, the diagonals' error where the cardinals have no neighbour on the surface, as its Jacobian takes
+    bool cardinal = bilaterals(c, z[5], z[3], z[7], z[1], 1.0, weights, error);
+    if (!cardinal && _Field.x > 0.5) bilaterals(c, z[8], z[0], z[6], z[2], 1.41421356, weights, error);
 
     vec2 screen = tsr_screen(vec2(p), _Input);
     vec3 own = tsr_velocity(texelFetch(_Velocity, p, 0).xy, screen, c);
@@ -125,6 +174,18 @@ void Dilate() {
     DILATE_STORE(p, uvec4(uint(round(edge * 127.0)) | (offset != ivec2(0) ? 0x80u : 0u), encodedError, 0u, 0u));
     VECTOR_STORE(p, vec4(cg_EncodeVelocity(dilated.xy), 0.0, 0.0));
     if (_Flicker.x > 0.5) MOVING_STORE(p, vec4(moving(screen, c, closest, prevClosest, dilated.xy)));
+    if (_Field.x > 0.5) {
+        // Every neighbour's motion in input pixels: the Jacobian's samples
+        vec2 v[9];
+        for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3
+            ivec2 q = clamp(p + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last);
+            v[k] = tsr_velocity(texelFetch(_Velocity, q, 0).xy, tsr_screen(vec2(q), _Input), z[k]).xy * toPixels;
+        }
+        vec2 dx, dy;
+        jacobian(z, v, dx, dy);
+        BOUNDARY_STORE(p, uvec4(tsr_encode_boundary(offset, field_boundary(p, z, own.xy, dilated.xy, screen - dilated.xy)), 0u, 0u, 0u));
+        JACOBIAN_STORE(p, uvec4(tsr_encode_jacobian(dx, dy), 0u, 0u, 0u));
+    }
 
     // Scatter this surface onto the four pixels round where it was last frame, each it covers by a 63rd or more
     vec2 prevPixel = ((screen - dilated.xy) * 0.5 + 0.5) * _Input.xy - 0.5;

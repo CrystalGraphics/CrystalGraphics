@@ -1,8 +1,8 @@
 // TSR's spatial anti-aliasing (CgTemporalSuperResolution, Medium and up), at the render size. Where the reject pass
 // dropped a pixel's history and its neighbourhood's contrast shows, the edge through the pixel is found from its 3x3 and
-// followed both ways along its run, a bilinear tap halfway onto the edge per step, until the luma leaves the edge's band
-// (an end-of-edge search, as FXAA's: Lottes, 2009). Where along the run the pixel sits gives how far across the edge its
-// colour belongs; the update pass moves its samples by that, so a pixel with no history yet is no stair.
+// followed both ways along its run (tsr.glsl's edge search, on the luma); where along the run the pixel sits gives how
+// far across the edge its colour belongs. The update pass moves its samples by that, so a pixel with no history yet is
+// no stair.
 #pragma kernel Spatial 8 8 image
 
 Properties {
@@ -18,22 +18,8 @@ Images {
 
 #include "crystalgraphics:shaders/post/tsr/tsr.glsl"
 
-const int MOST_STEPS = 8;
-
 float luma_at(ivec2 p) {
     return texelFetch(_Luma, clamp(p, ivec2(0), ivec2(_Input.xy) - 1), 0).r;
-}
-
-// How far across its edge a pixel's colour belongs, from how many steps the run went each way before it stopped, and
-// whether it stopped where the edge's side took over the row (grow) or where the pixel's side did (shrink).
-float distance_to_edge(bool growN, bool growP, bool shrinkN, bool shrinkP, int lengthN, int lengthP) {
-    float inverse = 1.0 / float(1 + lengthN + lengthP);
-    if (!growN && !growP && !shrinkN && !shrinkP) return 0.0;   // no stair in reach
-    if (growN && growP) return 0.5;                              // a notch into the edge's side
-    if (shrinkN && shrinkP) return 0.0;                          // a bump out of the pixel's side
-    if (growN) return 0.5 - (float(lengthN) + 0.5) * inverse;    // a stair rising one way
-    if (growP) return 0.5 - (float(lengthP) + 0.5) * inverse;    // or the other
-    return 0.0;
 }
 
 void Spatial() {
@@ -42,61 +28,29 @@ void Spatial() {
     float noise = 0.0;
     if (texelFetch(_AAMask, p, 0).r > 0.0) {
         float c = luma_at(p);
-        float down = luma_at(p + ivec2(0, -1)), up = luma_at(p + ivec2(0, 1));
-        float right = luma_at(p + ivec2(1, 0)), left = luma_at(p + ivec2(-1, 0));
-        float downRight = luma_at(p + ivec2(1, -1)), downLeft = luma_at(p + ivec2(-1, -1));
-        float upRight = luma_at(p + ivec2(1, 1)), upLeft = luma_at(p + ivec2(-1, 1));
-
-        // Second differences across the rows (below, through, above) and across the columns: the edge runs along the
-        // axis that varies less
-        float acrossRow = abs(0.5 * (left + right) - c), acrossColumn = abs(0.5 * (down + up) - c);
-        float rows = abs(0.5 * (downLeft + downRight) - down) + acrossRow + abs(0.5 * (upLeft + upRight) - up);
-        float columns = abs(0.5 * (downRight + upRight) - right) + acrossColumn + abs(0.5 * (downLeft + upLeft) - left);
-        float dDown = abs(down - c), dUp = abs(up - c), dRight = abs(right - c), dLeft = abs(left - c);
-        // A lone pixel unlike both neighbours on an axis is noise, not an edge
-        noise = max(clamp(2.0 * acrossRow - max(dRight, dLeft), 0.0, 1.0),
-                clamp(2.0 * acrossColumn - max(dDown, dUp), 0.0, 1.0));
-
-        bool vertical = rows > columns;
-        ivec2 along = vertical ? ivec2(0, 1) : ivec2(1, 0);
-        ivec2 side;
+        ivec2 along, side;
         float edge;
-        if (vertical) {
-            side = ivec2(dLeft > dRight ? -1 : 1, 0);
-            edge = dLeft > dRight ? left : right;
-        } else {
-            side = ivec2(0, dDown > dUp ? -1 : 1);
-            edge = dDown > dUp ? down : up;
-        }
-
+        tsr_edge_direction(c, luma_at(p + ivec2(0, -1)), luma_at(p + ivec2(0, 1)), luma_at(p + ivec2(-1, 0)),
+                luma_at(p + ivec2(1, 0)), luma_at(p + ivec2(-1, -1)), luma_at(p + ivec2(1, -1)), luma_at(p + ivec2(-1, 1)),
+                luma_at(p + ivec2(1, 1)), noise, along, side, edge);
         if (abs(edge - c) * 0.5 > TSR_MIN_ALIASING_LUMA) {
-            // Each tap sits halfway onto the edge, so bilinear reads the mean of the pixel's row and the edge's: the run
-            // continues while that stays within a quarter of the step of their mean
+            // Each tap sits halfway onto the edge, so bilinear reads the mean of the pixel's row and the edge's
+            int steps = int(_Spatial.x);
             vec2 stride = vec2(along) * _Input.zw;
             vec2 uv = (vec2(p) + 0.5 + vec2(side) * 0.5) * _Input.zw;
             vec2 uvMin = 0.5 * _Input.zw, uvMax = 1.0 - 0.5 * _Input.zw;
-            float mean = 0.5 * (edge + c), band = 0.25 * abs(edge - c);
-            float least = mean - band, most = mean + band;
-            int steps = int(_Spatial.x);
-            int lengthP = steps, lengthN = steps;
-            bool lowP = false, highP = false, lowN = false, highN = false;
-            for (int i = 1; i <= MOST_STEPS; i++) {   // LOOP-BOUND: _Spatial.x steps, at most 8
-                if (i > steps) break;
-                float tapP = textureLod(_Luma, min(uv + stride * float(i), uvMax), 0.0).r;
-                float tapN = textureLod(_Luma, max(uv - stride * float(i), uvMin), 0.0).r;
-                bool lp = lowP || (tapP < least && !highP), hp = highP || (tapP > most && !lowP);
-                bool ln = lowN || (tapN < least && !highN), hn = highN || (tapN > most && !lowN);
-                lowP = lp;
-                highP = hp;
-                lowN = ln;
-                highN = hn;
-                if (lowP || highP) lengthP--;
-                if (lowN || highN) lengthN--;
+            float tapsP[TSR_MOST_EDGE_STEPS], tapsN[TSR_MOST_EDGE_STEPS];
+            for (int i = 0; i < TSR_MOST_EDGE_STEPS; i++) {   // LOOP-BOUND: _Spatial.x steps, at most 8
+                tapsP[i] = 0.0;
+                tapsN[i] = 0.0;
+                if (i >= steps) continue;
+                tapsP[i] = textureLod(_Luma, min(uv + stride * float(i + 1), uvMax), 0.0).r;
+                tapsN[i] = textureLod(_Luma, max(uv - stride * float(i + 1), uvMin), 0.0).r;
             }
-            bool brighter = edge > c;
-            float d = distance_to_edge(brighter ? highN : lowN, brighter ? highP : lowP,
-                    brighter ? lowN : highN, brighter ? lowP : highP, lengthN, lengthP);
-            offset = vec2(side) * d;
+            int lengthP, lengthN;
+            bool growP, growN, shrinkP, shrinkN;
+            tsr_edge_run(c, edge, tapsP, tapsN, steps, lengthP, lengthN, growP, growN, shrinkP, shrinkN);
+            offset = vec2(side) * tsr_distance_to_edge(growN, growP, shrinkN, shrinkP, lengthN, lengthP);
         }
     }
     OFFSET_WRITE(uvec4(tsr_encode_offset(offset), uint(round(noise * 255.0)), 0u, 0u));
