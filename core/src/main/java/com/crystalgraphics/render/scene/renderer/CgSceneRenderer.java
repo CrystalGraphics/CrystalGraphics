@@ -163,7 +163,7 @@ public final class CgSceneRenderer {
     private CgMaterialInterface depthIn;
     /** The custom data and depth targets, kept while the view's size holds: a steady frame makes no handle. */
     @Nullable
-    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget;
+    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget, responsiveTarget;
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
@@ -644,7 +644,9 @@ public final class CgSceneRenderer {
 
     /**
      * Unreal's velocity pass: what moved or deformed this frame, tested against the scene's depth, writing where it was
-     * last frame into an RG16F target cleared to 0; the rest stood still, its motion the camera's over its depth.
+     * last frame into an RG16 target cleared to 0; the rest stood still, its motion the camera's over its depth. With
+     * still solids asked ({@code requestVelocityWithStill}), every engine solid writes, the still ones zero, and what
+     * blends marks the responsive target where it covers (Unreal's Responsive AA).
      */
     private void recordVelocity(CgStageFiring firing, CgViewPasses passes) {
         CgView view = firing.view();
@@ -654,8 +656,17 @@ public final class CgSceneRenderer {
         }
         firing.recording().raster("scene.velocity").color(velocityTarget, CgLoad.clear(0f, 0f, 0f, 0f))
                 .depth(firing.depth(), CgLoad.load(), CgDepthAccess.READ).constants(firing.constants())
-                .add(passes.commands(CgEnginePasses.VELOCITY, firing.recording())).end();
+                .add(passes.commands(view.textures().velocityWithStill() ? CgEnginePasses.VELOCITY_WITH_STILL
+                        : CgEnginePasses.VELOCITY, firing.recording())).end();
         view.textures().velocity(velocityTarget);
+        if (!view.textures().velocityWithStill()) return;
+        if (responsiveTarget == null || responsiveTarget.getWidth() != w || responsiveTarget.getHeight() != h) {
+            responsiveTarget = CgGraphTexture.transientTexture("cg_responsive", CgTextureDesc.of(w, h, CgEnginePasses.RESPONSIVE_FORMAT));
+        }
+        firing.recording().raster("scene.responsive").color(responsiveTarget, CgLoad.clear(0f, 0f, 0f, 0f))
+                .depth(firing.depth(), CgLoad.load(), CgDepthAccess.READ).constants(firing.constants())
+                .add(passes.commands(CgEnginePasses.RESPONSIVE, firing.recording())).end();
+        view.textures().responsive(responsiveTarget);
     }
 
     /** Unreal's CustomDepth: the primitives marked {@code customDepth}, depth alone, writing their stencil value. */

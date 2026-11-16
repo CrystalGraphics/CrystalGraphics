@@ -53,6 +53,7 @@ CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     vec4 cg_WorldOrigin; // where world space's origin is in absolute coordinates: the camera, in a world pass
     mat4 cg_PrevViewProj; // this pass's camera-relative points to last frame's clip space: cg_PreviousClip
     vec4 cg_FrameParams;  // x the host frame's index, 0 to 65535; y 1 while last frame is one of this view;
+                          // z last frame's time (CG_PREVIOUS_TIME), this frame's where it has no history;
                           // w 1 when the target is the host's own, its colour sRGB-encoded (CG_ENCODED_TARGET)
     vec4 cg_ViewTile;       // xyz the tile cg_WorldOrigin is in, w the tile's size: what a scene record is measured from
     vec4 cg_ViewTileOffset; // xyz cg_WorldOrigin less its tile's corner
@@ -182,6 +183,7 @@ flat in int cg_InstanceId;
 #define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)
 // Last frame's object-to-world, for velocity: a draw of frame records reads its current one.
 #define CG_PREVIOUS_OBJECT_TO_WORLD cg_PreviousObjectToWorld(CG_OBJECT_ID)
+#define CG_PREVIOUS_OBJECT_POSITION (CG_PREVIOUS_OBJECT_TO_WORLD[3].xyz)
 // The drawn object's position, camera-relative, either stage: Unreal's GetObjectWorldPosition. A particle factory
 // redefines it as its system's bounds' centre.
 #define CG_OBJECT_POSITION (CG_OBJECT_TO_WORLD[3].xyz)
@@ -632,6 +634,9 @@ vec4 cg_Fog(vec4 color) {
 // -- Time and Resolution Macros ---------------------------------------------
 #define CG_TIME           (cg_Time.y)   // most useful: raw seconds
 #define CG_TIME_VEC4      (cg_Time)     // all four: t/20, t, t*2, t*3
+// Last frame's, which a surface's vertex code reads as of last frame for its velocity (PreviousFrame)
+#define CG_PREVIOUS_TIME  (cg_FrameParams.z)
+#define cg_PreviousTime   vec4(CG_PREVIOUS_TIME / 20.0, CG_PREVIOUS_TIME, CG_PREVIOUS_TIME * 2.0, CG_PREVIOUS_TIME * 3.0)
 #define CG_RESOLUTION     (cg_Resolution)
 
 // -- Convenience Macros ------------------------------------------------------

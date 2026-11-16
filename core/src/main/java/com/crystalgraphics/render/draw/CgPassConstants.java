@@ -103,6 +103,8 @@ public final class CgPassConstants {
     private float fogRed, fogGreen, fogBlue, fogStart, fogEnd;
     private boolean fog;
     private int frameIndex;
+    /** Last frame's time ({@code CG_PREVIOUS_TIME}); NaN for none, which writes this frame's. */
+    private float previousTime = Float.NaN;
     private boolean historyValid, netherLighting;
     /** The scene whose GPU records the pass draws ({@code cg_SceneObjects}): its view's; null for the client's. */
     @Nullable
@@ -288,13 +290,23 @@ public final class CgPassConstants {
     /**
      * What a temporal effect reprojects by: the matrix taking this pass's camera-relative points to last frame's clip
      * space ({@code cg_PreviousClip}), the view's frame index ({@code CG_FRAME_INDEX}, {@code CgViewState.frameIndex})
-     * and whether the last frame is
-     * one of this view ({@code CG_HISTORY_VALID}). {@code CgStageFrame.constants} fills it for the host's camera.
+     * and whether the last frame is one of this view ({@code CG_HISTORY_VALID}). {@code CgView} fills it for its camera.
+     * Last frame's time goes back to this frame's: set it after, with {@link #previousTime}.
      */
     public CgPassConstants history(Matrix4fc previousViewProjection, int frameIndex, boolean valid) {
         previous.set(previousViewProjection);
         this.frameIndex = frameIndex;
         this.historyValid = valid;
+        this.previousTime = Float.NaN;
+        return this;
+    }
+
+    /**
+     * Last frame's time ({@code CG_PREVIOUS_TIME}), what a surface's vertex code animates by as of last frame for its
+     * velocity. Unset, it is this frame's: a vertex animated by time then writes no motion of its own.
+     */
+    public CgPassConstants previousTime(double seconds) {
+        this.previousTime = (float) seconds;
         return this;
     }
 
@@ -320,6 +332,7 @@ public final class CgPassConstants {
         previous.set(block, at + 52);
         frameIndex = (int) block[at + 68];
         historyValid = block[at + 69] != 0f;
+        previousTime = block[at + 70];
         encodedTarget = block[at + ENCODED_TARGET] != 0f;
         tileX = block[at + 72];
         tileY = block[at + 73];
@@ -380,7 +393,7 @@ public final class CgPassConstants {
         previous.get(out, at + 52);
         out[at + 68] = frameIndex & 0xFFFF;
         out[at + 69] = historyValid ? 1f : 0f;
-        out[at + 70] = 0f;
+        out[at + 70] = Float.isNaN(previousTime) ? time : previousTime;
         out[at + ENCODED_TARGET] = encodedTarget ? 1f : 0f;
         out[at + 72] = tileX;
         out[at + 73] = tileY;

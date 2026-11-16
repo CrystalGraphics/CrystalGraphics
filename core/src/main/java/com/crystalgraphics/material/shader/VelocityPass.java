@@ -15,10 +15,10 @@ import java.util.List;
 
 /**
  * A solid surface's Velocity pass, generated from its Forward pass where it is first asked for, never compiled with the
- * material: Unreal's velocity shaders, which the velocity pass compiles per material it draws. The Forward vertex runs
- * twice, first under last frame's object-to-world ({@code CG_PREVIOUS_OBJECT_TO_WORLD}) and, skinned, last frame's
- * palette ({@code _cg_skinPrevious}), then as itself; the fragment writes the clip-space difference in
- * {@code lib/velocity.glsl}'s encoding, after the Forward fragment's cut where it clips (masked).
+ * material: Unreal's velocity shaders, which the velocity pass compiles per material it draws. The vertex is its Forward
+ * vertex, then last frame's world position from the material's vertex stage compiled as of last frame
+ * ({@link PreviousFrame}); the fragment writes the clip-space difference in {@code lib/velocity.glsl}'s encoding, after
+ * the Forward fragment's cut where it clips (masked).
  *
  * <pre>{@code
  * CgShaderPass velocity = spec.pass(CgRenderPassVariant.VELOCITY);   // null for what blends, a sky, or no Forward pass
@@ -35,7 +35,7 @@ final class VelocityPass {
     /** {@code spec}'s Velocity pass, or null where it has none: a surface that blends, a sky, or none of its own. */
     @Nullable
     static CgShaderPass of(CgShaderSpec spec) {
-        if (spec.domain() != CgMaterialDomain.SURFACE || "Background".equals(spec.renderType())) return null;
+        if (spec.domain() != CgMaterialDomain.SURFACE || spec.previousVertex() == null) return null;
         CgShaderPass forward = spec.pass(CgRenderPassVariant.FORWARD);
         if (forward == null) return null;
         CgBlendState blend = forward.state().getBlend();
@@ -48,15 +48,8 @@ final class VelocityPass {
         List<CgVarying> varyings = new ArrayList<>(forward.varyings());
         varyings.add(new CgVarying("vec4", NOW, ""));
         varyings.add(new CgVarying("vec4", THEN, ""));
-        String vertex = "\n        vec3 _cg_previousWorld;\n        {\n"
-                + "#undef CG_OBJECT_TO_WORLD\n#define CG_OBJECT_TO_WORLD CG_PREVIOUS_OBJECT_TO_WORLD\n"
-                + "#ifdef CG_SKINNED\n        vec3 _cg_previousSkin = _cg_skinPrevious();\n"
-                + "#undef cg_Position\n#define cg_Position _cg_previousSkin\n#endif\n"
-                + forward.vertexBody() + "\n        _cg_previousWorld = v.world;\n"
-                + "#undef CG_OBJECT_TO_WORLD\n#define CG_OBJECT_TO_WORLD (CG_OBJECT_DATA.modelMatrix)\n"
-                + "#ifdef CG_SKINNED\n#undef cg_Position\n#define cg_Position _cg_skinPosition\n#endif\n"
-                + "        }" + forward.vertexBody()
-                + "\n        o." + NOW + " = gl_Position;\n        o." + THEN + " = cg_PreviousClip(_cg_previousWorld);\n";
+        String vertex = forward.vertexBody() + "\n        o." + NOW + " = gl_Position;\n        o." + THEN
+                + " = cg_PreviousClip(" + PreviousFrame.WORLD + "());\n";
         // A masked surface's cut is its Forward fragment's: run for its discard, its colour dropped
         String cut = forward.clips() ? "\n        vec4 " + forward.output() + ";" + forward.fragmentBody() : "";
         String fragment = cut + "\n        velocity = vec4(cg_EncodeVelocity(i." + NOW + ".xy / i." + NOW + ".w - i." + THEN
@@ -64,6 +57,7 @@ final class VelocityPass {
         // After the environment, which the encoding's camera motion reads: code, not a directive
         List<CgShaderPass.Code> code = new ArrayList<>(forward.code());
         code.add(0, new CgShaderPass.Code("#include \"crystalgraphics:shaders/lib/velocity.glsl\"\n", CgShaderPass.FRAGMENT));
+        code.add(new CgShaderPass.Code(spec.previousVertex(), CgShaderPass.VERTEX));
         return new CgShaderPass(CgRenderPassVariant.VELOCITY, NAME, state, varyings, forward.directives(), code, vertex,
                 fragment, "velocity", false);
     }

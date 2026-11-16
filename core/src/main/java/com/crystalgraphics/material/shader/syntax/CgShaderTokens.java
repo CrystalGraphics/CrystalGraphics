@@ -4,6 +4,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.Arrays;
+import java.util.Map;
 
 /**
  * A shader file as tokens: identifiers, numbers, strings, single punctuation characters, and each preprocessor line
@@ -109,15 +110,32 @@ public final class CgShaderTokens {
         return plain(from, to, -1, word, with);
     }
 
+    /** {@link #plain(int, int)} with every identifier that is a key of {@code words} written as its value. */
+    public String plain(int from, int to, Map<String, String> words) {
+        StringBuilder sb = new StringBuilder(Math.max(16, end(to) - start(from)));
+        String s = text.source();
+        for (int i = from; i <= to && i < count; i++) {
+            if (i > from) gap(sb, s, i);
+            String with = kind[i] == IDENT ? words.get(s.substring(start[i], end[i])) : null;
+            if (with != null) sb.append(with);
+            else sb.append(s, start[i], end[i]);
+        }
+        return sb.toString();
+    }
+
+    /** What stood between token {@code i - 1} and {@code i}: a line break where the source broke the line, else a space. */
+    private void gap(StringBuilder sb, String s, int i) {
+        if (start[i] <= end[i - 1]) return;
+        boolean line = false;
+        for (int g = end[i - 1]; g < start[i] && !line; g++) line = s.charAt(g) == '\n';
+        sb.append(line ? '\n' : ' ');
+    }
+
     private String plain(int from, int to, int swap, String word, String with) {
         StringBuilder sb = new StringBuilder(Math.max(16, end(to) - start(from)));
         String s = text.source();
         for (int i = from; i <= to && i < count; i++) {
-            if (i > from && start[i] > end[i - 1]) {
-                boolean line = false;
-                for (int g = end[i - 1]; g < start[i] && !line; g++) line = s.charAt(g) == '\n';
-                sb.append(line ? '\n' : ' ');
-            }
+            if (i > from) gap(sb, s, i);
             if (i == swap || word != null && isIdent(i, word)) sb.append(with);
             else sb.append(s, start[i], end[i]);
         }

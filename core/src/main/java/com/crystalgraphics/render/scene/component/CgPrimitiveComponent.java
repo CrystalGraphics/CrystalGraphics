@@ -436,8 +436,9 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     }
 
     /**
-     * Draws in the velocity pass every frame, moved or not: what changes shape on its own without moving (a material
-     * moving its vertices). Moved primitives and skinned meshes draw there anyway.
+     * Draws in the velocity pass every frame, moved or not (Unreal's {@code bAlwaysHasVelocity}): what changes shape in a
+     * way the engine cannot see. Moved primitives, skinned meshes and materials moving their vertices by time draw there
+     * anyway.
      */
     public T writesVelocity(boolean writes) {
         requireLive();
@@ -446,8 +447,23 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
     }
 
     @Override
-    public boolean hasVelocity() {
-        return writesVelocity || movedFrame == CgFrameRing.frame();
+    public final boolean hasVelocity() {
+        return keepsPrevious() && (writesVelocity || movedFrame == CgFrameRing.frame() || deforms());
+    }
+
+    @Override
+    public boolean keepsPrevious() {
+        return true;
+    }
+
+    /** Whether it changes shape every frame without moving: a skinned mesh posed (Unreal's AlwaysHasVelocity). */
+    boolean deforms() {
+        return false;
+    }
+
+    /** One of its instances moved this frame: it draws velocity, as when it moves itself. */
+    final void instanceMoved() {
+        movedFrame = CgFrameRing.frame();
     }
 
     /** A setting a processor reads changed: its kept commands are built again at the next view that draws it. */

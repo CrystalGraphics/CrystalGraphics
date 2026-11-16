@@ -120,14 +120,16 @@ public final class CgShaderSpec {
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
     @Nullable final Tube tube;
+    @Nullable final String previousVertex;
+    final boolean vertexAnimates;
     final List<CgBufferDecl> buffers;
     final String bufferStructs;
     final List<PostTarget> postTargets;
     final List<CgShaderPass> passes;
     /** Its Velocity pass, generated from its Forward pass at the first ask ({@link VelocityPass}); never compiled with it. */
     @Nullable
-    private volatile CgShaderPass velocity;
-    private volatile boolean velocityMade;
+    private volatile CgShaderPass velocity, responsive;
+    private volatile boolean velocityMade, responsiveMade;
     private final EmissionMerge emissionMerge;
     private final boolean sceneFolds;
     private Set<String> identifiers;
@@ -158,6 +160,8 @@ public final class CgShaderSpec {
         this.maskClip = b.maskClip;
         this.postLocation = b.postLocation;
         this.tube = b.tube;
+        this.previousVertex = b.previousVertex;
+        this.vertexAnimates = b.vertexAnimates;
         this.buffers = b.buffers;
         this.bufferStructs = b.bufferStructs;
         this.postTargets = b.postTargets;
@@ -193,6 +197,8 @@ public final class CgShaderSpec {
         this.maskClip = of.maskClip;
         this.postLocation = of.postLocation;
         this.tube = of.tube;
+        this.previousVertex = of.previousVertex;
+        this.vertexAnimates = of.vertexAnimates;
         this.buffers = of.buffers;
         this.bufferStructs = of.bufferStructs;
         this.postTargets = of.postTargets;
@@ -355,6 +361,20 @@ public final class CgShaderSpec {
         return tube;
     }
 
+    /** Its vertex stage as of last frame, ending in {@code _cg_previousWorld()}; null where it draws no velocity. */
+    @Nullable
+    String previousVertex() {
+        return previousVertex;
+    }
+
+    /**
+     * Whether its vertex code reads time, so its vertices move while it stands still: it always draws velocity (Unreal's
+     * {@code bHasWorldPositionOffsetVelocity}).
+     */
+    public boolean vertexAnimates() {
+        return vertexAnimates;
+    }
+
     /** Its {@code Buffers { }}: what a kernel wrote, read by every pass; bound by {@code CgMaterial.buffer(name, b)}. */
     public List<CgBufferDecl> buffers() {
         return buffers;
@@ -388,14 +408,14 @@ public final class CgShaderSpec {
     public CgShaderPass pass(String name) {
         // Indexed: asked per bind, and an immutable list's iterator was a measured allocation there.
         for (int i = 0; i < passes.size(); i++) if (passes.get(i).name().equals(name)) return passes.get(i);
-        return name.equals(VelocityPass.NAME) ? velocity() : null;
+        return name.equals(VelocityPass.NAME) ? velocity() : name.equals(ResponsivePass.NAME) ? responsive() : null;
     }
 
     /** The first pass of {@code variant}, or null. */
     @Nullable
     public CgShaderPass pass(CgRenderPassVariant variant) {
         for (int i = 0; i < passes.size(); i++) if (passes.get(i).variant() == variant) return passes.get(i);
-        return variant == CgRenderPassVariant.VELOCITY ? velocity() : null;
+        return variant == CgRenderPassVariant.VELOCITY ? velocity() : variant == CgRenderPassVariant.RESPONSIVE ? responsive() : null;
     }
 
     /**
@@ -409,6 +429,16 @@ public final class CgShaderSpec {
             velocityMade = true;
         }
         return velocity;
+    }
+
+    /** A blended surface's Responsive pass, made from its Forward pass at the first ask and kept, as {@link #velocity()}. */
+    @Nullable
+    private CgShaderPass responsive() {
+        if (!responsiveMade) {
+            responsive = ResponsivePass.of(this);
+            responsiveMade = true;
+        }
+        return responsive;
     }
 
     /** How its Emissive pass folds into its first Forward pass. */

@@ -52,8 +52,13 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #CUSTOM_DEPTH}: primitives marked {@code customDepth}, depth alone writing their stencil value
  *       ({@code CustomDepth}).</li>
  *   <li>{@link #CUSTOM_DATA}: solids whose material writes custom data, into its target.</li>
- *   <li>{@link #VELOCITY}: solids that moved this frame, skinned meshes and what asks ({@code writesVelocity}), their
- *       Velocity pass, into an RG16F target cleared to 0 ({@code Velocity}). Built every frame, never kept.</li>
+ *   <li>{@link #VELOCITY}: solids with a velocity this frame ({@code hasVelocity}, or a material moving its vertices
+ *       by time), their Velocity pass, into an RG16 target cleared to 0 ({@code Velocity}). Built every frame.</li>
+ *   <li>{@link #VELOCITY_WITH_STILL}: every solid, those still or keeping no previous transform writing no motion of
+ *       their own: a written texel then means the engine drew it (Unreal's
+ *       {@code VelocityIncludeStationaryPrimitives}), what temporal AA keeps to.</li>
+ *   <li>{@link #RESPONSIVE}: what blends, its Responsive pass, 1 into an R8 target where it covers (Unreal's
+ *       Responsive AA): temporal AA keeps a short history there.</li>
  *   <li>{@link #DECAL}: decal components' boxes, their {@code #domain decal} material reading the scene's depth and
  *       blending into the scene's colour after the opaque scene, in their sort order (Unreal's deferred decals as its
  *       forward renderer draws them). A raster pass of it reads the scene's depth ({@code readsDepth}).</li>
@@ -86,10 +91,20 @@ public final class CgEnginePasses {
             CgPassLayout.depthOnly(CgFormat.DEPTH32_FLOAT_STENCIL8), CgEnginePasses::customDepth);
     public static final CgMeshPassType CUSTOM_DATA = CgMeshPassType.register("crystalgraphics:custom_data",
             CgPassLayout.color(CgFormat.RG32_FLOAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::customData);
-    /** The velocity target's format: Unreal's encoding over two halves, 0 meaning nothing wrote ({@code lib/velocity.glsl}). */
-    public static final CgFormat VELOCITY_FORMAT = CgFormat.RG16_FLOAT;
+    /**
+     * The velocity target's format: Unreal's encoding over two 16-bit unsigned normalized channels, 0 meaning nothing wrote
+     * ({@code lib/velocity.glsl}). Not half floats: at the encoding's 0.5 bias they step a texel and more, so a written
+     * velocity loses the jitter it carries.
+     */
+    public static final CgFormat VELOCITY_FORMAT = CgFormat.RG16_UNORM;
     public static final CgMeshPassType VELOCITY = CgMeshPassType.registerPerFrame("crystalgraphics:velocity",
             CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocity);
+    public static final CgMeshPassType VELOCITY_WITH_STILL = CgMeshPassType.registerPerFrame("crystalgraphics:velocity.still",
+            CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocityWithStill);
+    /** The responsive target's format: 1 where a blended draw covers, 0 elsewhere. */
+    public static final CgFormat RESPONSIVE_FORMAT = CgFormat.R8_UNORM;
+    public static final CgMeshPassType RESPONSIVE = CgMeshPassType.register("crystalgraphics:responsive",
+            CgPassLayout.color(RESPONSIVE_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::responsive);
     public static final CgMeshPassType DECAL = CgMeshPassType.register("crystalgraphics:decal",
             CgPassLayout.color(CgFormat.RGBA16_FLOAT), CgEnginePasses::decal);
 
@@ -192,12 +207,28 @@ public final class CgEnginePasses {
     }
 
     /**
-     * A solid that moved or deforms this frame: its material's Velocity pass (Unreal's {@code
-     * FOpaqueVelocityMeshProcessor}, {@code PrimitiveHasVelocityForFrame}). What stood still writes nothing; the camera's
-     * motion over it is derived from depth by whoever reads velocity.
+     * A solid with a velocity this frame: its material's Velocity pass (Unreal's {@code FOpaqueVelocityMeshProcessor},
+     * {@code PrimitiveHasVelocityForFrame}). What stood still writes nothing; the camera's motion over it is derived from
+     * depth by whoever reads velocity.
      */
     private static void velocity(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
-        if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0 || !primitive.hasVelocity()) return;
+        if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0) return;
+        if (!primitive.hasVelocity()
+                && !(primitive.keepsPrevious() && CgMaterialProxy.of(batch.material()).animatesVertices())) {
+            return;
+        }
+        out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.VELOCITY));
+    }
+
+    /** What blends: its material's Responsive pass ({@link #RESPONSIVE}). */
+    private static void responsive(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0) return;
+        out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.RESPONSIVE));
+    }
+
+    /** Every solid, moving or still: {@link #VELOCITY_WITH_STILL}. A frame record reads its model as last frame's. */
+    private static void velocityWithStill(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0) return;
         out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.VELOCITY));
     }
 

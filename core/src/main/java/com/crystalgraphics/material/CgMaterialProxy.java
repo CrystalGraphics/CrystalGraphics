@@ -574,6 +574,16 @@ public final class CgMaterialProxy {
     }
 
     /**
+     * Whether its vertex code moves its vertices by time, from the parse alone: what draws it draws velocity standing
+     * still (Unreal's world-position-offset velocity).
+     */
+    public boolean animatesVertices() {
+        checkNotDeleted();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.vertexAnimates();
+    }
+
+    /**
      * Whether its shader's {@code Buffers { }} declares {@code name}, from the parse alone: what {@link #buffer} must bind
      * before its first draw.
      *

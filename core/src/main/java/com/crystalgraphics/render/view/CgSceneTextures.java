@@ -32,9 +32,10 @@ import javax.annotation.Nullable;
 public final class CgSceneTextures {
 
     @Nullable
-    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity;
+    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity,
+            responsive;
     private boolean linear;
-    private boolean normalsAsked, customDataAsked, subjectAsked, velocityAsked;
+    private boolean normalsAsked, customDataAsked, subjectAsked, velocityAsked, velocityWithStill;
     private int subjectKey;
 
     CgSceneTextures() {
@@ -130,8 +131,22 @@ public final class CgSceneTextures {
         velocityAsked = true;
     }
 
+    /**
+     * That this frame writes {@link #velocity()} for every still solid of the engine too, as zero motion: a texel nothing
+     * wrote is then one the engine did not draw (a host's world, a frame record). What temporal AA asks.
+     */
+    public void requestVelocityWithStill() {
+        velocityAsked = true;
+        velocityWithStill = true;
+    }
+
     public boolean velocityRequested() {
         return velocityAsked;
+    }
+
+    /** Whether {@link #requestVelocityWithStill} was asked this frame. */
+    public boolean velocityWithStill() {
+        return velocityWithStill;
     }
 
     /** That this frame writes {@link #customData()}: ask before the translucent callback draws. */
@@ -176,6 +191,19 @@ public final class CgSceneTextures {
         depth = texture;
     }
 
+    /**
+     * 1 where a blended draw covered this frame (R8, {@code CgEnginePasses.RESPONSIVE}), drawn beside the velocity with
+     * still solids asked: where temporal AA keeps a short history. Null otherwise.
+     */
+    @Nullable
+    public CgGraphTexture responsive() {
+        return responsive;
+    }
+
+    public void responsive(@Nullable CgGraphTexture texture) {
+        responsive = texture;
+    }
+
     public void velocity(@Nullable CgGraphTexture texture) {
         velocity = texture;
     }
@@ -211,8 +239,10 @@ public final class CgSceneTextures {
     /** A new frame of the view: every texture and request dropped. */
     void reset() {
         sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = velocity = null;
+        responsive = null;
         linear = false;
         normalsAsked = customDataAsked = subjectAsked = velocityAsked = false;
+        velocityWithStill = false;
         subjectKey = 0;
     }
 }

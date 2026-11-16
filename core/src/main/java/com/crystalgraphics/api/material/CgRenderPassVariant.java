@@ -47,7 +47,14 @@ public enum CgRenderPassVariant {
      * transform and bone palette and at this frame's, the difference written into the velocity target. Lowered for every
      * opaque and masked surface; drawn for what moved or deformed (Unreal's velocity pass). Takes the material's keywords.
      */
-    VELOCITY("Velocity");
+    VELOCITY("Velocity"),
+
+    /**
+     * Where a blended surface covers, 1 into the responsive target (Unreal's Responsive AA): temporal AA keeps a short
+     * history there, so what blends over the scene and writes no velocity leaves no trail. Lowered for every blended
+     * surface; drawn while temporal AA shows. Takes the material's keywords.
+     */
+    RESPONSIVE("Responsive");
 
     private final String lightModeName;
 

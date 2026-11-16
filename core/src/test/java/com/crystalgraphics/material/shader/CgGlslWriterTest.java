@@ -117,6 +117,24 @@ public class CgGlslWriterTest {
     }
 
     @Test
+    public void theVelocityPassRunsTheVertexAsOfLastFrame() {
+        CgShaderSpec swaying = CgShaderSpec.read("#domain surface\n" + CgShaderSpecTest.V2F
+                + "vec3 sway(vec3 p) { return p + vec3(sin(cg_Time.y), 0.0, 0.0); }\n"
+                + "void vertex(inout CgVertex v, out v2f o) { v.world = (CG_OBJECT_TO_WORLD * vec4(sway(cg_Position), 1.0)).xyz; o.uv0 = v.uv0; }\n"
+                + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }\n", "test:sway.shader");
+        assertTrue(swaying.vertexAnimates());
+        String vertex = CgGlslWriter.write(swaying, swaying.pass(CgRenderPassVariant.VELOCITY), Collections.emptyList(), null,
+                Collections.emptySet()).vertex();
+        // The helper and vertex() again, under last frame's time, object-to-world and position
+        assertTrue(vertex, vertex.contains("sin(cg_PreviousTime.y)"));
+        assertTrue(vertex, vertex.contains("CG_PREVIOUS_OBJECT_TO_WORLD * vec4(sway_cgPrevious(cg_PreviousPosition), 1.0)"));
+        assertTrue(vertex, vertex.contains("cg_MaterialVertex_cgPrevious(v, o);"));
+        assertTrue(vertex, vertex.contains("cg_PreviousClip(_cg_previousWorld())"));
+
+        assertFalse(surface("", "s.baseColor = vec3(1.0);").vertexAnimates());
+    }
+
+    @Test
     public void vertexInputsAreDeclaredAfterTheEnvironment() {
         String vertex = write(surface("", "s.baseColor = vec3(1.0);")).vertex();
         int env = vertex.indexOf("cg_env.glsl"), position = vertex.indexOf("cg_Position;");

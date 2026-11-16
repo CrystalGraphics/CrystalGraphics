@@ -79,11 +79,13 @@ public final class CgInstancedMeshComponent extends CgPrimitiveComponent<CgInsta
     public void move(int index, double x, double y, double z) {
         int slot = slotOf(index);
         scene.gpu().translate(slot, x, y, z);
+        instanceMoved();
     }
 
     /** Instance {@code index}'s whole transform, absolute. */
     public void transform(int index, Matrix4d localToWorld) {
         scene.gpu().transform(slotOf(index), localToWorld);
+        instanceMoved();
     }
 
     /** Instance {@code index}'s {@code CG_OBJECT_CUSTOM0..3}. */

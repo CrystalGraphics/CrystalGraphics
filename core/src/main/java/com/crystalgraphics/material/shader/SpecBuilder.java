@@ -106,6 +106,9 @@ final class SpecBuilder {
     @Nullable String sceneColorMarginText;
     @Nullable String maskClip, postLocation;
     @Nullable CgShaderSpec.Tube tube;
+    /** A solid surface's vertex stage as of last frame (PreviousFrame), for its Velocity pass. */
+    @Nullable String previousVertex;
+    boolean vertexAnimates;
     final List<CgShaderSpec.PostTarget> postTargets = new ArrayList<>();
     final List<CgShaderPass> passes = new ArrayList<>();
     /** All the passes' GLSL as one text: what the preprocessor searches for what the world hands it. */

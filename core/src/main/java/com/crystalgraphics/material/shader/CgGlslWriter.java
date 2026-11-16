@@ -172,7 +172,8 @@ public final class CgGlslWriter {
         sb.append("#include \"").append(ENV_INCLUDE).append("\"\n");
         boolean skinned = keywords.contains(CgEngineKeywords.SKINNED);
         sb.append(CgGlslBlocks.vertexDeclarations(format));
-        if (!skinned) sb.append(CgGlslBlocks.vertexFetch(format, null, null));
+        // Last frame's local position, which PreviousFrame's copy reads: the skinned factory's from last frame's palette
+        if (!skinned) sb.append(CgGlslBlocks.vertexFetch(format, null, null)).append("#define cg_PreviousPosition cg_Position\n");
         // A strip variant draws no mesh: its type's attributes stand at their defaults for a port naming one directly
         if (strips(spec, keywords)) {
             CgVertexFormat declared = CgVertexFormat.forShaderType(spec.vertexType());
@@ -236,13 +237,14 @@ public final class CgGlslWriter {
           .append("  vec3 tangent = vec3(dot(r0, t), dot(r1, t), dot(r2, t));\n")
           .append("  _cg_skinTangent = vec4(dot(tangent, tangent) > 0.0 ? normalize(tangent) : cg_Tangent.xyz, cg_Tangent.w);\n")
           .append("}\n")
-          // Last frame's skinned position, for a Velocity pass: the record's previous palette, or this frame's
-          .append("vec3 _cg_skinPrevious() {\n")
+          // Last frame's skinned position, for PreviousFrame's copy: the record's previous palette, or this frame's
+          .append("vec3 _cg_skinPreviousPosition() {\n")
           .append("  vec4 r0, r1, r2;\n")
           .append("  cg_BoneBlendAt(CG_BONE_PREVIOUS_BASE, cg_BoneIndices, cg_BoneWeights, r0, r1, r2);\n")
           .append("  vec4 p = vec4(cg_Position, 1.0);\n")
           .append("  return vec3(dot(r0, p), dot(r1, p), dot(r2, p));\n")
           .append("}\n")
+          .append("#define cg_PreviousPosition _cg_skinPreviousPosition()\n")
           .append("#define cg_Position _cg_skinPosition\n#define cg_Normal _cg_skinNormal\n#define cg_Tangent _cg_skinTangent\n");
     }
 

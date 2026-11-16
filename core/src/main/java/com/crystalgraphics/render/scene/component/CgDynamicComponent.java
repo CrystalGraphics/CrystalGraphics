@@ -38,6 +38,12 @@ public final class CgDynamicComponent extends CgPrimitiveComponent<CgDynamicComp
         return false;
     }
 
+    /** Its rows are the frame's records, which keep no previous transform: it draws no velocity. */
+    @Override
+    public boolean keepsPrevious() {
+        return false;
+    }
+
     @Override
     void onSpawn() {
     }

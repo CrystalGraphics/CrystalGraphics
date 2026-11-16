@@ -392,6 +392,11 @@ final class SurfaceDomain {
             passCode.material(file, own, vertex, surface, true, layers.glsl(file, functions));
         }
 
+        // Its vertex stage as of last frame, for a Velocity pass: a solid surface's alone
+        if (!translucent && !sky) {
+            spec.previousVertex = PreviousFrame.code(file, code, functions, vertex, factory.fill(), path);
+            spec.vertexAnimates = PreviousFrame.animates(file, functions, vertex, factory.fill(), path);
+        }
         StringBuilder vertexBody = new StringBuilder("\n        CgVertex v;\n");
         for (String l : factory.fill().strip().split("\n")) vertexBody.append("        ").append(l.strip()).append('\n');
         if (vertex != null) vertexBody.append("        ").append(MATERIAL_VERTEX).append("(v, o);\n");

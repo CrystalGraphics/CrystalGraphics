@@ -91,8 +91,9 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
     /** What it draws: its pose's skinning, the hidden bones collapsed; the owner's view's where a bone is hidden from it. */
     private final Matrix4f[] skinning;
     /** Last frame's {@link #skinning}, for the velocity pass's previous position; held once a palette was written. */
-    private final Matrix4f[] previousSkinning;
-    private boolean previousHeld;
+    /** Last frame's skinning, and the latest of this frame's, which becomes it at the next frame's first write. */
+    private final Matrix4f[] previousSkinning, latestSkinning;
+    private boolean previousHeld, latestHeld;
     @Nullable
     private Matrix4f[] ownerSkinning;
     private final CgBoneHide[] hidden, hiddenFromOwner;
@@ -136,9 +137,11 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
         int bones = mesh.skeleton().boneCount();
         this.skinning = new Matrix4f[bones];
         this.previousSkinning = new Matrix4f[bones];
+        this.latestSkinning = new Matrix4f[bones];
         for (int b = 0; b < bones; b++) {
             skinning[b] = new Matrix4f();
             previousSkinning[b] = new Matrix4f();
+            latestSkinning[b] = new Matrix4f();
         }
         this.hidden = new CgBoneHide[bones];
         this.hiddenFromOwner = new CgBoneHide[bones];
@@ -561,13 +564,18 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
         bounded = true;
         boundsChanged();
         collapse();
-        // Last frame's beside this frame's, as Unreal's skin cache keeps the previous bone buffer for velocity
+        // Last frame's beside this frame's, as Unreal's skin cache keeps the previous bone buffer for velocity: taken at a
+        // frame's first write, so writing again in the same frame keeps last frame's rather than this one's
+        if (paletteFrame != CgFrameRing.frame() && latestHeld) {
+            for (int b = 0; b < latestSkinning.length; b++) previousSkinning[b].set(latestSkinning[b]);
+            previousHeld = true;
+        }
         int previous = previousHeld ? CgBonePalettes.write(previousSkinning, previousSkinning.length) : -1;
         palette = CgBonePalettes.write(skinning, skinning.length);
         ownerPalette = anyHiddenFromOwner ? CgBonePalettes.write(ownerSkinning, ownerSkinning.length) : -1;
         paletteFrame = CgFrameRing.frame();
-        for (int b = 0; b < skinning.length; b++) previousSkinning[b].set(skinning[b]);
-        previousHeld = true;
+        for (int b = 0; b < skinning.length; b++) latestSkinning[b].set(skinning[b]);
+        latestHeld = true;
         // Its record's spare lanes, as the skinned factory reads them: this frame's palette, the vertex's width, and
         // last frame's palette plus 1 (0 for none)
         if (slot >= 0) {
@@ -652,7 +660,7 @@ public final class CgSkeletalMeshComponent extends CgPrimitiveComponent<CgSkelet
 
     /** A skinned mesh changes shape every frame it is posed: always in the velocity pass (Unreal's AlwaysHasVelocity). */
     @Override
-    public boolean hasVelocity() {
+    boolean deforms() {
         return true;
     }
 

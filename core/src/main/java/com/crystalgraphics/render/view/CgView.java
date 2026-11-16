@@ -101,7 +101,7 @@ public final class CgView {
     // Last frame's camera, which this frame's is compared with (Unreal's FPreviousViewInfo)
     private final Matrix4f previous = new Matrix4f(), viewProjection = new Matrix4f(), lastViewProjection = new Matrix4f();
     private double lastX, lastY, lastZ;
-    private float lens00, lens11, lens22;
+    private float lens00, lens11, lens22, lastTime, previousTime;
     private int lastWidth, lastHeight;
     @Nullable
     private Object lastTarget;
@@ -553,6 +553,8 @@ public final class CgView {
     private void remember(long hostFrame, @Nullable Object target) {
         viewProjection.set(camera.projection()).mul(camera.view());
         historyValid = false;
+        float time = (float) camera.time();
+        previousTime = time;
         if (!state.keepsHistory()) {
             lastFrame = hostFrame;
             return;
@@ -562,7 +564,9 @@ public final class CgView {
                 && dx * dx + dy * dy + dz * dz < TELEPORT * TELEPORT && sameLens()) {
             previous.set(lastViewProjection).translate((float) dx, (float) dy, (float) dz);
             historyValid = forward() >= TURN_COS;
+            if (historyValid) previousTime = lastTime;
         }
+        lastTime = time;
         lastViewProjection.set(viewProjection);
         lens00 = camera.projection().m00();
         lens11 = camera.projection().m11();
@@ -593,7 +597,8 @@ public final class CgView {
 
     /** What the view adds to a pass of its camera: its scene, the scene's encoding, last frame's view, the sun and fog. */
     private void writeState(CgPassConstants constants) {
-        constants.scene(scene().gpu()).linearScene(textures.linear()).history(previous, state.frameIndex(), historyValid);
+        constants.scene(scene().gpu()).linearScene(textures.linear()).history(previous, state.frameIndex(), historyValid)
+                .previousTime(previousTime);
         // Moved in clip space, so a point lands jitter texels off: last frame's matrix stays unjittered, which is what a
         // history is fetched by
         if (jittering) constants.projection.mulLocal(jitterMatrix.translation(jitterX, jitterY, 0f));
