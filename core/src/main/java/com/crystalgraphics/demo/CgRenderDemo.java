@@ -1,5 +1,8 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
@@ -242,7 +245,8 @@ public final class CgRenderDemo {
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
-            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X, CgKeyCodes.KEY_F7, CgKeyCodes.KEY_F8},
+            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X, CgKeyCodes.KEY_F6, CgKeyCodes.KEY_F7, CgKeyCodes.KEY_F8,
+            CgKeyCodes.KEY_F9, CgKeyCodes.KEY_F10},
             CgVfxDemoControls.KEYS, CgAnimDemo.KEYS, CgDepthOfFieldDemo.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -1000,6 +1004,9 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_L -> toggleBloom();
             case CgKeyCodes.KEY_F7 -> CgTemporalAA.enable(CgView.main(), !CgTemporalAA.enabled(CgView.main()));
             case CgKeyCodes.KEY_F8 -> CgTemporalAA.sharpening(!CgTemporalAA.sharpening());
+            case CgKeyCodes.KEY_F6 -> CgView.main().antiAliasing(next(CgAntiAliasing.values(), CgView.main().antiAliasing(), shift));
+            case CgKeyCodes.KEY_F9 -> CgGraphicsSettings.ANTI_ALIASING.set(next(CgQuality.values(), CgGraphicsSettings.ANTI_ALIASING.get(), shift));
+            case CgKeyCodes.KEY_F10 -> stepScreenPercentage(CgView.main(), shift);
             case CgKeyCodes.KEY_X -> CgView.main().override(CgSceneRenderer.GRADE_DRAWS, !CgView.main().flag(CgSceneRenderer.GRADE_DRAWS));
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) / 1.25f);
@@ -1107,9 +1114,38 @@ public final class CgRenderDemo {
                 + (bloom.bloomIntensity() == 0f ? "\nBloom [L]: off"
                         : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.bloomIntensity()))
                 + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgView.main().flag(CgSceneRenderer.SCENE_EMISSION))
-                + (CgTemporalAA.enabled(CgView.main()) ? " | Temporal AA [F7]: on" : " | Temporal AA [F7]: off")
-                + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off")
+                + "\n" + temporalHud(CgView.main())
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
+    }
+
+    /** {@code values}' entry after {@code current}, or before it with {@code back}, wrapping. */
+    private static <E extends Enum<E>> E next(E[] values, E current, boolean back) {
+        return values[(current.ordinal() + (back ? values.length - 1 : 1)) % values.length];
+    }
+
+    /** The screen percentages F10 steps through, after auto. */
+    private static final float[] PERCENTAGES = {100f, 67f, 50f};
+
+    /** Auto, then each of {@link #PERCENTAGES}, then auto again; backwards with {@code back}. */
+    private static void stepScreenPercentage(CgView view, boolean back) {
+        int at = -1;   // auto
+        if (!view.screenPercentageAuto()) {
+            for (int i = 0; i < PERCENTAGES.length; i++) if (view.screenPercentage() == PERCENTAGES[i]) at = i;
+        }
+        int n = PERCENTAGES.length + 1, next = ((at + 1) + (back ? n - 1 : 1)) % n - 1;
+        view.screenPercentageAuto(next < 0);
+        if (next >= 0) view.screenPercentage(PERCENTAGES[next]);
+    }
+
+    private static String temporalHud(CgView view) {
+        if (!CgTemporalAA.enabled(view)) return "Temporal [F7]: off";
+        CgAntiAliasing method = view.antiAliasing();
+        String size = view.screenPercentageAuto()
+                ? String.format(Locale.ROOT, "auto %.0f%%", view.resolutionFraction() * 100f)
+                : String.format(Locale.ROOT, "%.0f%%", view.screenPercentage());
+        return "Temporal [F7]: " + method + " [F6]"
+                + (method == CgAntiAliasing.TSR ? ", " + CgGraphicsSettings.ANTI_ALIASING.get() + " [F9]" : "")
+                + ", " + size + " [F10]" + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off");
     }
 
     // ── capture ───────────────────────────────────────────────────────────────
