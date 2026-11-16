@@ -12,7 +12,7 @@ import java.util.List;
 import org.junit.Assume;
 import org.junit.Test;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 
 /**
  * The tonemapper's table against a Kakarot frame's (Unreal 4.21, its legacy film curve at FilmHealAmount 0.18): the

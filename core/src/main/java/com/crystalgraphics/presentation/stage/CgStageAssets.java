@@ -1,5 +1,9 @@
-package com.crystalgraphics.render.post.stage;
+package com.crystalgraphics.presentation.stage;
 
+import com.crystalgraphics.render.post.settings.CgPostBlendable;
+import com.crystalgraphics.render.post.settings.CgPostBlock;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -14,20 +18,18 @@ import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.volume.CgPostBlendable;
-import com.crystalgraphics.render.post.volume.CgPostBlock;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
 
 /**
- * A stage asset compiled ({@code stages/<name>.yaml}): a game level's environment, its post volumes and its height fog,
- * in the host's blocks and axes, every place measured from its {@code anchor}. {@link CgStage#place} puts it over the
- * host's world.
+ * The {@code stage} kind's compiler: a stage file ({@code stages/<name>.yaml}), a game level's environment, compiled to
+ * the {@link CgPrefab} a scene spawns, Unreal's packed level actor. Its post volumes are post nodes, its height fog a fog
+ * node, every place measured from its {@code anchor}, the prefab's origin.
  *
  * <pre>{@code
- * static final CgAssetRef<CgStageDefinition> ARENA = CgVfxAssets.ref(CgStageKinds.STAGE, "mymod:arena");
- * ARENA.request(CgLoadPriority.MOVE);                      // ahead: its materials and fog compiled and warmed
- * CgStage stage = CgStage.place(ARENA.get(), x, y, z);    // its anchor at (x, y, z)
- * stage.close();
+ * static final CgAssetRef<CgPrefab> ARENA = CgVfxAssets.ref(CgStageKinds.STAGE, "mymod:arena");
+ * ARENA.request(CgLoadPriority.MOVE);                                    // ahead: its materials and fog compiled and warmed
+ * CgPrefabInstance arena = scene.spawn(ARENA.get()).at(x, y, z).spawn();   // its anchor at (x, y, z)
+ * arena.post("volume0").weight(0.5f);                                    // its first volume halfway
+ * arena.remove();
  * }</pre>
  *
  * <pre>{@code
@@ -43,58 +45,33 @@ import com.crystalgraphics.render.post.volume.CgPostSettings;
  *
  * <p>The same stage in Java: {@link Builder#tree()} is exactly its file.
  * <pre>{@code
- * CgStageDefinition.Builder arena = CgStageDefinition.builder("mymod:arena").anchor(0, 0, 7849)
+ * CgStageAssets.Builder arena = CgStageAssets.builder("mymod:arena").anchor(0, 0, 7849)
  *         .volume(new CgPostSettings().tonemap().vignette(0.5f), v -> v.unbound()
  *                 .material("mymod:post/overlay", Map.of("SunVector", List.of(0.8, -0.5, 0.3, 0))))
  *         .fog(f -> f.density(0.002).heightFalloff(0.1).height(15799).inscatteringColour(0.41, 0.89, 1).maxOpacity(0.65));
  * String yaml = CgAssetYaml.write(arena.tree(), CgStageKinds.STAGE);     // the file above
- * CgStageDefinition stage = arena.build(deps);                            // its materials from deps
+ * CgPrefab stage = arena.build(deps);                                     // its materials from deps
  * }</pre>
  *
  * <ul>
+ *   <li>Its nodes: {@code anchor}, the root; {@code volume0}, {@code volume1} ... in file order; {@code fog}.</li>
  *   <li>A post material's {@code values} and {@code textures} make it a child of its material, checked at load.</li>
  *   <li>A fractional {@code priority} or a {@code screen_point} fails at load, naming it: nothing in a level is
  *       followed on screen.</li>
  *   <li>A dedicated server compiles it with no post materials: it draws nothing there.</li>
  * </ul>
- *
- * @param volumes its post volumes, in file order
- * @param fog     its height fog, or null for none
  */
-public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog fog) {
+public final class CgStageAssets {
+
+    private CgStageAssets() {
+    }
 
     /** The stage kind's compiler. */
-    public static final CgAssetCompiler<CgStageDefinition> COMPILER = CgStageDefinition::compile;
+    public static final CgAssetCompiler<CgPrefab> COMPILER = CgStageAssets::compile;
 
     /** Sets {@link #COMPILER} as the stage kind's. {@code CgBuiltInCompilers.register} calls it. */
     public static void register() {
         CgAssetCompiler.register(CgStageKinds.STAGE, COMPILER);
-    }
-
-    /**
-     * A post volume of the level.
-     *
-     * @param settings   its post block, its materials aside
-     * @param priority   its whole priority
-     * @param unbound    everywhere, or round {@code x, y, z}
-     * @param x          where a bound one stands, in blocks from the anchor
-     * @param radius     full within this many blocks
-     * @param blend      fading over this many past it
-     * @param blendables its post materials
-     */
-    public record Volume(CgPostSettings settings, int priority, boolean unbound, double x, double y, double z,
-                         float radius, float blend, List<CgPostBlendable> blendables) {
-    }
-
-    /**
-     * Its height fog in the host's units: {@code CgHeightFogComponent}'s values, its height from the anchor.
-     *
-     * @param density per block: the component's {@code FogDensity} over 1000, as Unreal divides it
-     * @param falloff per block: the component's {@code FogHeightFalloff} over 1000
-     * @param height  the height its density is given at, in blocks above the anchor
-     */
-    public record Fog(float density, float falloff, double height, float red, float green, float blue, float maxOpacity,
-                      float start, float cutoff) {
     }
 
     /** A stage built in Java, as its file would write it, in the game's units as the file is. */
@@ -148,7 +125,7 @@ public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog f
         }
 
         /** Compiled, its post materials from {@code deps}; the asset loader compiles a file with them. */
-        public CgStageDefinition build(CgAssetCompiler.Dependencies deps) {
+        public CgPrefab build(CgAssetCompiler.Dependencies deps) {
             return compile(CgAssetData.of(id, CgStageKinds.STAGE, tree(), null), deps);
         }
     }
@@ -255,24 +232,25 @@ public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog f
         }
     }
 
-    /** {@code asset} compiled, its references from {@code deps}, its values in {@code deps.units()}. */
-    public static CgStageDefinition compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
+    /** {@code asset} compiled to a prefab, its references from {@code deps}, its values in {@code deps.units()}. */
+    public static CgPrefab compile(CgAssetData asset, CgAssetCompiler.Dependencies deps) {
         Map<Object, Object> tree = asset.resolved();
         String id = asset.id();
         CgUnits units = deps.units();
         double[] anchor = position(units, tree.get("anchor"));
-        List<Volume> volumes = new ArrayList<>();
+        CgPrefab.Builder prefab = CgPrefab.builder(id).node("anchor");
         if (tree.get("volumes") instanceof List<?> list) {
             for (int i = 0; i < list.size(); i++) {
-                String at = id + ": volumes[" + i + "]";
-                volumes.add(volume((Map<?, ?>) list.get(i), at, anchor, units, deps));
+                volume(prefab.node("volume" + i).parent("anchor"), (Map<?, ?>) list.get(i), id + ": volumes[" + i + "]",
+                        anchor, units, deps);
             }
         }
-        Fog fog = tree.get("fog") instanceof Map<?, ?> f ? fog(f, anchor, units) : null;
-        return new CgStageDefinition(id, List.copyOf(volumes), fog);
+        if (tree.get("fog") instanceof Map<?, ?> f) fog(prefab.node("fog").parent("anchor"), f, anchor, units);
+        return prefab.build();
     }
 
-    private static Volume volume(Map<?, ?> v, String at, double[] anchor, CgUnits units, CgAssetCompiler.Dependencies deps) {
+    private static void volume(CgPrefab.Builder node, Map<?, ?> v, String at, double[] anchor, CgUnits units,
+                               CgAssetCompiler.Dependencies deps) {
         float priority = number(v.get("priority"), 0f);
         if (priority != Math.rint(priority)) throw new CgAssetException(at + ".priority: " + priority + " is not a whole priority");
         Map<?, ?> post = v.get("post") instanceof Map<?, ?> p ? p : Map.of();
@@ -284,21 +262,25 @@ public record CgStageDefinition(String id, List<Volume> volumes, @Nullable Fog f
         }
         Map<Object, Object> look = new LinkedHashMap<>(post);
         look.remove("materials");
-        double[] place = v.get("at") == null ? anchor.clone() : position(units, v.get("at"));
-        return new Volume(CgPostBlock.settings(look), (int) priority, Boolean.TRUE.equals(v.get("unbound")),
-                place[0] - anchor[0], place[1] - anchor[1], place[2] - anchor[2],
-                length(units, v.get("radius")), length(units, v.get("blend_radius")), List.copyOf(blendables));
+        boolean unbound = Boolean.TRUE.equals(v.get("unbound"));
+        if (!unbound && v.get("at") != null) {
+            double[] place = position(units, v.get("at"));
+            node.at((float) (place[0] - anchor[0]), (float) (place[1] - anchor[1]), (float) (place[2] - anchor[2]));
+        }
+        node.post(CgPostBlock.settings(look), blendables, unbound ? Float.POSITIVE_INFINITY : length(units, v.get("radius")),
+                length(units, v.get("blend_radius")), 1f, (int) priority);
     }
 
     /** The component's fields to {@code CgHeightFogComponent}'s: Unreal's / 1000 (SceneCore.cpp), then per block. */
-    private static Fog fog(Map<?, ?> f, double[] anchor, CgUnits units) {
+    private static void fog(CgPrefab.Builder node, Map<?, ?> f, double[] anchor, CgUnits units) {
         float density = (float) perLength(units, number(f.get("density"), 0.02f) / 1000.0);
         float falloff = (float) perLength(units, number(f.get("height_falloff"), 0.2f) / 1000.0);
         // The fog's height is the game's up, the anchor's host Y
         double height = (f.get("height") instanceof Number h ? ((Number) units.toHost(h, CgQuantity.LENGTH)).doubleValue() : 0) - anchor[1];
         double[] colour = f.get("inscattering_colour") instanceof List<?> c ? vector(c) : new double[] {0.447, 0.638, 1.0};
-        return new Fog(density, falloff, height, (float) colour[0], (float) colour[1], (float) colour[2],
-                number(f.get("max_opacity"), 1f), length(units, f.get("start_distance")), length(units, f.get("cutoff_distance")));
+        node.at(0f, (float) height, 0f).fog(new CgPrefab.Fog(density, falloff, (float) colour[0], (float) colour[1],
+                (float) colour[2], number(f.get("max_opacity"), 1f), length(units, f.get("start_distance")),
+                length(units, f.get("cutoff_distance"))));
     }
 
     private static double perLength(CgUnits units, double v) {

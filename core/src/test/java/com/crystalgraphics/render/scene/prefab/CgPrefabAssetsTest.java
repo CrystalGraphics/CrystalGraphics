@@ -5,7 +5,7 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import org.joml.Quaternionf;
 import org.junit.Test;
 
@@ -99,5 +99,25 @@ public class CgPrefabAssetsTest {
         CgAssetException e = assertThrows(CgAssetException.class, () -> CgPrefabAssets.compile("test:bad",
                 Map.of("nodes", List.of(Map.of("id", "n1", "name", "a", "location", 2.0))), DEPS));
         assertTrue(e.getMessage(), e.getMessage().contains("nodes.n1.location"));
+    }
+
+    @Test
+    public void fogAndLightNodes_writeTheFileTheyLoadFrom() {
+        CgPrefab built = CgPrefab.builder("test:arena")
+                .node("anchor").elementId("n1")
+                .node("haze").elementId("n2").parent("anchor").at(0f, 80f, 0f)
+                .fog(new CgPrefab.Fog(2e-4f, 0.01f, 0.41f, 0.89f, 1f, 0.65f, 300f, 0f))
+                .node("lamp").elementId("n3").parent("anchor").at(1f, 2f, 3f)
+                .light(new CgPrefab.Light(CgPrefab.Light.Kind.SPOT, 0xFFFF8040, 8f, 12f, 0f, 0.5f, false, 1f, 10f, 30f, 0f))
+                .build();
+        Map<String, Object> written = CgPrefabAssets.write(built);
+        CgPrefab loaded = CgPrefabAssets.compile("test:arena", written, DEPS);
+        assertEquals(written, CgPrefabAssets.write(loaded));
+        assertEquals(built.fog(built.node("haze")), loaded.fog(loaded.node("haze")));
+        assertEquals(built.light(built.node("lamp")), loaded.light(loaded.node("lamp")));
+        assertTrue(loaded.hasSceneNodes());
+        CgAssetException e = assertThrows(CgAssetException.class, () -> CgPrefabAssets.compile("test:bad",
+                Map.of("nodes", List.of(Map.of("id", "n1", "name", "a", "light", Map.of("kind", "rect")))), DEPS));
+        assertTrue(e.getMessage(), e.getMessage().contains("light.kind"));
     }
 }

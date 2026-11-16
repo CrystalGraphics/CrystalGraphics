@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -6,8 +6,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings.Control;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Region;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Control;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Region;
 
 /**
  * A format {@code post} block to and from {@link CgPostSettings}: each key the block holds sets that field and its

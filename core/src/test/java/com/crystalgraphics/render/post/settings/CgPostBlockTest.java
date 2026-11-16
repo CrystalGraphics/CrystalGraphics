@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -11,8 +11,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings.Control;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Region;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Control;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Region;
 
 /** Override bits per field: two volumes overriding different fields both apply in full; the block round-trips. */
 public class CgPostBlockTest {

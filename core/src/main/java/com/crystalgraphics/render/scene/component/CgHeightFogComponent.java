@@ -25,7 +25,7 @@ import com.crystalgraphics.shape.bounds.CgAABB;
  * <ul>
  *   <li>Only its height counts: it covers the whole scene, wherever across it stands.</li>
  *   <li>{@code density} and {@code heightFalloff} are per block: the component's values over 1000, times the units in a
- *       block. A stage's {@code fog} block is converted for you ({@code CgStage}).</li>
+ *       block. A stage's or prefab's {@code fog} block is converted for you.</li>
  *   <li>A scene draws one: the first spawned that shows. Our transparent draws come after it, so they are not fogged;
  *       Unreal fogs translucency in its own shaders.</li>
  * </ul>

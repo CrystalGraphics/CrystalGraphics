@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.post.stage;
+package com.crystalgraphics.presentation.stage;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -21,10 +21,11 @@ import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.object.validate.CgValidation;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 
-/** A stage: its kit's units into the host's blocks round its anchor, its builder's file, and what it refuses at load. */
-public class CgStageDefinitionTest {
+/** A stage compiled to a prefab: its kit's units into the host's blocks round its anchor, its builder's file, and what it refuses at load. */
+public class CgStageAssetsTest {
 
     /** Unreal's units; a material answers as compiled elsewhere, so none is made here. */
     private static final CgAssetCompiler.Dependencies UNREAL = new CgAssetCompiler.Dependencies() {
@@ -44,8 +45,8 @@ public class CgStageDefinitionTest {
         CgAssetKinds.register();
     }
 
-    private static CgStageDefinition.Builder arena() {
-        return CgStageDefinition.builder("test:arena").anchor(0, 0, 7849)
+    private static CgStageAssets.Builder arena() {
+        return CgStageAssets.builder("test:arena").anchor(0, 0, 7849)
                 .volume(new CgPostSettings().tonemap().vignette(0.5f), v -> v.unbound()
                         .material("test:post/overlay", Map.of("SunVector", List.of(0.8, -0.5, 0.3, 0.0))))
                 .volume(new CgPostSettings().vignette(0.2f), v -> v.priority(2).at(100, 0, 7849, 1500, 500))
@@ -55,26 +56,30 @@ public class CgStageDefinitionTest {
 
     @Test
     public void itsFogAndVolumesAreInBlocksFromItsAnchor() {
-        CgStageDefinition stage = arena().build(UNREAL);
-        CgStageDefinition.Fog fog = stage.fog();
+        CgPrefab stage = arena().build(UNREAL);
+        assertEquals(-1, stage.parent(stage.node("anchor")));
+        int fogNode = stage.node("fog");
+        CgPrefab.Fog fog = stage.fog(fogNode);
         assertEquals("FogDensity / 1000 a centimetre, a block", 2e-4f, fog.density(), 1e-9f);
         assertEquals(0.01f, fog.falloff(), 1e-7f);
-        assertEquals("its height over the anchor's", 79.5, fog.height(), 1e-6);
+        assertEquals("its height over the anchor's", 79.5f, stage.rest(fogNode, new float[CgPrefab.REST])[1], 1e-4f);
         assertEquals(300f, fog.start(), 1e-4f);
         assertEquals(40000f, fog.cutoff(), 1e-2f);
         assertEquals(0.65f, fog.maxOpacity(), 0f);
 
-        CgStageDefinition.Volume level = stage.volumes().get(0), round = stage.volumes().get(1);
-        assertTrue(level.unbound());
-        assertEquals("overlay's material, named by its id", "test:post/overlay", level.blendables().get(0).name());
-        assertNull("no material compiler here", level.blendables().get(0).material());
-        assertEquals(0.5f, level.settings().vignette(), 0f);
-        assertFalse(round.unbound());
-        assertEquals(2, round.priority());
-        assertEquals("game x is host x, a metre from the anchor", 1.0, round.x(), 1e-9);
-        assertEquals(0.0, round.y(), 1e-9);
-        assertEquals(15f, round.radius(), 1e-5f);
-        assertEquals(5f, round.blend(), 1e-5f);
+        int level = stage.node("volume0"), round = stage.node("volume1");
+        CgPrefab.Post levelPost = stage.post(level), roundPost = stage.post(round);
+        assertTrue(levelPost.unbound());
+        assertEquals("overlay's material, named by its id", "test:post/overlay", levelPost.materials().get(0).name());
+        assertNull("no material compiler here", levelPost.materials().get(0).material());
+        assertEquals(0.5f, levelPost.settings().vignette(), 0f);
+        assertFalse(roundPost.unbound());
+        assertEquals(2, roundPost.priority());
+        float[] at = stage.rest(round, new float[CgPrefab.REST]);
+        assertEquals("game x is host x, a metre from the anchor", 1f, at[0], 1e-6f);
+        assertEquals(0f, at[1], 1e-6f);
+        assertEquals(15f, roundPost.radius(), 1e-5f);
+        assertEquals(5f, roundPost.blend(), 1e-5f);
     }
 
     @Test
@@ -105,7 +110,7 @@ public class CgStageDefinitionTest {
 
     private static void expectFailure(Map<String, Object> tree, String path) {
         try {
-            CgStageDefinition.compile(CgAssetData.of("test:bad", CgStageKinds.STAGE, tree, null), UNREAL);
+            CgStageAssets.compile(CgAssetData.of("test:bad", CgStageKinds.STAGE, tree, null), UNREAL);
             fail("compiled");
         } catch (CgAssetException e) {
             assertTrue(e.getMessage(), e.getMessage().contains("test:bad: " + path));

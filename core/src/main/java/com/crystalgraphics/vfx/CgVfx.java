@@ -38,8 +38,8 @@ import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.kind.CgStageKinds;
 import com.crystalgraphics.audio.CgAudioEngine;
 import com.crystalgraphics.sequence.sound.CgSequenceSoundPreparer;
-import com.crystalgraphics.render.post.stage.CgStagePreparer;
-import com.crystalgraphics.render.post.volume.CgPostVolumePreparer;
+import com.crystalgraphics.render.scene.prefab.CgPrefabPostPreparer;
+import com.crystalgraphics.presentation.post.CgPostVolumePreparer;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.world.CgWorldQueries;
@@ -128,7 +128,7 @@ public final class CgVfx {
     /**
      * Registers on {@code assets} what makes a client's assets READY with nothing left for a play to build: systems and
      * prefabs warmed on {@code vfx}, sequences' sounds decoded into the client world's audio and their post materials'
-     * textures and programs made ready, stages' post materials and fog likewise, material assets' textures decoded, text
+     * textures and programs made ready, prefabs' and stages' post materials and fog likewise, material assets' textures decoded, text
      * styles' faces read and widgets' UI materials built. {@link #install} does it
      * for the process's assets; an assets instance of a tool's or a scene's own does it too.
      *
@@ -143,7 +143,8 @@ public final class CgVfx {
         assets.preparer(CgSequenceKinds.SEQUENCE,
                 new CgSequenceSoundPreparer(() -> CgAudioEngine.active(CgWorld.client())));
         assets.preparer(CgSequenceKinds.SEQUENCE, new CgPostVolumePreparer());
-        assets.preparer(CgStageKinds.STAGE, new CgStagePreparer());
+        assets.preparer(CgBodyKinds.PREFAB, new CgPrefabPostPreparer());
+        assets.preparer(CgStageKinds.STAGE, new CgPrefabPostPreparer());
         assets.preparer(CgLookKinds.MATERIAL, new CgMaterialPreparer());
         assets.preparer(CgLookKinds.TEXT_STYLE, new CgTextStylePreparer());
         assets.preparer(CgLookKinds.WIDGET, new CgWidgetPreparer());

@@ -27,7 +27,7 @@ import com.crystalgraphics.platform.input.CgKeyCodes;
 import com.crystalgraphics.platform.input.CgInput;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPost;
-import com.crystalgraphics.render.post.bloom.CgBloom;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -979,18 +979,18 @@ public final class CgRenderDemo {
 
     /** Bloom's intensity times {@code by}, while it is on. */
     private static void scaleBloom(float by) {
-        CgBloom bloom = CgPost.client().bloom();
-        if (bloom.intensity() > 0f) bloom.intensity(bloom.intensity() * by);
+        CgPostSettings bloom = CgPost.client().settings();
+        if (bloom.bloomIntensity() > 0f) bloom.bloomIntensity(bloom.bloomIntensity() * by);
     }
 
     /** Off, its intensity put aside, or back on at the intensity it had. */
     private static void toggleBloom() {
-        CgBloom bloom = CgPost.client().bloom();
-        if (bloom.intensity() == 0f) {
-            bloom.intensity(bloomIntensity);
+        CgPostSettings bloom = CgPost.client().settings();
+        if (bloom.bloomIntensity() == 0f) {
+            bloom.bloomIntensity(bloomIntensity);
         } else {
-            bloomIntensity = bloom.intensity();
-            bloom.intensity(0f);
+            bloomIntensity = bloom.bloomIntensity();
+            bloom.bloomIntensity(0f);
         }
     }
 
@@ -1048,7 +1048,7 @@ public final class CgRenderDemo {
     }
 
     private String hudText() {
-        CgBloom bloom = CgPost.client().bloom();
+        CgPostSettings bloom = CgPost.client().settings();
         boolean waves = scenes[wanted] != null && scenes[wanted].waves();
         return String.format(Locale.ROOT, "FPS: %.1f", fps)
                 + "\nScene [N]: " + kinds[wanted].name() + " - Hide [H]"
@@ -1059,8 +1059,8 @@ public final class CgRenderDemo {
                 + (CgCameraShake.enabled() ? String.format(Locale.ROOT, "\n\nShake [C]: on, trauma %.2f", CgCameraShake.trauma())
                 : "\n\nShake [C]: off")
                 + " | Kit looks [X]: " + (CgView.main().flag(CgSceneRenderer.GRADE_DRAWS) ? "on" : "off")
-                + (bloom.intensity() == 0f ? "\nBloom [L]: off"
-                        : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.intensity()))
+                + (bloom.bloomIntensity() == 0f ? "\nBloom [L]: off"
+                        : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.bloomIntensity()))
                 + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgView.main().flag(CgSceneRenderer.SCENE_EMISSION))
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }

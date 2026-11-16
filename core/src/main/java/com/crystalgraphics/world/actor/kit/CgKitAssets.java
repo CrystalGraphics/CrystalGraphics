@@ -18,7 +18,7 @@ import com.crystalgraphics.vfx.CgVfxSystem;
 import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
-import com.crystalgraphics.render.post.stage.CgStageDefinition;
+import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.util.io.CgIO;
 
 import javax.annotation.Nullable;
@@ -64,7 +64,7 @@ public final class CgKitAssets {
     private final CgAssetRef<CgVfxSystemDefinition>[] refs;
     private final CgAssetRef<CgMaterialDefinition>[] materials;
     private final CgAssetRef<CgSequenceDefinition>[] sequences;
-    private final CgAssetRef<CgStageDefinition>[] stages;
+    private final CgAssetRef<CgPrefab>[] stages;
     /** The bundle's load, once the kit's scan has registered its ids; null before. */
     @Nullable
     private CgLoadHandle handle;
@@ -175,7 +175,7 @@ public final class CgKitAssets {
     }
 
     /** Stage {@code i} of those asked for, in their order. */
-    public CgAssetRef<CgStageDefinition> stage(int i) {
+    public CgAssetRef<CgPrefab> stage(int i) {
         return stages[i];
     }
 }

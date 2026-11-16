@@ -14,8 +14,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.post.volume.CgImpact;
-import com.crystalgraphics.render.post.volume.CgImpactFrame;
+import com.crystalgraphics.render.post.settings.CgImpact;
+import com.crystalgraphics.render.post.settings.CgImpactFrame;
 import com.crystalgraphics.trace.CgGpuTrace;
 
 import javax.annotation.Nullable;

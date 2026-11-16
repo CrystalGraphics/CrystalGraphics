@@ -1,4 +1,5 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
+
 
 /**
  * The preset looks of an impact frame, each a {@link CgImpactFrame}. A look of your own is a frame built with

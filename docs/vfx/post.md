@@ -31,27 +31,33 @@ fog:                                    # Unreal's exponential height fog, as it
   cutoff_distance: 4.0e6                # 0 for none
 ```
 
-Load it with your other assets ahead of the fight, then place it where the fight's ground is:
+A stage compiles to a prefab (Unreal's packed level actor): its anchor is the root node, each volume a post node
+(`volume0`, `volume1` ... in file order), its fog a fog node (`fog`). Load it with your other assets ahead of the fight,
+then spawn it where the fight's ground is:
 
 ```java
-static final CgAssetRef<CgStageDefinition> ARENA = CgVfxAssets.ref(CgStageKinds.STAGE, "mymod:arena");
+static final CgAssetRef<CgPrefab> ARENA = CgVfxAssets.ref(CgStageKinds.STAGE, "mymod:arena");
 
-ARENA.request(CgLoadPriority.MOVE);                      // when a fight is coming: compiled, its programs built
-CgStage stage = CgStage.place(ARENA.get(), x, y, z);    // the anchor at (x, y, z), on the render thread
-stage.weight(0.5f);                                      // fading in: volumes, post materials and fog together
-stage.close();                                           // the fight is over
+ARENA.request(CgLoadPriority.MOVE);                                       // when a fight is coming: compiled, its programs built
+CgPrefabInstance arena = CgScene.client().spawn(ARENA.get()).at(x, y, z).spawn();   // the anchor at (x, y, z), render thread
+arena.post("volume0").weight(0.5f);                                       // a volume and its post materials, halfway
+arena.fog("fog").weight(0.5f);
+arena.remove();                                                           // the fight is over
 ```
 
 The same stage written in Java: its `tree()` is the file above, in the same units.
 
 ```java
-CgStageDefinition.Builder arena = CgStageDefinition.builder("mymod:arena").anchor(0, 0, 7849)
+CgStageAssets.Builder arena = CgStageAssets.builder("mymod:arena").anchor(0, 0, 7849)
         .volume(new CgPostSettings().tonemap().vignette(0.5f), v -> v.unbound()
                 .material("mymod:post/arena_tint")
                 .material("mymod:post/arena_overlay", Map.of("SunVector", List.of(0.81, -0.47, 0.34, 0))))
         .fog(f -> f.density(0.002).heightFalloff(0.1).height(15799).inscatteringColour(0.41, 0.89, 1).maxOpacity(0.65));
 String yaml = CgAssetYaml.write(arena.tree(), CgStageKinds.STAGE);
 ```
+
+A prefab file of your own takes the same nodes directly: a node's `post:` block (its `settings.materials` too), `fog:`
+and `light:`.
 
 A height fog of your own, without a stage, is a scene component, in blocks, its height where it stands:
 
@@ -61,7 +67,7 @@ CgHeightFogComponent fog = CgScene.client().heightFog().at(0, 64, 0).density(0.2
 fog.remove();
 ```
 
-A scene draws one height fog, the first spawned that shows; a stage's fog is spawned into the client scene for it.
+A scene draws one height fog, the first spawned that shows; a stage's fog node is one.
 
 - **The anchor is where the stage sits.** Every place in it (a bounded volume's `at`, the fog's `height`) keeps its
   distance from the anchor, so placing the anchor on the fight's ground puts the game's fog at the height it had over
@@ -74,5 +80,5 @@ A scene draws one height fog, the first spawned that shows; a stage's fog is spa
   kit's own draws ([`effects.md`](effects.md) § *A kit's own look*).
 - **A post material's `values` and `textures` make it a child of its material**, so a parameter the material does not
   declare fails at load, naming it. A `screen_point` fails in a stage: nothing in a level is followed on screen.
-- **A placed stage keeps the definition it was placed with**: a reload reaches the next placement.
+- **A spawned stage keeps the prefab it was spawned from**: a reload reaches the next spawn.
 - A dedicated server compiles a stage with no post materials and draws nothing.

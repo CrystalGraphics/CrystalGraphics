@@ -1,8 +1,8 @@
 package com.crystalgraphics.render.post.look;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Control;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Region;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Control;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Region;
 
 /**
  * Unreal's colour grading, as its combined LUT applies it: the white balance, then {@code ColorCorrectAll} in ACEScg,

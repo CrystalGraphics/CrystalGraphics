@@ -389,12 +389,12 @@ tracks:
 ```
 
 ```java
-// The same region from Java, outside any sequence: shown until closed.
-CgColourRegion flash = new CgColourRegion().falloff(0.2f)
-        .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 2f, 2f, 2f, 1f);
-CgRenderStage.Registration on = flash.show();
-flash.place(x, y, z, new Quaternionf(), 6f, 6f, 6f);   // each frame it moves
-on.close();
+// The same region from Java, outside any sequence: a scene component, shown until removed.
+CgColourRegion flash = CgScene.client().colourRegion().falloff(0.2f)
+        .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 2f, 2f, 2f, 1f)
+        .at(x, y, z).scale(6f).spawn();
+flash.at(x2, y2, z2);   // each frame it moves
+flash.remove();
 ```
 
 - **What a play cannot make fails as it starts**, naming the spawnable: a kind no spawner here makes, a puppet whose

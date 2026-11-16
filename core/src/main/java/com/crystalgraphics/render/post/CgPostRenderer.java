@@ -10,7 +10,7 @@ import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.post.look.CgPostLooks;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.stage.CgStageFiring;
@@ -138,19 +138,26 @@ public final class CgPostRenderer {
     public static void prepare(CgView view) {
         CgPostSettings settings = view.state().get(SETTINGS);
         settings.reset();
+        settings.blend(view.post().settings(), 1f, 0.5f, 0.5f);
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
         CgSceneTextures textures = view.textures();
         if (CgPostLooks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
-        if (readsScene(view.post())) {
+        if (readsScene(view.post(), settings)) {
             textures.requestNormals();
             textures.requestCustomData();
         }
     }
 
-    /** Whether an added post material that shows reads the scene textures it is handed ({@code env/handed/scene.glsl}). */
-    private static boolean readsScene(CgPost post) {
+    /**
+     * Whether an added post material or a blendable that shows reads the scene textures it is handed
+     * ({@code env/handed/scene.glsl}).
+     */
+    private static boolean readsScene(CgPost post, CgPostSettings settings) {
         for (CgPost.Entry e : post.entries) {
             if (e.effect() instanceof CgPostMaterial m && m.weight() > 0f && CgMaterialProxy.of(m.material()).handedScene()) return true;
+        }
+        for (int i = 0; i < settings.drawnBlendables(); i++) {
+            if (CgMaterialProxy.of(settings.drawnBlendable(i).material()).handedScene()) return true;
         }
         return false;
     }
@@ -164,7 +171,7 @@ public final class CgPostRenderer {
         CgPost post = view.post();
         post.ranSurfaces = false;
         CgPost.Entry[] entries = post.entries;
-        if (entries.length == 0 || entries[0].point() != CgPostPoint.SURFACES || !view.textures().linear()) return;
+        if (!view.textures().linear()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.surfaces")) {
             post.context.begin(firing, view.state().get(SETTINGS));
             run(post, CgPostPoint.SURFACES, entries, 0, scene(firing));
@@ -232,26 +239,65 @@ public final class CgPostRenderer {
         return CgScreenTexture.sized(texture, Math.max(1, view.width()), Math.max(1, view.height()));
     }
 
-    /** Runs the effects at {@code point} on the scene, each answering its input; where the next point starts. */
+    /** Runs what is at {@code point} on the scene, each answering its input; where the next point's effects start. */
     private static int run(CgPost post, CgPostPoint point, CgPost.Entry[] entries, int from, CgScreenTexture scene) {
-        int i = from;
-        for (; i < entries.length && entries[i].point() == point; i++) {
-            post.context.input(scene);
-            if (entries[i].effect().apply(post.context, scene) != scene) {
-                throw new IllegalStateException("a post effect at " + point + " answered another texture than its input:"
-                        + " the scene renderer goes on drawing into it (" + entries[i].effect() + ")");
-            }
-        }
-        return i;
+        walk(post, point, entries, from, scene, true);
+        return post.next;
     }
 
-    /** Runs the effects at {@code point} in turn, each given the one before's answer; the last answer. */
+    /** Runs what is at {@code point} in turn, each given the one before's answer; the last answer. */
     private static CgScreenTexture carry(CgPost post, CgPostPoint point, CgPost.Entry[] entries, int from, CgScreenTexture picture) {
-        for (int i = from; i < entries.length && entries[i].point() == point; i++) {
-            post.context.input(picture);
-            picture = entries[i].effect().apply(post.context, picture);
+        return walk(post, point, entries, from, picture, false);
+    }
+
+    /**
+     * The effects added at {@code point} (from {@code from} in {@code entries}) and the view's blendables there, by
+     * order and priority, ascending, an added effect first on a tie; each blendable drawn over the picture at its weight.
+     * Leaves where the next point's effects start in {@code post.next}.
+     */
+    private static CgScreenTexture walk(CgPost post, CgPostPoint point, CgPost.Entry[] entries, int from,
+                                        CgScreenTexture picture, boolean onScene) {
+        CgPostContext ctx = post.context;
+        CgPostSettings s = ctx.settings();
+        int blendables = blendablesAt(post, s, point), b = 0, i = from;
+        while (true) {
+            boolean effect = i < entries.length && entries[i].point() == point;
+            if (!effect && b == blendables) break;
+            ctx.input(picture);
+            if (effect && (b == blendables || entries[i].order() <= s.drawnBlendable(post.order[b]).priority())) {
+                CgScreenTexture answer = entries[i].effect().apply(ctx, picture);
+                if (onScene && answer != picture) {
+                    throw new IllegalStateException("a post effect at " + point + " answered another texture than its input:"
+                            + " the scene renderer goes on drawing into it (" + entries[i].effect() + ")");
+                }
+                picture = answer;
+                i++;
+            } else {
+                int k = post.order[b++];
+                CgPostMaterial drawer = s.drawnBlendable(k).drawer();
+                drawer.weight(s.drawnWeight(k));
+                if (drawer.shows(ctx)) drawer.draw(ctx, picture);
+            }
         }
+        post.next = i;
         return picture;
+    }
+
+    /** The view's blendables at {@code point} into {@code post.order}, by priority, stable; how many. */
+    private static int blendablesAt(CgPost post, CgPostSettings s, CgPostPoint point) {
+        int n = 0, all = s.drawnBlendables();
+        if (post.order.length < all) post.order = new int[Math.max(8, all * 2)];
+        int[] order = post.order;
+        for (int k = 0; k < all; k++) {
+            if (s.drawnBlendable(k).point() != point) continue;
+            int at = n++, p = s.drawnBlendable(k).priority();
+            while (at > 0 && s.drawnBlendable(order[at - 1]).priority() > p) {
+                order[at] = order[at - 1];
+                at--;
+            }
+            order[at] = k;
+        }
+        return n;
     }
 
     private static int skip(CgPostPoint point, CgPost.Entry[] entries, int from) {

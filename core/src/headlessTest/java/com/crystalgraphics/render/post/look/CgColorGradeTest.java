@@ -6,9 +6,9 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Control;
-import com.crystalgraphics.render.post.volume.CgPostSettings.Region;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Control;
+import com.crystalgraphics.render.post.settings.CgPostSettings.Region;
 
 /**
  * The grade against Unreal 4.21's {@code ColorCorrectAll}, transliterated from its shader into NumPy line by line

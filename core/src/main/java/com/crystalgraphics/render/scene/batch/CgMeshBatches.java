@@ -10,7 +10,7 @@ import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgIndirect;
 import com.crystalgraphics.render.meshpass.CgMeshBatch;
 import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.compute.ops.CgGpuCount;
 import com.crystalgraphics.render.shader.CgBindingModel;
 

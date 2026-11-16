@@ -1,6 +1,13 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
 
 import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.render.post.CgPostMaterial;
+import com.crystalgraphics.render.post.CgPostPoint;
+
+import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -35,11 +42,15 @@ public final class CgPostSettings {
             TONE_CURVE = 1 << 15, FILM_SLOPE = 1 << 16, FILM_CURVE_TOE = 1 << 17, FILM_SHOULDER = 1 << 18,
             FILM_BLACK_CLIP = 1 << 19, FILM_WHITE_CLIP = 1 << 20, BLUE_CORRECTION = 1 << 21, EXPAND_GAMUT = 1 << 22,
             DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26,
-            BLOOM_EXCESS = 1 << 27;
+            BLOOM_EXCESS = 1 << 27, BLOOM_INTENSITY = 1 << 28, BLOOM_COLOUR = 1 << 29, BLOOM_CONSERVING = 1 << 30,
+            BLOOM_EXCESS_THRESHOLD = 1 << 31;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
     /** Unreal 5.1's layer sizes, percent of the screen's width ({@code FPostProcessSettings}, Scene.cpp). */
+    /** The bloom's intensity where nothing sets it. */
+    public static final float DEFAULT_BLOOM_INTENSITY = 1f;
+
     private static final float[] LAYER_SIZES = {0.3f, 1f, 2f, 10f, 30f, 64f};
     /** And its layer tints, grey each. */
     private static final float[] LAYER_TINTS = {0.3465f, 0.138f, 0.1176f, 0.066f, 0.066f, 0.061f};
@@ -89,14 +100,179 @@ public final class CgPostSettings {
     /** Each region's controls, {@code (region * 5 + control) * 4}: r, g, b, then the scalar. */
     final float[] grade = neutralGrade();
     volatile float tintR = 1f, tintG = 1f, tintB = 1f;
+    /** The bloom's own: its intensity, its colour, energy-conserving or added, and the engine layers' threshold. */
+    volatile float bloomIntensity = DEFAULT_BLOOM_INTENSITY, bloomR = 1f, bloomG = 1f, bloomB = 1f, bloomExcessThreshold = 1f;
+    volatile boolean bloomConserving;
+    /** Its weighted blendables, replaced whole. */
+    private volatile Blendable[] blendables = NO_BLENDABLES;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
     private float focusWeight;
+    /** Resolved only: every volume's blendables that show, each at its weight times its volume's. Grown, never shrunk. */
+    private Blendable[] drawn = NO_BLENDABLES;
+    private float[] drawnWeights = new float[0];
+    private int drawnCount;
+
+    private static final Blendable[] NO_BLENDABLES = new Blendable[0];
+
+    /**
+     * A post material a volume draws at its weight (Unreal's {@code FWeightedBlendable}): its {@code material} at
+     * {@code point}, {@code weight} times its volume's, among the effects there by {@code priority}. Made by
+     * {@link #blendable}; the chain draws each through its own {@link CgPostMaterial}.
+     */
+    public static final class Blendable {
+        private final CgMaterialInstance material;
+        private final CgPostPoint point;
+        private final float weight;
+        private final int priority;
+        private final CgPostMaterial drawer;
+
+        private Blendable(CgMaterialInstance material, CgPostPoint point, float weight, int priority) {
+            this.material = material;
+            this.point = point;
+            this.weight = weight;
+            this.priority = priority;
+            this.drawer = CgPostMaterial.drawer(material);
+        }
+
+        public CgMaterialInstance material() {
+            return material;
+        }
+
+        public CgPostPoint point() {
+            return point;
+        }
+
+        public float weight() {
+            return weight;
+        }
+
+        public int priority() {
+            return priority;
+        }
+
+        /** Engine side, the chain's: what draws it. */
+        public CgPostMaterial drawer() {
+            return drawer;
+        }
+    }
 
     /** Multiplies the bloom's intensity: 2 doubles the glow. */
     public CgPostSettings bloom(float scale) {
         bloom = Math.max(0f, scale);
         overrides |= BLOOM;
         return this;
+    }
+
+    /**
+     * Draws {@code material}, a {@code #domain post} one, at {@code point} at {@code weight} times the volume's: Unreal's
+     * weighted blendable. Among the effects at its point it runs by {@code priority}, ascending.
+     *
+     * <pre>{@code
+     * scene.postVolume(new CgPostSettings().blendable(thermal, CgPostPoint.DISPLAY, 1f, 0)).spawn();
+     * scene.postVolume(CgOutline.settings(CgOutline.material(1))).spawn();   // the engine's outline round stencil 1
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its instance is its own: a track setting its values changes this blendable alone.</li>
+     *   <li>Blendables are not blended into one another: each volume's draws, by its own weight.</li>
+     * </ul>
+     */
+    public CgPostSettings blendable(CgMaterialInstance material, CgPostPoint point, float weight, int priority) {
+        Objects.requireNonNull(material, "material");
+        Objects.requireNonNull(point, "point");
+        Blendable[] next = Arrays.copyOf(blendables, blendables.length + 1);
+        next[next.length - 1] = new Blendable(material, point, Math.max(0f, Math.min(1f, weight)), priority);
+        blendables = next;
+        return this;
+    }
+
+    /** {@code material} at the {@code Location} its file names ({@code DISPLAY} where it names none), priority 0. */
+    public CgPostSettings blendable(CgMaterialInstance material, float weight) {
+        String location = CgMaterialProxy.of(material).postLocation();
+        return blendable(material, location == null ? CgPostPoint.DISPLAY : CgPostPoint.valueOf(location), weight, 0);
+    }
+
+    /** Its blendables, as added. Read only. */
+    public List<Blendable> blendables() {
+        return Arrays.asList(blendables);
+    }
+
+    /** Resolved only: how many blendables show this frame. */
+    public int drawnBlendables() {
+        return drawnCount;
+    }
+
+    /** Resolved only: the {@code i}th blendable that shows. */
+    public Blendable drawnBlendable(int i) {
+        return drawn[i];
+    }
+
+    /** Resolved only: its weight this frame, its own times its volume's. */
+    public float drawnWeight(int i) {
+        return drawnWeights[i];
+    }
+
+    /**
+     * The bloom's intensity (Unreal's {@code BloomIntensity}): 1 by default, 0 for none. A chain's base settings set
+     * the engine's own ({@code CgPost.settings()}); a volume blends from there.
+     */
+    public CgPostSettings bloomIntensity(float intensity) {
+        bloomIntensity = Math.max(0f, intensity);
+        overrides |= BLOOM_INTENSITY;
+        return this;
+    }
+
+    /** Multiplies the glow's colour: white by default. */
+    public CgPostSettings bloomColour(float r, float g, float b) {
+        bloomR = r;
+        bloomG = g;
+        bloomB = b;
+        overrides |= BLOOM_COLOUR;
+        return this;
+    }
+
+    /**
+     * Lays the glow over the picture energy-conserving (Bevy's mode: {@code picture * (1 - i) + glow * i}, an intensity
+     * of about 0.15 subtle) rather than adding it. The heavier volume's choice wins.
+     */
+    public CgPostSettings bloomConserving(boolean conserving) {
+        bloomConserving = conserving;
+        overrides |= BLOOM_CONSERVING;
+        return this;
+    }
+
+    /**
+     * Under the HDR scene, the linear brightness past which the engine's own layers bloom: 1 by default, the screen's
+     * white. Unreal's layers bloom past {@link #bloomThreshold} instead.
+     */
+    public CgPostSettings bloomExcessThreshold(float threshold) {
+        bloomExcessThreshold = Math.max(0f, threshold);
+        overrides |= BLOOM_EXCESS_THRESHOLD;
+        return this;
+    }
+
+    public float bloomIntensity() {
+        return bloomIntensity;
+    }
+
+    public float bloomR() {
+        return bloomR;
+    }
+
+    public float bloomG() {
+        return bloomG;
+    }
+
+    public float bloomB() {
+        return bloomB;
+    }
+
+    public boolean bloomConserving() {
+        return bloomConserving;
+    }
+
+    public float bloomExcessThreshold() {
+        return bloomExcessThreshold;
     }
 
     /** Brightens the picture by {@code stops} of exposure: 1 doubles it. Emitted light is not brightened with it. */
@@ -403,7 +579,7 @@ public final class CgPostSettings {
 
     /**
      * Turns the picture {@code amount} (0 to 1) of the way into {@code look}, drawn from {@code seed}: a new seed draws
-     * its lines and strokes anew ({@link CgImpactSequence#seed}).
+     * its lines and strokes anew ({@code CgImpactSequence.seed}).
      */
     public CgPostSettings impact(CgImpactFrame look, float amount, int seed) {
         impactLook = Objects.requireNonNull(look, "look");
@@ -653,6 +829,21 @@ public final class CgPostSettings {
         return g;
     }
 
+    /** Its own copy: every value and override, and its blendables, which stay shared until one is added. */
+    public CgPostSettings copy() {
+        CgPostSettings c = new CgPostSettings();
+        c.blend(this, 1f, focusX, focusY);
+        for (int i = 0; i < c.drawnCount; i++) c.drawn[i] = null;
+        c.drawnCount = 0;
+        c.focusWeight = 0f;
+        c.bloomConserving = bloomConserving;
+        c.impactLook = impactLook;
+        c.impactSeed = impactSeed;
+        c.impactSubject = impactSubject;
+        c.blendables = blendables;
+        return c;
+    }
+
     /** Back to no look at all, nothing overridden. */
     public void reset() {
         overrides = 0;
@@ -684,6 +875,11 @@ public final class CgPostSettings {
         bloomSizeScale = 4f;
         layerOverrides = 0;
         System.arraycopy(NEUTRAL_LAYERS, 0, bloomLayers, 0, bloomLayers.length);
+        bloomIntensity = DEFAULT_BLOOM_INTENSITY;
+        bloomR = bloomG = bloomB = bloomExcessThreshold = 1f;
+        bloomConserving = false;
+        for (int i = 0; i < drawnCount; i++) drawn[i] = null;
+        drawnCount = 0;
     }
 
     private static final float[] NEUTRAL_LAYERS = neutralLayers();
@@ -715,6 +911,19 @@ public final class CgPostSettings {
         if ((o & DISPLAY_GAMMA) != 0) displayGamma += (from.displayGamma - displayGamma) * weight;
         if ((o & BLOOM_THRESHOLD) != 0) bloomThreshold += (from.bloomThreshold - bloomThreshold) * weight;
         if ((o & BLOOM_SIZE_SCALE) != 0) bloomSizeScale += (from.bloomSizeScale - bloomSizeScale) * weight;
+        if ((o & BLOOM_INTENSITY) != 0) bloomIntensity += (from.bloomIntensity - bloomIntensity) * weight;
+        if ((o & BLOOM_EXCESS_THRESHOLD) != 0) bloomExcessThreshold += (from.bloomExcessThreshold - bloomExcessThreshold) * weight;
+        if ((o & BLOOM_COLOUR) != 0) {
+            bloomR += (from.bloomR - bloomR) * weight;
+            bloomG += (from.bloomG - bloomG) * weight;
+            bloomB += (from.bloomB - bloomB) * weight;
+        }
+        if ((o & BLOOM_CONSERVING) != 0 && weight >= 0.5f) bloomConserving = from.bloomConserving;
+        Blendable[] bs = from.blendables;
+        for (Blendable b : bs) {
+            float w = b.weight * weight;
+            if (w > 0f) addDrawn(b, w);
+        }
         int lo = from.layerOverrides;
         if (lo != 0) {
             for (int l = 0; l < BLOOM_LAYERS; l++) {
@@ -766,6 +975,16 @@ public final class CgPostSettings {
             focusWeight = total;
         }
         overrides |= o;
+    }
+
+    private void addDrawn(Blendable b, float weight) {
+        if (drawnCount == drawn.length) {
+            int n = Math.max(4, drawnCount * 2);
+            drawn = Arrays.copyOf(drawn, n);
+            drawnWeights = Arrays.copyOf(drawnWeights, n);
+        }
+        drawn[drawnCount] = b;
+        drawnWeights[drawnCount++] = weight;
     }
 
     private static float clamp(float v) {

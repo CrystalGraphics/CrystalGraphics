@@ -1,6 +1,7 @@
 package com.crystalgraphics.render.scene.prefab;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostBlendable;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -36,12 +37,19 @@ import java.util.function.Function;
  * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).spawn();   // a component a part, a root a node
  * }</pre>
  *
- * <p>A node is a skeletal mesh, plays an effect or is a post volume, and rides a parent's socket:</p>
+ * <p>A node is a skeletal mesh, plays an effect, is a post volume, a height fog or a light, and rides a parent's
+ * socket:</p>
  * <pre>{@code
  * static final CgPrefab WYVERN = CgPrefab.builder("mymod:wyvern")
  *         .node("body").skeletal("mymod:geo/wyvern.glb", List.of(SKIN)).play("idle")
  *         .node("membranes").skeletal("mymod:geo/membranes.glb", List.of(MEMBRANE)).followPose("body")
  *         .node("flame").parent("body", "jaw").effect("mymod:vfx/breath", false)     // started by code
+ *         .node("glow").parent("body", "jaw").light(CgPrefab.Light.point(0xFFFF9030, 40f, 6f))
+ *         .build();
+ *
+ * static final CgPrefab ARENA = CgPrefab.builder("mymod:arena")                       // a level's look: Unreal's packed level
+ *         .node("look").post(new CgPostSettings().vignette(0.5f), Float.POSITIVE_INFINITY, 0f, 1f, 0)
+ *         .node("fog").at(0f, 12f, 0f).fog(new CgPrefab.Fog(0.002f, 0.1f, 0.41f, 0.89f, 1f, 0.65f, 0f, 0f))
  *         .build();
  * }</pre>
  *
@@ -83,6 +91,8 @@ public final class CgPrefab {
     private final Skeletal[] skeletal;
     private final Effect[] effects;
     private final Post[] posts;
+    private final Fog[] fogs;
+    private final Light[] lights;
     private final Map<Class<?>, Object> derived = new ConcurrentHashMap<>(2);
 
     private CgPrefab(Builder b) {
@@ -100,6 +110,8 @@ public final class CgPrefab {
         this.skeletal = b.skeletal.toArray(new Skeletal[0]);
         this.effects = b.effects.toArray(new Effect[0]);
         this.posts = b.posts.toArray(new Post[0]);
+        this.fogs = b.fogs.toArray(new Fog[0]);
+        this.lights = b.lights.toArray(new Light[0]);
         List<Part> all = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             parents[i] = b.parents.get(i);
@@ -162,9 +174,26 @@ public final class CgPrefab {
         return posts[node];
     }
 
-    /** Whether any node is a skeletal mesh, plays an effect or is a post volume: what a scene spawns and a VFX look does not draw. */
+    /** The height fog {@code node} spawns, or null. */
+    @Nullable
+    public Fog fog(int node) {
+        return fogs[node];
+    }
+
+    /** The light {@code node} spawns, or null. */
+    @Nullable
+    public Light light(int node) {
+        return lights[node];
+    }
+
+    /**
+     * Whether any node is a skeletal mesh, plays an effect, or is a post volume, a fog or a light: what a scene spawns and
+     * a VFX look does not draw.
+     */
     public boolean hasSceneNodes() {
-        for (int i = 0; i < names.length; i++) if (skeletal[i] != null || effects[i] != null || posts[i] != null) return true;
+        for (int i = 0; i < names.length; i++) {
+            if (skeletal[i] != null || effects[i] != null || posts[i] != null || fogs[i] != null || lights[i] != null) return true;
+        }
         return false;
     }
 
@@ -340,16 +369,64 @@ public final class CgPrefab {
 
     /**
      * The post volume a node spawns where it stands (§ 10.2): its look, everywhere for an infinite {@code radius}, else
-     * full within it and fading over {@code blend}, at {@code weight} and {@code priority}.
+     * full within it and fading over {@code blend}, at {@code weight} and {@code priority}. Its {@code materials}, a
+     * file's, are blendables each instance makes of its own, so a track keying one changes that instance's alone.
      */
-    public record Post(CgPostSettings settings, float radius, float blend, float weight, int priority) {
+    public record Post(CgPostSettings settings, List<CgPostBlendable> materials, float radius, float blend, float weight,
+                       int priority) {
         public Post {
             Objects.requireNonNull(settings, "settings");
+            materials = List.copyOf(materials);
         }
 
         /** Whether it applies everywhere. */
         public boolean unbound() {
             return radius == Float.POSITIVE_INFINITY;
+        }
+
+        /** The settings an instance's volume is spawned with: its own where it has materials, else the shared ones. */
+        public CgPostSettings instanceSettings() {
+            if (materials.isEmpty()) return settings;
+            CgPostSettings own = settings.copy();
+            for (CgPostBlendable b : materials) b.addTo(own, priority);
+            return own;
+        }
+    }
+
+    /**
+     * The height fog a node spawns, its density given at the node's height: {@code CgHeightFogComponent}'s fields, in the
+     * host's units (per block, blocks).
+     */
+    public record Fog(float density, float falloff, float red, float green, float blue, float maxOpacity, float start,
+                      float cutoff) {
+    }
+
+    /**
+     * The light a node spawns where it stands, a spot or a tube along the node's +x: {@code CgLightComponent}'s fields in
+     * the host's units, its colour sRGB {@code 0xAARRGGBB}.
+     *
+     * <pre>{@code
+     * .node("torch").at(0f, 1.5f, 0f).light(CgPrefab.Light.point(0xFFFF9030, 40f, 6f))
+     * .node("lamp").rotation(down).light(new CgPrefab.Light(CgPrefab.Light.Kind.SPOT, 0xFFFFFFFF, 300f, 12f, 0f, 0f,
+     *         true, 1f, 20f, 35f, 0f))
+     * }</pre>
+     *
+     * @param inner  a spot's inner cone, degrees
+     * @param outer  a spot's outer cone, degrees
+     * @param length a tube's length, blocks
+     */
+    public record Light(Kind kind, int argb, float intensity, float radius, float exponent, float sourceRadius,
+                        boolean castsShadow, float volumetric, float inner, float outer, float length) {
+
+        public enum Kind { POINT, SPOT, TUBE }
+
+        public Light {
+            Objects.requireNonNull(kind, "kind");
+        }
+
+        /** A point light at Unreal's defaults but its colour, intensity and radius. */
+        public static Light point(int argb, float intensity, float radius) {
+            return new Light(Kind.POINT, argb, intensity, radius, 0f, 0f, true, 1f, 0f, 44f, 0f);
         }
     }
 
@@ -416,6 +493,8 @@ public final class CgPrefab {
         private final List<Skeletal> skeletal = new ArrayList<>();
         private final List<Effect> effects = new ArrayList<>();
         private final List<Post> posts = new ArrayList<>();
+        private final List<Fog> fogs = new ArrayList<>();
+        private final List<Light> lights = new ArrayList<>();
         private final Map<String, Integer> byName = new HashMap<>();
         private float[] rest = new float[16 * REST];
         private int at = -1;
@@ -441,6 +520,8 @@ public final class CgPrefab {
             skeletal.add(null);
             effects.add(null);
             posts.add(null);
+            fogs.add(null);
+            lights.add(null);
             if (rest.length < (at + 1) * REST) rest = Arrays.copyOf(rest, rest.length * 2);
             int o = at * REST;
             rest[o + 6] = 1f;
@@ -517,7 +598,26 @@ public final class CgPrefab {
          * }</pre>
          */
         public Builder post(CgPostSettings settings, float radius, float blend, float weight, int priority) {
-            posts.set(current(), new Post(settings, Math.max(0f, radius), Math.max(0f, blend), Math.max(0f, Math.min(1f, weight)), priority));
+            return post(settings, List.of(), radius, blend, weight, priority);
+        }
+
+        /** {@link #post(CgPostSettings, float, float, float, int)} with a file's post materials, each instance's own. */
+        public Builder post(CgPostSettings settings, List<CgPostBlendable> materials, float radius, float blend, float weight,
+                            int priority) {
+            posts.set(current(), new Post(settings, materials, Math.max(0f, radius), Math.max(0f, blend),
+                    Math.max(0f, Math.min(1f, weight)), priority));
+            return this;
+        }
+
+        /** It is a height fog, its density at its height. */
+        public Builder fog(Fog fog) {
+            fogs.set(current(), Objects.requireNonNull(fog, "fog"));
+            return this;
+        }
+
+        /** It is a light where it stands. */
+        public Builder light(Light light) {
+            lights.set(current(), Objects.requireNonNull(light, "light"));
             return this;
         }
 

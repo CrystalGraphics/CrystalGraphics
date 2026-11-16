@@ -290,7 +290,7 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
   is written (`docs/SHADERS.md` § *Lighting and fog*). The opaque scene is linear too, as Unreal's base pass writes
   SceneColor: encoded back into the host's colour after the opaque callback, so what the host draws before the
   transparent one blends over it as before, and kept wherever the host drew nothing over it, so an unlit colour past
-  white reaches bloom. Bloom takes the scene's light past `CgPost.client().bloom().threshold(t)` (1). Until its
+  white reaches bloom. Bloom takes the scene's light past `CgPost.client().settings().bloomExcessThreshold(t)` (1). Until its
   programs are built, a view has no scene and draws no glow.
 - **Half resolution**: a translucent row marked `.halfResolution()` draws into a half-size target before the
   translucent pass, at a quarter of the pixels. Soft light that adds (`Blend ONE ONE`: a glow) is added over the target
@@ -409,7 +409,7 @@ over), `SCENE` (the linear scene: what draws here blooms), `HDR` (after bloom is
 (`view.post()`). Looks are post volumes, scene components each view blends at its camera.
 
 ```java
-CgPost.client().bloom().intensity(1.5f);                                     // 1 by default; 0 for none
+CgPost.client().settings().bloomIntensity(1.5f);                            // the chain's base: 1 by default, 0 for none
 CgPost.Registration fx = CgPost.client().add(CgPostPoint.DISPLAY, (ctx, input) -> ctx.screen(tint).over(input));
 fx.close();
 

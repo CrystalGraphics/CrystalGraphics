@@ -40,7 +40,7 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition.SectionRef;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition.Spawnable;
 import com.crystalgraphics.sequence.time.CgFrameRate;
 import com.crystalgraphics.sequence.notify.CgNotifyKind;
-import com.crystalgraphics.render.post.volume.CgPostBlendable;
+import com.crystalgraphics.render.post.settings.CgPostBlendable;
 import com.crystalgraphics.render.scene.capture.CgSceneCaptureSpawner;
 
 /** Compiles a resolved, validated {@code sequence} into its {@link CgSequenceDefinition}. One per compile. */

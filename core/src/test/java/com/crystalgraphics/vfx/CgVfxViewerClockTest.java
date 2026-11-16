@@ -1,7 +1,7 @@
 package com.crystalgraphics.vfx;
 
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.look.CgVfxSchema;

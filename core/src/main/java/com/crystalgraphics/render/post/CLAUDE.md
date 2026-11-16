@@ -1,12 +1,14 @@
 # render/post — the post chain
 
 > Root guide: [`CrystalGraphics/docs/ENGINE_API.md`](../../../../../../../../docs/ENGINE_API.md) § *The post chain*.
-> Plan: `plan/crystalgraphics/renderer/steps/R14.md`.
+> Plan: `plan/crystalgraphics/renderer/steps/R14.md`, `R15.md`.
 
 A view's post chain (Unreal's `AddPostProcessingPasses`): effects at points over the picture, each given the picture so
 far and answering the picture after it (`FScreenPassTexture` in, out), the engine's bloom, tonemapper and looks between
 them, its last step writing the host's target. The client's views share `CgPost.client()`; a view of a scene of its own
-has its own (`view.post()`). Volumes are scene components (`scene.postVolume(settings)`): a view blends its scene's.
+has its own (`view.post()`). Volumes are scene components (`scene.postVolume(settings)`): a view blends its scene's over
+the chain's base settings (`post.settings()`). A volume's weighted blendables (Unreal's `FWeightedBlendable`, post
+materials in its settings) run at their points among the chain's effects, by order and priority, an effect first on a tie.
 
 ```
 CgSceneRenderer.opaque        CgPostRenderer.prepare: the scene's volumes blended at the camera, textures asked for
@@ -26,8 +28,9 @@ CgPostRenderer.record
 
 | Class | Holds |
 |---|---|
-| `CgPost` | The consumer face: `add(point[, order], effect)` answering a `Registration`, `material(...)`, `bloom()`, `crossfade(s)`. `client()`; `new CgPost()` is `CgView`'s for a view of its own. Its effects an array snapshot, replaced whole |
-| `CgPostRenderer` | Engine side: `prepare(view)`, `surfaces(firing)`, `record(firing)` in the frame's order; `install`, `lookPasses`, `precacheLook`, `releaseAll` |
+| `CgPost` | The consumer face: `add(point[, order], effect)` answering a `Registration`, `material(...)`, `settings()` (the chain's base settings, bloom's among them), `crossfade(s)`. `client()`; `new CgPost()` is `CgView`'s for a view of its own. Its effects an array snapshot, replaced whole |
+| `CgPostRenderer` | Engine side: `prepare(view)`, `surfaces(firing)`, `record(firing)` in the frame's order, each point's effects and blendables merged (`walk`); `install`, `lookPasses`, `precacheLook`, `releaseAll` |
+| `CgOutline` | The outline as a blendable: `settings(instance)` a volume's settings drawing it at `SURFACES` first (`PRIORITY`), `material(stencil)`, `tests(...)` |
 | `CgPostEffect` | `CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input)` |
 | `CgPostPoint` | `SURFACES`, `TRANSLUCENT`, `SCENE`, `HDR`, `DISPLAY`; the format's `Location` takes the same names |
 | `CgPostContext` | `view`, `settings` (the blended volumes), `scene()` (the view's scene textures), `recording`, `depth`, `constants`, `screen(material)`, `texture(name, like)`, `distorted(t)` |
@@ -38,14 +41,16 @@ CgPostRenderer.record
 
 | Package | Holds |
 |---|---|
-| `bloom` | `CgBloom`: Unreal's Gaussian layers (`BloomMethod` Standard) and its settings, per chain. Its source (`bloom.compute`'s `Source`) is the half-size scene: each channel's excess past `threshold` (1), or where a volume asks for Unreal's look (`CgPostSettings.gaussianBloom`, a post block's `bloom1`-`bloom6`) Unreal's setup at its `BloomThreshold`. One compute pass (`FFilterCS`/`FDownsampleCS` form, R11G11B10F): the 4x4-box chain to a 64th, then from the 64th a separable Gaussian a layer, each adding the one before. Unless a volume asks, the layers are the engine's own (`ENGINE_SIZES`/`ENGINE_TINTS`), fitted to the CoD-style chain they replaced within 3% at every radius. Each graded layer's light blooms by its own look in the same dispatches (`BLOOMS`, 3) |
+| `bloom` | `CgBloom`: Unreal's Gaussian layers (`BloomMethod` Standard), per chain; its intensity, colour and threshold are the blended `CgPostSettings`' (`bloomIntensity`, `bloomColour`, `bloomExcessThreshold`). Its source (`bloom.compute`'s `Source`) is the half-size scene: each channel's excess past `threshold` (1), or where a volume asks for Unreal's look (`CgPostSettings.gaussianBloom`, a post block's `bloom1`-`bloom6`) Unreal's setup at its `BloomThreshold`. One compute pass (`FFilterCS`/`FDownsampleCS` form, R11G11B10F): the 4x4-box chain to a 64th, then from the 64th a separable Gaussian a layer, each adding the one before. Unless a volume asks, the layers are the engine's own (`ENGINE_SIZES`/`ENGINE_TINTS`), fitted to the CoD-style chain they replaced within 3% at every radius. Each graded layer's light blooms by its own look in the same dispatches (`BLOOMS`, 3) |
 | `composite` | `CgPostComposite` (the one pass; inputs set by bloom and the looks, never by an effect), `CgCompositeFeature` (each look, a keyword), `CgCompositeForm`: `BLEND` (`composite.shader`, `dst * (1 - a) + rgb`, its added term dithered by stochastic rounding) or `COPY` (`composite_copy.shader`, reads the scene, composites in linear light, triangular dither). `FADE` is last in both. `LAYERS` (copy form): each graded layer adds what it contributes toned by its look's table, less the frame's own tone of the same |
 | `look` | `CgPostLooks` (the blended settings into the composite, flash and impact scaled by `CgGraphicsSettings.FLASHES`), `CgColorGrade` (Unreal's `ColorCorrectAll` in ACEScg; `CgColorGradeTest` against a NumPy port of 4.21's shader), `CgFilmLut` (Unreal's tonemapper table, 32³, on the GPU by `post/film_lut.compute`; its CPU `bake` the reference, `CgFilmLutTest` against a Kakarot frame) |
-| `volume` | `CgPostSettings` (looks a volume overrides, Unreal's `bOverride_` flags), `CgPostBlock` (a format `post` block to and from settings), `CgImpactFrame`, `CgImpact`, `CgImpactSequence`, `CgPostBlendable` (a post block's `materials` entry, drawn at its material's `post.stage`), `CgPostVolumeSpawner` (a sequence's `post` spawnable), `CgPostVolumePreparer`, `CgColourRegion` (an effect at `TRANSLUCENT`) and its spawner. The volume itself is `render/scene/component/CgPostVolume` |
+| `settings` | `CgPostSettings` (looks a volume overrides, Unreal's `bOverride_` flags, and its weighted blendables), `CgPostBlock` (a format `post` block to and from settings), `CgImpactFrame`, `CgImpact`, `CgPostBlendable` (a post block's `materials` entry, added to a volume's settings at its material's `postLocation`). Prefabs read post blocks, so this sits under `render`, not `presentation`. The volume and the colour region are `render/scene/component`'s `CgPostVolume` and `CgColourRegion` |
 | `fog` | `CgHeightFogPass`: every chain's effect at `SURFACES`, order 0, drawing the viewed scene's `CgHeightFogComponent` (Unreal's exponential height fog, one layer) through `height_fog.shader` |
-| `stage` | `CgStageDefinition`, `CgStage` (a level's post volumes, materials and fog placed over the client scene), `CgStagePreparer` |
 | `distortion` | `CgPostDistortion`: a side input bent by the view's distortion field, once a firing; reached through `CgPostContext.distorted` |
 | `debug` | `CgPostDebug`: `-Dcrystalgraphics.post.debug=emission\|level<N>\|overdraw\|distortion` drawn over the frame, every chain's last step |
+
+What produces volumes is not here: a sequence's `post` and `colour_region` spawnables and impact sequences are
+`presentation/post` and `presentation/impact`, a stage file's compiler `presentation/stage` (it compiles to a prefab).
 
 Shaders: `shaders/post/` — `composite.shader`, `composite_copy.shader`, `debug.shader`, `hold.shader` (the crossfade's
 hold and the chain's last copy), `crossfade.shader`; bloom's kernels in `shaders/post/bloom.compute`; a post material's

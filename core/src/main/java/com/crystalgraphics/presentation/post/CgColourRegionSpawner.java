@@ -1,13 +1,13 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.presentation.post;
 
-import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.component.CgColourRegion;
 import java.util.Map;
 
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
@@ -49,21 +49,29 @@ public final class CgColourRegionSpawner implements CgSequenceSpawner {
     private static final int GRADES = 16;
     private static final String PREFIX = "colour_region.";
 
-    /** Registers one for the {@code colour_region} kind on {@code sequencer}. */
+    private final CgScene scene;
+
+    /** Regions spawned into {@code scene}. */
+    public CgColourRegionSpawner(CgScene scene) {
+        this.scene = scene;
+    }
+
+    /** Registers one for the {@code colour_region} kind on {@code sequencer}, over the client scene. */
     public static void install(CgSequencer sequencer) {
-        sequencer.spawner("colour_region", new CgColourRegionSpawner());
+        sequencer.spawner("colour_region", new CgColourRegionSpawner(CgScene.client()));
     }
 
     @Override
     public void check(CgSequenceDefinition definition, CgSequenceDefinition.Spawnable spawnable) {
-        CgColourRegion.of(block(definition, spawnable), path(definition, spawnable));
+        CgColourRegion.check(block(definition, spawnable), path(definition, spawnable));
     }
 
     @Override
     public CgSequenceSpawned spawn(CgSequencePlayer player, CgSequenceDefinition.Spawnable spawnable, CgAttachment at) {
-        CgColourRegion region = CgColourRegion.of(block(player.definition(), spawnable), path(player.definition(), spawnable));
+        CgColourRegion region = scene.colourRegion().set(block(player.definition(), spawnable), path(player.definition(), spawnable));
         Spawned s = new Spawned(region, at);
         s.update();
+        region.spawn();
         return s;
     }
 
@@ -81,7 +89,6 @@ public final class CgColourRegionSpawner implements CgSequenceSpawner {
     private static final class Spawned implements CgSequenceSpawned {
         private final CgColourRegion region;
         private final CgAttachment at;
-        private final CgPost.Registration shown;
         private final double[] point = new double[3];
         private final Quaternionf turn = new Quaternionf();
         private final Vector3f scale = new Vector3f();
@@ -89,7 +96,6 @@ public final class CgColourRegionSpawner implements CgSequenceSpawner {
         Spawned(CgColourRegion region, CgAttachment at) {
             this.region = region;
             this.at = at;
-            this.shown = region.show();
         }
 
         @Override
@@ -150,12 +156,12 @@ public final class CgColourRegionSpawner implements CgSequenceSpawner {
         public void update() {
             if (!at.place(point, turn)) return;
             at.scale(null, scale);
-            region.place(point[0], point[1], point[2], turn, scale.x, scale.y, scale.z);
+            region.at(point[0], point[1], point[2]).rotation(turn).scale(scale.x, scale.y, scale.z);
         }
 
         @Override
         public void destroy(boolean graceful) {
-            shown.close();
+            region.remove();
         }
 
         @Override

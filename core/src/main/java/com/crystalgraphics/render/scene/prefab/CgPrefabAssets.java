@@ -7,12 +7,14 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.value.CgQuantity;
 import com.crystalgraphics.object.value.CgUnits;
-import com.crystalgraphics.render.post.volume.CgPostBlock;
+import com.crystalgraphics.render.post.settings.CgPostBlendable;
+import com.crystalgraphics.render.post.settings.CgPostBlock;
 import org.joml.Quaternionf;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -44,12 +46,26 @@ import java.util.Map;
  *   - { id: n5, name: breath_look, parent: "body#jaw", post: { settings: { bloom: 2.0 }, radius: 20, blend: 12, weight: 0 } }
  * }</pre>
  *
+ * <pre>{@code
+ * # a level's look: an unbound post volume with a post material, a height fog at its node's height, a light
+ *   - { id: n6, name: look, post: { settings: { vignette: 0.5, materials: [ { material: mymod:post/overlay,
+ *                                                     values: { SunVector: [0.8, -0.5, 0.3, 0] } } ] }, priority: 1 } }
+ *   - { id: n7, name: fog, location: [0, 15799, 0], fog: { density: 0.002, height_falloff: 0.1, max_opacity: 0.65,
+ *                                                          inscattering_colour: [0.41, 0.89, 1] } }
+ *   - { id: n8, name: sun_lamp, location: [0, 200, 0], light: { kind: point, colour: [1, 0.6, 0.2], intensity: 40, radius: 600 } }
+ * }</pre>
+ *
  * <ul>
  *   <li>Its values convert from its units to the host's: a location and a scale through the axes, a rotation in its
  *       convention to a quaternion.</li>
  *   <li>A mesh slot is kept as written, its materials and its other fields: a character's several materials and its
  *       overlay compile, and fail only where what plays the prefab does not draw them.</li>
  *   <li>A material it names must be compiled with it: one that is not fails, naming the node.</li>
+ *   <li>A fog's {@code density} and {@code height_falloff} are Unreal's {@code FogDensity} and {@code FogHeightFalloff}:
+ *       divided by 1000, then per the file's length (Unreal's SceneCore.cpp), Unreal's defaults where absent.</li>
+ *   <li>A light's {@code colour} is sRGB, three numbers or four with alpha; a spot's {@code cone} its inner and outer
+ *       angles in degrees; a spot or a tube points along its node's +x.</li>
+ *   <li>A post block's {@code materials} take no {@code screen_point}: nothing in a prefab is followed on screen.</li>
  *   <li>{@link #write} writes in the host's units; a part whose mesh was made in code has no file and fails there.</li>
  * </ul>
  */
@@ -111,7 +127,9 @@ public final class CgPrefabAssets {
                 if (!(effect.get("effect") instanceof String system)) throw new CgAssetException(where + ".effect names no effect");
                 b.effect(system, !Boolean.FALSE.equals(effect.get("auto")));
             }
-            if (node.get("post") instanceof Map<?, ?> post) post(b, post, units, where);
+            if (node.get("post") instanceof Map<?, ?> post) post(b, post, units, deps, where);
+            if (node.get("fog") instanceof Map<?, ?> fog) b.fog(fog(fog, units));
+            if (node.get("light") instanceof Map<?, ?> light) b.light(light(light, units, where + ".light"));
             if (node.get("meshes") instanceof List<?> meshes) {
                 for (int k = 0; k < meshes.size(); k++) part(b, (Map<?, ?>) meshes.get(k), deps, where + ".meshes[" + k + "]");
             }
@@ -119,13 +137,63 @@ public final class CgPrefabAssets {
         return b.build();
     }
 
-    /** A post node: its look a post block, unbound without a radius, its lengths in the file's units. */
-    private static void post(CgPrefab.Builder b, Map<?, ?> post, CgUnits units, String where) {
+    /** A post node: its look a post block, its materials its blendables, unbound without a radius, lengths in the file's units. */
+    private static void post(CgPrefab.Builder b, Map<?, ?> post, CgUnits units, CgAssetCompiler.Dependencies deps, String where) {
         if (!(post.get("settings") instanceof Map<?, ?> settings)) throw new CgAssetException(where + ".post has no settings block");
         float priority = post.get("priority") instanceof Number p ? p.floatValue() : 0f;
         if (priority != Math.rint(priority)) throw new CgAssetException(where + ".post.priority: " + priority + " is not a whole priority");
-        b.post(CgPostBlock.settings(settings), post.get("radius") == null ? Float.POSITIVE_INFINITY : length(units, post.get("radius")),
+        List<CgPostBlendable> materials = new ArrayList<>();
+        if (settings.get("materials") instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                materials.add(CgPostBlendable.of((Map<?, ?>) list.get(i), where + ".post.settings.materials[" + i + "]", deps, null));
+            }
+        }
+        Map<Object, Object> look = new LinkedHashMap<>(settings);
+        look.remove("materials");
+        b.post(CgPostBlock.settings(look), materials, post.get("radius") == null ? Float.POSITIVE_INFINITY : length(units, post.get("radius")),
                 length(units, post.get("blend")), post.get("weight") instanceof Number w ? w.floatValue() : 1f, (int) priority);
+    }
+
+    /** A fog node: Unreal's {@code UExponentialHeightFogComponent} fields, its density and falloff per 1000 file lengths. */
+    private static CgPrefab.Fog fog(Map<?, ?> f, CgUnits units) {
+        float density = (float) perLength(units, number(f.get("density"), 0.02f) / 1000.0);
+        float falloff = (float) perLength(units, number(f.get("height_falloff"), 0.2f) / 1000.0);
+        float[] c = f.get("inscattering_colour") instanceof List<?> l ? floats(l, "inscattering_colour") : new float[] {0.447f, 0.638f, 1f};
+        return new CgPrefab.Fog(density, falloff, c[0], c[1], c[2], number(f.get("max_opacity"), 1f),
+                length(units, f.get("start_distance")), length(units, f.get("cutoff_distance")));
+    }
+
+    /** A light node: {@code CgLightComponent}'s fields, at Unreal's defaults where absent. */
+    private static CgPrefab.Light light(Map<?, ?> l, CgUnits units, String where) {
+        CgPrefab.Light.Kind kind;
+        try {
+            kind = CgPrefab.Light.Kind.valueOf(String.valueOf(l.get("kind") == null ? "point" : l.get("kind")).toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new CgAssetException(where + ".kind: " + l.get("kind") + " is not point, spot or tube");
+        }
+        int argb = 0xFFFFFFFF;
+        if (l.get("colour") != null) {
+            float[] c = floats(l.get("colour"), where + ".colour");
+            if (c.length < 3) throw new CgAssetException(where + ".colour: three or four numbers");
+            argb = channel(c.length > 3 ? c[3] : 1f) << 24 | channel(c[0]) << 16 | channel(c[1]) << 8 | channel(c[2]);
+        }
+        float[] cone = l.get("cone") != null ? floats(l.get("cone"), where + ".cone") : new float[] {0f, 44f};
+        if (cone.length != 2) throw new CgAssetException(where + ".cone: its inner and outer angles");
+        return new CgPrefab.Light(kind, argb, number(l.get("intensity"), 1f), l.get("radius") == null ? 10f : length(units, l.get("radius")),
+                number(l.get("exponent"), 0f), length(units, l.get("source_radius")), !Boolean.FALSE.equals(l.get("shadows")),
+                number(l.get("volumetric"), 1f), cone[0], cone[1], length(units, l.get("length")));
+    }
+
+    private static int channel(float v) {
+        return Math.round(Math.max(0f, Math.min(1f, v)) * 255f);
+    }
+
+    private static double perLength(CgUnits units, double v) {
+        return ((Number) units.toHost(v, CgQuantity.PER_LENGTH)).doubleValue();
+    }
+
+    private static float number(Object v, float fallback) {
+        return v instanceof Number n ? n.floatValue() : fallback;
     }
 
     private static float length(CgUnits units, Object v) {
@@ -220,12 +288,47 @@ public final class CgPrefabAssets {
             CgPrefab.Post post = prefab.post(n);
             if (post != null) {
                 Map<String, Object> p = new LinkedHashMap<>();
-                p.put("settings", CgPostBlock.block(post.settings()));
+                Map<String, Object> settings = new LinkedHashMap<>(CgPostBlock.block(post.settings()));
+                if (!post.materials().isEmpty()) {
+                    List<Object> entries = new ArrayList<>();
+                    for (CgPostBlendable m : post.materials()) entries.add(m.entry());
+                    settings.put("materials", entries);
+                }
+                p.put("settings", settings);
                 if (!post.unbound()) p.put("radius", post.radius());
                 if (post.blend() != 0f) p.put("blend", post.blend());
                 if (post.weight() != 1f) p.put("weight", post.weight());
                 if (post.priority() != 0) p.put("priority", post.priority());
                 node.put("post", p);
+            }
+            CgPrefab.Fog fog = prefab.fog(n);
+            if (fog != null) {
+                Map<String, Object> f = new LinkedHashMap<>();
+                f.put("density", fog.density() * 1000f);
+                f.put("height_falloff", fog.falloff() * 1000f);
+                f.put("inscattering_colour", List.of(fog.red(), fog.green(), fog.blue()));
+                f.put("max_opacity", fog.maxOpacity());
+                if (fog.start() != 0f) f.put("start_distance", fog.start());
+                if (fog.cutoff() != 0f) f.put("cutoff_distance", fog.cutoff());
+                node.put("fog", f);
+            }
+            CgPrefab.Light light = prefab.light(n);
+            if (light != null) {
+                Map<String, Object> l = new LinkedHashMap<>();
+                int c = light.argb();
+                l.put("kind", light.kind().name().toLowerCase(Locale.ROOT));
+                List<Object> colour = new ArrayList<>(List.of((c >> 16 & 255) / 255f, (c >> 8 & 255) / 255f, (c & 255) / 255f));
+                if ((c >>> 24) != 255) colour.add((c >>> 24) / 255f);
+                l.put("colour", colour);
+                l.put("intensity", light.intensity());
+                l.put("radius", light.radius());
+                if (light.exponent() != 0f) l.put("exponent", light.exponent());
+                if (light.sourceRadius() != 0f) l.put("source_radius", light.sourceRadius());
+                if (!light.castsShadow()) l.put("shadows", false);
+                if (light.volumetric() != 1f) l.put("volumetric", light.volumetric());
+                if (light.kind() == CgPrefab.Light.Kind.SPOT) l.put("cone", List.of(light.inner(), light.outer()));
+                if (light.kind() == CgPrefab.Light.Kind.TUBE) l.put("length", light.length());
+                node.put("light", l);
             }
             List<Object> meshes = new ArrayList<>();
             for (int k = prefab.firstPart(n); k < prefab.firstPart(n + 1); k++) {

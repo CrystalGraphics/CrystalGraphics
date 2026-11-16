@@ -1,7 +1,11 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.render.post.CgPostPoint;
+import com.crystalgraphics.render.post.settings.CgImpact;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.CgScene;
-import com.crystalgraphics.render.scene.component.CgPostVolume;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
@@ -83,5 +87,36 @@ public class CgPostVolumeTest {
         resolved.blend(new CgPostSettings().impact(CgImpact.LINES, 1f), 0.3f, 0.5f, 0.5f);
         resolved.blend(new CgPostSettings().impact(CgImpact.INVERT, 1f), 0.9f, 0.5f, 0.5f);
         assertSame(CgImpact.INVERT.frame(), resolved.impactLook());
+    }
+
+    private static final String POST = """
+            #domain ui
+            Properties { _Amount ("Amount", float) = 1 }
+            void surface(in CgUiInput i, inout CgUiSurface s) { s.color = vec4(_Amount); }
+            """;
+
+    /** Unreal's weighted blendables: each volume's draws at its own weight times the volume's, never mixed together. */
+    @Test
+    public void blendables_drawAtTheirWeightTimesTheirVolumes() {
+        CgMaterialInstance thermal = CgMaterial.fromSource(POST).instance(), blur = CgMaterial.fromSource(POST).instance();
+        CgPostSettings resolved = new CgPostSettings();
+        resolved.reset();
+        resolved.blend(new CgPostSettings().blendable(thermal, CgPostPoint.DISPLAY, 0.5f, 0), 0.8f, 0.5f, 0.5f);
+        resolved.blend(new CgPostSettings().blendable(blur, CgPostPoint.HDR, 1f, 2), 0f, 0.5f, 0.5f);
+        assertEquals("a volume at weight 0 draws nothing", 1, resolved.drawnBlendables());
+        assertSame(thermal, resolved.drawnBlendable(0).material());
+        assertEquals(0.4f, resolved.drawnWeight(0), 1e-6f);
+        resolved.reset();
+        assertEquals(0, resolved.drawnBlendables());
+    }
+
+    @Test
+    public void bloomSettings_blendLikeEveryOtherField() {
+        CgPostSettings resolved = new CgPostSettings();
+        resolved.reset();
+        float neutral = resolved.bloomIntensity();
+        resolved.blend(new CgPostSettings().bloomIntensity(neutral + 2f).bloomColour(1f, 0.5f, 0f), 0.5f, 0.5f, 0.5f);
+        assertEquals(neutral + 1f, resolved.bloomIntensity(), 1e-6f);
+        assertEquals(0.75f, resolved.bloomG(), 1e-6f);
     }
 }

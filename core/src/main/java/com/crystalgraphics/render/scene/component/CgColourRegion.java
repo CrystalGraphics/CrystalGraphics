@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.scene.component;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -8,22 +8,19 @@ import java.util.Map;
 
 import javax.annotation.Nullable;
 
-import org.joml.Matrix3f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
+import org.joml.Matrix4dc;
 
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.render.post.CgPostContext;
-import com.crystalgraphics.render.post.CgPostEffect;
 import com.crystalgraphics.render.post.CgPostMaterial;
-import com.crystalgraphics.render.post.CgPostPoint;
-import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.scene.batch.CgMeshBatches;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLight;
 import com.crystalgraphics.render.scene.renderer.feature.light.CgSceneLights;
@@ -31,18 +28,19 @@ import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
 
 /**
- * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}. Its shape's alpha at each pixel's
+ * Grades the world's pixels inside a shape: Unreal 5.1's {@code AColorCorrectRegion}, a component of its scene. Its
+ * shape stands, turns and is sized as the component does. Its shape's alpha at each pixel's
  * world point mixes the HDR scene toward the scene graded in ACEScg (saturation, contrast, gamma, gain and offset, for
  * the whole and per shadows, midtones and highlights), before bloom and every look, as
  * {@code FColorCorrectRegionsSceneViewExtension::PrePostProcessPass_RenderThread} draws it. So an effect in separate
  * translucency, laid over the scene after it, is never graded.
  *
  * <pre>{@code
- * CgColourRegion flash = new CgColourRegion().shape(CgColourRegion.Shape.SPHERE)
- *         .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 1f, 1f, 1f, 2f);   // twice as bright
- * flash.place(x, y, z, new Quaternionf(), 6f, 6f, 6f);            // each frame: a sphere 3 blocks round
- * CgPost.Registration on = flash.show();               // on the game's chain, at TRANSLUCENT
- * on.close();                                                       // gone
+ * CgColourRegion flash = scene.colourRegion().shape(CgColourRegion.Shape.SPHERE)
+ *         .grade(CgColourRegion.Range.GLOBAL, CgColourRegion.Control.GAIN, 1f, 1f, 1f, 2f)    // twice as bright
+ *         .at(x, y, z).scale(6f).spawn();                                                     // a sphere 3 blocks round
+ * flash.attach(goku, "spine_02");                                                             // or riding a socket
+ * flash.remove();                                                                             // gone
  * }</pre>
  *
  * <pre>{@code
@@ -52,13 +50,15 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  *
  * <ul>
  *   <li>Its size is its scale: at 1 its unit shape is half a block across each way, Unreal's 50 cm at a metre a block.</li>
- *   <li>Regions draw by priority, lowest first, each over what the last one left.</li>
+ *   <li>Regions draw by priority, lowest first, each over what the last one left: every view of its scene draws its
+ *       scene's at {@code TRANSLUCENT}.</li>
+ *   <li>The frame thread's, as its scene is.</li>
  *   <li>Outside its unit box nothing is graded, unless inverted: then everything outside its shape is.</li>
  *   <li>The legacy temperature is played; white balance and colour temperature away from 6500 K and no tint are not yet,
  *       and fail where a region is made from data. So does {@code affected}: per-actor regions are not played.</li>
  * </ul>
  */
-public final class CgColourRegion implements CgPostEffect {
+public final class CgColourRegion extends CgPrimitiveComponent<CgColourRegion> {
 
     /** {@code EColorCorrectRegionsType}. Its axis, for a cylinder and a cone, is its local +Y (Unreal's +Z). */
     public enum Shape { SPHERE, BOX, CYLINDER, CONE }
@@ -97,10 +97,6 @@ public final class CgColourRegion implements CgPostEffect {
     /** Per range, per control, four floats. */
     private final float[][][] grade = new float[4][5][4];
 
-    private double x, y, z;
-    private final Quaternionf turn = new Quaternionf();
-    private final Vector3f scale = new Vector3f(1f);
-
     /** An instance per keyword set its shape and ranges draw with. */
     private final CgMaterialInstances materials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance material = materials.of(materials.material());
@@ -109,12 +105,12 @@ public final class CgColourRegion implements CgPostEffect {
     private final CgMaterialInstances layerMaterials = new CgMaterialInstances(CgMaterial.load(SHADER));
     private CgMaterialInstance layerMaterial = layerMaterials.of(layerMaterials.material());
     private final CgPostMaterial layerDraw = CgPostMaterial.drawer(layerMaterial);
-    private final Matrix3f toLocal = new Matrix3f();
-    private final float[] rows = new float[12], half = new float[3];
+    private final float[] rows = new float[12];
     /** The keyword set its program has: shape, advanced and temperature packed; -1 before the first. */
     private int keyed = -1;
 
-    public CgColourRegion() {
+    CgColourRegion(@Nullable CgScenePrimitives scene) {
+        super(scene);
         for (float[][] range : grade) {
             for (int c = 0; c < range.length; c++) Arrays.fill(range[c], c == Control.OFFSET.ordinal() ? 0f : 1f);
         }
@@ -127,8 +123,14 @@ public final class CgColourRegion implements CgPostEffect {
 
     /** Lower draws first. */
     public CgColourRegion priority(int priority) {
+        if (priority == this.priority) return this;
         this.priority = priority;
+        if (spawned()) scene.sortColourRegions();
         return this;
+    }
+
+    public int priority() {
+        return priority;
     }
 
     /** How much of the grade it mixes in at full shape, 0 to 1. */
@@ -225,16 +227,6 @@ public final class CgColourRegion implements CgPostEffect {
         return this;
     }
 
-    /** Where it stands: an absolute point, its turn, its scale. Each frame it moves. */
-    public CgColourRegion place(double x, double y, double z, Quaternionf turn, float sx, float sy, float sz) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.turn.set(turn);
-        scale.set(sx, sy, sz);
-        return this;
-    }
-
     public float intensity() {
         return intensity;
     }
@@ -259,26 +251,34 @@ public final class CgColourRegion implements CgPostEffect {
         return tint;
     }
 
-    /** Shows it on the game's post chain at {@code TRANSLUCENT}, by its priority, until the registration closes. */
-    public CgPost.Registration show() {
-        return CgPost.client().add(CgPostPoint.TRANSLUCENT, priority, this);
-    }
-
-    @Override
-    public CgScreenTexture apply(CgPostContext post, CgScreenTexture input) {
+    /** Engine side, its chains' at {@code TRANSLUCENT}: grades {@code input} (and each graded layer) inside its shape. */
+    public void draw(CgPostContext post, CgScreenTexture input) {
         keywords();
-        if (intensity <= 0f || !draw.shows(post)) return input;
+        if (!visible || intensity <= 0f || !draw.shows(post)) return;
         CgCamera view = post.view().camera();
+        double x = x(), y = y(), z = z();
         // Camera-relative in doubles: the shader's points are the camera's
         float cx = (float) (x - view.x()), cy = (float) (y - view.y()), cz = (float) (z - view.z());
-        // Its unit shape half a block across at scale 1 (WorldToMetersScale / 2), turned into its axes
-        toLocal.set(turn).transpose();
-        half[0] = 0.5f * scale.x;
-        half[1] = 0.5f * scale.y;
-        half[2] = 0.5f * scale.z;
+        // Its unit shape half a block across at scale 1 (WorldToMetersScale / 2), in its axes: each world column of its
+        // transform is its axis times its scale, so the axis over half its scale is the column over half the scale squared
+        Matrix4dc world = worldTransform();
         for (int r = 0; r < 3; r++) {
-            float s = Math.abs(half[r]) < 1e-6f ? 1e6f : 1f / half[r];
-            float a = toLocal.getRowColumn(r, 0) * s, b = toLocal.getRowColumn(r, 1) * s, c = toLocal.getRowColumn(r, 2) * s;
+            double mx = r == 0 ? world.m00() : r == 1 ? world.m10() : world.m20();
+            double my = r == 0 ? world.m01() : r == 1 ? world.m11() : world.m21();
+            double mz = r == 0 ? world.m02() : r == 1 ? world.m12() : world.m22();
+            double sc = Math.sqrt(mx * mx + my * my + mz * mz);
+            float a, b, c;
+            if (0.5 * sc < 1e-6) {
+                // A flat axis: nothing is inside along it, as a scale of 0 left the old rows at a million
+                a = r == 0 ? 1e6f : 0f;
+                b = r == 1 ? 1e6f : 0f;
+                c = r == 2 ? 1e6f : 0f;
+            } else {
+                double k = 1.0 / (0.5 * sc * sc);
+                a = (float) (mx * k);
+                b = (float) (my * k);
+                c = (float) (mz * k);
+            }
             rows[r * 4] = a;
             rows[r * 4 + 1] = b;
             rows[r * 4 + 2] = c;
@@ -291,13 +291,44 @@ public final class CgColourRegion implements CgPostEffect {
         draw.draw(post, input);
         // The light a graded layer holds is graded too: Unreal grades the scene before bloom, effects' light with it
         CgGradeLayers layers = post.view().read(CgGradeLayers.KEY);
-        if (layers == null) return input;
+        if (layers == null) return;
         write(layerMaterial);
         layerMaterial.set1f("_Coverage", 1f);
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (layers.look(k) != null) layerDraw.drawOver(post, layers.layer(k));
         }
-        return input;
+    }
+
+    @Override
+    void onSpawn() {
+        scene.addColourRegion(this);
+    }
+
+    @Override
+    void onRemove() {
+        scene.colourRegions.remove(this);
+    }
+
+    @Override
+    void onMoved() {
+    }
+
+    @Override
+    void onLooked() {
+    }
+
+    @Override
+    boolean kindBounds(CgAABB out) {
+        return false;
+    }
+
+    @Override
+    void gather(CgView view, CgCamera camera, CgMeshBatches out, CgSceneGather gather) {
+    }
+
+    @Override
+    public String toString() {
+        return "CgColourRegion(" + shape + ", priority " + priority + ")";
     }
 
     private void write(CgMaterialValues b) {
@@ -369,12 +400,16 @@ public final class CgColourRegion implements CgPostEffect {
     }
 
     /**
-     * A region as a sequence's {@code colour_region} block says, at {@code path}; its place is set each frame after.
+     * Sets it as a sequence's {@code colour_region} block says, at {@code path}; where it stands is its own.
+     *
+     * <pre>{@code
+     * CgColourRegion region = scene.colourRegion().set(block, "mymod:hit: spawnables.s2.colour_region").spawn();
+     * }</pre>
      *
      * @throws CgAssetException naming the path for a key it does not take, or what is not played yet
      */
-    public static CgColourRegion of(Map<?, ?> block, String path) {
-        CgColourRegion r = new CgColourRegion();
+    public CgColourRegion set(Map<?, ?> block, String path) {
+        CgColourRegion r = this;
         for (Map.Entry<?, ?> e : block.entrySet()) {
             String key = String.valueOf(e.getKey());
             Object v = e.getValue();
@@ -397,6 +432,11 @@ public final class CgColourRegion implements CgPostEffect {
             }
         }
         return r;
+    }
+
+    /** Checks {@code block} as {@link #set} reads it, making no region. */
+    public static void check(Map<?, ?> block, String path) {
+        new CgColourRegion(null).set(block, path);
     }
 
     private static void temperature(CgColourRegion r, Map<?, ?> t, String path) {
@@ -425,14 +465,14 @@ public final class CgColourRegion implements CgPostEffect {
 
     /** A control by its file name, null for none. */
     @Nullable
-    static Control control(String name) {
+    public static Control control(String name) {
         for (Control c : Control.values()) if (c.name().toLowerCase(Locale.ROOT).equals(name)) return c;
         return null;
     }
 
     /** A range by its file name: {@code colour} the whole; null for none. */
     @Nullable
-    static Range range(String name) {
+    public static Range range(String name) {
         return switch (name) {
             case "colour" -> Range.GLOBAL;
             case "shadows" -> Range.SHADOWS;
@@ -446,7 +486,7 @@ public final class CgColourRegion implements CgPostEffect {
     @Nullable
     public static String[] keywords(Map<?, ?> block) {
         try {
-            CgColourRegion r = of(block, "");
+            CgColourRegion r = new CgColourRegion(null).set(block, "");
             return keywords(r.shape, r.advanced(), r.temperatureGraded() ? r.temperatureType : null);
         } catch (RuntimeException e) {
             return null;

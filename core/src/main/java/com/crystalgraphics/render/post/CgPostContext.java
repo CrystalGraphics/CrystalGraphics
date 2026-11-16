@@ -8,7 +8,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.distortion.CgPostDistortion;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
 import com.crystalgraphics.render.stage.CgStageFiring;
 import com.crystalgraphics.render.view.CgSceneTextures;

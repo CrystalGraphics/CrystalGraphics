@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,15 +12,14 @@ import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetException;
-import com.crystalgraphics.render.post.CgPost;
-import com.crystalgraphics.render.post.CgPostMaterial;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.render.post.CgPostPoint;
 import com.crystalgraphics.sequence.definition.CgSequenceBinding;
 
 /**
  * One entry of a post block's {@code materials}, compiled: Unreal's weighted blendable, a post material at a weight,
  * made a dynamic instance by its {@code values} and {@code textures}. A sequence's {@code post} spawnable and a
- * stage's volumes draw them.
+ * prefab's {@code post} node make them blendables of their volume's settings.
  *
  * <pre>{@code
  * # a post block
@@ -30,9 +29,9 @@ import com.crystalgraphics.sequence.definition.CgSequenceBinding;
  * }</pre>
  *
  * <pre>{@code
- * CgPostBlendable b = CgPostBlendable.of(entry, "mymod:arena: volumes[0].post.materials[0]", deps, null);
- * CgPostMaterial drawn = b.draw(CgPost.client(), priority);   // at its material's post.stage
- * drawn.remove();
+ * CgPostBlendable b = CgPostBlendable.of(entry, "mymod:arena: post.materials[0]", deps, null);
+ * CgMaterialInstance drawn = b.addTo(settings, priority);   // a blendable of settings, at its material's post.stage
+ * scene.postVolume(settings).spawn();
  * }</pre>
  *
  * <ul>
@@ -47,10 +46,11 @@ import com.crystalgraphics.sequence.definition.CgSequenceBinding;
  * @param screenVector  the vector parameter whose xy take the point, or null
  * @param screenX       the scalar taking x, or null
  * @param screenY       the scalar taking y, or null
+ * @param entry         the entry as its file wrote it: what a prefab writes back
  */
 public record CgPostBlendable(String name, @Nullable CgMaterialDefinition material, float weight, boolean enabled,
                               @Nullable CgSequenceBinding screen, @Nullable String screenVector, @Nullable String screenX,
-                              @Nullable String screenY, boolean screenClamp) {
+                              @Nullable String screenY, boolean screenClamp, Map<?, ?> entry) {
 
     /**
      * {@code entry} compiled, its material from {@code deps}. {@code bind} resolves {@code screen_point.target}; null
@@ -81,13 +81,19 @@ public record CgPostBlendable(String name, @Nullable CgMaterialDefinition materi
                 entry.get("weight") instanceof Number w ? w.floatValue() : 1f, !Boolean.FALSE.equals(entry.get("enabled")),
                 screen == null ? null : bind.apply(screen.get("target")), screen == null ? null : (String) screen.get("vector"),
                 screen == null ? null : (String) screen.get("x"), screen == null ? null : (String) screen.get("y"),
-                screen != null && Boolean.TRUE.equals(screen.get("clamp")));
+                screen != null && Boolean.TRUE.equals(screen.get("clamp")), entry);
     }
 
-    /** A post material of its own added to {@code post}, at its material's point, {@code order} among that point's: a volume's priority. */
-    public CgPostMaterial draw(CgPost post, int order) {
-        if (material == null) throw new IllegalStateException(name + ": no material compiled, so nothing to draw");
-        return post.material(CgMaterial.of(material).instance(), point(), order);
+    /**
+     * An instance of its material added to {@code settings} as a blendable at its weight (0 where disabled), at its
+     * material's point, {@code priority} among that point's: its volume's. Null where no material compiled.
+     */
+    @Nullable
+    public CgMaterialInstance addTo(CgPostSettings settings, int priority) {
+        if (material == null) return null;
+        CgMaterialInstance instance = CgMaterial.of(material).instance();
+        settings.blendable(instance, point(), enabled ? weight : 0f, priority);
+        return instance;
     }
 
     /**

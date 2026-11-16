@@ -16,7 +16,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.crystalgraphics.asset.kind.CgAssetKinds;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 
 /** A kit's look: read and validated against its declaration, registered by namespace. */
 public class CgVfxKitLookTest {

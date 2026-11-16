@@ -4,7 +4,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.composite.CgPostComposite;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.renderer.feature.translucency.CgGradeLayers;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 

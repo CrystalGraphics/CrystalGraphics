@@ -1,6 +1,6 @@
 package com.crystalgraphics.vfx.look;
 
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 
 import java.util.function.Consumer;
 

@@ -5,7 +5,7 @@ import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
 import com.crystalgraphics.collision.hitbox.CgHitbox;
 import com.crystalgraphics.easing.CgKeyframes;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.vfx.look.CgVfxKit;

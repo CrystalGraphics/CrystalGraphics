@@ -1,10 +1,11 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.post.settings;
+
 
 /**
  * One drawing of an impact frame: what the picture turns into for a beat of a hit. Most are drawn ({@link #drawn()}):
  * two tones, paper and ink, with the subject (what the hitting effect glows with) filled in ink or left the paper's
  * tone, and any of focus lines, hatching off the subject's edge and a star at the focus, all in ink. {@link CgImpact}'s
- * constants are the presets; a sequence of them is a {@link CgImpactSequence}.
+ * constants are the presets; a sequence of them is a {@code CgImpactSequence}.
  *
  * <pre>{@code
  * // the subject white on black, a flash star with its cross at the focus

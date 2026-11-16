@@ -1,6 +1,8 @@
 package com.crystalgraphics.render.scene.prefab;
 
 import com.crystalgraphics.render.scene.component.CgPostVolume;
+import com.crystalgraphics.render.scene.component.CgHeightFogComponent;
+import com.crystalgraphics.render.scene.component.CgLightComponent;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
@@ -20,8 +22,15 @@ import java.util.Map;
 /**
  * A {@link CgPrefab} spawned into a scene as components: a node a {@link CgSceneRoot} at its rest under its parent's
  * (a {@link CgSkeletalMeshComponent} where it is a skeletal mesh), a {@link CgMeshComponent} a part riding its node, and
- * an effect node's VFX play following it, a post node's {@link CgPostVolume} riding it. Unreal's actor spawned from a Blueprint, its component tree made from the
- * template. Made by {@code scene.spawn(prefab)}.
+ * an effect node's VFX play following it, and a post node's {@link CgPostVolume}, a fog node's
+ * {@link CgHeightFogComponent} and a light node's light riding it. Unreal's actor spawned from a Blueprint, its
+ * component tree made from the template. Made by {@code scene.spawn(prefab)}.
+ *
+ * <pre>{@code
+ * CgPrefabInstance arena = scene.spawn(kit.stage(0).get()).at(x, y, z).spawn();   // a level's look: volumes, fog, lights
+ * arena.post("volume0").weight(0.5f);
+ * arena.remove();
+ * }</pre>
  *
  * <pre>{@code
  * CgPrefabInstance lantern = scene.spawn(LANTERN).at(x, y, z).rotation(facing).spawn();
@@ -60,6 +69,8 @@ public final class CgPrefabInstance {
     private CgPrefabEffects.Played[] effects;
     @Nullable
     private CgPostVolume[] looks;
+    @Nullable
+    private CgPrimitiveComponent<?>[] environment;
 
     /** {@code prefab} for {@code scene}, unspawned: what {@code scene.spawn(prefab)} answers. */
     public CgPrefabInstance(CgScene scene, CgPrefab prefab) {
@@ -113,6 +124,7 @@ public final class CgPrefabInstance {
         CgMeshComponent[] drawn = new CgMeshComponent[prefab.firstPart(n)];
         CgPrefabEffects.Played[] played = new CgPrefabEffects.Played[n];
         CgPostVolume[] volumes = new CgPostVolume[n];
+        CgPrimitiveComponent<?>[] env = new CgPrimitiveComponent<?>[2 * n];
         float[] rest = new float[CgPrefab.REST];
         Quaternionf turn = new Quaternionf();
         for (int i = 0; i < n; i++) {
@@ -137,16 +149,38 @@ public final class CgPrefabInstance {
             }
             CgPrefab.Post post = prefab.post(i);
             if (post != null) {
-                CgPostVolume v = scene.postVolume(post.settings()).priority(post.priority()).weight(post.weight()).blend(post.blend());
+                CgPostVolume v = scene.postVolume(post.instanceSettings()).priority(post.priority()).weight(post.weight())
+                        .blend(post.blend());
                 if (!post.unbound()) v.radius(post.radius());
                 volumes[i] = v.attach(node, null).spawn();
             }
+            CgPrefab.Fog fog = prefab.fog(i);
+            if (fog != null) {
+                env[2 * i] = scene.heightFog().density(fog.density()).heightFalloff(fog.falloff())
+                        .colour(fog.red(), fog.green(), fog.blue()).maxOpacity(fog.maxOpacity()).startDistance(fog.start())
+                        .cutoffDistance(fog.cutoff()).attach(node, null).spawn();
+            }
+            CgPrefab.Light light = prefab.light(i);
+            if (light != null) env[2 * i + 1] = light(light).attach(node, null).spawn();
         }
+        environment = env;
         nodes = made;
         parts = drawn;
         effects = played;
         looks = volumes;
         return this;
+    }
+
+    /** A light of {@code light}'s kind and fields, unspawned. */
+    private CgLightComponent<?> light(CgPrefab.Light light) {
+        CgLightComponent<?> l = switch (light.kind()) {
+            case POINT -> scene.pointLight();
+            case SPOT -> scene.spotLight().cone(light.inner(), light.outer());
+            case TUBE -> scene.tubeLight().length(light.length());
+        };
+        l.color(light.argb()).intensity(light.intensity()).radius(light.radius()).exponent(light.exponent())
+                .sourceRadius(light.sourceRadius()).castsShadow(light.castsShadow()).volumetric(light.volumetric());
+        return l;
     }
 
     /** Node {@code i}'s own component, unspawned: its skeletal mesh (its leader among {@code made}), else a root. */
@@ -194,6 +228,22 @@ public final class CgPrefabInstance {
         return i < 0 ? null : looks[i];
     }
 
+    /** Node {@code name}'s height fog, or null where it is none. */
+    @Nullable
+    public CgHeightFogComponent fog(String name) {
+        int i = prefab.node(name);
+        spawned();
+        return i < 0 ? null : (CgHeightFogComponent) environment[2 * i];
+    }
+
+    /** Node {@code name}'s light, or null where it is none. */
+    @Nullable
+    public CgLightComponent<?> light(String name) {
+        int i = prefab.node(name);
+        spawned();
+        return i < 0 ? null : (CgLightComponent<?>) environment[2 * i + 1];
+    }
+
     /** Node {@code name}'s first part, or null where it has none or draws nothing. */
     @Nullable
     public CgMeshComponent mesh(String name) {
@@ -213,11 +263,13 @@ public final class CgPrefabInstance {
     public void remove() {
         if (effects != null) for (CgPrefabEffects.Played e : effects) if (e != null) e.stop();
         if (looks != null) for (CgPostVolume v : looks) if (v != null) v.remove();
+        if (environment != null) for (CgPrimitiveComponent<?> c : environment) if (c != null) c.remove();
         if (parts != null) for (CgMeshComponent part : parts) part.remove();
         if (nodes != null) for (int i = nodes.length - 1; i >= 0; i--) nodes[i].remove();
         root.remove();
         effects = null;
         looks = null;
+        environment = null;
         parts = null;
         nodes = null;
     }

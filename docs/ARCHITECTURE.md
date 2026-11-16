@@ -103,6 +103,7 @@ Every package guide (`CLAUDE.md`) under `src/main/java/com/crystalgraphics/`. Re
 | `render/CLAUDE.md` | `CgRenderer`, `CgFrameClock`, `CgViewFrustum` — the render package's root |
 | `render/scene/renderer/CLAUDE.md` | `CgSceneRenderer` and its features — a scene drawn through each of its views |
 | `render/post/CLAUDE.md` | `CgPost`, `CgPostRenderer`, `CgPostEffect`, `CgPostPoint`, the composite and the built-in bloom — the post chain |
+| `presentation/CLAUDE.md` | `CgPostVolumeSpawner`, `CgColourRegionSpawner`, `CgImpactSequence`, `CgStageAssets` — what puts looks into a scene from sequences and stage files |
 | `render/draw/CLAUDE.md` | `CgPipeline` (a CPU key), `CgMaterialBindings` (a material's version, handles), `CgFrameBindings` (a frame's index), `CgInstanceKind`, `CgPassConstants`, `CgDrawChunk`, `CgBatcher` — what a recorded draw is made of; recording touches no GL (`render-graph`) |
 | `render/graph/CLAUDE.md` | `CgRecording`, `CgFrameGraph`, `CgFrameBuilder` (order, cull, batch, pack — off the render thread), `CgExecutor` and its encoders, `CgDraw` — the frame graph |
 | `material/CLAUDE.md` | `CgMaterialShader`, `CgMaterialShaderRegistry`, `CgMaterialProperties` |

@@ -10,7 +10,7 @@ import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.render.graph.CgGraphBuffer;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.sort.CgSortLayer;
 import org.joml.Matrix3f;
 import org.joml.Matrix4fc;

@@ -1,5 +1,7 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.presentation.impact;
 
+import com.crystalgraphics.render.post.settings.CgImpact;
+import com.crystalgraphics.render.post.settings.CgImpactFrame;
 import java.util.ArrayList;
 import java.util.List;
 

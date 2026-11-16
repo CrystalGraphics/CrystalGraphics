@@ -31,7 +31,7 @@ import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
 import com.crystalgraphics.cue.CgCueDefinition;
-import com.crystalgraphics.render.post.stage.CgStageDefinition;
+import com.crystalgraphics.presentation.stage.CgStageAssets;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.widget.CgWidgetCodec;
@@ -89,7 +89,7 @@ public final class CgBuiltInCompilers {
         CgAnimGraphCodec.registerKind("spring_bone", CgSpringBoneNode.KIND);
         CgAnimGraphCodec.registerKind("anim_dynamics", CgAnimDynamicsNode.KIND);
         CgCueDefinition.register();
-        CgStageDefinition.register();
+        CgStageAssets.register();
         CgTextStyle.register();
         CgWidgetCodec.register();
     }

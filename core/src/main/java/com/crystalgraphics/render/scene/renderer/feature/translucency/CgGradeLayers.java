@@ -3,7 +3,7 @@ package com.crystalgraphics.render.scene.renderer.feature.translucency;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.render.graph.CgGraphTexture;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgViewKey;
 
 /**

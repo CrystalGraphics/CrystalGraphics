@@ -6,6 +6,7 @@ import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.post.CgOutline;
+import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
@@ -114,7 +115,7 @@ public final class CgKitActor extends CgEntityActor {
     private Loaded loaded;
     private CgSkeletalMeshComponent body;
     @Nullable
-    private CgOutline outline;
+    private CgPostVolume outline;
 
     private CgKitActor(Spec spec) {
         this.spec = spec;
@@ -152,7 +153,7 @@ public final class CgKitActor extends CgEntityActor {
 
     @Override
     protected void onRemove(CgEntity entity) {
-        if (outline != null) outline.close();
+        if (outline != null) outline.remove();
         outline = null;
     }
 
@@ -166,7 +167,8 @@ public final class CgKitActor extends CgEntityActor {
                 .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f));
         if (spec.outline() != null) {
             body.customDepth(spec.stencil(), 0xFF);
-            outline = CgOutline.add(CgMaterial.of(kit.material(slots).get()));        }
+            outline = scene().postVolume(CgOutline.settings(CgOutline.material(CgMaterial.of(kit.material(slots).get())))).spawn();
+        }
         LOGGER.info("[kit-actor] {} drawn as {}{}", entity, spec.name(), outline != null ? ", outlined" : "");
     }
 

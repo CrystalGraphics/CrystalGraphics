@@ -8,7 +8,9 @@ import com.crystalgraphics.api.mesh.CgMeshLods;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.graph.CgComputePass;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
+import com.crystalgraphics.render.post.CgPostContext;
+import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.gpu.CgGpuScene;
@@ -66,6 +68,8 @@ public final class CgScenePrimitives {
     /** Its spawned haze, injected into each firing's air, and its height fogs, the first shown drawn. */
     final List<CgHazeComponent> hazes = new ArrayList<>();
     final List<CgHeightFogComponent> fogs = new ArrayList<>();
+    /** Its spawned colour regions, by priority ascending, ties in the order spawned. */
+    final List<CgColourRegion> colourRegions = new ArrayList<>();
     /** Its spawned post volumes, by priority ascending, ties in the order spawned. */
     final List<CgPostVolume> postVolumes = new ArrayList<>();
     private final Matrix4f viewProjection = new Matrix4f();
@@ -135,6 +139,26 @@ public final class CgScenePrimitives {
 
     public CgHeightFogComponent heightFog() {
         return new CgHeightFogComponent(this);
+    }
+
+    /** A colour region of this scene: a grade inside a shape where it stands. */
+    public CgColourRegion colourRegion() {
+        return new CgColourRegion(this);
+    }
+
+    void addColourRegion(CgColourRegion r) {
+        int at = colourRegions.size();
+        while (at > 0 && colourRegions.get(at - 1).priority() > r.priority()) at--;
+        colourRegions.add(at, r);
+    }
+
+    void sortColourRegions() {
+        colourRegions.sort((a, b) -> Integer.compare(a.priority(), b.priority()));   // stable: ties keep their order
+    }
+
+    /** Engine side, a chain's at {@code TRANSLUCENT}: every spawned colour region over {@code input}, by priority. */
+    public void drawColourRegions(CgPostContext ctx, CgScreenTexture input) {
+        for (int i = 0, n = colourRegions.size(); i < n; i++) colourRegions.get(i).draw(ctx, input);
     }
 
     /** A look over the views of this scene, everywhere or round where it stands: {@code settings} blended by weight. */

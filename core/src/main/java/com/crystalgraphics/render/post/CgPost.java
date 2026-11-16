@@ -9,6 +9,7 @@ import com.crystalgraphics.render.post.debug.CgPostDebug;
 import com.crystalgraphics.render.post.distortion.CgPostDistortion;
 import com.crystalgraphics.render.post.fog.CgHeightFogPass;
 import com.crystalgraphics.render.post.look.CgPostLooks;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 
 import javax.annotation.Nullable;
@@ -39,7 +40,7 @@ import java.util.WeakHashMap;
  * });
  * outline.close();
  *
- * post.bloom().intensity(1.5f);
+ * post.settings().bloomIntensity(1.5f);       // the base every volume blends over
  * post.crossfade(0.5f);                       // this frame is held; the cut comes next frame
  * }</pre>
  *
@@ -62,6 +63,8 @@ public final class CgPost {
     final CgBloom bloom = new CgBloom();
     final CgPostLooks looks = new CgPostLooks();
     final CgPostCrossfade crossfade = new CgPostCrossfade();
+    /** What every view of it starts from before its scene's volumes: Unreal's default post settings. */
+    private final CgPostSettings settings = new CgPostSettings();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     @Nullable
@@ -72,6 +75,9 @@ public final class CgPost {
     private long added;
     /** Whether this firing's {@code SURFACES} effects ran at the renderer's point. */
     boolean ranSurfaces;
+    /** The renderer's scratch: a point's blendables by priority, and where the next point's effects start. */
+    int[] order = new int[8];
+    int next;
 
     /** One effect at its place. */
     record Entry(CgPostPoint point, int order, long added, CgPostEffect effect) {
@@ -86,11 +92,16 @@ public final class CgPost {
 
     /**
      * Engine side: a chain for a view of a scene of its own, which {@link CgView#post()} makes. Its height fog is an
-     * effect at {@code SURFACES}, order 0, ahead of what is added there at 0.
+     * effect at {@code SURFACES}, its scene's colour regions one at {@code TRANSLUCENT}, each order 0, ahead of what is
+     * added there at 0.
      */
     public CgPost() {
-        entries = new Entry[]{new Entry(CgPostPoint.SURFACES, 0, 0, new CgHeightFogPass())};
-        added = 1;
+        entries = new Entry[]{new Entry(CgPostPoint.SURFACES, 0, 0, new CgHeightFogPass()),
+                new Entry(CgPostPoint.TRANSLUCENT, 0, 1, (ctx, input) -> {
+                    ctx.view().scene().primitives().drawColourRegions(ctx, input);
+                    return input;
+                })};
+        added = 2;
         synchronized (ALL) {
             ALL.add(this);
         }
@@ -157,9 +168,17 @@ public final class CgPost {
         return CgPostMaterial.added(this, material, point, order);
     }
 
-    /** The chain's bloom, and its settings. */
-    public CgBloom bloom() {
-        return bloom;
+    /**
+     * Its base settings: what every view of it starts from, its scene's volumes blended over them (Unreal's default post
+     * settings). The bloom's intensity, colour, mode and threshold are set here. Any thread; read at the next firing.
+     *
+     * <pre>{@code
+     * CgPost.client().settings().bloomIntensity(0f);           // no bloom in the game's views
+     * viewport.post().settings().bloomIntensity(2f).vignette(0.3f);   // a lab's own look
+     * }</pre>
+     */
+    public CgPostSettings settings() {
+        return settings;
     }
 
     /**

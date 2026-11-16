@@ -1,5 +1,6 @@
-package com.crystalgraphics.render.post.volume;
+package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.presentation.post.CgColourRegionSpawner;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
@@ -41,11 +42,11 @@ public class CgColourRegionTest {
     @Test
     public void whatIsNotPlayedFailsByName() {
         CgAssetException e = assertThrows(CgAssetException.class,
-                () -> CgColourRegion.of(Map.of("affected", Map.of("mode", "include")), "mymod:hit: spawnables.s1.colour_region"));
+                () -> CgColourRegion.check(Map.of("affected", Map.of("mode", "include")), "mymod:hit: spawnables.s1.colour_region"));
         assertEquals("mymod:hit: spawnables.s1.colour_region.affected: per-actor colour regions are not played yet", e.getMessage());
-        assertThrows(CgAssetException.class, () -> CgColourRegion.of(Map.of("temperature",
+        assertThrows(CgAssetException.class, () -> CgColourRegion.check(Map.of("temperature",
                 Map.of("type", "colour_temperature", "value", 5000)), "p"));
-        assertThrows(CgAssetException.class, () -> CgColourRegion.of(Map.of("glow", 1), "p"));
+        assertThrows(CgAssetException.class, () -> CgColourRegion.check(Map.of("glow", 1), "p"));
     }
 
     /** The flash's gain scalar keyed from 2 to 1 by a property track on its components. */

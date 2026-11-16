@@ -3,7 +3,7 @@ package com.crystalgraphics.render.scene.component;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.post.CgPostRenderer;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABB;

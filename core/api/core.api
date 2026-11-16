@@ -10613,6 +10613,81 @@ com/crystalgraphics/object/value/CgValueForm
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/object/value/CgValueForm;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/object/value/CgValueForm;
   method public,static values ()[Lcom/crystalgraphics/object/value/CgValueForm;
+com/crystalgraphics/presentation/impact/CgImpactSequence
+  access public,final
+  extends java/lang/Object
+  method public amount (F)F
+  method public fadeFrames ()I
+  method public fadeSeconds ()F
+  method public fps ()F
+  method public frames ()I
+  method public look (F)Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
+  method public seconds ()F
+  method public seed (F)I
+  method public,static at (F)Lcom/crystalgraphics/presentation/impact/CgImpactSequence$Builder;
+com/crystalgraphics/presentation/impact/CgImpactSequence$Builder
+  access public,final
+  extends java/lang/Object
+  method public beat (Lcom/crystalgraphics/render/post/settings/CgImpact;I)Lcom/crystalgraphics/presentation/impact/CgImpactSequence$Builder;
+  method public beat (Lcom/crystalgraphics/render/post/settings/CgImpactFrame;I)Lcom/crystalgraphics/presentation/impact/CgImpactSequence$Builder;
+  method public build ()Lcom/crystalgraphics/presentation/impact/CgImpactSequence;
+  method public fadeOut (I)Lcom/crystalgraphics/presentation/impact/CgImpactSequence$Builder;
+com/crystalgraphics/presentation/post/CgColourRegionSpawner
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/sequence/spawn/CgSequenceSpawner
+  method public <init> (Lcom/crystalgraphics/render/scene/CgScene;)V
+  method public check (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;)V
+  method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
+  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
+com/crystalgraphics/presentation/post/CgPostVolumePreparer
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/asset/load/CgAssetPreparer
+  method public <init> ()V
+  method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
+com/crystalgraphics/presentation/post/CgPostVolumeSpawner
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/sequence/spawn/CgSequenceSpawner
+  method public <init> (Lcom/crystalgraphics/render/scene/CgScene;)V
+  method public <init> (Lcom/crystalgraphics/render/scene/CgScene;Lcom/crystalgraphics/camera/CgCameraSystem;)V
+  method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
+  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
+  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;Lcom/crystalgraphics/camera/CgCameraSystem;)V
+com/crystalgraphics/presentation/stage/CgStageAssets
+  access public,final
+  extends java/lang/Object
+  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
+  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/presentation/stage/CgStageAssets$Builder;
+  method public,static compile (Lcom/crystalgraphics/asset/tree/CgAssetData;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
+  method public,static register ()V
+com/crystalgraphics/presentation/stage/CgStageAssets$Builder
+  access public,final
+  extends java/lang/Object
+  method public anchor (DDD)Lcom/crystalgraphics/presentation/stage/CgStageAssets$Builder;
+  method public build (Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
+  method public fog (Ljava/util/function/Consumer;)Lcom/crystalgraphics/presentation/stage/CgStageAssets$Builder;
+  method public tree ()Ljava/util/Map;
+  method public volume (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Ljava/util/function/Consumer;)Lcom/crystalgraphics/presentation/stage/CgStageAssets$Builder;
+com/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder
+  access public,final
+  extends java/lang/Object
+  method public cutoffDistance (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public density (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public height (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public heightFalloff (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public inscatteringColour (DDD)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public maxOpacity (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+  method public startDistance (D)Lcom/crystalgraphics/presentation/stage/CgStageAssets$FogBuilder;
+com/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder
+  access public,final
+  extends java/lang/Object
+  method public at (DDDDD)Lcom/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder;
+  method public material (Ljava/lang/String;)Lcom/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder;
+  method public material (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder;
+  method public priority (I)Lcom/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder;
+  method public unbound ()Lcom/crystalgraphics/presentation/stage/CgStageAssets$VolumeBuilder;
 com/crystalgraphics/probe/CgActorProbe
   access public,final
   extends java/lang/Object
@@ -12248,17 +12323,14 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
 com/crystalgraphics/render/post/CgOutline
   access public,final
   extends java/lang/Object
-  field public,static,final ORDER I
+  field public,static,final PRIORITY I
   field public,static,final SHADER Ljava/lang/String;
   field public,static,final TYPES Ljava/lang/String;
-  implements java/lang/AutoCloseable
-  method public close ()V
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
-  method public tests (ZZZ)Lcom/crystalgraphics/render/post/CgOutline;
-  method public weight (F)Lcom/crystalgraphics/render/post/CgOutline;
-  method public,static add (I)Lcom/crystalgraphics/render/post/CgOutline;
-  method public,static add (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/post/CgOutline;
   method public,static install ()V
+  method public,static material (I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public,static settings (Lcom/crystalgraphics/api/material/CgMaterialInstance;)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public,static tests (Lcom/crystalgraphics/api/material/CgMaterialInstance;ZZZ)V
   method public,static type (I)Lcom/crystalgraphics/api/material/CgParameterCollection$Vector;
 com/crystalgraphics/render/post/CgPost
   access public,final
@@ -12266,11 +12338,11 @@ com/crystalgraphics/render/post/CgPost
   method public <init> ()V
   method public add (Lcom/crystalgraphics/render/post/CgPostPoint;ILcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/post/CgPost$Registration;
   method public add (Lcom/crystalgraphics/render/post/CgPostPoint;Lcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/post/CgPost$Registration;
-  method public bloom ()Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public crossfade (F)V
   method public material (Lcom/crystalgraphics/api/material/CgMaterialInstance;Lcom/crystalgraphics/render/post/CgPostPoint;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public material (Ljava/lang/String;)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public material (Ljava/lang/String;Lcom/crystalgraphics/render/post/CgPostPoint;)Lcom/crystalgraphics/render/post/CgPostMaterial;
+  method public settings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public,static client ()Lcom/crystalgraphics/render/post/CgPost;
 com/crystalgraphics/render/post/CgPost$Registration
   access public,abstract,interface
@@ -12286,7 +12358,7 @@ com/crystalgraphics/render/post/CgPostContext
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public scene ()Lcom/crystalgraphics/render/view/CgSceneTextures;
   method public screen (Lcom/crystalgraphics/api/material/CgMaterialInstance;)Lcom/crystalgraphics/render/post/CgScreenPass;
-  method public settings ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public settings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public texture (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public view ()Lcom/crystalgraphics/render/view/CgView;
@@ -12322,8 +12394,8 @@ com/crystalgraphics/render/post/CgPostRenderer
   access public,final
   extends java/lang/Object
   method public,static install ()V
-  method public,static lookPasses (Lcom/crystalgraphics/render/post/volume/CgPostSettings;Lcom/crystalgraphics/render/precache/CgPipelineList;)V
-  method public,static precacheLook (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)V
+  method public,static lookPasses (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Lcom/crystalgraphics/render/precache/CgPipelineList;)V
+  method public,static precacheLook (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public,static prepare (Lcom/crystalgraphics/render/view/CgView;)V
   method public,static record (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static releaseAll ()V
@@ -12340,27 +12412,12 @@ com/crystalgraphics/render/post/CgScreenPass
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
-  field public,static,final INTENSITY F
   field public,static,final LEVELS Lcom/crystalgraphics/render/view/CgViewKey;
   method public <init> ()V
-  method public intensity ()F
-  method public intensity (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
-  method public mode ()Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
-  method public mode (Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/post/composite/CgPostComposite;)V
   method public release ()V
   method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
-  method public threshold ()F
-  method public threshold (F)Lcom/crystalgraphics/render/post/bloom/CgBloom;
-  method public tint (FFF)Lcom/crystalgraphics/render/post/bloom/CgBloom;
   method public,static precache ()V
-com/crystalgraphics/render/post/bloom/CgBloom$Mode
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final ADDITIVE Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
-  field public,static,final ENERGY_CONSERVING Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
-  method public,static values ()[Lcom/crystalgraphics/render/post/bloom/CgBloom$Mode;
 com/crystalgraphics/render/post/composite/CgCompositeFeature
   access public,final,enum
   extends java/lang/Enum
@@ -12396,8 +12453,8 @@ com/crystalgraphics/render/post/composite/CgPostComposite
   method public flash (F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public form ()Lcom/crystalgraphics/render/post/composite/CgCompositeForm;
   method public grade ([F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public impact (Lcom/crystalgraphics/render/post/volume/CgImpact;FFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
-  method public impact (Lcom/crystalgraphics/render/post/volume/CgImpactFrame;FIFFLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public impact (Lcom/crystalgraphics/render/post/settings/CgImpact;FFF)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
+  method public impact (Lcom/crystalgraphics/render/post/settings/CgImpactFrame;FIFFLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public layer (ILcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public layerBloom (ILcom/crystalgraphics/render/graph/CgGraphTexture;F)Lcom/crystalgraphics/render/post/composite/CgPostComposite;
   method public linear ()Lcom/crystalgraphics/render/post/composite/CgPostComposite;
@@ -12432,11 +12489,11 @@ com/crystalgraphics/render/post/look/CgColorGrade
   extends java/lang/Object
   field public,static,final PACKED I
   method public <init> ()V
-  method public constants (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)[F
-  method public update (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)[D
+  method public constants (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)[F
+  method public update (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)[D
   method public,static apply ([D[D[D)V
   method public,static correctAll ([DDDD[D)V
-  method public,static pack (Lcom/crystalgraphics/render/post/volume/CgPostSettings;[D)V
+  method public,static pack (Lcom/crystalgraphics/render/post/settings/CgPostSettings;[D)V
 com/crystalgraphics/render/post/look/CgFilmLut
   access public,final
   extends java/lang/Object
@@ -12444,9 +12501,9 @@ com/crystalgraphics/render/post/look/CgFilmLut
   field public,static,final SCALE F
   field public,static,final SIZE I
   method public <init> ()V
-  method public texture (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public texture (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static ap1ToSrgb ()[D
-  method public,static bake (Lcom/crystalgraphics/render/post/volume/CgPostSettings;[F)V
+  method public,static bake (Lcom/crystalgraphics/render/post/settings/CgPostSettings;[F)V
   method public,static precache ()V
   method public,static shape (D)D
   method public,static srgbToAp1 ()[D
@@ -12456,192 +12513,29 @@ com/crystalgraphics/render/post/look/CgPostLooks
   extends java/lang/Object
   method public <init> ()V
   method public feed (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/post/composite/CgPostComposite;)V
-  method public,static drawsImpact (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Z
-  method public,static features (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Ljava/util/EnumSet;
-com/crystalgraphics/render/post/stage/CgStage
-  access public,final
-  extends java/lang/Object
-  implements java/lang/AutoCloseable
-  method public close ()V
-  method public weight ()F
-  method public weight (F)Lcom/crystalgraphics/render/post/stage/CgStage;
-  method public,static place (Lcom/crystalgraphics/render/post/stage/CgStageDefinition;DDD)Lcom/crystalgraphics/render/post/stage/CgStage;
-com/crystalgraphics/render/post/stage/CgStageDefinition
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final COMPILER Lcom/crystalgraphics/asset/load/CgAssetCompiler;
-  method public <init> (Ljava/lang/String;Ljava/util/List;Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Fog;)V
-  method public fog ()Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Fog;
-  method public id ()Ljava/lang/String;
-  method public volumes ()Ljava/util/List;
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-  method public,static builder (Ljava/lang/String;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Builder;
-  method public,static compile (Lcom/crystalgraphics/asset/tree/CgAssetData;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition;
-  method public,static register ()V
-com/crystalgraphics/render/post/stage/CgStageDefinition$Builder
-  access public,final
-  extends java/lang/Object
-  method public anchor (DDD)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Builder;
-  method public build (Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition;
-  method public fog (Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Builder;
-  method public tree ()Ljava/util/Map;
-  method public volume (Lcom/crystalgraphics/render/post/volume/CgPostSettings;Ljava/util/function/Consumer;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$Builder;
-com/crystalgraphics/render/post/stage/CgStageDefinition$Fog
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (FFDFFFFFF)V
-  method public blue ()F
-  method public cutoff ()F
-  method public density ()F
-  method public falloff ()F
-  method public green ()F
-  method public height ()D
-  method public maxOpacity ()F
-  method public red ()F
-  method public start ()F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder
-  access public,final
-  extends java/lang/Object
-  method public cutoffDistance (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public density (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public height (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public heightFalloff (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public inscatteringColour (DDD)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public maxOpacity (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-  method public startDistance (D)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$FogBuilder;
-com/crystalgraphics/render/post/stage/CgStageDefinition$Volume
-  access public,final,record
-  extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/render/post/volume/CgPostSettings;IZDDDFFLjava/util/List;)V
-  method public blend ()F
-  method public blendables ()Ljava/util/List;
-  method public priority ()I
-  method public radius ()F
-  method public settings ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public unbound ()Z
-  method public x ()D
-  method public y ()D
-  method public z ()D
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-com/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder
-  access public,final
-  extends java/lang/Object
-  method public at (DDDDD)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder;
-  method public material (Ljava/lang/String;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder;
-  method public material (Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder;
-  method public priority (I)Lcom/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder;
-  method public unbound ()Lcom/crystalgraphics/render/post/stage/CgStageDefinition$VolumeBuilder;
-com/crystalgraphics/render/post/stage/CgStagePreparer
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/asset/load/CgAssetPreparer
-  method public <init> ()V
-  method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
-com/crystalgraphics/render/post/volume/CgColourRegion
-  access public,final
-  extends java/lang/Object
-  field public,static,final SHADER Ljava/lang/String;
-  implements com/crystalgraphics/render/post/CgPostEffect
-  method public <init> ()V
-  method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
-  method public fade (FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public falloff ()F
-  method public falloff (F)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public gainAdapts (Z)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;FFFF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;I)F
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;IF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public inner ()F
-  method public intensity ()F
-  method public intensity (F)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public invert (Z)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public outer ()F
-  method public place (DDDLorg/joml/Quaternionf;FFF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public priority (I)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public ranges (FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public shape (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public show ()Lcom/crystalgraphics/render/post/CgPost$Registration;
-  method public temperature ()F
-  method public temperature (FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public temperature (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;FF)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-  method public tint ()F
-  method public,static gainTuning ()F
-  method public,static gainTuning (F)V
-  method public,static keywords (Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;ZLcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;)[Ljava/lang/String;
-  method public,static keywords (Ljava/util/Map;)[Ljava/lang/String;
-  method public,static of (Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion;
-com/crystalgraphics/render/post/volume/CgColourRegion$Control
+  method public,static drawsImpact (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
+  method public,static features (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Ljava/util/EnumSet;
+com/crystalgraphics/render/post/settings/CgImpact
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  field public,static,final GAIN Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  field public,static,final GAMMA Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  field public,static,final OFFSET Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  field public,static,final SATURATION Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgColourRegion$Control;
-com/crystalgraphics/render/post/volume/CgColourRegion$Range
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final GLOBAL Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-  field public,static,final HIGHLIGHTS Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-  field public,static,final MIDTONES Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-  field public,static,final SHADOWS Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgColourRegion$Range;
-com/crystalgraphics/render/post/volume/CgColourRegion$Shape
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final BOX Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-  field public,static,final CONE Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-  field public,static,final CYLINDER Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-  field public,static,final SPHERE Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgColourRegion$Shape;
-com/crystalgraphics/render/post/volume/CgColourRegion$Temperature
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final COLOUR_TEMPERATURE Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;
-  field public,static,final LEGACY Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;
-  field public,static,final WHITE_BALANCE Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgColourRegion$Temperature;
-com/crystalgraphics/render/post/volume/CgColourRegionSpawner
+  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final FOCUS_LINES Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final HATCHED Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final INVERT Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final LINES Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final SUBJECT Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final SUBJECT_INVERTED Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final SUBJECT_LINES Lcom/crystalgraphics/render/post/settings/CgImpact;
+  field public,static,final WHITE Lcom/crystalgraphics/render/post/settings/CgImpact;
+  method public frame ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgImpact;
+  method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgImpact;
+com/crystalgraphics/render/post/settings/CgImpactFrame
   access public,final
   extends java/lang/Object
-  implements com/crystalgraphics/sequence/spawn/CgSequenceSpawner
-  method public <init> ()V
-  method public check (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;)V
-  method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
-  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
-com/crystalgraphics/render/post/volume/CgImpact
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final FOCUS_LINES Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final HATCHED Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final INVERT Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final LINES Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final SUBJECT Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final SUBJECT_INVERTED Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final SUBJECT_LINES Lcom/crystalgraphics/render/post/volume/CgImpact;
-  field public,static,final WHITE Lcom/crystalgraphics/render/post/volume/CgImpact;
-  method public frame ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgImpact;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgImpact;
-com/crystalgraphics/render/post/volume/CgImpactFrame
-  access public,final
-  extends java/lang/Object
-  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
-  field public,static,final NEGATIVE Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
-  field public,static,final PICTURE_LINES Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
+  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
+  field public,static,final NEGATIVE Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
+  field public,static,final PICTURE_LINES Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
   method public boil ()I
   method public cross ()Z
   method public darkB ()F
@@ -12655,57 +12549,39 @@ com/crystalgraphics/render/post/volume/CgImpactFrame
   method public lightR ()F
   method public lines ()F
   method public look ()I
-  method public paper ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;
+  method public paper ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;
   method public readsSubject ()Z
   method public star ()F
-  method public toBuilder ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public,static drawn ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-com/crystalgraphics/render/post/volume/CgImpactFrame$Builder
+  method public toBuilder ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public,static drawn ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+com/crystalgraphics/render/post/settings/CgImpactFrame$Builder
   access public,final
   extends java/lang/Object
-  method public boil (I)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public build ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
-  method public cross (Z)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public dark (FFF)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public fillSubject (Z)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public hatch (F)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public jitter (F)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public light (FFF)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public lines (F)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public paper (Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-  method public star (F)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Builder;
-com/crystalgraphics/render/post/volume/CgImpactFrame$Tone
+  method public boil (I)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public build ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
+  method public cross (Z)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public dark (FFF)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public fillSubject (Z)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public hatch (F)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public jitter (F)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public light (FFF)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public lines (F)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public paper (Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+  method public star (F)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Builder;
+com/crystalgraphics/render/post/settings/CgImpactFrame$Tone
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final DARK Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;
-  field public,static,final LIGHT Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgImpactFrame$Tone;
-com/crystalgraphics/render/post/volume/CgImpactSequence
-  access public,final
-  extends java/lang/Object
-  method public amount (F)F
-  method public fadeFrames ()I
-  method public fadeSeconds ()F
-  method public fps ()F
-  method public frames ()I
-  method public look (F)Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
-  method public seconds ()F
-  method public seed (F)I
-  method public,static at (F)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
-com/crystalgraphics/render/post/volume/CgImpactSequence$Builder
-  access public,final
-  extends java/lang/Object
-  method public beat (Lcom/crystalgraphics/render/post/volume/CgImpact;I)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
-  method public beat (Lcom/crystalgraphics/render/post/volume/CgImpactFrame;I)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
-  method public build ()Lcom/crystalgraphics/render/post/volume/CgImpactSequence;
-  method public fadeOut (I)Lcom/crystalgraphics/render/post/volume/CgImpactSequence$Builder;
-com/crystalgraphics/render/post/volume/CgPostBlendable
+  field public,static,final DARK Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;
+  field public,static,final LIGHT Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;
+  method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgImpactFrame$Tone;
+com/crystalgraphics/render/post/settings/CgPostBlendable
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialDefinition;FZLcom/crystalgraphics/sequence/definition/CgSequenceBinding;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V
-  method public draw (Lcom/crystalgraphics/render/post/CgPost;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialDefinition;FZLcom/crystalgraphics/sequence/definition/CgSequenceBinding;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/Map;)V
+  method public addTo (Lcom/crystalgraphics/render/post/settings/CgPostSettings;I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public enabled ()Z
+  method public entry ()Ljava/util/Map;
   method public material ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
   method public name ()Ljava/lang/String;
   method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
@@ -12718,22 +12594,27 @@ com/crystalgraphics/render/post/volume/CgPostBlendable
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
-  method public,static of (Ljava/util/Map;Ljava/lang/String;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;Ljava/util/function/Function;)Lcom/crystalgraphics/render/post/volume/CgPostBlendable;
-com/crystalgraphics/render/post/volume/CgPostBlock
+  method public,static of (Ljava/util/Map;Ljava/lang/String;Lcom/crystalgraphics/asset/load/CgAssetCompiler$Dependencies;Ljava/util/function/Function;)Lcom/crystalgraphics/render/post/settings/CgPostBlendable;
+com/crystalgraphics/render/post/settings/CgPostBlock
   access public,final
   extends java/lang/Object
-  method public,static block (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Ljava/util/Map;
-  method public,static settings (Ljava/util/Map;)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-com/crystalgraphics/render/post/volume/CgPostSettings
+  method public,static block (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Ljava/util/Map;
+  method public,static settings (Ljava/util/Map;)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+com/crystalgraphics/render/post/settings/CgPostSettings
   access public,final
   extends java/lang/Object
   field public,static,final BLOOM I
+  field public,static,final BLOOM_COLOUR I
+  field public,static,final BLOOM_CONSERVING I
   field public,static,final BLOOM_EXCESS I
+  field public,static,final BLOOM_EXCESS_THRESHOLD I
+  field public,static,final BLOOM_INTENSITY I
   field public,static,final BLOOM_LAYERS I
   field public,static,final BLOOM_SIZE_SCALE I
   field public,static,final BLOOM_THRESHOLD I
   field public,static,final BLUE_CORRECTION I
   field public,static,final CHROMATIC I
+  field public,static,final DEFAULT_BLOOM_INTENSITY F
   field public,static,final DISPLAY_GAMMA I
   field public,static,final EXPAND_GAMUT I
   field public,static,final FADE I
@@ -12757,121 +12638,131 @@ com/crystalgraphics/render/post/volume/CgPostSettings
   field public,static,final VIGNETTE I
   field public,static,final WHITE_BALANCE I
   method public <init> ()V
-  method public blend (Lcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)V
+  method public blend (Lcom/crystalgraphics/render/post/settings/CgPostSettings;FFF)V
+  method public blendable (Lcom/crystalgraphics/api/material/CgMaterialInstance;F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public blendable (Lcom/crystalgraphics/api/material/CgMaterialInstance;Lcom/crystalgraphics/render/post/CgPostPoint;FI)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public blendables ()Ljava/util/List;
   method public bloom ()F
-  method public bloom (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public bloomExcess ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public bloomLayer (IFFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public bloom (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomB ()F
+  method public bloomColour (FFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomConserving ()Z
+  method public bloomConserving (Z)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomExcess ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomExcessThreshold ()F
+  method public bloomExcessThreshold (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomG ()F
+  method public bloomIntensity ()F
+  method public bloomIntensity (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomLayer (IFFFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomR ()F
   method public bloomSize (I)F
-  method public bloomSize (IF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public bloomSize (IF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public bloomSizeScale ()F
-  method public bloomSizeScale (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public bloomSizeScale (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public bloomThreshold ()F
-  method public bloomThreshold (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public bloomTint (IFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public bloomThreshold (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public bloomTint (IFFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public bloomTint (II)F
   method public bloomsExcess ()Z
   method public bloomsGaussian ()Z
   method public blueCorrection ()F
-  method public blueCorrection (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public blueCorrection (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public chromatic ()F
-  method public chromatic (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public chromatic (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public copy ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public displayGamma ()F
-  method public displayGamma (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public displayGamma (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public drawnBlendable (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Blendable;
+  method public drawnBlendables ()I
+  method public drawnWeight (I)F
   method public expandGamut ()F
-  method public expandGamut (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public expandGamut (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public fade ()F
-  method public fade (IF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public fade (IF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public fadeB ()F
   method public fadeG ()F
   method public fadeR ()F
-  method public film (FFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public film (FFFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public filmBlackClip ()F
   method public filmContrast ()F
-  method public filmCurve (FFFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public filmCurve (FFFFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public filmCurveToe ()F
   method public filmDynamicRange ()F
   method public filmHeal ()F
-  method public filmHeal (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public filmHeal (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public filmSaturation ()F
-  method public filmSaturation (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public filmSaturation (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public filmShoulder ()F
   method public filmSlope ()F
   method public filmToe ()F
   method public filmWhiteClip ()F
-  method public filmic ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public filmic ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public flash ()F
-  method public flash (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public focus (FF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public flash (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public focus (FF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public focusX ()F
   method public focusY ()F
-  method public gaussianBloom ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;FFFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;I)F
+  method public gaussianBloom ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public grade (Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;FFFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public grade (Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;I)F
   method public grades ()Z
-  method public grades (Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;)Z
+  method public grades (Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;)Z
   method public impact ()F
-  method public impact (Lcom/crystalgraphics/render/post/volume/CgImpact;F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public impact (Lcom/crystalgraphics/render/post/volume/CgImpactFrame;FI)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public impactLook ()Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
+  method public impact (Lcom/crystalgraphics/render/post/settings/CgImpact;F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public impact (Lcom/crystalgraphics/render/post/settings/CgImpactFrame;FI)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public impactLook ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
   method public impactSeed ()I
   method public impactSubject ()I
   method public overrides (I)Z
   method public overridesLayer (IZ)Z
   method public reset ()V
-  method public subject (I)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public tint (FFF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public tint (IF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public subject (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public tint (FFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public tint (IF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public tintB ()F
   method public tintG ()F
   method public tintR ()F
   method public tints ()Z
   method public toneCurve ()F
-  method public toneCurve (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public tonemap ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public toneCurve (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public tonemap ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public tonemapWeight ()F
   method public tonemaps ()Z
   method public tonemapsFilmic ()Z
   method public vignette ()F
-  method public vignette (F)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public whiteBalance (FF)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public vignette (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public whiteBalance (FF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public whiteTemp ()F
   method public whiteTint ()F
-com/crystalgraphics/render/post/volume/CgPostSettings$Control
+com/crystalgraphics/render/post/settings/CgPostSettings$Blendable
+  access public,final
+  extends java/lang/Object
+  method public drawer ()Lcom/crystalgraphics/render/post/CgPostMaterial;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public point ()Lcom/crystalgraphics/render/post/CgPostPoint;
+  method public priority ()I
+  method public weight ()F
+com/crystalgraphics/render/post/settings/CgPostSettings$Control
   access public,final,enum
   extends java/lang/Enum
   field public,final neutral F
-  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  field public,static,final GAIN Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  field public,static,final GAMMA Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  field public,static,final OFFSET Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  field public,static,final SATURATION Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgPostSettings$Control;
-com/crystalgraphics/render/post/volume/CgPostSettings$Region
+  field public,static,final CONTRAST Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  field public,static,final GAIN Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  field public,static,final GAMMA Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  field public,static,final OFFSET Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  field public,static,final SATURATION Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+  method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgPostSettings$Control;
+com/crystalgraphics/render/post/settings/CgPostSettings$Region
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final GLOBAL Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-  field public,static,final HIGHLIGHTS Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-  field public,static,final MIDTONES Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-  field public,static,final SHADOWS Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-  method public,static values ()[Lcom/crystalgraphics/render/post/volume/CgPostSettings$Region;
-com/crystalgraphics/render/post/volume/CgPostVolumePreparer
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/asset/load/CgAssetPreparer
-  method public <init> ()V
-  method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
-com/crystalgraphics/render/post/volume/CgPostVolumeSpawner
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/sequence/spawn/CgSequenceSpawner
-  method public <init> (Lcom/crystalgraphics/render/scene/CgScene;Lcom/crystalgraphics/render/post/CgPost;)V
-  method public <init> (Lcom/crystalgraphics/render/scene/CgScene;Lcom/crystalgraphics/render/post/CgPost;Lcom/crystalgraphics/camera/CgCameraSystem;)V
-  method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
-  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
-  method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;Lcom/crystalgraphics/camera/CgCameraSystem;)V
+  field public,static,final GLOBAL Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+  field public,static,final HIGHLIGHTS Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+  field public,static,final MIDTONES Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+  field public,static,final SHADOWS Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+  method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
 com/crystalgraphics/render/precache/CgPipelineList
   access public,final
   extends java/lang/Object
@@ -12984,6 +12875,7 @@ com/crystalgraphics/render/scene/CgScene
   method public capture ()Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
   method public clear ()V
   method public clock ()Lcom/crystalgraphics/render/scene/CgSceneClock;
+  method public colourRegion ()Lcom/crystalgraphics/render/scene/component/CgColourRegion;
   method public decal (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgDecalComponent;
   method public drawOnce (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;DDD)V
   method public dynamic (Lcom/crystalgraphics/render/scene/component/CgDynamicPrimitive;)Lcom/crystalgraphics/render/scene/component/CgDynamicComponent;
@@ -13006,7 +12898,7 @@ com/crystalgraphics/render/scene/CgScene
   method public onceLights ()Lcom/crystalgraphics/render/scene/renderer/feature/light/CgLightCollector;
   method public pick (DDDDDD)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public pointLight ()Lcom/crystalgraphics/render/scene/component/CgPointLight;
-  method public postVolume (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
+  method public postVolume (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method public primitives ()Lcom/crystalgraphics/render/scene/component/CgScenePrimitives;
   method public renderer ()Lcom/crystalgraphics/render/scene/renderer/CgSceneRenderer;
   method public root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
@@ -13091,8 +12983,8 @@ com/crystalgraphics/render/scene/batch/CgMeshBatches
   method public firstIndex (I)I
   method public flags (I)I
   method public gpuPlaced (I)Z
-  method public grade (I)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public grade (ILcom/crystalgraphics/render/post/volume/CgPostSettings;)V
+  method public grade (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public grade (ILcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public hasSortPoint (I)Z
   method public indexCount (I)I
   method public indices (III)V
@@ -13167,6 +13059,76 @@ com/crystalgraphics/render/scene/component/CgBoneHide
   field public,static,final NONE Lcom/crystalgraphics/render/scene/component/CgBoneHide;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgBoneHide;
   method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgBoneHide;
+com/crystalgraphics/render/scene/component/CgColourRegion
+  access public,final
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  field public,static,final SHADER Ljava/lang/String;
+  method public draw (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
+  method public fade (FF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public falloff ()F
+  method public falloff (F)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public gainAdapts (Z)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public grade (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;FFFF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public grade (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;I)F
+  method public grade (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;IF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public inner ()F
+  method public intensity ()F
+  method public intensity (F)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public invert (Z)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public outer ()F
+  method public priority ()I
+  method public priority (I)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public ranges (FF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public set (Ljava/util/Map;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public shape (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public temperature ()F
+  method public temperature (FF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public temperature (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;FF)Lcom/crystalgraphics/render/scene/component/CgColourRegion;
+  method public tint ()F
+  method public toString ()Ljava/lang/String;
+  method public,static check (Ljava/util/Map;Ljava/lang/String;)V
+  method public,static control (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  method public,static gainTuning ()F
+  method public,static gainTuning (F)V
+  method public,static keywords (Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;ZLcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;)[Ljava/lang/String;
+  method public,static keywords (Ljava/util/Map;)[Ljava/lang/String;
+  method public,static range (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+com/crystalgraphics/render/scene/component/CgColourRegion$Control
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CONTRAST Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  field public,static,final GAIN Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  field public,static,final GAMMA Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  field public,static,final OFFSET Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  field public,static,final SATURATION Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgColourRegion$Control;
+com/crystalgraphics/render/scene/component/CgColourRegion$Range
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final GLOBAL Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+  field public,static,final HIGHLIGHTS Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+  field public,static,final MIDTONES Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+  field public,static,final SHADOWS Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgColourRegion$Range;
+com/crystalgraphics/render/scene/component/CgColourRegion$Shape
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BOX Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+  field public,static,final CONE Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+  field public,static,final CYLINDER Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+  field public,static,final SPHERE Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgColourRegion$Shape;
+com/crystalgraphics/render/scene/component/CgColourRegion$Temperature
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final COLOUR_TEMPERATURE Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;
+  field public,static,final LEGACY Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;
+  field public,static,final WHITE_BALANCE Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgColourRegion$Temperature;
 com/crystalgraphics/render/scene/component/CgDecalComponent
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
@@ -13268,7 +13230,7 @@ com/crystalgraphics/render/scene/component/CgMeshCollector
   method public emission (F)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public from (Lcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/compute/ops/CgGpuCount;)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public from (Lcom/crystalgraphics/render/draw/CgBufferHandle;Lcom/crystalgraphics/compute/ops/CgGpuCount;)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
+  method public grade (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public halfResolution ()Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public indices (II)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public indirect (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
@@ -13311,7 +13273,7 @@ com/crystalgraphics/render/scene/component/CgPostVolume
   method public priority ()I
   method public priority (I)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method public radius (F)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
-  method public settings ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public settings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public timeline (Lcom/crystalgraphics/render/scene/component/CgPostVolume$Timeline;)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method public toString ()Ljava/lang/String;
   method public weight (F)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
@@ -13347,8 +13309,8 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public flag (Lcom/crystalgraphics/render/meshpass/CgPrimitiveFlag;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public flag (Lcom/crystalgraphics/render/meshpass/CgPrimitiveFlag;Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public fullBright ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
-  method public grade ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public grade ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public grade (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public graded ()Z
   method public halfResolution (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public has (Lcom/crystalgraphics/render/meshpass/CgPrimitiveFlag;)Z
@@ -13407,11 +13369,13 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   access public,final
   extends java/lang/Object
   method public <init> (Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;Lcom/crystalgraphics/render/scene/component/CgScenePrimitives$Driver;)V
-  method public blendPostVolumes (Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/post/volume/CgPostSettings;)V
+  method public blendPostVolumes (Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public capture (Lcom/crystalgraphics/render/scene/CgScene;)Lcom/crystalgraphics/render/scene/component/CgSceneCaptureComponent;
   method public clear ()V
+  method public colourRegion ()Lcom/crystalgraphics/render/scene/component/CgColourRegion;
   method public culled ()I
   method public decal (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgDecalComponent;
+  method public drawColourRegions (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
   method public drawOnce (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;DDD)V
   method public dynamic (Lcom/crystalgraphics/render/scene/component/CgDynamicPrimitive;)Lcom/crystalgraphics/render/scene/component/CgDynamicComponent;
   method public gather (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;)V
@@ -13425,7 +13389,7 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public once ()Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
   method public pick (DDDDDD)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public pointLight ()Lcom/crystalgraphics/render/scene/component/CgPointLight;
-  method public postVolume (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
+  method public postVolume (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method public root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
   method public shownFog ()Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
   method public size ()I
@@ -13550,8 +13514,10 @@ com/crystalgraphics/render/scene/prefab/CgPrefab
   method public effect (I)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Effect;
   method public elementId (I)Ljava/lang/String;
   method public firstPart (I)I
+  method public fog (I)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Fog;
   method public hasSceneNodes ()Z
   method public id ()Ljava/lang/String;
+  method public light (I)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light;
   method public name (I)Ljava/lang/String;
   method public node (Ljava/lang/String;)I
   method public nodes ()I
@@ -13575,7 +13541,9 @@ com/crystalgraphics/render/scene/prefab/CgPrefab$Builder
   method public build ()Lcom/crystalgraphics/render/scene/prefab/CgPrefab;
   method public effect (Ljava/lang/String;Z)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public elementId (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public fog (Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Fog;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public followPose (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public light (Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public opacity (F)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public parent (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
@@ -13586,7 +13554,8 @@ com/crystalgraphics/render/scene/prefab/CgPrefab$Builder
   method public part (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public part (Ljava/util/List;Ljava/lang/String;Ljava/util/Map;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public play (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
-  method public post (Lcom/crystalgraphics/render/post/volume/CgPostSettings;FFFI)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public post (Lcom/crystalgraphics/render/post/settings/CgPostSettings;FFFI)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
+  method public post (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Ljava/util/List;FFFI)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public rotation (FFFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public scale (F)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
   method public scale (FFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Builder;
@@ -13602,14 +13571,58 @@ com/crystalgraphics/render/scene/prefab/CgPrefab$Effect
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/scene/prefab/CgPrefab$Fog
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (FFFFFFFF)V
+  method public blue ()F
+  method public cutoff ()F
+  method public density ()F
+  method public falloff ()F
+  method public green ()F
+  method public maxOpacity ()F
+  method public red ()F
+  method public start ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/scene/prefab/CgPrefab$Light
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;IFFFFZFFFF)V
+  method public argb ()I
+  method public castsShadow ()Z
+  method public exponent ()F
+  method public inner ()F
+  method public intensity ()F
+  method public kind ()Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
+  method public length ()F
+  method public outer ()F
+  method public radius ()F
+  method public sourceRadius ()F
+  method public volumetric ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static point (IFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light;
+com/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final POINT Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
+  field public,static,final SPOT Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
+  field public,static,final TUBE Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
+  method public,static values ()[Lcom/crystalgraphics/render/scene/prefab/CgPrefab$Light$Kind;
 com/crystalgraphics/render/scene/prefab/CgPrefab$Post
   access public,final,record
   extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/render/post/volume/CgPostSettings;FFFI)V
+  method public <init> (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Ljava/util/List;FFFI)V
   method public blend ()F
+  method public instanceSettings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public materials ()Ljava/util/List;
   method public priority ()I
   method public radius ()F
-  method public settings ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public settings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public unbound ()Z
   method public weight ()F
   method public,final equals (Ljava/lang/Object;)Z
@@ -13657,6 +13670,8 @@ com/crystalgraphics/render/scene/prefab/CgPrefabInstance
   method public at (DDD)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public attach (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public effect (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played;
+  method public fog (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
+  method public light (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgLightComponent;
   method public mesh (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Ljava/lang/String;I)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -13683,6 +13698,12 @@ com/crystalgraphics/render/scene/prefab/CgPrefabPose
   method public rotation (IFFFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefabPose;
   method public scale (IFFF)Lcom/crystalgraphics/render/scene/prefab/CgPrefabPose;
   method public world (I)Lorg/joml/Matrix4fc;
+com/crystalgraphics/render/scene/prefab/CgPrefabPostPreparer
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/asset/load/CgAssetPreparer
+  method public <init> ()V
+  method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
 com/crystalgraphics/render/scene/renderer/CgScenePipelines
   access public,final
   extends java/lang/Object
@@ -13962,7 +13983,7 @@ com/crystalgraphics/render/scene/renderer/feature/translucency/CgGradeLayers
   field public,static,final MAX I
   method public <init> ()V
   method public layer (I)Lcom/crystalgraphics/render/graph/CgGraphTexture;
-  method public look (I)Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public look (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
 com/crystalgraphics/render/scene/renderer/feature/translucency/CgHalfResolution
   access public,final
   extends java/lang/Object
@@ -18328,7 +18349,7 @@ com/crystalgraphics/vfx/CgVfxEffect
   method protected,final holdShake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;FFFFF)V
   method protected,final moment (Ljava/lang/String;FFFF)V
   method protected,final momentsHeard ()Z
-  method protected,final openVolume (ILcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
+  method protected,final openVolume (ILcom/crystalgraphics/render/post/settings/CgPostSettings;FFF)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;FFFF)V
   method protected,final playShake (Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;FFFFFFF)V
   method protected,final relook (Lcom/crystalgraphics/vfx/look/CgVfxLook;)V
@@ -18361,8 +18382,8 @@ com/crystalgraphics/vfx/CgVfxEffect
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam$Palette;II)F
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;)F
   method public,final get (Lcom/crystalgraphics/vfx/look/CgVfxParam$Vector;I)F
-  method public,final grade ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
-  method public,final grade (Lcom/crystalgraphics/render/post/volume/CgPostSettings;)Lcom/crystalgraphics/vfx/CgVfxEffect;
+  method public,final grade ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public,final grade (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final ground (D)Lcom/crystalgraphics/vfx/CgVfxEffect;
   method public,final look ()Lcom/crystalgraphics/vfx/look/CgVfxLook;
   method public,final onHit (Lcom/crystalgraphics/collision/hit/CgHitPart;Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/CgVfxEffect;
@@ -18427,7 +18448,7 @@ com/crystalgraphics/vfx/CgVfxElement
   method protected,final instance (Lcom/crystalgraphics/vfx/particle/CgVfxEmitter;Lcom/crystalgraphics/vfx/look/CgVfxKit;F)Lcom/crystalgraphics/vfx/particle/CgVfxEmitterInstance;
   method protected,final momentsHeard ()Z
   method protected,final once (ILjava/lang/String;FFFF)V
-  method protected,final openVolume (ILcom/crystalgraphics/render/post/volume/CgPostSettings;FFF)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
+  method protected,final openVolume (ILcom/crystalgraphics/render/post/settings/CgPostSettings;FFF)Lcom/crystalgraphics/render/scene/component/CgPostVolume;
   method protected,final originX ()D
   method protected,final originY ()D
   method protected,final originZ ()D
@@ -18855,7 +18876,7 @@ com/crystalgraphics/vfx/effect/beam/CgEnergyWave
 com/crystalgraphics/vfx/element/CgVfxBlast
   access public,final
   extends com/crystalgraphics/vfx/CgVfxElement
-  field public,static,final BEATS Lcom/crystalgraphics/render/post/volume/CgImpactSequence;
+  field public,static,final BEATS Lcom/crystalgraphics/presentation/impact/CgImpactSequence;
   field public,static,final BILLOWS Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final CORE Lcom/crystalgraphics/vfx/look/CgVfxSlot;
   field public,static,final CUT_SHAKE Lcom/crystalgraphics/vfx/look/CgVfxParam$Shake;
@@ -18873,7 +18894,7 @@ com/crystalgraphics/vfx/element/CgVfxBlast
   field public,static,final FRONT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final GLOW Lcom/crystalgraphics/vfx/look/CgVfxParam$Curve;
   field public,static,final HEART Lcom/crystalgraphics/vfx/look/CgVfxKit;
-  field public,static,final HIT Lcom/crystalgraphics/render/post/volume/CgImpactFrame;
+  field public,static,final HIT Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
   field public,static,final HOLD_AT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final IMPACT Lcom/crystalgraphics/vfx/look/CgVfxParam$Scalar;
   field public,static,final IMPACT_PRIORITY I
@@ -19515,9 +19536,9 @@ com/crystalgraphics/vfx/look/CgVfxKitLook
   access public,final,record
   extends java/lang/Record
   field public,static,final FILE Ljava/lang/String;
-  method public <init> (Lcom/crystalgraphics/render/post/volume/CgPostSettings;F)V
+  method public <init> (Lcom/crystalgraphics/render/post/settings/CgPostSettings;F)V
   method public exposure ()F
-  method public settings ()Lcom/crystalgraphics/render/post/volume/CgPostSettings;
+  method public settings ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;

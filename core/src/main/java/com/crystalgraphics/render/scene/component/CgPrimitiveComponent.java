@@ -6,7 +6,7 @@ import com.crystalgraphics.gpu.resource.CgFrameRing;
 import com.crystalgraphics.render.meshpass.CgCustomDepth;
 import com.crystalgraphics.render.meshpass.CgPrimitiveFlag;
 import com.crystalgraphics.render.meshpass.CgPrimitiveInfo;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.render.scene.batch.CgCachedCommands;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;

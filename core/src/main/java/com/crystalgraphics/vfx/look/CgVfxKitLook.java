@@ -13,8 +13,8 @@ import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.object.validate.CgValidation;
-import com.crystalgraphics.render.post.volume.CgPostBlock;
-import com.crystalgraphics.render.post.volume.CgPostSettings;
+import com.crystalgraphics.render.post.settings.CgPostBlock;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 
 /**
  * A kit's own look, its {@code look.yaml}: the game's tonemapper, grade and bloom its effects were authored under, and
