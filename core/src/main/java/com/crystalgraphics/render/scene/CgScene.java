@@ -399,6 +399,28 @@ public final class CgScene {
         primitives.clear();
     }
 
+    /** The client level the client scene was last cleared for; {@code Integer.MIN_VALUE} before it first looked. */
+    private static int clientLevel = Integer.MIN_VALUE;
+
+    /**
+     * Clears the client scene if the client's level changed since it last looked, and answers whether it did. The
+     * scene's frame does it in {@code ATTACH}; whatever spawns into a new level's scene earlier (an entity's actor, as
+     * the entity joins) calls it first, so that clear never removes what was just spawned. The client's thread.
+     *
+     * <pre>{@code
+     * CgScene.syncClientLevel();                       // the old level's components go now, not after ours
+     * body = CgScene.client().skeletal(mesh).spawn();
+     * }</pre>
+     */
+    public static boolean syncClientLevel() {
+        int now = CgWorldQueries.client().levelEpoch();
+        if (clientLevel == Integer.MIN_VALUE) clientLevel = now;
+        if (now == clientLevel) return false;
+        clientLevel = now;
+        CLIENT.clear();
+        return true;
+    }
+
     /**
      * The client scene's frame on the client world: placed in {@code ATTACH}, cleared when the level changes. Added with
      * its first skeletal mesh or attachment.
@@ -408,7 +430,6 @@ public final class CgScene {
         private static final int UPDATE = CgTrace.name("scene.update");
 
         private CgTickFunction attach;
-        private int levelEpoch;
 
         static void of(CgWorld world) {
             if (world.subsystem(Ticks.class) == null) world.add(new Ticks());
@@ -416,7 +437,7 @@ public final class CgScene {
 
         @Override
         protected void initialize() {
-            levelEpoch = CgWorldQueries.client().levelEpoch();
+            syncClientLevel();
             attach = world().schedule().add(CgTickGroup.ATTACH, "crystalgraphics:scene.attach", dt -> update())
                     .whilePaused(true);
         }
@@ -427,11 +448,7 @@ public final class CgScene {
         }
 
         private void update() {
-            int now = CgWorldQueries.client().levelEpoch();
-            if (now != levelEpoch) {
-                levelEpoch = now;
-                CLIENT.clear();
-            }
+            syncClientLevel();
             try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, UPDATE)) {
                 CLIENT.primitives.update();
             }

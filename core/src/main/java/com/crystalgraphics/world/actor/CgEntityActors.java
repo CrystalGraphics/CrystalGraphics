@@ -531,6 +531,8 @@ public final class CgEntityActors extends CgWorldSubsystem {
 
     private void syncLevel() {
         if (world().server()) return;
+        // the scene's clear first: left to its ATTACH, it would remove the roots spawned here for the new level
+        CgScene.syncClientLevel();
         int now = CgWorldQueries.client().levelEpoch();
         if (now == levelEpoch) return;
         levelEpoch = now;

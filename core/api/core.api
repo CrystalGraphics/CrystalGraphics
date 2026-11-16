@@ -13233,6 +13233,7 @@ com/crystalgraphics/render/scene/CgScene
   method public update ()V
   method public,static client ()Lcom/crystalgraphics/render/scene/CgScene;
   method public,static server ()Lcom/crystalgraphics/render/scene/CgScene;
+  method public,static syncClientLevel ()Z
 com/crystalgraphics/render/scene/CgScene$Registration
   access public,abstract,interface
   extends java/lang/Object
@@ -24294,6 +24295,7 @@ com/crystalgraphics/world/actor/CgEntityActor
   method protected,final rootMotion (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method protected,final scene ()Lcom/crystalgraphics/render/scene/CgScene;
   method protected,final server ()Z
+  method protected,final serverEntity ()Ljava/lang/Object;
   method public <init> ()V
   method public,final entity ()Lcom/crystalgraphics/world/actor/CgEntity;
   method public,final root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
