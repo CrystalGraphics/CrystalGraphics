@@ -9825,6 +9825,7 @@ com/crystalgraphics/net/object/CgNetEntities
   method public,static left (I)V
   method public,static leftServer (Ljava/lang/Object;)V
   method public,static listen (Lcom/crystalgraphics/net/object/CgNetEntities$Listener;)V
+  method public,static saving (Ljava/lang/Object;)V
 com/crystalgraphics/net/object/CgNetEntities$Listener
   access public,abstract,interface
   extends java/lang/Object
@@ -9852,6 +9853,7 @@ com/crystalgraphics/net/object/CgNetField
   method public local ()Lcom/crystalgraphics/net/object/CgNetField;
   method public name ()Ljava/lang/String;
   method public ownerOnly ()Lcom/crystalgraphics/net/object/CgNetField;
+  method public persisted ()Lcom/crystalgraphics/net/object/CgNetField;
   method public predicted ()Lcom/crystalgraphics/net/object/CgNetField;
   method public predicted (Lcom/crystalgraphics/net/rate/CgRatePolicy;)Lcom/crystalgraphics/net/object/CgNetField;
   method public sanitizedBy (Ljava/util/function/BiFunction;)Lcom/crystalgraphics/net/object/CgNetField;
@@ -9942,7 +9944,6 @@ com/crystalgraphics/net/object/CgNetObjects
   method public,static namespaces ()Ljava/util/Map;
   method public,static report ()Ljava/lang/String;
   method public,static resetForTesting ()V
-  method public,static saving (Ljava/lang/Object;)V
   method public,static serverCount ()I
   method public,static serverStarting (Ljava/lang/Object;)V
   method public,static serverStopped ()V

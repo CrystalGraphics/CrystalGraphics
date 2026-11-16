@@ -2,7 +2,7 @@ package com.crystalgraphics.world;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.net.object.CgNetObjects;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
@@ -75,7 +75,7 @@ public final class CgEntitySaves {
      * last save is written now. A check and nothing more where nothing changed. Server thread.
      */
     public static void saving(Object entity) {
-        CgNetObjects.saving(entity);
+        CgNetEntities.saving(entity);
     }
 
     /** Whether the host writes at each entity's save ({@link Host#savesWhenSaved}). */

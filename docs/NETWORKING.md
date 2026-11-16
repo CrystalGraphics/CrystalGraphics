@@ -723,7 +723,7 @@ KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on t
   entity from then.
 - **The same type as a file**: a `net_type` asset (`assets/mymod/net_types/ki.yaml` declares
   `mymod:ki`), compiled as the game starts on each side, before any entity enters or anyone connects. Its fields are
-  `{ kind, fallback, sync: all | owner | local, initial_only, predicted }`, its events `{ payload }`, and `entities`
+  `{ kind, fallback, sync: all | owner | local, initial_only, predicted, persisted }`, its events `{ payload }`, and `entities`
   a list of entity type ids, `players` or `all`. Reach it with `CgNetType.named("mymod:ki")` and `field("current")`;
   a Java declaration of the same shape is the same type (`docs/vfx/networking.md` § *Your own data on an entity*).
 
@@ -897,32 +897,46 @@ The other viewers are sent the sanitized value; the owner is sent it only when s
 
 ## 13. Saving with the world
 
-A `persisted()` type's live objects are saved with the world, under its folder (`crystalgraphics/objects/`), when
-the server stops and every five minutes, and come back when it starts again, before any player joins.
+What is saved is chosen field by field, as Unreal's `SaveGame` properties are: a field marked `persisted()` is saved,
+the rest last as long as the session. One type holds both.
 
-- Each object keeps its anchor, owner, fields (`serverOnly()` ones too) and age; a server behaviour is made again and
-  hears `spawned` with that age.
+```java
+public static final CgNetField<Integer> CHARGE = CgNetField.ofInt("charge").persisted();   // back after a restart
+public static final CgNetField<UUID> TARGET = CgNetField.of("target", CgCodecs.UUID);       // this session's
+public static final CgNetType TURRET = CgNetType.define("mymod:turret").fields(CHARGE, TARGET).range(96).build();
+```
+
+`persisted()` on the type saves every field it lists (a cue's, whose fields are shared with every other cue, is saved
+this way). A type that saves any field keeps its objects: they are saved with the world, under its folder
+(`crystalgraphics/objects/`), when the server stops and every five minutes, and come back when it starts again, before
+any player joins; a player's waits while they are away.
+
+- Each object keeps its anchor, owner, saved fields (`serverOnly()` ones too) and age; a server behaviour is made
+  again and hears `spawned` with that age, its other fields at their fallbacks.
 - **An entity's object is saved with the entity**: a per-holder type's object on an entity other than a player (`of(entity)`,
   or `onEntities`) is written into the entity's own saved data as the game saves the entity (a chunk unloading, an
   autosave, the server stopping), and read back when the entity is loaded and its object made. It travels with the
   entity through chunk unloads and is gone when the entity is.
-- **A change costs a flag**: however often a field changes, it is encoded once, at the entity's save, every type of that
-  entity in one write; an entity with nothing changed is saved as Minecraft saves it. (Forge 1.13.2 and 1.14.3, which
+- **A change costs a flag**: however often a saved field changes, it is encoded once, at the entity's save, every type
+  of that entity in one write; a change to a field not saved costs nothing, and an entity with nothing changed is
+  saved as Minecraft saves it. (Forge 1.13.2 and 1.14.3, which
   load no mixins, write at the tick a change happens instead.)
 
   ```java
-  public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage");
-  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE)
-          .onEntities(type -> type.equals("minecraft:zombie")).persisted().build();
+  public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();
+  public static final CgNetField<Integer> TAUNTS = CgNetField.ofInt("taunts");
+  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
+          .onEntities(type -> type.equals("minecraft:zombie")).build();
 
-  FURY.of(zombie).setInt(RAGE, 3);    // server: still 3 when the zombie's chunk loads again
+  FURY.of(zombie).setInt(RAGE, 3).setInt(TAUNTS, 2);   // server: rage still 3 when the chunk loads again, taunts 0
   ```
 
   It is kept under the key `crystalgraphics`, each type under its name: inside the loader's persistent entity data on
   Forge, NeoForge and Forge before 1.13, and as a key of the entity's own on Fabric. A field that no longer reads is
   logged and starts from its fallback.
-- **Not saved**: fired objects, `local()` fields, and objects spawned on an entity by hand (`spawn(CgAnchor.on(entity))`
-  of a persisted type throws: an entity saves one object of a type, a per-holder one).
+- **Not saved**: fields not persisted, `local()` fields (`persisted()` on one throws), fired objects, and objects spawned
+  on an entity by hand (`spawn(CgAnchor.on(entity))` of a type that saves throws: an entity saves one object of a
+  type, a per-holder one).
 
 ---
 

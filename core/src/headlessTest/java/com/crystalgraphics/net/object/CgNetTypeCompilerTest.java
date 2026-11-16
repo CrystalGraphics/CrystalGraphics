@@ -73,14 +73,8 @@ public class CgNetTypeCompilerTest {
     @Test
     public void aFileFailsAtLoadByName() {
         String[][] cases = {
-                {"filetest:saved", """
-                        fields: { hp: { kind: float } }
-                        persisted: true
-                        entities: all
-                        """, "not saved"},
-                {"filetest:mixed", """
-                        fields: { hp: { kind: float, sync: local } }
-                        persisted: true
+                {"filetest:localsaved", """
+                        fields: { hp: { kind: float, sync: local, persisted: true } }
                         entities: all
                         """, "fields.hp"},
                 {"filetest:nowhere", """
@@ -90,6 +84,19 @@ public class CgNetTypeCompilerTest {
             CgAssetException e = assertThrows(c[2], CgAssetException.class, () -> compile(c[0], "_v: 1\n" + c[1]));
             assertTrue(e.getMessage(), e.getMessage().contains(c[0]) && e.getMessage().contains(c[2]));
         }
+        CgNetType rage = compile("filetest:rage", """
+                _v: 1
+                fields: { level: { kind: int, persisted: true }, target: { kind: int } }
+                entities: all
+                """);
+        assertTrue("a field persisted saves it alone", rage.persisted && rage.saves[0] && !rage.saves[1]);
+        CgNetType all = compile("filetest:whole", """
+                _v: 1
+                fields: { level: { kind: int }, mood: { kind: float, sync: local } }
+                persisted: true
+                entities: all
+                """);
+        assertTrue("the type persisted saves every field but a local one", all.saves[0] && !all.saves[1]);
         compile("filetest:grows", """
                 _v: 1
                 fields: { a: { kind: int } }

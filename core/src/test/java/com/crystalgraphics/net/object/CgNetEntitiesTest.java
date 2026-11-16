@@ -128,12 +128,13 @@ public class CgNetEntitiesTest {
         assertEquals("and a client writes its own", 2, (int) client.get(GEAR));
     }
 
-    /** Saved with the entity: a field's value, never a local one's. */
-    static final CgNetField<Integer> RAGE_LEVEL = CgNetField.ofInt("level");
-    static final CgNetField<String> RAGE_TARGET = CgNetField.of("target", CgCodecs.STRING);
+    /** Saved with the entity field by field: two persisted, one only for the session, one each side's own. */
+    static final CgNetField<Integer> RAGE_LEVEL = CgNetField.ofInt("level").persisted();
+    static final CgNetField<String> RAGE_TARGET = CgNetField.of("target", CgCodecs.STRING).persisted();
+    static final CgNetField<Integer> RAGE_SEEN = CgNetField.ofInt("seen");
     static final CgNetField<Integer> RAGE_TICKS = CgNetField.ofInt("ticks").local();
-    static final CgNetType RAGE = CgNetType.define("entitytest:rage").fields(RAGE_LEVEL, RAGE_TARGET, RAGE_TICKS)
-            .onEntities(type -> type.equals("test:zombie")).persisted().build();
+    static final CgNetType RAGE = CgNetType.define("entitytest:rage").fields(RAGE_LEVEL, RAGE_TARGET, RAGE_SEEN, RAGE_TICKS)
+            .onEntities(type -> type.equals("test:zombie")).build();
 
     @Test
     public void aPersistedTypeOnEntitiesIsSavedWithTheEntityAndBackWithIt() {
@@ -147,7 +148,10 @@ public class CgNetEntitiesTest {
             CgNetTestRig.Entity e = zombie();
             rig.tick(1);
             assertNull("nothing saved until it changes", saves.get(e));
-            RAGE.find(e).setInt(RAGE_LEVEL, 5).set(RAGE_TARGET, "steve").setInt(RAGE_TICKS, 9);
+            RAGE.find(e).setInt(RAGE_SEEN, 7).setInt(RAGE_TICKS, 9);
+            rig.tick(1);
+            assertNull("a change to fields not persisted saves nothing", saves.get(e));
+            RAGE.find(e).setInt(RAGE_LEVEL, 5).set(RAGE_TARGET, "steve");
             rig.tick(1);
             CgNbtCompound saved = saves.get(e);
             assertNotNull("saved with the entity as it changed", saved);
@@ -155,6 +159,7 @@ public class CgNetEntitiesTest {
             assertEquals(5, (int) rage.get("level", CgCodecs.INT));
             assertEquals("steve", rage.get("target", CgCodecs.STRING));
             assertTrue("a local field is never saved", !rage.has("ticks"));
+            assertTrue("nor one not persisted", !rage.has("seen"));
 
             // the game loads the entity again: a new one, holding what it saved
             CgNetTestRig.Entity loaded = rig.entity(0, 64, 0);
@@ -165,6 +170,7 @@ public class CgNetEntitiesTest {
             assertEquals("back as it was", 5, back.getInt(RAGE_LEVEL));
             assertEquals("steve", back.get(RAGE_TARGET));
             assertEquals("a local field starts afresh", 0, back.getInt(RAGE_TICKS));
+            assertEquals("and one not persisted", 0, back.getInt(RAGE_SEEN));
         } finally {
             CgPlatform.provide(CgEntitySaves.HOST, null);
         }

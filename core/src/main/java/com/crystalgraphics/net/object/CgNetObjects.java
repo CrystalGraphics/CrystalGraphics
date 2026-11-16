@@ -32,13 +32,10 @@ import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
 import com.crystalgraphics.serialization.format.CgFiles;
-import com.crystalgraphics.serialization.nbt.CgNbtCompound;
-import com.crystalgraphics.serialization.nbt.CgNbtOps;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
 
@@ -351,13 +348,7 @@ public final class CgNetObjects {
     /** The server is stopping: what persists is saved, and nothing carries into the next world. */
     public static void serverStopped() {
         if (started) save();
-        // the game saves every entity after this: what changed on entities goes into their compounds now
-        for (int i = 0; i < LIVE.size() && unsavedOnEntities > 0; i++) {
-            CgNetObject obj = LIVE.get(i);
-            Object entity = obj.unsavedOnEntity ? obj.entity() : null;
-            if (entity != null) saving(entity);
-        }
-        unsavedOnEntities = 0;
+        CgNetEntities.stopping(LIVE);
         started = false;
         startedServer = null;
         LIVE.clear();
@@ -388,8 +379,7 @@ public final class CgNetObjects {
         }
         trace(types);
         if (started && tick % SAVE_EVERY == 0) save();
-        restoring = null;
-        restored = null;
+        CgNetEntities.tickEnded();
     }
 
     private static void trace(List<CgNetType> types) {
@@ -471,13 +461,13 @@ public final class CgNetObjects {
                 BY_ID.remove(obj.id);
                 obj.removed();
                 if (obj.holderKey != null) obj.type.holders.remove(obj.holderKey, obj);
-                droppedFromEntity(obj);
+                CgNetEntities.dropped(obj);
                 markUnsaved(obj.type);
                 serverEnded(obj);
                 continue;
             }
             if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
-                if (obj.anyDirty) changedOnEntity(obj);
+                if (obj.anyDirty) CgNetEntities.changed(obj);
             } else if (obj.anyDirty || obj.moved) {
                 markUnsaved(obj.type);
             }
@@ -1185,14 +1175,14 @@ public final class CgNetObjects {
         }
     }
 
-    /** {@code obj}'s set fields as a map by name, as they are saved; a {@code local()} field never is. */
+    /** {@code obj}'s set fields that its type saves, as a map by name. */
     @SuppressWarnings("unchecked")
-    private static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
+    static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
         for (int i = 0; i < all.length; i++) {
             CgNetField<Object> field = (CgNetField<Object>) all[i];
-            if (!CgNetObject.has(obj.set, i) || field.local) continue;
+            if (!CgNetObject.has(obj.set, i) || !obj.type.saves[i]) continue;
             if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
                 fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
                 continue;
@@ -1202,13 +1192,13 @@ public final class CgNetObjects {
         return fields.build();
     }
 
-    /** The fields {@link #encodeFields} wrote, set on {@code obj}; a field it does not name keeps its fallback. */
-    private static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
+    /** The saved fields {@link #encodeFields} wrote, set on {@code obj}; one it does not name keeps its fallback. */
+    static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, in);
         for (int i = 0; i < all.length; i++) {
             CgNetField<?> field = all[i];
-            if (field.local || !fields.has(field.name)) continue;
+            if (!obj.type.saves[i] || !fields.has(field.name)) continue;
             T raw = fields.raw(field.name);
             if (field.kind == CgNetField.Kind.CODEC && Objects.equals(raw, ops.empty())) {
                 obj.refs[i] = null;
@@ -1219,76 +1209,6 @@ public final class CgNetObjects {
             }
             CgNetObject.mark(obj.set, i);
         }
-    }
-
-    /**
-     * A persisted type's new object on {@code entity}, its values set from what the entity saved; a value that no longer
-     * decodes is logged and left at its fallback. Before it starts.
-     */
-    static void restore(CgNetObject obj, Object entity) {
-        // an entity's types are made together as it enters: its compound is read once for them
-        if (entity != restoring) {
-            restored = CgEntitySaves.read(entity);
-            restoring = entity;
-        }
-        CgNbtCompound saved = restored;
-        if (!saved.has(obj.type.name)) return;
-        try {
-            decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
-        } catch (RuntimeException failed) {
-            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", entity, obj.type.name, failed);
-        }
-    }
-
-    /** The entity {@link #restore} last read the compound of, and that compound; dropped at the tick's end. */
-    @Nullable
-    private static Object restoring;
-    @Nullable
-    private static CgNbtCompound restored;
-    /** Entity objects changed since their entity was last saved: none, and a save asks nothing. */
-    private static int unsavedOnEntities;
-
-    /** An entity's persisted object changed this tick: written as its entity is next saved, or now without the hook. */
-    private static void changedOnEntity(CgNetObject obj) {
-        if (!obj.unsavedOnEntity) {
-            obj.unsavedOnEntity = true;
-            unsavedOnEntities++;
-        }
-        if (CgEntitySaves.hooked()) return;
-        Object entity = obj.entity();
-        if (entity != null) saving(entity);
-    }
-
-    /**
-     * The game is saving {@code entity}: its persisted objects changed since it was last saved are written into its
-     * compound, every type in one read and one write. Server thread; a host calls it through
-     * {@code CgEntitySaves.saving}. Costs a check where nothing changed, and allocates nothing where this entity has
-     * nothing to write.
-     */
-    public static void saving(Object entity) {
-        // a client saves entities too (a creative pick): the server's objects are the server thread's alone
-        if (unsavedOnEntities == 0 || CgNetwork.side() != CgNetwork.Side.SERVER) return;
-        CgNbtCompound saved = null;
-        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
-        for (int i = 0; i < types.size(); i++) {
-            CgNetType type = types.get(i);
-            CgNetObject obj = type.holders.get(entity);
-            if (obj == null || !obj.unsavedOnEntity) continue;
-            if (saved == null) saved = CgEntitySaves.read(entity);
-            saved.put(type.name, encodeFields(CgNbtOps.INSTANCE, obj));
-            obj.unsavedOnEntity = false;
-            unsavedOnEntities--;
-        }
-        if (saved == null) return;
-        CgEntitySaves.write(entity, saved);
-        if (restoring == entity) restoring = null;
-    }
-
-    /** An ended object's change no longer waits on its entity's save. */
-    private static void droppedFromEntity(CgNetObject obj) {
-        if (!obj.unsavedOnEntity) return;
-        obj.unsavedOnEntity = false;
-        unsavedOnEntities--;
     }
 
     /** One type's live objects as its save file holds them; a decoded object is live but not yet registered. */
@@ -1356,8 +1276,6 @@ public final class CgNetObjects {
         started = false;
         startedServer = null;
         Arrays.fill(unsaved, false);
-        unsavedOnEntities = 0;
-        restoring = null;
-        restored = null;
+        CgNetEntities.resetSaves();
     }
 }

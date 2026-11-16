@@ -108,7 +108,10 @@ public final class CgNetType {
     final CgNetCommand<?>[] commands;
     /** Blocks within which a point anchor's object is seen; negative for its whole dimension. */
     final double range;
+    /** Whether it saves any field: its objects outlive the session. */
     final boolean persisted;
+    /** By field index: whether the field is saved, by its own {@code persisted()} or the type's. */
+    final boolean[] saves;
     @Nullable
     final BiPredicate<CgNetObject, CgPeer> visibleTo;
     final boolean perHolder;
@@ -159,7 +162,13 @@ public final class CgNetType {
         for (CgNetField<?> field : fields) if (field.command != null) commands.add(field.command);
         this.commands = commands.toArray(new CgNetCommand<?>[0]);
         this.range = b.range;
-        this.persisted = b.persisted;
+        this.saves = new boolean[fields.length];
+        boolean any = false;
+        for (int i = 0; i < fields.length; i++) {
+            saves[i] = !fields[i].local && (b.persisted || fields[i].persisted);
+            any |= saves[i];
+        }
+        this.persisted = any;
         this.visibleTo = b.visibleTo;
         this.perHolder = b.perHolder;
         this.copyOnDeath = b.copyOnDeath;
@@ -273,13 +282,20 @@ public final class CgNetType {
         }
 
         /**
-         * Saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. A per-holder
-         * type's object on an entity other than a player is saved with that entity instead ({@code CgEntitySaves}): it
-         * travels with the entity through chunk unloads and dies with it.
+         * Every field it lists is saved ({@link CgNetField#persisted()}, field by field, saves only those): its objects are
+         * saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. A
+         * per-holder type's object on an entity other than a player is saved with that entity instead
+         * ({@code CgEntitySaves}): it travels with the entity through chunk unloads and dies with it.
          *
          * <pre>{@code
-         * RAGE = CgNetType.define("mymod:rage").fields(LEVEL).onEntities(t -> t.equals("minecraft:zombie")).persisted().build();
+         * WARD = CgNetType.define("mymod:ward").fields(POWER, OWNER_NAME).persisted().build();   // all of it lasts
          * }</pre>
+         *
+         * <ul>
+         *   <li>Its {@code local()} fields are never saved.</li>
+         *   <li>For fields shared with other types (a cue's), this saves them here alone; a field's own {@code persisted()}
+         *       saves it in every type listing it.</li>
+         * </ul>
          */
         public Builder persisted() {
             persisted = true;
@@ -554,7 +570,7 @@ public final class CgNetType {
         obj.holderKey = key;
         holders.put(key, obj);
         // an entity's saved values, from its own saved data: what it held when the game last saved it
-        if (persisted && anchor == null) CgNetObjects.restore(obj, entity);
+        if (persisted && anchor == null) CgNetEntities.restore(obj, entity);
         return obj.start();
     }
 
