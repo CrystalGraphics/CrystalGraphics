@@ -13,6 +13,9 @@ import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 
 import com.crystalgraphics.render.post.aa.CgTemporalAA;
+import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
+import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
+import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 
 import javax.annotation.Nullable;
@@ -72,6 +75,7 @@ public final class CgPost {
     private final CgPostSettings camera = new CgPostSettings();
     final CgDepthOfField depthOfField = new CgDepthOfField();
     final CgTemporalAA temporalAA = new CgTemporalAA();
+    final CgSpatialUpscale spatialUpscale = new CgSpatialUpscale();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code crystalgraphics.post.debug}'s view, as {@link #debugView} named it; null when unset. */
     @Nullable
@@ -113,6 +117,13 @@ public final class CgPost {
         synchronized (ALL) {
             ALL.add(this);
         }
+    }
+
+    /** The chain's temporal step named {@code method}: one each a chain, its histories its views'. */
+    CgUpscaler upscaler(CgAntiAliasing method) {
+        return switch (method) {
+            case TEMPORAL_AA -> temporalAA;
+        };
     }
 
     /** The chain the client's views share: the game's. */

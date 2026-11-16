@@ -16,7 +16,7 @@ public class CgPassConstantsTest {
         Matrix4f projection = new Matrix4f().setOrtho(0, 640, 480, 0, -1, 1);
         CgPassConstants constants = new CgPassConstants().time(2f).resolution(640, 480).camera(4, 5, 6)
                 .origin(100.5, 64, -2000.25).sun(0f, 2f, 0f, 0.5f).sunShare(0.4f).fog(0.1f, 0.2f, 0.3f, 8f, 64f)
-                .encodedTarget(true).entityLights(true);
+                .encodedTarget(true).entityLights(true).materialMipBias(-1f);
         constants.view.set(view);
         constants.projection.set(projection);
         Matrix4f previous = new Matrix4f().perspective(1f, 1.5f, 0.05f, 100f).translate(0.5f, 0f, -1f);
@@ -30,11 +30,12 @@ public class CgPassConstantsTest {
                 .mat4("cg_ProjMatrix", projection)
                 .vec4("cg_Time", 0.1f, 2f, 4f, 6f)
                 .vec2("cg_Resolution", 640, 480)
+                .vec2("cg_MaterialMip", -1, 0.5f)
                 .vec4("cg_CameraPos", 4, 5, 6, 1)
                 .vec4("cg_DepthParams", 1, 1, 0, 1)
                 .vec4("cg_WorldOrigin", 100.5f, 64, -2000.25f, 0)
                 .mat4("cg_PrevViewProj", previous)
-                .vec4("cg_FrameParams", 70000 & 0xFFFF, 1, 0, 1)
+                .vec4("cg_FrameParams", 70000 & 0xFFFF, 1, 2, 1)                 // no previous time: this frame's
                 .vec4("cg_ViewTile", 0, 0, -2, 1024)              // the origin's tile: -2000.25 is in tile -2
                 .vec4("cg_ViewTileOffset", 100.5f, 64, 47.75f, 0);
         CgBufferWriter environmentWriter = new CgBufferWriter(new CgStagingBuffer(CgPassConstants.ENVIRONMENT_FLOATS),

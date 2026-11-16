@@ -6,6 +6,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
+import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
@@ -34,9 +35,11 @@ import javax.annotation.Nullable;
  *   <li>A view whose last frame is not one of this camera (a cut, a jump, a new size) starts over from this frame.</li>
  *   <li>Off on a view with no linear HDR scene, and off by default on every view. On the client's view, Minecraft's
  *       own draws are not jittered and its moving entities and our particles write no velocity.</li>
+ *   <li>It resolves at the size the world draws at and never upscales: a view drawn below 100% is upscaled spatially
+ *       after the chain.</li>
  * </ul>
  */
-public final class CgTemporalAA {
+public final class CgTemporalAA implements CgUpscaler {
 
     /** The resolve's shader, precached with the chain's. */
     public static final String SHADER = "crystalgraphics:shaders/post/aa/taa_resolve.shader";
@@ -48,6 +51,8 @@ public final class CgTemporalAA {
     private static final CgViewState.HistoryKey GLOW_HISTORY = new CgViewState.HistoryKey("crystalgraphics:taa_glow");
     /** The glow's share of each frame: two jitter cycles' worth, so a light one sample in eight lands on holds still. */
     private static final float GLOW_SHARE = 1f / 16f;
+    /** The jitter's sequence: Unreal's {@code r.TemporalAASamples} 8. */
+    private static final int SAMPLES = 8;
     /** This frame's least share of the blend, its share once a texel moves 8 texels a frame, and where its fetch is ambiguous. */
     private static final float SHARE = 0.04f, SHARE_MOVING = 0.2f, SHARE_AMBIGUOUS = 0.25f;
 
@@ -111,10 +116,11 @@ public final class CgTemporalAA {
      * <pre>{@code
      * CgScreenTexture before = picture;
      * picture = temporalAA.apply(ctx, picture);
-     * CgGraphTexture light = temporalAA.glow(ctx, before, picture, bloomThreshold);   // bloom's source, the excess taken
+     * CgGraphTexture light = temporalAA.bloomLight(ctx, before, picture, bloomThreshold);   // bloom's source, the excess taken
      * }</pre>
      */
-    public CgGraphTexture glow(CgPostContext ctx, CgScreenTexture input, CgScreenTexture resolved, float threshold) {
+    @Override
+    public CgGraphTexture bloomLight(CgPostContext ctx, CgScreenTexture input, CgScreenTexture resolved, float threshold) {
         if (glow == null) glow = CgMaterial.load(GLOW).instance();
         CgView view = ctx.view();
         CgViewState state = view.state();
@@ -133,7 +139,23 @@ public final class CgTemporalAA {
         return history;
     }
 
+    @Override
+    public float minFraction() {
+        return 1f;
+    }
+
+    @Override
+    public int jitterSamples(float fraction) {
+        return SAMPLES;
+    }
+
+    @Override
+    public float materialMipBias(float fraction) {
+        return 0f;
+    }
+
     /** Resolves {@code input} into the view's history, and answers a copy of it the chain may draw over. */
+    @Override
     public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input) {
         if (resolve == null) {
             resolve = CgMaterial.load(SHADER).instance();

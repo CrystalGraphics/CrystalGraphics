@@ -39,6 +39,13 @@ public class CgGlslWriterTest {
     }
 
     @Test
+    public void aWorldMaterialSamplesByTheViewsMipBias() {
+        assertTrue(write(surface("", "s.baseColor = vec3(1.0);")).fragment().contains(CgGlslWriter.MIP_BIAS));
+        assertFalse(write(surface("", "s.baseColor = vec3(1.0);")).vertex().contains(CgGlslWriter.MIP_BIAS));
+        assertFalse(write(global("", "fragColor = vec4(1.0);")).fragment().contains(CgGlslWriter.MIP_BIAS));
+    }
+
+    @Test
     public void aMaskedMaterialDiscardsBelowItsThreshold() {
         String fragment = write(surface("BlendMode Masked  MaskClip 0.4", "s.opacityMask = i.uv0.x;")).fragment();
         assertTrue(fragment, fragment.contains("#define CG_CLIP_THRESHOLD 0.4"));

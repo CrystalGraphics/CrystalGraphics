@@ -60,7 +60,7 @@ public class CgSceneTest {
         CgScene scene = new CgScene();
         CgMeshComponent near = scene.mesh(CUBE, STONE).at(0, 0, -3).spawn();
         CgMeshComponent far = scene.mesh(CUBE, STONE).at(0, 0, -8).spawn();
-        CgView eye = CgView.of(scene).size(100, 100);
+        CgView eye = CgView.of(scene).size(100, 100, true);
         eye.camera().set(camera);
         assertSame(near, eye.pick(50, 50));
         near.visible(false);

@@ -11553,6 +11553,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public height ()F
   method public history (Lorg/joml/Matrix4fc;IZ)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public linearScene (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public materialMipBias (F)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public previousTime (D)Lcom/crystalgraphics/render/draw/CgPassConstants;
@@ -12164,6 +12165,8 @@ com/crystalgraphics/render/host/CgHostFrame
   method public <init> ()V
   method public camera ()Lcom/crystalgraphics/camera/CgCamera;
   method public depthFormat ()Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  method public drawsWorld ()Z
+  method public drawsWorld (Z)Lcom/crystalgraphics/render/host/CgHostFrame;
   method public environment ()Lcom/crystalgraphics/render/host/CgHostEnvironment;
   method public guiScale ()F
   method public guiScale (F)Lcom/crystalgraphics/render/host/CgHostFrame;
@@ -12439,6 +12442,7 @@ com/crystalgraphics/render/post/CgPostRenderer
   method public,static lookPasses (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Lcom/crystalgraphics/render/precache/CgPipelineList;)V
   method public,static precacheLook (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public,static prepare (Lcom/crystalgraphics/render/view/CgView;)V
+  method public,static present (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static record (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static releaseAll ()V
   method public,static surfaces (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
@@ -12457,9 +12461,13 @@ com/crystalgraphics/render/post/aa/CgTemporalAA
   field public,static,final GLOW Ljava/lang/String;
   field public,static,final OUTPUT Ljava/lang/String;
   field public,static,final SHADER Ljava/lang/String;
+  implements com/crystalgraphics/render/post/upscale/CgUpscaler
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
-  method public glow (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public jitterSamples (F)I
+  method public materialMipBias (F)F
+  method public minFraction ()F
   method public,static enable (Lcom/crystalgraphics/render/view/CgView;Z)V
   method public,static enabled (Lcom/crystalgraphics/render/view/CgView;)Z
   method public,static sharpening ()Z
@@ -12851,6 +12859,38 @@ com/crystalgraphics/render/post/settings/CgPostSettings$Region
   field public,static,final SHADOWS Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
   method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+com/crystalgraphics/render/post/upscale/CgAntiAliasing
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final TEMPORAL_AA Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+  method public,static values ()[Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+com/crystalgraphics/render/post/upscale/CgSpatialUpscale
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHADER Ljava/lang/String;
+  method public <init> ()V
+  method public record (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;II)V
+  method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
+com/crystalgraphics/render/post/upscale/CgUpscaleFilter
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BILINEAR Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  field public,static,final CATMULL_ROM Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  field public,static,final EASU Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  field public,static,final LANCZOS Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  method public keyword ()Ljava/lang/String;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  method public,static values ()[Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+com/crystalgraphics/render/post/upscale/CgUpscaler
+  access public,abstract,interface
+  extends java/lang/Object
+  method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public rebuilds (F)Z
+  method public,abstract apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public,abstract jitterSamples (F)I
+  method public,abstract materialMipBias (F)F
+  method public,abstract minFraction ()F
 com/crystalgraphics/render/precache/CgPipelineList
   access public,final
   extends java/lang/Object
@@ -14290,9 +14330,13 @@ com/crystalgraphics/render/stage/CgStageFiring
   method public executeInto (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
   method public frame ()Lcom/crystalgraphics/render/stage/CgStageFrame;
   method public host ()Lcom/crystalgraphics/render/host/CgHostFrame;
+  method public output ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public present ()V
+  method public presented ()Z
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public retarget (Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public run (Lcom/crystalgraphics/render/stage/CgRenderStage;)V
+  method public scaled ()Z
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public toString ()Ljava/lang/String;
   method public view ()Lcom/crystalgraphics/render/view/CgView;
@@ -14435,6 +14479,9 @@ com/crystalgraphics/render/view/CgShowFlags
 com/crystalgraphics/render/view/CgView
   access public,final
   extends java/lang/Object
+  field public,static,final MIN_SCREEN_PERCENTAGE F
+  method public antiAliasing ()Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+  method public antiAliasing (Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;)Lcom/crystalgraphics/render/view/CgView;
   method public beginDraw ()V
   method public beginFrame (JLjava/lang/Object;)V
   method public camera ()Lcom/crystalgraphics/camera/CgCamera;
@@ -14456,8 +14503,13 @@ com/crystalgraphics/render/view/CgView
   method public jitterTexelsX ()F
   method public jitterTexelsY ()F
   method public jittering (Z)V
+  method public jittering (ZI)V
   method public jitters ()Z
+  method public materialMipBias ()F
+  method public materialMipBias (F)V
   method public name ()Ljava/lang/String;
+  method public outputHeight ()I
+  method public outputWidth ()I
   method public override (Lcom/crystalgraphics/variable/CgVar$Bool;Z)Lcom/crystalgraphics/render/view/CgView;
   method public override (Lcom/crystalgraphics/variable/CgVar$Int;I)Lcom/crystalgraphics/render/view/CgView;
   method public override (Lcom/crystalgraphics/variable/CgVar$Num;F)Lcom/crystalgraphics/render/view/CgView;
@@ -14469,16 +14521,26 @@ com/crystalgraphics/render/view/CgView
   method public releasePicture ()V
   method public renderInto (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)V
   method public renderPicture (III)Lcom/crystalgraphics/gpu/resource/CgTexture2D;
+  method public renderTarget ()Lcom/crystalgraphics/render/view/CgViewRenderTarget;
+  method public resolutionFraction ()F
+  method public scaled ()Z
   method public scene ()Lcom/crystalgraphics/render/scene/CgScene;
+  method public screenPercentage ()F
+  method public screenPercentage (F)Lcom/crystalgraphics/render/view/CgView;
+  method public screenPercentageAuto ()Z
+  method public screenPercentageAuto (Z)Lcom/crystalgraphics/render/view/CgView;
   method public sees (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Z
   method public showFlags ()Lcom/crystalgraphics/render/view/CgShowFlags;
   method public showOnly (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Lcom/crystalgraphics/render/view/CgView;
   method public showsOnly ()Z
-  method public size (II)Lcom/crystalgraphics/render/view/CgView;
+  method public size (IIZ)Lcom/crystalgraphics/render/view/CgView;
   method public state ()Lcom/crystalgraphics/render/view/CgViewState;
   method public textures ()Lcom/crystalgraphics/render/view/CgSceneTextures;
   method public toString ()Ljava/lang/String;
+  method public upscaleFilter ()Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;
+  method public upscaleFilter (Lcom/crystalgraphics/render/post/upscale/CgUpscaleFilter;)Lcom/crystalgraphics/render/view/CgView;
   method public width ()I
+  method public,static autoFraction (II)F
   method public,static create (Ljava/lang/String;)Lcom/crystalgraphics/render/view/CgView;
   method public,static forgetAll ()V
   method public,static main ()Lcom/crystalgraphics/render/view/CgView;
@@ -14490,6 +14552,13 @@ com/crystalgraphics/render/view/CgViewKey
   extends java/lang/Object
   method public <init> (Ljava/lang/String;)V
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/render/view/CgViewRenderTarget
+  access public,final
+  extends java/lang/Object
+  method public fill (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public host (Lcom/crystalgraphics/render/host/CgHostFrame;II)Lcom/crystalgraphics/render/host/CgHostFrame;
+  method public output (Lcom/crystalgraphics/platform/rhi/CgExternalTarget;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static fillShader ()Ljava/lang/String;
 com/crystalgraphics/render/view/CgViewState
   access public,final
   extends java/lang/Object

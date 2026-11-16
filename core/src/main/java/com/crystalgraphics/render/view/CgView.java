@@ -10,11 +10,15 @@ import com.crystalgraphics.render.host.CgHostTextures;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
 import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
+import com.crystalgraphics.render.post.upscale.CgUpscaleFilter;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.target.CgRenderTarget;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
@@ -52,6 +56,8 @@ import java.util.WeakHashMap;
  *   <li>A view draws once a frame: a second firing of a world callback in one frame for the same view draws as
  *       {@link #unkept()}.</li>
  *   <li>The main view's camera, size and environment are its host's, refilled each frame: read them, never set them.</li>
+ *   <li>Two sizes: {@link #width()} is what its world draws at, {@link #outputWidth()} what it presents at. They differ
+ *       only below 100% ({@link #screenPercentage(float)}), on a view whose host draws no world of its own.</li>
  * </ul>
  */
 public final class CgView {
@@ -60,6 +66,15 @@ public final class CgView {
     private static final Set<CgView> ALL = Collections.newSetFromMap(new WeakHashMap<>());
     private static final CgView MAIN = new CgView("main", null, true);
     private static final CgView UNKEPT = new CgView("unkept", null, false);
+    private static final Logger LOGGER = LogManager.getLogger("CgView");
+    /** The least screen percentage a view draws at. */
+    public static final float MIN_SCREEN_PERCENTAGE = 25f;
+    /**
+     * Unreal's display-based screen percentage ({@code [Rendering.AutoScreenPercentage]}): 16:9 display heights and the
+     * heights drawn for them, a display of 720 lines drawing 720, of 2160 drawing 1080, of 4320 drawing 1440.
+     */
+    private static final float AUTO_MIN_DISPLAY = 720f, AUTO_MIN_DRAWN = 720f, AUTO_MID_DISPLAY = 2160f,
+            AUTO_MID_DRAWN = 1080f, AUTO_MAX_DISPLAY = 4320f, AUTO_MAX_DRAWN = 1440f;
     /** How far behind an orthographic eye a pick starts, in blocks. */
     private static final float PICK_REACH = 10_000f;
     @Nullable
@@ -89,7 +104,17 @@ public final class CgView {
     private final CgShowFlags showFlags = new CgShowFlags();
     private final Set<CgPrimitiveComponent<?>> hidden = Collections.newSetFromMap(new IdentityHashMap<>()),
             showOnly = Collections.newSetFromMap(new IdentityHashMap<>());
-    private int width, height;
+    /** The size its world draws at this frame, and the size it presents at: the host's or the target's. */
+    private int width, height, outputWidth, outputHeight;
+    private float screenPercentage = 100f, fraction = 1f;
+    private boolean screenPercentageAuto, refusedWarned;
+    private CgUpscaleFilter upscaleFilter = CgUpscaleFilter.CATMULL_ROM;
+    private CgAntiAliasing antiAliasing = CgAntiAliasing.TEMPORAL_AA;
+    /** The jitter's sequence length this frame, and the material mip bias. */
+    private int jitterSamples = 8;
+    private float materialMipBias;
+    @Nullable
+    private CgViewRenderTarget renderTarget;
     private long frame = Long.MIN_VALUE, draws;
     /** Its own post chain, for a view of a scene of its own, made at first ask; the client's views share the client's. */
     @Nullable
@@ -120,7 +145,11 @@ public final class CgView {
     /** Engine side, at context teardown: every view's state forgets what it kept, whose storage goes with the context. */
     public static void forgetAll() {
         synchronized (ALL) {
-            for (CgView view : ALL) view.state.forget();
+            for (CgView view : ALL) {
+                view.state.forget();
+                if (view.renderTarget != null) view.renderTarget.release();
+                view.renderTarget = null;
+            }
         }
     }
 
@@ -156,6 +185,10 @@ public final class CgView {
         UNKEPT.overrides.putAll(named.overrides);
         UNKEPT.showFlags.set(named.showFlags);
         UNKEPT.borrowedPost = named.post();
+        UNKEPT.screenPercentage = named.screenPercentage;
+        UNKEPT.screenPercentageAuto = named.screenPercentageAuto;
+        UNKEPT.upscaleFilter = named.upscaleFilter;
+        UNKEPT.antiAliasing = named.antiAliasing;
         return UNKEPT;
     }
 
@@ -202,13 +235,127 @@ public final class CgView {
         return camera;
     }
 
-    /** Its width in pixels: the host target's for the main view. */
+    /**
+     * The width its world draws at this frame, in pixels (Unreal's view rect): its {@link #outputWidth()} unless a
+     * screen percentage below 100 draws it smaller. Every scene texture is this size.
+     */
     public int width() {
         return width;
     }
 
     public int height() {
         return height;
+    }
+
+    /** The width it presents at: its host target's, or its picture's. */
+    public int outputWidth() {
+        return outputWidth;
+    }
+
+    public int outputHeight() {
+        return outputHeight;
+    }
+
+    /** Whether its world draws smaller than it presents this frame. */
+    public boolean scaled() {
+        return width != outputWidth || height != outputHeight;
+    }
+
+    /**
+     * Draws its world at {@code percent} of its size on each axis and upscales it to its target (Unreal's
+     * {@code r.ScreenPercentage}): 50 draws a quarter of the pixels. 100 by default, clamped to
+     * {@value #MIN_SCREEN_PERCENTAGE} to 100.
+     *
+     * <pre>{@code
+     * viewport.screenPercentage(67f);                       // two thirds wide and high, upscaled to the viewport
+     * viewport.upscaleFilter(CgUpscaleFilter.EASU);          // AMD's edge-aware upscale in place of Catmull-Rom
+     * viewport.screenPercentageAuto(true);                  // or chosen from the display's size, as Unreal's default
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A view whose host draws a world of its own (Minecraft's) draws at 100 whatever is asked, warned once: the
+     *       host's world cannot be drawn smaller.</li>
+     *   <li>Its scene textures, its histories and every size a stage reads ({@code frame.width()}) are the smaller size
+     *       until the chain's upscale; {@code OVERLAY} draws at the full size.</li>
+     * </ul>
+     */
+    public CgView screenPercentage(float percent) {
+        screenPercentage = Math.max(MIN_SCREEN_PERCENTAGE, Math.min(100f, percent));
+        return this;
+    }
+
+    /** The screen percentage asked for: what {@link #screenPercentage(float)} set. */
+    public float screenPercentage() {
+        return screenPercentage;
+    }
+
+    /**
+     * Picks its screen percentage from its output's size, as Unreal's desktop default does: a display of 720 lines or
+     * fewer draws at 100, 1080 at 73, 2160 (4K) at 50, 4320 at a third, between them by pixel count. Off by default; while on,
+     * {@link #screenPercentage(float)} is ignored.
+     */
+    public CgView screenPercentageAuto(boolean on) {
+        screenPercentageAuto = on;
+        return this;
+    }
+
+    public boolean screenPercentageAuto() {
+        return screenPercentageAuto;
+    }
+
+    /** The fraction of its output's width its world draws at this frame, 0 to 1: 1 unless it is scaled. */
+    public float resolutionFraction() {
+        return fraction;
+    }
+
+    /** How a picture drawn smaller is upscaled when no temporal upscaler does it: Catmull-Rom by default. */
+    public CgView upscaleFilter(CgUpscaleFilter filter) {
+        upscaleFilter = Objects.requireNonNull(filter, "filter");
+        return this;
+    }
+
+    public CgUpscaleFilter upscaleFilter() {
+        return upscaleFilter;
+    }
+
+    /**
+     * Its temporal anti-aliasing or upscaling, while its {@code temporalAA} show flag is on (Unreal's
+     * {@code AntiAliasingMethod}): {@link CgAntiAliasing#TEMPORAL_AA} by default.
+     */
+    public CgView antiAliasing(CgAntiAliasing method) {
+        antiAliasing = Objects.requireNonNull(method, "method");
+        return this;
+    }
+
+    public CgAntiAliasing antiAliasing() {
+        return antiAliasing;
+    }
+
+    /**
+     * The fraction Unreal's display-based screen percentage draws a {@code width} x {@code height} output at: the 16:9
+     * pixel counts of its table interpolated by the output's pixel count, the square root taken.
+     */
+    public static float autoFraction(int width, int height) {
+        float shown = (float) width * height;
+        if (shown <= 0f) return 1f;
+        float drawn;
+        if (shown < pixels(AUTO_MIN_DISPLAY)) {
+            drawn = shown * pixels(AUTO_MIN_DRAWN) / pixels(AUTO_MIN_DISPLAY);
+        } else if (shown > pixels(AUTO_MAX_DISPLAY)) {
+            drawn = shown * pixels(AUTO_MAX_DRAWN) / pixels(AUTO_MAX_DISPLAY);
+        } else {
+            boolean upper = shown > pixels(AUTO_MID_DISPLAY);
+            float d0 = pixels(upper ? AUTO_MID_DISPLAY : AUTO_MIN_DISPLAY), d1 = pixels(upper ? AUTO_MAX_DISPLAY : AUTO_MID_DISPLAY);
+            float r0 = pixels(upper ? AUTO_MID_DRAWN : AUTO_MIN_DRAWN), r1 = pixels(upper ? AUTO_MAX_DRAWN : AUTO_MID_DRAWN);
+            float t = Math.max(0f, Math.min(1f, (shown - d0) / (d1 - d0)));
+            drawn = r0 + (r1 - r0) * t;
+        }
+        return Math.min(1f, (float) Math.sqrt(drawn / shown));
+    }
+
+    /** The pixel count of a 16:9 picture {@code height} lines high. */
+    private static float pixels(float height) {
+        return height * height * (1920f / 1080f);
     }
 
     /** The world's sky, weather and fog, the player's settings and the clock it is drawn under. */
@@ -370,14 +517,34 @@ public final class CgView {
 
     /**
      * Engine side, the post renderer's: whether this frame's world passes are drawn jittered, from its prepare to the
-     * end of its chain, so what draws after (the overlay) is not. Sets this frame's offset from its frame index.
+     * end of its chain, so what draws after (the overlay) is not, and over how many frames the sequence runs. Sets this
+     * frame's offset, a Halton (2, 3) point within half a texel of the size the world draws at, from its frame index.
      */
-    public void jittering(boolean on) {
+    public void jittering(boolean on, int samples) {
         jittering = on && width > 0 && height > 0;
+        jitterSamples = Math.max(1, samples);
         if (!jittering) return;
-        int i = (state.frameIndex() & 7) + 1;
+        int i = Math.floorMod(state.frameIndex(), jitterSamples) + 1;
         jitterX = (halton(i, 2) - 0.5f) * 2f / width;
         jitterY = (halton(i, 3) - 0.5f) * 2f / height;
+    }
+
+    /** Engine side: {@link #jittering(boolean, int)} with the sequence it last ran, or off. */
+    public void jittering(boolean on) {
+        jittering(on, jitterSamples);
+    }
+
+    /**
+     * Engine side, the post renderer's: the bias every material texture of its world samples by this frame
+     * ({@code cg_MaterialMipBias}), negative while a temporal upscaler rebuilds a picture drawn smaller (Unreal's
+     * {@code MaterialTextureMipBias}), else 0.
+     */
+    public void materialMipBias(float bias) {
+        materialMipBias = bias;
+    }
+
+    public float materialMipBias() {
+        return materialMipBias;
     }
 
     /** This frame's jitter in normalized device coordinates, what its projection moved by: 0 when it is not jittering. */
@@ -479,8 +646,8 @@ public final class CgView {
      */
     @Nullable
     public CgPrimitiveComponent<?> pick(float x, float y) {
-        if (width <= 0 || height <= 0) return null;
-        float nx = 2f * (x + 0.5f) / width - 1f, ny = 1f - 2f * (y + 0.5f) / height;
+        if (outputWidth <= 0 || outputHeight <= 0) return null;
+        float nx = 2f * (x + 0.5f) / outputWidth - 1f, ny = 1f - 2f * (y + 0.5f) / outputHeight;
         Matrix4fc projection = camera.projection();
         pickInverse.set(projection).mul(camera.view()).invert();   // camera-relative clip space to camera-relative world
         Matrix4fc view = camera.view();
@@ -510,11 +677,29 @@ public final class CgView {
 
     // ── Engine side ───────────────────────────────────────────────────────────────────────────────
 
-    /** Engine side, the hosts': its size this frame. */
-    public CgView size(int width, int height) {
-        this.width = width;
-        this.height = height;
+    /**
+     * Engine side, the hosts': its output's size this frame, and the size its world draws at from its screen percentage
+     * where it {@code scales} (false for a host drawing a world of its own, which draws at 100%).
+     */
+    public CgView size(int width, int height, boolean scales) {
+        outputWidth = width;
+        outputHeight = height;
+        float asked = screenPercentageAuto ? autoFraction(width, height) : screenPercentage / 100f;
+        if (asked < 1f && !scales && !refusedWarned) {
+            refusedWarned = true;
+            LOGGER.warn("view {} asks to draw at {}%, but its host draws a world of its own: drawn at 100%", name,
+                    Math.round(asked * 100f));
+        }
+        fraction = scales ? Math.max(MIN_SCREEN_PERCENTAGE / 100f, Math.min(1f, asked)) : 1f;
+        this.width = fraction >= 1f ? width : Math.max(1, (int) Math.ceil(width * fraction));
+        this.height = fraction >= 1f ? height : Math.max(1, (int) Math.ceil(height * fraction));
         return this;
+    }
+
+    /** Engine side: where its world draws while it is {@link #scaled()}, made at first ask. */
+    public CgViewRenderTarget renderTarget() {
+        if (renderTarget == null) renderTarget = new CgViewRenderTarget("cg_view_render." + name);
+        return renderTarget;
     }
 
     /**
@@ -598,7 +783,7 @@ public final class CgView {
     /** What the view adds to a pass of its camera: its scene, the scene's encoding, last frame's view, the sun and fog. */
     private void writeState(CgPassConstants constants) {
         constants.scene(scene().gpu()).linearScene(textures.linear()).history(previous, state.frameIndex(), historyValid)
-                .previousTime(previousTime);
+                .previousTime(previousTime).materialMipBias(materialMipBias);
         // Moved in clip space, so a point lands jitter texels off: last frame's matrix stays unjittered, which is what a
         // history is fetched by
         if (jittering) constants.projection.mulLocal(jitterMatrix.translation(jitterX, jitterY, 0f));

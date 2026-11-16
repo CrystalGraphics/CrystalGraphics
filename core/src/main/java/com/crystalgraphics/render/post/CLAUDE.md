@@ -26,12 +26,14 @@ CgPostRenderer.record
   composite                   CgPostLooks feeds it; one full-screen pass encoding into the host's target
   DISPLAY                     the display picture
   crossfade, debug            then a picture left elsewhere is copied into the host's target
+CgPostRenderer.present        a view drawn below 100%: its picture, finished at that size in the target standing in for
+                              the host's, upscaled into the host's (CgSpatialUpscale, Unreal's PrimaryUpscale); OVERLAY after
 ```
 
 | Class | Holds |
 |---|---|
 | `CgPost` | The consumer face: `add(point[, order], effect)` answering a `Registration`, `material(...)`, `settings()` (the chain's base settings, bloom's among them), `camera()` (the camera's, blended over every volume: a rig's lens), `crossfade(s)`. `client()`; `new CgPost()` is `CgView`'s for a view of its own. Its effects an array snapshot, replaced whole |
-| `CgPostRenderer` | Engine side: `prepare(view)`, `surfaces(firing)`, `record(firing)` in the frame's order, each point's effects and blendables merged (`walk`); `install`, `lookPasses`, `precacheLook`, `releaseAll` |
+| `CgPostRenderer` | Engine side: `prepare(view)`, `surfaces(firing)`, `record(firing)`, `present(firing)` in the frame's order, each point's effects and blendables merged (`walk`); `install`, `lookPasses`, `precacheLook`, `releaseAll` |
 | `CgOutline` | The outline as a blendable: `settings(instance)` a volume's settings drawing it at `SURFACES` first (`PRIORITY`), `material(stencil)`, `tests(...)` |
 | `CgPostEffect` | `CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input)` |
 | `CgPostPoint` | `SURFACES`, `TRANSLUCENT`, `SCENE`, `HDR`, `DISPLAY`; the format's `Location` takes the same names |
@@ -41,6 +43,7 @@ CgPostRenderer.record
 | `CgPostCrossfade` | `hold.shader` copies the final picture into an RGBA8 texture; `crossfade.shader` lays it over the frames after at a falling weight on `CgFrameClock` |
 | `CgTranslucencyComposition` | Separate translucency (`AfterDOF`, `AfterMotionBlur`) over the scene and each graded layer (`translucency_compose.shader`) |
 | `aa` | `CgTemporalAA`: temporal anti-aliasing where the view's `temporalAA` show flag is on (off by default on every view). The resolve (`shaders/post/aa/taa_resolve.shader`) keeps Unreal's classic frame (the 3x3 input filtered by where the jitter took each sample, weighed 4/(4+luma); Catmull-Rom history fetched by the nearest texel's velocity, less the jitter; YCoCg) with a variance clip and three departures, measured against the faithful port in `plan/crystalgraphics/renderer/taa-for-you.md`: the history cut to a texel's smear where the 3x3's near and far motions part, a still texel the clip keeps cutting relaxing its clip (thin geometry), and a still texel keeping up to 63 frames. The history's alpha packs age (0-63) and cut count (0-31, x64). It writes the view's history; `taa_output.shader` copies it into the chain with the picture's alpha. The jitter (`CgView.jitter`, 8 Halton samples) moves the world passes' projection from `prepare` to the chain's end; last frame's matrix stays unjittered. The velocity target is RG16 UNORM (Unreal's encoding; half floats lose the jitter). For the engine's bloom (no graded layer), `taa_glow.shader` (`CgTemporalAA.glow`) takes each jittered frame's excess past bloom's threshold, follows the resolve's motion and averages it at 1/16, and `CgBloom.record` takes it as the frame's light with the threshold not taken again: past the resolve a light thinner than a texel fell under the threshold at its coverage and lost its glow. **It keeps to what the engine drew**: while it shows, every engine solid writes velocity (`requestVelocityWithStill`, still ones zero) and every blended draw marks the R8 responsive target (`CgEnginePasses.RESPONSIVE`, Unreal's Responsive AA); a texel neither wrote, nor any beside it (`cg_EngineDrew`), passes the resolve, the glow and RCAS as it came — a host's world, which draws unjittered and writes no velocity. A responsive texel takes at least a quarter of the new frame and keeps three frames at most, so a particle leaves no trail. See `-Dcrystalgraphics.post.debug=velocity` |
+| `upscale` | The temporal step's seam and the spatial upscale. `CgUpscaler` (Unreal's `ITemporalUpscaler`): `minFraction`, `rebuilds(f)`, `jitterSamples(f)`, `materialMipBias(f)`, `apply(ctx, input)`, `bloomLight(...)`; the chain picks one per view by `CgAntiAliasing` (`view.antiAliasing()`, under the `temporalAA` show flag): `TEMPORAL_AA` is `CgTemporalAA`, which never rebuilds. `CgSpatialUpscale` (`shaders/post/upscale/spatial_upscale.shader`): a view drawn below 100% (`view.screenPercentage`) runs its whole chain at that size into the target standing in for its host's (`CgViewRenderTarget`), and `present` upscales it into the host's by `view.upscaleFilter()` (`CgUpscaleFilter`: bilinear, Catmull-Rom the default, Lanczos 3, AMD's EASU, ported, MIT), the nearest texel's depth written where the host's target has one. While an upscaler rebuilds a picture, the jitter runs its sequence and world materials sample by its mip bias (`cg_MaterialMip`) |
 | `dof` | `CgDepthOfField`: depth of field from the blended settings' lens (`depthOfField...`, a post block's `depth_of_field`, the camera's focus and f-stop), off with no focus. Half size: setup (scene and signed circle of confusion), 8x8 tiles of the largest near and far radius, dilated, the far and near layers gathered on rings shaped by the aperture's blades, then a full-size recombine (`shaders/post/dof/`). Thin lens on the view's FOV and the settings' sensor; each layer's radius held to 2.5% of the width |
 
 | Package | Holds |
@@ -84,7 +87,9 @@ every point draws onto the host's target and the composite draws in its blend fo
 - Gates: `post-looks` (every look through a volume, from the pixels), `post-effects` (an effect at each point, one
   answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `velocity-conformance` (rigid, attached, instanced and skinned motion against the CPU's projection; still objects, frame records and a blended pane's responsive mark), `temporal-aa` (a dithered pane settles, a turned bar's edges resolve, a moved
   bar leaves no ghost), `depth-of-field` (a board in
-  focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp). `dof-lab` and `taa-lab` to play with.
+  focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp), `screen-percentage` (the
+  world at 50% through each upscale filter against 100%, `OVERLAY` at full size, a host's own world at 100%). `dof-lab`,
+  `taa-lab` and `upscale-lab` to play with.
 
 ## Writing an effect
 

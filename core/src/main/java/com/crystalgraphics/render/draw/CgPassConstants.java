@@ -41,7 +41,7 @@ public final class CgPassConstants {
     public static final String VIEW_BLOCK = "CgViewBlock", ENVIRONMENT_BLOCK = "CgEnvironmentBlock";
 
     /**
-     * {@code CgViewBlock} in std140: view, projection, time, resolution (+2 pad), camera, depth parameters, origin, the
+     * {@code CgViewBlock} in std140: view, projection, time, resolution, the material mip bias, camera, depth parameters, origin, the
      * previous frame's view-projection, and the frame's index, history validity and target encoding, and the origin's tile ({@link CgGpuScene#TILE}) and place in it, which a
      * scene record's position is decoded by.
      */
@@ -51,6 +51,7 @@ public final class CgPassConstants {
             .mat4("cg_ProjMatrix")
             .vec4("cg_Time")
             .vec2("cg_Resolution")
+            .vec2("cg_MaterialMip")
             .vec4("cg_CameraPos")
             .vec4("cg_DepthParams")
             .vec4("cg_WorldOrigin")
@@ -94,6 +95,8 @@ public final class CgPassConstants {
 
     private boolean linearScene, encodedTarget;
     private float sceneGlow = 1f;
+    /** {@code cg_MaterialMip.x}: what a world material's textures sample by ({@link #materialMipBias}). */
+    private float materialMipBias;
     private float originX;
     private float originY;
     private float originZ;
@@ -200,6 +203,16 @@ public final class CgPassConstants {
      */
     public CgPassConstants encodedTarget(boolean encoded) {
         this.encodedTarget = encoded;
+        return this;
+    }
+
+    /**
+     * The bias a surface or decal material's textures sample by ({@code cg_MaterialMip}, Unreal's
+     * {@code MaterialTextureMipBias}): its view's, negative while a temporal upscaler rebuilds a picture drawn smaller.
+     * 0 by default. {@code CgView} fills it for its camera.
+     */
+    public CgPassConstants materialMipBias(float bias) {
+        this.materialMipBias = bias;
         return this;
     }
 
@@ -320,6 +333,7 @@ public final class CgPassConstants {
         time = block[at + 33];
         width = block[at + 36];
         height = block[at + 37];
+        materialMipBias = block[at + 38];
         cameraX = block[at + 40];
         cameraY = block[at + 41];
         cameraZ = block[at + 42];
@@ -376,8 +390,8 @@ public final class CgPassConstants {
         out[at + 35] = time * 3f;
         out[at + 36] = width;
         out[at + 37] = height;
-        out[at + 38] = 0f;
-        out[at + 39] = 0f;
+        out[at + 38] = materialMipBias;
+        out[at + 39] = (float) Math.pow(2.0, materialMipBias);   // what a derivative is scaled by
         out[at + 40] = cameraX;
         out[at + 41] = cameraY;
         out[at + 42] = cameraZ;

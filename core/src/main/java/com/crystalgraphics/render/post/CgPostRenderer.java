@@ -8,6 +8,9 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.aa.CgTemporalAA;
+import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
+import com.crystalgraphics.render.post.upscale.CgUpscaler;
+import com.crystalgraphics.render.view.CgViewRenderTarget;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 import com.crystalgraphics.render.post.look.CgFilmLut;
@@ -38,6 +41,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * CgPostRenderer.prepare(view);       // the opaque callback: the scene's volumes blended, the textures asked for
  * CgPostRenderer.surfaces(firing);    // on the lit opaque scene, before the SURFACES stage
  * CgPostRenderer.record(firing);      // after the TRANSLUCENT stage: the chain, its last step into the host's target
+ * CgPostRenderer.present(firing);     // before OVERLAY: a view drawn below 100% upscaled into its host's target
  * }</pre>
  *
  * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, depth of
@@ -45,7 +49,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * bloom's threshold per jittered frame, averaged, so {@code SCENE}'s effects do not feed it), {@code SCENE}, bloom taken
  * from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
  * encoding into the host's target), {@code DISPLAY}, the crossfade, the debug view; a picture left in another texture
- * is copied into the host's target last.</p>
+ * is copied into the host's target last. A view drawn below 100% runs it all at the size it drew at, into the target
+ * standing in for its host's ({@code CgViewRenderTarget}), and {@link #present} upscales that into the host's target
+ * (Unreal's {@code PrimaryUpscale}).</p>
  */
 public final class CgPostRenderer {
 
@@ -66,7 +72,7 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW, CgViewRenderTarget.fillShader()};
 
     private static boolean installed;
     @Nullable
@@ -86,6 +92,7 @@ public final class CgPostRenderer {
         // A step a shader: each reads and parses its file to name its permutations, together 100 ms and more of a frame
         CgPipelinePrecache.Steps steps = CgPipelinePrecache.steps("crystalgraphics:post");
         for (String pass : WARMED) steps.step(pipelines -> pipelines.addPass(pass));
+        steps.step(CgSpatialUpscale::precache);
         // The bloom's and the tonemapper's table's kernels: their files parsed on a worker first
         steps.ahead(() -> CgKernel.ahead(CgPostRenderer::precacheKernels)).step(list -> list.kernels(CgPostRenderer::precacheKernels));
         steps.start();
@@ -149,12 +156,17 @@ public final class CgPostRenderer {
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
         settings.blend(view.post().camera(), 1f, 0.5f, 0.5f);
         CgSceneTextures textures = view.textures();
-        // Temporal AA's velocity, and its jitter from here to the chain's end: the world's passes, not the overlay's
+        // The temporal step's velocity, and its jitter from here to the chain's end: the world's passes, not the
+        // overlay's. Its sequence, and the material mip bias, follow how far it rebuilds the picture
         boolean temporal = view.showFlags().temporalAA();
         // Every engine solid writes, the still ones zero: temporal AA keeps to the texels the engine drew
         CgPostDebug debug = view.post().debug();
         if (temporal || debug != null && debug.showsVelocity()) textures.requestVelocityWithStill();
-        view.jittering(temporal && view.jitters());
+        CgUpscaler upscaler = view.post().upscaler(view.antiAliasing());
+        float fraction = view.resolutionFraction();
+        boolean rebuilds = temporal && upscaler.rebuilds(fraction);
+        view.jittering(temporal && view.jitters(), upscaler.jitterSamples(rebuilds ? fraction : 1f));
+        view.materialMipBias(rebuilds ? upscaler.materialMipBias(fraction) : 0f);
         if (CgPostLooks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
         if (readsScene(view.post(), settings)) {
             textures.requestNormals();
@@ -221,12 +233,15 @@ public final class CgPostRenderer {
             post.translucency.compose(ctx, picture);
             CgGraphTexture glow = null;
             if (CgTemporalAA.shows(view)) {
-                try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporalAA")) {
+                try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporal")) {
+                    CgUpscaler upscaler = post.upscaler(view.antiAliasing());
                     CgScreenTexture jittered = picture;
-                    picture = post.temporalAA.apply(ctx, picture);
+                    picture = upscaler.apply(ctx, picture);
                     // Bloom's light, taken per jittered frame and averaged: past the resolve, a light thinner than a texel
                     // falls under bloom's threshold at its coverage and loses its glow
-                    if (post.bloom.shows(ctx) && CgBloom.takesExcess(ctx)) glow = post.temporalAA.glow(ctx, jittered, picture, CgBloom.excessThreshold(ctx));
+                    if (post.bloom.shows(ctx) && CgBloom.takesExcess(ctx)) {
+                        glow = upscaler.bloomLight(ctx, jittered, picture, CgBloom.excessThreshold(ctx));
+                    }
                 }
                 ctx.input(picture);
             }
@@ -260,6 +275,23 @@ public final class CgPostRenderer {
             if (debug != null) picture = debug.apply(ctx, picture);
             settle(ctx, picture, host);
             view.jittering(false);
+        }
+    }
+
+    /**
+     * Before the {@code OVERLAY} stage, after {@link #record} or in its place: a view drawn below 100%, its picture
+     * finished at the size it drew at in the target standing in for its host's, upscaled into the host's target by its
+     * {@code upscaleFilter} (Unreal's {@code PrimaryUpscale}). {@code OVERLAY} then draws there at the full size. Nothing
+     * for a view drawn at 100%, or one a temporal upscaler already presented.
+     */
+    public static void present(CgStageFiring firing) {
+        if (!firing.scaled() || firing.presented()) return;
+        CgView view = firing.view();
+        try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.upscale")) {
+            firing.retarget(null, null);
+            int w = view.width(), h = view.height();
+            firing.present();
+            view.post().spatialUpscale.record(firing.recording(), firing.constants(), firing.output(), view.upscaleFilter(), w, h);
         }
     }
 

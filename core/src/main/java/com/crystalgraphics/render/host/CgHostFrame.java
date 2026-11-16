@@ -39,6 +39,7 @@ public final class CgHostFrame {
     @Nullable
     private CgExternalTarget target;
     private float guiScale = 1f;
+    private boolean drawsWorld = true;
     private CgView view = CgView.main();
 
     /**
@@ -52,6 +53,21 @@ public final class CgHostFrame {
     /** The view the next firings draw, kept until named again. */
     public CgHostFrame view(CgView view) {
         this.view = view;
+        return this;
+    }
+
+    /**
+     * Whether the host draws a world of its own into its target, the engine's drawn over it (Minecraft's terrain and
+     * entities): true unless it says otherwise. A host whose world is wholly the engine's (the harness) says false, and its
+     * views may then draw below 100% ({@code view.screenPercentage}); a host's own world cannot be drawn smaller.
+     */
+    public boolean drawsWorld() {
+        return drawsWorld;
+    }
+
+    /** Whether the host draws a world of its own ({@link #drawsWorld()}), kept until said again. */
+    public CgHostFrame drawsWorld(boolean draws) {
+        this.drawsWorld = draws;
         return this;
     }
 

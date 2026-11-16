@@ -13,6 +13,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewRenderTarget;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -31,6 +32,11 @@ import javax.annotation.Nullable;
  * firing.run(CgRenderStage.OPAQUE);
  * firing.execute();
  * }</pre>
+ *
+ * <p>A view drawn below 100% ({@code view.screenPercentage}) draws under a host frame of its own: a target of the size
+ * its world draws at standing in for the host's ({@link #host()}, {@link #scaled()}), which the caller makes the
+ * execution's current target, and the host's own as {@link #output()}, which the post chain {@link #present presents}
+ * into.</p>
  */
 public final class CgStageFiring {
 
@@ -78,9 +84,37 @@ public final class CgStageFiring {
         return frame.recording;
     }
 
-    /** What the host said about the frame this firing draws. */
+    /**
+     * What the host said about the frame this firing draws: for a view drawn below 100%, the host frame of the target
+     * standing in for the host's, whose target is the execution's current one.
+     */
     public CgHostFrame host() {
         return frame.host;
+    }
+
+    /** Whether its view draws below 100%, into a target standing in for the host's. */
+    public boolean scaled() {
+        return frame.output != null;
+    }
+
+    /** The host's target, which the view's picture ends in: {@code CgGraphTexture.current()} unless it is scaled. */
+    public CgGraphTexture output() {
+        return frame.output != null ? frame.output : CgGraphTexture.current();
+    }
+
+    /** Whether the view's picture has been upscaled into {@link #output()}. */
+    public boolean presented() {
+        return frame.presented;
+    }
+
+    /**
+     * The post chain's: the view's picture is upscaled into {@link #output()} from here, so what records after (the
+     * rest of the chain where a temporal upscaler presented, {@code OVERLAY}) draws there at the output's size.
+     */
+    public void present() {
+        if (frame.output == null) throw new IllegalStateException(frame.view + " draws at 100%: it has nothing to present");
+        frame.presented = true;
+        frame.view().camera().resolution(frame.view().outputWidth(), frame.view().outputHeight());
     }
 
     /** The view a world firing draws. */
@@ -99,20 +133,39 @@ public final class CgStageFiring {
         long[] last = named.state().get(drawn);
         CgView view = last[0] == now ? CgView.unkeptFor(named) : named;
         last[0] = now;
-        view.size(host.width(), host.height());
+        view.size(host.width(), host.height(), !host.drawsWorld());
         view.camera().set(host.camera());
         view.environment().set(host.environment());
         view.hostTextures().set(host.textures());
         view.beginFrame(now, host.target());
         if (opens) view.beginDraw();
-        begin(host, view);
+        begin(host, view, opens);
     }
 
-    /** A view of the engine's own begins a whole draw (a viewport, a capture): its camera and size are its owner's. */
+    /**
+     * A view of the engine's own begins a whole draw (a viewport, a capture): its camera is its owner's, its output the
+     * host's target.
+     */
     public void beginView(CgHostFrame host, CgView view) {
+        view.size(host.width(), host.height(), !host.drawsWorld());
         view.beginFrame(CgFrameRing.frame(), host.target());
         view.beginDraw();
-        begin(host, view);
+        begin(host, view, true);
+    }
+
+    /**
+     * A world firing begins on {@code view}: under the host's frame, or for a view drawn below 100% under its target's
+     * of that size, the draw's opening ({@code opens}) filling it with the host's picture so far.
+     */
+    private void begin(CgHostFrame host, CgView view, boolean opens) {
+        if (!view.scaled()) {
+            begin(host, view);
+            return;
+        }
+        CgViewRenderTarget small = view.renderTarget();
+        begin(small.host(host, view.width(), view.height()), view);
+        frame.output = small.output(host.target());
+        if (opens) small.fill(frame.recording, constants(), frame.output);
     }
 
     /** A GUI or custom stage's firing begins: once a frame, no view. */
@@ -126,6 +179,8 @@ public final class CgStageFiring {
         frame.stage = null;
         frame.target = null;
         frame.depth = null;
+        frame.output = null;
+        frame.presented = false;
         frame.recording.reset();
         pyramidBuilt = false;
     }

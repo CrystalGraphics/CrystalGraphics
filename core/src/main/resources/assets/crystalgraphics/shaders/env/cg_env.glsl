@@ -47,6 +47,7 @@ CG_BIND(0, 0) layout(std140) uniform CgViewBlock {
     mat4 cg_ProjMatrix;
     vec4 cg_Time;        // (t/20, t, t*2, t*3) - seconds, scaled like Unity _Time
     vec2 cg_Resolution;  // viewport size in pixels
+    vec2 cg_MaterialMip; // x the bias a world material's textures sample by (a temporal upscaler's), y 2^x: a derivative's scale
     vec4 cg_CameraPos;   // world-space camera position in .xyz; .w unused, see CG_CAMERA_WORLD_POS
     vec4 cg_DepthParams; // x: 1 when the target's depth is reversed, the engine's (nearer is greater); y: 1, clip depth 0..1;
                          // z: 1 when the target is the linear HDR scene (CG_LINEAR_SCENE); w: its glow gain

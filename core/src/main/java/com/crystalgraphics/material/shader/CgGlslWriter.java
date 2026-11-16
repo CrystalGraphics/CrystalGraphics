@@ -77,6 +77,13 @@ public final class CgGlslWriter {
 
     /** First in each generated main: an arena material's values, read from the draw's slot. */
     private static final String MATERIAL_LOAD = "\n#ifdef CG_MATERIAL_ARENA\n  _cg_material();\n#endif";
+    /**
+     * A world material's fragment code samples its textures by the view's mip bias (Unreal's view material sampler):
+     * sharper while a temporal upscaler rebuilds a picture drawn smaller, 0 otherwise. Screen textures have one level and
+     * are left as they are. A call giving a bias of its own does not compile under it: {@code textureLod} picks a level.
+     */
+    static final String MIP_BIAS = "#define texture(s, p) texture(s, p, cg_MaterialMip.x)\n"
+            + "#define textureGrad(s, p, dx, dy) textureGrad(s, p, (dx) * cg_MaterialMip.y, (dy) * cg_MaterialMip.y)\n";
 
     private static final char NL = '\n';
 
@@ -269,6 +276,7 @@ public final class CgGlslWriter {
         boolean volume = forward(pass, keywords, CgEngineKeywords.VOLUME_TARGET);
         boolean normals = forward(pass, keywords, CgEngineKeywords.NORMAL_TARGET) && !volume;
         v2fBlock(sb, "in", pass, forward(pass, keywords, CgEngineKeywords.NORMAL_TARGET));
+        if (spec.domain() == CgMaterialDomain.SURFACE || spec.domain() == CgMaterialDomain.DECAL) sb.append(MIP_BIAS);
         code(sb, pass, CgShaderPass.FRAGMENT);
         boolean layer = forward(pass, keywords, CgEngineKeywords.LAYER_TARGET) && !normals && !volume;
         sb.append("out vec4 _cg_fragColor;\n");

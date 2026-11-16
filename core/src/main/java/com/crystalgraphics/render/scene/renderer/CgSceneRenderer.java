@@ -385,6 +385,7 @@ public final class CgSceneRenderer {
         }
         firing.run(CgRenderStage.TRANSLUCENT);
         if (view.showFlags().post()) CgPostRenderer.record(firing);
+        CgPostRenderer.present(firing);
         firing.run(CgRenderStage.OVERLAY);
     }
 

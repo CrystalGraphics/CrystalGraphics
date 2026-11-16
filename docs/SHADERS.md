@@ -34,6 +34,10 @@ used, in plain terms, and how to force units with `-Dcrystalgraphics.bindless=fa
   writes the declarations, and code that works on one path works on the other.
 - **No engine limit on how many textures a material reads.** On units, more than the GPU's stage binds, less the view's
   five, fails to load naming both numbers.
+- **A surface or decal material's `texture()` samples by the view's mip bias** (`cg_MaterialMip.x`, Unreal's view
+  material sampler): sharper while a temporal upscaler rebuilds a picture drawn below 100%, 0 otherwise. Its fragment
+  stage defines `texture(s, p)` as `texture(s, p, cg_MaterialMip.x)` and scales `textureGrad`'s derivatives to match,
+  so a call giving a bias of its own does not compile there: pick the level with `textureLod`.
 - The view's textures (`cg_DepthBuffer`, `cg_SceneColor`, `cg_Lightmap`, `cg_Media`, `cg_LocalLights`, below) keep their
   names on both paths. On OpenGL `cg_DepthBuffer` and `cg_Lightmap` stay on units even where the rest is bindless,
   since they may be Minecraft's own.

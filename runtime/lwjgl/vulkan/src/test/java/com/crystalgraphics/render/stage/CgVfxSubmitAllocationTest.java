@@ -109,7 +109,7 @@ public class CgVfxSubmitAllocationTest {
         final CgStageFiring firing = new CgStageFiring("test.submit_allocation");
 
         Eye() {
-            view.size(64, 64).camera().set(0, 0, 0, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f));
+            view.size(64, 64, true).camera().set(0, 0, 0, new Matrix4f(), new Matrix4f().perspective(1.2f, 1f, 0.1f, 256f));
         }
 
         void draw() {

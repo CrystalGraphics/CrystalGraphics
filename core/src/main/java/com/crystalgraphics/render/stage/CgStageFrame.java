@@ -72,6 +72,11 @@ public final class CgStageFrame {
     CgRenderStage stage;
     @Nullable
     CgGraphTexture target, depth;
+    /** The host's target where the view draws below 100% and presents into it; null where the view draws into it. */
+    @Nullable
+    CgGraphTexture output;
+    /** Whether the view's picture has been upscaled into {@link #output}: what draws after draws there, at full size. */
+    boolean presented;
     /** Whether this turn's canvas draws in the host GUI's pixels ({@link #scaled}). */
     private boolean guiPixels;
 
@@ -114,15 +119,17 @@ public final class CgStageFrame {
 
     /**
      * What this stage draws onto: the host's target before our opaque scene and at a GUI stage, the HDR scene from
-     * {@code SURFACES} to {@code TRANSLUCENT}, the final picture at {@code OVERLAY}.
+     * {@code SURFACES} to {@code TRANSLUCENT}, the final picture at {@code OVERLAY}. A view drawn below 100% draws
+     * into a target of its size standing in for the host's until its picture is upscaled; {@code OVERLAY} then draws
+     * into the host's.
      */
     public CgGraphTexture target() {
-        return target != null ? target : CgGraphTexture.current();
+        return target != null ? target : presented ? output : CgGraphTexture.current();
     }
 
     /** The depth {@link #target()} is drawn with: a pass into it that tests depth declares it. */
     public CgGraphTexture depth() {
-        return depth != null ? depth : CgGraphTexture.current();
+        return depth != null ? depth : presented ? output : CgGraphTexture.current();
     }
 
     /**
@@ -176,13 +183,13 @@ public final class CgStageFrame {
         return gui.set(host.camera()).time(CgFrameClock.seconds()).resolution(host.width(), host.height());
     }
 
-    /** {@link #target()}'s width in pixels. */
+    /** {@link #target()}'s width in pixels: the size the view's world draws at, its output's once presented. */
     public int width() {
-        return view != null ? view.width() : host.width();
+        return view != null ? presented ? view.outputWidth() : view.width() : host.width();
     }
 
     public int height() {
-        return view != null ? view.height() : host.height();
+        return view != null ? presented ? view.outputHeight() : view.height() : host.height();
     }
 
     /** The host GUI's device pixels per GUI pixel (Minecraft's GUI scale); 1 at a world stage. */

@@ -132,14 +132,18 @@ public final class CgStageHost {
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, f.zone)) {
                     if (world) {
                         f.firing.beginWorld(f.host, stage == WORLD_OPAQUE);
-                        CgSceneRenderer renderer = f.firing.view().scene().renderer();
-                        if (stage == WORLD_OPAQUE) renderer.opaque(f.firing);
-                        else renderer.translucent(f.firing);
+                        // A view drawn below 100% draws into a target of its own size, presenting into the host's
+                        try (CgExecutor.Into small = f.firing.scaled() ? CgExecutor.into(f.firing.host().target()) : null) {
+                            CgSceneRenderer renderer = f.firing.view().scene().renderer();
+                            if (stage == WORLD_OPAQUE) renderer.opaque(f.firing);
+                            else renderer.translucent(f.firing);
+                            f.firing.execute();
+                        }
                     } else {
                         f.firing.beginOnce(f.host);
                         f.firing.run(stage);
+                        f.firing.execute();
                     }
-                    f.firing.execute();
                 } finally {
                     firing--;
                     CgGpuTrace.end();
@@ -180,8 +184,7 @@ public final class CgStageHost {
         // Its scene's captures first: each is a renderView of its own, and the shared firing below is begun after
         if (CgGraphicsLifecycle.isInitialized()) view.scene().primitives().updateCaptures();
         CgHostFrame game = frame(WORLD_OPAQUE);
-        VIEWS.host.set(game.partialTick(), target.width(), target.height(), target);
-        view.size(target.width(), target.height());
+        VIEWS.host.set(game.partialTick(), target.width(), target.height(), target).drawsWorld(false);
         if (view.scene() == CgScene.client()) {
             view.environment().set(game.environment());
             view.hostTextures().set(game.textures());
@@ -197,10 +200,12 @@ public final class CgStageHost {
                 firing++;
                 try (CgTrace.Zone z = CgTrace.zone(CgChannels.WORLD, VIEWS.zone)) {
                     VIEWS.firing.beginView(VIEWS.host, view);
-                    CgSceneRenderer renderer = view.scene().renderer();
-                    renderer.opaque(VIEWS.firing);
-                    renderer.translucent(VIEWS.firing);
-                    VIEWS.firing.execute();
+                    try (CgExecutor.Into small = VIEWS.firing.scaled() ? CgExecutor.into(VIEWS.firing.host().target()) : null) {
+                        CgSceneRenderer renderer = view.scene().renderer();
+                        renderer.opaque(VIEWS.firing);
+                        renderer.translucent(VIEWS.firing);
+                        VIEWS.firing.execute();
+                    }
                 } finally {
                     firing--;
                     CgGpuTrace.end();

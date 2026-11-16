@@ -256,7 +256,14 @@ Kept kept = frame.view().state().get(KEPT);                      // a renderer's
 - **`renderPicture(w, h, argb)`** is Unreal's scene capture: the view drawn now into colour and depth of its own, kept
   and remade only on a new size; read the texture each frame, and `releasePicture()` when the view goes.
 - **`pick(x, y)`** is the nearest visible primitive whose world box the ray through that pixel meets (Godot's editor
-  selection ray): a box, not a triangle.
+  selection ray): a box, not a triangle. In its picture's pixels, its output size.
+- **`screenPercentage(p)`** draws its world at p% of its size on each axis and upscales it into its target (Unreal's
+  `r.ScreenPercentage`, 25 to 100, 100 by default); `screenPercentageAuto(true)` picks it from the output's size as
+  Unreal's desktop default does (1080 lines at 73%, 2160 at 50%), and `upscaleFilter(CgUpscaleFilter)` how it is
+  stretched (Catmull-Rom by default, bilinear, Lanczos, AMD's EASU). `width()`/`height()` are the size its world draws
+  at, `outputWidth()`/`outputHeight()` its target's; every scene texture and history is the smaller size, `OVERLAY` the
+  full one. A view whose host draws a world of its own (Minecraft's: `CgHostFrame.drawsWorld()`) draws at 100%, warned
+  once; the harness and `renderPicture`/`renderInto` views draw at any.
 - The main view's camera, size and environment are its host's, refilled each frame: read them, never set them.
 - `textures()` and `publish`/`read` (`CgViewKey`) reset when the view's draw begins: they hand values within one
   draw, from one stage to a later one. A hand-off across frames goes in `state()` (`CgViewState`).
