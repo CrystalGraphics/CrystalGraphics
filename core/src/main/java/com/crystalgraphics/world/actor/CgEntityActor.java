@@ -380,7 +380,7 @@ public abstract class CgEntityActor {
 
     /** The body as a reaction's every role: its clips by id, every section on the reaction's slot. */
     private record Reacting(CgEntityActor actor, CgSkeletalMeshComponent body, String slot) implements CgSequenceSkeletal {
-        @Override @Nullable public Object entity() {
+        @Override @Nullable public Object hostEntity() {
             return actor.hostEntity();
         }
 

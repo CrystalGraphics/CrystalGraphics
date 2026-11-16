@@ -217,7 +217,7 @@ public class CgEntityActorRootMotionTest {
     }
 
     /** Its role: the body its clips play on. */
-    record Role(CgAnimInstance body, Object entity) implements CgSequenceSkeletal {
+    record Role(CgAnimInstance body, Object hostEntity) implements CgSequenceSkeletal {
         @Override public CgAnimInstance instance() {
             return body;
         }

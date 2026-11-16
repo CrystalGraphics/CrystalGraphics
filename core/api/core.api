@@ -14734,7 +14734,7 @@ com/crystalgraphics/sequence/CgSequencePlayer
 com/crystalgraphics/sequence/CgSequenceTarget
   access public,abstract,interface
   extends java/lang/Object
-  method public entity ()Ljava/lang/Object;
+  method public hostEntity ()Ljava/lang/Object;
   method public part (Lcom/crystalgraphics/sequence/definition/CgSequenceBinding$Part;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequenceTarget;
   method public primitive ()Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public,abstract get (I[F)V

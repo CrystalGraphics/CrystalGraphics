@@ -143,7 +143,7 @@ public final class CgMoveLocks {
 
         @Override
         public void begin(CgNotifyContext c) {
-            Object entity = c.target() == null ? null : c.target().entity();
+            Object entity = c.target() == null ? null : c.target().hostEntity();
             if (entity == null) return;
             Map<?, ?> p = c.properties();
             int what = (flag(p, "input", true) ? INPUT : 0) | (flag(p, "ai", true) ? AI : 0) | (flag(p, "gravity", false) ? GRAVITY : 0);

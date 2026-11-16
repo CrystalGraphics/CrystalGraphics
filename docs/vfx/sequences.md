@@ -676,7 +676,7 @@ unless said).
 
 - **Released** by playing past its end, by the sequence stopping, or by a seek before it; holds count, so two moves
   holding at once let go only when both have, and the entity's own state comes back (a mob summoned without AI stays so).
-- **Its target names the entity** (`CgSequenceTarget.entity()`): an entity actor's reactions answer it; a role of your
+- **Its target names the entity** (`CgSequenceTarget.hostEntity()`): an entity actor answers it, as its reactions do; a role of your
   own answers its entity, the loader's object on that side. Code holds the same way through `CgMoveLocks.hold`.
 - **Each part applies where it can**: the keys on the client whose player it is, the AI on the server, gravity on the
   server (sent to the entity's clients) and on a client for its own player. 1.7.10 has no AI or gravity switch, Forge

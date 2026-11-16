@@ -72,10 +72,11 @@ public interface CgSequenceTarget {
 
     /**
      * The host entity it plays on, the loader's own object on this side, or null for none: what a
-     * {@code crystalgraphics:move_lock} span holds. An entity actor's body answers its entity.
+     * {@code crystalgraphics:move_lock} span holds. An entity actor answers its entity ({@code CgEntityActor.hostEntity}),
+     * so an actor that is its own role, and its reactions, need nothing more.
      */
     @Nullable
-    default Object entity() {
+    default Object hostEntity() {
         return null;
     }
 }
