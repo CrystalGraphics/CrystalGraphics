@@ -289,7 +289,7 @@ final class MotionWarpingStation implements AnimDemoStation {
 
     /** The cast's clip named exactly {@code name}'s ending, not a longer one that contains it. */
     @Nullable
-    private static CgAnimSequence exact(AnimDemoCast cast, String name) {
+    static CgAnimSequence exact(AnimDemoCast cast, String name) {
         for (AnimDemoCast.Clip c : cast.clips) {
             String n = c.name();
             int dot = n.lastIndexOf('.');
@@ -299,7 +299,7 @@ final class MotionWarpingStation implements AnimDemoStation {
     }
 
     /** A sequence of one section, its clip the caster's lunge. */
-    private static CgSequenceDefinition sequence(String id, float seconds) {
+    static CgSequenceDefinition sequence(String id, float seconds) {
         int ms = Math.round(seconds * 1000);
         return CgSequenceDefinition.compile(CgAssetData.of(id, CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(
                 "_v: 1\ntick_resolution: 1000\ndisplay_rate: 60\nrange: [0, " + ms + "]\nroles:\n  - { id: b1, name: caster, kind: caster }\n"

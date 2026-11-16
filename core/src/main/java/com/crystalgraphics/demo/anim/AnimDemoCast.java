@@ -68,7 +68,7 @@ final class AnimDemoCast {
     final List<Clip> clips;
     /** Mesh to body: its feet on the floor, facing +z. */
     final Matrix4f fit;
-    private final IntFunction<CgMaterial> materials;
+    final IntFunction<CgMaterial> materials;
     /** Every body of every cast now standing, shared by the casts: what the demo's time steps and records. */
     private final List<Body> live;
 

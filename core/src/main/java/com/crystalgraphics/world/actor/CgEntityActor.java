@@ -150,6 +150,15 @@ public abstract class CgEntityActor {
         if (turn != 0f) CgEntityMovement.turn(host, yaw - (float) Math.toDegrees(turn));
     }
 
+    /**
+     * The server's actor's entity, the loader's own object: what a server-side query or movement takes
+     * ({@code CgEntityQueries.of(serverEntity())}, {@code CgEntityMovement.rotate(serverEntity(), yaw, 0f)}). Null on a client.
+     */
+    @Nullable
+    protected final Object serverEntity() {
+        return server ? host : null;
+    }
+
     /** Its root: where the entity stands this frame. */
     public final CgSceneRoot root() {
         return root;
