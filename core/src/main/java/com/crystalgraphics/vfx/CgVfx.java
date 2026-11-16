@@ -21,7 +21,6 @@ import com.crystalgraphics.vfx.camera.CgCameraShake;
 import com.crystalgraphics.vfx.look.CgVfxLook;
 import com.crystalgraphics.vfx.net.CgVfxCueClient;
 import com.crystalgraphics.platform.CgPlatform;
-import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.render.scene.prefab.CgPrefabEffects;
 import com.crystalgraphics.vfx.system.CgVfxSystemInstance;
 import com.crystalgraphics.vfx.prefab.CgVfxPrefabPreparer;
@@ -181,7 +180,6 @@ public final class CgVfx {
         // Characters' clocks the server sends, kept on the level's tick: the effects following them hold and slow.
         CgCharacterClockNet.install(() -> CgView.main().environment().gameTime());
         CgVfxSystemAssets.register();   // system assets compile to playable definitions
-        CgPrefabAssets.register();
         // A scene's prefabs play their effect nodes in the world's system, each following its node
         CgPlatform.provide(CgPrefabEffects.HOST, (effect, at) -> {
             CgVfxSystemInstance<?> play = new CgVfxSystemInstance<>(CgVfxAssets.ref(CgParticleKinds.SYSTEM, effect), 0, 0, 0);

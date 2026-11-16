@@ -15,7 +15,6 @@ import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.vfx.CgVfx;
 import com.crystalgraphics.vfx.CgVfxSystem;
-import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemDefinition;
 import com.crystalgraphics.render.scene.prefab.CgPrefab;
@@ -80,7 +79,6 @@ public final class CgKitAssets {
         // Its textures and shaders read from its own folder, with no resource root holding assets/<namespace>
         CgIO.mount(namespace, kit);
         CgVfxSystemAssets.register();
-        CgPrefabAssets.register();
         // Mounted on the process's assets, as a mod's: the world's cue manager routes the kit's cues from that registry
         CgVfxAssets assets = CgVfxAssets.instance();
         // The engine's world has its preparers; a scene's own system warms what it plays too

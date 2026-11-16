@@ -22,7 +22,6 @@ import java.util.Map;
  * prefab back to its file. Unreal's Blueprint actor and its component tree, CC2's clump.
  *
  * <pre>{@code
- * CgPrefabAssets.register();                                    // the pipeline compiles prefabs so
  * CgPrefab shock = CgVfxAssets.<CgPrefab>ref(CgBodyKinds.PREFAB, "nsuns4_kit:1efcmn/1efc_shock08").get();
  * }</pre>
  *
@@ -77,7 +76,7 @@ public final class CgPrefabAssets {
     private CgPrefabAssets() {
     }
 
-    /** Sets {@link #COMPILER} as the prefab kind's. */
+    /** Sets {@link #COMPILER} as the prefab kind's; the engine does, on both sides, as the process's assets are made. */
     public static void register() {
         CgAssetCompiler.register(CgBodyKinds.PREFAB, COMPILER);
     }
