@@ -1,58 +1,24 @@
 package com.crystalgraphics.world;
 
+import static com.crystalgraphics.world.CgEntityProperties.*;
+
+import com.crystalgraphics.net.object.CgNetBehaviour;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
+import com.crystalgraphics.render.host.CgStageHost;
 
 /**
- * What one entity is doing this frame, derived on each side from what the host says of it, never sent or saved: how
- * fast it moves, whether it is on the ground, sneaking, swimming, gliding, riding or sleeping, what each hand holds and
- * how its arm is posed, how far into a use or a swing it is, and what just happened ({@link CgEntityEvents}: a jump, a
- * landing, a hit, a swing, a death). The same on every Minecraft version and on both sides; an entity actor's is
- * {@code CgEntity.state()}, refreshed before its tick. {@link CgEntityFields} names each value for a graph.
- *
- * <pre>{@code
- * protected void tick(CgEntity fighter, float dt) {
- *     CgEntityState s = fighter.state();
- *     body.anim().set(SPEED, s.speed());
- *     if (s.fired(CgEntityEvents.LANDED) && s.landHeight() > 3) body.anim().montages().play(HARD_LANDING);
- *     if (s.fired(CgEntityEvents.SWING_STARTED)) body.anim().montages().play(SLASH);
- * }
- * }</pre>
- *
- * Any entity, kept by whoever watches it:
- * <pre>{@code
- * CgEntityState state = new CgEntityState();                     // one per entity, kept while it lives
- * double[] pose = new double[CgEntityQuery.POSE_LENGTH];
- * // each frame:
- * if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, partialTick, dt, pose);
- * }</pre>
- *
- * <ul>
- *   <li>Events last one {@link #update}: read them in the frame they happen. The first update after construction or
- *       {@link #reset} raises none, so an entity seen mid-jump does not jump.</li>
- *   <li>Its motion is smooth between Minecraft's 20 ticks a second: {@link #speed}, {@link #verticalSpeed},
- *       {@link #moveDirection} and {@link #acceleration} follow the last two ticks' movement across the frame, as the
- *       drawn position does; {@link #turnRate} and {@link #groundDistance} are read each frame.</li>
- *   <li>A state a version lacks reads as not happening (no gliding before 1.10.2, no off hand before 1.10.2).</li>
- *   <li>The arm pose is Minecraft's own rule for a player's arms, the latest version's, on every version and for every
- *       entity: a mob's renderer may pose its arms its own way.</li>
- *   <li>It allocates nothing.</li>
- * </ul>
+ * Works out {@link CgEntityProperties#MOTION}'s fields for one entity from what its host says of it: on the server each
+ * tick, on a client each frame at the frame's partial tick. Its events last one update; the first update raises none.
+ * Allocates nothing.
  */
-public final class CgEntityState {
+final class CgEntityMotion implements CgNetBehaviour {
 
-    /** {@link CgEntityEvents}' bits. */
-    static final int JUMPED = 1, LANDED = 1 << 1, HURT = 1 << 2, SWING_STARTED = 1 << 3, USE_STARTED = 1 << 4,
-            USE_STOPPED = 1 << 5, MOUNTED = 1 << 6, DISMOUNTED = 1 << 7, DIED = 1 << 8;
-
-    /** How an arm is posed ({@link #armPose}): Minecraft's {@code HumanoidModel.ArmPose}. */
-    public static final int ARM_EMPTY = 0, ARM_ITEM = 1, ARM_BLOCK = 2, ARM_BOW = 3, ARM_THROW = 4,
-            ARM_CROSSBOW_CHARGE = 5, ARM_CROSSBOW_HOLD = 6, ARM_SPYGLASS = 7, ARM_TOOT_HORN = 8, ARM_BRUSH = 9,
-            ARM_SPEAR = 10;
-
-    /** The hands, as {@link CgEntityFacts} names them. */
-    public static final int MAIN = CgEntityFacts.MAIN, OFF = CgEntityFacts.OFF;
+    /** Its events, as bits. */
+    static final int JUMPED_BIT = 1, LANDED_BIT = 1 << 1, HURT_BIT = 1 << 2, SWING_STARTED_BIT = 1 << 3, USE_STARTED_BIT = 1 << 4,
+            USE_STOPPED_BIT = 1 << 5, MOUNTED_BIT = 1 << 6, DISMOUNTED_BIT = 1 << 7, DIED_BIT = 1 << 8;
 
     private static final float TICKS_PER_SECOND = 20f;
     /** Below this a tick's movement is standing still, blocks: what friction leaves of a stop. */
@@ -86,7 +52,7 @@ public final class CgEntityState {
      * {@link #groundDistance} looks down through ({@link CgWorldQuery#NONE}: never found). False, with the state
      * unchanged, where the host answers no facts for it.
      */
-    public boolean update(CgEntityQuery entities, CgWorldQuery world, int id, float partialTick, float dt,
+    boolean update(CgEntityQuery entities, CgWorldQuery world, int id, float partialTick, float dt,
                           double[] pose) {
         if (!entities.facts(id, partialTick, read.clear())) return false;
         CgEntityFacts spare = was;
@@ -121,25 +87,25 @@ public final class CgEntityState {
         air(dt);
         groundDistance = ground(world, pose);
         if (now.hurtTime > was.hurtTime) {
-            events |= HURT;
+            events |= HURT_BIT;
             hurtSeconds = 0f;
         } else {
             hurtSeconds += dt;
         }
-        if (now.has(CgEntityFacts.DEAD) && (was.bits & CgEntityFacts.DEAD) == 0) events |= DIED;
+        if (now.has(CgEntityFacts.DEAD) && (was.bits & CgEntityFacts.DEAD) == 0) events |= DIED_BIT;
         if (now.vehicle != was.vehicle) {
-            if (was.vehicle >= 0) events |= DISMOUNTED;
-            if (now.vehicle >= 0) events |= MOUNTED;
+            if (was.vehicle >= 0) events |= DISMOUNTED_BIT;
+            if (now.vehicle >= 0) events |= MOUNTED_BIT;
         }
         boolean swinging = now.has(CgEntityFacts.SWINGING);
-        if (swinging && ((was.bits & CgEntityFacts.SWINGING) == 0 || now.swing < was.swing)) events |= SWING_STARTED;
+        if (swinging && ((was.bits & CgEntityFacts.SWINGING) == 0 || now.swing < was.swing)) events |= SWING_STARTED_BIT;
         use(partialTick, dt);
         arms();
         return true;
     }
 
     /** Forgets what it saw: the next {@link #update} starts it afresh, raising no events. */
-    public void reset() {
+    void reset() {
         now.clear();
         was.clear();
         primed = false;
@@ -220,14 +186,14 @@ public final class CgEntityState {
             return;
         }
         if (wasGrounded && !grounded) {
-            if (now.moveY > 0) events |= JUMPED;
+            if (now.moveY > 0) events |= JUMPED_BIT;
             airSeconds = 0f;
             peakY = now.y;
         } else if (!grounded) {
             airSeconds += dt;
             peakY = Math.max(peakY, now.y);
         } else if (!wasGrounded) {
-            events |= LANDED;
+            events |= LANDED_BIT;
             landHeight = (float) Math.max(0, peakY - now.y);
         }
         if (grounded) peakY = now.y;
@@ -238,8 +204,8 @@ public final class CgEntityState {
         boolean restarted = wasUsing && using && (now.useHand != was.useHand
                 || now.useTicks >= 0 && was.useTicks >= 0 && now.useTicks < was.useTicks);
         boolean started = using && (!wasUsing || restarted);
-        if (wasUsing && (!using || restarted)) events |= USE_STOPPED;
-        if (started) events |= USE_STARTED;
+        if (wasUsing && (!using || restarted)) events |= USE_STOPPED_BIT;
+        if (started) events |= USE_STARTED_BIT;
         // a host that cannot say how far in (1.7.10 and 1.8.9 servers) is counted from the start seen
         if (!using || started && now.useTicks < 0) useSeconds = 0f;
         else if (now.useTicks >= 0) useSeconds = (now.useTicks + partialTick) / TICKS_PER_SECOND;
@@ -283,13 +249,8 @@ public final class CgEntityState {
 
     // ── what it is doing ────────────────────────────────────────────────────────
 
-    /** Whether {@code event} ({@link CgEntityEvents#JUMPED}, ...) happened in the last {@link #update}. */
-    public boolean fired(CgEntityEvent<?> event) {
-        return (events & event.bit) != 0;
-    }
-
     /** Whether any event happened in the last {@link #update}. */
-    public boolean firedAny() {
+    boolean firedAny() {
         return events != 0;
     }
 
@@ -298,12 +259,12 @@ public final class CgEntityState {
     }
 
     /** Its speed along the ground, blocks a second, smooth across the frame. */
-    public float speed() {
+    float speed() {
         return (float) Math.sqrt(velocityX * velocityX + velocityZ * velocityZ);
     }
 
     /** Its vertical speed, blocks a second, smooth across the frame: up positive. */
-    public float verticalSpeed() {
+    float verticalSpeed() {
         return (float) velocityY;
     }
 
@@ -311,7 +272,7 @@ public final class CgEntityState {
      * Which way it moves against its body's facing, degrees: 0 ahead, 90 to its left, 180 back; 0 standing. What
      * orientation warping turns the legs by, and what picks a start or stop clip's direction.
      */
-    public float moveDirection() {
+    float moveDirection() {
         double still = MOVING * TICKS_PER_SECOND;
         if (velocityX * velocityX + velocityZ * velocityZ < still * still) return 0f;
         double yaw = Math.toRadians(bodyYaw), c = Math.cos(yaw), sn = Math.sin(yaw);
@@ -322,14 +283,14 @@ public final class CgEntityState {
      * How fast its ground speed changes, blocks a second a second: positive speeding up, negative slowing. From its last
      * two ticks, so it holds for a tick: what tells a start from a run and a stop from a walk.
      */
-    public float acceleration() {
+    float acceleration() {
         double latest = Math.sqrt(tickX * tickX + tickZ * tickZ);
         double before = Math.sqrt(lastTickX * lastTickX + lastTickZ * lastTickZ);
         return (float) (latest - before) * TICKS_PER_SECOND * TICKS_PER_SECOND;
     }
 
     /** How fast its body turns, degrees a second: positive to its left. Minecraft's yaw grows turning right. */
-    public float turnRate() {
+    float turnRate() {
         return -turnRate;
     }
 
@@ -337,99 +298,99 @@ public final class CgEntityState {
      * How high its feet are over the first surface under them, blocks: 0 on the ground, infinite where nothing is found
      * within 64 blocks or its level has no blocks to ask. What a landing anticipates by.
      */
-    public float groundDistance() {
+    float groundDistance() {
         return groundDistance;
     }
 
-    public boolean living() {
+    boolean living() {
         return now.has(CgEntityFacts.LIVING);
     }
 
-    public boolean grounded() {
+    boolean grounded() {
         return now.has(CgEntityFacts.GROUNDED);
     }
 
-    public boolean sneaking() {
+    boolean sneaking() {
         return now.has(CgEntityFacts.SNEAKING);
     }
 
-    public boolean sprinting() {
+    boolean sprinting() {
         return now.has(CgEntityFacts.SPRINTING);
     }
 
     /** In the swimming pose: swimming in water, or crawling out of it. */
-    public boolean swimming() {
+    boolean swimming() {
         return now.has(CgEntityFacts.SWIM_POSE) && now.has(CgEntityFacts.IN_WATER);
     }
 
     /** In the swimming pose out of water: under a block too low to stand in. */
-    public boolean crawling() {
+    boolean crawling() {
         return now.has(CgEntityFacts.SWIM_POSE) && !now.has(CgEntityFacts.IN_WATER);
     }
 
     /** 0 standing to 1 lying in the swimming pose, eased as Minecraft eases it, 0.45 s each way. */
-    public float swimAmount() {
+    float swimAmount() {
         return swimAmount;
     }
 
     /** Gliding on elytra. */
-    public boolean gliding() {
+    boolean gliding() {
         return now.has(CgEntityFacts.GLIDING);
     }
 
     /** Spinning from a riptide trident. */
-    public boolean spinAttack() {
+    boolean spinAttack() {
         return now.has(CgEntityFacts.SPIN_ATTACK);
     }
 
-    public boolean inWater() {
+    boolean inWater() {
         return now.has(CgEntityFacts.IN_WATER);
     }
 
-    public boolean sleeping() {
+    boolean sleeping() {
         return now.has(CgEntityFacts.SLEEPING);
     }
 
-    public boolean riding() {
+    boolean riding() {
         return now.vehicle >= 0;
     }
 
     /** The network id of what it rides; -1 for nothing. */
-    public int vehicle() {
+    int vehicle() {
         return now.vehicle;
     }
 
-    public boolean dead() {
+    boolean dead() {
         return now.has(CgEntityFacts.DEAD);
     }
 
     /** Seconds since it died: Minecraft's death time, which runs to its body's removal at 1 s. 0 while alive. */
-    public float secondsDead() {
+    float secondsDead() {
         return now.deathTime / TICKS_PER_SECOND;
     }
 
     /** Seconds since it was last hurt; infinite before the first hit seen. */
-    public float secondsSinceHurt() {
+    float secondsSinceHurt() {
         return hurtSeconds;
     }
 
     /** Seconds off the ground since it left it; 0 on the ground and riding. */
-    public float airSeconds() {
+    float airSeconds() {
         return grounded() ? 0f : airSeconds;
     }
 
     /** How far it fell to its last landing, blocks: from the highest point it reached in the air. */
-    public float landHeight() {
+    float landHeight() {
         return landHeight;
     }
 
     /** Its head's yaw against its body's, degrees, -180 to 180: positive to its left. */
-    public float headYaw() {
+    float headYaw() {
         return headYaw;
     }
 
     /** Its head's pitch, degrees: down positive. */
-    public float headPitch() {
+    float headPitch() {
         return headPitch;
     }
 
@@ -438,88 +399,148 @@ public final class CgEntityState {
      * else 1 while it moves on its own (0.3 sneaking) and 0 standing. What a locomotion graph keys its gait on, rather
      * than its speed, which a slope or a shove changes.
      */
-    public float input() {
+    float input() {
         return input;
     }
 
     /** Which way it means to move against its facing, degrees: 0 ahead, 90 to its left, -90 to its right, 180 back. */
-    public float inputDirection() {
+    float inputDirection() {
         return inputDirection;
     }
 
     /** Whether {@link #input} is the player's own input rather than read from its movement. */
-    public boolean inputFromPlayer() {
+    boolean inputFromPlayer() {
         return inputFromPlayer;
     }
 
     /** The sprint key held, where the player's input says; else whether it sprints. */
-    public boolean sprintHeld() {
+    boolean sprintHeld() {
         return sprintHeld;
     }
 
     /** The jump key held, where the player's input says; else false. */
-    public boolean jumpHeld() {
+    boolean jumpHeld() {
         return jumpHeld;
     }
 
     /** Whether its main hand is its left. */
-    public boolean leftHanded() {
+    boolean leftHanded() {
         return now.has(CgEntityFacts.LEFT_HANDED);
     }
 
     // ── its hands ───────────────────────────────────────────────────────────────
 
     /** What {@code hand} holds, by the host's raw item id: 0 for nothing. */
-    public int item(int hand) {
+    int item(int hand) {
         return now.item[hand];
     }
 
     /** How {@code hand}'s arm is posed: an {@code ARM_} constant. */
-    public int armPose(int hand) {
+    int armPose(int hand) {
         return arms[hand];
     }
 
     /** Whether it is using the item in {@code hand}: eating, drawing a bow, blocking. */
-    public boolean using(int hand) {
+    boolean using(int hand) {
         return now.has(CgEntityFacts.USING) && now.useHand == hand;
     }
 
     /** How the item in use looks in use: a {@code CgEntityFacts.USE_} constant; {@code USE_NONE} when using nothing. */
-    public int useAnimation() {
+    int useAnimation() {
         return now.has(CgEntityFacts.USING) ? now.use[now.useHand] : CgEntityFacts.USE_NONE;
     }
 
     /** Seconds into the current use; 0 when using nothing. */
-    public float useSeconds() {
+    float useSeconds() {
         return useSeconds;
     }
 
     /** How long the current use lasts at most, seconds; 0 when using nothing, or where the host cannot say. */
-    public float useLength() {
+    float useLength() {
         return now.has(CgEntityFacts.USING) ? now.useLength / TICKS_PER_SECOND : 0f;
     }
 
     /** Whether an arm is swinging, and which hand's. */
-    public boolean swinging() {
+    boolean swinging() {
         return now.has(CgEntityFacts.SWINGING);
     }
 
-    public int swingHand() {
+    int swingHand() {
         return now.swingHand;
     }
 
     /** The hand in use, or last in use: {@link #MAIN} or {@link #OFF}. */
-    public int useHand() {
+    int useHand() {
         return now.useHand;
     }
 
-    /** The hand whose use stopped in the last update. */
-    int stoppedHand() {
-        return was.useHand;
-    }
 
     /** The swing's progress, 0 to 1: what Minecraft's own arm swing follows. */
-    public float swing() {
+    float swing() {
         return now.swing;
+    }
+    // ── as the motion type's behaviour ──────────────────────────────────────────────────
+
+    /** A server tick's seconds. */
+    private static final float TICK = 1f / TICKS_PER_SECOND;
+
+    private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+
+    /** Server: reads its entity on its level, a tick on. */
+    @Override
+    public void tick(CgNetObject obj) {
+        Object entity = obj.entity();
+        if (entity == null) return;
+        CgEntityQuery entities = CgEntityQueries.of(entity);
+        if (entities.pose(obj.entityId(), 1f, pose) && update(entities, CgWorldQueries.of(entity), obj.entityId(), 1f, TICK, pose)) {
+            publish(obj);
+        } else {
+            quiet(obj);
+        }
+    }
+
+    /** A client: reads its entity at the frame's partial tick, {@code seconds} on. */
+    @Override
+    public void frame(CgNetObject obj, float seconds) {
+        CgEntityQuery entities = CgEntityQueries.client();
+        float partialTick = CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick();
+        if (entities.pose(obj.entityId(), partialTick, pose)
+                && update(entities, CgWorldQueries.client(), obj.entityId(), partialTick, seconds, pose)) {
+            publish(obj);
+        } else {
+            quiet(obj);
+        }
+    }
+
+    /** A frame the host said nothing of: the last values stand, and nothing happened in it. */
+    private static void quiet(CgNetObject obj) {
+        obj.setBool(JUMPED, false).setBool(LANDED, false).setBool(HURT, false).setBool(SWING_STARTED, false)
+                .setBool(USE_STARTED, false).setBool(USE_STOPPED, false).setBool(MOUNTED, false)
+                .setBool(DISMOUNTED, false).setBool(DIED, false);
+    }
+
+    /** Writes every field of {@code obj} from the last update. */
+    void publish(CgNetObject obj) {
+        obj.setFloat(SPEED, speed()).setFloat(VERTICAL_SPEED, verticalSpeed()).setFloat(MOVE_DIRECTION, moveDirection())
+                .setFloat(ACCELERATION, acceleration()).setFloat(TURN_RATE, turnRate());
+        obj.setFloat(INPUT, input()).setFloat(INPUT_DIRECTION, inputDirection()).setBool(INPUT_FROM_PLAYER, inputFromPlayer())
+                .setBool(SPRINT_HELD, sprintHeld()).setBool(JUMP_HELD, jumpHeld());
+        obj.setBool(GROUNDED, grounded()).setBool(AIRBORNE, !grounded() && !riding()).setFloat(AIR_TIME, airSeconds())
+                .setFloat(GROUND_DISTANCE, groundDistance()).setFloat(LAND_HEIGHT, landHeight());
+        obj.setBool(LIVING, living()).setBool(SNEAKING, sneaking()).setBool(SPRINTING, sprinting())
+                .setBool(SWIMMING, swimming()).setBool(CRAWLING, crawling()).setFloat(SWIM_AMOUNT, swimAmount())
+                .setBool(GLIDING, gliding()).setBool(SPIN_ATTACK, spinAttack()).setBool(IN_WATER, inWater())
+                .setBool(RIDING, riding()).setInt(VEHICLE, vehicle()).setBool(SLEEPING, sleeping());
+        obj.setBool(DEAD, dead()).setFloat(DEAD_TIME, secondsDead()).setFloat(HURT_TIME, secondsSinceHurt())
+                .setFloat(HEAD_YAW, headYaw()).setFloat(HEAD_PITCH, headPitch());
+        obj.setBool(LEFT_HANDED, leftHanded()).setInt(MAIN_ITEM, item(MAIN)).setInt(OFF_ITEM, item(OFF))
+                .setInt(MAIN_ARM, armPose(MAIN)).setInt(OFF_ARM, armPose(OFF)).setBool(USING, using(MAIN) || using(OFF))
+                .setInt(USE_HAND, useHand()).setInt(USE_ANIMATION, useAnimation()).setFloat(USE_TIME, useSeconds())
+                .setFloat(USE_LENGTH, useLength()).setBool(SWINGING, swinging()).setFloat(SWING, swing())
+                .setInt(SWING_HAND, swingHand());
+        obj.setBool(JUMPED, fired(JUMPED_BIT)).setBool(LANDED, fired(LANDED_BIT)).setBool(HURT, fired(HURT_BIT))
+                .setBool(SWING_STARTED, fired(SWING_STARTED_BIT)).setBool(USE_STARTED, fired(USE_STARTED_BIT))
+                .setBool(USE_STOPPED, fired(USE_STOPPED_BIT)).setBool(MOUNTED, fired(MOUNTED_BIT))
+                .setBool(DISMOUNTED, fired(DISMOUNTED_BIT)).setBool(DIED, fired(DIED_BIT));
     }
 }

@@ -95,7 +95,7 @@ public class CgNetEntitiesTest {
         assertEquals("nothing of it goes on the wire", 0, rig.client(0).visible(MOTION).size());
 
         CgNetEntities.entered(e.id(), "test:zombie");
-        CgNetObject client = MOTION.findOnClient(e.id());
+        CgNetObject client = CgNetEntities.client(MOTION, e.id(), false);
         assertNotNull("the client makes its own", client);
         assertNotSame(server, client);
         client.setFloat(SPEED, 7f);

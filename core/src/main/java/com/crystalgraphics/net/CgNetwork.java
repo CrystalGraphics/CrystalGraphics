@@ -187,6 +187,11 @@ public final class CgNetwork {
     }
 
     /** Whether {@link #install} installed. A server with no networking otherwise boots and looks healthy. */
+    /** Whether this is the server's thread: a dedicated server's, or an integrated server's in a client's process. */
+    public static boolean onServerThread() {
+        return Thread.currentThread() == serverThread;
+    }
+
     public static boolean isInstalled() {
         return server != null;
     }

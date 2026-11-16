@@ -109,7 +109,7 @@ public interface CgEntityQuery {
     /**
      * Entity {@code id}'s animation facts at {@code partialTick}, into {@code out}: what it does, holds and uses. False,
      * with {@code out} untouched, when there is no such entity, and where the host does not say (a test's fake level).
-     * Core's {@code CgEntityState} reads it; read that instead.
+     * Core's {@code CgEntityProperties.MOTION} is worked out from it; read that instead.
      *
      * <pre>{@code
      * if (entities.facts(id, partialTick, facts) && facts.has(CgEntityFacts.SLEEPING)) ...

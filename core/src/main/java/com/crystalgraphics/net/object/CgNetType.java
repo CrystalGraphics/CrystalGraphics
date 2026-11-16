@@ -401,6 +401,7 @@ public final class CgNetType {
      */
     public CgNetObject of(Object playerOrEntity) {
         Objects.requireNonNull(playerOrEntity, "playerOrEntity");
+        if (playerOrEntity instanceof Integer) throw new IllegalArgumentException("an entity id is an int: of(int), not a boxed Integer");
         if (localOnly) {
             if (!perHolder) throw new IllegalStateException(name + " is not per holder: spawn its objects with spawn()");
             return CgNetwork.side() == CgNetwork.Side.SERVER ? CgNetEntities.server(this, playerOrEntity, true)
@@ -425,6 +426,7 @@ public final class CgNetType {
     @Nullable
     public CgNetObject find(Object playerOrEntity) {
         Objects.requireNonNull(playerOrEntity, "playerOrEntity");
+        if (playerOrEntity instanceof Integer) throw new IllegalArgumentException("an entity id is an int: find(int), not a boxed Integer");
         if (!perHolder) throw new IllegalStateException(name + " is not per holder: find answers per-holder types");
         if (localOnly) {
             return CgNetwork.side() == CgNetwork.Side.SERVER ? CgNetEntities.server(this, playerOrEntity, false)
@@ -440,14 +442,49 @@ public final class CgNetType {
     }
 
     /**
-     * Client: this client's copy of a per-holder type's object on entity {@code entityId} (its network id), or null while
-     * it sees none. As {@link #find} answers on a client, for a caller holding the id rather than the entity. Allocates
-     * nothing.
+     * A client: its object on entity {@code entityId}, the network id this client knows the entity by, or null while it
+     * has none: what {@link #find(Object)} is for a caller holding the id. A sent type's is this client's copy; a
+     * {@link #isLocal() local} type's is this client's own. Allocates nothing.
+     *
+     * <pre>{@code
+     * CgNetObject ki = KI.find(entityId);
+     * if (ki != null) bar.set(ki.get(KI_CURRENT));
+     * }</pre>
+     *
+     * @throws IllegalStateException on the server's thread, where an id names no entity without its level: name the
+     *                               entity, {@code find(entity)}
      */
     @Nullable
-    public CgNetObject findOnClient(int entityId) {
-        if (!perHolder) throw new IllegalStateException(name + " is not per holder: findOnClient answers per-holder types");
+    public CgNetObject find(int entityId) {
+        byId("find");
         return localOnly ? CgNetEntities.client(this, entityId, false) : CgNetObjects.clientHolder(this, entityId);
+    }
+
+    /**
+     * A client: a {@link #isLocal() local} type's object on entity {@code entityId}, made if absent: what {@link #of(Object)}
+     * is for a caller holding the id.
+     *
+     * <pre>{@code
+     * float speed = CgEntityProperties.MOTION.of(entityId).get(CgEntityProperties.SPEED);
+     * }</pre>
+     *
+     * @throws IllegalStateException for a sent type, whose objects only the server makes ({@link #find(int)} reads a
+     *                               client's copy), or on the server's thread
+     */
+    public CgNetObject of(int entityId) {
+        byId("of");
+        if (!localOnly) throw new IllegalStateException(name + " is the server's to make: a client reads its objects with find(id)");
+        CgNetObject obj = CgNetEntities.client(this, entityId, true);
+        if (obj == null) throw new IllegalArgumentException("no entity " + entityId);
+        return obj;
+    }
+
+    private void byId(String call) {
+        if (!perHolder) throw new IllegalStateException(name + " is not per holder: " + call + " answers per-holder types");
+        if (CgNetwork.onServerThread()) {
+            throw new IllegalStateException(name + "." + call + "(id) on the server: an id names no entity without its level; "
+                    + call + "(entity) names it");
+        }
     }
 
     /** Whether its objects come one per holder ({@link Builder#perHolder}). */

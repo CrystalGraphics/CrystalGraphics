@@ -394,8 +394,9 @@ com/crystalgraphics/animation/graph/CgAnimGraph$Builder
   access public,final
   extends java/lang/Object
   method public build ()Lcom/crystalgraphics/animation/graph/CgAnimGraph;
+  method public entity (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/animation/graph/CgAnimGraph$EntityBinding;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
+  method public entity (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public entity (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/net/object/CgNetType;Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
-  method public entity (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/world/CgEntityBinding;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public inputs ([Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public layer (Lcom/crystalgraphics/animation/graph/CgAnimGraph$Layer;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public output (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
@@ -403,6 +404,19 @@ com/crystalgraphics/animation/graph/CgAnimGraph$Builder
   method public tag (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public tag (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/animation/graph/CgAnimGraph$TagAs;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public variables ([Lcom/crystalgraphics/animation/graph/CgAnimVariable;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
+com/crystalgraphics/animation/graph/CgAnimGraph$EntityBinding
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/net/object/CgNetType;Lcom/crystalgraphics/net/object/CgNetField;)V
+  method public field ()Lcom/crystalgraphics/net/object/CgNetField;
+  method public name ()Ljava/lang/String;
+  method public type ()Lcom/crystalgraphics/net/object/CgNetType;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static named (Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$EntityBinding;
+  method public,static of (Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$EntityBinding;
+  method public,static of (Lcom/crystalgraphics/net/object/CgNetType;Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$EntityBinding;
 com/crystalgraphics/animation/graph/CgAnimGraph$Layer
   access public,final,record
   extends java/lang/Record
@@ -635,12 +649,6 @@ com/crystalgraphics/animation/graph/CgCachedPoseNode$Use
   extends com/crystalgraphics/animation/graph/CgAnimNode
   method public name ()Ljava/lang/String;
   method public toString ()Ljava/lang/String;
-com/crystalgraphics/animation/graph/CgEntityFeed
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/animation/CgAnimInstance$Update
-  method public update (Lcom/crystalgraphics/animation/CgAnimInstance;F)V
-  method public,static of (Lcom/crystalgraphics/world/CgEntityFields$Source;)Lcom/crystalgraphics/animation/graph/CgEntityFeed;
 com/crystalgraphics/animation/graph/CgLayeredBlendNode
   access public,final
   extends com/crystalgraphics/animation/graph/CgAnimNode
@@ -9619,6 +9627,7 @@ com/crystalgraphics/net/CgNetwork
   method public,static isInstalled ()Z
   method public,static measureAllocation (Z)V
   method public,static onPeerClosed (Ljava/util/function/Consumer;)V
+  method public,static onServerThread ()Z
   method public,static onSessionEnd (Ljava/lang/Runnable;)V
   method public,static openConnections ()I
   method public,static playerJoined (Ljava/util/UUID;Ljava/lang/String;Ljava/util/function/Supplier;)V
@@ -9944,14 +9953,15 @@ com/crystalgraphics/net/object/CgNetType
   extends java/lang/Object
   method public acceptPredictionsFrom (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
   method public fields ()Ljava/util/List;
+  method public find (I)Lcom/crystalgraphics/net/object/CgNetObject;
   method public find (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
-  method public findOnClient (I)Lcom/crystalgraphics/net/object/CgNetObject;
   method public forEach (Ljava/util/function/Consumer;)V
   method public isLocal ()Z
   method public isPerHolder ()Z
   method public lists (Lcom/crystalgraphics/net/object/CgNetField;)Z
   method public name ()Ljava/lang/String;
   method public namespace ()Ljava/lang/String;
+  method public of (I)Lcom/crystalgraphics/net/object/CgNetObject;
   method public of (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public ofChunk (Ljava/lang/Object;II)Lcom/crystalgraphics/net/object/CgNetObject;
   method public onChange (Lcom/crystalgraphics/net/object/CgNetField;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/net/object/CgNetType;
@@ -24328,132 +24338,12 @@ com/crystalgraphics/world/CgEntityAttachments$Registration
   extends java/lang/Object
   implements java/lang/AutoCloseable
   method public,abstract close ()V
-com/crystalgraphics/world/CgEntityBinding
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract name ()Ljava/lang/String;
-  method public,abstract type ()Lcom/crystalgraphics/object/CgValueType;
-com/crystalgraphics/world/CgEntityEvent
+com/crystalgraphics/world/CgEntityProperties
   access public,final
   extends java/lang/Object
-  method public name ()Ljava/lang/String;
-  method public payload (Lcom/crystalgraphics/world/CgEntityState;)Ljava/lang/Object;
-  method public toString ()Ljava/lang/String;
-com/crystalgraphics/world/CgEntityEvents
-  access public,final
-  extends java/lang/Object
-  field public,static,final DIED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final DISMOUNTED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final HURT Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final JUMPED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final LANDED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final MOUNTED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final SWING_STARTED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final USE_STARTED Lcom/crystalgraphics/world/CgEntityEvent;
-  field public,static,final USE_STOPPED Lcom/crystalgraphics/world/CgEntityEvent;
-  method public,static all ()Ljava/util/List;
-com/crystalgraphics/world/CgEntityField
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/world/CgEntityBinding
-  method public name ()Ljava/lang/String;
-  method public read (Lcom/crystalgraphics/world/CgEntityState;Ljava/lang/Object;)F
-  method public toString ()Ljava/lang/String;
-  method public type ()Lcom/crystalgraphics/object/CgValueType;
-com/crystalgraphics/world/CgEntityField$Reader
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract read (Lcom/crystalgraphics/world/CgEntityState;Ljava/lang/Object;)F
-com/crystalgraphics/world/CgEntityFields
-  access public,final
-  extends java/lang/Object
-  field public,static,final ACCELERATION Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final AIRBORNE Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final AIR_TIME Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final CRAWLING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final DEAD Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final DEAD_TIME Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final DIED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final DISMOUNTED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final GLIDING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final GROUNDED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final GROUND_DISTANCE Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final HEAD_PITCH Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final HEAD_YAW Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final HURT Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final HURT_TIME Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final INPUT Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final INPUT_DIRECTION Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final IN_WATER Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final JUMPED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final JUMP_HELD Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final LANDED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final LAND_HEIGHT Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final LEFT_HANDED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final MAIN_ARM Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final MOUNTED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final MOVE_DIRECTION Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final OFF_ARM Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final RIDING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SLEEPING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SNEAKING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SPEED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SPIN_ATTACK Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SPRINTING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SPRINT_HELD Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWIMMING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWIM_AMOUNT Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWINGING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWING_HAND Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final SWING_STARTED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final TURN_RATE Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USE_ANIMATION Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USE_LENGTH Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USE_STARTED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USE_STOPPED Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USE_TIME Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final USING Lcom/crystalgraphics/world/CgEntityField;
-  field public,static,final VERTICAL_SPEED Lcom/crystalgraphics/world/CgEntityField;
-  method public,static all ()Ljava/util/Collection;
-  method public,static binding (Ljava/lang/String;)Lcom/crystalgraphics/world/CgEntityBinding;
-  method public,static of (Lcom/crystalgraphics/world/CgEntityState;Lcom/crystalgraphics/tag/CgTagCounts;)Lcom/crystalgraphics/world/CgEntityFields$Source;
-  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/world/CgEntityField;
-  method public,static register (Ljava/lang/String;Lcom/crystalgraphics/object/CgValueType;Lcom/crystalgraphics/world/CgEntityField$Reader;)Lcom/crystalgraphics/world/CgEntityField;
-com/crystalgraphics/world/CgEntityFields$Source
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract entity ()Ljava/lang/Object;
-  method public,abstract id ()I
-  method public,abstract onServer ()Z
-  method public,abstract state ()Lcom/crystalgraphics/world/CgEntityState;
-  method public,abstract tags ()Lcom/crystalgraphics/tag/CgTagCounts;
-com/crystalgraphics/world/CgEntityNetField
-  access public,final
-  extends java/lang/Object
-  implements com/crystalgraphics/world/CgEntityBinding
-  method public equals (Ljava/lang/Object;)Z
-  method public field ()Lcom/crystalgraphics/net/object/CgNetField;
-  method public find (Lcom/crystalgraphics/world/CgEntityFields$Source;)Lcom/crystalgraphics/net/object/CgNetObject;
-  method public hashCode ()I
-  method public name ()Ljava/lang/String;
-  method public netType ()Lcom/crystalgraphics/net/object/CgNetType;
-  method public read (Lcom/crystalgraphics/net/object/CgNetObject;)F
-  method public toString ()Ljava/lang/String;
-  method public type ()Lcom/crystalgraphics/object/CgValueType;
-  method public,static of (Lcom/crystalgraphics/net/object/CgNetType;Lcom/crystalgraphics/net/object/CgNetField;)Lcom/crystalgraphics/world/CgEntityNetField;
-com/crystalgraphics/world/CgEntityQueries
-  access public,final
-  extends java/lang/Object
-  method public,static alive (Ljava/lang/Object;)Z
-  method public,static client ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
-  method public,static idOf (Ljava/lang/Object;)I
-  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
-  method public,static position (Ljava/lang/Object;[D)Z
-  method public,static requireId (Ljava/lang/Object;)I
-com/crystalgraphics/world/CgEntityState
-  access public,final
-  extends java/lang/Object
+  field public,static,final ACCELERATION Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final AIRBORNE Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final AIR_TIME Lcom/crystalgraphics/net/object/CgNetField;
   field public,static,final ARM_BLOCK I
   field public,static,final ARM_BOW I
   field public,static,final ARM_BRUSH I
@@ -24465,55 +24355,70 @@ com/crystalgraphics/world/CgEntityState
   field public,static,final ARM_SPYGLASS I
   field public,static,final ARM_THROW I
   field public,static,final ARM_TOOT_HORN I
+  field public,static,final CRAWLING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final DEAD Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final DEAD_TIME Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final DIED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final DISMOUNTED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final GLIDING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final GROUNDED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final GROUND_DISTANCE Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final HEAD_PITCH Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final HEAD_YAW Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final HURT Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final HURT_TIME Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final INPUT Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final INPUT_DIRECTION Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final INPUT_FROM_PLAYER Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final IN_WATER Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final JUMPED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final JUMP_HELD Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final LANDED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final LAND_HEIGHT Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final LEFT_HANDED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final LIVING Lcom/crystalgraphics/net/object/CgNetField;
   field public,static,final MAIN I
+  field public,static,final MAIN_ARM Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final MAIN_ITEM Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final MOTION Lcom/crystalgraphics/net/object/CgNetType;
+  field public,static,final MOUNTED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final MOVE_DIRECTION Lcom/crystalgraphics/net/object/CgNetField;
   field public,static,final OFF I
-  method public <init> ()V
-  method public acceleration ()F
-  method public airSeconds ()F
-  method public armPose (I)I
-  method public crawling ()Z
-  method public dead ()Z
-  method public fired (Lcom/crystalgraphics/world/CgEntityEvent;)Z
-  method public firedAny ()Z
-  method public gliding ()Z
-  method public groundDistance ()F
-  method public grounded ()Z
-  method public headPitch ()F
-  method public headYaw ()F
-  method public inWater ()Z
-  method public input ()F
-  method public inputDirection ()F
-  method public inputFromPlayer ()Z
-  method public item (I)I
-  method public jumpHeld ()Z
-  method public landHeight ()F
-  method public leftHanded ()Z
-  method public living ()Z
-  method public moveDirection ()F
-  method public reset ()V
-  method public riding ()Z
-  method public secondsDead ()F
-  method public secondsSinceHurt ()F
-  method public sleeping ()Z
-  method public sneaking ()Z
-  method public speed ()F
-  method public spinAttack ()Z
-  method public sprintHeld ()Z
-  method public sprinting ()Z
-  method public swimAmount ()F
-  method public swimming ()Z
-  method public swing ()F
-  method public swingHand ()I
-  method public swinging ()Z
-  method public turnRate ()F
-  method public update (Lcom/crystalgraphics/platform/world/CgEntityQuery;Lcom/crystalgraphics/platform/world/CgWorldQuery;IFF[D)Z
-  method public useAnimation ()I
-  method public useHand ()I
-  method public useLength ()F
-  method public useSeconds ()F
-  method public using (I)Z
-  method public vehicle ()I
-  method public verticalSpeed ()F
+  field public,static,final OFF_ARM Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final OFF_ITEM Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final PREFIX Ljava/lang/String;
+  field public,static,final RIDING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SLEEPING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SNEAKING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SPEED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SPIN_ATTACK Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SPRINTING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SPRINT_HELD Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWIMMING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWIM_AMOUNT Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWINGING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWING_HAND Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final SWING_STARTED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final TURN_RATE Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_ANIMATION Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_HAND Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_LENGTH Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_STARTED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_STOPPED Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USE_TIME Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final USING Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final VEHICLE Lcom/crystalgraphics/net/object/CgNetField;
+  field public,static,final VERTICAL_SPEED Lcom/crystalgraphics/net/object/CgNetField;
+com/crystalgraphics/world/CgEntityQueries
+  access public,final
+  extends java/lang/Object
+  method public,static alive (Ljava/lang/Object;)Z
+  method public,static client ()Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static idOf (Ljava/lang/Object;)I
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/platform/world/CgEntityQuery;
+  method public,static position (Ljava/lang/Object;[D)Z
+  method public,static requireId (Ljava/lang/Object;)I
 com/crystalgraphics/world/CgEntityTags
   access public,final
   extends java/lang/Object
@@ -24527,15 +24432,6 @@ com/crystalgraphics/world/CgEntityTags
   method public,static release (I)V
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)Z
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
-com/crystalgraphics/world/CgHand
-  access public,final,enum
-  extends java/lang/Enum
-  field public,static,final MAIN Lcom/crystalgraphics/world/CgHand;
-  field public,static,final OFF Lcom/crystalgraphics/world/CgHand;
-  method public index ()I
-  method public,static of (I)Lcom/crystalgraphics/world/CgHand;
-  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/world/CgHand;
-  method public,static values ()[Lcom/crystalgraphics/world/CgHand;
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object
@@ -24554,7 +24450,6 @@ com/crystalgraphics/world/CgWorldQueries
 com/crystalgraphics/world/actor/CgEntity
   access public,final
   extends java/lang/Object
-  implements com/crystalgraphics/world/CgEntityFields$Source
   method public bodyYaw ()F
   method public entity ()Ljava/lang/Object;
   method public flag (I)Z
@@ -24562,22 +24457,17 @@ com/crystalgraphics/world/actor/CgEntity
   method public headYaw ()F
   method public hostFrame ()J
   method public id ()I
-  method public on (Lcom/crystalgraphics/world/CgEntityEvent;Lcom/crystalgraphics/world/actor/CgEntity$Listener;)Lcom/crystalgraphics/world/actor/CgEntity;
   method public onServer ()Z
   method public pitch ()F
   method public pose (I)D
   method public present ()Z
-  method public state ()Lcom/crystalgraphics/world/CgEntityState;
+  method public properties (Lcom/crystalgraphics/net/object/CgNetType;)Lcom/crystalgraphics/net/object/CgNetObject;
   method public tags ()Lcom/crystalgraphics/tag/CgTagCounts;
   method public toString ()Ljava/lang/String;
   method public type ()Ljava/lang/String;
   method public x ()D
   method public y ()D
   method public z ()D
-com/crystalgraphics/world/actor/CgEntity$Listener
-  access public,abstract,interface
-  extends java/lang/Object
-  method public,abstract on (Lcom/crystalgraphics/world/actor/CgEntity;Ljava/lang/Object;)V
 com/crystalgraphics/world/actor/CgEntityActor
   access public,abstract
   extends java/lang/Object

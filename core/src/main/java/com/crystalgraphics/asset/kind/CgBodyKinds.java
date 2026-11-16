@@ -716,8 +716,8 @@ public final class CgBodyKinds {
 
     /**
      * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name, the one
-     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to a value of the entity
-     * by name, a derived field or {@code <type>#<field>} of its networked data ({@code world.CgEntityFields#binding}),
+     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to one of the entity's
+     * properties by name, {@code entity.<field>} (the engine's) or {@code <type>#<field>} ({@code CgAnimGraph.EntityBinding}),
      * set each frame by the entity's actor; {@code tags} a variable
      * to a gameplay tag the entity owns ({@code world.CgEntityTags}).
      */

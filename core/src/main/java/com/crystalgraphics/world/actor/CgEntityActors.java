@@ -20,7 +20,6 @@ import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.scene.CgScene;
-import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.animation.CgAnimation;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -589,13 +588,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
         e.present = entities.pose(e.id(), partialTick, e.pose);
         if (!e.present) return;
         e.flags = entities.flags(e.id());
-        boolean updated = e.state.update(entities, onServer ? CgWorldQueries.of(l.host) : CgWorldQueries.client(), e.id(),
-                partialTick, dt, e.pose);
         // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.
         // Minecraft's own models face -z, hence its 180 - bodyYaw (LivingEntityRenderer.setupRotations)
         turn.rotationY((float) Math.toRadians(-e.bodyYaw()));
         l.actor.root.at(e.x(), e.y(), e.z()).rotation(turn);
-        // a frame the host answered no facts for keeps the last state, whose events have been heard
-        if (updated) e.fireEvents();
     }
 }

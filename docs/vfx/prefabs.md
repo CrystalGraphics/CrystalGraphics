@@ -598,51 +598,48 @@ sequencer.play(LUNGE, Map.of("caster", role));
   knockback or a launch, `velocity` and `gravity(false)` to hold a fighter in the air, `resetFall` after a dive,
   `teleport` for a vanish strike, `rotate` for yaw and pitch.
 
-### What the entity is doing: its state
+### What the entity is doing: its properties
 
-`CgEntity.state()` is what the engine derives of the entity each frame before `tick`, the same on every version and on
-both sides, never sent and never saved: how fast it moves, whether it is on the ground, sneaking, sprinting, swimming, crawling,
-gliding, riding or sleeping, its head against its body, each hand's item and arm pose, the item in use and the swing,
-and what just happened.
+`CgEntityProperties.MOTION` is what the engine works out of every entity, each tick on the server and each frame on a
+client before actors read it, the same on every version and never sent or saved: how fast it moves, whether it is on
+the ground, sneaking, sprinting, swimming, crawling, gliding, riding or sleeping, its head against its body, each
+hand's item and arm pose, the item in use and the swing, and what just happened. It is an entity property type like any
+of your mod's ([`networking.md`](networking.md) § *Your own data on an entity*): its fields are all `local()`.
 
 ```java
 @Override protected void tick(CgEntity fighter, float dt) {
-    CgEntityState s = fighter.state();
-    body.anim().set(SPEED, s.speed());                                  // blocks a second along the ground
-    body.anim().set(IN_AIR, !s.grounded());
-    if (s.armPose(CgEntityState.MAIN) == CgEntityState.ARM_BOW) body.anim().set(DRAW, s.useSeconds());
-}
-
-@Override protected void onSpawn(CgEntity fighter) {                    // events: heard each time they happen
-    fighter.on(CgEntityEvents.LANDED, (e, none) -> {
-        if (e.state().landHeight() > 3) body.anim().montages().play(HARD_LANDING);
-    });
-    fighter.on(CgEntityEvents.SWING_STARTED, (e, hand) -> body.anim().montages().play(hand == CgHand.OFF ? JAB : SLASH));
+    CgNetObject m = fighter.properties(CgEntityProperties.MOTION);
+    body.anim().set(SPEED, m.get(CgEntityProperties.SPEED));                 // blocks a second along the ground
+    body.anim().set(IN_AIR, m.get(CgEntityProperties.AIRBORNE));
+    if (m.get(CgEntityProperties.LANDED) && m.get(CgEntityProperties.LAND_HEIGHT) > 3) {
+        body.anim().montages().play(HARD_LANDING);
+    }
+    if (m.get(CgEntityProperties.SWING_STARTED)) {
+        body.anim().montages().play(m.get(CgEntityProperties.SWING_HAND) == CgEntityProperties.OFF ? JAB : SLASH);
+    }
 }
 ```
 
-Any entity, watched by code that is no actor, keeps a state of its own:
+Any entity, read by code that is no actor, the same way:
 
 ```java
-CgEntityState state = new CgEntityState();                          // one per entity, kept while it lives
-double[] pose = new double[CgEntityQuery.POSE_LENGTH];
-// each frame
-if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, partialTick, dt, pose);
+CgNetObject m = CgEntityProperties.MOTION.of(serverEntity);          // the server's
+CgNetObject seen = CgEntityProperties.MOTION.of(entityId);   // a client's, by network id
 ```
 
-| `CgEntityEvents.` | Carries | When |
+| Event, true for its frame | With, the same frame | When |
 |---|---|---|
-| `JUMPED` | nothing | it left the ground going up (walking off a ledge is not a jump) |
-| `LANDED` | nothing | it touched the ground again; `landHeight()` is the fall from the highest point it reached |
-| `HURT` | nothing | it was hit, a second hit before the first wore off included; `secondsSinceHurt()` counts from it |
-| `SWING_STARTED` | the `CgHand` | an arm began a swing, or began it again mid-swing |
-| `USE_STARTED`, `USE_STOPPED` | the `CgHand` | it began or stopped using an item: eating, drawing a bow, blocking |
-| `MOUNTED`, `DISMOUNTED` | nothing | it got on or off something (`vehicle()`); changing mounts raises both |
-| `DIED` | nothing | it died; `secondsDead()` counts from it |
+| `JUMPED` | | it left the ground going up (walking off a ledge is not a jump) |
+| `LANDED` | `LAND_HEIGHT`, the fall from the highest point it reached | it touched the ground again |
+| `HURT` | `HURT_TIME` from 0 | it was hit, a second hit before the first wore off included |
+| `SWING_STARTED` | `SWING_HAND` | an arm began a swing, or began it again mid-swing |
+| `USE_STARTED`, `USE_STOPPED` | `USE_HAND` | it began or stopped using an item: eating, drawing a bow, blocking |
+| `MOUNTED`, `DISMOUNTED` | `VEHICLE` | it got on or off something; changing mounts raises both |
+| `DIED` | `DEAD_TIME` from 0 | it died |
 
-- **An event lasts one frame**: a listener hears it once, after the state's refresh and before `tick`; a state is
-  asked `fired(CgEntityEvents.LANDED)` in that frame. The first frame an entity is seen raises none, so one seen in
-  mid-air does not jump.
+- **An entity's object is made the first time something asks for it**, from then worked out with its entity and ended
+  with it; a frame its host says nothing of keeps the last values and raises no event. The first frame an entity is
+  seen raises none, so one seen in mid-air does not jump.
 - **What only your server knows** (an ability fired, a hit's damage) is a `CgNetEvent` on your own networked type,
   sent by your server ([`networking.md`](networking.md)).
 - **The arm pose is Minecraft's own rule for a player's arms**, the newest version's, for every entity: a bow drawn, a
@@ -651,19 +648,19 @@ if (entities.pose(id, partialTick, pose)) state.update(entities, world, id, part
 - **What a version lacks reads as not happening**: no swimming pose before 1.13, no gliding and no off hand before
   1.10.2, no charged crossbow before 1.14.3. Items are the host's raw ids, the same item for the session.
 - **The swim amount** eases 0 to 1 over 0.45 s into the swimming pose and back, as Minecraft's own does.
-- **Its motion is smooth between Minecraft's 20 ticks a second**: `speed()`, `verticalSpeed()`, `moveDirection()`
-  (degrees against the body's facing) and `acceleration()` follow the last two ticks' movement across the frame, as
-  the drawn position does, so a 144 fps gait never steps. `turnRate()` (degrees a second, left positive) and
-  `groundDistance()` (the feet over the first surface under them, 64 blocks down at most) are read each frame;
-  `airSeconds()` counts from leaving the ground.
-- **Intent is not speed.** `input()` (0 to 1) and `inputDirection()` (degrees against the facing, 90 to the left) are
+- **Its motion is smooth between Minecraft's 20 ticks a second**: `SPEED`, `VERTICAL_SPEED`, `MOVE_DIRECTION`
+  (degrees against the body's facing) and `ACCELERATION` follow the last two ticks' movement across the frame, as
+  the drawn position does, so a 144 fps gait never steps. `TURN_RATE` (degrees a second, left positive) and
+  `GROUND_DISTANCE` (the feet over the first surface under them, 64 blocks down at most) are read each frame;
+  `AIR_TIME` counts from leaving the ground.
+- **Intent is not speed.** `INPUT` (0 to 1) and `INPUT_DIRECTION` (degrees against the facing, 90 to the left) are
   how hard and where it means to move: what a locomotion graph keys its gait on, since a slope or a shove changes its
   speed. They are the player's own keys or stick on its client, and on a 1.21.3+ server from the player's input packet
-  (`inputFromPlayer()`), with `sprintHeld()` and `jumpHeld()`. Anywhere else they are read from its movement against its
+  (`INPUT_FROM_PLAYER`), with `SPRINT_HELD` and `JUMP_HELD`. Anywhere else they are read from its movement against its
   facing: 1 moving (0.3 sneaking, as Minecraft's input), 0 standing, the sprint key as whether it sprints.
 - **What a host does**: `CgEntityQuery.facts(id, partialTick, out)`, the entity's facts as `CgEntityFacts` (bits, how
   far it moved over its tick, its vehicle, Minecraft's hurt and death countdowns, the swing, the use, each hand's item
-  and use animation). Core turns them into the state; a host never decides an event.
+  and use animation). Core turns them into the properties; a host never decides an event.
 
 ## Drawing a palette yourself
 

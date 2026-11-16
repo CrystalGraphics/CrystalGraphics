@@ -2,6 +2,7 @@ package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.net.object.CgNetEntities;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
@@ -9,7 +10,7 @@ import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
-import com.crystalgraphics.world.CgEntityEvents;
+import com.crystalgraphics.world.CgEntityProperties;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -128,28 +129,31 @@ public class CgEntityActorsTest {
     }
 
     @Test
-    public void anEntitysListenersHearEachEventOnce() {
-        int[] hurt = {0};
-        CgEntityActor actor = new CgEntityActor() {
-            @Override
-            protected void onSpawn(CgEntity entity) {
-                entity.on(CgEntityEvents.HURT, (e, none) -> hurt[0]++);
-            }
-        };
+    public void anEntitysMotionIsWorkedOutEachFrameItsEventsTrueForTheirFrame() {
+        Counting actor = new Counting();
         registration = CgEntityActors.register("test:walker", () -> actor);
         CgNetEntities.entered(7, "test:walker");
+        CgNetObject motion = actor.entity().properties(CgEntityProperties.MOTION);
+        assertSame("made once asked for, the actor's entity's own", motion, CgEntityProperties.MOTION.of(7));
         CgWorld.client().frame(null);
-        assertEquals(0, hurt[0]);
+        assertFalse(motion.get(CgEntityProperties.HURT));
+        assertTrue("worked out by the frame, before the actor reads it", motion.get(CgEntityProperties.GROUNDED));
         walker.hurtTime = 10;
         CgWorld.client().frame(null);
-        assertEquals(1, hurt[0]);
+        assertTrue(motion.get(CgEntityProperties.HURT));
+        assertEquals(0f, motion.get(CgEntityProperties.HURT_TIME), 1e-6);
         walker.facts = false;
         CgWorld.client().frame(null);
-        assertEquals("a frame with no facts keeps the state, and is no second hit", 1, hurt[0]);
+        assertFalse("a frame with no facts keeps the values, and nothing happened in it", motion.get(CgEntityProperties.HURT));
+        assertTrue(motion.get(CgEntityProperties.GROUNDED));
         walker.facts = true;
         walker.hurtTime = 9;
         CgWorld.client().frame(null);
-        assertEquals(1, hurt[0]);
+        assertFalse(motion.get(CgEntityProperties.HURT));
+
+        walker.here = false;
+        CgWorld.client().frame(null);
+        assertTrue("ended with its entity", motion.isRemoved());
     }
 
     @Test

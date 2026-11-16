@@ -152,6 +152,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
         Side s = side(type, true);
         CgNetObject obj = s.byEntity.get(entity);
         if (obj != null || !make) return obj;
+        ensure(true);
         obj = new CgNetObject(type, true);
         obj.startLocal(entity, CgEntityQueries.idOf(entity));
         s.byEntity.put(entity, obj);
@@ -167,6 +168,7 @@ public final class CgNetEntities extends CgWorldSubsystem {
         Side s = side(type, false);
         CgNetObject obj = s.byId.get(id + 1);
         if (obj != null || !make) return obj;
+        ensure(false);
         obj = new CgNetObject(type, false);
         obj.startLocal(null, id);
         s.byId.put(id + 1, obj);

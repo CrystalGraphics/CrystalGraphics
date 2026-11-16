@@ -28,8 +28,6 @@ import com.crystalgraphics.object.CgType;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.tag.CgTagException;
 import com.crystalgraphics.tag.CgTagRegistry;
-import com.crystalgraphics.world.CgEntityBinding;
-import com.crystalgraphics.world.CgEntityFields;
 
 /**
  * An {@code anim_graphs/} file and a {@link CgAnimGraph}, each way: {@link #compile} reads a resolved asset into a
@@ -132,9 +130,9 @@ public final class CgAnimGraphCodec {
                 String name = String.valueOf(e.getKey()), at = id + ": entity." + name;
                 CgAnimVariable<?> v = r.variables.get(name);
                 if (v == null) throw new CgAssetException(at + ": the graph declares no variable " + name);
-                CgEntityBinding source;
+                CgAnimGraph.EntityBinding source;
                 try {
-                    source = CgEntityFields.binding(String.valueOf(e.getValue()));
+                    source = CgAnimGraph.EntityBinding.named(String.valueOf(e.getValue()));
                 } catch (IllegalArgumentException ex) {
                     throw new CgAssetException(at + ": " + ex.getMessage());
                 }
@@ -499,7 +497,7 @@ public final class CgAnimGraphCodec {
         }
         if (!graph.entity().isEmpty()) {
             Map<String, Object> entity = new LinkedHashMap<>();
-            for (Map.Entry<String, CgEntityBinding> e : graph.entity().entrySet()) entity.put(e.getKey(), e.getValue().name());
+            for (Map.Entry<String, CgAnimGraph.EntityBinding> e : graph.entity().entrySet()) entity.put(e.getKey(), e.getValue().name());
             tree.put("entity", entity);
         }
         if (!graph.tags().isEmpty()) {

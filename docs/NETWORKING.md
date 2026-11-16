@@ -681,9 +681,10 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
   CgNetObject mine = MANA_BAR.find(Minecraft.getInstance().player);   // client
   if (mine != null) mine.send(CAST, spell);
   ```
-- **`findOnClient(entityId)`** is a client's `find` by the entity's network id, for code holding the id rather than
-  the entity; it allocates nothing. A number or bool field reads as a float with `getNumber(field)`, whatever its kind:
-  how an animation graph reads `mymod:mana#current` (`docs/animation/guides/graphs.md`).
+- **`find(entityId)` and `of(entityId)`** are a client's `find` and `of` by the entity's network id, for code holding
+  the id rather than the entity; they allocate nothing. `of(id)` makes only a `local()` type's object (a sent type's are
+  the server's), and on the server's thread both throw: an id names no entity there without its level. A number or bool
+  field reads as a float with `getNumber(field)`, whatever its kind: how an animation graph reads `mymod:ki#current`.
 - **`persisted()`** keeps it with the world ([§13](#13-saving-with-the-world)).
 - **`copyOnDeath()`** keeps a player's object through death; without it, dying despawns it.
 - **`visibleToTrackers()`** lets the players around them see it too: a health bar over their head.

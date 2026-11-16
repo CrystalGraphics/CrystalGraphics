@@ -2,7 +2,7 @@ package com.crystalgraphics.platform.world;
 
 /**
  * What a host reads off one entity for its animation: the facts {@link CgEntityQuery#facts} writes, which core's
- * {@code com.crystalgraphics.world.CgEntityState} turns into speeds, arm poses, timers and events, the same way on every
+ * {@code com.crystalgraphics.world.CgEntityProperties} turns into speeds, arm poses, timers and events, the same way on every
  * version. A caller reuses one; a host writes every field each call.
  *
  * <pre>{@code

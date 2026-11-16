@@ -4,26 +4,30 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import java.lang.management.ManagementFactory;
 import java.util.function.IntConsumer;
+
+import com.sun.management.ThreadMXBean;
 import org.junit.Before;
 import org.junit.Test;
 import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityFacts;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 
-/** The state's events, timers and arm poses from scripted host facts: what every version's host feeds it. */
-public class CgEntityStateTest {
+/** The motion type's derivation: its events, timers and arm poses from scripted host facts: what every version's host feeds it. */
+public class CgEntityMotionTest {
 
     private static final float DT = 0.05f;
 
     private final Script host = new Script();
     private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
-    private CgEntityState state;
+    private CgEntityMotion state;
 
     @Before
     public void setUp() {
-        state = new CgEntityState();
+        state = new CgEntityMotion();
         host.facts.clear();
         host.facts.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
     }
@@ -48,7 +52,7 @@ public class CgEntityStateTest {
         host.facts.moveY = 0.42;
         host.facts.y = 64.42;
         step();
-        assertTrue(state.fired(CgEntityEvents.JUMPED));
+        assertTrue(state.fired(CgEntityMotion.JUMPED_BIT));
         host.facts.y = 65.25;
         step();
         host.facts.moveY = -0.5;
@@ -58,7 +62,7 @@ public class CgEntityStateTest {
         host.facts.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
         host.facts.y = 60;
         step();
-        assertTrue(state.fired(CgEntityEvents.LANDED));
+        assertTrue(state.fired(CgEntityMotion.LANDED_BIT));
         assertEquals(5.25f, state.landHeight(), 1e-4);
         assertEquals(0f, state.airSeconds(), 0f);
     }
@@ -69,7 +73,7 @@ public class CgEntityStateTest {
         host.facts.bits = CgEntityFacts.LIVING;
         host.facts.moveY = -0.08;
         step();
-        assertFalse(state.fired(CgEntityEvents.JUMPED));
+        assertFalse(state.fired(CgEntityMotion.JUMPED_BIT));
     }
 
     @Test
@@ -77,15 +81,15 @@ public class CgEntityStateTest {
         step();
         host.facts.hurtTime = 10;
         step();
-        assertTrue(state.fired(CgEntityEvents.HURT));
+        assertTrue(state.fired(CgEntityMotion.HURT_BIT));
         assertEquals(0f, state.secondsSinceHurt(), 0f);
         host.facts.hurtTime = 9;
         step();
-        assertFalse(state.fired(CgEntityEvents.HURT));
+        assertFalse(state.fired(CgEntityMotion.HURT_BIT));
         assertEquals(DT, state.secondsSinceHurt(), 1e-6);
         host.facts.hurtTime = 10;
         step();
-        assertTrue("a second hit before the first wore off", state.fired(CgEntityEvents.HURT));
+        assertTrue("a second hit before the first wore off", state.fired(CgEntityMotion.HURT_BIT));
     }
 
     @Test
@@ -94,14 +98,14 @@ public class CgEntityStateTest {
         host.facts.bits |= CgEntityFacts.SWINGING;
         host.facts.swing = 0.1f;
         step();
-        assertTrue(state.fired(CgEntityEvents.SWING_STARTED));
-        assertEquals("what it carries is read off the state", CgHand.MAIN, CgEntityEvents.SWING_STARTED.payload(state));
+        assertTrue(state.fired(CgEntityMotion.SWING_STARTED_BIT));
+        assertEquals("its hand, the same frame", CgEntityProperties.MAIN, state.swingHand());
         host.facts.swing = 0.6f;
         step();
-        assertFalse(state.fired(CgEntityEvents.SWING_STARTED));
+        assertFalse(state.fired(CgEntityMotion.SWING_STARTED_BIT));
         host.facts.swing = 0.05f;
         step();
-        assertTrue("clicked again mid-swing", state.fired(CgEntityEvents.SWING_STARTED));
+        assertTrue("clicked again mid-swing", state.fired(CgEntityMotion.SWING_STARTED_BIT));
     }
 
     @Test
@@ -112,17 +116,16 @@ public class CgEntityStateTest {
         host.facts.item[CgEntityFacts.MAIN] = 261;
         host.facts.use[CgEntityFacts.MAIN] = CgEntityFacts.USE_BOW;
         step();
-        assertTrue(state.fired(CgEntityEvents.USE_STARTED));
+        assertTrue(state.fired(CgEntityMotion.USE_STARTED_BIT));
         assertEquals(0f, state.useSeconds(), 0f);
         step();
         step();
         assertEquals(2 * DT, state.useSeconds(), 1e-6);
         assertEquals(3600f, state.useLength(), 0f);
-        assertEquals(CgEntityState.ARM_BOW, state.armPose(CgEntityState.MAIN));
+        assertEquals(CgEntityProperties.ARM_BOW, state.armPose(CgEntityProperties.MAIN));
         host.facts.bits &= ~CgEntityFacts.USING;
         step();
-        assertTrue(state.fired(CgEntityEvents.USE_STOPPED));
-        assertEquals(CgHand.MAIN, CgEntityEvents.USE_STOPPED.payload(state));
+        assertTrue(state.fired(CgEntityMotion.USE_STOPPED_BIT));
         assertEquals(0f, state.useSeconds(), 0f);
     }
 
@@ -135,8 +138,8 @@ public class CgEntityStateTest {
         assertEquals((4 + 1f) / 20f, state.useSeconds(), 1e-6);
         host.facts.useTicks = 0;
         step();
-        assertTrue("its ticks went back: a new use", state.fired(CgEntityEvents.USE_STARTED));
-        assertTrue(state.fired(CgEntityEvents.USE_STOPPED));
+        assertTrue("its ticks went back: a new use", state.fired(CgEntityMotion.USE_STARTED_BIT));
+        assertTrue(state.fired(CgEntityMotion.USE_STOPPED_BIT));
     }
 
     @Test
@@ -144,11 +147,11 @@ public class CgEntityStateTest {
         step();
         host.facts.vehicle = 40;
         step();
-        assertTrue(state.fired(CgEntityEvents.MOUNTED));
+        assertTrue(state.fired(CgEntityMotion.MOUNTED_BIT));
         assertTrue(state.riding());
         host.facts.vehicle = -1;
         step();
-        assertTrue(state.fired(CgEntityEvents.DISMOUNTED));
+        assertTrue(state.fired(CgEntityMotion.DISMOUNTED_BIT));
     }
 
     @Test
@@ -157,10 +160,10 @@ public class CgEntityStateTest {
         host.facts.bits |= CgEntityFacts.DEAD;
         host.facts.deathTime = 1;
         step();
-        assertTrue(state.fired(CgEntityEvents.DIED));
+        assertTrue(state.fired(CgEntityMotion.DIED_BIT));
         host.facts.deathTime = 10;
         step();
-        assertFalse(state.fired(CgEntityEvents.DIED));
+        assertFalse(state.fired(CgEntityMotion.DIED_BIT));
         assertEquals(0.5f, state.secondsDead(), 1e-6);
     }
 
@@ -170,21 +173,21 @@ public class CgEntityStateTest {
         host.facts.item[CgEntityFacts.OFF] = 2;
         host.facts.bits |= CgEntityFacts.CHARGED_MAIN;
         step();
-        assertEquals(CgEntityState.ARM_CROSSBOW_HOLD, state.armPose(CgEntityState.MAIN));
-        assertEquals("a two-handed pose leaves the other hand holding", CgEntityState.ARM_ITEM,
-                state.armPose(CgEntityState.OFF));
+        assertEquals(CgEntityProperties.ARM_CROSSBOW_HOLD, state.armPose(CgEntityProperties.MAIN));
+        assertEquals("a two-handed pose leaves the other hand holding", CgEntityProperties.ARM_ITEM,
+                state.armPose(CgEntityProperties.OFF));
         host.facts.bits |= CgEntityFacts.SWINGING;
         step();
-        assertEquals("swinging lowers a charged crossbow", CgEntityState.ARM_ITEM, state.armPose(CgEntityState.MAIN));
+        assertEquals("swinging lowers a charged crossbow", CgEntityProperties.ARM_ITEM, state.armPose(CgEntityProperties.MAIN));
         host.facts.bits = CgEntityFacts.LIVING | CgEntityFacts.USING;
         host.facts.useHand = CgEntityFacts.OFF;
         host.facts.use[CgEntityFacts.OFF] = CgEntityFacts.USE_BLOCK;
         step();
-        assertEquals(CgEntityState.ARM_BLOCK, state.armPose(CgEntityState.OFF));
-        assertEquals(CgEntityState.ARM_ITEM, state.armPose(CgEntityState.MAIN));
+        assertEquals(CgEntityProperties.ARM_BLOCK, state.armPose(CgEntityProperties.OFF));
+        assertEquals(CgEntityProperties.ARM_ITEM, state.armPose(CgEntityProperties.MAIN));
         host.facts.item[CgEntityFacts.OFF] = 0;
         step();
-        assertEquals(CgEntityState.ARM_EMPTY, state.armPose(CgEntityState.OFF));
+        assertEquals(CgEntityProperties.ARM_EMPTY, state.armPose(CgEntityProperties.OFF));
     }
 
     @Test
@@ -226,11 +229,11 @@ public class CgEntityStateTest {
         step();
         host.answers = false;
         assertFalse(state.update(host, CgWorldQuery.NONE, 7, 1f, DT, pose));
-        assertEquals(5, state.item(CgEntityState.MAIN));
+        assertEquals(5, state.item(CgEntityProperties.MAIN));
         assertEquals(3, state.vehicle());
         host.answers = true;
         step();
-        assertFalse(state.fired(CgEntityEvents.MOUNTED));
+        assertFalse(state.fired(CgEntityMotion.MOUNTED_BIT));
     }
 
     @Test
@@ -357,5 +360,25 @@ public class CgEntityStateTest {
         @Override public int rootVehicle(int id) { return -1; }
         @Override public void within(double minX, double minY, double minZ, double maxX, double maxY, double maxZ,
                                      IntConsumer visitor) { }
+    }
+    @Test
+    public void aWarmFrameAllocatesNothing() {
+        CgNetObject motion = CgEntityProperties.MOTION.of(9001);
+        host.facts.bits |= CgEntityFacts.SWINGING;
+        for (int f = 0; f < 20000; f++) frame(motion, f);
+        ThreadMXBean bean = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+        long thread = Thread.currentThread().getId(), before = bean.getThreadAllocatedBytes(thread);
+        int frames = 10000;
+        for (int f = 0; f < frames; f++) frame(motion, f);
+        long bytes = bean.getThreadAllocatedBytes(thread) - before;
+        assertTrue(bytes + " bytes over " + frames + " warm frames", bytes < frames);
+    }
+
+    /** One frame's update and publish, the swing and the height varying. */
+    private void frame(CgNetObject motion, int f) {
+        host.facts.swing = (f % 20) / 20f;
+        host.facts.y = 64 + (f % 7) * 0.1;
+        host.facts.hurtTime = f % 30 == 0 ? 10 : 0;
+        if (state.update(host, CgWorldQuery.NONE, 7, 1f, DT, pose)) state.publish(motion);
     }
 }

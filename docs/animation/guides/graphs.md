@@ -52,13 +52,10 @@ anim.graph(hero(mesh))
 ### Variables an entity fills: `entity`
 
 A graph that animates a Minecraft entity needs no `onUpdate` for what the entity is doing: it binds its variables to
-the entity's values, and the entity's actor sets them every frame before the graph runs, on both sides. Unreal's
-gameplay tag property map, over the entity's values. A value is one of two kinds:
-
-- **derived**, which the engine works out each frame on each side from what the host says (`CgEntityFields`:
-  `entity.speed`, `entity.grounded`), never sent and never saved;
-- **stored**, a field of the entity's own networked data (`CgEntityNetField`, `mymod:mana#current`): set by your
-  server, seen by the clients that see the entity.
+the entity's properties, and the entity's actor sets them every frame before the graph runs, on both sides. Unreal's
+gameplay tag property map, over the entity's properties. An entity's properties are a networked type on entities
+([`docs/NETWORKING.md`](../../NETWORKING.md) § *An entity's properties*): the engine's own, `CgEntityProperties.MOTION`,
+named `entity.<field>`, and any of your mod's, named `<type>#<field>`.
 
 ```yaml
 # anim_graphs/mymod/hero.yaml
@@ -66,75 +63,43 @@ variables:
   speed: { type: float }
   grounded: { type: bool, default: true }
   draw: { type: float }
+  ki: { type: float }
 entity:
-  speed: entity.speed           # the graph's own name: the standard one feeding it
+  speed: entity.speed           # the graph's own name: the property feeding it
   grounded: entity.grounded
   draw: entity.use_time
+  ki: mymod:ki#current          # your mod's own type on entities
 ```
 
 ```java
 CgAnimGraph.builder("mymod:hero", mesh.skeleton())
-        .variables(SPEED, GROUNDED)
-        .entity(SPEED, CgEntityFields.SPEED)
-        .entity(GROUNDED, CgEntityFields.GROUNDED)
+        .variables(SPEED, GROUNDED, KI)
+        .entity(SPEED, CgEntityProperties.SPEED)
+        .entity(GROUNDED, CgEntityProperties.GROUNDED)
+        .entity(KI, Ki.TYPE, Ki.CURRENT)          // or .entity(KI, Ki.CURRENT): the one type listing it
         ...;
-
-// code with a CgEntityState of its own and no actor feeds it so
-anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(state, new CgTagCounts())));
 ```
 
-| Group | Names |
+| Group | `entity.` names |
 |---|---|
-| Motion, smooth across the frame | `entity.speed`, `vertical_speed`, `move_direction` (degrees against the facing, 90 left), `acceleration`, `turn_rate` |
-| Intent | `entity.input` (0 to 1), `input_direction`, `sprint_held`, `jump_held` |
-| Ground and air | `entity.grounded`, `airborne`, `air_time`, `ground_distance`, `land_height` |
-| Stance | `entity.sneaking`, `sprinting`, `swimming`, `crawling`, `swim_amount`, `gliding`, `spin_attack`, `in_water`, `riding`, `sleeping` |
-| Life | `entity.dead`, `dead_time`, `hurt_time` (seconds since the last hit) |
-| Look | `entity.head_yaw` (against the body), `head_pitch` |
-| Hands | `entity.left_handed`, `main_arm` and `off_arm` (an arm pose, int), `using`, `use_animation` (int), `use_time`, `use_length`, `swinging`, `swing` (0 to 1), `swing_hand` |
-| Events, true for their frame | `entity.jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`, `mounted`, `dismounted`, `died` |
+| Motion, smooth across the frame | `speed`, `vertical_speed`, `move_direction` (degrees against the facing, 90 left), `acceleration`, `turn_rate` |
+| Intent | `input` (0 to 1), `input_direction`, `input_from_player`, `sprint_held`, `jump_held` |
+| Ground and air | `grounded`, `airborne`, `air_time`, `ground_distance`, `land_height` |
+| Stance | `living`, `sneaking`, `sprinting`, `swimming`, `crawling`, `swim_amount`, `gliding`, `spin_attack`, `in_water`, `riding`, `vehicle` (an id, -1 none), `sleeping` |
+| Life | `dead`, `dead_time`, `hurt_time` (seconds since the last hit) |
+| Look | `head_yaw` (against the body), `head_pitch` |
+| Hands | `left_handed`, `main_item` and `off_item` (raw ids), `main_arm` and `off_arm` (an arm pose, int), `using`, `use_hand`, `use_animation` (int), `use_time`, `use_length`, `swinging`, `swing` (0 to 1), `swing_hand` |
+| Events, true for their frame | `jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`, `mounted`, `dismounted`, `died` |
 
-- **Each fails at load, naming it**: a name no field has, a graph variable the graph does not declare, or a
-  type that cannot take the value. A float takes any (a bool as 0 or 1); a bool or an int only its own type.
-- **What each means** is `CgEntityState`'s: [`docs/vfx/prefabs.md`](../../vfx/prefabs.md) § *What the entity is
-  doing*. An actor feeds every skeletal mesh it `add`s and every skeletal node of its prefab.
+- **Each fails at load, naming it**: a name no type or field has, a field no number or bool, a type not on entities,
+  a graph variable the graph does not declare, or a type that cannot take the value. A float takes any (a bool as 0
+  or 1); a bool or an int only its own type.
+- **What each means**: [`docs/vfx/prefabs.md`](../../vfx/prefabs.md) § *What the entity is doing*. An actor feeds
+  every skeletal mesh it `add`s and every skeletal node of its prefab.
 - A graph's own variable keeps its name: a state machine's rule reads `speed`, never `entity.speed`, so the same graph
   runs fed by an entity or by a hand-written `onUpdate`.
-
-**What your mod stores on an entity** (mana, a form, a gear) is a per-holder networked type
-([`docs/NETWORKING.md`](../../NETWORKING.md)): your server sets it, every client that sees the entity has it, a late
-joiner is sent it as it stands. A graph names one of its number or bool fields as `<type>#<field>`:
-
-```java
-public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");
-public static final CgNetType MANA = CgNetType.define("mymod:mana").fields(CURRENT).perHolder().build();
-
-MANA.of(entity).setFloat(CURRENT, 80f);              // the server, whenever it changes
-builder.entity(KI, MANA, CURRENT);                   // or in the file:
-```
-
-```yaml
-entity:
-  ki: mymod:mana#current
-```
-
-- The type must be declared before the graph loads, per holder, and list the field, which is a number or a bool.
-- Until the entity has an object of the type on a side, the field reads its `fallback`.
-
-**A value your mod derives** on each side, read off the loader's entity rather than stored, is a field of its own
-namespace:
-
-```java
-public static final CgEntityField FLIGHT_GEAR = CgEntityFields.register("mymod:flight_gear", CgValueType.INT,
-        (state, entity) -> Flight.gear(entity));
-```
-
-```yaml
-entity:
-  gear: mymod:flight_gear
-```
-
-- A mod's name is `namespace:path`, registered at load before a graph naming it loads, once. `entity.` is the engine's.
+- A mod's type is declared before the graph loads. Until the entity has an object of it on a side, a field reads its
+  `fallback`; a local type's object is made when first read.
 
 **A tag the entity owns** (`CgEntityTags`, [`docs/vfx/networking.md`](../../vfx/networking.md) § *Tags an entity
 owns*) feeds a variable the same way: Unreal's gameplay tag property map. A bool is whether the tag is owned, an int
@@ -153,11 +118,10 @@ tags:
 
 ```java
 builder.variables(FLYING).tag(FLYING, CgTagRegistry.global().require("mymod:state.flying"));
-anim.onUpdate(CgEntityFeed.of(CgEntityFields.of(state, tags)));   // without an actor: the tags you keep
 ```
 
 - **Each fails at load, naming it**: a tag no one declared, an undeclared variable, an `as` its type cannot take, or a
-  variable bound both to an entity value and to a tag.
+  variable bound both to an entity property and to a tag.
 
 ### The nodes
 
