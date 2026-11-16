@@ -3,7 +3,16 @@
 // edge's motion is its foreground's), sampled through a Catmull-Rom filter so it does not soften frame on frame, and
 // clipped toward the 3x3 neighbourhood's spread in YCoCg so a colour no longer under the texel cannot ghost. The two
 // are mixed with weights that fall with brightness, so one bright texel cannot flicker the average; this frame's share
-// rises with speed, as a fast surface has less history to trust.
+// rises with speed, as a fast surface has less history to trust. Where the neighbourhood's nearest and farthest texels
+// move apart (parallax through a dithered or thin surface) no one fetch is right: the texel's age, kept in the history's
+// alpha, is cut to as many frames as smear it a texel (three at least, a quarter's share), so the stale picture goes in
+// the frames after rather than at 4% a frame. This frame's share is its 3x3 filtered round the texel's centre, each sample
+// weighed by where the jitter took it (Catmull-Rom): a detail thinner than a texel, which one jittered sample in eight lands on, reaches
+// the texel from its neighbours on the other seven too, rather than pulsing once a cycle. Geometry thinner than a texel
+// (a far post) is under no sample of the 3x3 in some frames, and those frames the clip cuts it from the history: a still
+// texel counts its cuts beside its age in the history's alpha, and once they recur the clip lets most of the history
+// through, so the post holds at its coverage rather than vanishing and growing back. One cut, a real change, is not
+// enough; a texel that moves counts none.
 #domain global
 #include "crystalgraphics:shaders/env/material/post.glsl"
 #include "crystalgraphics:shaders/lib/velocity.glsl"
@@ -19,8 +28,9 @@ RenderState {
 Properties {
     _History  ("Last frame's resolve", sampler2D) = "black"
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
-    _Resolve  ("x this frame's least share, y its share at speed, z 1 with a history to blend", vec4) = (0.04, 0.2, 1, 0)
-    _Jitter   ("xy this frame's jitter in normalized device coordinates", vec4) = (0, 0, 0, 0)
+    _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
+    _Resolve  ("x this frame's least share, y its share at speed, z 1 with a history to blend, w its share where the fetch is ambiguous", vec4) = (0.04, 0.2, 1, 0.25)
+    _Jitter   ("xy this frame's jitter in normalized device coordinates; z 1 where every engine solid wrote velocity", vec4) = (0, 0, 0, 0)
 }
 
 struct v2f { vec2 uv; };
@@ -38,9 +48,19 @@ vec3 taa_rgb(vec3 c) {
     return vec3(c.x + c.y - c.z, c.x + c.z, c.x - c.y - c.z);
 }
 
-// A colour's weight in the blend, falling with brightness: an HDR texel weighs as its tonemapped self
+// The history's alpha: its age in frames (under 64) and its cut count (0 to 31) times 64, integers a half float holds
+const float TAA_AGES = 64.0;
+
+// Catmull-Rom's weight x texels out: the input filter, Unreal's r.TemporalAACatmullRom (sharper than its Gaussian)
+float taa_catmull_rom(float x) {
+    x = abs(x);
+    return x < 1.0 ? 1.0 + x * x * (-2.5 + 1.5 * x) : x < 2.0 ? 2.0 + x * (-4.0 + x * (2.5 - 0.5 * x)) : 0.0;
+}
+
+// A colour's weight in the blend and the filter, falling with brightness, gently: past 1 the light falls off less than a
+// tonemap would, as a bright detail thinner than a texel must keep the light bloom spreads (an 8 weighs a third of a 0)
 float taa_weight(vec3 ycocg) {
-    return 1.0 / (1.0 + max(ycocg.x, 0.0));
+    return 4.0 / (4.0 + max(ycocg.x, 0.0));
 }
 
 // The history at uv through a Catmull-Rom filter in five bilinear taps (the corners' small weights dropped)
@@ -65,18 +85,34 @@ vec3 taa_history(vec2 uv, vec2 size) {
 
 void fragment(in v2f i, out vec4 fragColor) {
     ivec2 at = ivec2(gl_FragCoord.xy);
+    // Under a blended draw, which writes no velocity: a quarter of the new frame, as Unreal's Responsive AA
+    bool responsive = texelFetch(_Responsive, at, 0).r > 0.5;
+    // What the engine did not draw (a host's world): as it came, and a history starting over
+    if (_Jitter.z > 0.5 && !responsive && !cg_EngineDrew(_Velocity, at)) {
+        fragColor = vec4(max(texelFetch(cg_SceneColor, at, 0).rgb, vec3(0.0)), 0.0);
+        return;
+    }
     ivec2 last = textureSize(cg_SceneColor, 0) - 1;
     vec2 size = vec2(last + 1);
     vec3 current = taa_ycocg(texelFetch(cg_SceneColor, at, 0).rgb);
     // The neighbourhood's mean and spread, and its nearest depth (the engine's: nearer is greater)
-    vec3 mean = vec3(0.0), square = vec3(0.0), lo = current, hi = current;
-    ivec2 nearest = at;
-    float nearestDepth = cg_EngineDepth(texelFetch(cg_DepthBuffer, at, 0).r);
+    vec3 mean = vec3(0.0), square = vec3(0.0), lo = current, hi = current, filtered = vec3(0.0);
+    float filterWeight = 0.0;
+    // Where the jitter took this frame's samples, in texels from their centres
+    vec2 jitter = _Jitter.xy * 0.5 * size;
+    ivec2 nearest = at, farthest = at;
+    float nearestDepth = cg_EngineDepth(texelFetch(cg_DepthBuffer, at, 0).r), farthestDepth = nearestDepth;
     for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3 round the texel
         ivec2 q = clamp(at + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last);
         vec3 c = taa_ycocg(texelFetch(cg_SceneColor, q, 0).rgb);
         mean += c;
         square += c * c;
+        // A Gaussian close to Blackman-Harris over the sample's distance from this texel's centre, and weighed as its
+        // tonemapped self: an HDR sample a texel away would otherwise light this one as the jitter swings its weight
+        vec2 toSample = vec2(k % 3 - 1, k / 3 - 1) - jitter;
+        float w = taa_catmull_rom(toSample.x) * taa_catmull_rom(toSample.y) * taa_weight(c);
+        filtered += c * w;
+        filterWeight += w;
         lo = min(lo, c);
         hi = max(hi, c);
         float d = cg_EngineDepth(texelFetch(cg_DepthBuffer, q, 0).r);
@@ -84,16 +120,34 @@ void fragment(in v2f i, out vec4 fragColor) {
             nearestDepth = d;
             nearest = q;
         }
+        if (d < farthestDepth) {
+            farthestDepth = d;
+            farthest = q;
+        }
     }
+    current = filtered / filterWeight;
     vec3 result = current;
+    float age = 1.0;
     if (_Resolve.z > 0.5) {
         vec2 nearUv = (vec2(nearest) + 0.5) / size;
         // The velocity is measured from where the jittered projection put the surface: less the jitter, where it stood,
         // so a still picture fetches its history in place rather than shaken by the jitter
         vec2 motion = (cg_Velocity(_Velocity, nearUv, texelFetch(cg_DepthBuffer, nearest, 0).r) - _Jitter.xy) * 0.5;
+        vec2 farMotion = (cg_Velocity(_Velocity, (vec2(farthest) + 0.5) / size, texelFetch(cg_DepthBuffer, farthest, 0).r) - _Jitter.xy) * 0.5;
+        // Texels the near and far motions part by a frame: kept over n frames, the history smears by n times that
+        float parted = length((motion - farMotion) * size);
         vec2 from = (vec2(at) + 0.5) / size - motion;
         if (all(greaterThanEqual(from, vec2(0.0))) && all(lessThanEqual(from, vec2(1.0)))) {
             vec3 history = taa_ycocg(taa_history(from, size));
+            float packed = texelFetch(_History, clamp(ivec2(from * size), ivec2(0), last), 0).a;
+            float cuts = floor(packed / TAA_AGES);
+            float speed = length(motion * size);
+            // Still: neither the near nor the far texel moves a twentieth of a texel
+            float still = 1.0 - smoothstep(0.05, 0.25, max(speed, length(farMotion * size)));
+            // Frames blended into the history there: a still texel's run to TAA_AGES - 1, a moving one's to the least
+            // share's; no more than smear it a texel, nor fewer than the ambiguous share
+            float kept = min(packed - cuts * TAA_AGES, mix(1.0 / _Resolve.x, TAA_AGES - 1.0, still));
+            kept = min(kept, max(1.0 / _Resolve.w - 1.0, 1.0 / max(parted, 1.0e-4)));
             // Clip toward the mean, inside the spread a standard deviation and a quarter out, and the box itself
             mean /= 9.0;
             vec3 sigma = sqrt(max(square / 9.0 - mean * mean, vec3(0.0)));
@@ -102,12 +156,20 @@ void fragment(in v2f i, out vec4 fragColor) {
             vec3 offset = history - centre;
             vec3 units = abs(offset / extent);
             float out_ = max(units.x, max(units.y, units.z));
-            if (out_ > 1.0) history = centre + offset / out_;
-            float speed = length(motion * size);
-            float share = mix(_Resolve.x, _Resolve.y, clamp(speed / 8.0, 0.0, 1.0));
+            vec3 clipped = out_ > 1.0 ? centre + offset / out_ : history;
+            // A cut takes a fifth of the luma. Recurring cuts let most of the history past the clip; a real change on
+            // such a texel still goes in a few frames
+            bool cut = abs(history.x - clipped.x) > 0.2 * max(max(history.x, clipped.x), 0.02);
+            float relax = responsive ? 0.0 : 0.85 * still * smoothstep(14.0, 24.0, cuts) * step(8.0, kept);
+            history = mix(clipped, history, relax);
+            cuts = still > 0.5 ? clamp(cuts - 1.0 + (cut ? 12.0 : 0.0), 0.0, 31.0) : 0.0;
+            // A still texel's share is its run's; a moving one's the least share, rising with speed
+            float share = max(mix(_Resolve.x, _Resolve.y, clamp(speed / 8.0, 0.0, 1.0)) * (1.0 - still), 1.0 / (kept + 1.0));
+            if (responsive) share = max(share, 0.25);
+            age = min(responsive ? min(kept + 1.0, 3.0) : kept + 1.0, TAA_AGES - 1.0) + cuts * TAA_AGES;
             float wc = share * taa_weight(current), wh = (1.0 - share) * taa_weight(history);
             result = (current * wc + history * wh) / (wc + wh);
         }
     }
-    fragColor = vec4(max(taa_rgb(result), vec3(0.0)), 1.0);
+    fragColor = vec4(max(taa_rgb(result), vec3(0.0)), age);
 }

@@ -2931,6 +2931,7 @@ com/crystalgraphics/api/material/CgRenderPassVariant
   field public,static,final DISTORTION Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   field public,static,final EMISSIVE Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   field public,static,final FORWARD Lcom/crystalgraphics/api/material/CgRenderPassVariant;
+  field public,static,final RESPONSIVE Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   field public,static,final VELOCITY Lcom/crystalgraphics/api/material/CgRenderPassVariant;
   method public lightModeName ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgRenderPassVariant;
@@ -8754,6 +8755,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public <init> ()V
   method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;)V
   method public <init> (Lcom/crystalgraphics/material/CgMaterialShader;Lcom/crystalgraphics/api/material/CgMaterialState;)V
+  method public animatesVertices ()Z
   method public bindings ()Lcom/crystalgraphics/render/draw/CgMaterialBindings;
   method public buffer (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgBufferHandle;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public changes ()I
@@ -9035,6 +9037,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public tube ()Lcom/crystalgraphics/material/shader/CgShaderSpec$Tube;
   method public unlit ()Z
   method public valuesInArena ()Z
+  method public vertexAnimates ()Z
   method public vertexType ()Ljava/lang/String;
   method public withState (Lcom/crystalgraphics/api/material/CgMaterialState;Ljava/lang/String;)Lcom/crystalgraphics/material/shader/CgShaderSpec;
   method public writesCustomData ()Z
@@ -9343,6 +9346,7 @@ com/crystalgraphics/material/shader/syntax/CgShaderTokens
   method public plain (II)Ljava/lang/String;
   method public plain (IIILjava/lang/String;)Ljava/lang/String;
   method public plain (IILjava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+  method public plain (IILjava/util/Map;)Ljava/lang/String;
   method public slice (II)Ljava/lang/String;
   method public start (I)I
   method public text ()Lcom/crystalgraphics/material/shader/syntax/CgShaderText;
@@ -11551,6 +11555,7 @@ com/crystalgraphics/render/draw/CgPassConstants
   method public linearScene (Z)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public noFog ()Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public origin (DDD)Lcom/crystalgraphics/render/draw/CgPassConstants;
+  method public previousTime (D)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public read ([FI)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public resolution (FF)Lcom/crystalgraphics/render/draw/CgPassConstants;
   method public scene ()Lcom/crystalgraphics/render/scene/gpu/CgGpuScene;
@@ -12320,6 +12325,7 @@ com/crystalgraphics/render/meshpass/CgPrimitiveInfo
   method public,abstract graded ()Z
   method public,abstract has (Lcom/crystalgraphics/render/meshpass/CgPrimitiveFlag;)Z
   method public,abstract hasVelocity ()Z
+  method public,abstract keepsPrevious ()Z
 com/crystalgraphics/render/meshpass/CgPrimitiveRelevance
   access public,final
   extends java/lang/Object
@@ -12343,11 +12349,14 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
   field public,static,final DISTORTION Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final EMISSIVE Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final HALF Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
+  field public,static,final RESPONSIVE Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
+  field public,static,final RESPONSIVE_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final SCENE Lcom/crystalgraphics/render/meshpass/CgPassLayout;
   field public,static,final SEPARATE Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final TRANSLUCENT Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VELOCITY Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VELOCITY_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  field public,static,final VELOCITY_WITH_STILL Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VOLUME Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   method public,static covers (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Z
   method public,static depthPipeline (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/draw/CgPipeline;
@@ -12445,19 +12454,28 @@ com/crystalgraphics/render/post/CgScreenPass
 com/crystalgraphics/render/post/aa/CgTemporalAA
   access public,final
   extends java/lang/Object
+  field public,static,final GLOW Ljava/lang/String;
+  field public,static,final OUTPUT Ljava/lang/String;
   field public,static,final SHADER Ljava/lang/String;
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public glow (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static enable (Lcom/crystalgraphics/render/view/CgView;Z)V
+  method public,static enabled (Lcom/crystalgraphics/render/view/CgView;)Z
+  method public,static sharpening ()Z
+  method public,static sharpening (Z)V
   method public,static shows (Lcom/crystalgraphics/render/view/CgView;)Z
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
   field public,static,final LEVELS Lcom/crystalgraphics/render/view/CgViewKey;
   method public <init> ()V
-  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/post/composite/CgPostComposite;)V
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/post/composite/CgPostComposite;)V
   method public release ()V
   method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public,static excessThreshold (Lcom/crystalgraphics/render/post/CgPostContext;)F
   method public,static precache ()V
+  method public,static takesExcess (Lcom/crystalgraphics/render/post/CgPostContext;)Z
 com/crystalgraphics/render/post/composite/CgCompositeFeature
   access public,final,enum
   extends java/lang/Enum
@@ -12509,7 +12527,8 @@ com/crystalgraphics/render/post/debug/CgPostDebug
   field public,static,final VIEW Lcom/crystalgraphics/variable/CgVar$Text;
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public release ()V
-  method public,static fromProperty ()Lcom/crystalgraphics/render/post/debug/CgPostDebug;
+  method public showsVelocity ()Z
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/render/post/debug/CgPostDebug;
 com/crystalgraphics/render/post/distortion/CgPostDistortion
   access public,final
   extends java/lang/Object
@@ -13214,6 +13233,7 @@ com/crystalgraphics/render/scene/component/CgDecalComponent
 com/crystalgraphics/render/scene/component/CgDynamicComponent
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  method public keepsPrevious ()Z
   method public primitive ()Lcom/crystalgraphics/render/scene/component/CgDynamicPrimitive;
   method public worldBounds ()Lcom/crystalgraphics/shape/bounds/CgAABBc;
 com/crystalgraphics/render/scene/component/CgDynamicLights
@@ -13383,7 +13403,7 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public graded ()Z
   method public halfResolution (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public has (Lcom/crystalgraphics/render/meshpass/CgPrimitiveFlag;)Z
-  method public hasVelocity ()Z
+  method public keepsPrevious ()Z
   method public layer (Lcom/crystalgraphics/render/scene/sort/CgSortLayer;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public light (FF)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public maxDistance (F)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -13408,6 +13428,7 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public z ()D
   method public,final basis (Lorg/joml/Matrix4f;)Lorg/joml/Matrix4f;
   method public,final drawnFrom (DDD)Z
+  method public,final hasVelocity ()Z
   method public,final passSettings ()I
   method public,final worldTransform ()Lorg/joml/Matrix4dc;
 com/crystalgraphics/render/scene/component/CgSceneCaptureComponent
@@ -13490,7 +13511,6 @@ com/crystalgraphics/render/scene/component/CgSkeletalMeshComponent
   method public drawnBounds (Lcom/crystalgraphics/shape/bounds/CgAABB;)Lcom/crystalgraphics/shape/bounds/CgAABB;
   method public dynamicMaterial (I)Lcom/crystalgraphics/api/material/CgMaterialInstance;
   method public followPose (Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
-  method public hasVelocity ()Z
   method public hideBone (Ljava/lang/String;Lcom/crystalgraphics/render/scene/component/CgBoneHide;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public hideBoneFromOwner (Ljava/lang/String;Lcom/crystalgraphics/render/scene/component/CgBoneHide;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public leaderPose ()Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
@@ -14376,6 +14396,9 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public requestNormals ()V
   method public requestSubject (I)V
   method public requestVelocity ()V
+  method public requestVelocityWithStill ()V
+  method public responsive ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public responsive (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public sceneColor ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public sceneColor (Lcom/crystalgraphics/render/graph/CgGraphTexture;Z)V
   method public subject ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
@@ -14385,6 +14408,7 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public velocity ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public velocity (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public velocityRequested ()Z
+  method public velocityWithStill ()Z
 com/crystalgraphics/render/view/CgShowFlags
   access public,final
   extends java/lang/Object
@@ -14427,6 +14451,8 @@ com/crystalgraphics/render/view/CgView
   method public historyValid ()Z
   method public hostTextures ()Lcom/crystalgraphics/render/host/CgHostTextures;
   method public jitter (Z)Lcom/crystalgraphics/render/view/CgView;
+  method public jitterNdcX ()F
+  method public jitterNdcY ()F
   method public jitterTexelsX ()F
   method public jitterTexelsY ()F
   method public jittering (Z)V

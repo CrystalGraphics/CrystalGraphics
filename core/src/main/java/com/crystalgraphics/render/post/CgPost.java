@@ -73,9 +73,10 @@ public final class CgPost {
     final CgDepthOfField depthOfField = new CgDepthOfField();
     final CgTemporalAA temporalAA = new CgTemporalAA();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
-    /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
+    /** {@code crystalgraphics.post.debug}'s view, as {@link #debugView} named it; null when unset. */
     @Nullable
-    final CgPostDebug debug = CgPostDebug.fromProperty();
+    private CgPostDebug debug;
+    private String debugView = "";
 
     /** Every effect by point, then order, then when it was added: replaced whole, so a firing reads a snapshot. */
     volatile Entry[] entries;
@@ -223,5 +224,19 @@ public final class CgPost {
         bloom.release();
         crossfade.release();
         if (debug != null) debug.release();
+    }
+
+    /** {@code crystalgraphics.post.debug}'s view, made again when the variable changes; null when unset. */
+    @Nullable
+    CgPostDebug debug() {
+        String view = CgPostDebug.VIEW.get();
+        if (!view.equals(debugView)) {
+            if (debug != null) debug.release();
+            debug = null;
+            // Named first, so a value it cannot read throws once rather than every frame
+            debugView = view;
+            debug = CgPostDebug.of(view);
+        }
+        return debug;
     }
 }

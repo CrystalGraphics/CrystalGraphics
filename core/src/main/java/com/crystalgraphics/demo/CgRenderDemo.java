@@ -3,6 +3,7 @@ package com.crystalgraphics.demo;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
+import com.crystalgraphics.render.post.aa.CgTemporalAA;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.host.CgHostFrame;
 import com.crystalgraphics.platform.rhi.resource.CgTextureView;
@@ -241,7 +242,7 @@ public final class CgRenderDemo {
     private static final int[] KEYS = keys(new int[]{CgKeyCodes.KEY_H, CgKeyCodes.KEY_N, CgKeyCodes.KEY_C,
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
-            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X},
+            CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X, CgKeyCodes.KEY_F7, CgKeyCodes.KEY_F8},
             CgVfxDemoControls.KEYS, CgAnimDemo.KEYS, CgDepthOfFieldDemo.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -997,6 +998,8 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_N -> wanted = (wanted + (shift ? kinds.length - 1 : 1)) % kinds.length;
             case CgKeyCodes.KEY_C -> CgCameraShake.enabled(!CgCameraShake.enabled());
             case CgKeyCodes.KEY_L -> toggleBloom();
+            case CgKeyCodes.KEY_F7 -> CgTemporalAA.enable(CgView.main(), !CgTemporalAA.enabled(CgView.main()));
+            case CgKeyCodes.KEY_F8 -> CgTemporalAA.sharpening(!CgTemporalAA.sharpening());
             case CgKeyCodes.KEY_X -> CgView.main().override(CgSceneRenderer.GRADE_DRAWS, !CgView.main().flag(CgSceneRenderer.GRADE_DRAWS));
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) / 1.25f);
@@ -1104,6 +1107,8 @@ public final class CgRenderDemo {
                 + (bloom.bloomIntensity() == 0f ? "\nBloom [L]: off"
                         : String.format(Locale.ROOT, "\nBloom [L]: on, %.2f [- =]", bloom.bloomIntensity()))
                 + String.format(Locale.ROOT, " | Emission [ ]: %.2f", CgView.main().flag(CgSceneRenderer.SCENE_EMISSION))
+                + (CgTemporalAA.enabled(CgView.main()) ? " | Temporal AA [F7]: on" : " | Temporal AA [F7]: off")
+                + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off")
                 + "\n" + CgVfxDemoControls.get().hudLines(waves);
     }
 

@@ -21,6 +21,7 @@ import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import com.crystalgraphics.render.post.debug.CgPostDebug;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -40,7 +41,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * }</pre>
  *
  * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, depth of
- * field, separate translucency composed, temporal anti-aliasing, {@code SCENE}, bloom taken from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
+ * field, separate translucency composed, temporal anti-aliasing (and, for the engine's bloom, its glow: the light past
+ * bloom's threshold per jittered frame, averaged, so {@code SCENE}'s effects do not feed it), {@code SCENE}, bloom taken
+ * from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
  * encoding into the host's target), {@code DISPLAY}, the crossfade, the debug view; a picture left in another texture
  * is copied into the host's target last.</p>
  */
@@ -63,7 +66,7 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW};
 
     private static boolean installed;
     @Nullable
@@ -148,7 +151,9 @@ public final class CgPostRenderer {
         CgSceneTextures textures = view.textures();
         // Temporal AA's velocity, and its jitter from here to the chain's end: the world's passes, not the overlay's
         boolean temporal = view.showFlags().temporalAA();
-        if (temporal) textures.requestVelocity();
+        // Every engine solid writes, the still ones zero: temporal AA keeps to the texels the engine drew
+        CgPostDebug debug = view.post().debug();
+        if (temporal || debug != null && debug.showsVelocity()) textures.requestVelocityWithStill();
         view.jittering(temporal && view.jitters());
         if (CgPostLooks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
         if (readsScene(view.post(), settings)) {
@@ -214,9 +219,14 @@ public final class CgPostRenderer {
                 ctx.input(picture);
             }
             post.translucency.compose(ctx, picture);
+            CgGraphTexture glow = null;
             if (CgTemporalAA.shows(view)) {
                 try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporalAA")) {
+                    CgScreenTexture jittered = picture;
                     picture = post.temporalAA.apply(ctx, picture);
+                    // Bloom's light, taken per jittered frame and averaged: past the resolve, a light thinner than a texel
+                    // falls under bloom's threshold at its coverage and loses its glow
+                    if (post.bloom.shows(ctx) && CgBloom.takesExcess(ctx)) glow = post.temporalAA.glow(ctx, jittered, picture, CgBloom.excessThreshold(ctx));
                 }
                 ctx.input(picture);
             }
@@ -225,7 +235,7 @@ public final class CgPostRenderer {
 
             CgSceneTextures textures = view.textures();
             boolean linear = textures.linear();
-            if (linear && post.bloom.shows(ctx)) post.bloom.record(ctx, picture.texture(), post.composite);
+            if (linear && post.bloom.shows(ctx)) post.bloom.record(ctx, picture.texture(), glow, post.composite);
             picture = carry(post, CgPostPoint.HDR, entries, i, picture);
             i = skip(CgPostPoint.HDR, entries, i);
 
@@ -246,7 +256,8 @@ public final class CgPostRenderer {
             ctx.input(picture);
             picture = post.crossfade.apply(ctx, picture);
             ctx.input(picture);
-            if (post.debug != null) picture = post.debug.apply(ctx, picture);
+            CgPostDebug debug = post.debug();
+            if (debug != null) picture = debug.apply(ctx, picture);
             settle(ctx, picture, host);
             view.jittering(false);
         }

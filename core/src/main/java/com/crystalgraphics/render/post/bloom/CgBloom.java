@@ -105,13 +105,31 @@ public final class CgBloom {
         return post.settings().bloomIntensity() > 0f && ((post.view().read(CgGradeLayers.KEY) != null) || post.settings().bloom() > 0f);
     }
 
-    /** Engine side, the chain's after {@code SCENE}: blooms {@code scene}, handing the glow to {@code composite}. */
-    public void record(CgPostContext post, CgGraphTexture scene, CgPostComposite composite) {
+    /**
+     * Whether the frame's bloom would take an excess already taken ({@link #record}'s {@code excess}): the engine's own
+     * layers, with no graded layer, whose light the frame's bloom takes out of the scene's.
+     */
+    public static boolean takesExcess(CgPostContext post) {
+        return !post.settings().bloomsGaussian() && post.view().read(CgGradeLayers.KEY) == null;
+    }
+
+    /** The threshold the frame's engine layers subtract: what an {@code excess} handed to {@link #record} was taken past. */
+    public static float excessThreshold(CgPostContext post) {
+        return Math.max(0f, post.settings().bloomExcessThreshold());
+    }
+
+    /**
+     * Engine side, the chain's after {@code SCENE}: blooms {@code scene}, handing the glow to {@code composite}. Where
+     * {@code excess} is given ({@link #takesExcess}), the frame's bloom takes it as its light instead, already past the
+     * threshold (temporal AA's glow, {@code CgTemporalAA.glow}).
+     */
+    public void record(CgPostContext post, CgGraphTexture scene, @Nullable CgGraphTexture excess, CgPostComposite composite) {
         CgGradeLayers graded = post.view().read(CgGradeLayers.KEY);
         CgPostSettings s = post.settings();
         float intensity = s.bloomIntensity(), threshold = s.bloomExcessThreshold();
         Chain c = chain;
-        c.begin(scene, graded);
+        boolean excessed = excess != null && takesExcess(post);
+        c.begin(excessed ? excess : scene, graded, excessed);
         int frame = -1;
         if (post.settings().bloom() > 0f) frame = c.add(Chain.FRAME, shape(post.settings(), engine, threshold));
         int[] layer = layers;
@@ -209,6 +227,8 @@ public final class CgBloom {
         private final Bloom[] blooms = {new Bloom(), new Bloom(), new Bloom()};
         private int count;
         private CgGraphTexture scene;
+        /** Whether {@link #scene} is an excess already taken, for the frame's bloom. */
+        private boolean excessed;
         @Nullable
         private CgGradeLayers graded;
         private final float[] rows = new float[ROWS * 4], uploaded = new float[ROWS * 4];
@@ -218,9 +238,10 @@ public final class CgBloom {
         /** A 1x1 target a dispatch binds where it runs fewer blooms than it declares. */
         private CgGraphTexture unused;
 
-        void begin(CgGraphTexture scene, @Nullable CgGradeLayers graded) {
+        void begin(CgGraphTexture scene, @Nullable CgGradeLayers graded, boolean excessed) {
             this.scene = scene;
             this.graded = graded;
+            this.excessed = excessed;
             count = 0;
         }
 
@@ -411,7 +432,7 @@ public final class CgBloom {
                 // The excess form subtracts its threshold, so Unreal's -1 (the whole scene) is 0 there
                 float threshold = unreal ? look.bloomThreshold() : Math.max(0f, look.bloomThreshold());
                 boolean frame = source == FRAME && graded != null;
-                chain.put(slot * SOURCE_ROWS, source, threshold, unreal ? 1f : 0f, 0f);
+                chain.put(slot * SOURCE_ROWS, source, threshold, unreal ? 1f : 0f, chain.excessed && source == FRAME ? 1f : 0f);
                 chain.put(slot * SOURCE_ROWS + 1, frame && graded.layer(0) != null ? 1f : 0f,
                         frame && graded.layer(1) != null ? 1f : 0f, 0f, 0f);
                 float tintScale = look.bloom() / STAGES;

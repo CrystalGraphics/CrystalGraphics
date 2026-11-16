@@ -15,19 +15,23 @@ import com.crystalgraphics.variable.CgVar;
  * {@code -Dcrystalgraphics.post.debug=level<N>} (0 is the glow the composite reads), so a material's
  * glow can be seen without the picture round it; {@code =overdraw} shows the world renderer's overdraw count through a
  * heat ramp (blue 1, green 4, red 16, white 32), {@code =distortion} the distortion field's offsets summed (|offset| x
- * 50 in red and green, the split in blue). Each post chain runs it as its last step when the flag is set.
+ * 50 in red and green, the split in blue), {@code =velocity} what the velocity pass wrote (0.5 + texels a frame / 32 in
+ * red and green, blue where it wrote, half blue where a blended draw covered, black where nothing did: every engine solid
+ * writes while it shows). Each post
+ * chain runs it as its last step while the variable is set, following it as it changes.
  */
 public final class CgPostDebug {
 
     private static final String SHADER = "crystalgraphics:shaders/post/debug.shader";
     private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
+    private static final String VELOCITY_SHADER = "crystalgraphics:shaders/post/debug_velocity.shader";
 
-    private static final int OVERDRAW = -2, DISTORTION = -3;
+    private static final int OVERDRAW = -2, DISTORTION = -3, VELOCITY = -4;
 
-    /** {@link #OVERDRAW}, {@link #DISTORTION}, else bloom's stage. */
+    /** {@link #OVERDRAW}, {@link #DISTORTION}, {@link #VELOCITY}, else bloom's stage. */
     private final int level;
     private CgMaterialInstance material;
-    private CgTexture bound;
+    private CgTexture bound, boundResponsive;
     private int boundCount;
 
     private CgPostDebug(int level) {
@@ -38,14 +42,16 @@ public final class CgPostDebug {
     public static final CgVar.Text VIEW = CgVar.text("crystalgraphics.post.debug", "", CgVar.DEV,
             "level<N>: a stage of bloom's layers, 0 the glow the composite"
                     + " reads. overdraw: transparent fragments per pixel as a heat ramp (blue 1, green 4, red 16, white 32)."
-                    + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue.");
+                    + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue."
+                    + " velocity: what the velocity pass wrote, 0.5 + texels a frame / 32 in red and green, blue where it"
+                    + " wrote.");
 
-    /** The view {@link #VIEW} asks for; null when it is unset. Throws on a value it cannot read. */
-    public static CgPostDebug fromProperty() {
-        String view = VIEW.get();
+    /** The view {@code view} names ({@link #VIEW}'s values); null for empty. Throws on a value it cannot read. */
+    public static CgPostDebug of(String view) {
         if (view.isEmpty()) return null;
         if (view.equals("overdraw")) return new CgPostDebug(OVERDRAW);
         if (view.equals("distortion")) return new CgPostDebug(DISTORTION);
+        if (view.equals("velocity")) return new CgPostDebug(VELOCITY);
         if (view.startsWith("level")) {
             try {
                 return new CgPostDebug(Math.max(0, Integer.parseInt(view.substring(5))));
@@ -53,18 +59,27 @@ public final class CgPostDebug {
                 // falls through to the refusal
             }
         }
-        throw new IllegalArgumentException("-Dcrystalgraphics.post.debug=" + view + ": overdraw, distortion or level<N>");
+        throw new IllegalArgumentException("crystalgraphics.post.debug=" + view + ": overdraw, distortion, velocity or level<N>");
+    }
+
+    /** Whether it shows the velocity target: the frame asks for it, every engine solid writing. */
+    public boolean showsVelocity() {
+        return level == VELOCITY;
     }
 
     /** Draws its view over {@code picture} where there is one this frame; answers {@code picture}. */
     public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture picture) {
-        CgTexture source;
+        CgTexture source, responsive = null;
         int count = 0;
         if (level == DISTORTION) {
             CgDistortionField field = ctx.view().read(CgDistortionField.KEY);
             if (field == null) return picture;
             source = field.offsets();
             count = field.count();
+        } else if (level == VELOCITY) {
+            source = ctx.scene().velocity();
+            if (source == null) return picture;
+            responsive = ctx.scene().responsive();
         } else if (level < 0) {
             source = ctx.scene().overdraw();
             if (source == null) return picture;
@@ -76,7 +91,8 @@ public final class CgPostDebug {
             source = stages[k];
         }
         if (material == null) {
-            CgMaterial shown = CgMaterial.load(level == DISTORTION ? DISTORTION_SHADER : SHADER);
+            CgMaterial shown = CgMaterial.load(level == DISTORTION ? DISTORTION_SHADER
+                    : level == VELOCITY ? VELOCITY_SHADER : SHADER);
             material = (level == OVERDRAW ? shown.keyword("HEAT", true) : shown).instance();
         }
         if (source != bound || count != boundCount) {
@@ -85,12 +101,16 @@ public final class CgPostDebug {
             bound = source;
             boundCount = count;
         }
-        return ctx.screen(material).name("postDebug.target").reads(source).over(picture);
+        if (responsive != null && responsive != boundResponsive) {
+            material.sampler("_Responsive", 1, responsive);
+            boundResponsive = responsive;
+        }
+        return ctx.screen(material).name("postDebug.target").reads(source).reads(responsive).over(picture);
     }
 
     /** Forgets its material, which the material registry frees with the context. */
     public void release() {
         material = null;
-        bound = null;
+        bound = boundResponsive = null;
     }
 }
