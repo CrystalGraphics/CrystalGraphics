@@ -1,0 +1,6 @@
+_v: 1
+colour: linear
+sampler: { filter: bilinear }
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/Texture/Default_DiffuseTexture02" }
+  note: "Default_DiffuseTexture02: its UTexture2D settings"

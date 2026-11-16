@@ -1,6 +1,7 @@
 _v: 1
 shader: kk:shaders/cell_tone.shader
 state: { BlendMode: Masked, ShadingModel: kk:cell_tone, Faces: Front }
+usage: [skeletal_mesh]
 values:
   OutlineColorType: 0.0
   RimPower_Shadow: 1.0

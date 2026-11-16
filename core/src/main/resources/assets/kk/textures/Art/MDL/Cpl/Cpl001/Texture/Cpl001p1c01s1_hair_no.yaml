@@ -1,0 +1,7 @@
+_v: 1
+colour: linear
+compression: normal_map
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_hair_no" }
+  unreal: { LODGroup: TEXTUREGROUP_WorldNormalMap }
+  note: "Cpl001p1c01s1_hair_no: its UTexture2D settings"

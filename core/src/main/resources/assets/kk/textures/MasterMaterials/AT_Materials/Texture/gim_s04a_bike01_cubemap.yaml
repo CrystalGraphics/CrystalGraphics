@@ -1,0 +1,5 @@
+_v: 1
+cube: true
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/Texture/gim_s04a_bike01_cubemap" }
+  note: "gim_s04a_bike01_cubemap: its UTextureCube settings"

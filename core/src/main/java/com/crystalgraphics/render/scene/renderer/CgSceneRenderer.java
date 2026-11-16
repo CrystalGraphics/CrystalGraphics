@@ -407,6 +407,7 @@ public final class CgSceneRenderer {
         // Before any glow: a label's text then hides the glows behind it, as it hides their colour
         boolean showLabels = view.showFlags().labels() && scene.renderer() == this;
         if (showLabels) recordLabelDepth(firing);
+        if (linear && view.flag(GRADE_DRAWS) && layers.looksReadScene(rows)) textures.requestCustomData();
         if (textures.customDataRequested()) recordCustomData(firing, passes);
         recordCustomDepth(firing, passes);
         if (textures.velocityRequested() && firing.host().target().lendsAttachments()) recordVelocity(firing, passes);
@@ -436,11 +437,12 @@ public final class CgSceneRenderer {
                         .constants(firing.constants()).add(decals).end();
             }
         }
+        // The graded layers' solids before post's SURFACES: a graded look's own post materials grade them there
+        layered = linear && view.flag(GRADE_DRAWS) && layers.prepare(firing, passes, constants);
         boolean post = view.showFlags().post();
         if (post) CgPostRenderer.surfaces(firing);
         firing.run(CgRenderStage.SURFACES);
 
-        layered = linear && view.flag(GRADE_DRAWS) && layers.prepare(firing, passes, constants);
         if (rows.size() > 0 && view.showFlags().translucency()) {
             try (CgTrace.Zone zp = CgTrace.zone(CgChannels.WORLD, PASSES_ZONE)) {
                 translucentPasses(firing, passes, constants, linear);

@@ -14,6 +14,7 @@ import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.world.actor.kit.CgKitActor;
 import com.crystalgraphics.world.actor.kit.CgKitAssets;
 import com.crystalgraphics.world.actor.kit.CgKitModels;
@@ -77,17 +78,30 @@ final class AnimDemoCasts {
                 return true;
             }
             if (mesh == null || !assets.declared()) return false;
-            for (int i = 0; i < materials.size(); i++) if (!assets.material(i).ready()) return false;
+            boolean outlined = spec.outline() != null;
+            int post = materials.size() + (outlined ? 1 : 0);
+            for (int i = 0; i < post + spec.post().size(); i++) if (!assets.material(i).ready()) return false;
             if (pipelines == null) {
                 pipelines = CgPipelinePrecache.request(p -> {
                     for (int i = 0; i < materials.size(); i++) p.add(CgMaterial.of(assets.material(i).get()), false, true);
+                    if (outlined) p.addPass(CgMaterial.of(assets.material(materials.size()).get()));
+                    for (int i = 0; i < spec.post().size(); i++) p.addPass(CgMaterial.of(assets.material(post + i).get()));
                 });
             }
             if (!pipelines.ready()) return false;
             CgMaterial[] slots = new CgMaterial[materials.size()];
             for (int i = 0; i < slots.length; i++) slots[i] = CgMaterial.of(assets.material(i).get());
-            cast = new AnimDemoCast(spec.name(), spec.name(), mesh, clips, standing(mesh), s -> slots[s], bodies);
+            CgMaterial look = outlined ? CgMaterial.of(assets.material(materials.size()).get()) : null;
+            cast = new AnimDemoCast(spec.name(), spec.name(), mesh, clips, standing(mesh), s -> slots[s], spec.stencil(), look,
+                    CgVfxKitLook.grade(spec.namespace(), postMaterials(post)), bodies);
             return true;
+        }
+
+        /** Its spec's post materials, loaded from {@code at}: after the prefab's and the outline's. */
+        private List<CgMaterialDefinition> postMaterials(int at) {
+            List<CgMaterialDefinition> out = new ArrayList<>(spec.post().size());
+            for (int i = 0; i < spec.post().size(); i++) out.add(assets.material(at + i).get());
+            return out;
         }
     }
 
@@ -117,7 +131,11 @@ final class AnimDemoCasts {
             try {
                 // The prefab names the materials: their load starts now, beside the mesh's and the clips' reads
                 kit.materials = CgKitModels.prefabMaterials(spec.kit().resolve(spec.prefab()));
-                kit.assets = CgKitAssets.load(CgVfx.world(), spec.namespace(), spec.kit(), List.of(), kit.materials,
+                // then its outline's look, a kit material (material(materials.size())), then its post materials
+                List<String> load = new ArrayList<>(kit.materials);
+                if (spec.outline() != null) load.add(spec.outline());
+                load.addAll(spec.post());
+                kit.assets = CgKitAssets.load(CgVfx.world(), spec.namespace(), spec.kit(), List.of(), load,
                         List.of(), List.of(), spec.shading());
             } catch (RuntimeException e) {
                 LOGGER.warn("[anim-demo] {} failed to load, left out: {}", spec.name(), e.toString());
@@ -185,7 +203,7 @@ final class AnimDemoCasts {
             }
             String name = "Humanoid " + body.replace("_model", "").replace("model", "").replace('_', ' ').trim();
             // A GeckoLib model faces -z
-            out.add(new AnimDemoCast(name.trim(), "humanoid", geo.mesh(), clips, new Matrix4f().rotationY((float) Math.PI), s -> look, bodies));
+            out.add(new AnimDemoCast(name.trim(), "humanoid", geo.mesh(), clips, new Matrix4f().rotationY((float) Math.PI), s -> look, 0, null, null, bodies));
         }
         return out;
     }

@@ -216,6 +216,16 @@ public final class CgPostSettings {
         return Arrays.asList(blendables);
     }
 
+    /** How many blendables it holds: with {@link #blendable(int)}, a walk that allocates nothing. */
+    public int blendableCount() {
+        return blendables.length;
+    }
+
+    /** Its {@code i}th blendable, as added. */
+    public Blendable blendable(int i) {
+        return blendables[i];
+    }
+
     /** Resolved only: how many blendables show this frame. */
     public int drawnBlendables() {
         return drawnCount;

@@ -1,0 +1,9 @@
+_v: 1
+shader: crystalgraphics:shaders/post/outline.shader
+values: { _Stencil: 1, OutlinedModels: -119040, UntypedModels: 512, DistanceUnit: 0.01 }
+editor:
+  note: "CC2's battle outline (FPostProcessOutlinePS<PO_4Pos>, kamehameha.rdc draw 6363) as the engine's outline: its other values are the engine shader's defaults, which are the capture's"
+  notes:
+    values.OutlinedModels: "Kakarot's cel set as the capture's shading-model table decides it: models 8, 9, 10, 11, 13 and 17-31"
+    values.UntypedModels: "the eye (9) never takes a type colour"
+    values.DistanceUnit: "the capture's distances are centimetres"

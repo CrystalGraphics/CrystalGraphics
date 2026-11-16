@@ -21,6 +21,7 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
+import com.crystalgraphics.render.post.look.CgLayerLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.pass.CgCommandForm;
@@ -88,20 +89,35 @@ public final class CgLayerPasses {
     private CgDrawCommands[] lists = new CgDrawCommands[CgGradeLayers.MAX * 2 + 1];
     private int listsUsed;
     /** Per slot, its layer's form: the rest of its draws, its separate ones, and over what the passes carried. */
-    private final SlotForm[] main = new SlotForm[CgGradeLayers.MAX], apart = new SlotForm[CgGradeLayers.MAX],
-            over = new SlotForm[CgGradeLayers.MAX], covers = new SlotForm[CgGradeLayers.MAX];
-    private final SlotForm separateAll = new SlotForm(-1, true, false, false);
+    private final SlotForm[] apart = new SlotForm[CgGradeLayers.MAX],
+            over = new SlotForm[CgGradeLayers.MAX], covers = new SlotForm[CgGradeLayers.MAX], blended = new SlotForm[CgGradeLayers.MAX];
+    private final SlotForm separateAll = new SlotForm(-1, true, false, false, false);
     /** A separate row that cannot go apart (its blend multiplies): drawn in the scene as the after-distortion pass draws. */
     private final CgCommandForm inScene = (rows, b, p) -> layered(p) == null && p.pass() != CgRenderPassVariant.EMISSIVE ? p : null;
 
     public CgLayerPasses(CgSceneRenderer renderer) {
         this.renderer = renderer;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
-            main[k] = new SlotForm(k, false, false, false);
-            apart[k] = new SlotForm(k, true, false, false);
-            over[k] = new SlotForm(k, false, true, false);
-            covers[k] = new SlotForm(k, false, false, true);
+            apart[k] = new SlotForm(k, true, false, false, false);
+            over[k] = new SlotForm(k, false, true, false, false);
+            covers[k] = new SlotForm(k, false, false, true, false);
+            blended[k] = new SlotForm(k, false, false, false, true);
         }
+    }
+
+    /**
+     * Whether a graded look of a row in view has a post material reading the scene textures it is handed: the firing
+     * asks for its custom data before drawing it.
+     */
+    public boolean looksReadScene(CgMeshBatches rows) {
+        CgPostSettings last = null;
+        for (int b = 0; b < rows.size(); b++) {
+            CgPostSettings look = look(rows, b);
+            if (look == null || look == last) continue;
+            if (CgLayerLooks.readsScene(look)) return true;
+            last = look;
+        }
+        return false;
     }
 
     /** The slot whose layer the translucent passes write as their second output this firing; -1 for none. */
@@ -167,6 +183,14 @@ public final class CgLayerPasses {
                 apartTargets[k] = CgGraphTexture.transientTexture("cg_grade_apart" + k, new CgTextureDesc(w, h, GRADE_FORMAT));
             }
         }
+        // Every slot's solids first, cleared, before post's SURFACES: a look's own post materials grade them there
+        for (int k = 0; k < CgGradeLayers.MAX; k++) {
+            if (!seen[k]) continue;
+            layerPass(firing, constants, targets[k], false, GPU_GRADE).add(layerList(firing.recording(), passes, covers[k])).end();
+            gradeLayers.layers[k] = targets[k];
+            gradeLayers.looks[k] = slots[k];
+        }
+        firing.view().publish(CgGradeLayers.KEY, gradeLayers);
         if (!CgExecutor.drawsOnDevice()) return true;
         int best = 0;
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
@@ -180,12 +204,10 @@ public final class CgLayerPasses {
         }
         if (outputSlot < 0) return true;
         for (int b = 0; b < n; b++) carried[b] = look(rows, b) == slots[outputSlot] && carriable(rows, b);
-        // Its layer cleared, its solids' covers in it first: drawn here, so the layer passes leave them out
-        CgDrawCommands solids = layerList(firing.recording(), passes, covers[outputSlot]);
+        // Its solids are in its layer already: the layer passes leave them out
         for (int b = 0; b < n; b++) {
             if (look(rows, b) == slots[outputSlot] && CgSceneRenderer.queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD) carried[b] = true;
         }
-        layerPass(firing, constants, targets[outputSlot], false, GPU_GRADE).add(solids).end();
         return true;
     }
 
@@ -200,9 +222,10 @@ public final class CgLayerPasses {
         for (int k = 0; k < CgGradeLayers.MAX; k++) {
             if (!seen[k]) continue;
             boolean output = k == outputSlot;
-            CgDrawCommands rest = layerList(rec, passes, output ? over[k] : main[k]);
+            // Over its solids, drawn in prepare
+            CgDrawCommands rest = layerList(rec, passes, output ? over[k] : blended[k]);
             again += rest.size();
-            if (!output || rest.size() > 0) layerPass(firing, constants, targets[k], output, GPU_GRADE).add(rest).end();
+            if (rest.size() > 0) layerPass(firing, constants, targets[k], true, GPU_GRADE).add(rest).end();
             CgDrawCommands apartDraws = layerList(rec, passes, apart[k]);
             if (apartDraws.size() > 0) {
                 layerPass(firing, constants, apartTargets[k], false, GPU_GRADE).add(apartDraws).end();
@@ -281,13 +304,14 @@ public final class CgLayerPasses {
     /** A slot's layer: which of its rows, through which forms. */
     private final class SlotForm implements CgCommandForm {
         final int slot;
-        final boolean apartRows, overCarried, covers;
+        final boolean apartRows, overCarried, covers, blendedOnly;
 
-        SlotForm(int slot, boolean apartRows, boolean overCarried, boolean covers) {
+        SlotForm(int slot, boolean apartRows, boolean overCarried, boolean covers, boolean blendedOnly) {
             this.slot = slot;
             this.apartRows = apartRows;
             this.overCarried = overCarried;
             this.covers = covers;
+            this.blendedOnly = blendedOnly;
         }
 
         @Nullable
@@ -299,7 +323,7 @@ public final class CgLayerPasses {
             if (separateRow != apartRows) return null;
             if (overCarried && carries(rows, b)) return null;
             boolean solid = CgSceneRenderer.queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD;
-            if (covers && !solid) return null;
+            if (covers && !solid || blendedOnly && solid) return null;
             boolean glows = CgSceneRenderer.emits(rows, b);
             if (p.pass() == CgRenderPassVariant.EMISSIVE) {
                 if (!glows) return null;

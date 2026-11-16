@@ -1,0 +1,7 @@
+_v: 1
+colour: linear
+compression: normal_map
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/Texture/NormalTexture" }
+  unreal: { LODGroup: TEXTUREGROUP_WorldNormalMap }
+  note: "NormalTexture: its UTexture2D settings"

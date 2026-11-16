@@ -5,9 +5,11 @@ the animation demo reads. The kit's namespace is renamed in every text file it c
     python -I tools/cut_kit_character.py --kit <kit folder> --namespace kakarot_kit --to kk \
         --shading-from kakarot --shading kk --name Goku --mesh models/.../Cpl001p1c01s1.glb \
         --skeleton skeletons/.../Cpl001p1_Skeleton.yaml --prefab prefabs/.../AT_Character_cpl001_BP.yaml \
-        --clips models/Art/ANM/cpl/C001A/BAS ... --out core/src/main/resources/assets/kk
+        --clips models/Art/ANM/cpl/C001A/BAS ... --post kakarot_kit:Art/BG/Area02/PostProcess/Area02_CharaColor \
+        --out core/src/main/resources/assets/kk
 
-Its shading models' ids (--shading-from:) become --shading's too. Prints what it copied and the size. Run it again to
+Its shading models' ids (--shading-from:) become --shading's too. --post names the kit's post materials drawn on the
+character alone, in its kit's look (a stage's character colour): cut with it and listed in actor.yaml's post. Prints what it copied and the size. Run it again to
 refresh the cut: the output folder is replaced, so keep anything else of the namespace (kk's humanoid/ and
 preload.yaml) aside first.
 """
@@ -33,6 +35,7 @@ def main():
     a.add_argument('--skeleton', required=True)
     a.add_argument('--prefab', required=True)
     a.add_argument('--clips', nargs='*', default=[])
+    a.add_argument('--post', nargs='*', default=[], help="post materials by id, drawn on the character alone")
     a.add_argument('--out', required=True)
     args = a.parse_args()
     start = time.time()
@@ -52,9 +55,12 @@ def main():
         return None
 
     wanted = [args.mesh, args.skeleton, args.prefab, 'units.yaml', 'shading.yaml']
-    sidecar = os.path.splitext(args.mesh)[0] + '.yaml'
-    if os.path.isfile(os.path.join(kit, sidecar)):
-        wanted.append(sidecar)
+    for post in args.post:
+        found = resolve(post.split(':', 1)[1])
+        if found is None:
+            print('no post material ' + post)
+            return 1
+        wanted.append(found)
     files, missing, queue = set(), set(), list(wanted)
     while queue:
         rel = queue.pop()
@@ -64,6 +70,10 @@ def main():
             missing.add(rel)
             continue
         files.add(rel)
+        # A texture's or a mesh's settings file beside it: without it a mask loads as sRGB, a normal map as colour
+        sidecar = os.path.splitext(rel)[0] + '.yaml'
+        if not rel.endswith(TEXT) and os.path.isfile(os.path.join(kit, sidecar)):
+            queue.append(sidecar)
         if rel.endswith(TEXT):
             text = open(os.path.join(kit, rel), encoding='utf-8', errors='replace').read()
             for path in ref.findall(text):
@@ -103,6 +113,8 @@ def main():
         w.write('name: %s\nnamespace: %s\nshading: %s\nmesh: %s\nskeleton: %s\nprefab: %s\n'
                 % (args.name, args.to, args.shading, args.mesh, args.skeleton, args.prefab))
         w.write('clips:\n' + ''.join('  - %s\n' % c for c in args.clips))
+        if args.post:
+            w.write('post:\n' + ''.join('  - %s\n' % rename.sub(args.to + ':', p) for p in args.post))
     print('%d files, %.1f MB, in %.1f s' % (len(files) + 1, size / 1e6, time.time() - start))
     if missing:
         print('not found (%d):' % len(missing))

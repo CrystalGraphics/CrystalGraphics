@@ -1,5 +1,6 @@
 _v: 1
 parent: kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_body_Mt_inst
+usage: [skeletal_mesh]
 values: { AOMult: 0.4000000059604645, AOPower: 1.0 }
 textures:
   AmbientOcclusion_Texture: { texture: kk:textures/Art/MDL/Cpl/Common/Texture/Diffuse/Goku_Body_AO.png }

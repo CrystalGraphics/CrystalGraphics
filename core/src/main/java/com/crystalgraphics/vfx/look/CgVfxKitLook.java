@@ -4,11 +4,16 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgKitFiles;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -42,11 +47,59 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure) {
     /** The file at a kit's root. */
     public static final String FILE = "look.yaml";
     private static final Map<String, CgVfxKitLook> BY_KIT = new ConcurrentHashMap<>();
+    /** Each distinct look by its values: kits of one game share one, and so one graded layer a frame. */
+    private static final Map<List<Object>, CgVfxKitLook> BY_VALUES = new ConcurrentHashMap<>();
+    /** A kit's look with post materials, by the look and the materials' ids. */
+    private static final Map<List<Object>, CgPostSettings> WITH_POST = new ConcurrentHashMap<>();
 
     /** The look of the kit {@code namespace}; null for a kit without one, or none. */
     @Nullable
     public static CgVfxKitLook of(@Nullable String namespace) {
         return namespace == null ? null : BY_KIT.get(namespace);
+    }
+
+    /**
+     * The grade of the kit {@code namespace}'s look, for a primitive of the kit: its pixels toned by the kit's post
+     * alone, the world around it keeping the frame's look. Null for a kit without one.
+     *
+     * <pre>{@code
+     * goku.grade(CgVfxKitLook.grade("kk"));   // a kit character graded as its game grades it
+     * }</pre>
+     */
+    @Nullable
+    public static CgPostSettings grade(@Nullable String namespace) {
+        CgVfxKitLook look = of(namespace);
+        return look == null ? null : look.settings();
+    }
+
+    /**
+     * The kit {@code namespace}'s look with {@code post}, the kit's post materials drawn on the primitive alone (a
+     * stage's character colour): one shared object for each kit and list, so the primitives of a kit share one graded
+     * layer. The kit's look alone where {@code post} is empty; null for a kit without a look.
+     *
+     * <pre>{@code
+     * List<CgMaterialDefinition> stage = List.of(kit.material(chara).get());   // kk:Art/BG/Area02/PostProcess/Area02_CharaColor
+     * goku.grade(CgVfxKitLook.grade("kk", stage));                              // toned by Kakarot, coloured by its arena
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Each material draws at its file's {@code Location}; only {@code SURFACES} ones reach the primitive.</li>
+     *   <li>Leave out a material that grades the whole screen (a gradient, a vignette): it is the stage's, not the
+     *       primitive's.</li>
+     * </ul>
+     */
+    @Nullable
+    public static CgPostSettings grade(@Nullable String namespace, List<CgMaterialDefinition> post) {
+        CgVfxKitLook look = of(namespace);
+        if (look == null || post.isEmpty()) return look == null ? null : look.settings();
+        List<Object> key = new ArrayList<>(post.size() + 1);
+        key.add(look);
+        for (CgMaterialDefinition m : post) key.add(m.id());
+        return WITH_POST.computeIfAbsent(key, k -> {
+            CgPostSettings settings = look.settings().copy();
+            for (CgMaterialDefinition m : post) settings.blendable(CgMaterial.of(m).instance(), 1f);
+            return settings;
+        });
     }
 
     /** Reads {@code folder}'s look as the asset registry registers the kit. */
@@ -59,7 +112,7 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure) {
         BY_KIT.put(namespace, read(file));
     }
 
-    /** {@code file}, validated against {@link CgKitFiles#LOOK}. */
+    /** {@code file}, validated against {@link CgKitFiles#LOOK}; the look already read where another kit's has its values. */
     public static CgVfxKitLook read(Path file) {
         Map<?, ?> root;
         try {
@@ -71,7 +124,10 @@ public record CgVfxKitLook(CgPostSettings settings, float exposure) {
         }
         CgValidation v = CgAssetData.validate(file.toString(), CgKitFiles.LOOK, root, CgValidation.Usecase.LOAD);
         if (!v.valid()) throw new IllegalArgumentException(file + ": " + v.issues());
-        return new CgVfxKitLook(CgPostBlock.settings((Map<?, ?>) root.get("post")), number(root.get("effect_exposure"), 1f));
+        // Graded layers are matched by identity: a second object of equal values would take a second layer
+        List<Object> values = Arrays.asList(root.get("post"), root.get("effect_exposure"));
+        return BY_VALUES.computeIfAbsent(values, k -> new CgVfxKitLook(CgPostBlock.settings((Map<?, ?>) root.get("post")),
+                number(root.get("effect_exposure"), 1f)));
     }
 
     private static float number(@Nullable Object v, float fallback) {

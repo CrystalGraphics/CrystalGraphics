@@ -1,0 +1,6 @@
+_v: 1
+colour: linear
+compression: alpha
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Common/Texture/post_01" }
+  note: "post_01: its UTexture2D settings"

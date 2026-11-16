@@ -1,0 +1,5 @@
+_v: 1
+sampler: { filter: nearest }
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Texture/cpl001p1c01s1_pants_dm_msk" }
+  note: "cpl001p1c01s1_pants_dm_msk: its UTexture2D settings"

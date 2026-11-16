@@ -1,0 +1,22 @@
+_v: 1
+parent: kk:Art/EFF/e/cmn/PostProcess/PE_CharaColor
+values:
+  DepthMaskDistance: 400000.0
+  BG_Brightness: [1.7000000476837158, 1.7000000476837158, 1.7000000476837158, 1.0]
+  BG_Gamma: [1.5, 1.5, 1.5, 1.0]
+  BG_Depth_Brightness: [0.7919999957084656, 0.7919999957084656, 0.7919999957084656, 1.0]
+  BG_Depth_Color: [0.0, 0.30799999833106995, 0.843999981880188, 0.7239999771118164]
+  BG_Depth_Gamma: [0.5889999866485596, 0.5889999866485596, 0.5889999866485596, 1.0]
+  BG_Depth_Saturation: [0.75, 0.75, 0.75, 1.0]
+  Chara_Brightness: [1.2999999523162842, 1.100000023841858, 1.5, 1.0]
+  Chara_Gamma: [1.2999999523162842, 1.2999999523162842, 1.2999999523162842, 1.0]
+  Shadow_Brightness: [3.0, 3.0, 3.0, 1.0]
+  Sky_Brightness: [0.800000011920929, 0.800000011920929, 0.800000011920929, 1.0]
+  Sky_Gamma: [1.5, 1.5, 1.5, 1.0]
+unsupported:
+  - what: "parameters its program does not declare"
+    source:
+      unreal: { RefractionDepthBias: 0.0, Brightness: [1.2999999523162842, 1.100000023841858, 0.8999999761581421, 1.0] }
+editor:
+  source: { game: kakarot, package: "/Game/Art/BG/Area02/PostProcess/Area02_CharaColor" }
+  note: "Area02_CharaColor: an instance"

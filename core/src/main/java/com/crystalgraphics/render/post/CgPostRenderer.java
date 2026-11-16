@@ -14,6 +14,7 @@ import com.crystalgraphics.render.view.CgViewRenderTarget;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 import com.crystalgraphics.render.post.look.CgFilmLut;
+import com.crystalgraphics.render.post.look.CgLayerLooks;
 import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.precache.CgPipelineList;
@@ -72,7 +73,8 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW, CgViewRenderTarget.fillShader()};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalAA.GLOW, CgViewRenderTarget.fillShader(),
+            CgLayerLooks.UNPREMULTIPLY, CgLayerLooks.PREMULTIPLY, CgLayerLooks.MASK};
 
     private static boolean installed;
     @Nullable
@@ -139,6 +141,7 @@ public final class CgPostRenderer {
     /** Every chain forgets what it made on the GPU. At context teardown. */
     public static void releaseAll() {
         CgPost.releaseAll();
+        CgLayerLooks.releaseAll();
         copy = null;
     }
 
@@ -200,7 +203,10 @@ public final class CgPostRenderer {
         if (!view.textures().linear()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.surfaces")) {
             post.context.begin(firing, view.state().get(SETTINGS));
-            run(post, CgPostPoint.SURFACES, entries, 0, scene(firing));
+            CgScreenTexture scene = scene(firing);
+            run(post, CgPostPoint.SURFACES, entries, 0, scene);
+            // Graded draws' own looks on their pixels: the layers' solids are drawn by now
+            CgLayerLooks.record(post.context, scene);
             post.ranSurfaces = true;
         }
     }

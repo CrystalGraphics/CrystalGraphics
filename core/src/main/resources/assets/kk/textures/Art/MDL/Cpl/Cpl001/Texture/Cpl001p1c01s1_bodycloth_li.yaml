@@ -1,0 +1,5 @@
+_v: 1
+colour: linear
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_bodycloth_li" }
+  note: "Cpl001p1c01s1_bodycloth_li: its UTexture2D settings"

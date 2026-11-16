@@ -1,16 +1,17 @@
 package com.crystalgraphics.world.actor.kit;
 
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.render.post.CgOutline;
-import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.vfx.CgVfx;
+import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.world.actor.CgEntity;
 import com.crystalgraphics.world.actor.CgEntityActor;
 import org.apache.logging.log4j.LogManager;
@@ -33,7 +34,7 @@ import java.util.function.Supplier;
  *
  * <pre>{@code
  * CgKitActor.Spec hero = new CgKitActor.Spec("hero", Paths.get("D:/kits/mykit"), "mykit", "mystudio",
- *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml", null, 0, List.of());
+ *         "models/Hero.glb", "skeletons/Hero_Skeleton.yaml", "prefabs/Hero_BP.yaml", null, 0, List.of(), List.of());
  * CgEntityActors.bindLocalPlayer(hero.factory());        // the client's player, drawn as it
  *
  * CgKitActor.preload(hero);                               // ahead: drawn as soon as it spawns
@@ -54,11 +55,14 @@ public final class CgKitActor extends CgEntityActor {
      * A character's files, each path under {@code kit}: {@code namespace} is how the kit's assets are named,
      * {@code shading} the namespace its materials name their shading models by, {@code skeleton} the sockets' asset and {@code prefab} the one naming its materials.
      * {@code outline} is the id of a material of the kit drawn as the engine's outline over the character, marked by
-     * {@code stencil} (its custom depth stencil value); null and 0 for none. {@code clips} are folders under the kit
+     * {@code stencil} (its custom depth stencil value); a stencil with no {@code outline} is the engine's outline round
+     * it; null and 0 for none. {@code clips} are folders under the kit
      * whose {@code .glb} clips are its own, for what plays them (the animation demo); the actor poses none.
+     * {@code post} are ids of the kit's post materials drawn on the character alone, in its kit's look (a stage's
+     * character colour: {@code CgVfxKitLook.grade(namespace, post)}).
      */
     public record Spec(String name, Path kit, String namespace, String shading, String mesh, String skeleton,
-                       String prefab, @Nullable String outline, int stencil, List<String> clips) {
+                       String prefab, @Nullable String outline, int stencil, List<String> clips, List<String> post) {
 
         /** An actor factory for this character, for {@code CgEntityActors.bind}. */
         public Supplier<CgKitActor> factory() {
@@ -69,12 +73,20 @@ public final class CgKitActor extends CgEntityActor {
     /** What a spec loaded: the files read on a worker, then the kit's materials. */
     private static final class Loaded {
         volatile CgSkeletalMesh mesh;
-        /** The prefab's materials, one a slot, and the outline's after them where there is one. */
+        /** The prefab's materials, one a slot, the outline's after them where there is one, then the post materials. */
         volatile List<String> materials;
         volatile boolean failed;
         CgKitAssets kit;
         /** The slots' skinned forms and the outline's pass, asked for once the materials are ready. */
         CgPipelinePrecache.Request pipelines;
+
+        /** The spec's post materials, loaded: after the prefab's and the outline's. Once {@link #advance} is true. */
+        List<CgMaterialDefinition> post(Spec s) {
+            int at = mesh.mesh().submeshCount() + (s.outline() != null ? 1 : 0);
+            List<CgMaterialDefinition> out = new ArrayList<>(s.post().size());
+            for (int i = 0; i < s.post().size(); i++) out.add(kit.material(at + i).get());
+            return out;
+        }
 
         /**
          * Moves the load along: the kit asked for once the files are read, then the pipelines its draws use. True once
@@ -104,7 +116,9 @@ public final class CgKitActor extends CgEntityActor {
                 int slots = mesh.mesh().submeshCount();
                 pipelines = CgPipelinePrecache.request(p -> {
                     for (int i = 0; i < slots; i++) p.add(CgMaterial.of(kit.material(i).get()), false, true);
+                    int at = slots + (s.outline() != null ? 1 : 0);
                     if (s.outline() != null) p.addPass(CgMaterial.of(kit.material(slots).get()));
+                    for (int i = 0; i < s.post().size(); i++) p.addPass(CgMaterial.of(kit.material(at + i).get()));
                 });
             }
             return pipelines.ready();
@@ -114,8 +128,9 @@ public final class CgKitActor extends CgEntityActor {
     private final Spec spec;
     private Loaded loaded;
     private CgSkeletalMeshComponent body;
+    /** Its hold on the scene's outline round its stencil, shared with every character on it. */
     @Nullable
-    private CgPostVolume outline;
+    private CgOutline.Hold outline;
 
     private CgKitActor(Spec spec) {
         this.spec = spec;
@@ -153,7 +168,7 @@ public final class CgKitActor extends CgEntityActor {
 
     @Override
     protected void onRemove(CgEntity entity) {
-        if (outline != null) outline.remove();
+        if (outline != null) outline.close();
         outline = null;
     }
 
@@ -164,10 +179,14 @@ public final class CgKitActor extends CgEntityActor {
         int slots = loaded.mesh.mesh().submeshCount();
         double height = entity.pose(CgEntityQuery.HEIGHT);
         body = add(scene().skeletal(loaded.mesh).transform(fit(loaded.mesh, height > 0 ? (float) height : 1.8f))
-                .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f));
+                .materials(s -> CgMaterial.of(kit.material(s).get())).customData(0, 0f, 0f, 0f, 0f)
+                .grade(CgVfxKitLook.grade(spec.namespace(), loaded.post(spec))));
         if (spec.outline() != null) {
             body.customDepth(spec.stencil(), 0xFF);
-            outline = scene().postVolume(CgOutline.settings(CgOutline.material(CgMaterial.of(kit.material(slots).get())))).spawn();
+            outline = CgOutline.hold(scene(), spec.stencil(), CgMaterial.of(kit.material(slots).get()));
+        } else if (spec.stencil() > 0) {
+            body.customDepth(spec.stencil(), 0xFF);
+            outline = CgOutline.hold(scene(), spec.stencil(), null);
         }
         LOGGER.info("[kit-actor] {} drawn as {}{}", entity, spec.name(), outline != null ? ", outlined" : "");
     }
@@ -192,6 +211,7 @@ public final class CgKitActor extends CgEntityActor {
         }
         List<String> all = new ArrayList<>(materials);
         if (s.outline() != null) all.add(s.outline());
+        all.addAll(s.post());
         out.materials = all;
         out.mesh = body;
     }
