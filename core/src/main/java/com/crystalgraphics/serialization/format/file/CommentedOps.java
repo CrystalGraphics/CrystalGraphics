@@ -17,6 +17,11 @@ final class CommentedOps implements CgDynamicOps<Object> {
     private final CgDynamicOps<Object> base;
     private final Map<Object, Map<String, String>> comments = new IdentityHashMap<>();
 
+    @Override
+    public boolean humanReadable() {
+        return base.humanReadable();
+    }
+
     CommentedOps(CgDynamicOps<Object> base) {
         this.base = base;
     }

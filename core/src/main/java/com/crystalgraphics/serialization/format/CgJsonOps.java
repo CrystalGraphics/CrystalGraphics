@@ -34,6 +34,12 @@ import java.util.Map;
  */
 public final class CgJsonOps implements CgDynamicOps<JsonElement> {
 
+    @Override
+    public boolean humanReadable() {
+        return true;
+    }
+
+
     public static final CgJsonOps INSTANCE = new CgJsonOps();
 
     private static final Gson PRINTER = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();

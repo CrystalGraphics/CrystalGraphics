@@ -16080,6 +16080,7 @@ com/crystalgraphics/serialization/CgDynamicOps
   method public commentsOf (Ljava/lang/Object;)Ljava/util/Map;
   method public createBytes ([B)Ljava/lang/Object;
   method public getBytesValue (Ljava/lang/Object;)[B
+  method public humanReadable ()Z
   method public toPlain (Ljava/lang/Object;)Ljava/lang/Object;
   method public withComments (Ljava/lang/Object;Ljava/util/Map;)Ljava/lang/Object;
   method public,abstract createBoolean (Z)Ljava/lang/Object;
@@ -16114,6 +16115,7 @@ com/crystalgraphics/serialization/CgPlainOps
   access public,final
   extends java/lang/Object
   field public,static,final INSTANCE Lcom/crystalgraphics/serialization/CgPlainOps;
+  field public,static,final TEXT Lcom/crystalgraphics/serialization/CgPlainOps;
   implements com/crystalgraphics/serialization/CgDynamicOps
   method public createBoolean (Z)Ljava/lang/Object;
   method public createBytes ([B)Ljava/lang/Object;
@@ -16128,6 +16130,7 @@ com/crystalgraphics/serialization/CgPlainOps
   method public getMapValue (Ljava/lang/Object;)Ljava/util/Map;
   method public getNumberValue (Ljava/lang/Object;)Ljava/lang/Number;
   method public getStringValue (Ljava/lang/Object;)Ljava/lang/String;
+  method public humanReadable ()Z
   method public toPlain (Ljava/lang/Object;)Ljava/lang/Object;
 com/crystalgraphics/serialization/CgRecordCodec
   access public,final
@@ -16294,6 +16297,7 @@ com/crystalgraphics/serialization/format/CgJsonOps
   method public getMapValue (Lcom/google/gson/JsonElement;)Ljava/util/Map;
   method public getNumberValue (Lcom/google/gson/JsonElement;)Ljava/lang/Number;
   method public getStringValue (Lcom/google/gson/JsonElement;)Ljava/lang/String;
+  method public humanReadable ()Z
   method public toPlain (Lcom/google/gson/JsonElement;)Ljava/lang/Object;
   method public,static fromText (Ljava/lang/String;)Lcom/google/gson/JsonElement;
   method public,static toText (Lcom/google/gson/JsonElement;)Ljava/lang/String;

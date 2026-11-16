@@ -65,7 +65,7 @@ final class PlayerFiles {
         Object saved = open(file).get(obj.type.name);
         if (saved == null) return;
         try {
-            CgNetObjects.decodeFields(CgPlainOps.INSTANCE, saved, obj);
+            CgNetObjects.decodeFields(CgPlainOps.TEXT, saved, obj);
         } catch (RuntimeException failed) {
             Path path = path(file);
             LOGGER.error("[cg-net] {} in {} does not read; it starts from its fallbacks, the file kept as .unreadable",
@@ -93,7 +93,7 @@ final class PlayerFiles {
         obj.leftWithPlayer = true;
         File file = obj.saveFile;
         if (file != null && DIRTY.contains(file)) {
-            open(file).put(obj.type.name, CgNetObjects.encodeFields(CgPlainOps.INSTANCE, obj));
+            open(file).put(obj.type.name, CgNetObjects.encodeFields(CgPlainOps.TEXT, obj));
         }
     }
 
@@ -182,7 +182,7 @@ final class PlayerFiles {
             CgNetType type = types.get(i);
             CgNetObject obj = type.holders.get(file.player());
             if (obj != null && !obj.isRemoved() && file.equals(obj.saveFile)) {
-                saved.put(type.name, CgNetObjects.encodeFields(CgPlainOps.INSTANCE, obj));
+                saved.put(type.name, CgNetObjects.encodeFields(CgPlainOps.TEXT, obj));
             }
         }
         if (SaveFiles.write(path, CgCodecs.PLAIN, saved)) DIRTY.remove(file);
