@@ -25,6 +25,8 @@ import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgType;
+import com.crystalgraphics.world.CgEntityVariable;
+import com.crystalgraphics.world.CgEntityVariables;
 
 /**
  * An {@code anim_graphs/} file and a {@link CgAnimGraph}, each way: {@link #compile} reads a resolved asset into a
@@ -41,6 +43,8 @@ import com.crystalgraphics.object.CgType;
  *   locomotion: { kind: two_way_blend, a: idle, b: jog, alpha: run }
  *   idle: { kind: sequence_player, clip: mymod:hero/idle, loop: true }
  *   jog: { kind: sequence_player, clip: mymod:hero/jog, loop: true }
+ * entity:
+ *   run: entity.input               # set each frame by the entity's actor
  * }</pre>
  *
  * <pre>{@code
@@ -118,6 +122,16 @@ public final class CgAnimGraphCodec {
         Reader r = new Reader(id, tree, skeleton, clips, resolver);
         CgAnimGraph.Builder b = CgAnimGraph.builder(id, skeleton);
         b.variables(r.variables.values().toArray(new CgAnimVariable<?>[0]));
+        if (tree.get("entity") instanceof Map<?, ?> entity) {
+            for (Map.Entry<?, ?> e : entity.entrySet()) {
+                String name = String.valueOf(e.getKey()), at = id + ": entity." + name;
+                CgAnimVariable<?> v = r.variables.get(name);
+                if (v == null) throw new CgAssetException(at + ": the graph declares no variable " + name);
+                CgEntityVariable source = CgEntityVariables.of(String.valueOf(e.getValue()));
+                if (source == null) throw new CgAssetException(at + ": " + e.getValue() + " is no entity variable");
+                b.entity(v, source);
+            }
+        }
         if (tree.get("inputs") instanceof List<?> ins) for (Object in : ins) b.inputs(String.valueOf(in));
         if (!(tree.get("output") instanceof String output)) throw new CgAssetException(id + ": output: none");
         b.output(r.pose(output));
@@ -457,6 +471,11 @@ public final class CgAnimGraphCodec {
                 vars.put(v.name(), m);
             }
             tree.put("variables", vars);
+        }
+        if (!graph.entity().isEmpty()) {
+            Map<String, Object> entity = new LinkedHashMap<>();
+            for (Map.Entry<String, CgEntityVariable> e : graph.entity().entrySet()) entity.put(e.getKey(), e.getValue().name());
+            tree.put("entity", entity);
         }
         if (!graph.inputs().isEmpty()) tree.put("inputs", new ArrayList<>(graph.inputs()));
         tree.put("output", output);

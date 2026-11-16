@@ -15,6 +15,7 @@ import org.joml.Quaternionfc;
 import javax.annotation.Nullable;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 /**
  * A {@link CgPrefab} spawned into a scene as components: a node a {@link CgSceneRoot} at its rest under its parent's
@@ -165,6 +166,11 @@ public final class CgPrefabInstance {
     @Nullable
     public CgSkeletalMeshComponent skeletal(String name) {
         return node(name) instanceof CgSkeletalMeshComponent s ? s : null;
+    }
+
+    /** Hands {@code each} every skeletal node's component, in node order: what animates the prefab. */
+    public void forEachSkeletal(Consumer<CgSkeletalMeshComponent> each) {
+        for (CgPrimitiveComponent<?> node : spawned()) if (node instanceof CgSkeletalMeshComponent s) each.accept(s);
     }
 
     /** Node {@code name}'s effect, playing or not, or null where it plays none. */

@@ -6,6 +6,7 @@ import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
+import com.crystalgraphics.world.CgEntityVariables;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
@@ -175,12 +176,21 @@ public abstract class CgEntityActor {
         return entity;
     }
 
-    /** {@code component}, riding the root unless it rides something already, spawned, and removed with this actor. */
+    /**
+     * {@code component}, riding the root unless it rides something already, spawned, and removed with this actor. A
+     * skeletal mesh's graph has its {@code entity} variables set from the entity every frame.
+     */
     protected final <C extends CgPrimitiveComponent<C>> C add(C component) {
         if (component.attachParent() == null) component.attach(root, null);
         if (!component.spawned()) component.spawn();
         components.add(component);
+        if (component instanceof CgSkeletalMeshComponent body) feed(body);
         return component;
+    }
+
+    /** Has {@code body}'s graph's {@code entity} bindings set from this actor's entity, each frame before it runs. */
+    final void feed(CgSkeletalMeshComponent body) {
+        body.anim().onUpdate(CgEntityVariables.feed(entity.state()));
     }
 
     /** Removes what it added and its prefab, the root last. */

@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -13,6 +14,7 @@ import java.util.Set;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.world.CgEntityVariable;
 
 /**
  * An animation graph: which clips play and how they mix, from variables the game sets. Unreal's anim blueprint, compiled
@@ -47,6 +49,8 @@ import com.crystalgraphics.api.animation.CgSkeleton;
  *       {@link CgCachedPoseNode#use} wherever), evaluated once a frame.</li>
  *   <li>Building checks it: a cycle, a node read twice, a cached pose used and never saved, or a variable a node reads
  *       and the graph does not declare, each fails, naming it.</li>
+ *   <li>{@link Builder#entity} binds a variable to a standard one ({@code CgEntityVariables}): an entity actor then sets
+ *       it every frame, and no code does.</li>
  *   <li>{@link #single} is a graph of one clip over the default slot: what an instance runs until it is given one.</li>
  * </ul>
  */
@@ -67,6 +71,7 @@ public final class CgAnimGraph {
 
     private final List<String> inputs;
     private final Map<String, Layer> layers;
+    private final Map<String, CgEntityVariable> entity;
 
     /**
      * A layer: a named part of the graph another graph may play instead, Unreal's anim layer function. Its output reads
@@ -108,11 +113,12 @@ public final class CgAnimGraph {
 
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
                         CgAnimNode output, CgSequencePlayerNode single) {
-        this(id, skeleton, variables, saves, output, single, List.of(), Map.of());
+        this(id, skeleton, variables, saves, output, single, List.of(), Map.of(), Map.of());
     }
 
     private CgAnimGraph(String id, CgSkeleton skeleton, List<CgAnimVariable<?>> variables, Map<String, CgAnimNode> saves,
-                        CgAnimNode output, CgSequencePlayerNode single, List<String> inputs, Map<String, Layer> layers) {
+                        CgAnimNode output, CgSequencePlayerNode single, List<String> inputs, Map<String, Layer> layers,
+                        Map<String, CgEntityVariable> entity) {
         this.id = id;
         this.skeleton = skeleton;
         this.inputs = List.copyOf(inputs);
@@ -123,6 +129,17 @@ public final class CgAnimGraph {
                 throw new IllegalArgumentException(id + " declares variable " + this.variables.get(i).name() + " twice");
             }
         }
+        // Unreal's property map checks the same at validation: a declared variable, of a type the value fits
+        // (FGameplayTagBlueprintPropertyMap::IsDataValid)
+        for (Map.Entry<String, CgEntityVariable> e : entity.entrySet()) {
+            Integer at = variableIndex.get(e.getKey());
+            if (at == null) throw new IllegalArgumentException(id + ": entity." + e.getKey() + " binds a variable the graph does not declare");
+            if (!e.getValue().feeds(this.variables.get(at).type())) {
+                throw new IllegalArgumentException(id + ": entity." + e.getKey() + ": " + this.variables.get(at) + " cannot take "
+                        + e.getValue().name() + ", a " + e.getValue().type().name().toLowerCase(Locale.ROOT));
+            }
+        }
+        this.entity = Collections.unmodifiableMap(new LinkedHashMap<>(entity));
         this.saves = Collections.unmodifiableMap(new LinkedHashMap<>(saves));
         this.output = Objects.requireNonNull(output, "output");
         this.single = single;
@@ -268,6 +285,11 @@ public final class CgAnimGraph {
         return inputs;
     }
 
+    /** Its variables an entity actor sets each frame, by variable name: what feeds each. */
+    public Map<String, CgEntityVariable> entity() {
+        return entity;
+    }
+
     /** Its layers by name: what it plays itself, and what it offers another graph's layer nodes. */
     public Map<String, Layer> layers() {
         return layers;
@@ -292,6 +314,7 @@ public final class CgAnimGraph {
         private final Map<String, CgAnimNode> saves = new LinkedHashMap<>();
         private final List<String> inputs = new ArrayList<>();
         private final Map<String, Layer> layers = new LinkedHashMap<>();
+        private final Map<String, CgEntityVariable> entity = new LinkedHashMap<>();
         private CgAnimNode output;
 
         private Builder(String id, CgSkeleton skeleton) {
@@ -328,6 +351,25 @@ public final class CgAnimGraph {
             return this;
         }
 
+        /**
+         * Has {@code variable} set every frame from {@code source}, one of the entity's standard variables, by whatever
+         * actor animates an entity with this graph: Unreal's gameplay tag property map, over the entity's state.
+         *
+         * <pre>{@code
+         * builder.variables(SPEED, ON_GROUND)
+         *        .entity(SPEED, CgEntityVariables.SPEED)
+         *        .entity(ON_GROUND, CgEntityVariables.GROUNDED);
+         * }</pre>
+         *
+         * The variable must be declared, and of {@code source}'s type, or a float.
+         */
+        public Builder entity(CgAnimVariable<?> variable, CgEntityVariable source) {
+            if (entity.put(variable.name(), Objects.requireNonNull(source, "source")) != null) {
+                throw new IllegalArgumentException(id + " binds " + variable.name() + " twice");
+            }
+            return this;
+        }
+
         /** Declares {@code layer}: its own, and one a graph linking this one's layers may take. */
         public Builder layer(Layer layer) {
             if (layers.put(layer.name(), layer) != null) throw new IllegalArgumentException(id + " declares layer " + layer.name() + " twice");
@@ -336,11 +378,12 @@ public final class CgAnimGraph {
 
         /**
          * @throws IllegalArgumentException for no output, a cycle, a node read twice, an unsaved cached pose, an
-         *                                  undeclared variable, or a layer or input pose the graph does not declare
+         *                                  undeclared variable, or a layer or input pose the graph does not declare,
+         *                                  or an entity binding to an undeclared variable or of a type it cannot take
          */
         public CgAnimGraph build() {
             if (output == null) throw new IllegalArgumentException(id + " has no output");
-            return new CgAnimGraph(id, skeleton, variables, saves, output, null, inputs, layers);
+            return new CgAnimGraph(id, skeleton, variables, saves, output, null, inputs, layers, entity);
         }
     }
 }

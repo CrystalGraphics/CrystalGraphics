@@ -710,10 +710,12 @@ public final class CgBodyKinds {
 
     /**
      * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name, the one
-     * whose pose is the output, and its state machines by name.
+     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to a standard entity
+     * variable by name ({@code world.CgEntityVariables}), set each frame by the entity's actor.
      */
     public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)
             .property("variables", CgValueType.mapOf(CgValueType.struct(ANIM_VARIABLE))).flags(CgPropertyFlag.HEADLESS)
+            .property("entity", CgValueType.mapOf(STRING)).flags(CgPropertyFlag.HEADLESS)
             .property("inputs", CgValueType.listOf(STRING)).flags(CgPropertyFlag.HEADLESS)
             .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)

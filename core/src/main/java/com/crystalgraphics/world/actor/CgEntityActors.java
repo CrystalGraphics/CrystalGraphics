@@ -483,6 +483,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 CgPrefab prefab = prefabRef(r.prefab).get();
                 if (prefab == null) throw new IllegalStateException("its prefab " + r.prefab + " did not load");
                 actor.prefab = scene.spawn(prefab).attach(actor.root, null).spawn();
+                actor.prefab.forEachSkeletal(actor::feed);
             }
             actor.onSpawn(entity);
         } catch (RuntimeException e) {

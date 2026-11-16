@@ -376,6 +376,7 @@ com/crystalgraphics/animation/graph/CgAnimGraph
   access public,final
   extends java/lang/Object
   field public,static,final DEFAULT_SLOT Ljava/lang/String;
+  method public entity ()Ljava/util/Map;
   method public id ()Ljava/lang/String;
   method public inputs ()Ljava/util/List;
   method public layers ()Ljava/util/Map;
@@ -392,6 +393,7 @@ com/crystalgraphics/animation/graph/CgAnimGraph$Builder
   access public,final
   extends java/lang/Object
   method public build ()Lcom/crystalgraphics/animation/graph/CgAnimGraph;
+  method public entity (Lcom/crystalgraphics/animation/graph/CgAnimVariable;Lcom/crystalgraphics/world/CgEntityVariable;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public inputs ([Ljava/lang/String;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public layer (Lcom/crystalgraphics/animation/graph/CgAnimGraph$Layer;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
   method public output (Lcom/crystalgraphics/animation/graph/CgAnimNode;)Lcom/crystalgraphics/animation/graph/CgAnimGraph$Builder;
@@ -13838,6 +13840,7 @@ com/crystalgraphics/render/scene/prefab/CgPrefabInstance
   method public at (DDD)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public attach (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public effect (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabEffects$Played;
+  method public forEachSkeletal (Ljava/util/function/Consumer;)V
   method public mesh (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Ljava/lang/String;I)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public node (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -24323,6 +24326,75 @@ com/crystalgraphics/world/CgEntityState
   method public using (I)Z
   method public vehicle ()I
   method public verticalSpeed ()F
+com/crystalgraphics/world/CgEntityVariable
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;Lcom/crystalgraphics/world/CgEntityVariable$Reader;)V
+  method public feeds (Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;)Z
+  method public name ()Ljava/lang/String;
+  method public reader ()Lcom/crystalgraphics/world/CgEntityVariable$Reader;
+  method public type ()Lcom/crystalgraphics/animation/graph/CgAnimVariable$Type;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/world/CgEntityVariable$Reader
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract read (Lcom/crystalgraphics/world/CgEntityState;)F
+com/crystalgraphics/world/CgEntityVariables
+  access public,final
+  extends java/lang/Object
+  field public,static,final ACCELERATION Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final AIRBORNE Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final AIR_TIME Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final CRAWLING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final DEAD Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final DEAD_TIME Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final DIED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final DISMOUNTED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final GLIDING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final GROUNDED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final GROUND_DISTANCE Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final HEAD_PITCH Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final HEAD_YAW Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final HURT Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final HURT_TIME Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final INPUT Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final INPUT_DIRECTION Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final IN_WATER Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final JUMPED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final JUMP_HELD Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final LANDED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final LAND_HEIGHT Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final LEFT_HANDED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final MAIN_ARM Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final MOUNTED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final MOVE_DIRECTION Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final OFF_ARM Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final RIDING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SLEEPING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SNEAKING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SPEED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SPIN_ATTACK Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SPRINTING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SPRINT_HELD Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWIMMING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWIM_AMOUNT Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWINGING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWING_HAND Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final SWING_STARTED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final TURN_RATE Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USE_ANIMATION Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USE_LENGTH Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USE_STARTED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USE_STOPPED Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USE_TIME Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final USING Lcom/crystalgraphics/world/CgEntityVariable;
+  field public,static,final VERTICAL_SPEED Lcom/crystalgraphics/world/CgEntityVariable;
+  method public,static all ()Ljava/util/Collection;
+  method public,static feed (Lcom/crystalgraphics/world/CgEntityState;)Lcom/crystalgraphics/animation/CgAnimInstance$Update;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/world/CgEntityVariable;
 com/crystalgraphics/world/CgWorldQueries
   access public,final
   extends java/lang/Object

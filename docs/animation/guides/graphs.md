@@ -49,6 +49,52 @@ anim.graph(hero(mesh))
 - **Building checks it**: a cycle, a node read twice, a cached pose never saved, an undeclared variable, each throws
   with the graph's id.
 
+### Variables an entity fills: `entity`
+
+A graph that animates a Minecraft entity needs no `onUpdate` for what the entity is doing: it binds its variables to
+the standard ones (`CgEntityVariables`), and the entity's actor sets them every frame before the graph runs, on both
+sides. Unreal's gameplay tag property map, over the entity's state.
+
+```yaml
+# anim_graphs/mymod/hero.yaml
+variables:
+  speed: { type: float }
+  grounded: { type: bool, default: true }
+  draw: { type: float }
+entity:
+  speed: entity.speed           # the graph's own name: the standard one feeding it
+  grounded: entity.grounded
+  draw: entity.use_time
+```
+
+```java
+CgAnimGraph.builder("mymod:hero", mesh.skeleton())
+        .variables(SPEED, GROUNDED)
+        .entity(SPEED, CgEntityVariables.SPEED)
+        .entity(GROUNDED, CgEntityVariables.GROUNDED)
+        ...;
+
+anim.onUpdate(CgEntityVariables.feed(state));   // code with a CgEntityState of its own and no actor feeds it so
+```
+
+| Group | Names |
+|---|---|
+| Motion, smooth across the frame | `entity.speed`, `vertical_speed`, `move_direction` (degrees against the facing, 90 left), `acceleration`, `turn_rate` |
+| Intent | `entity.input` (0 to 1), `input_direction`, `sprint_held`, `jump_held` |
+| Ground and air | `entity.grounded`, `airborne`, `air_time`, `ground_distance`, `land_height` |
+| Stance | `entity.sneaking`, `sprinting`, `swimming`, `crawling`, `swim_amount`, `gliding`, `spin_attack`, `in_water`, `riding`, `sleeping` |
+| Life | `entity.dead`, `dead_time`, `hurt_time` (seconds since the last hit) |
+| Look | `entity.head_yaw` (against the body), `head_pitch` |
+| Hands | `entity.left_handed`, `main_arm` and `off_arm` (an arm pose, int), `using`, `use_animation` (int), `use_time`, `use_length`, `swinging`, `swing` (0 to 1), `swing_hand` |
+| Events, true for their frame | `entity.jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`, `mounted`, `dismounted`, `died` |
+
+- **Each fails at load, naming it**: a name no standard variable has, a graph variable the graph does not declare, or a
+  type that cannot take the value. A float takes any (a bool as 0 or 1); a bool or an int only its own type.
+- **What each means** is `CgEntityState`'s: [`docs/vfx/prefabs.md`](../../vfx/prefabs.md) § *What the entity is
+  doing*. An actor feeds every skeletal mesh it `add`s and every skeletal node of its prefab.
+- A graph's own variable keeps its name: a state machine's rule reads `speed`, never `entity.speed`, so the same graph
+  runs fed by an entity or by a hand-written `onUpdate`.
+
 ### The nodes
 
 | Node | Unreal | Does |

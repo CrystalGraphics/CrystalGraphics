@@ -25,7 +25,8 @@
   instance's pool and given back last first (`evaluate` checks the balance).
 - **This package names only `animation.sync`**, which lies beneath it: `animation.state` and `animation.blend` join
   through `CgAnimNodeKind`, the public `Runtime` contract and the instance's hooks (player scopes, inertializers,
-  records, `forEachRuntime`).
+  records, `forEachRuntime`). Outside animation it names `world.CgEntityVariable(s)` alone: a graph's `entity:`
+  bindings, checked at build and load; the actor that feeds them is `world.actor`'s.
 - **The order is update, tick, evaluate**: a player advances in the sync tick after the walk, never in its update, so a
   group's leader moves first and its followers after it.
 - **A node kind with a data form** writes itself through `CgAnimNodeWriter` and is read in `CgAnimGraphCodec`; the
