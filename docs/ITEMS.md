@@ -112,6 +112,21 @@ ItemStack back = stack.toHost();                 // typed by what you assign it 
   attribute works: the server's from its start, the client's from the world it is in.
 - **`maxDamage()` is the item's, not data**: `of(hostStack)` fills it, a stack built in Java or read from a file has `0`.
 
+### An item by the game's number, and item tags
+
+What an entity's hand reports (`CgEntityProperties.MAIN_ITEM`, `OFF_ITEM`) is the game's raw number for the item, the
+same for a session. `CgItems` names it and matches it against an id or a tag, with no stack copied:
+
+```java
+String name = CgItems.name(itemId);                            // "minecraft:bow", or null for none
+boolean sword = CgItems.matches(itemId, "#minecraft:swords");  // an item tag: every item in it
+boolean bow = CgItems.matches(itemId, "minecraft:bow");        // one item
+```
+
+- **Item tags are the game's**: from 1.13 on; Forge 1.8.9 to 1.12.2 and 1.7.10 have none, so a tag there matches nothing.
+- **An id no mod registered matches nothing** and is no error: mods register items late.
+- Both sides; without a game (a test) the name is null and nothing matches.
+
 ---
 
 ## 5. Equality and change

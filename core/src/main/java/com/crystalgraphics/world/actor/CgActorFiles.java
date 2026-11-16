@@ -39,6 +39,8 @@ import com.crystalgraphics.object.validate.CgValidation;
  * root_motion: body
  * reactions:
  *   - { event: hurt, sequence: mymod:golem_flinch }
+ * item_layers:                                     # a held item gives a linked layer its graph
+ *   - { item: "#minecraft:swords", layer: upper_body, graph: mymod:golem_sword_arms }
  * }</pre>
  *
  * <p>The same in Java:</p>
@@ -50,7 +52,7 @@ import com.crystalgraphics.object.validate.CgValidation;
  * <ul>
  *   <li>Every file is registered at pre-init on each side ({@code CgAssetMounts.mount}), before any entity enters; a
  *       {@code local_player} actor binds on a client, as its client starts.</li>
- *   <li>Fails at load, naming the file: a prefab, graph, rig or sequence nobody declares, an unknown event, a rule
+ *   <li>Fails at load, naming the file: a prefab, graph, rig, sequence or item layer's graph nobody declares, an unknown event, a rule
  *       naming a property no entity has, binds with neither or both forms, and an entity type two actors bind.</li>
  *   <li>Its references are soft: what it plays loads with the actors' prefabs, behind the loading screen.</li>
  * </ul>
@@ -75,11 +77,12 @@ public final class CgActorFiles {
      * @param rig         its body's rig, or null
      * @param rootMotion  the prefab node whose montages move the entity, or null
      * @param keepVanillaModel whether the host's model draws too
-     * @param reactions   its reactions, in order
+ * @param reactions   its reactions, in order
+     * @param itemLayers  its item layers, in order
      */
     public record Definition(String id, boolean localPlayer, List<String> entities, String prefab, @Nullable String graph,
                              @Nullable String rig, @Nullable String rootMotion, boolean keepVanillaModel,
-                             List<CgReaction> reactions) {
+                             List<CgReaction> reactions, List<CgItemLayer> itemLayers) {
 
         /** {@code r} given everything this file says beyond its factory. */
         CgEntityActors.Registration apply(CgEntityActors.Registration r) {
@@ -88,6 +91,7 @@ public final class CgActorFiles {
             if (rootMotion != null) r.rootMotion(rootMotion);
             if (keepVanillaModel) r.keepVanillaModel();
             for (CgReaction reaction : reactions) r.react(reaction);
+            for (CgItemLayer layer : itemLayers) r.itemLayer(layer);
             return r;
         }
     }
@@ -126,9 +130,20 @@ public final class CgActorFiles {
                 }
             }
         }
+        List<CgItemLayer> layers = new ArrayList<>();
+        if (tree.get("item_layers") instanceof List<?> list) {
+            for (int i = 0; i < list.size(); i++) {
+                Map<?, ?> m = (Map<?, ?>) list.get(i);
+                try {
+                    layers.add(new CgItemLayer(String.valueOf(m.get("item")), String.valueOf(m.get("layer")), String.valueOf(m.get("graph"))));
+                } catch (IllegalArgumentException e) {
+                    throw new CgAssetException(id + ": item_layers[" + i + "]: " + e.getMessage());
+                }
+            }
+        }
         return new Definition(id, local, List.copyOf(entities), String.valueOf(tree.get("prefab")), string(tree.get("anim_graph")),
                 string(tree.get("rig")), string(tree.get("root_motion")), Boolean.TRUE.equals(tree.get("keep_vanilla_model")),
-                List.copyOf(reactions));
+                List.copyOf(reactions), List.copyOf(layers));
     }
 
     @Nullable
@@ -180,6 +195,7 @@ public final class CgActorFiles {
         if (d.graph() != null) exists(registry, d, CgBodyKinds.ANIM_GRAPH, d.graph());
         if (d.rig() != null) exists(registry, d, CgBodyKinds.RIG, d.rig());
         for (CgReaction r : d.reactions()) exists(registry, d, CgSequenceKinds.SEQUENCE, r.sequence());
+        for (CgItemLayer l : d.itemLayers()) exists(registry, d, CgBodyKinds.ANIM_GRAPH, l.graph());
     }
 
     private static void exists(CgAssetRegistry registry, Definition d, CgType kind, String id) {

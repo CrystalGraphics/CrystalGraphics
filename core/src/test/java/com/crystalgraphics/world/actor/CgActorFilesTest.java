@@ -1,5 +1,6 @@
 package com.crystalgraphics.world.actor;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
@@ -23,6 +24,9 @@ import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.tree.CgAssetData;
 import com.crystalgraphics.asset.tree.CgAssetException;
+import com.crystalgraphics.mc.item.CgItems;
+import com.crystalgraphics.platform.CgPlatform;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 import com.crystalgraphics.world.CgEntityProperties;
 
 /** An actor file: read into what a Java registration says, refused by name, registered at mount. */
@@ -61,6 +65,54 @@ public class CgActorFilesTest {
         assertEquals("FullBody", land.slot());
         assertTrue("its rule over the entity's properties", land.when() != null);
     }
+
+    @Test
+    public void heldItemsChooseEachLayersGraphTheMainHandFirst() {
+        CgPlatform.provide(CgItems.HOST, ITEMS);
+        try {
+            CgActorFiles.Definition d = compile("filetest:knight", """
+                    binds: { entities: [ mymod:knight ] }
+                    prefab: mymod:knight
+                    item_layers:
+                      - { item: "#minecraft:swords", layer: upper_body, graph: mymod:sword_arms }
+                      - { item: minecraft:bow, layer: upper_body, graph: mymod:bow_arms }
+                      - { item: minecraft:shield, layer: off_arm, graph: mymod:shield_arm }
+                      - { item: mymod:never_registered, layer: off_arm, graph: mymod:ghost_arm }
+                    """);
+            List<CgItemLayer> layers = d.itemLayers();
+            assertEquals(new CgItemLayer("#minecraft:swords", "upper_body", "mymod:sword_arms"), layers.get(0));
+            assertArrayEquals("a sword by its tag, a shield in the other hand", new boolean[] {true, false, true, false},
+                    CgEntityActor.chosen(layers, SWORD, SHIELD));
+            assertArrayEquals("per layer the main hand wins", new boolean[] {false, true, false, false},
+                    CgEntityActor.chosen(layers, BOW, SWORD));
+            assertArrayEquals("else the off hand fills it", new boolean[] {true, false, false, false},
+                    CgEntityActor.chosen(layers, NOTHING, SWORD));
+            assertArrayEquals("empty hands link nothing", new boolean[4], CgEntityActor.chosen(layers, NOTHING, NOTHING));
+        } finally {
+            CgPlatform.provide(CgItems.HOST, null);
+        }
+    }
+
+    private static final int NOTHING = 0, SWORD = 1, BOW = 2, SHIELD = 3;
+
+    /** Three items by the game's raw ids, a sword in the swords tag. */
+    private static final CgItems.Host ITEMS = new CgItems.Host() {
+        @Override public boolean isStack(Object o) { return false; }
+        @Override public CgNbtCompound save(Object stack) { throw new UnsupportedOperationException(); }
+        @Override public Object load(CgNbtCompound saved) { throw new UnsupportedOperationException(); }
+        @Override public int maxDamage(Object stack) { return 0; }
+        @Override public int stamp(Object stack) { return 0; }
+        @Override public CgItems.Shape shape() { return CgItems.Shape.COMPONENTS; }
+        @Override public String name(int itemId) {
+            return switch (itemId) {
+                case SWORD -> "minecraft:diamond_sword";
+                case BOW -> "minecraft:bow";
+                case SHIELD -> "minecraft:shield";
+                default -> null;
+            };
+        }
+        @Override public boolean inTag(int itemId, String tag) { return itemId == SWORD && tag.equals("minecraft:swords"); }
+    };
 
     @Test
     public void aFileFailsAtLoadByName() {

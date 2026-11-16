@@ -1,6 +1,8 @@
 package com.crystalgraphics.world.actor;
 
 import com.crystalgraphics.animation.CgAnimInstance;
+import com.crystalgraphics.animation.graph.CgAnimGraph;
+import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
@@ -118,6 +120,11 @@ public abstract class CgEntityActor {
     private CgSkeletalMeshComponent gripBody;
     private int rightGrip, leftGrip;
     private final Matrix4d grip = new Matrix4d();
+    /** The held items its item layers were last chosen for, and which of them are linked. */
+    private int layersMain = Integer.MIN_VALUE, layersOff = Integer.MIN_VALUE;
+    private boolean[] layersLinked = new boolean[0];
+    @Nullable
+    private CgSkeletalMeshComponent layersBody;
     /** What its reactions' rules read its entity through; made with its first reaction. */
     @Nullable
     private CgReaction.Probe probe;
@@ -313,6 +320,62 @@ public abstract class CgEntityActor {
         for (CgSequenceDefinition.Role role : d.roles()) roles.put(role.name(), target);
         if (reacting != null) reacting.stop();
         reacting = sequencer.play(d, roles);
+    }
+
+    /**
+     * Each frame before {@code tick}: its registration's item layers linked for what its entity holds, chosen again only
+     * when a hand's item changes. Per layer, the first entry the main hand matches, else the first the off hand matches.
+     */
+    final void holdLayers(CgEntityActors.Registration r) {
+        List<CgItemLayer> layers = r.itemLayers();
+        if (layers.isEmpty()) return;
+        CgNetObject motion = entity.properties(CgEntityProperties.MOTION);
+        CgSkeletalMeshComponent body = body();
+        if (motion == null || body == null) return;
+        int main = motion.getInt(CgEntityProperties.MAIN_ITEM), off = motion.getInt(CgEntityProperties.OFF_ITEM);
+        if (main == layersMain && off == layersOff && body == layersBody && layersLinked.length == layers.size()) return;
+        CgAnimGraph[] graphs = r.layerGraphs(body.mesh());
+        boolean[] wanted = chosen(layers, main, off);
+        boolean[] linked = layersLinked.length == wanted.length && body == layersBody ? layersLinked : new boolean[wanted.length];
+        CgAnimInstance anim = body.anim();
+        for (int i = 0; i < wanted.length; i++) {
+            if (linked[i] && !wanted[i]) anim.unlinkLayers(graphs[i]);
+        }
+        for (int i = 0; i < wanted.length; i++) {
+            if (wanted[i] && !linked[i]) anim.linkLayers(graphs[i]);
+        }
+        layersLinked = wanted;
+        layersBody = body;
+        layersMain = main;
+        layersOff = off;
+    }
+
+    /** Which entries play for these held items: per layer, the first the main hand matches, else the first the off hand does. */
+    static boolean[] chosen(List<CgItemLayer> layers, int main, int off) {
+        boolean[] wanted = new boolean[layers.size()];
+        for (int i = 0; i < wanted.length; i++) {
+            String layer = layers.get(i).layer();
+            if (claimed(layers, wanted, layer)) continue;
+            int pick = first(layers, layer, main);
+            if (pick < 0) pick = first(layers, layer, off);
+            if (pick >= 0) wanted[pick] = true;
+        }
+        return wanted;
+    }
+
+    /** Whether an entry of {@code layer} is already chosen. */
+    private static boolean claimed(List<CgItemLayer> layers, boolean[] wanted, String layer) {
+        for (int i = 0; i < wanted.length; i++) if (wanted[i] && layers.get(i).layer().equals(layer)) return true;
+        return false;
+    }
+
+    /** The first entry of {@code layer} whose item is {@code itemId}, or -1. */
+    private static int first(List<CgItemLayer> layers, String layer, int itemId) {
+        for (int i = 0; i < layers.size(); i++) {
+            CgItemLayer l = layers.get(i);
+            if (l.layer().equals(layer) && CgItems.matches(itemId, l.item())) return i;
+        }
+        return -1;
     }
 
     /** The body as a reaction's every role: its clips by id, every section on the reaction's slot. */

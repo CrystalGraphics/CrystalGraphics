@@ -685,6 +685,10 @@ keep_vanilla_model: false
 reactions:                                  # an event plays a sequence on a slot
   - { event: hurt, sequence: mymod:golem_flinch }
   - { event: landed, sequence: mymod:golem_land, slot: FullBody, when: { variable: entity.land_height, op: ">", value: 3 } }
+item_layers:                                # a held item gives a linked anim layer its graph
+  - { item: "#minecraft:swords", layer: upper_body, graph: mymod:golem_sword_arms }
+  - { item: minecraft:bow, layer: upper_body, graph: mymod:golem_bow_arms }
+  - { item: minecraft:shield, layer: off_arm, graph: mymod:golem_shield_arm }
 ```
 
 The same registration in Java, for an actor with code of its own or none (`plain()`):
@@ -704,6 +708,11 @@ CgEntityActors.register("mymod:golem", CgEntityActors.plain()).prefab("mymod:gol
 - **`event`** is one of the nine above (`jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`,
   `mounted`, `dismounted`, `died`); **`when`** is a graph rule ([`../animation/guides/graphs.md`](../animation/guides/graphs.md)
   § *State machines*) over the entity's properties by their graph names, `entity.grounded` or `mymod:ki#current`.
+- **An item layer** is Unreal's per-weapon linked anim layers: while the entity holds a matching item, the layer's
+  graph plays in place of the body's own (`linkLayers`), and once it holds none it is unlinked. Per layer, the first
+  entry the main hand matches wins, else the first the off hand matches; chosen again only when a hand's item changes.
+  `item` is an item id or `#` an item tag (every item in it; a tag matches nothing before 1.13, which has none); an id
+  no mod registers matches nothing and is no error. In Java: `.itemLayer(new CgItemLayer(item, layer, graph))`.
 - **The body** is the `root_motion` node's, else the first skeletal mesh the actor added, else its prefab's first.
 - **What it plays loads with its prefab**, behind the loading screen: its graph and its reactions' sequences.
 - **Fails at load, naming the file**: a prefab, graph, rig or sequence no file declares, an unknown event, a rule

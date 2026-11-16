@@ -62,4 +62,16 @@ public final class Items1710 implements CgItems.Host {
     public CgItems.Shape shape() {
         return CgItems.Shape.LEGACY;
     }
+
+    @Override
+    public String name(int itemId) {
+        Item item = Item.getItemById(itemId);
+        return item == null ? null : Item.itemRegistry.getNameForObject(item);
+    }
+
+    /** 1.7.10 has no item tags: a tag matches nothing. */
+    @Override
+    public boolean inTag(int itemId, String tag) {
+        return false;
+    }
 }

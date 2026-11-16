@@ -964,6 +964,13 @@ public final class CgBodyKinds {
             .property("when", CgValueType.struct(ANIM_RULE)).flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    /** A held item, by id or {@code #} tag, giving a linked anim layer its graph. */
+    static final CgType ACTOR_ITEM_LAYER = CgTypes.struct("crystalgraphics:actor.item_layer")
+            .property("item", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("layer", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("graph", soft("anim_graph")).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     /**
      * {@code actors/}: what draws an entity, a Character Blueprint's defaults: the entities it binds, its prefab, the
      * graph its body runs, the body whose root motion moves the entity, and its reactions to the entity's events.
@@ -976,6 +983,7 @@ public final class CgBodyKinds {
             .property("root_motion", STRING).flags(CgPropertyFlag.HEADLESS)
             .property("keep_vanilla_model", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
             .property("reactions", CgValueType.listOf(CgValueType.struct(ACTOR_REACTION))).flags(CgPropertyFlag.HEADLESS)
+            .property("item_layers", CgValueType.listOf(CgValueType.struct(ACTOR_ITEM_LAYER))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     static void register() {

@@ -145,6 +145,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
         @Nullable
         private volatile String prefab, graph, rootMotion;
         private final List<CgReaction> reactions = new CopyOnWriteArrayList<>();
+        private final List<CgItemLayer> itemLayers = new CopyOnWriteArrayList<>();
+        /** Each item layer's graph bound to each mesh it ran on, in {@link #itemLayers}' order. */
+        private final Map<CgSkeletalMesh, CgAnimGraph[]> layerGraphs = new ConcurrentHashMap<>();
         /** Its graph bound to each mesh it ran on: binding builds the nodes anew, so once a mesh. */
         private final Map<CgSkeletalMesh, CgAnimGraph> bound = new ConcurrentHashMap<>();
         /** Its actor failed to spawn: not tried again. */
@@ -188,6 +191,34 @@ public final class CgEntityActors extends CgWorldSubsystem {
         public Registration rootMotion(String node) {
             rootMotion = Objects.requireNonNull(node, "node");
             return this;
+        }
+
+        /**
+         * Its actors' body links {@code layer}'s graph while the entity holds its item, and unlinks it once it holds
+         * none: per layer, the first entry the main hand matches, else the first the off hand matches.
+         */
+        public Registration itemLayer(CgItemLayer layer) {
+            itemLayers.add(Objects.requireNonNull(layer, "layer"));
+            layerGraphs.clear();
+            return this;
+        }
+
+        List<CgItemLayer> itemLayers() {
+            return itemLayers;
+        }
+
+        /** Its item layers' graphs bound to {@code mesh}, in their order; each bound once per mesh. */
+        CgAnimGraph[] layerGraphs(CgSkeletalMesh mesh) {
+            return layerGraphs.computeIfAbsent(mesh, m -> {
+                CgAnimGraph[] graphs = new CgAnimGraph[itemLayers.size()];
+                for (int i = 0; i < graphs.length; i++) {
+                    String id = itemLayers.get(i).graph();
+                    CgAnimGraphDefinition d = CgVfxAssets.<CgAnimGraphDefinition>ref(CgBodyKinds.ANIM_GRAPH, id).get();
+                    if (d == null) throw new IllegalStateException("its item layer's graph " + id + " did not load");
+                    graphs[i] = d.graph(m.skeleton(), m::sequence);
+                }
+                return graphs;
+            });
         }
 
         /** Its actors play {@code reaction} when its event fires: each frame, the first that fires plays. */
@@ -315,6 +346,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
                     // what it plays: its graph and its reactions' sequences, loaded with its prefab
                     if (r.graph != null) systems.add(CgVfxAssets.ref(CgBodyKinds.ANIM_GRAPH, r.graph));
                     for (CgReaction reaction : r.reactions) systems.add(CgVfxAssets.ref(CgSequenceKinds.SEQUENCE, reaction.sequence()));
+                    for (CgItemLayer layer : r.itemLayers) systems.add(CgVfxAssets.ref(CgBodyKinds.ANIM_GRAPH, layer.graph()));
                 }
                 if (refs.isEmpty() && systems.isEmpty()) return true;
                 CgVfxAssets.instance().load(refs, CgLoadPriority.MOVE);
@@ -680,6 +712,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 }
                 try {
                     l.actor.react(l.origin.reactions);
+                    l.actor.holdLayers(l.origin);
                     l.actor.tick(l.entity, dt);
                 } catch (RuntimeException e) {
                     LOGGER.error("the actor of {} failed: removed, its entity left to its host", l.entity, e);

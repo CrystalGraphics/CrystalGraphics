@@ -63,4 +63,22 @@ public final class ItemsLegacy implements CgItems.Host {
     public CgItems.Shape shape() {
         return CgItems.Shape.LEGACY;
     }
+
+    @Override
+    public String name(int itemId) {
+        Item item = Item.getItemById(itemId);
+        if (item == null) return null;
+        //? if >=1.10 {
+        Object name = Item.REGISTRY.getNameForObject(item);
+        //?} else {
+        /*Object name = Item.itemRegistry.getNameForObject(item);
+        *///?}
+        return name == null ? null : name.toString();
+    }
+
+    /** Forge 1.8.9-1.12.2 have no item tags: a tag matches nothing. */
+    @Override
+    public boolean inTag(int itemId, String tag) {
+        return false;
+    }
 }

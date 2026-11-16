@@ -24495,10 +24495,11 @@ com/crystalgraphics/world/actor/CgActorFiles
 com/crystalgraphics/world/actor/CgActorFiles$Definition
   access public,final,record
   extends java/lang/Record
-  method public <init> (Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;)V
+  method public <init> (Ljava/lang/String;ZLjava/util/List;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZLjava/util/List;Ljava/util/List;)V
   method public entities ()Ljava/util/List;
   method public graph ()Ljava/lang/String;
   method public id ()Ljava/lang/String;
+  method public itemLayers ()Ljava/util/List;
   method public keepVanillaModel ()Z
   method public localPlayer ()Z
   method public prefab ()Ljava/lang/String;
@@ -24570,11 +24571,22 @@ com/crystalgraphics/world/actor/CgEntityActors$Registration
   implements java/lang/AutoCloseable
   method public close ()V
   method public graph (Ljava/lang/String;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
+  method public itemLayer (Lcom/crystalgraphics/world/actor/CgItemLayer;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public keepVanillaModel ()Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public prefab (Ljava/lang/String;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public react (Lcom/crystalgraphics/world/actor/CgReaction;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public rootMotion (Ljava/lang/String;)Lcom/crystalgraphics/world/actor/CgEntityActors$Registration;
   method public type ()Ljava/lang/String;
+com/crystalgraphics/world/actor/CgItemLayer
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+  method public graph ()Ljava/lang/String;
+  method public item ()Ljava/lang/String;
+  method public layer ()Ljava/lang/String;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/world/actor/CgReaction
   access public,final,record
   extends java/lang/Record
