@@ -640,6 +640,21 @@ weight_speed: 5
 - **While the game is paused** each instance moves 0 s and is still posed.
 - By hand, for a tool or a test: `anim.tick(seconds)` runs one frame on the calling thread.
 
+## Seeing what it does
+
+In game, `/cgc anim debug` shows the animation of the entity you look at, top right over the HUD, as Unreal's
+`showdebug animation` does: its graph, every variable and its value, its tags, each state machine's state and time
+in it, the clips it played this frame with their weight and position, and its montages. Look at another entity to
+switch; the same command hides it.
+
+```java
+StringBuilder text = new StringBuilder();
+CgAnimDebug.describe("hero", anim, CgEntityTags.client(id), text);   // the same lines, for a log or a test
+```
+
+- It shows an actor's body, or a vanilla model the engine poses (`CgVanillaPoses`); any other entity has none.
+- Client only, and a tool: it allocates as it formats, ten times a second.
+
 ## On a dedicated server
 
 ```java

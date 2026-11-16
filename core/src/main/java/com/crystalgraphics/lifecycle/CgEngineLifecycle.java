@@ -1,6 +1,7 @@
 package com.crystalgraphics.lifecycle;
 
 import com.crystalgraphics.command.CgActorCommands;
+import com.crystalgraphics.command.CgAnimDebugCommands;
 import com.crystalgraphics.world.actor.CgEntityActors;
 import com.crystalgraphics.world.actor.kit.CgKitActorFile;
 import com.crystalgraphics.command.CgCoreCommands;
@@ -138,6 +139,7 @@ public final class CgEngineLifecycle {
             CgCommands.server(new CgCoreCommands("cg"));
             CgCommands.client(new CgCoreCommands("cgc"));
             CgCommands.client(new CgActorCommands());
+            CgCommands.client(new CgAnimDebugCommands());
         }
     }
 
