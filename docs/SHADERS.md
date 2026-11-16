@@ -834,9 +834,9 @@ CgMaterial ink = CgMaterial.load("mymod:shaders/fx/ink.shader",
 - **`disableDepthTest()`** (Unreal's `bDisableDepthTest`, a material asset's `DepthTest: false`) draws the colour, its glow and
   its bend over what is in front. Translucent only: refused with an opaque blend, a clip, a depth write, or on a
   `DepthPrepass` shader.
-- **`separateTranslucency()`** (Unreal's separate translucency, the shader's `TranslucencyPass Separate`) draws a
-  translucent draw after every other translucent draw, still depth-tested. Under the HDR scene it draws apart, into
-  `CgSeparateTranslucency`, which the post chain lays over the scene after `TRANSLUCENT`.
+- **`translucencyPass(pass)`** (the shader's `TranslucencyPass`, Unreal 5.1's): `BeforeDOF` (the default) draws into
+  the scene; `AfterDOF` and `AfterMotionBlur` after every other translucent draw, still depth-tested, apart under the
+  HDR scene into `CgSeparateTranslucency`, which the post chain lays over the scene after depth of field.
 
 ### GLSL Standard Library
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.material.shader;
 
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -165,7 +166,8 @@ final class SurfaceDomain {
         boolean lit = subsurface || shading.equals("DefaultLit");
         boolean surfaceLit = SpecReader.choice(file, m, "TranslucencyLighting", "Volume", "Volume", "Surface").equals("Surface");
         String faces = SpecReader.choice(file, m, "Faces", "Front", "Front", "Back", "Both");
-        String pass = SpecReader.choice(file, m, "TranslucencyPass", "Standard", "Standard", "AfterDistortion", "Separate", "Overlay");
+        String pass = SpecReader.choice(file, m, "TranslucencyPass", "BeforeDOF", "BeforeDOF", "AfterDOF", "AfterMotionBlur",
+                "AfterDistortion", "Overlay");
         String depthTest = SpecReader.choice(file, m, "DepthTest", "On", "On", "Off", "Strict");
         Boolean depthWrite = m.containsKey("DepthWrite") ? SpecReader.onOff(file, m, "DepthWrite", false) : null;
         boolean prepass = SpecReader.onOff(file, m, "DepthPrepass", false);
@@ -345,7 +347,9 @@ final class SurfaceDomain {
                 : pass.equals("AfterDistortion") ? CgRenderQueue.AFTER_DISTORTION
                 : pass.equals("Overlay") ? CgRenderQueue.OVERLAY : CgRenderQueue.TRANSPARENT;
         spec.maskClip = maskClip;
-        spec.separateTranslucency = pass.equals("Separate");
+        // AfterDistortion and Overlay are queues of the scene's own: they draw into it, as BeforeDOF does
+        spec.translucencyPass = !translucent ? null : CgTranslucencyPass.of(pass) != null ? CgTranslucencyPass.of(pass)
+                : CgTranslucencyPass.BEFORE_DOF;
         spec.templateProperties = factory.properties();
         spec.templateOwner = "VertexFactory " + factory.name();
 

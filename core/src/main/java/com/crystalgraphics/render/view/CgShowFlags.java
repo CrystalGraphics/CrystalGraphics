@@ -16,7 +16,7 @@ import com.crystalgraphics.render.post.debug.CgPostDebug;
 public final class CgShowFlags {
 
     private boolean lights = true, media = true, post = true, labels = true, distortion = true, decals = true,
-            translucency = true, overdraw;
+            translucency = true, depthOfField = true, overdraw;
 
     CgShowFlags() {
     }
@@ -30,6 +30,7 @@ public final class CgShowFlags {
         distortion = other.distortion;
         decals = other.decals;
         translucency = other.translucency;
+        depthOfField = other.depthOfField;
         overdraw = other.overdraw;
     }
 
@@ -114,5 +115,15 @@ public final class CgShowFlags {
 
     public boolean translucency() {
         return translucency;
+    }
+
+    /** The lens's blur: off, everything is in focus whatever the settings say. */
+    public CgShowFlags depthOfField(boolean on) {
+        depthOfField = on;
+        return this;
+    }
+
+    public boolean depthOfField() {
+        return depthOfField;
     }
 }

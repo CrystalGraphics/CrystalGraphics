@@ -32,7 +32,15 @@ import java.util.Objects;
  *       that one alone, by its weight, as Unreal's {@code bOverride_} flags do.</li>
  *   <li>The focus (where chromatic aberration and speed lines centre) defaults to the volume's position on screen,
  *       or the screen's centre for a volume with none.</li>
+ *   <li>The lens's settings (depth of field) override by bits of their own: {@link #overridesCamera}.</li>
  * </ul>
+ *
+ * <p>A lens focused 6 blocks out, wide open, five blades (Unreal's defaults but the focus):</p>
+ *
+ * <pre>{@code
+ * CgPostSettings lens = new CgPostSettings().depthOfField(6f, 1.4f);
+ * lens.depthOfFieldBladeCount(7).depthOfFieldMinFstop(1.2f).depthOfFieldSensorWidth(24.576f);
+ * }</pre>
  */
 public final class CgPostSettings {
 
@@ -44,6 +52,13 @@ public final class CgPostSettings {
             DISPLAY_GAMMA = 1 << 23, GAUSSIAN = 1 << 24, BLOOM_THRESHOLD = 1 << 25, BLOOM_SIZE_SCALE = 1 << 26,
             BLOOM_EXCESS = 1 << 27, BLOOM_INTENSITY = 1 << 28, BLOOM_COLOUR = 1 << 29, BLOOM_CONSERVING = 1 << 30,
             BLOOM_EXCESS_THRESHOLD = 1 << 31;
+
+    /** The lens's override bits ({@link #overridesCamera}): depth of field's focus, f-stop, least f-stop, blades, sensor. */
+    public static final int DOF_FOCAL_DISTANCE = 1, DOF_FSTOP = 1 << 1, DOF_MIN_FSTOP = 1 << 2, DOF_BLADE_COUNT = 1 << 3,
+            DOF_SENSOR_WIDTH = 1 << 4;
+    /** Unreal's lens defaults: f/4, opening to f/1.2, five blades, a 24.576 mm sensor; no focus, so no blur. */
+    public static final float DEFAULT_FSTOP = 4f, DEFAULT_MIN_FSTOP = 1.2f, DEFAULT_SENSOR_WIDTH = 24.576f;
+    public static final int DEFAULT_BLADE_COUNT = 5;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -103,6 +118,10 @@ public final class CgPostSettings {
     /** The bloom's own: its intensity, its colour, energy-conserving or added, and the engine layers' threshold. */
     volatile float bloomIntensity = DEFAULT_BLOOM_INTENSITY, bloomR = 1f, bloomG = 1f, bloomB = 1f, bloomExcessThreshold = 1f;
     volatile boolean bloomConserving;
+    /** The lens's: depth of field's focus distance in the host's units (0, none), f-stops, blades and sensor in mm. */
+    volatile int cameraOverrides;
+    volatile float dofFocalDistance, dofFstop = DEFAULT_FSTOP, dofMinFstop = DEFAULT_MIN_FSTOP, dofSensorWidth = DEFAULT_SENSOR_WIDTH;
+    volatile int dofBladeCount = DEFAULT_BLADE_COUNT;
     /** Its weighted blendables, replaced whole. */
     private volatile Blendable[] blendables = NO_BLENDABLES;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
@@ -617,6 +636,79 @@ public final class CgPostSettings {
         return (overrides & bit) != 0;
     }
 
+    /** Whether a setter set the lens's {@code bit} ({@link #DOF_FOCAL_DISTANCE} and on). */
+    public boolean overridesCamera(int bit) {
+        return (cameraOverrides & bit) != 0;
+    }
+
+    /**
+     * Depth of field focused {@code focalDistance} out, in the host's units, at f/{@code fstop}: Unreal's
+     * {@code DepthOfFieldFocalDistance} and {@code DepthOfFieldFstop}. A focus of 0 is no blur.
+     */
+    public CgPostSettings depthOfField(float focalDistance, float fstop) {
+        return depthOfFieldFocalDistance(focalDistance).depthOfFieldFstop(fstop);
+    }
+
+    /** Where the lens focuses, in the host's units; 0, none, and nothing blurs. */
+    public CgPostSettings depthOfFieldFocalDistance(float distance) {
+        dofFocalDistance = Math.max(0f, distance);
+        cameraOverrides |= DOF_FOCAL_DISTANCE;
+        return this;
+    }
+
+    /** The lens's f-stop: a smaller one opens the aperture and blurs more. */
+    public CgPostSettings depthOfFieldFstop(float fstop) {
+        dofFstop = Math.max(0.01f, fstop);
+        cameraOverrides |= DOF_FSTOP;
+        return this;
+    }
+
+    /** The f-stop the lens opens to, its blades out of the way: at it the blur is round, closing past it a polygon. */
+    public CgPostSettings depthOfFieldMinFstop(float fstop) {
+        dofMinFstop = Math.max(0.01f, fstop);
+        cameraOverrides |= DOF_MIN_FSTOP;
+        return this;
+    }
+
+    /** The aperture's blades, 4 to 16: the blur's polygon. */
+    public CgPostSettings depthOfFieldBladeCount(int blades) {
+        dofBladeCount = Math.max(4, Math.min(16, blades));
+        cameraOverrides |= DOF_BLADE_COUNT;
+        return this;
+    }
+
+    /** The sensor's width in millimetres: with the view's field of view, the lens's focal length. */
+    public CgPostSettings depthOfFieldSensorWidth(float millimetres) {
+        dofSensorWidth = Math.max(0.1f, millimetres);
+        cameraOverrides |= DOF_SENSOR_WIDTH;
+        return this;
+    }
+
+    /** Whether the lens blurs at all: it focuses somewhere. */
+    public boolean depthOfFieldOn() {
+        return dofFocalDistance > 0f;
+    }
+
+    public float depthOfFieldFocalDistance() {
+        return dofFocalDistance;
+    }
+
+    public float depthOfFieldFstop() {
+        return dofFstop;
+    }
+
+    public float depthOfFieldMinFstop() {
+        return dofMinFstop;
+    }
+
+    public int depthOfFieldBladeCount() {
+        return dofBladeCount;
+    }
+
+    public float depthOfFieldSensorWidth() {
+        return dofSensorWidth;
+    }
+
     public float bloom() {
         return bloom;
     }
@@ -878,6 +970,12 @@ public final class CgPostSettings {
         bloomIntensity = DEFAULT_BLOOM_INTENSITY;
         bloomR = bloomG = bloomB = bloomExcessThreshold = 1f;
         bloomConserving = false;
+        cameraOverrides = 0;
+        dofFocalDistance = 0f;
+        dofFstop = DEFAULT_FSTOP;
+        dofMinFstop = DEFAULT_MIN_FSTOP;
+        dofSensorWidth = DEFAULT_SENSOR_WIDTH;
+        dofBladeCount = DEFAULT_BLADE_COUNT;
         for (int i = 0; i < drawnCount; i++) drawn[i] = null;
         drawnCount = 0;
     }
@@ -919,6 +1017,15 @@ public final class CgPostSettings {
             bloomB += (from.bloomB - bloomB) * weight;
         }
         if ((o & BLOOM_CONSERVING) != 0 && weight >= 0.5f) bloomConserving = from.bloomConserving;
+        int co = from.cameraOverrides;
+        if (co != 0) {
+            if ((co & DOF_FOCAL_DISTANCE) != 0) dofFocalDistance += (from.dofFocalDistance - dofFocalDistance) * weight;
+            if ((co & DOF_FSTOP) != 0) dofFstop += (from.dofFstop - dofFstop) * weight;
+            if ((co & DOF_MIN_FSTOP) != 0) dofMinFstop += (from.dofMinFstop - dofMinFstop) * weight;
+            if ((co & DOF_SENSOR_WIDTH) != 0) dofSensorWidth += (from.dofSensorWidth - dofSensorWidth) * weight;
+            if ((co & DOF_BLADE_COUNT) != 0 && weight >= 0.5f) dofBladeCount = from.dofBladeCount;
+            cameraOverrides |= co;
+        }
         Blendable[] bs = from.blendables;
         for (Blendable b : bs) {
             float w = b.weight * weight;

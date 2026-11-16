@@ -14,6 +14,7 @@ import com.crystalgraphics.object.value.CgUnits;
  *
  * <pre>{@code
  * CgCameraPose pose = new CgCameraPose().location(x, y, z).fov(70);
+ * pose.focalLength(50f).aperture(1.8f).focusDistance(4f);   // a lens: its FOV on the sensor, a blur focused 4 out
  * pose.rotation().set(turn);                          // its forward is the turn of +x, its up of +y
  * pose.lerp(other, 0.25f);                            // a quarter of the way to other, as a blend does
  * }</pre>
@@ -22,16 +23,22 @@ import com.crystalgraphics.object.value.CgUnits;
  *   <li>Its turn of +x is where it looks and of +y its up: Unreal's forward and up through the host's axes, so a rig
  *       written in Unreal's terms means the same here.</li>
  *   <li>Mutable and owned: a rig and a stack each keep their own, and never hand one out to be kept.</li>
+ *   <li>Its lens is unset (NaN) until a node sets it: no focus, no blur. A focal length sets the FOV too, on
+ *       {@link #SENSOR_WIDTH}.</li>
  * </ul>
  */
 public final class CgCameraPose {
 
     /** The host FOV a pose has before anything sets one, in degrees. */
     public static final float DEFAULT_FOV = 90f;
+    /** The sensor a focal length is measured on, in millimetres: the post settings' default. */
+    public static final float SENSOR_WIDTH = 24.576f;
 
     private final Vector3d location = new Vector3d();
     private final Quaternionf rotation = new Quaternionf();
     private float fov = DEFAULT_FOV;
+    /** The lens: focal length in mm, the f-stop, the focus distance in the host's units; NaN, unset. */
+    private float focalLength = Float.NaN, aperture = Float.NaN, focusDistance = Float.NaN;
     private final double[] from = new double[3], to = new double[3];
     private final float[] quat = new float[4];
 
@@ -59,10 +66,45 @@ public final class CgCameraPose {
         return this;
     }
 
+    /** The lens's focal length in millimetres, NaN unset. */
+    public float focalLength() {
+        return focalLength;
+    }
+
+    /** A lens of {@code millimetres}: its horizontal FOV on {@link #SENSOR_WIDTH} becomes the pose's. */
+    public CgCameraPose focalLength(float millimetres) {
+        focalLength = millimetres;
+        if (millimetres > 0f) fov = (float) Math.toDegrees(2.0 * Math.atan(SENSOR_WIDTH / (2.0 * millimetres)));
+        return this;
+    }
+
+    /** The lens's f-stop, NaN unset. */
+    public float aperture() {
+        return aperture;
+    }
+
+    public CgCameraPose aperture(float fstop) {
+        aperture = fstop;
+        return this;
+    }
+
+    /** Where the lens focuses, in the host's units; NaN unset, and nothing blurs. */
+    public float focusDistance() {
+        return focusDistance;
+    }
+
+    public CgCameraPose focusDistance(float distance) {
+        focusDistance = distance;
+        return this;
+    }
+
     public CgCameraPose set(CgCameraPose other) {
         location.set(other.location);
         rotation.set(other.rotation);
         fov = other.fov;
+        focalLength = other.focalLength;
+        aperture = other.aperture;
+        focusDistance = other.focusDistance;
         return this;
     }
 
@@ -76,6 +118,9 @@ public final class CgCameraPose {
         if (factor == 1f) return set(target);
         location.lerp(target.location, factor);
         fov += (target.fov - fov) * factor;
+        focalLength = lerpSet(focalLength, target.focalLength, factor);
+        aperture = lerpSet(aperture, target.aperture, factor);
+        focusDistance = lerpSet(focusDistance, target.focusDistance, factor);
         rotator(rotation, from);
         rotator(target.rotation, to);
         // FMath::Lerp<FRotator>: A + (B - A).GetNormalized() * Alpha (Rotator.h).
@@ -85,6 +130,13 @@ public final class CgCameraPose {
         CgUnits.rotatorToHost(Math.toRadians(roll), Math.toRadians(pitch), Math.toRadians(yaw), quat);
         rotation.set(quat[0], quat[1], quat[2], quat[3]);
         return this;
+    }
+
+    /** A lens value {@code factor} of the way to {@code to}: one side unset takes the other's. */
+    private static float lerpSet(float from, float to, float factor) {
+        if (Float.isNaN(from)) return to;
+        if (Float.isNaN(to)) return from;
+        return from + (to - from) * factor;
     }
 
     /**

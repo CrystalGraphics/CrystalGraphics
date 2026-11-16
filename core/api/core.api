@@ -2617,7 +2617,6 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
   method public layer (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public masked (F)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public order (I)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
-  method public separateTranslucency ()Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public shading (Lcom/crystalgraphics/api/material/CgShadingModel;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public sortLayer (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public texture (Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
@@ -2625,6 +2624,7 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
   method public texture (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public texture (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/texture/CgSampler$Filter;Lcom/crystalgraphics/api/texture/CgSampler$Address;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public texture (Ljava/lang/String;Ljava/util/function/Supplier;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
+  method public translucencyPass (Lcom/crystalgraphics/api/material/CgTranslucencyPass;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public tree ()Ljava/util/Map;
   method public twoSided ()Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
   method public usage ([Lcom/crystalgraphics/api/material/CgMaterialUsage;)Lcom/crystalgraphics/api/material/CgMaterialDefinition$Builder;
@@ -2632,11 +2632,11 @@ com/crystalgraphics/api/material/CgMaterialDefinition$Builder
 com/crystalgraphics/api/material/CgMaterialDefinition$Draw
   access public,final,record
   extends java/lang/Record
-  method public <init> (Lcom/crystalgraphics/api/state/CgCullState;Ljava/lang/Boolean;Ljava/lang/Float;Z)V
+  method public <init> (Lcom/crystalgraphics/api/state/CgCullState;Ljava/lang/Boolean;Ljava/lang/Float;Lcom/crystalgraphics/api/material/CgTranslucencyPass;)V
   method public cull ()Lcom/crystalgraphics/api/state/CgCullState;
   method public depthWrite ()Ljava/lang/Boolean;
   method public maskClip ()Ljava/lang/Float;
-  method public separateTranslucency ()Z
+  method public translucencyPass ()Lcom/crystalgraphics/api/material/CgTranslucencyPass;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
@@ -2838,8 +2838,8 @@ com/crystalgraphics/api/material/CgMaterialState
   method public onPass (Lcom/crystalgraphics/api/state/CgRenderState;Z)Lcom/crystalgraphics/api/state/CgRenderState;
   method public programKey ()Ljava/lang/String;
   method public queue (I)I
-  method public separateTranslucency ()Z
   method public toString ()Ljava/lang/String;
+  method public translucencyPass ()Lcom/crystalgraphics/api/material/CgTranslucencyPass;
   method public,static builder ()Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
 com/crystalgraphics/api/material/CgMaterialState$Builder
   access public,final
@@ -2850,7 +2850,7 @@ com/crystalgraphics/api/material/CgMaterialState$Builder
   method public cull (Lcom/crystalgraphics/api/state/CgCullState;)Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
   method public depthWrite (Z)Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
   method public disableDepthTest ()Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
-  method public separateTranslucency ()Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
+  method public translucencyPass (Lcom/crystalgraphics/api/material/CgTranslucencyPass;)Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
   method public twoSided ()Lcom/crystalgraphics/api/material/CgMaterialState$Builder;
 com/crystalgraphics/api/material/CgMaterialUsage
   access public,final,enum
@@ -2992,10 +2992,22 @@ com/crystalgraphics/api/material/CgSurfaceMaterial$Builder
   method public emissive (F)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
   method public masked (F)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
   method public sampling (Lcom/crystalgraphics/api/texture/CgSampler$Filter;Lcom/crystalgraphics/api/texture/CgSampler$Address;)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
-  method public separateTranslucency ()Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
   method public shading (Lcom/crystalgraphics/api/material/CgShadingModel;)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
   method public tint (I)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
+  method public translucencyPass (Lcom/crystalgraphics/api/material/CgTranslucencyPass;)Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
   method public twoSided ()Lcom/crystalgraphics/api/material/CgSurfaceMaterial$Builder;
+com/crystalgraphics/api/material/CgTranslucencyPass
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final AFTER_DOF Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  field public,static,final AFTER_MOTION_BLUR Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  field public,static,final BEFORE_DOF Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  method public apart ()Z
+  method public formatName ()Ljava/lang/String;
+  method public,static later (Lcom/crystalgraphics/api/material/CgTranslucencyPass;Lcom/crystalgraphics/api/material/CgTranslucencyPass;)Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/CgTranslucencyPass;
+  method public,static values ()[Lcom/crystalgraphics/api/material/CgTranslucencyPass;
 com/crystalgraphics/api/material/CgVertexFactory
   access public,final
   extends java/lang/Object
@@ -5272,7 +5284,14 @@ com/crystalgraphics/camera/CgCameraPose
   access public,final
   extends java/lang/Object
   field public,static,final DEFAULT_FOV F
+  field public,static,final SENSOR_WIDTH F
   method public <init> ()V
+  method public aperture ()F
+  method public aperture (F)Lcom/crystalgraphics/camera/CgCameraPose;
+  method public focalLength ()F
+  method public focalLength (F)Lcom/crystalgraphics/camera/CgCameraPose;
+  method public focusDistance ()F
+  method public focusDistance (F)Lcom/crystalgraphics/camera/CgCameraPose;
   method public fov ()F
   method public fov (F)Lcom/crystalgraphics/camera/CgCameraPose;
   method public lerp (Lcom/crystalgraphics/camera/CgCameraPose;F)Lcom/crystalgraphics/camera/CgCameraPose;
@@ -8765,11 +8784,11 @@ com/crystalgraphics/material/CgMaterialProxy
   method public readsSceneColor ()Z
   method public readsSceneDepth ()Z
   method public samplerUnit (Ljava/lang/String;)I
-  method public separateTranslucency ()Z
   method public solid ()Z
   method public state ()Lcom/crystalgraphics/api/material/CgMaterialState;
   method public surfaceLit ()Z
   method public toString ()Ljava/lang/String;
+  method public translucencyPass ()Lcom/crystalgraphics/api/material/CgTranslucencyPass;
   method public warnNoMeshPass (Lcom/crystalgraphics/api/material/CgMaterialDomain;)V
   method public writer ()Lcom/crystalgraphics/api/material/CgMaterialValues;
   method public writesCustomData ()Z
@@ -8996,10 +9015,10 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public renderType ()Ljava/lang/String;
   method public sceneColorMargin ()F
   method public sceneFolds ()Z
-  method public separateTranslucency ()Z
   method public surfaceLit ()Z
   method public templateReadsSceneColor ()Z
   method public toString ()Ljava/lang/String;
+  method public translucencyPass ()Lcom/crystalgraphics/api/material/CgTranslucencyPass;
   method public tube ()Lcom/crystalgraphics/material/shader/CgShaderSpec$Tube;
   method public unlit ()Z
   method public valuesInArena ()Z
@@ -12338,6 +12357,7 @@ com/crystalgraphics/render/post/CgPost
   method public <init> ()V
   method public add (Lcom/crystalgraphics/render/post/CgPostPoint;ILcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/post/CgPost$Registration;
   method public add (Lcom/crystalgraphics/render/post/CgPostPoint;Lcom/crystalgraphics/render/post/CgPostEffect;)Lcom/crystalgraphics/render/post/CgPost$Registration;
+  method public camera ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public crossfade (F)V
   method public material (Lcom/crystalgraphics/api/material/CgMaterialInstance;Lcom/crystalgraphics/render/post/CgPostPoint;I)Lcom/crystalgraphics/render/post/CgPostMaterial;
   method public material (Ljava/lang/String;)Lcom/crystalgraphics/render/post/CgPostMaterial;
@@ -12477,6 +12497,13 @@ com/crystalgraphics/render/post/distortion/CgPostDistortion
   method public begin ()V
   method public bend (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/scene/renderer/feature/distortion/CgDistortionField;Lcom/crystalgraphics/render/draw/CgPassConstants;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public release ()V
+com/crystalgraphics/render/post/dof/CgDepthOfField
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHADERS [Ljava/lang/String;
+  method public <init> ()V
+  method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
 com/crystalgraphics/render/post/fog/CgHeightFogPass
   access public,final
   extends java/lang/Object
@@ -12614,8 +12641,17 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final BLOOM_THRESHOLD I
   field public,static,final BLUE_CORRECTION I
   field public,static,final CHROMATIC I
+  field public,static,final DEFAULT_BLADE_COUNT I
   field public,static,final DEFAULT_BLOOM_INTENSITY F
+  field public,static,final DEFAULT_FSTOP F
+  field public,static,final DEFAULT_MIN_FSTOP F
+  field public,static,final DEFAULT_SENSOR_WIDTH F
   field public,static,final DISPLAY_GAMMA I
+  field public,static,final DOF_BLADE_COUNT I
+  field public,static,final DOF_FOCAL_DISTANCE I
+  field public,static,final DOF_FSTOP I
+  field public,static,final DOF_MIN_FSTOP I
+  field public,static,final DOF_SENSOR_WIDTH I
   field public,static,final EXPAND_GAMUT I
   field public,static,final FADE I
   field public,static,final FILMIC I
@@ -12671,6 +12707,18 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public chromatic ()F
   method public chromatic (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public copy ()Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfField (FF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfFieldBladeCount ()I
+  method public depthOfFieldBladeCount (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfFieldFocalDistance ()F
+  method public depthOfFieldFocalDistance (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfFieldFstop ()F
+  method public depthOfFieldFstop (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfFieldMinFstop ()F
+  method public depthOfFieldMinFstop (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public depthOfFieldOn ()Z
+  method public depthOfFieldSensorWidth ()F
+  method public depthOfFieldSensorWidth (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public displayGamma ()F
   method public displayGamma (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public drawnBlendable (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Blendable;
@@ -12715,6 +12763,7 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public impactSeed ()I
   method public impactSubject ()I
   method public overrides (I)Z
+  method public overridesCamera (I)Z
   method public overridesLayer (IZ)Z
   method public reset ()V
   method public subject (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
@@ -14023,12 +14072,12 @@ com/crystalgraphics/render/scene/sort/CgSortKey
 com/crystalgraphics/render/scene/sort/CgSortLayer
   access public,final
   extends java/lang/Object
+  field public,static,final AFTER_DOF Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
   field public,static,final BACKGROUND Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
   field public,static,final DEFAULT Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
   field public,static,final EFFECTS Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
   field public,static,final MAX I
   field public,static,final OVERLAY Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
-  field public,static,final SEPARATE_TRANSLUCENCY Lcom/crystalgraphics/render/scene/sort/CgSortLayer;
   method public id ()Ljava/lang/String;
   method public rank ()I
   method public toString ()Ljava/lang/String;
@@ -14317,6 +14366,8 @@ com/crystalgraphics/render/view/CgShowFlags
   extends java/lang/Object
   method public decals ()Z
   method public decals (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
+  method public depthOfField ()Z
+  method public depthOfField (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public distortion ()Z
   method public distortion (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public labels ()Z

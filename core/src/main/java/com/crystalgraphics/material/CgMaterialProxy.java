@@ -1,5 +1,6 @@
 package com.crystalgraphics.material;
 
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -1290,14 +1291,16 @@ public final class CgMaterialProxy {
     }
 
     /**
-     * Whether its translucent draws go after every other, Unreal's separate translucency: its state's
-     * {@code separateTranslucency()}, or its shader's {@code TranslucencyPass Separate}. False for the shader's until it
-     * is parsed.
+     * Where its translucent draws are laid over the scene: its state's pass where it is later than its shader's, or its
+     * shader's; an opaque shader has none, so its state's or {@code BeforeDOF}, as before its shader is parsed.
      */
-    public boolean separateTranslucency() {
-        if (state.separateTranslucency()) return true;
+    public CgTranslucencyPass translucencyPass() {
+        CgTranslucencyPass own = state.translucencyPass();
         CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.getLastParsed();
-        return parsed != null && parsed.separateTranslucency();
+        if (parsed == null) return own != null ? own : CgTranslucencyPass.BEFORE_DOF;
+        CgTranslucencyPass shader = parsed.translucencyPass();
+        if (shader == null) return own != null ? own : CgTranslucencyPass.BEFORE_DOF;
+        return own == null ? shader : CgTranslucencyPass.later(own, shader);
     }
 
     /**

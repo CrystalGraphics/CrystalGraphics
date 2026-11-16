@@ -5,6 +5,7 @@ import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.material.shader.syntax.CgShaderError;
@@ -107,7 +108,12 @@ public class CgShaderSpecTest {
 
     @Test
     public void settingsReachTheSpec() {
-        assertTrue(surface("BlendMode Additive  TranslucencyPass Separate", "s.baseColor = vec3(1.0);").separateTranslucency());
+        assertEquals(CgTranslucencyPass.BEFORE_DOF, surface("BlendMode Additive  TranslucencyPass BeforeDOF", "s.baseColor = vec3(1.0);").translucencyPass());
+        assertEquals(CgTranslucencyPass.BEFORE_DOF, surface("BlendMode Additive", "s.baseColor = vec3(1.0);").translucencyPass());
+        assertEquals(CgTranslucencyPass.AFTER_DOF, surface("BlendMode Additive  TranslucencyPass AfterDOF", "s.baseColor = vec3(1.0);").translucencyPass());
+        assertEquals(CgTranslucencyPass.AFTER_MOTION_BLUR,
+                surface("BlendMode Additive  TranslucencyPass AfterMotionBlur", "s.baseColor = vec3(1.0);").translucencyPass());
+        assertNull(surface("", "s.baseColor = vec3(1.0);").translucencyPass());
         assertTrue(surface("ShadingModel Unlit", "s.emissive = vec3(1.0);").unlit());
         assertEquals(CgShaderSpec.Lighting.SURFACE,
                 surface("BlendMode Translucent  TranslucencyLighting Surface", "s.opacity = 0.5; s.normal = vec3(0, 0, 1);")

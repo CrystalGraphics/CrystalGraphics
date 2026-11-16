@@ -41,8 +41,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #TRANSLUCENT}: what blends, its Forward pass, sorted back to front by its key
  *       ({@code TranslucencyStandard}); none drawn at half size, after distortion or as separate translucency.</li>
  *   <li>{@link #AFTER_DISTORTION}: what blends after the hazes, unbent by them.</li>
- *   <li>{@link #SEPARATE}: separate translucency (a material whose state says so), drawn into a layer of its own after
- *       every other translucent draw (Unreal's {@code TranslucencyAfterDOF}).</li>
+ *   <li>{@link #SEPARATE}: separate translucency (a material whose {@code TranslucencyPass} is after depth of field),
+ *       drawn into a target of its own, laid over the scene after depth of field (Unreal's {@code TranslucencyAfterDOF}).</li>
  *   <li>{@link #HALF}: what blends by adding, marked half-resolution, drawn at half size and added over the scene.</li>
  *   <li>{@link #VOLUME}: what covers premultiplied (smoke, a volume), marked half-resolution: marched at half size and
  *       blended with its last frame.</li>
@@ -157,9 +157,9 @@ public final class CgEnginePasses {
                 || batch.material().renderQueue() >= CgRenderQueue.AFTER_DISTORTION_THRESHOLD || separate(batch);
     }
 
-    /** Whether a translucent batch is separate translucency: its material's state, or its sort layer. */
+    /** Whether a translucent batch draws into the separate translucency's target: its material's pass, or its sort layer. */
     private static boolean separate(CgMeshBatch batch) {
-        return batch.separate() || CgMaterialProxy.of(batch.material()).separateTranslucency();
+        return batch.separate() || CgMaterialProxy.of(batch.material()).translucencyPass().apart();
     }
 
     /** Whether a material's Forward pass covers what is behind it, premultiplied: a volume's blend. */

@@ -12,6 +12,8 @@ import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 
+import com.crystalgraphics.render.post.dof.CgDepthOfField;
+
 import javax.annotation.Nullable;
 import java.util.Arrays;
 import java.util.Collections;
@@ -65,6 +67,9 @@ public final class CgPost {
     final CgPostCrossfade crossfade = new CgPostCrossfade();
     /** What every view of it starts from before its scene's volumes: Unreal's default post settings. */
     private final CgPostSettings settings = new CgPostSettings();
+    /** The camera's, blended over every volume: a rig's lens. */
+    private final CgPostSettings camera = new CgPostSettings();
+    final CgDepthOfField depthOfField = new CgDepthOfField();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     @Nullable
@@ -179,6 +184,20 @@ public final class CgPost {
      */
     public CgPostSettings settings() {
         return settings;
+    }
+
+    /**
+     * The camera's settings: blended over every volume, as Unreal blends a camera's post settings after the world's
+     * volumes. The camera system writes a rig's lens here (its focus and f-stop, {@link CgPostSettings#depthOfField});
+     * a scene driving its own camera writes them itself. Any thread; read at the next firing.
+     *
+     * <pre>{@code
+     * CgPost.client().camera().depthOfField(4f, 2f);       // focused 4 blocks out at f/2, whatever the volumes say
+     * view.post().camera().reset();                        // the volumes' lens again
+     * }</pre>
+     */
+    public CgPostSettings camera() {
+        return camera;
     }
 
     /**

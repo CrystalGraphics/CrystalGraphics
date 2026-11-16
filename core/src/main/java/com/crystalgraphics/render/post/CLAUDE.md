@@ -17,6 +17,7 @@ CgSceneRenderer.translucent   ... lights, media, decals
                               ... our translucent passes, the TRANSLUCENT stage
 CgPostRenderer.record
   TRANSLUCENT                 colour regions: the scene before separate translucency
+  depth of field              CgDepthOfField: the lens's blur by distance, into a texture of its own
   translucency                CgTranslucencyComposition: CgSeparateTranslucency over the scene and its graded layers
   SCENE                       the linear scene: what bloom sees, it blooms
   bloom                       CgBloom from the chain's picture, into the composite
@@ -28,7 +29,7 @@ CgPostRenderer.record
 
 | Class | Holds |
 |---|---|
-| `CgPost` | The consumer face: `add(point[, order], effect)` answering a `Registration`, `material(...)`, `settings()` (the chain's base settings, bloom's among them), `crossfade(s)`. `client()`; `new CgPost()` is `CgView`'s for a view of its own. Its effects an array snapshot, replaced whole |
+| `CgPost` | The consumer face: `add(point[, order], effect)` answering a `Registration`, `material(...)`, `settings()` (the chain's base settings, bloom's among them), `camera()` (the camera's, blended over every volume: a rig's lens), `crossfade(s)`. `client()`; `new CgPost()` is `CgView`'s for a view of its own. Its effects an array snapshot, replaced whole |
 | `CgPostRenderer` | Engine side: `prepare(view)`, `surfaces(firing)`, `record(firing)` in the frame's order, each point's effects and blendables merged (`walk`); `install`, `lookPasses`, `precacheLook`, `releaseAll` |
 | `CgOutline` | The outline as a blendable: `settings(instance)` a volume's settings drawing it at `SURFACES` first (`PRIORITY`), `material(stencil)`, `tests(...)` |
 | `CgPostEffect` | `CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input)` |
@@ -37,7 +38,8 @@ CgPostRenderer.record
 | `CgScreenPass` | One full-screen draw: `from`, `reads`, `weight`, `name`, then `over(t)` or `into(t)`. Depthless, unblended where the shader declares none, in place (`replaces`) where it covers every pixel; hands `CG_CUSTOM_STENCIL`, `CG_SCENE_WORLD_NORMAL`, `CG_CUSTOM_DATA` |
 | `CgPostMaterial` | A `#domain post` file as an effect (`post.material(...)`, `weight`, `remove`), or the engine's drawer (`drawer(m)`, `draw(ctx, t)`, `drawOver(ctx, layer)`). A `Step` with `Target` draws into a transient of its format and `Scale`, bound by name for the steps after; held until every pass is built where the view skips unready draws |
 | `CgPostCrossfade` | `hold.shader` copies the final picture into an RGBA8 texture; `crossfade.shader` lays it over the frames after at a falling weight on `CgFrameClock` |
-| `CgTranslucencyComposition` | Separate translucency over the scene and each graded layer (`translucency_compose.shader`) |
+| `CgTranslucencyComposition` | Separate translucency (`AfterDOF`, `AfterMotionBlur`) over the scene and each graded layer (`translucency_compose.shader`) |
+| `dof` | `CgDepthOfField`: depth of field from the blended settings' lens (`depthOfField...`, a post block's `depth_of_field`, the camera's focus and f-stop), off with no focus. Half size: setup (scene and signed circle of confusion), 8x8 tiles of the largest near and far radius, dilated, the far and near layers gathered on rings shaped by the aperture's blades, then a full-size recombine (`shaders/post/dof/`). Thin lens on the view's FOV and the settings' sensor; each layer's radius held to 2.5% of the width |
 
 | Package | Holds |
 |---|---|
@@ -78,7 +80,8 @@ every point draws onto the host's target and the composite draws in its blend fo
 - **Recording allocates nothing**: effect lists are array snapshots, `CgScreenTexture` is kept on its texture, and
   `ctx.screen` and `ctx.texture` reuse theirs.
 - Gates: `post-looks` (every look through a volume, from the pixels), `post-effects` (an effect at each point, one
-  answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`.
+  answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `depth-of-field` (a board in
+  focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp). `dof-lab` to play with.
 
 ## Writing an effect
 

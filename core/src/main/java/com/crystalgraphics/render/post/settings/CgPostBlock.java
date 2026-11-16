@@ -61,6 +61,7 @@ public final class CgPostBlock {
         }
         tonemapper(block, s);
         bloomLayers(block, s);
+        if (block.get("depth_of_field") instanceof Map<?, ?> dof) depthOfField(dof, s);
         for (Region region : Region.values()) {
             if (!(block.get(key(region)) instanceof Map<?, ?> controls)) continue;
             for (Control control : Control.values()) {
@@ -75,6 +76,15 @@ public final class CgPostBlock {
             }
         }
         return s;
+    }
+
+    /** {@code depth_of_field}'s keys, each overriding its field alone. */
+    private static void depthOfField(Map<?, ?> dof, CgPostSettings s) {
+        if (dof.get("focal_distance") instanceof Number n) s.depthOfFieldFocalDistance(n.floatValue());
+        if (dof.get("fstop") instanceof Number n) s.depthOfFieldFstop(n.floatValue());
+        if (dof.get("min_fstop") instanceof Number n) s.depthOfFieldMinFstop(n.floatValue());
+        if (dof.get("blade_count") instanceof Number n) s.depthOfFieldBladeCount(n.intValue());
+        if (dof.get("sensor_width") instanceof Number n) s.depthOfFieldSensorWidth(n.floatValue());
     }
 
     private static void tonemapper(Map<?, ?> block, CgPostSettings s) {
@@ -192,6 +202,13 @@ public final class CgPostBlock {
         }
         if (s.overrides(CgPostSettings.BLOOM_SIZE_SCALE)) b.put("bloom_size_scale", (double) s.bloomSizeScale());
         if (s.overrides(CgPostSettings.TONEMAP)) b.put("tonemapper", s.overrides(CgPostSettings.FILMIC) ? "film" : "legacy");
+        Map<String, Object> dof = new LinkedHashMap<>();
+        if (s.overridesCamera(CgPostSettings.DOF_FOCAL_DISTANCE)) dof.put("focal_distance", (double) s.depthOfFieldFocalDistance());
+        if (s.overridesCamera(CgPostSettings.DOF_FSTOP)) dof.put("fstop", (double) s.depthOfFieldFstop());
+        if (s.overridesCamera(CgPostSettings.DOF_MIN_FSTOP)) dof.put("min_fstop", (double) s.depthOfFieldMinFstop());
+        if (s.overridesCamera(CgPostSettings.DOF_BLADE_COUNT)) dof.put("blade_count", s.depthOfFieldBladeCount());
+        if (s.overridesCamera(CgPostSettings.DOF_SENSOR_WIDTH)) dof.put("sensor_width", (double) s.depthOfFieldSensorWidth());
+        if (!dof.isEmpty()) b.put("depth_of_field", dof);
         if (s.overrides(CgPostSettings.TONE_CURVE)) b.put("tone_curve", (double) s.toneCurve());
         Map<String, Object> film = new LinkedHashMap<>();
         if (s.overrides(CgPostSettings.FILM_SLOPE)) film.put("slope", (double) s.filmSlope());

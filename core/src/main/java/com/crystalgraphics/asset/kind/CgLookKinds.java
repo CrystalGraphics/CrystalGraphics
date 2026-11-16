@@ -40,7 +40,7 @@ public final class CgLookKinds {
             .property("MaskClip", FLOAT)
             .property("DepthTest", BOOL).flags(CgPropertyFlag.STRUCTURAL)
             .property("DepthWrite", BOOL).flags(CgPropertyFlag.STRUCTURAL)
-            .property("TranslucencyPass", CgValueType.enumOf("Separate"))
+            .property("TranslucencyPass", CgValueType.enumOf("BeforeDOF", "AfterDOF", "AfterMotionBlur"))
             .register();
 
     static final CgType STENCIL = CgTypes.struct("crystalgraphics:material.post.stencil")

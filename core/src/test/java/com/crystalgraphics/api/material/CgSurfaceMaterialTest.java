@@ -17,7 +17,7 @@ public class CgSurfaceMaterialTest {
             assertEquals("masked" + unlit, shader(CgSurfaceMaterial.of("test:b" + unlit).shading(shading).masked(0.1f).twoSided()));
             for (CgBlendMode blend : new CgBlendMode[] {CgBlendMode.ALPHA, CgBlendMode.ADDITIVE, CgBlendMode.MODULATE}) {
                 assertEquals("translucent" + unlit, shader(CgSurfaceMaterial.of("test:c" + blend + unlit).shading(shading)
-                        .blend(blend).separateTranslucency().emissive(2f).tint(0x80FF0000)));
+                        .blend(blend).translucencyPass(CgTranslucencyPass.AFTER_DOF).emissive(2f).tint(0x80FF0000)));
             }
             assertEquals("decal" + unlit, shader(CgSurfaceMaterial.decal("test:d" + unlit).shading(shading)));
         }
@@ -26,7 +26,7 @@ public class CgSurfaceMaterialTest {
     @Test
     public void whatABaseDoesNotHaveIsRefusedAtTheCall() {
         assertThrows(IllegalStateException.class, () -> CgSurfaceMaterial.decal("test:d").twoSided());
-        assertThrows(IllegalStateException.class, () -> CgSurfaceMaterial.of("test:e").separateTranslucency().definition());
+        assertThrows(IllegalStateException.class, () -> CgSurfaceMaterial.of("test:e").translucencyPass(CgTranslucencyPass.AFTER_DOF).definition());
     }
 
     @Test

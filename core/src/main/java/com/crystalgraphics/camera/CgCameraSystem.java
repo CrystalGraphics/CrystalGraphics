@@ -1,6 +1,8 @@
 package com.crystalgraphics.camera;
 
 import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.render.post.CgPost;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.List;
@@ -85,6 +87,8 @@ public final class CgCameraSystem extends CgWorldSubsystem {
     @Nullable
     private CgCameraRigDefinition refused;
     private boolean warnedHide, warnedReach;
+    /** Whether the client chain's camera settings hold this system's lens. */
+    private boolean lensShown;
 
     /** Blocks inside the render distance a held pose keeps: one chunk, which the client may not have yet. */
     private static final double REACH_MARGIN = 16;
@@ -250,8 +254,10 @@ public final class CgCameraSystem extends CgWorldSubsystem {
     private void present() {
         if (!controls()) {
             CgCameraManager.release();
+            lens(null);
             return;
         }
+        lens(pose);
         CgCameraRigDefinition d = rig == null ? null : rig.definition();
         int missing = d == null ? 0 : parts(d) & ~CgCameraManager.capabilities();
         String on = d == null ? "" : d.onMissing();
@@ -293,6 +299,22 @@ public final class CgCameraSystem extends CgWorldSubsystem {
         CgCameraPose.angles(pose.rotation(), turn);
         CgCameraManager.hold(x, at.location().y, z, turn[0], turn[1], (missing & CgCameraManager.ROLL) == 0 ? turn[2] : 0f,
                 pose.fov(), flags);
+    }
+
+    /**
+     * The pose's lens into the client chain's camera settings: its focus and f-stop blur the picture while it focuses
+     * somewhere; the settings are cleared once, when it stops.
+     */
+    private void lens(@Nullable CgCameraPose pose) {
+        boolean focuses = pose != null && pose.focusDistance() > 0f;
+        if (!focuses) {
+            if (lensShown) CgPost.client().camera().reset();
+            lensShown = false;
+            return;
+        }
+        float fstop = pose.aperture() > 0f ? pose.aperture() : CgPostSettings.DEFAULT_FSTOP;
+        CgPost.client().camera().depthOfField(pose.focusDistance(), fstop).depthOfFieldSensorWidth(CgCameraPose.SENSOR_WIDTH);
+        lensShown = true;
     }
 
     /**

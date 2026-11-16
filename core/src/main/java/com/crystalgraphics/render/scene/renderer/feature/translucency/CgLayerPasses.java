@@ -347,7 +347,7 @@ public final class CgLayerPasses {
     }
 
     private static boolean separate(CgMeshBatches rows, int b) {
-        return rows.layer(b) == CgSortLayer.SEPARATE_TRANSLUCENCY || CgMaterialProxy.of(rows.material(b)).separateTranslucency();
+        return rows.layer(b) == CgSortLayer.AFTER_DOF || CgMaterialProxy.of(rows.material(b)).translucencyPass().apart();
     }
 
     private int slotOf(CgPostSettings look) {

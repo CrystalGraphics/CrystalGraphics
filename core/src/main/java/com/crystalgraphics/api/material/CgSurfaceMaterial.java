@@ -81,7 +81,8 @@ public final class CgSurfaceMaterial {
         private final CgTexture texture;
         private CgBlendMode blend = CgBlendMode.OPAQUE;
         private float maskClip = Float.NaN;
-        private boolean twoSided, separate;
+        private boolean twoSided;
+        private CgTranslucencyPass pass;
         private CgShadingModel shading = CgShadingModels.LIT;
         private float emissive = Float.NaN;
         @Nullable
@@ -137,10 +138,10 @@ public final class CgSurfaceMaterial {
             return this;
         }
 
-        /** Drawn after every other translucent draw: Unreal's separate translucency. A translucent blend's only. */
-        public Builder separateTranslucency() {
-            surfaceOnly("separateTranslucency");
-            separate = true;
+        /** Where its translucent draws are laid over the scene ({@link CgTranslucencyPass}). A translucent blend's only. */
+        public Builder translucencyPass(CgTranslucencyPass pass) {
+            surfaceOnly("translucencyPass");
+            this.pass = Objects.requireNonNull(pass, "pass");
             return this;
         }
 
@@ -154,18 +155,18 @@ public final class CgSurfaceMaterial {
         /**
          * Its definition: what a prefab's part or a kit names.
          *
-         * @throws IllegalStateException for separate translucency on a blend that is not translucent
+         * @throws IllegalStateException for a translucency pass on a blend that is not translucent
          */
         public CgMaterialDefinition definition() {
             boolean translucent = blend != CgBlendMode.OPAQUE;
-            if (separate && !translucent) throw new IllegalStateException(id + ": separate translucency is a translucent blend's");
+            if (pass != null && !translucent) throw new IllegalStateException(id + ": a translucency pass is a translucent blend's");
             String family = decal ? "decal" : !Float.isNaN(maskClip) ? "masked" : translucent ? "translucent" : "opaque";
             String shader = SHADERS + family + (shading.base().equals("unlit") ? "_unlit" : "") + ".shader";
             CgMaterialDefinition.Builder d = CgMaterialDefinition.of(id, shader).shading(shading);
             if (!Float.isNaN(maskClip)) d.masked(maskClip);
             else if (translucent) d.blend(blend);
             if (twoSided) d.twoSided();
-            if (separate) d.separateTranslucency();
+            if (pass != null) d.translucencyPass(pass);
             if (tint != null) d.color("_Tint", tint);
             if (!Float.isNaN(emissive)) d.value("_Emissive", emissive);
             if (textureId != null) d.texture("_MainTex", textureId, filter, address);

@@ -65,7 +65,7 @@ blend mode unless it overrides it. A child's `state` merges over its parent's.
 | `Faces` | `Front`, `Back`, `Both` | `.twoSided()`, `.cull(CgCullState)` | Which faces draw: `Both` is two-sided, `Back` only a volume's far wall |
 | `DepthTest` | `true`, `false` | `.depthTest(false)` | `false` draws it over whatever is in front (below) |
 | `DepthWrite` | `true`, `false` | `.depthWrite(true)` | Whether it writes depth, over its blend's own |
-| `TranslucencyPass` | `Separate` | `.separateTranslucency()` | Drawn after every other translucent thing (below) |
+| `TranslucencyPass` | `BeforeDOF`, `AfterDOF`, `AfterMotionBlur` | `.translucencyPass(pass)` | Where it is laid over the scene: blurred by depth of field or not (below) |
 
 - **The rest of `Material { }` is the shader's**: `Fog`, `Media`, `DepthPrepass`, `ClipDepth`, `VertexFactory` and the
   others change what the program is, so a different look is a different shader. Naming one in `state` fails at load,
@@ -89,11 +89,12 @@ have.
 state: { BlendMode: Additive, DepthTest: false }
 ```
 
-**`TranslucencyPass: Separate`** (Unreal's `bEnableSeparateTranslucency`) draws a translucent material after every
-other translucent draw, unbent by their distortion and still tested against the scene's depth: it sorts in
-`CgRenderQueue.AFTER_DISTORTION` and up, in `CgSortLayer.SEPARATE_TRANSLUCENCY` or a later layer. Under the HDR scene
-it draws into a target of its own, laid over the scene after the colour regions, as Unreal composites it after its
-`PrePostProcessPass`: a `colour_region` never grades it. A blend that multiplies stays in the scene.
+**`TranslucencyPass`** (Unreal 5.1's) says where a translucent material is laid over the scene. `BeforeDOF`, the
+default, draws into the scene and blurs with it under depth of field. `AfterDOF` and `AfterMotionBlur` draw after every
+other translucent draw, unbent by their distortion and still tested against the scene's depth, into a target of their
+own laid over the scene after depth of field: sharp at any focus, and never graded by a `colour_region`. An asset moves
+its shader's pass later, never earlier; a blend that multiplies stays in the scene. Until motion blur exists
+(`AfterMotionBlur`'s own step), the two after passes are laid over together.
 
 ## A particle's material: the vertex factory
 

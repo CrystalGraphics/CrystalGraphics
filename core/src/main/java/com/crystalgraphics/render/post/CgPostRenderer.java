@@ -8,6 +8,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
+import com.crystalgraphics.render.post.dof.CgDepthOfField;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
@@ -37,8 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * CgPostRenderer.record(firing);      // after the TRANSLUCENT stage: the chain, its last step into the host's target
  * }</pre>
  *
- * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, separate
- * translucency composed, {@code SCENE}, bloom taken from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
+ * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, depth of
+ * field, separate translucency composed, {@code SCENE}, bloom taken from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
  * encoding into the host's target), {@code DISPLAY}, the crossfade, the debug view; a picture left in another texture
  * is copied into the host's target last.</p>
  */
@@ -59,7 +60,8 @@ public final class CgPostRenderer {
     private static final String[] WARMED = {
             "crystalgraphics:shaders/world/scene_in.shader", "crystalgraphics:shaders/world/scene_out.shader",
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
-            "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY};
+            "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
+            CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4]};
 
     private static boolean installed;
     @Nullable
@@ -140,6 +142,7 @@ public final class CgPostRenderer {
         settings.reset();
         settings.blend(view.post().settings(), 1f, 0.5f, 0.5f);
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
+        settings.blend(view.post().camera(), 1f, 0.5f, 0.5f);
         CgSceneTextures textures = view.textures();
         if (CgPostLooks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
         if (readsScene(view.post(), settings)) {
@@ -198,6 +201,12 @@ public final class CgPostRenderer {
             post.ranSurfaces = false;
             i = run(post, CgPostPoint.TRANSLUCENT, entries, i, picture);
             ctx.input(picture);
+            if (post.depthOfField.shows(ctx)) {
+                try (CgTrace.Zone dof = CgTrace.zone(CgChannels.WORLD, "post.depthOfField")) {
+                    picture = post.depthOfField.apply(ctx, picture);
+                }
+                ctx.input(picture);
+            }
             post.translucency.compose(ctx, picture);
             picture = carry(post, CgPostPoint.SCENE, entries, i, picture);
             i = skip(CgPostPoint.SCENE, entries, i);

@@ -27,7 +27,7 @@ import static org.junit.Assert.fail;
 /** Materials compile from assets: names checked, the parent chain merged, value-only children sharing programs. */
 public class CgMaterialDefinitionsTest {
 
-    private static final String FX = "test:shaders/fx.shader";
+    private static final String FX = "test:shaders/fx.shader", AFTER = "test:shaders/after_dof.shader";
     private static final String SOURCE = String.join("\n",
             "#domain surface",
             "Material { BlendMode Translucent  PerDrawValues On }",
@@ -92,6 +92,7 @@ public class CgMaterialDefinitionsTest {
             if (path.equals(MESH_SPECK)) return CgShaderSpec.read(particle("MeshParticles"), path);
             if (path.equals(SPRITE)) return CgShaderSpec.read(particle("Sprites"), path);
             if (path.equals(FX) || path.equals(POST)) return CgShaderSpec.read(SOURCE, path);
+            if (path.equals(AFTER)) return CgShaderSpec.read(SOURCE.replace("BlendMode Translucent", "BlendMode Translucent  TranslucencyPass AfterDOF"), path);
             if (path.equals(DECAL)) return CgShaderSpec.read(DECAL_SOURCE, path);
             if (path.equals(LAYERED)) return CgShaderSpec.read(LAYERED_SOURCE, path);
             throw new IllegalArgumentException(path + " is not a shader");
@@ -235,16 +236,17 @@ public class CgMaterialDefinitionsTest {
     public void stateTakesTheMaterialBlocksNamesAndRefusesTheRest() {
         CgMaterialDefinition d = CgMaterialDefinitions.compile(asset("test:state", tree("shader", FX, "state",
                 map("BlendMode", "AlphaComposite", "ShadingModel", "Unlit", "Faces", "Back", "DepthWrite", true,
-                        "TranslucencyPass", "Separate")), null), ARCHETYPES);
+                        "TranslucencyPass", "AfterMotionBlur")), null), ARCHETYPES);
         assertEquals(CgBlendMode.PREMULTIPLIED, d.permutation().blend());
         assertEquals("unlit", d.permutation().shading());
         assertEquals(CgCullState.FRONT, d.state().cull());
         assertEquals(Boolean.TRUE, d.state().depthWrite());
-        assertTrue(d.state().separateTranslucency());
+        assertEquals(CgTranslucencyPass.AFTER_MOTION_BLUR, d.state().translucencyPass());
         fails("two_sided", asset("test:old", tree("shader", FX, "state", map("two_sided", true)), null));
         fails("Fog", asset("test:fog", tree("shader", FX, "state", map("Fog", false)), null));
         fails("Strict", asset("test:strict", tree("shader", FX, "state", map("DepthTest", "Strict")), null));
         fails("Overlay", asset("test:overlay", tree("shader", FX, "state", map("TranslucencyPass", "Overlay")), null));
+        fails("never earlier", asset("test:earlier", tree("shader", AFTER, "state", map("TranslucencyPass", "BeforeDOF")), null));
         fails("lit", asset("test:lit", tree("shader", FX, "state", map("ShadingModel", "lit")), null));
         fails("additive", asset("test:lower", tree("shader", FX, "state", map("BlendMode", "additive")), null));
     }

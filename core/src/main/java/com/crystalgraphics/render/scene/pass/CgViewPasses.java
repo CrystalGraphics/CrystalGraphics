@@ -511,7 +511,7 @@ public final class CgViewPasses {
 
         @Override
         public boolean separate() {
-            return rows.layer(b) == CgSortLayer.SEPARATE_TRANSLUCENCY;
+            return rows.layer(b) == CgSortLayer.AFTER_DOF;
         }
     }
 }

@@ -158,6 +158,7 @@ public final class CgSequenceKinds {
             .property("focal_length", FLOAT)
             .property("sensor", CgValueType.VEC2)
             .property("focus", FLOAT).quantity(CgQuantity.LENGTH)
+            .property("aperture", FLOAT)
             .property("clip", CgValueType.VEC2).quantity(CgQuantity.LENGTH)
             .register();
 

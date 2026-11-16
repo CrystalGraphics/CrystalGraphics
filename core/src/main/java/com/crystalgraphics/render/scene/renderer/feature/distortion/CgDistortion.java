@@ -371,7 +371,7 @@ public final class CgDistortion {
     }
 
     private static boolean separate(CgMeshBatches rows, int b) {
-        return rows.layer(b) == CgSortLayer.SEPARATE_TRANSLUCENCY || CgMaterialProxy.of(rows.material(b)).separateTranslucency();
+        return rows.layer(b) == CgSortLayer.AFTER_DOF || CgMaterialProxy.of(rows.material(b)).translucencyPass().apart();
     }
 
     /** The first slot none of whose applies {@code rect} overlaps, its offsets' bilinear spread included; -1 if none. */

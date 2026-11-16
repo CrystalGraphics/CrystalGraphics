@@ -114,6 +114,12 @@ public final class CgMaterialDefinitions {
         }
         // No BlendMode keeps the archetype's own, as an instance without bOverride_BlendMode keeps its parent's.
         AssetState state = assetState(id, map(m.get("state")));
+        CgTranslucencyPass shaderPass = parsed.translucencyPass();
+        if (state.translucencyPass() != null && shaderPass != null
+                && CgTranslucencyPass.later(state.translucencyPass(), shaderPass) != state.translucencyPass()) {
+            throw new CgAssetException(id + " sets TranslucencyPass " + state.translucencyPass().formatName() + ", before its"
+                    + " shader's " + shaderPass.formatName() + " (" + shader + "): an asset moves its material later, never earlier");
+        }
         CgShadingModel model = null;
         if (state.shading() != null) {
             model = CgShadingModels.get(state.shading());
@@ -182,7 +188,7 @@ public final class CgMaterialDefinitions {
             }
         }
         CgMaterialDefinition.Draw draw = new CgMaterialDefinition.Draw(state.cull(), state.depthWrite(),
-                state.maskClip(), state.separateTranslucency());
+                state.maskClip(), state.translucencyPass());
         if (permutation.clip() && draw.maskClip() != null && !constants.containsKey(CLIP)) {
             CgMaterialProperty clip = props.get(CLIP);
             if (clip == null) {
@@ -406,7 +412,7 @@ public final class CgMaterialDefinitions {
     @Desugar
     private record AssetState(@Nullable CgBlendMode blend, boolean clip, @Nullable String shading,
                               @Nullable CgCullState cull, @Nullable Float maskClip, boolean depthTest,
-                              @Nullable Boolean depthWrite, boolean separateTranslucency) {
+                              @Nullable Boolean depthWrite, @Nullable CgTranslucencyPass translucencyPass) {
     }
 
     /** {@code state} by {@code Material { }}'s names and values, each refused naming the asset. */
@@ -451,14 +457,15 @@ public final class CgMaterialDefinitions {
         if (clipAt != null && !(clipAt instanceof Number)) {
             throw new CgAssetException(id + " sets MaskClip " + clipAt + ", which is not a number");
         }
-        Object pass = state.get("TranslucencyPass");
-        if (pass != null && !"Separate".equals(pass)) {
-            throw new CgAssetException(id + " sets TranslucencyPass " + pass + ": an asset may move its material to"
-                    + " Separate only; Standard, AfterDistortion and Overlay are its shader's");
+        Object written = state.get("TranslucencyPass");
+        CgTranslucencyPass pass = written == null ? null : CgTranslucencyPass.of(String.valueOf(written));
+        if (written != null && pass == null) {
+            throw new CgAssetException(id + " sets TranslucencyPass " + written + ": an asset moves its material to BeforeDOF,"
+                    + " AfterDOF or AfterMotionBlur; AfterDistortion and Overlay are its shader's");
         }
         Boolean depthTest = toggle(id, state, "DepthTest");
         return new AssetState(blend, clip, shading, cull, clipAt == null ? null : ((Number) clipAt).floatValue(),
-                depthTest == null || depthTest, toggle(id, state, "DepthWrite"), pass != null);
+                depthTest == null || depthTest, toggle(id, state, "DepthWrite"), pass);
     }
 
     /** {@code key}'s {@code On} or {@code Off}, which YAML reads as true and false; null where it is not set. */

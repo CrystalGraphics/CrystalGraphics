@@ -35,10 +35,10 @@ public final class CgSortLayer {
     /** VFX effects, each one group (CgVfxEffect). */
     public static final CgSortLayer EFFECTS = append("crystalgraphics:effects");
     /**
-     * Unreal's separate translucency: a material saying {@code TranslucencyPass Separate} draws here, after every other
-     * translucent draw, still tested against the scene's depth (CgMaterialState.separateTranslucency).
+     * Laid over the scene after depth of field, as a material whose {@code TranslucencyPass} is {@code AfterDOF}: its draw
+     * goes into the separate translucency's target, still tested against the scene's depth.
      */
-    public static final CgSortLayer SEPARATE_TRANSLUCENCY = append("crystalgraphics:separate_translucency");
+    public static final CgSortLayer AFTER_DOF = append("crystalgraphics:after_dof");
     /** Over everything in the world. */
     public static final CgSortLayer OVERLAY = append("crystalgraphics:overlay");
 

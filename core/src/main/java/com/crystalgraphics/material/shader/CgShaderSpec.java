@@ -1,5 +1,6 @@
 package com.crystalgraphics.material.shader;
 
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialState;
@@ -110,7 +111,9 @@ public final class CgShaderSpec {
     final float sceneColorMargin;
     final Lighting lighting;
     final ColorSpace colorSpace;
-    final boolean fog, media, handedLights, handedSun, handedScene, writesCustomData, separateTranslucency;
+    final boolean fog, media, handedLights, handedSun, handedScene, writesCustomData;
+    /** A translucent shader's {@code TranslucencyPass}; null for an opaque one. */
+    @Nullable final CgTranslucencyPass translucencyPass;
     final boolean templateReadsSceneColor;
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
@@ -148,7 +151,7 @@ public final class CgShaderSpec {
         this.handedScene = b.handedScene;
         this.templateReadsSceneColor = b.templateReadsSceneColor;
         this.writesCustomData = b.writesCustomData;
-        this.separateTranslucency = b.separateTranslucency;
+        this.translucencyPass = b.translucencyPass;
         this.maskClip = b.maskClip;
         this.postLocation = b.postLocation;
         this.tube = b.tube;
@@ -182,7 +185,7 @@ public final class CgShaderSpec {
         this.handedScene = of.handedScene;
         this.templateReadsSceneColor = of.templateReadsSceneColor;
         this.writesCustomData = of.writesCustomData;
-        this.separateTranslucency = of.separateTranslucency;
+        this.translucencyPass = of.translucencyPass;
         this.maskClip = of.maskClip;
         this.postLocation = of.postLocation;
         this.tube = of.tube;
@@ -313,9 +316,10 @@ public final class CgShaderSpec {
         return writesCustomData;
     }
 
-    /** {@code TranslucencyPass Separate}: drawn after every other translucent draw. */
-    public boolean separateTranslucency() {
-        return separateTranslucency;
+    /** Its {@code TranslucencyPass}, {@code BeforeDOF} unless it says; null for an opaque shader, which has none. */
+    @Nullable
+    public CgTranslucencyPass translucencyPass() {
+        return translucencyPass;
     }
 
     public DepthMode depthMode() {

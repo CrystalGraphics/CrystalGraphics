@@ -24,11 +24,12 @@ import java.util.Objects;
  * CgMaterialInstance decal = CgMaterial.load("mymod:shaders/fx/ink.shader", ink).instance().set1f("_Clip", 0.33f);
  * }</pre>
  *
- * <p>Drawn after every other translucent draw, as Unreal's separate translucency, still tested against the scene's
- * depth:</p>
+ * <p>Laid over the scene after depth of field, sharp while what is behind it blurs, still tested against the scene's
+ * depth ({@link CgTranslucencyPass}):</p>
  *
  * <pre>{@code
- * CgMaterialState specks = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE).separateTranslucency().build();
+ * CgMaterialState specks = CgMaterialState.builder().blend(CgBlendMode.ADDITIVE)
+ *         .translucencyPass(CgTranslucencyPass.AFTER_DOF).build();
  * }</pre>
  *
  * <p>Drawn over what is in front of it, as Unreal's {@code bDisableDepthTest}: a hit spark the floor would cut.
@@ -49,13 +50,14 @@ import java.util.Objects;
  *       {@code crystalgraphics:occlusion} module).</li>
  *   <li>Its blend picks its pass, as Unreal's blend mode does ({@link #queue}): a translucent mode on an opaque-queue
  *       shader draws in the transparent pass, {@link CgBlendMode#OPAQUE} on a transparent one in the opaque pass.</li>
- *   <li>Separate translucency orders a translucent draw only: with {@link CgBlendMode#OPAQUE} it does nothing.</li>
+ *   <li>A translucency pass places a translucent draw only: with {@link CgBlendMode#OPAQUE} it does nothing. It moves
+ *       its shader's later, never earlier: an earlier one draws at the shader's.</li>
  * </ul>
  */
 public final class CgMaterialState {
 
     /** Everything as the shader authors it. */
-    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null, false, true);
+    public static final CgMaterialState SHADER = new CgMaterialState(null, false, null, null, null, true);
 
     @Nullable
     private final CgBlendMode blend;
@@ -64,16 +66,17 @@ public final class CgMaterialState {
     private final CgCullState cull;
     @Nullable
     private final Boolean depthWrite;
-    private final boolean separateTranslucency;
+    @Nullable
+    private final CgTranslucencyPass translucencyPass;
     private final boolean depthTested;
 
     private CgMaterialState(@Nullable CgBlendMode blend, boolean clip, @Nullable CgCullState cull,
-                            @Nullable Boolean depthWrite, boolean separateTranslucency, boolean depthTested) {
+                            @Nullable Boolean depthWrite, @Nullable CgTranslucencyPass translucencyPass, boolean depthTested) {
         this.blend = blend;
         this.clip = clip;
         this.cull = cull;
         this.depthWrite = depthWrite;
-        this.separateTranslucency = separateTranslucency;
+        this.translucencyPass = translucencyPass;
         this.depthTested = depthTested;
     }
 
@@ -124,12 +127,10 @@ public final class CgMaterialState {
         return depthWrite;
     }
 
-    /**
-     * Whether it draws after every other translucent draw: Unreal's {@code bEnableSeparateTranslucency}, its own
-     * translucent pass composited after the rest and unbent by their distortion.
-     */
-    public boolean separateTranslucency() {
-        return separateTranslucency;
+    /** Where its translucent draws are laid over the scene, or null for its shader's ({@link CgTranslucencyPass}). */
+    @Nullable
+    public CgTranslucencyPass translucencyPass() {
+        return translucencyPass;
     }
 
     /** Whether it is tested against the scene's depth: false is Unreal's {@code bDisableDepthTest}. */
@@ -173,12 +174,12 @@ public final class CgMaterialState {
         if (!(o instanceof CgMaterialState)) return false;
         CgMaterialState s = (CgMaterialState) o;
         return clip == s.clip && blend == s.blend && Objects.equals(cull, s.cull) && Objects.equals(depthWrite, s.depthWrite)
-                && separateTranslucency == s.separateTranslucency && depthTested == s.depthTested;
+                && translucencyPass == s.translucencyPass && depthTested == s.depthTested;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(blend, clip, cull, depthWrite, separateTranslucency, depthTested);
+        return Objects.hash(blend, clip, cull, depthWrite, translucencyPass, depthTested);
     }
 
     @Override
@@ -186,7 +187,7 @@ public final class CgMaterialState {
         if (equals(SHADER)) return "CgMaterialState{shader's}";
         return "CgMaterialState{" + (blend == null ? "" : "blend " + blend) + (clip ? " clip" : "")
                 + (cull == null ? "" : " cull " + (cull.enabled() ? cull.face() : "none"))
-                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + (separateTranslucency ? " separate" : "")
+                + (depthWrite == null ? "" : " depthWrite " + depthWrite) + (translucencyPass == null ? "" : " " + translucencyPass.formatName())
                 + (depthTested ? "" : " noDepthTest") + "}";
     }
 
@@ -196,7 +197,7 @@ public final class CgMaterialState {
         private boolean clip;
         private CgCullState cull;
         private Boolean depthWrite;
-        private boolean separateTranslucency;
+        private CgTranslucencyPass translucencyPass;
         private boolean depthTested = true;
 
         private Builder() {}
@@ -233,9 +234,9 @@ public final class CgMaterialState {
             return this;
         }
 
-        /** Drawn after every other translucent draw, still depth-tested: Unreal's separate translucency. */
-        public Builder separateTranslucency() {
-            this.separateTranslucency = true;
+        /** Where its translucent draws are laid over the scene: later than its shader's, never earlier. */
+        public Builder translucencyPass(CgTranslucencyPass pass) {
+            this.translucencyPass = Objects.requireNonNull(pass, "pass");
             return this;
         }
 
@@ -256,7 +257,7 @@ public final class CgMaterialState {
                 throw new IllegalStateException("A material with no depth test is translucent and writes no depth: "
                         + "drop clip, an opaque blend or depthWrite");
             }
-            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite, separateTranslucency, depthTested);
+            CgMaterialState state = new CgMaterialState(blend, clip, cull, depthWrite, translucencyPass, depthTested);
             return state.equals(SHADER) ? SHADER : state;
         }
     }

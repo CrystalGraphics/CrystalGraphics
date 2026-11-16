@@ -205,7 +205,7 @@ Worked out once, when the material loads, from what `surface()` names:
 | The material… | Draws in |
 |---|---|
 | is `Opaque` or `Masked` | the depth pass, the base pass, the world-normals target |
-| is translucent and writes its colour (`baseColor`; `emissive` when `Unlit`) or `opacity` | the translucent pass (or the separate one, or the overlay, by `TranslucencyPass`) |
+| is translucent and writes its colour (`baseColor`; `emissive` when `Unlit`) or `opacity` | the translucent pass (or the separate one after depth of field, or the overlay, by `TranslucencyPass`) |
 | is lit and writes `emissive` | the glow: folded into its colour's draw where it can, or a draw of its own |
 | writes `refraction` | the distortion pass |
 | is lit and writes only `emissive` | the glow alone, no colour draw |
@@ -227,7 +227,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | `ShadingModel` | `WorldLit`, `Unlit`, `DefaultLit`, `Subsurface` | Lit by the world's light as Minecraft's blocks are; drawn as its `emissive` alone (`Unlit`); or lit as Unreal's Default Lit or Subsurface models light it, from `metallic`, `specular`, `roughness`, `ambientOcclusion` and `normal`, in linear light, a solid one after the world's lights (`SHADERS.md` § *Unreal's lit surfaces*) |
 | `TranslucencyLighting` | `Volume`, `Surface` | A translucent material lit as a volume, or as a surface by its `normal` |
 | `Faces` | `Front`, `Back`, `Both` | Which side of each triangle draws. `Back`: a volume's far wall |
-| `TranslucencyPass` | `Standard`, `AfterDistortion`, `Separate`, `Overlay` | When a translucent material draws: with the others, after the bend, after everything translucent, or over the world |
+| `TranslucencyPass` | `BeforeDOF` (default), `AfterDOF`, `AfterMotionBlur`, `AfterDistortion`, `Overlay` | When a translucent material draws: in the scene, blurred by depth of field; after everything translucent and laid over after depth of field, or after motion blur; after the bend; or over the world |
 | `DepthTest` | `On`, `Off`, `Strict` | Hidden by what is in front. `Strict` keeps a pixel's first fragment only (a beam traced twice) |
 | `DepthWrite` | by blend mode | Writes depth: on when solid, off when translucent |
 | `DepthPrepass` | `Off`, `On` | A translucent material's solid core drawn into depth first (`opacityMask`): smoke |

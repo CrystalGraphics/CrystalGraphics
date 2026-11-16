@@ -62,6 +62,7 @@ public final class CgCameraNodes {
         register("set_rotation", CgCameraNodes::setRotation);
         register("offset", CgCameraNodes::offset);
         register("boom_arm", CgCameraNodes::boomArm);
+        register("lens", CgCameraNodes::lens);
         register("field_of_view", (node, rig) -> {
             CgCameraRig.Value fov = rig.value(node, "fov");
             // An angle in host units is radians; the pose's FOV is degrees.
@@ -72,6 +73,28 @@ public final class CgCameraNodes {
     }
 
     private CgCameraNodes() {
+    }
+
+    /**
+     * The lens ({@code ULensParametersCameraNode}): its focal length (mm, setting the FOV), f-stop and focus distance,
+     * each where its {@code enable_} is on; the kind's defaults where on and unwritten.
+     */
+    private static CgCameraNode lens(CgCameraRigDefinition.Node node, CgCameraRig rig) {
+        CgCameraRig.Value focal = enabled(node, "focal_length", true) ? rig.value(node, "focal_length") : null;
+        CgCameraRig.Value aperture = enabled(node, "aperture", true) ? rig.value(node, "aperture") : null;
+        CgCameraRig.Value focus = enabled(node, "focus_distance", false) ? rig.value(node, "focus_distance") : null;
+        boolean setsFocal = enabled(node, "focal_length", true), setsAperture = enabled(node, "aperture", true);
+        return (run, pose) -> {
+            if (setsFocal) pose.focalLength(focal != null ? (float) focal.number() : 35f);
+            if (setsAperture) pose.aperture(aperture != null ? (float) aperture.number() : 16f);
+            if (focus != null) pose.focusDistance((float) focus.number());
+        };
+    }
+
+    /** Whether {@code field}'s {@code enable_} toggle is on: {@code fallback} where unwritten. */
+    private static boolean enabled(CgCameraRigDefinition.Node node, String field, boolean fallback) {
+        Object on = node.fields().get("enable_" + field);
+        return on instanceof Boolean b ? b : fallback;
     }
 
     /** Makes {@code kind} played by {@code factory}; a kind registered twice throws. */

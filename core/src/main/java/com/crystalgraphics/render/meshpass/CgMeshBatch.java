@@ -34,6 +34,6 @@ public interface CgMeshBatch {
     /** Its row's flags: {@link #HALF_RESOLUTION}, {@link #AFTER_DISTORTION}, {@link #CASTS_SHADOW}. */
     int flags();
 
-    /** Whether it sorts in separate translucency: its layer is {@code CgSortLayer.SEPARATE_TRANSLUCENCY}. */
+    /** Whether its layer puts it in the separate translucency's target: {@code CgSortLayer.AFTER_DOF}. */
     boolean separate();
 }

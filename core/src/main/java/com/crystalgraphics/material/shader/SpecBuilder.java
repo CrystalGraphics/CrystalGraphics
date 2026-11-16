@@ -1,5 +1,6 @@
 package com.crystalgraphics.material.shader;
 
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.api.material.CgMaterialDomain;
 import com.crystalgraphics.api.material.CgMaterialUsage;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -99,7 +100,8 @@ final class SpecBuilder {
     String renderType = "Opaque";
     CgShaderSpec.Lighting lighting = CgShaderSpec.Lighting.LIT;
     CgShaderSpec.ColorSpace colorSpace = CgShaderSpec.ColorSpace.SRGB;
-    boolean fog = true, media = true, separateTranslucency;
+    boolean fog = true, media = true;
+    @Nullable CgTranslucencyPass translucencyPass;
     CgShaderSpec.DepthMode depthMode = CgShaderSpec.DepthMode.NONE;
     @Nullable String sceneColorMarginText;
     @Nullable String maskClip, postLocation;

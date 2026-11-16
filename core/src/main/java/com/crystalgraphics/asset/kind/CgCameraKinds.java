@@ -94,9 +94,13 @@ public final class CgCameraKinds {
             .property("max", FLOAT)
             .register();
 
+    /** Unreal's lens settings ({@code DepthOfFieldFocalDistance}, {@code DepthOfFieldFstop}, and on); 0 focus, no blur. */
     static final CgType DEPTH_OF_FIELD = CgTypes.struct("crystalgraphics:post.depth_of_field")
-            .property("focal_distance", FLOAT).quantity(CgQuantity.LENGTH)
-            .property("fstop", FLOAT)
+            .property("focal_distance", FLOAT).quantity(CgQuantity.LENGTH).flags(CgPropertyFlag.KEYABLE)
+            .property("fstop", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("min_fstop", FLOAT)
+            .property("blade_count", CgValueType.INT)
+            .property("sensor_width", FLOAT)
             .register();
 
     /** An impact frame (ours). */

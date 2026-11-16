@@ -104,7 +104,7 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
         else if (draw.depthWrite() != null) b.depthWrite(draw.depthWrite());
         else if (p.depthWrite() != null) b.depthWrite(p.depthWrite());
         if (draw.cull() != null) b.cull(draw.cull());
-        if (draw.separateTranslucency()) b.separateTranslucency();
+        if (draw.translucencyPass() != null) b.translucencyPass(draw.translucencyPass());
         return b.build();
     }
 
@@ -176,11 +176,12 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
      *                   {@code Back} culls {@link CgCullState#FRONT}, {@code Both} is {@link CgCullState#NONE}
      * @param depthWrite {@code DepthWrite}
      * @param maskClip   {@code MaskClip}: a masked material's threshold
-     * @param separateTranslucency {@code TranslucencyPass Separate}: after every other translucent draw
+     * @param translucencyPass {@code TranslucencyPass}: where its translucent draws are laid over the scene, null its
+     *                         shader's
      */
     @Desugar
     public record Draw(@Nullable CgCullState cull, @Nullable Boolean depthWrite, @Nullable Float maskClip,
-                       boolean separateTranslucency) {
+                       @Nullable CgTranslucencyPass translucencyPass) {
     }
 
     /** Whether it draws with {@code other}'s programs: the same permutation. */
@@ -295,9 +296,9 @@ public record CgMaterialDefinition(String id, @Nullable String parent, CgMateria
             return this;
         }
 
-        /** {@code TranslucencyPass Separate}: after every other translucent draw, still depth-tested. */
-        public Builder separateTranslucency() {
-            state.put("TranslucencyPass", "Separate");
+        /** {@code TranslucencyPass}: where its translucent draws are laid over the scene, later than its shader's. */
+        public Builder translucencyPass(CgTranslucencyPass pass) {
+            state.put("TranslucencyPass", pass.formatName());
             return this;
         }
 
