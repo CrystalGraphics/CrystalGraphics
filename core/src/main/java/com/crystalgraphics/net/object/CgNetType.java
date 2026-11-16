@@ -13,9 +13,13 @@ import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
@@ -83,6 +87,7 @@ import com.crystalgraphics.platform.world.CgPlayers;
  */
 public final class CgNetType {
 
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
     private static final Pattern NAME = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
     static final List<CgNetType> REGISTERED = new CopyOnWriteArrayList<>();
@@ -106,6 +111,11 @@ public final class CgNetType {
     /** Client ticks a prediction waits for the server before it counts as refused. */
     final int predictionTimeout;
     final boolean keepRefused;
+    /** The entity types it is on, each side making their objects as they appear; null for none. */
+    @Nullable
+    final Predicate<String> entityTypes;
+    /** Every field local: it never touches the wire, each side keeping its own objects. */
+    final boolean localOnly;
     /** Server: a per-holder type's live objects by holder (a profile id, an entity, a {@link ChunkKey}). */
     final Map<Object, CgNetObject> holders = new HashMap<>();
 
@@ -148,6 +158,10 @@ public final class CgNetType {
         this.linger = b.linger;
         this.predictionTimeout = b.predictionTimeout;
         this.keepRefused = b.keepRefused;
+        this.entityTypes = b.entityTypes;
+        boolean local = fields.length > 0;
+        for (CgNetField<?> field : fields) local &= field.local;
+        this.localOnly = local;
         this.changeListeners = new List[fields.length];
         for (int i = 0; i < fields.length; i++) changeListeners[i] = new CopyOnWriteArrayList<>();
         this.eventListeners = new List[events.length];
@@ -188,6 +202,8 @@ public final class CgNetType {
         private int linger = 200;
         private int predictionTimeout = 40;
         private boolean keepRefused;
+        @Nullable
+        private Predicate<String> entityTypes;
 
         private Builder(String name) {
             this.name = name;
@@ -267,6 +283,34 @@ public final class CgNetType {
             return this;
         }
 
+        /**
+         * Puts one object on every entity whose type id {@code entityTypes} accepts, made as the entity appears on each
+         * side and ended as it leaves: the entity's own properties. Implies {@link #perHolder()}.
+         *
+         * <pre>{@code
+         * public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");     // the server's, sent
+         * public static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();   // each side's own
+         * public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR)
+         *         .onEntities(type -> type.equals("minecraft:player"))
+         *         .onServer(obj -> new KiRegen())          // ticks on the server
+         *         .onClient(obj -> new KiGear())           // its frame() each client frame
+         *         .build();
+         *
+         * KI.of(player).get(CURRENT);
+         * }</pre>
+         *
+         * <ul>
+         *   <li>A type of only {@link CgNetField#local()} fields never touches the wire: each side makes its own
+         *       objects, read and written there, and its events are heard on the side that emits them.</li>
+         *   <li>Otherwise the server makes each entity's object and every client that sees the entity is sent it.</li>
+         * </ul>
+         */
+        public Builder onEntities(Predicate<String> entityTypes) {
+            this.entityTypes = Objects.requireNonNull(entityTypes, "entityTypes");
+            perHolder = true;
+            return this;
+        }
+
         /** A player-anchored object outlives its player's death; without this it despawns when they die. */
         public Builder copyOnDeath() {
             copyOnDeath = true;
@@ -312,6 +356,10 @@ public final class CgNetType {
                         }
                     }
                 }
+                boolean local = !fields.isEmpty();
+                for (CgNetField<?> field : fields) local &= field.local;
+                if (local && persisted) throw new IllegalStateException(name + ": its fields are all local, and a local field is never saved");
+                if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
                 CgNetType type = new CgNetType(this, REGISTERED.size());
                 REGISTERED.add(type);
                 if (type.persisted) CgNetObjects.declaredLate(type);
@@ -353,6 +401,11 @@ public final class CgNetType {
      */
     public CgNetObject of(Object playerOrEntity) {
         Objects.requireNonNull(playerOrEntity, "playerOrEntity");
+        if (localOnly) {
+            if (!perHolder) throw new IllegalStateException(name + " is not per holder: spawn its objects with spawn()");
+            return CgNetwork.side() == CgNetwork.Side.SERVER ? CgNetEntities.server(this, playerOrEntity, true)
+                    : CgNetEntities.client(this, CgEntityQueries.idOf(playerOrEntity), true);
+        }
         UUID player = playerOrEntity instanceof UUID ? (UUID) playerOrEntity
                 : CgPlayers.idOf(playerOrEntity);
         return holder(player != null ? player : playerOrEntity, player != null ? CgAnchor.player(player) : null, playerOrEntity);
@@ -373,6 +426,10 @@ public final class CgNetType {
     public CgNetObject find(Object playerOrEntity) {
         Objects.requireNonNull(playerOrEntity, "playerOrEntity");
         if (!perHolder) throw new IllegalStateException(name + " is not per holder: find answers per-holder types");
+        if (localOnly) {
+            return CgNetwork.side() == CgNetwork.Side.SERVER ? CgNetEntities.server(this, playerOrEntity, false)
+                    : CgNetEntities.client(this, CgEntityQueries.idOf(playerOrEntity), false);
+        }
         if (CgNetwork.side() == CgNetwork.Side.SERVER) {
             UUID player = playerOrEntity instanceof UUID ? (UUID) playerOrEntity : CgPlayers.idOf(playerOrEntity);
             CgNetObject obj = holders.get(player != null ? player : playerOrEntity);
@@ -390,7 +447,7 @@ public final class CgNetType {
     @Nullable
     public CgNetObject findOnClient(int entityId) {
         if (!perHolder) throw new IllegalStateException(name + " is not per holder: findOnClient answers per-holder types");
-        return CgNetObjects.clientHolder(this, entityId);
+        return localOnly ? CgNetEntities.client(this, entityId, false) : CgNetObjects.clientHolder(this, entityId);
     }
 
     /** Whether its objects come one per holder ({@link Builder#perHolder}). */
@@ -568,6 +625,31 @@ public final class CgNetType {
     int requireCommand(CgNetCommand<?> command) {
         for (int i = 0; i < commands.length; i++) if (commands[i] == command) return i;
         throw new IllegalArgumentException(name + " does not list " + command);
+    }
+
+    /** Tells {@code obj}'s behaviour and the type's listeners of event {@code index}, on this side. */
+    @SuppressWarnings("unchecked")
+    void deliver(CgNetObject obj, int index, @Nullable Object payload) {
+        CgNetEvent<Object> event = (CgNetEvent<Object>) events[index];
+        if (obj.behaviour != null) {
+            try {
+                obj.behaviour.event(obj, event, payload);
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] the behaviour of {} failed on {}", obj, event, failed);
+            }
+        }
+        for (BiConsumer<CgNetObject, Object> listener : eventListeners[index]) {
+            try {
+                listener.accept(obj, payload);
+            } catch (RuntimeException failed) {
+                LOGGER.error("[cg-net] an event listener of {} failed", name, failed);
+            }
+        }
+    }
+
+    /** Whether its fields are all {@link CgNetField#local()}: never sent, each side keeping its own objects. */
+    public boolean isLocal() {
+        return localOnly;
     }
 
     /** Every declared type, in declaration order. */

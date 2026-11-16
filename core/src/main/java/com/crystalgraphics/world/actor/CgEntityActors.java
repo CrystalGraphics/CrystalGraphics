@@ -72,11 +72,11 @@ import java.util.function.Supplier;
  * <p>What a host does, from its entity events (a harness scene's fake entities do the same):</p>
  *
  * <pre>{@code
- * CgEntityActors.entered(entity.getId(), "mymod:dragon");    // joined the client's level
- * if (CgEntityActors.replacesModel(entity.getId())) ...      // the entity renderer: its actor draws it
- * CgEntityActors.left(entity.getId());                       // left the level, where the host has the event
- * CgEntityActors.enteredServer(entity, "mymod:dragon");     // joined a server level: the server's actor, the same class
- * CgEntityActors.leftServer(entity);
+ * CgEntityLifecycle.entered(entity.getId(), "mymod:dragon");     // joined the client's level: its actor spawns
+ * if (CgEntityActors.replacesModel(entity.getId())) ...           // the entity renderer: its actor draws it
+ * CgEntityLifecycle.left(entity.getId());                        // left the level, where the host has the event
+ * CgEntityLifecycle.enteredServer(entity, "mymod:dragon");      // joined a server level: the server's actor
+ * CgEntityLifecycle.leftServer(entity);
  * }</pre>
  *
  * <ul>
@@ -311,7 +311,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
     }
 
     /**
-     * The host's: entity {@code id} of {@code type} joined the client's level. Nothing where its type has no actor, or
+     * {@code CgEntityLifecycle}'s: entity {@code id} of {@code type} joined the client's level. Nothing where its type has no actor, or
      * is null (an entity class the host's registry does not hold).
      */
     public static void entered(int id, @Nullable String type) {
@@ -322,14 +322,14 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actors.spawn(id, type, r, null);
     }
 
-    /** The host's: entity {@code id} left the client's level. */
+    /** {@code CgEntityLifecycle}'s: entity {@code id} left the client's level. */
     public static void left(int id) {
         CgEntityActors actors = client;
         if (actors != null) actors.despawn(id);
     }
 
     /**
-     * The host's: {@code entity} (its own object) of {@code type} joined one of the server's levels. Nothing where its
+     * {@code CgEntityLifecycle}'s: {@code entity} (its own object) of {@code type} joined one of the server's levels. Nothing where its
      * type has no actor. The server's game thread.
      */
     public static void enteredServer(Object entity, @Nullable String type) {
@@ -341,7 +341,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actors.spawn(id, type, r, entity);
     }
 
-    /** The host's: {@code entity} left the server's level. */
+    /** {@code CgEntityLifecycle}'s: {@code entity} left the server's level. */
     public static void leftServer(Object entity) {
         CgEntityActors actors = server;
         int id = CgEntityQueries.idOf(entity);

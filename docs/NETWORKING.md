@@ -689,6 +689,38 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 - **`visibleToTrackers()`** lets the players around them see it too: a health bar over their head.
 - A per-holder type's objects come only from `of` and `ofChunk`; `spawn` throws.
 
+### An entity's properties: a type on entities
+
+A per-holder type is how you give any of the game's entities properties of your own: a mod's ki, a form, a gear.
+`onEntities` puts one object on every entity whose type it accepts, made as the entity appears on each side and ended
+as it leaves; there is nothing to call per entity.
+
+```java
+public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");      // the server's, sent
+public static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();    // each side's own, never sent
+public static final CgNetEvent<Void> CHARGED = CgNetEvent.of("charged");
+
+public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR).events(CHARGED)
+        .onEntities(type -> type.equals("minecraft:player"))
+        .onServer(obj -> new KiRegen())         // its tick(), each server tick
+        .onClient(obj -> new KiGear())          // its frame(obj, seconds), each client frame
+        .build();
+
+KI.of(player).get(CURRENT);                     // either side
+KI.of(player).setFloat(CURRENT, 80f);           // the server
+KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on the clients that see it
+```
+
+- **A `local()` field is kept on each side and never sent or saved**: a value each side works out for itself, which
+  either side's code writes. It is the one thing a client may write on an object that is not its prediction.
+- **A type whose fields are all local never touches the wire**: each side makes its own objects, and its events are
+  heard on the side that emits them. It cannot be `persisted()` or take commands.
+- **Behaviours run before the frame's actors read them**: on the server each tick (`NET_IN`), on a client each frame
+  (`BEGIN`, a behaviour's `frame`). A client's local objects end when its level changes, or when its host no longer
+  has the entity (Forge before 1.13 says nothing when an entity leaves).
+- **Hosts say when entities come and go once**, through `CgEntityLifecycle`; a type declared at init hears every
+  entity from then.
+
 ---
 
 ## 9. Events and commands

@@ -1,18 +1,18 @@
 package com.crystalgraphics.mc.legacy.platform.actor;
 
 import com.crystalgraphics.mc.legacy.platform.world.LevelEntityQueryLegacy;
-import com.crystalgraphics.world.actor.CgEntityActors;
+import com.crystalgraphics.world.CgEntityLifecycle;
 import net.minecraft.entity.Entity;
 import net.minecraft.world.World;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 /**
- * Entities joining a server's levels on Forge 1.8.9 to 1.12.2, for their actors there ({@link CgEntityActors}). Both
+ * Entities joining a server's levels on Forge 1.8.9 to 1.12.2, for what the engine keeps on them there ({@link CgEntityLifecycle}). Both
  * sides, so it names no client class: {@code MinecraftForge.EVENT_BUS.register(new ServerActorsLegacy())}.
  *
  * <ul>
- *   <li>Forge has no leave event here: an actor whose entity is gone goes at its next tick.</li>
+ *   <li>Forge has no leave event here: what the engine kept on an entity that is gone goes at its next tick.</li>
  * </ul>
  */
 public final class ServerActorsLegacy {
@@ -26,6 +26,6 @@ public final class ServerActorsLegacy {
         /*World world = event.world;
         Entity entity = event.entity;
         *///?}
-        if (!world.isRemote) CgEntityActors.enteredServer(entity, LevelEntityQueryLegacy.typeOf(entity));
+        if (!world.isRemote) CgEntityLifecycle.enteredServer(entity, LevelEntityQueryLegacy.typeOf(entity));
     }
 }

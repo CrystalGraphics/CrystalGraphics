@@ -79,6 +79,13 @@ public interface CgNetBehaviour {
     }
 
     /**
+     * On a client, each frame, {@code seconds} after the last: for an object on an entity ({@link CgNetType.Builder#onEntities}),
+     * what moves smoothly between ticks, as the entity is drawn. Before the frame's actors read it.
+     */
+    default void frame(CgNetObject obj, float seconds) {
+    }
+
+    /**
      * On a client: the server despawned it gracefully and its server behaviour is finishing. Wind down what it shows;
      * changes and events still come, then {@code despawned}.
      */

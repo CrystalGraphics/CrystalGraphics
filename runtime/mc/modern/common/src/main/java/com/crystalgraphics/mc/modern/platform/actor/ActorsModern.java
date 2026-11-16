@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.modern.platform.actor;
 
 import com.crystalgraphics.mc.modern.platform.world.LevelEntityQueryModern;
+import com.crystalgraphics.world.CgEntityLifecycle;
 import com.crystalgraphics.world.actor.CgEntityActors;
 import net.minecraft.client.renderer.entity.EntityRenderer;
 import net.minecraft.world.entity.Entity;
@@ -11,7 +12,7 @@ import java.util.Arrays;
 *///?}
 
 /**
- * {@link CgEntityActors} on 1.13.2 to 26.3: entities entering and leaving the client level, and the dispatcher's
+ * Entities entering and leaving the client level ({@link CgEntityLifecycle}) on 1.13.2 to 26.3, and the dispatcher's
  * renderer swapped for {@link ActorRendererModern} where an actor draws the entity. Each loader's
  * {@code ActorRenderHook} calls it.
  *
@@ -32,12 +33,12 @@ public final class ActorsModern {
 
     /** An entity joined the client level. */
     public static void joined(Entity entity) {
-        CgEntityActors.entered(entity.getId(), LevelEntityQueryModern.typeOf(entity));
+        CgEntityLifecycle.entered(entity.getId(), LevelEntityQueryModern.typeOf(entity));
     }
 
     /** An entity left the client level. */
     public static void left(Entity entity) {
-        CgEntityActors.left(entity.getId());
+        CgEntityLifecycle.left(entity.getId());
     }
 
     //? if >=1.21.10 {

@@ -99,6 +99,7 @@ final class ClientObjects {
     }
 
     private void held(CgNetObject obj) {
+        CgNetEntities.clientHeld(obj);
         if (!obj.type.perHolder || obj.entityId < 0 || obj.kind != CgAnchor.Kind.ENTITY && obj.kind != CgAnchor.Kind.PLAYER) return;
         if (obj.type.index >= holders.length) holders = Arrays.copyOf(holders, obj.type.index + 8);
         IdTable table = holders[obj.type.index];
@@ -107,6 +108,7 @@ final class ClientObjects {
     }
 
     private void unheld(CgNetObject obj) {
+        CgNetEntities.clientUnheld(obj);
         IdTable table = obj.type.index < holders.length ? holders[obj.type.index] : null;
         if (table != null && obj.entityId >= 0 && table.get(obj.entityId + 1) == obj) table.remove(obj.entityId + 1);
     }
@@ -375,20 +377,7 @@ final class ClientObjects {
         }
         CgNetEvent<Object> event = (CgNetEvent<Object>) obj.type.events[local];
         Object payload = event.read(in, length);
-        if (obj.behaviour != null) {
-            try {
-                obj.behaviour.event(obj, event, payload);
-            } catch (RuntimeException failed) {
-                LOGGER.error("[cg-net] the client behaviour of {} failed on {}", obj, event, failed);
-            }
-        }
-        for (BiConsumer<CgNetObject, Object> listener : obj.type.eventListeners[local]) {
-            try {
-                listener.accept(obj, payload);
-            } catch (RuntimeException failed) {
-                LOGGER.error("[cg-net] an event listener of {} failed", obj.type.name, failed);
-            }
-        }
+        obj.type.deliver(obj, local, payload);
     }
 
     private void despawn(int id, boolean killed) {
