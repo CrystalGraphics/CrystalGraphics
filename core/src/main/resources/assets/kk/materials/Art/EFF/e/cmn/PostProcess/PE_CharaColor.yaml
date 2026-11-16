@@ -1,0 +1,26 @@
+_v: 1
+shader: kk:shaders/post/chara_color.shader
+state: { BlendMode: Opaque, ShadingModel: WorldLit, Faces: Front }
+post: { stage: before_translucency }
+values:
+  DepthMaskDistance: 1000000.0
+  DepthMaskContrast: 1.0
+  Sky_Brightness: [1.0, 1.0, 1.0, 1.0]
+  Sky_Saturation: [0.5, 0.5, 0.5, 1.0]
+  Shadow_Gamma: [1.0, 1.0, 1.0, 1.0]
+  Shadow_Brightness: [1.0, 1.0, 1.0, 1.0]
+  Shadow_Saturation: [0.5, 0.5, 0.5, 1.0]
+  BG_Depth_Gamma: [1.0, 1.0, 1.0, 1.0]
+  BG_Depth_Color: [0.0, 0.0, 0.0, 0.0]
+  BG_Depth_Saturation: [0.5, 0.5, 0.5, 1.0]
+  BG_Depth_Brightness: [1.0, 1.0, 1.0, 1.0]
+  Chara_Gamma: [1.0, 1.0, 1.0, 1.0]
+  Chara_Brightness: [1.0, 1.0, 1.0, 1.0]
+  Chara_Saturation: [0.5, 0.5, 0.5, 1.0]
+  BG_Gamma: [1.0, 1.0, 1.0, 1.0]
+  BG_Brightness: [1.0, 1.0, 1.0, 1.0]
+  BG_Saturation: [0.5, 0.5, 0.5, 1.0]
+  Sky_Gamma: [1.0, 1.0, 1.0, 1.0]
+editor:
+  source: { game: kakarot, package: "/Game/Art/EFF/e/cmn/PostProcess/PE_CharaColor" }
+  note: "PE_CharaColor: a postprocess material, ported as post/chara_color"

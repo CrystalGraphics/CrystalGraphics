@@ -1,0 +1,5 @@
+_v: 1
+colour: linear
+editor:
+  source: { game: kakarot, package: "/Game/MasterMaterials/AT_Materials/Texture/dummy" }
+  note: "dummy: its UTexture2D settings"

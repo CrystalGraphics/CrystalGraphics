@@ -1,0 +1,6 @@
+_v: 1
+colour: linear
+compression: alpha
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Cpl001/Texture/Cpl001p1c01s1_head_oc" }
+  note: "Cpl001p1c01s1_head_oc: its UTexture2D settings"

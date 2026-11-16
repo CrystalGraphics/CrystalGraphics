@@ -1,0 +1,17 @@
+# Goku on the humanoid template, each state a Kakarot clip; where Kakarot has none, the nearest it has.
+_v: 1
+parent: crystalgraphics:humanoid
+nodes:
+  idle: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_Stand }
+  walk: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_Run01_02LP }
+  run: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_Run02_02LP }
+  sneak_idle: { clip: kk:models/Art/ANM/cpl/C001A/BTL/C001A_BTL_Guard_02LP }
+  sneak_walk: { clip: kk:models/Art/ANM/cpl/C001A/BAS/C001A_BAS_Step01_F_02LP }
+  fall: { clip: kk:models/Art/ANM/cpl/C001A/BAS/C001A_BAS_Fall01_02LP }
+  swim: { clip: kk:models/Art/ANM/cpl/C001A/BAS/C001A_BAS_Fly01_F_02LP }
+  crawl: { clip: kk:models/Art/ANM/cpl/C001A/BAS/C001A_BAS_Step01_F_02LP }
+  glide: { clip: kk:models/Art/ANM/cpl/C001A/BAS/C001A_BAS_Fly02_F_02LP }
+  ride: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_BonfireSit_02LP }
+  sleep: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_BonfireSit_02LP }
+  dead: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_BonfireSit_03ED }
+  swing: { clip: kk:models/Art/ANM/cpl/C001A/FLD/C001A_FLD_Punch }

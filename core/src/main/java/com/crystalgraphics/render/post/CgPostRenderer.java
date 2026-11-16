@@ -4,6 +4,7 @@ import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.material.CgMaterialProxy;
+import com.crystalgraphics.render.look.CgLookPost;
 import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
@@ -75,7 +76,7 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalGlow.SHADER, CgViewRenderTarget.fillShader()};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalGlow.SHADER, CgViewRenderTarget.fillShader(), CgLookPost.MASK};
 
     private static boolean installed;
     @Nullable
@@ -144,6 +145,7 @@ public final class CgPostRenderer {
     /** Every chain forgets what it made on the GPU. At context teardown. */
     public static void releaseAll() {
         CgPost.releaseAll();
+        CgLookPost.releaseAll();
         copy = null;
     }
 
@@ -205,8 +207,11 @@ public final class CgPostRenderer {
         if (!view.textures().linear()) return;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "post.surfaces")) {
             post.context.begin(firing, view.state().get(SETTINGS));
-            run(post, CgPostPoint.SURFACES, entries, 0, scene(firing));
-            beforeTranslucency(post, view, scene(firing));
+            CgScreenTexture scene = scene(firing);
+            run(post, CgPostPoint.SURFACES, entries, 0, scene);
+            // A graded look's own post materials on its solids: custom depth and the look channels are in by now
+            CgLookPost.record(post.context, scene);
+            beforeTranslucency(post, view, scene);
             post.ranSurfaces = true;
         }
     }
@@ -231,6 +236,7 @@ public final class CgPostRenderer {
                 while (i < entries.length && entries[i].point() == CgPostPoint.SURFACES) i++;
             } else {
                 i = run(post, CgPostPoint.SURFACES, entries, 0, picture);
+                CgLookPost.record(ctx, picture);
                 beforeTranslucency(post, view, picture);
             }
             post.ranSurfaces = false;

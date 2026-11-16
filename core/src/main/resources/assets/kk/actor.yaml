@@ -10,3 +10,7 @@ clips:
   - models/Art/ANM/cpl/C001A/FLD
   - models/Art/ANM/cpl/C001A/BTL
   - models/Art/ANM/cpl/C001A/BTL/CMB
+outline: kk:Renderer/BattleOutline   # Kakarot's battle outline round him, shared with his actor (actors/goku.yaml)
+stencil: 1
+post:                                # drawn on him alone, in his kit's look: the ocean arena's character colour
+  - kk:Art/BG/Area02/PostProcess/Area02_CharaColor

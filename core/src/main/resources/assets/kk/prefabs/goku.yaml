@@ -1,0 +1,8 @@
+# Goku's body for his actor (actors/goku.yaml): the Kakarot actor's Mesh component as a skeletal node, its feet on the
+# entity's. Unturned: the cast's glTF already faces the actor's forward (+z), the Mesh node's yaw -90 baked in.
+_v: 1
+nodes:
+  - id: body
+    name: body
+    skeletal: { mesh: kk:models/Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1.glb }
+    materials: [kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_hair_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_head_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_eye01_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_eye00_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_body_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_boots_Mt_inst2, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_bodycloth_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_obi_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_foot_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_pants_Mt_inst, kk:Art/MDL/Cpl/Cpl001/Material/Cpl001p1c01s1_oral_Mt_inst]

@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.translucency;
 
+import com.crystalgraphics.render.look.CgLookPost;
 import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.api.material.CgRenderQueue;
@@ -109,6 +110,21 @@ public final class CgLayerPasses {
         }
     }
 
+    /**
+     * Whether a graded look of a row in view has a post material reading the scene textures it is handed: the firing
+     * asks for its custom data before drawing it.
+     */
+    public boolean looksReadScene(CgMeshBatches rows) {
+        CgPostSettings last = null;
+        for (int b = 0; b < rows.size(); b++) {
+            CgPostSettings look = look(rows, b);
+            if (look == null || look == last) continue;
+            if (CgLookPost.readsScene(look)) return true;
+            last = look;
+        }
+        return false;
+    }
+
     /** The slot whose layer the translucent passes write as their second output this firing; -1 for none. */
     public int outputSlot() {
         return outputSlot;
@@ -170,6 +186,9 @@ public final class CgLayerPasses {
             depthWarned = true;
             return false;
         }
+        // Published here, before post's SURFACES: a look's own post materials read the channels' ids there
+        for (int k = 0; k < CgLookChannels.MAX; k++) if (seen[k]) channels.setLook(k, slots[k], slotIds[k]);
+        firing.view().publish(CgLookChannels.KEY, channels);
         CgView view = firing.view();
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
         for (int k = 0; k < CgLookChannels.MAX; k++) {
@@ -207,9 +226,7 @@ public final class CgLayerPasses {
         CgRecording rec = firing.recording();
         int once = 0, again = 0;
         for (int k = 0; k < CgLookChannels.MAX; k++) {
-            if (!seen[k]) continue;
-            channels.setLook(k, slots[k], slotIds[k]);
-            if (!translucent[k]) continue;
+            if (!seen[k] || !translucent[k]) continue;
             boolean output = k == outputSlot;
             CgDrawCommands rest = layerList(rec, passes, output ? over[k] : main[k]);
             again += rest.size();

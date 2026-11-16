@@ -1,0 +1,20 @@
+_v: 1
+post:
+  tonemapper: legacy
+  film_legacy: { contrast: 0.03, dynamic_range: 4, toe_amount: 1, heal_amount: 0.18 }
+  vignette: 0.5
+  bloom: 1
+  bloom_threshold: 1
+  bloom_size_scale: 4
+  bloom1: { size: 1, tint: [0.5, 0.5, 0.5] }
+  bloom2: { tint: [0.5, 0.5, 0.5] }
+  bloom3: { tint: [0.5, 0.5, 0.5] }
+  bloom4: { tint: [0.5, 0.5, 0.5] }
+  bloom5: { tint: [0.5, 0.5, 0.5] }
+  bloom6: { tint: [0.5, 0.5, 0.5] }
+effect_exposure: 1
+unsupported:
+  - what: "CyberConnect2's bloom setup adds two glow masks, a GBuffer channel x 5 on shading models 5, 9, 11, 13, 14 and 15, another target x 5 on the rest"
+  - { what: "Bloom2 to Bloom6's sizes: clipped in the capture, at least 12%, 25%, 49%, 98% and 197%" }
+editor:
+  note: "Kakarot's look (spec/kits.md § The look): Unreal 4.21's legacy film curve as the game binds it, read from kamehameha_cut_charge.rdc (combine 5126, tonemap 5151; step PO10's notes), and its bloom (docs/POST_PASSES.md § Bloom): threshold 1, intensity 1, every tint 0.5; Bloom1's size read, the larger five clipped in the capture. Its exposure is 1."

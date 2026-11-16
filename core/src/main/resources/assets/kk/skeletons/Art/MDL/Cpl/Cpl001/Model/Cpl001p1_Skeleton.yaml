@@ -307,6 +307,8 @@ sockets:
     from: bone
     bone: cane_grab_r
     location: [-1.1240695130254608e-06, -81.43326568603516, 0.00022817838180344552]
+  - { id: er80s2qs, name: right_hand, from: bone, bone: hand_r }
+  - { id: zkwcp8x6, name: left_hand, from: bone, bone: hand_l }
 unsupported:
   - { what: "a socket on no bone", source: { unreal: { SocketName: pelvis_EF_air_0 } } }
   - { what: "a socket on no bone", source: { unreal: { SocketName: pelvis_EF_air_1 } } }

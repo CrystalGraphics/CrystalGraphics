@@ -1,5 +1,6 @@
 _v: 1
 parent: kk:MasterMaterials/AT_Materials/CellShade_Tone_Eye
+usage: [skeletal_mesh]
 keywords: [SWITCH_LEFTEYE]
 values:
   eye_l_u_offset: 0.05999999865889549

@@ -33,6 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *   outline: mykit:Renderer/Outline   # optional: a kit material drawn as the engine's outline
  *   stencil: 1                        # and the custom depth stencil value it reads the character by
  *   clips: [anims/Hero/BAS, anims/Hero/BTL]   # optional: its clips' folders, what the animation demo plays on it
+ *   post: [mykit:Stage/CharaColor]    # optional: kit post materials drawn on it alone, in its kit's look
  * }</pre>
  *
  * <ul>
@@ -140,11 +141,11 @@ public final class CgKitActorFile {
         // Kept as given: a mounted namespace's folder may be inside a jar, which a string loses
         return new CgKitActor.Spec(name, kit != null ? kit : Paths.get(v[0]), v[1], v[2], v[3], v[4], v[5],
                 m.get("outline") == null ? null : String.valueOf(m.get("outline")),
-                m.get("stencil") instanceof Number n ? n.intValue() : 0, clips(m.get("clips")));
+                m.get("stencil") instanceof Number n ? n.intValue() : 0, list(m.get("clips")), list(m.get("post")));
     }
 
-    /** {@code clips:}, one folder or a list of them; none where absent. */
-    private static List<String> clips(@Nullable Object value) {
+    /** A key's one value or list of them ({@code clips}, {@code post}); none where absent. */
+    private static List<String> list(@Nullable Object value) {
         if (value == null) return List.of();
         if (!(value instanceof List<?> list)) return List.of(String.valueOf(value));
         List<String> out = new ArrayList<>();

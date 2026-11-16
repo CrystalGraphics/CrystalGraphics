@@ -1,5 +1,6 @@
 _v: 1
 parent: kk:MasterMaterials/AT_Materials/CellShade_Tone
+usage: [skeletal_mesh]
 keywords:
   - SWITCH_USEAOMAP
   - SWITCH_USEDIFFUSETEXTURE

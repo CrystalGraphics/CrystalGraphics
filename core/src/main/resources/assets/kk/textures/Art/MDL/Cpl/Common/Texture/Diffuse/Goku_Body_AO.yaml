@@ -1,0 +1,6 @@
+_v: 1
+colour: linear
+compression: alpha
+editor:
+  source: { game: kakarot, package: "/Game/Art/MDL/Cpl/Common/Texture/Diffuse/Goku_Body_AO" }
+  note: "Goku_Body_AO: its UTexture2D settings"

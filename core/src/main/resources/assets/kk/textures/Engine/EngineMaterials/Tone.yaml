@@ -1,0 +1,5 @@
+_v: 1
+colour: linear
+editor:
+  source: { game: kakarot, package: "/Engine/EngineMaterials/Tone" }
+  note: "Tone: the renderer's tone ramp (BaseEngine.ini ToneTextureName)"

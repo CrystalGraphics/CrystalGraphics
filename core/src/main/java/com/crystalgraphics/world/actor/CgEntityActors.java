@@ -3,6 +3,7 @@ package com.crystalgraphics.world.actor;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgBodyKinds;
+import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.kind.CgParticleKinds;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.asset.load.CgAssetRef;
@@ -10,13 +11,21 @@ import com.crystalgraphics.asset.load.CgAssetState;
 import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.loading.task.CgLoadPlan;
+import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.precache.CgPipelinePrecache;
+import com.crystalgraphics.render.post.CgOutline;
+import com.crystalgraphics.render.post.CgPostPoint;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.prefab.CgPrefab;
 import com.crystalgraphics.render.scene.component.CgSkeletalMeshComponent;
 import com.crystalgraphics.animation.graph.CgAnimGraph;
 import com.crystalgraphics.animation.graph.CgAnimGraphDefinition;
 import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.api.mesh.CgMeshLoader;
+import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.job.CgJob;
+import com.crystalgraphics.util.io.CgIO;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
@@ -30,6 +39,7 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityTags;
+import com.crystalgraphics.vfx.look.CgVfxKitLook;
 import com.crystalgraphics.world.CgWorldQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -37,11 +47,15 @@ import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Supplier;
@@ -142,10 +156,17 @@ public final class CgEntityActors extends CgWorldSubsystem {
         private final int entityId;
         private final Supplier<? extends CgEntityActor> factory;
         private volatile boolean keepVanillaModel;
+        /** The custom stencil its bodies write for the engine's outline, or -1. */
+        private volatile int outline = -1;
+        /** The outline's look, a material asset on the outline shader, or null for the engine's. */
+        @Nullable
+        private volatile String outlinePost;
         @Nullable
         private volatile String prefab, graph, rootMotion;
         private final List<CgReaction> reactions = new CopyOnWriteArrayList<>();
         private final List<CgItemLayer> itemLayers = new CopyOnWriteArrayList<>();
+        /** Post materials drawn on its bodies alone, in its kit's look. */
+        private final List<String> post = new CopyOnWriteArrayList<>();
         /** Each item layer's graph bound to each mesh it ran on, in {@link #itemLayers}' order. */
         private final Map<CgSkeletalMesh, CgAnimGraph[]> layerGraphs = new ConcurrentHashMap<>();
         /** Its graph bound to each mesh it ran on: binding builds the nodes anew, so once a mesh. */
@@ -215,10 +236,40 @@ public final class CgEntityActors extends CgWorldSubsystem {
                     String id = itemLayers.get(i).graph();
                     CgAnimGraphDefinition d = CgVfxAssets.<CgAnimGraphDefinition>ref(CgBodyKinds.ANIM_GRAPH, id).get();
                     if (d == null) throw new IllegalStateException("its item layer's graph " + id + " did not load");
-                    graphs[i] = d.graph(m.skeleton(), m::sequence);
+                    graphs[i] = d.graph(m.skeleton(), id2 -> clip(m, id2));
                 }
                 return graphs;
             });
+        }
+
+        /**
+         * Its actors' skeletal meshes write custom stencil {@code stencil} (0 to 255), and on a client the engine's
+         * outline ({@code CgOutline}, black by default) is drawn round that stencil while any of them lives.
+         */
+        public Registration outline(int stencil) {
+            if (stencil < 0 || stencil > 255) throw new IllegalArgumentException("stencil " + stencil + " is not 0 to 255");
+            outline = stencil;
+            return this;
+        }
+
+        /**
+         * {@link #outline(int)} drawn in {@code post}'s look, a material asset on the outline shader (a game's battle
+         * outline), where it is the stencil's first outline; null for the engine's.
+         */
+        public Registration outline(int stencil, @Nullable String post) {
+            outline(stencil);
+            outlinePost = post;
+            return this;
+        }
+
+        /**
+         * Draws {@code material}, a {@code #domain post} material before translucency, on its actors' skeletal bodies
+         * alone, in their kit's look ({@code CgVfxKitLook.grade(namespace, post)}): a stage's character colour, which
+         * never reaches the world round them. A material at another point fails as the actors load, naming it.
+         */
+        public Registration post(String material) {
+            post.add(Objects.requireNonNull(material, "material"));
+            return this;
         }
 
         /** Its actors play {@code reaction} when its event fires: each frame, the first that fires plays. */
@@ -253,6 +304,9 @@ public final class CgEntityActors extends CgWorldSubsystem {
         final CgEntityActor actor;
         final boolean replacesModel;
         final Registration origin;
+        /** Its hold on the engine's outline, or null. */
+        @Nullable
+        CgOutline.Hold outline;
         /** The server's: the host's entity, whose level its pose is read from. */
         @Nullable
         final Object host;
@@ -335,18 +389,32 @@ public final class CgEntityActors extends CgWorldSubsystem {
         List<CgAssetRef<CgPrefab>> refs = new ArrayList<>();
         List<CgAssetRef<?>> systems = new ArrayList<>();
         CgPipelinePrecache.Request[] pipelines = {null};
+        CgJob<?>[] clips = {null};
+        List<String> looks = new ArrayList<>();
         boolean[] started = {false, false};
         plan.task("crystalgraphics:actor-prefabs").render(task -> {
             if (!started[0]) {
                 started[0] = true;
                 List<Registration> all = new ArrayList<>(TYPES.values());
                 all.addAll(BINDINGS);
+                // an actor file bound on demand loads now too, so binding it draws at once
+                for (CgActorFiles.Definition d : CgActorFiles.declared().values()) {
+                    if (!d.localPlayer() && d.entities().isEmpty()) all.add(d.apply(new Registration(d.id(), LOCAL_PLAYER, plain())));
+                }
                 for (Registration r : all) {
                     if (r.prefab != null) refs.add(prefabRef(r.prefab));
                     // what it plays: its graph and its reactions' sequences, loaded with its prefab
                     if (r.graph != null) systems.add(CgVfxAssets.ref(CgBodyKinds.ANIM_GRAPH, r.graph));
                     for (CgReaction reaction : r.reactions) systems.add(CgVfxAssets.ref(CgSequenceKinds.SEQUENCE, reaction.sequence()));
                     for (CgItemLayer layer : r.itemLayers) systems.add(CgVfxAssets.ref(CgBodyKinds.ANIM_GRAPH, layer.graph()));
+                    if (r.outlinePost != null) {
+                        systems.add(CgVfxAssets.ref(CgLookKinds.MATERIAL, r.outlinePost));
+                        looks.add(r.outlinePost);
+                    }
+                    for (String m : r.post) {
+                        systems.add(CgVfxAssets.ref(CgLookKinds.MATERIAL, m));
+                        looks.add(m);
+                    }
                 }
                 if (refs.isEmpty() && systems.isEmpty()) return true;
                 CgVfxAssets.instance().load(refs, CgLoadPriority.MOVE);
@@ -365,8 +433,22 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 if (!systems.isEmpty()) CgVfxAssets.instance().load(systems, CgLoadPriority.MOVE);
             }
             if (!settled(systems, 0.5f, task)) return false;
+            if (clips[0] == null) {
+                // the clip files the graphs name, read on a worker: binding a graph then reads none
+                Set<String> ids = new TreeSet<>();
+                for (CgAssetRef<?> ref : systems) if (ref.loaded() instanceof CgAnimGraphDefinition d) clipIds(d.tree(), ids);
+                clips[0] = CgJob.run(() -> {
+                    for (String id : ids) if (clipFile(id)) CgMeshLoader.sequences(id + ".glb");
+                }).named("actor clips").onError(e -> LOGGER.warn("an actor's clip did not read: {}", e.detail(), e.cause()));
+            }
+            if (!clips[0].isDone()) {
+                task.progress(0.6f);
+                task.nextFrame();
+                return false;
+            }
             if (pipelines[0] == null) {
                 pipelines[0] = CgPipelinePrecache.request(p -> {
+                    for (String look : looks) p.addPass(CgMaterial.of(outlineLook(look)));   // the outline's and post's passes, before their first draw
                     for (CgAssetRef<CgPrefab> ref : refs) {
                         CgPrefab prefab = ref.loaded();
                         if (prefab == null) continue;
@@ -395,6 +477,29 @@ public final class CgEntityActors extends CgWorldSubsystem {
         task.progress(share * settled / refs.size());
         task.nextFrame();
         return false;
+    }
+
+    /** {@code r}'s post materials, loaded with its prefab; one drawn anywhere but before translucency fails, naming it. */
+    private static List<CgMaterialDefinition> postMaterials(Registration r) {
+        if (r.post.isEmpty()) return List.of();
+        List<CgMaterialDefinition> out = new ArrayList<>(r.post.size());
+        for (String id : r.post) {
+            CgMaterialDefinition d = outlineLook(id);
+            String at = CgMaterialProxy.of(CgMaterial.of(d).instance()).postLocation();
+            if (!CgPostPoint.SURFACES.name().equals(at)) {
+                throw new IllegalStateException("its post material " + id + " draws at " + at + ": only one before translucency"
+                        + " (SURFACES) draws on an actor alone");
+            }
+            out.add(d);
+        }
+        return out;
+    }
+
+    /** The outline look {@code id}, loaded with the actors' prefabs. */
+    private static CgMaterialDefinition outlineLook(String id) {
+        CgMaterialDefinition d = CgVfxAssets.<CgMaterialDefinition>ref(CgLookKinds.MATERIAL, id).get();
+        if (d == null) throw new IllegalStateException("its material " + id + " did not load");
+        return d;
     }
 
     private static CgAssetRef<CgPrefab> prefabRef(String id) {
@@ -619,6 +724,10 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 if (prefab == null) throw new IllegalStateException("its prefab " + r.prefab + " did not load");
                 actor.prefab = scene.spawn(prefab).attach(actor.root, null).spawn();
                 actor.prefab.forEachSkeletal(actor::feed);
+                // its kit's look grades its bodies' pixels alone, with its post materials: the world keeps the frame's
+                CgPostSettings grade = actor.server ? null
+                        : CgVfxKitLook.grade(r.prefab.substring(0, Math.max(0, r.prefab.indexOf(':'))), postMaterials(r));
+                if (grade != null && !actor.server) actor.prefab.forEachSkeletal(b -> b.grade(grade));
                 if (r.rootMotion != null) {
                     CgSkeletalMeshComponent body = actor.prefab.skeletal(r.rootMotion);
                     if (body == null) throw new IllegalStateException("its prefab " + r.prefab + " has no skeletal node " + r.rootMotion);
@@ -626,16 +735,56 @@ public final class CgEntityActors extends CgWorldSubsystem {
                 }
             }
             if (r.graph != null) runGraph(actor, r);
+            if (r.outline >= 0 && actor.prefab != null) {
+                int stencil = r.outline;
+                actor.prefab.forEachSkeletal(b -> b.customDepth(stencil, 0xFF));
+                if (!actor.server) l.outline = CgOutline.hold(scene, stencil, r.outlinePost == null ? null : CgMaterial.of(outlineLook(r.outlinePost)));
+            }
             actor.onSpawn(entity);
         } catch (RuntimeException e) {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
             actor.removeAll();
+            if (l.outline != null) l.outline.close();
             if (entity.heldTags) CgEntityTags.release(id);
             return false;
         }
         order.add(l);
         index();
         return true;
+    }
+
+    /**
+     * A graph's clip {@code id} on {@code mesh}: the mesh's own of that name, else the clip file {@code <id>.glb}
+     * ({@code mymod:anims/hero/run}), read once and shared. Null where neither is.
+     */
+    @Nullable
+    static CgAnimSequence clip(CgSkeletalMesh mesh, String id) {
+        CgAnimSequence own = mesh.sequence(id);
+        if (own != null || !clipFile(id)) return own;
+        List<CgAnimSequence> in = CgMeshLoader.sequences(id + ".glb");
+        return in.isEmpty() ? null : in.get(0);
+    }
+
+    /** Whether {@code id} names a clip file. */
+    private static boolean clipFile(String id) {
+        if (id.indexOf(':') < 0) return false;
+        try (InputStream in = CgIO.openStream(id + ".glb")) {
+            return in != null;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Every clip id under {@code tree}: each node's {@code clip}. */
+    private static void clipIds(Object tree, Set<String> out) {
+        if (tree instanceof Map<?, ?> m) {
+            for (Map.Entry<?, ?> e : m.entrySet()) {
+                if ("clip".equals(e.getKey()) && e.getValue() instanceof String s) out.add(s);
+                else clipIds(e.getValue(), out);
+            }
+        } else if (tree instanceof List<?> l) {
+            for (Object o : l) clipIds(o, out);
+        }
     }
 
     /** Its registration's graph on its body, bound once per mesh. */
@@ -645,7 +794,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         CgAnimGraph graph = r.bound.computeIfAbsent(body.mesh(), m -> {
             CgAnimGraphDefinition d = CgVfxAssets.<CgAnimGraphDefinition>ref(CgBodyKinds.ANIM_GRAPH, r.graph).get();
             if (d == null) throw new IllegalStateException("its graph " + r.graph + " did not load");
-            return d.graph(m.skeleton(), m::sequence);
+            return d.graph(m.skeleton(), id -> clip(m, id));
         });
         body.anim().graph(graph);
     }
@@ -676,8 +825,12 @@ public final class CgEntityActors extends CgWorldSubsystem {
             LOGGER.error("the actor of {} failed while removed", l.entity, e);
         }
         l.actor.removeAll();
+        if (l.outline != null) l.outline.close();
+        l.outline = null;
         if (l.entity.heldTags) CgEntityTags.release(l.entity.id());
     }
+
+
 
     private void clear() {
         for (Live l : order) end(l);

@@ -1,5 +1,6 @@
 _v: 1
 parent: kk:MasterMaterials/AT_Materials/CellShade_Tone_Eye
+usage: [skeletal_mesh]
 keywords: [SWITCH_RIGHTEYE]
 values:
   Outline_Lenth_R: 0.6000000238418579

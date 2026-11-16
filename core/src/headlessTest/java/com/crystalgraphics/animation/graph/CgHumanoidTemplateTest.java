@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.junit.BeforeClass;
 import org.junit.Test;
@@ -61,8 +62,8 @@ public class CgHumanoidTemplateTest {
                 new float[] {1, 1, 1}).build();
     }
 
-    @Test
-    public void aChildGivesItsClipsAndEveryStatePlaysByTheEntitysValues() throws IOException {
+    /** The template on a hero giving every clip, each state's its own pelvis height. */
+    private static CgAnimGraph hero() throws IOException {
         StringBuilder child = new StringBuilder("_v: 1\nparent: crystalgraphics:humanoid\nnodes:\n");
         Map<String, CgAnimSequence> clips = new HashMap<>();
         for (int i = 0; i < STATES.size(); i++) {
@@ -73,7 +74,12 @@ public class CgHumanoidTemplateTest {
         child.append("  swing: { clip: hero/swing }\n");
         clips.put("hero/swing", clip("swing", 99));
         CgAssetData hero = CgAssetData.of("test:hero", CgBodyKinds.ANIM_GRAPH, (Map<?, ?>) CgAssetYaml.read(child.toString()), template());
-        CgAnimGraph graph = CgAnimGraphCodec.compile(hero, null).graph(HUMANOID, clips::get);
+        return CgAnimGraphCodec.compile(hero, null).graph(HUMANOID, clips::get);
+    }
+
+    @Test
+    public void aChildGivesItsClipsAndEveryStatePlaysByTheEntitysValues() throws IOException {
+        CgAnimGraph graph = hero();
         assertTrue("the entity's values bound by name", graph.entity().containsKey("speed") && graph.entity().containsKey("swing"));
 
         CgAnimInstance anim = new CgAnimInstance(MESH).graph(graph);
@@ -92,6 +98,17 @@ public class CgHumanoidTemplateTest {
         expect(anim, machine, "sleep", Map.of("sleeping", 1f));
         expect(anim, machine, "dead", Map.of("dead", 1f, "airborne", 1f, "riding", 1f));
         expect(anim, machine, "idle", Map.of());
+    }
+
+    @Test
+    public void theHeadTurnsWhereTheEntityLooks() throws IOException {
+        CgAnimInstance anim = new CgAnimInstance(MESH).graph(hero());
+        int head = anim.bone("head");
+        anim.set(CgAnimVariable.floating("head_yaw"), 40f).set(CgAnimVariable.floating("head_pitch"), 30f);
+        anim.tick(0.05f);
+        Vector3f facing = anim.pose().component(head, new Matrix4f()).transformDirection(new Vector3f(0, 0, 1));
+        assertTrue("left positive turns toward +x, the body's left facing +z: " + facing, facing.x > 0.4f);
+        assertTrue("down positive tips it down: " + facing, facing.y < -0.3f);
     }
 
     @Test

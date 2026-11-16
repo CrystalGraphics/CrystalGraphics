@@ -47,14 +47,20 @@ public final class CgKitModels {
 
     /**
      * The materials a prefab's first mesh names, one a slot in slot order: Unreal's component materials as the kit
-     * exported them. Empty where it has none.
+     * exported them, from a skeletal node's {@code materials} or a mesh slot's. Empty where it has none.
      */
     public static List<String> prefabMaterials(Path prefab) {
         if (!Files.isRegularFile(prefab)) return List.of();
         try {
             Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(prefab));
             for (Object node : (List<?>) tree.get("nodes")) {
-                if (!(((Map<?, ?>) node).get("meshes") instanceof List<?> meshes) || meshes.isEmpty()) continue;
+                Map<?, ?> n = (Map<?, ?>) node;
+                if (n.get("skeletal") instanceof Map<?, ?> && n.get("materials") instanceof List<?> skinned) {
+                    List<String> ids = new ArrayList<>();
+                    for (Object id : skinned) ids.add(String.valueOf(id));
+                    return ids;
+                }
+                if (!(n.get("meshes") instanceof List<?> meshes) || meshes.isEmpty()) continue;
                 List<String> ids = new ArrayList<>();
                 for (Object id : (List<?>) ((Map<?, ?>) meshes.get(0)).get("materials")) ids.add(String.valueOf(id));
                 return ids;

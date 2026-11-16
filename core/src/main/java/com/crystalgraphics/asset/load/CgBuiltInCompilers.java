@@ -31,6 +31,7 @@ import com.crystalgraphics.sequence.binding.CgFigureDefinition;
 import com.crystalgraphics.api.material.CgMaterialDefinitions;
 import com.crystalgraphics.api.material.CgParameterCollections;
 import com.crystalgraphics.render.post.CgOutline;
+import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.asset.camera.CgCameraRigDefinition;
 import com.crystalgraphics.asset.camera.CgCameraShakeDefinition;
 import com.crystalgraphics.asset.curve.CgCurveDefinition;
@@ -44,7 +45,7 @@ import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.widget.CgWidgetCodec;
 
 /**
- * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons, cues, stages and text styles. Runs on both sides,
+ * Registers the engine's own kind compilers: materials, parameter collections, curves, camera rigs and shakes, sequences, skeletons, cues, stages, prefabs and text styles. Runs on both sides,
  * when the process's assets are made ({@link CgVfxAssets}), so a dedicated server compiles what a client does.
  *
  * <pre>{@code
@@ -101,6 +102,7 @@ public final class CgBuiltInCompilers {
         CgAnimGraphCodec.registerKind("sequence_evaluator", CgSequenceEvaluatorNode.KIND);
         CgCueDefinition.register();
         CgStageAssets.register();
+        CgPrefabAssets.register();   // an actor spawns its prefab on the server too
         CgNetTypeCompiler.register();
         CgActorFiles.register();
         CgMoveLocks.install();

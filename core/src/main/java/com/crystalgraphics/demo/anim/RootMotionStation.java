@@ -37,12 +37,12 @@ import com.crystalgraphics.world.actor.CgEntityActors;
  * Root motion moving Minecraft's entities: every husk that joins the world while it stands is played by Goku, whose
  * server actor lunges at the nearest player in reach, motion warped to stop at arm's length; its root motion moves the
  * husk on the server, and the lunge is served to every client that sees it, so a second client watches the same
- * strike. The player is Goku too: Up lunges at the nearest husk, the root motion moving the player's own entity.
+ * strike. The player stays as it is: {@code /cgc actor} is what dresses it.
  *
  * <p>Only husks that join after it is built: summon them ({@code /summon minecraft:husk ~ ~ ~4 {NoAI:1b}}, NoAI so
  * their own walking stays out of it). A host with no server (the harness) shows the station's hint alone.</p>
  *
- * <p>Keys: Up the player's lunge, Down the husks' lunges on and off, ` the stand-off.</p>
+ * <p>Keys: Down the husks' lunges on and off, ` the stand-off.</p>
  */
 final class RootMotionStation implements AnimDemoStation {
 
@@ -76,7 +76,7 @@ final class RootMotionStation implements AnimDemoStation {
         }
     }
 
-    /** Goku playing a husk or the player: its own role in the lunge. */
+    /** Goku playing a husk: its own role in the lunge. */
     private static final class Fighter extends CgEntityActor implements CgSequenceSkeletal {
         private final Kit kit;
         private final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
@@ -100,7 +100,7 @@ final class RootMotionStation implements AnimDemoStation {
         @Override
         protected void onSpawn(CgEntity entity) {
             CgSkeletalMeshComponent c = scene().skeletal(kit.mesh);
-            if (!server()) c.materials(kit.cast.materials::apply);
+            if (!server()) c.materials(kit.cast.materials::apply).grade(kit.cast.grade);
             body = rootMotion(add(c));
             body.transform(kit.fit);
             body.anim().play(kit.stand, true);
@@ -130,19 +130,6 @@ final class RootMotionStation implements AnimDemoStation {
             playing = sequencer.play(kit.sequence, Map.of("caster", this));
             CgSequenceNet.serve(playing, CgAnchor.on(entity), husk.id()).start();
             lunges++;
-        }
-
-        /** The local player's lunge at the nearest husk, on this client: false where none is in reach. */
-        boolean lungeAtNearestHusk() {
-            if (server() || playing != null) return false;
-            CgEntity me = entity();
-            if (!find(me, CgEntityQuery.KIND_MONSTER) || best > MAX_REACH) return false;
-            aim(me);
-            CgSequencer sequencer = CgSequencer.of(CgWorld.client());
-            if (sequencer == null) return false;
-            playing = sequencer.play(kit.sequence, Map.of("caster", this));
-            lunges++;
-            return true;
         }
 
         /** A client's copy of a lunge its server served. */
@@ -211,7 +198,7 @@ final class RootMotionStation implements AnimDemoStation {
     @Nullable
     private Kit kit;
     @Nullable
-    private CgEntityActors.Registration husks, player;
+    private CgEntityActors.Registration husks;
     private String status = "";
 
     @Override
@@ -241,7 +228,6 @@ final class RootMotionStation implements AnimDemoStation {
             return CgEntityActors.actor(roles[0]) instanceof Fighter f ? f.showServed() : null;
         });
         husks = CgEntityActors.register(TYPE, () -> new Fighter(k));
-        player = CgEntityActors.bindLocalPlayer(() -> new Fighter(k));
         status = "";
     }
 
@@ -254,10 +240,6 @@ final class RootMotionStation implements AnimDemoStation {
     public boolean press(int key, boolean shift) {
         if (kit == null) return false;
         switch (key) {
-            case CgKeyCodes.KEY_UP -> {
-                int me = CgEntityQueries.client().localPlayer();
-                if (me >= 0 && CgEntityActors.actor(me) instanceof Fighter f) status = f.lungeAtNearestHusk() ? "" : "\nNo husk within 5 m";
-            }
             case CgKeyCodes.KEY_DOWN -> kit.husksLunge = !kit.husksLunge;
             case CgKeyCodes.KEY_GRAVE -> kit.standOff = !kit.standOff;
             default -> {
@@ -270,9 +252,8 @@ final class RootMotionStation implements AnimDemoStation {
     @Override
     public String hud() {
         if (kit == null) return status;
-        return "\nGoku plays every husk that joins now, and you: root motion moves the entity, on the server for a husk"
-                + "\n  summon one: /summon minecraft:husk ~ ~ ~4 {NoAI:1b}   (F5 to watch yourself)"
-                + "\nUp: lunge at the nearest husk (warped onto it)" + status
+        return "\nGoku plays every husk that joins now: root motion moves the husk, on the server"
+                + "\n  summon one: /summon minecraft:husk ~ ~ ~4 {NoAI:1b}" + status
                 + "\nDown: husks " + (kit.husksLunge ? String.format(Locale.ROOT, "lunge at you from %.0f to %.0f m", MIN_REACH, MAX_REACH) : "stand still")
                 + "\n`: stand-off " + (kit.standOff ? String.format(Locale.ROOT, "%.1f m (the fist meets them)", STAND_OFF) : "off (onto their centre)");
     }
@@ -280,8 +261,7 @@ final class RootMotionStation implements AnimDemoStation {
     @Override
     public void delete() {
         if (husks != null) husks.close();
-        if (player != null) player.close();
-        husks = player = null;
+        husks = null;
         kit = null;
     }
 }

@@ -3,6 +3,7 @@ package com.crystalgraphics.command;
 import static com.mojang.brigadier.arguments.StringArgumentType.getString;
 import static com.mojang.brigadier.arguments.StringArgumentType.word;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,6 +12,7 @@ import java.util.function.Supplier;
 
 import com.crystalgraphics.platform.command.CgCommandSource;
 import com.crystalgraphics.platform.command.CgCommands;
+import com.crystalgraphics.world.actor.CgActorFiles;
 import com.crystalgraphics.world.actor.CgEntityActor;
 import com.crystalgraphics.world.actor.CgEntityActors;
 import com.crystalgraphics.world.actor.kit.CgKitActor;
@@ -32,6 +34,8 @@ import com.mojang.brigadier.builder.RequiredArgumentBuilder;
  *   <li>The binding follows the player across respawns and level changes ({@link CgEntityActors#bindLocalPlayer});
  *       naming another actor replaces it.</li>
  *   <li>Other players are never affected.</li>
+ *   <li>Every actor file that binds nothing ({@link CgActorFiles}) answers to its id's last part: {@code mymod:hero}
+ *       to {@code /cgc actor hero}; it wins over a kit character of that name.</li>
  *   <li>A dev install adds characters from kit files with no code: {@link CgKitActorFile}.</li>
  * </ul>
  */
@@ -40,10 +44,21 @@ public final class CgActorCommands implements CgCommands.Contribution {
     private static final Map<String, Supplier<? extends CgEntityActor>> ACTORS = new ConcurrentHashMap<>();
     private static CgEntityActors.Registration bound;
 
-    /** Every name the command takes: those registered, and the characters of {@link CgKitActorFile}'s file. */
-    private static Map<String, Supplier<? extends CgEntityActor>> actors() {
-        Map<String, Supplier<? extends CgEntityActor>> all = new TreeMap<>(ACTORS);
-        for (Map.Entry<String, CgKitActor.Spec> e : CgKitActorFile.read().entrySet()) all.putIfAbsent(e.getKey(), e.getValue().factory());
+    /**
+     * Every name the command takes, each binding the local player: those registered, the actor files that bind nothing,
+     * and the characters of {@link CgKitActorFile}'s file.
+     */
+    private static Map<String, Supplier<CgEntityActors.Registration>> actors() {
+        Map<String, Supplier<CgEntityActors.Registration>> all = new TreeMap<>();
+        ACTORS.forEach((name, factory) -> all.put(name, () -> CgEntityActors.bindLocalPlayer(factory)));
+        for (CgActorFiles.Definition d : CgActorFiles.declared().values()) {
+            if (d.localPlayer() || !d.entities().isEmpty()) continue;
+            all.putIfAbsent(d.id().substring(d.id().indexOf(':') + 1).toLowerCase(Locale.ROOT), () -> CgActorFiles.bindLocalPlayer(d.id()));
+        }
+        for (Map.Entry<String, CgKitActor.Spec> e : CgKitActorFile.read().entrySet()) {
+            Supplier<CgKitActor> factory = e.getValue().factory();
+            all.putIfAbsent(e.getKey(), () -> CgEntityActors.bindLocalPlayer(factory));
+        }
         return all;
     }
 
@@ -69,14 +84,21 @@ public final class CgActorCommands implements CgCommands.Contribution {
     }
 
     private static synchronized int on(CgCommandSource source, String name) {
-        Map<String, Supplier<? extends CgEntityActor>> all = actors();
-        Supplier<? extends CgEntityActor> factory = all.get(name);
-        if (factory == null) {
+        Map<String, Supplier<CgEntityActors.Registration>> all = actors();
+        Supplier<CgEntityActors.Registration> binding = all.get(name);
+        if (binding == null) {
             source.fail("No actor '" + name + "'; known: " + String.join(", ", all.keySet()));
             return 0;
         }
         if (bound != null) bound.close();
-        bound = CgEntityActors.bindLocalPlayer(factory);
+        bound = null;
+        try {
+            bound = binding.get();
+        } catch (IllegalStateException e) {
+            // another owner binds the player (the animation demo's root motion station): its actor stays
+            source.fail("Your player already wears an actor bound elsewhere; leave what bound it first");
+            return 0;
+        }
         source.reply("You are " + name);
         return 1;
     }
