@@ -6,7 +6,8 @@ package com.crystalgraphics.render.post.upscale;
  *
  * <pre>{@code
  * view.showFlags().temporalAA(true);
- * view.antiAliasing(CgAntiAliasing.TEMPORAL_AA);
+ * view.antiAliasing(CgAntiAliasing.TAA);
+ * view.antiAliasing(CgAntiAliasing.TSR).screenPercentage(67f);   // drawn at 67%, rebuilt to the full size
  * }</pre>
  */
 public enum CgAntiAliasing {
@@ -14,5 +15,10 @@ public enum CgAntiAliasing {
      * Temporal anti-aliasing at the size the world draws at ({@code CgTemporalAA}); a view drawn below 100% is upscaled
      * spatially after its chain, by its {@code upscaleFilter}.
      */
-    TEMPORAL_AA
+    TAA,
+    /**
+     * Temporal super resolution ({@code CgTemporalSuperResolution}): the world drawn at the view's screen percentage
+     * and rebuilt to its output size from its frames; at 100% a temporal anti-aliasing of its own.
+     */
+    TSR
 }

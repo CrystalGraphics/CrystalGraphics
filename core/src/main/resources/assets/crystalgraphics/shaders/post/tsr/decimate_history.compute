@@ -1,0 +1,132 @@
+// TSR's second pass (CgTemporalSuperResolution), at the render size: last frame's guide (the render-size colour TSR
+// compares this frame against) moved to where each pixel was, and whether the pixel was there to be seen. Where last
+// frame's nearest surface there is not this pixel's (the scatter of the dilate pass), the pixel was hidden: it is
+// disoccluded, and takes the motion of what was in front instead of its own (hole filling), so the background revealed
+// behind a moving edge reprojects from where the background was.
+#pragma kernel Decimate 8 8 image
+
+Properties {
+    _Input       ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Jitter      ("Jitter in input pixels; z 1 on a camera cut", vec4) = (0, 0, 0, 0)
+    _Depth       ("View depth from device depth: x / (d + y); z a pixel's radius per unit depth", vec4) = (0, 0, 0, 0)
+    _ClipToPrev0 ("This frame's clip to last frame's, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToPrev1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToPrev2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _Frame       ("x the frame index, the dither's", vec4) = (0, 0, 0, 0)
+    _PrevGuide   ("Last frame's guide", sampler2D) = "black"
+    _Closest     ("The dilated surface's device depth last frame", sampler2D) = "black"
+    _Dilate      ("The dilate pass's edge and depth error", usampler2D) = "zero"
+    _Vector      ("The dilated motion", sampler2D) = "black"
+    _Atomics     ("Last frame's nearest surfaces, scattered", usampler2D) = "zero"
+    _Responsive  ("Where the history is to be dropped (a responsive material)", sampler2D) = "black"
+}
+
+Images {
+    GUIDE  ("Last frame's guide, reprojected; a its uncertainty", rgb10_a2, writeonly)
+    FILLED ("The motion each pixel's history is fetched by, hole-filled", rg16, writeonly)
+    MASK   ("x the decimate bits over 255; y the reprojection edge", rg8, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
+
+const float MAX_DEPTH_ERROR = 64.0;
+// The decimate bits, as the reject pass reads them
+const uint OFF_SCREEN = 1u, DISOCCLUDED = 2u, HOLE_FILLED = 8u, RESPONSIVE = 32u;
+
+vec2 vector_at(ivec2 p) {
+    return cg_DecodeVelocity(texelFetch(_Vector, clamp(p, ivec2(0), ivec2(_Input.xy) - 1), 0).xy);
+}
+
+// How far the motion across the 3x3 overlaps an edge of motion: 1 where every opposite pair moves with the centre.
+float motion_edge(ivec2 p, vec2 centre) {
+    vec2 toPixels = _Input.xy * 0.5;
+    float edge = 1.0;
+    for (int i = 0; i < 4; i++) {   // LOOP-BOUND: the four opposite pairs of the 3x3
+        ivec2 o = ivec2(i == 3 ? 1 : i - 1, i == 3 ? 0 : -1);
+        vec2 d0 = (centre - vector_at(p + o)) * toPixels, d1 = (centre - vector_at(p - o)) * toPixels;
+        float e0 = 1.0 - dot(clamp(abs(d0 * vec2(o)), 0.0, 1.0), vec2(1.0));
+        float e1 = 1.0 - dot(clamp(abs(d1 * vec2(o)), 0.0, 1.0), vec2(1.0));
+        edge = min(edge, min(e0, e1));
+    }
+    return clamp(edge * 1.1, 0.0, 1.0);
+}
+
+void Decimate() {
+    ivec2 p = CG_TEXEL.xy;
+    bool cut = _Jitter.z > 0.5;
+    uvec2 dilate = texelFetch(_Dilate, p, 0).xy;
+    float prevDevice = texelFetch(_Closest, p, 0).r;
+    bool hasOffset = (dilate.x & 0x80u) != 0u;
+    float edge = float(dilate.x & 0x7Fu) / 127.0;
+    float depthError = tsr_pixel_depth_error(prevDevice) * float(dilate.y) * (MAX_DEPTH_ERROR / 255.0);
+    vec2 vector = vector_at(p);
+    edge = edge > 0.9 ? edge : motion_edge(p, vector);
+    edge = hasOffset ? edge : 1.0;
+
+    vec2 screen = tsr_screen(vec2(p), _Input);
+    vec2 prevScreen = screen - vector;
+    bool offScreen = cut || any(greaterThan(abs(prevScreen), vec2(1.0)));
+
+    // Last frame's guide at the pixel's last position, bicubic
+    vec4 guide = vec4(0.0);
+    if (!cut) {
+        vec4 size = vec4(vec2(textureSize(_PrevGuide, 0)), 1.0 / vec2(textureSize(_PrevGuide, 0)));
+        vec2 uvs[5];
+        float weights[5];
+        tsr_catmull_rom(prevScreen * 0.5 + 0.5, size, uvs, weights);
+        for (int i = 0; i < 5; i++) {   // LOOP-BOUND: five taps
+            guide += textureLod(_PrevGuide, clamp(uvs[i], 0.5 * size.zw, 1.0 - 0.5 * size.zw), 0.0) * weights[i];
+        }
+        guide.rgb = max(guide.rgb, vec3(0.0));   // NaN, and a bicubic's overshoot below 0
+    }
+
+    // Was this surface there last frame: last frame's nearest surfaces round where it was, against its depth
+    float eye = tsr_eye(prevDevice);
+    float eyeError = abs(eye - tsr_eye(prevDevice + depthError));
+    vec2 prevPixel = (prevScreen * 0.5 + 0.5) * _Input.xy - 0.5;
+    ivec2 base = ivec2(floor(prevPixel));
+    vec2 f = prevPixel - vec2(base);
+    float seen = 0.0;
+    bool anyValid = false;
+    uint nearest = 0u;
+    for (int k = 0; k < 4; k++) {   // LOOP-BOUND: bilinear corners
+        ivec2 o = ivec2(k & 1, k >> 1);
+        ivec2 at = base + o;
+        if (any(lessThan(at, ivec2(0))) || any(greaterThanEqual(at, ivec2(_Input.xy)))) continue;
+        vec2 w2 = mix(1.0 - f, f, vec2(o));
+        uint value = texelFetch(_Atomics, at, 0).r;
+        float historyEye = tsr_eye(tsr_scatter_depth(value));
+        float epsilon = tsr_pixel_radius(historyEye) * 6.0 + eyeError;
+        seen += w2.x * w2.y * clamp(2.0 - abs(historyEye - eye) / epsilon, 0.0, 1.0);
+        anyValid = true;
+        nearest = max(nearest, value);
+    }
+    float angle, len;
+    tsr_hole_decode(nearest, angle, len);
+    bool encodable = len < tsr_hole_max_length();
+    vec2 holeVelocity = vec2(cos(angle), sin(angle)) * len;
+    if (encodable) {
+        // Still seen where the nearest surface there moves as this one does: the same surface, within the encoding
+        const float anglePrecision = 2.0 * TSR_PI / 32.0;
+        vec2 own = vector * _Input.xy * 0.5;
+        float ownAngle = atan(own.y, own.x), ownLength = length(own);
+        float angleDiff = abs(ownAngle - angle);
+        angleDiff = min(angleDiff, 2.0 * TSR_PI - angleDiff);
+        float polar = min(clamp(1.0 + 1.0 / TSR_HOLE_LENGTH_UNITS - (abs(len - ownLength) - 2.0), 0.0, 1.0),
+                clamp(2.0 - angleDiff / anglePrecision, 0.0, 1.0));
+        float cartesian = clamp(1.0 + anglePrecision * ownLength - length(holeVelocity - own), 0.0, 1.0);
+        seen = max(seen, mix(cartesian, polar, clamp(min(len, ownLength) - 2.0, 0.0, 1.0)));
+    }
+    bool disoccluded = !offScreen && seen < 0.5;
+    bool holeFilled = anyValid && encodable && disoccluded;
+    if (holeFilled) vector = holeVelocity / (_Input.xy * 0.5);
+    bool responsive = textureLod(_Responsive, (vec2(p) + 0.5) * _Input.zw, 0.0).r > 0.5;
+
+    uint bits = (offScreen ? OFF_SCREEN : 0u) | (disoccluded ? DISOCCLUDED : 0u) | (holeFilled ? HOLE_FILLED : 0u)
+            | (responsive ? RESPONSIVE : 0u);
+    guide.rgb = tsr_dither_unorm(guide.rgb, tsr_random(p, int(_Frame.x)), 1.0 / 1023.0);
+    GUIDE_WRITE(guide);
+    FILLED_WRITE(vec4(cg_EncodeVelocity(vector), 0.0, 0.0));
+    MASK_WRITE(vec4(float(bits) / 255.0, edge, 0.0, 0.0));
+}

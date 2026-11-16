@@ -1,0 +1,243 @@
+// TSR's decision pass (CgTemporalSuperResolution), at the render size: how much of the history each pixel keeps. This
+// frame and last frame's reprojected guide are compared in a fixed network of 3x3 filters over a 32x32 tile in shared
+// memory, three pixels of its border only feeding the inside: each is clamped into the other's neighbourhood (so what
+// both agree on survives), both are blurred to the scale the history is kept at, and the energy a clamp of the history
+// into this frame's box would take, against how much the frame itself varies, is the rejection (variance clipping:
+// Salvi, An Excursion in Temporal Supersampling, 2016). Writes next frame's guide, the rejection the update pass blends
+// by, and this frame's colour for it.
+#pragma kernel Reject 16 16 general
+
+Properties {
+    _Input    ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Jitter   ("Jitter in input pixels; z 1 on a camera cut", vec4) = (0, 0, 0, 0)
+    _Frame    ("x the frame index, the dither's", vec4) = (0, 0, 0, 0)
+    _Reject   ("x the least blend of this frame into the guide; y the tile's border, z its stride", vec4) = (0.06, 3, 26, 0)
+    _Color    ("This frame's picture", sampler2D) = "black"
+    _Guide    ("Last frame's guide, reprojected; a its uncertainty", sampler2D) = "black"
+    _Mask     ("The decimate bits over 255, and the reprojection edge", sampler2D) = "black"
+}
+
+Images {
+    GUIDE     ("Next frame's guide; a this frame's uncertainty", rgb10_a2, writeonly)
+    REJECTION ("x the rejection, y the clamp it may skip, z less the validity it may keep, w 1/255 where seen", rgba8, writeonly)
+    COLOR     ("This frame's picture, for the update pass", r11f_g11f_b10f, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr.glsl"
+
+const int TILE = 32, LANES = 16;
+const float QUANTIZATION = 0.5 / 1024.0;          // a 10-bit backbuffer's half step: the least box
+const float FILTERING = 1.0 / (1.0 + 4.0 * 0.5 + 4.0 * 0.25);   // the 3x3 blur's centre weight
+const float MIN_ALIASING_LUMA = 0.05;
+const vec3 LUMA = vec3(0.299, 0.587, 0.114);
+const float LARGEST = 65504.0 * 0.25;
+const uint OFF_SCREEN_OR_DISOCCLUDED = 1u | 2u | 32u;
+
+shared vec4 tile[TILE * TILE];
+
+// Element e of this invocation's four: its pixel in the tile, 2x2 apart by lanes.
+ivec2 local_of(int e) {
+    return CG_LOCAL_ID.xy + ivec2(e & 1, e >> 1) * LANES;
+}
+
+vec4 at(ivec2 local) {
+    ivec2 c = clamp(local, ivec2(0), ivec2(TILE - 1));
+    return tile[c.y * TILE + c.x];
+}
+
+// Each 3x3 op stores the four elements, then reads each one's neighbourhood: barriers on both sides, the tile reused.
+void put(vec4 x[4]) {
+    barrier();
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        ivec2 l = local_of(e);
+        tile[l.y * TILE + l.x] = x[e];
+    }
+    barrier();
+}
+
+void blur(inout vec4 x[4]) {
+    put(x);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 s = vec4(0.0);
+        for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3
+            ivec2 o = ivec2(k % 3 - 1, k / 3 - 1);
+            s += at(local_of(e) + o) * ((o.x == 0 ? 0.5 : 0.25) * (o.y == 0 ? 0.5 : 0.25));
+        }
+        x[e] = s;
+    }
+}
+
+// How far each pixel stands out of its 3x3: 1.125 itself less an eighth of the nine.
+void variation(inout vec4 x[4]) {
+    put(x);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 s = vec4(0.0);
+        for (int k = 0; k < 9; k++) s += at(local_of(e) + ivec2(k % 3 - 1, k / 3 - 1));   // LOOP-BOUND: the 3x3
+        x[e] = 1.125 * x[e] - 0.125 * s;
+    }
+}
+
+void min_max(vec4 x[4], out vec4 lo[4], out vec4 hi[4]) {
+    put(x);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 a = x[e], b = x[e];
+        for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3
+            vec4 v = at(local_of(e) + ivec2(k % 3 - 1, k / 3 - 1));
+            a = min(a, v);
+            b = max(b, v);
+        }
+        lo[e] = a;
+        hi[e] = b;
+    }
+}
+
+// x clamped into the 3x3 box of boundary.
+void clamp_into(inout vec4 x[4], vec4 boundary[4]) {
+    vec4 lo[4], hi[4];
+    min_max(boundary, lo, hi);
+    for (int e = 0; e < 4; e++) x[e] = clamp(x[e], lo[e], hi[e]);   // LOOP-BOUND: four elements
+}
+
+vec4 med3(vec4 a, vec4 b, vec4 c) {
+    return max(min(a, b), min(max(a, b), c));
+}
+
+// A separable median: each column's low, middle and high, then across the row the highest low, the middle middle and
+// the lowest high, and their median.
+void median(inout vec4 x[4]) {
+    vec4 lo[4], mid[4], hi[4];
+    put(x);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 a = at(local_of(e) + ivec2(0, -1)), b = x[e], c = at(local_of(e) + ivec2(0, 1));
+        lo[e] = min(min(a, b), c);
+        mid[e] = med3(a, b, c);
+        hi[e] = max(max(a, b), c);
+    }
+    vec4 l[4], m[4];
+    put(lo);
+    for (int e = 0; e < 4; e++) l[e] = max(max(at(local_of(e) + ivec2(-1, 0)), lo[e]), at(local_of(e) + ivec2(1, 0)));   // LOOP-BOUND: four
+    put(mid);
+    for (int e = 0; e < 4; e++) m[e] = med3(at(local_of(e) + ivec2(-1, 0)), mid[e], at(local_of(e) + ivec2(1, 0)));   // LOOP-BOUND: four
+    put(hi);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec4 h = min(min(at(local_of(e) + ivec2(-1, 0)), hi[e]), at(local_of(e) + ivec2(1, 0)));
+        x[e] = med3(l[e], m[e], h);
+    }
+}
+
+// The 3x3 maximum of rgb and minimum of a.
+void max_rgb_min_a(inout vec4 x[4]) {
+    vec4 lo[4], hi[4];
+    min_max(x, lo, hi);
+    for (int e = 0; e < 4; e++) x[e] = vec4(hi[e].rgb, lo[e].a);   // LOOP-BOUND: four elements
+}
+
+void Reject() {
+    ivec2 size = ivec2(_Input.xy);
+    int border = int(_Reject.y);
+    ivec2 origin = CG_GROUP_ID.xy * int(_Reject.z) - border;
+
+    vec4 scene[4], history[4], uncertainty[4];
+    float edge[4];
+    bool disoccluded[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        ivec2 p = clamp(origin + local_of(e), ivec2(0), size - 1);
+        vec3 c = min(texelFetch(_Color, p, 0).rgb, vec3(LARGEST));
+        vec4 g = texelFetch(_Guide, p, 0);
+        vec2 mask = texelFetch(_Mask, p, 0).xy;
+        scene[e] = vec4(c, 0.0);
+        history[e] = g;
+        uncertainty[e] = vec4(g.a);
+        edge[e] = mask.y;
+        disoccluded[e] = (uint(round(mask.x * 255.0)) & OFF_SCREEN_OR_DISOCCLUDED) != 0u;
+    }
+
+    // In the shading space: the input clamped into the history's box clamped by the input's, and the history clamped
+    // into the box of the input clamped into the history's (mutual annihilation)
+    vec4 c0[4], h0[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        c0[e] = vec4(tsr_to_shading(scene[e].rgb), 0.0);
+        h0[e] = vec4(tsr_guide_to_shading(history[e].rgb), 0.0);
+    }
+    vec4 lo[4], hi[4], c2[4], h2[4], inner[4];
+    min_max(c0, lo, hi);
+    bool aliasing[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        aliasing[e] = dot(hi[e].rgb - lo[e].rgb, LUMA) > MIN_ALIASING_LUMA;
+        c2[e] = clamp(h0[e], lo[e], hi[e]);
+        h2[e] = h0[e];
+        inner[e] = c0[e];
+    }
+    vec4 boxed[4] = c2;
+    c2 = c0;
+    clamp_into(c2, boxed);
+    clamp_into(inner, h0);
+    clamp_into(h2, inner);
+
+    // The rejection: the energy clamping the filtered history into the filtered input's box takes, against how far
+    // the two differ and how much the input varies
+    vec4 filteredHistory[4] = h2;
+    blur(filteredHistory);
+    vec4 diff[4], own[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        diff[e] = abs(c0[e] - c2[e]);
+        own[e] = c2[e];
+    }
+    variation(diff);
+    variation(own);
+    vec4 clampError[4];
+    for (int e = 0; e < 4; e++) clampError[e] = min(abs(diff[e]), abs(own[e]));   // LOOP-BOUND: four elements
+    blur(clampError);
+    vec4 boxSize[4];
+    min_max(c2, lo, hi);
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        boxSize[e] = hi[e] - lo[e];
+        clampError[e] = max(max(clampError[e], vec4(QUANTIZATION)), boxSize[e] * (FILTERING * 0.25)) + QUANTIZATION;
+    }
+    vec4 filteredInput[4] = c2;
+    blur(filteredInput);
+    min_max(filteredInput, lo, hi);
+    vec4 energy[4];
+    vec3 delta[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec3 clamped = clamp(filteredHistory[e].rgb, lo[e].rgb - clampError[e].rgb, hi[e].rgb + clampError[e].rgb);
+        vec3 box = boxSize[e].rgb * FILTERING + QUANTIZATION * 2.0 * FILTERING;
+        delta[e] = max(abs(filteredInput[e].rgb - filteredHistory[e].rgb), box);
+        vec3 raw = abs(clamped - filteredHistory[e].rgb);
+        vec3 factor = clamp(1.0 - raw / delta[e], 0.0, 1.0);
+        energy[e] = vec4(raw, min(min(factor.r, factor.g), factor.b));
+    }
+    median(energy);
+    max_rgb_min_a(energy);
+    float rejection[4], clampBlend[4];
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        vec3 factor = clamp(1.0 - energy[e].rgb / delta[e], 0.0, 1.0);
+        rejection[e] = min(min(factor.r, factor.g), factor.b);
+        clampBlend[e] = energy[e].a;
+    }
+    vec4 leastUncertainty[4];
+    min_max(uncertainty, leastUncertainty, hi);
+
+    // Next frame's guide: this frame blended over the history by how far it was rejected, in x / (x + 1)
+    float least = _Reject.x;
+    for (int e = 0; e < 4; e++) {   // LOOP-BOUND: four elements
+        ivec2 local = local_of(e);
+        ivec2 p = origin + local;
+        if (any(lessThan(local, ivec2(border))) || any(greaterThanEqual(local, ivec2(TILE - border)))
+                || any(lessThan(p, ivec2(0))) || any(greaterThanEqual(p, size))) continue;
+        vec3 in3 = tsr_perceptual(scene[e].rgb), h3 = tsr_perceptual(tsr_from_guide(history[e].rgb));
+        float total = disoccluded[e] ? 1.0 : clamp(1.0 - rejection[e] * 4.0, 0.0, 1.0);
+        float blend = max(max(least, 1.0 - rejection[e]), total);
+        vec3 guide = tsr_to_guide(tsr_from_perceptual(in3 * blend - h3 * (blend - 1.0)));
+        float random = tsr_random(p, int(_Frame.x));
+        guide = tsr_dither_unorm(guide, random, 1.0 / 1023.0);
+        float disable = disoccluded[e] ? 0.0 : min(clampBlend[e], min(edge[e], leastUncertainty[e].x));
+        float increase = disoccluded[e] ? 0.0 : clampBlend[e];
+        const float half256 = 0.5 / 256.0;
+        GUIDE_STORE(p, vec4(guide, edge[e]));
+        REJECTION_STORE(p, vec4(rejection[e] - half256, disable - half256, 255.5 / 256.0 - increase,
+                disoccluded[e] ? 0.0 : 1.0 / 255.0));
+        vec3 colour = min(scene[e].rgb, vec3(TSR_MAX_10BIT_FLOAT));
+        COLOR_STORE(p, vec4(tsr_dither_float(colour, random, vec3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0)), 1.0));
+    }
+}

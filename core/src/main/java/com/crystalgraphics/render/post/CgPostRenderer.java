@@ -8,6 +8,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.post.aa.CgTemporalAA;
+import com.crystalgraphics.render.post.tsr.CgTemporalSuperResolution;
 import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.view.CgViewRenderTarget;
@@ -100,6 +101,7 @@ public final class CgPostRenderer {
 
     private static void precacheKernels() {
         CgBloom.precache();
+        CgTemporalSuperResolution.precache();
         CgFilmLut.precache();
     }
 
@@ -237,6 +239,8 @@ public final class CgPostRenderer {
                     CgUpscaler upscaler = post.upscaler(view.antiAliasing());
                     CgScreenTexture jittered = picture;
                     picture = upscaler.apply(ctx, picture);
+                    // Answered at the output size: what records after runs there
+                    if (upscaler.presents(view.resolutionFraction()) && firing.scaled()) firing.present();
                     // Bloom's light, taken per jittered frame and averaged: past the resolve, a light thinner than a texel
                     // falls under bloom's threshold at its coverage and loses its glow
                     if (post.bloom.shows(ctx) && CgBloom.takesExcess(ctx)) {
@@ -267,7 +271,7 @@ public final class CgPostRenderer {
                 settle(ctx, picture, host);
             }
             post.composite.record(firing.recording(), host, firing.constants());
-            picture = carry(post, CgPostPoint.DISPLAY, entries, i, sized(host, view));
+            picture = carry(post, CgPostPoint.DISPLAY, entries, i, sized(host, firing));
             ctx.input(picture);
             picture = post.crossfade.apply(ctx, picture);
             ctx.input(picture);
@@ -297,11 +301,15 @@ public final class CgPostRenderer {
 
     /** The firing's target as a picture at the view's size: the HDR scene, or the host's target without one. */
     private static CgScreenTexture scene(CgStageFiring firing) {
-        return sized(firing.target(), firing.view());
+        return sized(firing.target(), firing);
     }
 
-    private static CgScreenTexture sized(CgGraphTexture texture, CgView view) {
-        return CgScreenTexture.sized(texture, Math.max(1, view.width()), Math.max(1, view.height()));
+    /** {@code texture} at the size the firing draws at: the view's render size, its output's once presented. */
+    private static CgScreenTexture sized(CgGraphTexture texture, CgStageFiring firing) {
+        CgView view = firing.view();
+        boolean out = firing.presented();
+        return CgScreenTexture.sized(texture, Math.max(1, out ? view.outputWidth() : view.width()),
+                Math.max(1, out ? view.outputHeight() : view.height()));
     }
 
     /** Runs what is at {@code point} on the scene, each answering its input; where the next point's effects start. */
@@ -375,6 +383,6 @@ public final class CgPostRenderer {
     private static void settle(CgPostContext ctx, CgScreenTexture picture, CgGraphTexture host) {
         if (picture.texture() == host) return;
         if (copy == null) copy = CgMaterial.load(COPY).instance();
-        ctx.screen(copy).name("post.copy").from(picture).over(sized(host, ctx.view()));
+        ctx.screen(copy).name("post.copy").from(picture).over(sized(host, ctx.firing()));
     }
 }

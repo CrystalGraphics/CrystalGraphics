@@ -1,0 +1,112 @@
+// TSR's first passes (CgTemporalSuperResolution), at the render size. Clear empties the scatter target. Dilate takes
+// each pixel's motion from the nearest surface round it, so an edge moves with what is in front (Karis 2014, "closest
+// depth"), and scatters that surface's depth to where it was last frame: a pixel nothing scattered onto last frame's
+// position was hidden then (disocclusion), which the decimate pass reads.
+#pragma kernel Clear 8 8 image
+#pragma kernel Dilate 8 8 general
+
+Properties {
+    _Input       ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Jitter      ("Jitter in input pixels; z 1 on a camera cut", vec4) = (0, 0, 0, 0)
+    _Depth       ("View depth from device depth: x / (d + y); z a pixel's radius per unit depth", vec4) = (0, 0, 0, 0)
+    _ClipToPrev0 ("This frame's clip to last frame's, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToPrev1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToPrev2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _SceneDepth  ("The scene's depth", sampler2D) = "black"
+    _Velocity    ("The velocity pass's target; 0 where nothing wrote", sampler2D) = "black"
+}
+
+Images {
+    ATOMICS ("Each pixel's nearest surface last frame, depth and motion, scattered", r32ui, readwrite)
+    CLOSEST ("The dilated surface's device depth last frame", r32f, writeonly)
+    DILATE  ("x the reprojection edge in 7 bits, 128 where the motion came from a neighbour; y the depth error", rg8ui, writeonly)
+    VECTOR  ("The dilated motion, encoded as the velocity target", rg16, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr_geometry.glsl"
+
+// The parallax depth error's scale: a depth error is kept in 8 bits, in 64ths of the pixel's own depth span.
+const float MAX_DEPTH_ERROR = 64.0;
+
+void Clear() {
+    ATOMICS_WRITE(uvec4(0u));
+}
+
+// A depth with its neighbour offset in the low 4 bits: the maximum of these is the nearest (reversed depth) surface.
+uint pack_depth(ivec2 offset, float device) {
+    return ((floatBitsToUint(device) << 2u) & ~0xFu) | uint(1 + offset.x) | (uint(1 + offset.y) << 2u);
+}
+
+// A depth's step across a pixel against its neighbours east-west and north-south: how far the surface is from flat
+// there (the bilateral weights favour the side on the same surface).
+float depth_error(float c, float e, float w, float n, float s) {
+    float varEW = abs(c - (e + w) * 0.5), varSN = abs(c - (s + n) * 0.5);
+    float dE = abs(e - c), dW = abs(w - c), dS = abs(s - c), dN = abs(n - c);
+    float minE = min(min(abs(e - w), dE), dW), minS = min(min(abs(s - n), dS), dN);
+    float pixel = tsr_pixel_depth_error(c);
+    float derivE = min(max(minE, pixel), max(minS, 8.0 * pixel));
+    float derivS = min(max(minS, pixel), max(minE, 8.0 * pixel));
+    float wE = clamp(1.5 - min(dE, varEW) / derivE, 0.0, 1.0), wW = clamp(1.5 - min(dW, varEW) / derivE, 0.0, 1.0);
+    float wS = clamp(1.5 - min(dS, varSN) / derivS, 0.0, 1.0), wN = clamp(1.5 - min(dN, varSN) / derivS, 0.0, 1.0);
+    float ew = wE + wW, sn = wS + wN;
+    wE = ew > 0.0 ? wE / ew : 0.0;
+    wW = ew > 0.0 ? wW / ew : 0.0;
+    wS = sn > 0.0 ? wS / sn : 0.0;
+    wN = sn > 0.0 ? wN / sn : 0.0;
+    return max(dE * wE + dW * wW, dS * wS + dN * wN);
+}
+
+void Dilate() {
+    if (!CG_IN_RANGE) return;
+    ivec2 p = CG_DISPATCH_ID.xy;
+    ivec2 last = ivec2(_Input.xy) - 1;
+    float z[9];
+    for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3
+        z[k] = texelFetch(_SceneDepth, clamp(p + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), last), 0).r;
+    }
+    float c = z[4];
+    // The nearest across a depth edge, east-west then north-south: a pair straddling the pixel in front of it
+    uint packed = pack_depth(ivec2(0), c);
+    float pixelError = tsr_pixel_depth_error(c);
+    ivec2 pairs[2] = ivec2[2](ivec2(1, 0), ivec2(0, 1));
+    for (int i = 0; i < 2; i++) {   // LOOP-BOUND: two pairs
+        ivec2 o = pairs[i];
+        float a = z[(1 + o.y) * 3 + 1 + o.x], b = z[(1 - o.y) * 3 + 1 - o.x];
+        if ((a + b) * 0.5 - c > max(abs(b - a) * 0.25, pixelError)) {
+            packed = max(packed, pack_depth(o, a));
+            packed = max(packed, pack_depth(-o, b));
+        }
+    }
+    float closest = uintBitsToFloat((packed & ~0xFu) >> 2u);
+    ivec2 offset = ivec2(int(packed & 3u) - 1, int((packed >> 2u) & 3u) - 1);
+    float error = depth_error(c, z[5], z[3], z[1], z[7]);
+
+    vec2 screen = tsr_screen(vec2(p), _Input);
+    vec3 own = tsr_velocity(texelFetch(_Velocity, p, 0).xy, screen, c);
+    vec3 dilated = tsr_velocity(texelFetch(_Velocity, clamp(p + offset, ivec2(0), last), 0).xy, screen, closest);
+    vec2 toPixels = _Input.xy * 0.5;
+    float edge = clamp(1.1 - dot(abs((dilated.xy - own.xy) * toPixels), vec2(1.1)), 0.0, 1.0);
+    float prevClosest = closest - dilated.z;
+    uint encodedError = uint(ceil(clamp(error / (MAX_DEPTH_ERROR * tsr_pixel_depth_error(prevClosest)), 0.0, 1.0) * 255.0));
+
+    CLOSEST_STORE(p, vec4(prevClosest));
+    DILATE_STORE(p, uvec4(uint(round(edge * 127.0)) | (offset != ivec2(0) ? 0x80u : 0u), encodedError, 0u, 0u));
+    VECTOR_STORE(p, vec4(cg_EncodeVelocity(dilated.xy), 0.0, 0.0));
+
+    // Scatter this surface onto the four pixels round where it was last frame, each it covers by a 63rd or more
+    vec2 prevPixel = ((screen - dilated.xy) * 0.5 + 0.5) * _Input.xy - 0.5;
+    bool inside = all(greaterThan(prevPixel, vec2(-1.0))) && all(lessThan(prevPixel, _Input.xy));
+    if (!inside) return;
+    uint value = tsr_scatter_value(prevClosest, dilated.xy * toPixels);
+    ivec2 base = ivec2(floor(prevPixel));
+    vec2 f = prevPixel - vec2(base);
+    for (int k = 0; k < 4; k++) {   // LOOP-BOUND: bilinear corners
+        ivec2 o = ivec2(k & 1, k >> 1);
+        vec2 w2 = mix(1.0 - f, f, vec2(o));
+        ivec2 at = base + o;
+        if (round(w2.x * w2.y * 63.0) > 0.0 && all(greaterThanEqual(at, ivec2(0))) && all(lessThanEqual(at, last))) {
+            ATOMICS_MAX(at, value);
+        }
+    }
+}

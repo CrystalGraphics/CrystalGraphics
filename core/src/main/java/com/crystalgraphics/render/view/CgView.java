@@ -109,7 +109,7 @@ public final class CgView {
     private float screenPercentage = 100f, fraction = 1f;
     private boolean screenPercentageAuto, refusedWarned;
     private CgUpscaleFilter upscaleFilter = CgUpscaleFilter.CATMULL_ROM;
-    private CgAntiAliasing antiAliasing = CgAntiAliasing.TEMPORAL_AA;
+    private CgAntiAliasing antiAliasing = CgAntiAliasing.TAA;
     /** The jitter's sequence length this frame, and the material mip bias. */
     private int jitterSamples = 8;
     private float materialMipBias;
@@ -320,7 +320,7 @@ public final class CgView {
 
     /**
      * Its temporal anti-aliasing or upscaling, while its {@code temporalAA} show flag is on (Unreal's
-     * {@code AntiAliasingMethod}): {@link CgAntiAliasing#TEMPORAL_AA} by default.
+     * {@code AntiAliasingMethod}): {@link CgAntiAliasing#TAA} by default.
      */
     public CgView antiAliasing(CgAntiAliasing method) {
         antiAliasing = Objects.requireNonNull(method, "method");

@@ -13,6 +13,7 @@ import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 
 import com.crystalgraphics.render.post.aa.CgTemporalAA;
+import com.crystalgraphics.render.post.tsr.CgTemporalSuperResolution;
 import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
 import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
@@ -75,6 +76,7 @@ public final class CgPost {
     private final CgPostSettings camera = new CgPostSettings();
     final CgDepthOfField depthOfField = new CgDepthOfField();
     final CgTemporalAA temporalAA = new CgTemporalAA();
+    final CgTemporalSuperResolution tsr = new CgTemporalSuperResolution();
     final CgSpatialUpscale spatialUpscale = new CgSpatialUpscale();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code crystalgraphics.post.debug}'s view, as {@link #debugView} named it; null when unset. */
@@ -122,7 +124,8 @@ public final class CgPost {
     /** The chain's temporal step named {@code method}: one each a chain, its histories its views'. */
     CgUpscaler upscaler(CgAntiAliasing method) {
         return switch (method) {
-            case TEMPORAL_AA -> temporalAA;
+            case TAA -> temporalAA;
+            case TSR -> tsr;
         };
     }
 

@@ -1,0 +1,132 @@
+// TSR's last pass (CgTemporalSuperResolution), at the output size: each output pixel's history, last frame's fetched
+// along its motion (bicubic), clamped to this frame's samples round it and blended with them. This frame's samples are
+// weighed by how near each lands to the output pixel's centre after the jitter, so over the frames every output pixel
+// gathers samples from across it: the picture is rebuilt at the output size from frames drawn smaller. How much of the
+// history is kept follows how many samples it already holds (its validity, up to 16) and the reject pass's rejection.
+// Karis, High Quality Temporal Supersampling, 2014.
+#pragma kernel Update 8 8 image
+
+Properties {
+    _Input      ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Output     ("The output size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Jitter     ("Jitter in input pixels; z 1 on a camera cut", vec4) = (0, 0, 0, 0)
+    _Frame      ("x the frame index, the dither's", vec4) = (0, 0, 0, 0)
+    _History    ("x samples kept at most, y its inverse, z the validity a rejected pixel keeps, w the input's pixels per history pixel", vec4) = (16, 0.0625, 0.875, 1)
+    _Motion     ("x the validity motion takes, y its pixel speed's inverse", vec4) = (0.75, 1, 0, 0)
+    _Color      ("This frame's picture, from the reject pass", sampler2D) = "black"
+    _Rejection  ("The reject pass's rejection", sampler2D) = "black"
+    _Vector     ("The motion each pixel's history is fetched by", sampler2D) = "black"
+    _PrevColor  ("Last frame's history", sampler2D) = "black"
+    _PrevValid  ("Last frame's validity", sampler2D) = "black"
+}
+
+Images {
+    COLOR   ("The history", r11f_g11f_b10f, writeonly)
+    VALID   ("Its validity: how many of the samples it may hold it holds", r8, writeonly)
+    PICTURE ("The picture, for the rest of the chain", rgba16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/post/tsr/tsr.glsl"
+
+const float LARGEST = 65504.0 * 0.25;
+
+// The plus-shaped 3x3: the nearest input pixel and its four neighbours.
+const ivec2 PLUS[5] = ivec2[5](ivec2(0, 0), ivec2(0, -1), ivec2(-1, 0), ivec2(0, 1), ivec2(1, 0));
+
+void Update() {
+    ivec2 o = CG_TEXEL.xy;
+    bool cut = _Jitter.z > 0.5;
+    vec2 uv = (vec2(o) + 0.5) * _Output.zw;
+    vec2 screen = uv * 2.0 - 1.0;
+    // Where the output pixel's centre lands among the input's pixels, jittered as the frame was drawn
+    vec2 inputAt = uv * _Input.xy + _Jitter.xy;
+    vec2 nearestCentre = floor(inputAt) + 0.5;
+    ivec2 last = ivec2(_Input.xy) - 1;
+    ivec2 k = clamp(ivec2(inputAt), ivec2(0), last);
+
+    vec2 vector = cg_DecodeVelocity(texelFetch(_Vector, k, 0).xy);
+    vec4 rejection = texelFetch(_Rejection, k, 0);
+    float lowRejection = rejection.x, disableClamp = rejection.y, decreaseValidity = rejection.z;
+    bool parallaxRejected = (uint(round(rejection.w * 255.0)) & 1u) == 0u;
+    vec2 prevScreen = screen - vector;
+    float pixelSpeed = length(vector * _Output.xy);
+    bool offScreen = cut || max(abs(prevScreen.x), abs(prevScreen.y)) >= 1.0;
+    bool disoccluded = !offScreen && parallaxRejected;
+
+    // Last frame's history at this pixel's last position, bicubic; skipped where nothing of it is kept
+    vec3 prevColor = vec3(0.0);
+    float prevValid = 0.0;
+    if (lowRejection > 0.0 && !offScreen) {
+        vec4 size = vec4(_Output.xy, _Output.zw);
+        vec2 uvs[5];
+        float weights[5];
+        tsr_catmull_rom(prevScreen * 0.5 + 0.5, size, uvs, weights);
+        vec3 centre = vec3(0.0);
+        for (int i = 0; i < 5; i++) {   // LOOP-BOUND: five taps
+            vec2 at = clamp(uvs[i], 0.5 * size.zw, 1.0 - 0.5 * size.zw);
+            vec3 c = textureLod(_PrevColor, at, 0.0).rgb;
+            if (i == 2) centre = c;
+            prevColor += c * weights[i];
+            prevValid += textureLod(_PrevValid, at, 0.0).r * weights[i];
+        }
+        // A bright highlight's bicubic overshoots below 0: the centre tap instead
+        if (any(lessThan(prevColor, vec3(0.0))) || any(isnan(prevColor))) prevColor = max(centre, vec3(0.0));
+        prevValid = max(prevValid, 0.0);
+    }
+
+    // How this frame's samples and the history weigh
+    vec2 dKO = inputAt - nearestCentre;
+    float samples = _History.x, hysteresis = _History.y, toHistory = _History.w;
+    float minRejectionBlend = offScreen ? 1.0 : 1.0 - min(lowRejection, 1.0);
+    float coarse = tsr_sample_weight(1.0, dKO, 0.0) * hysteresis;
+    float ideal = tsr_sample_weight(toHistory, dKO, 0.0) * hysteresis;
+    float clampedValid = min(prevValid, 1.0 - _History.z * decreaseValidity);
+    float refining = clampedValid + ideal > 0.0 ? ideal / (clampedValid + ideal) : 1.0;
+    float rejectedPrev = min(coarse * (1.0 - minRejectionBlend) / minRejectionBlend, 1.0);
+    float refiningPrev = min(coarse * (1.0 - refining) / refining, 1.0);
+    float isRefining = rejectedPrev < refiningPrev ? 0.0 : 1.0;
+    isRefining = min(isRefining, clamp(clampedValid * samples, 0.0, 1.0));
+    float kernelLerp = offScreen || disoccluded ? 0.0 : clamp(lowRejection * 16.0 - 13.0, 0.0, 1.0) * isRefining;
+    float kernelToHistory = mix(1.0, toHistory, kernelLerp);
+    float current = tsr_sample_weight(kernelToHistory, dKO, 0.0) * hysteresis;
+    float prevWeight = min((current > 0.0 ? current : coarse) * (1.0 - minRejectionBlend) / minRejectionBlend, clampedValid);
+    prevWeight = min(prevWeight, 1.0 - current);
+
+    // This frame's five samples round the nearest input pixel, weighed by distance and tone; their box clamps the history
+    vec3 filtered = vec3(0.0), lo = vec3(0.0), hi = vec3(0.0);
+    float filteredWeight = 0.0;
+    for (int i = 0; i < 5; i++) {   // LOOP-BOUND: the plus
+        ivec2 at = clamp(k + PLUS[i], ivec2(0), last);
+        vec3 c = texelFetch(_Color, at, 0).rgb;
+        float w = tsr_sample_weight(kernelToHistory, vec2(PLUS[i]) - dKO, 0.005) * tsr_tone_weight(c);
+        filtered += c * w;
+        filteredWeight += w;
+        lo = i == 0 ? c : min(lo, c);
+        hi = i == 0 ? c : max(hi, c);
+    }
+    filtered = min(filtered / filteredWeight, vec3(LARGEST));
+
+    // The history clamped into the box, unless the reject pass found clamping needless there
+    vec3 clamped = clamp(prevColor, lo, hi);
+    float wa = (1.0 - disableClamp) * tsr_tone_weight(clamped), wb = disableClamp * tsr_tone_weight(prevColor);
+    float sum = wa + wb;
+    vec3 blended = sum > 0.0 ? (clamped * wa + prevColor * wb) / sum : clamped;
+
+    // Motion lowers how many samples the history keeps, so it stays sharp moving; a large contrast keeps them stable
+    float maxValid = 1.0 - _Motion.x * clamp(pixelSpeed * _Motion.y, 0.0, 1.0);
+    float prevLuma = tsr_luma4(blended), filteredLuma = tsr_luma4(filtered);
+    float stability = abs(filteredLuma - prevLuma) / max(max(filteredLuma, prevLuma), 1.0e-6);
+    prevWeight = min(prevWeight, max(maxValid, stability));
+
+    float valid = current + prevWeight;
+    float bPrev = prevWeight * tsr_tone_weight(prevLuma), bInput = current * tsr_tone_weight(filtered);
+    float total = bPrev + bInput > 0.0 ? 1.0 / (bPrev + bInput) : 0.0;
+    vec3 color = blended * (total * bPrev) + filtered * (total * bInput);
+    valid = ceil(255.0 * valid) / 255.0;
+
+    color = tsr_dither_float(color, tsr_random(o, int(_Frame.x)), vec3(1.0 / 64.0, 1.0 / 64.0, 1.0 / 32.0));
+    color = min(max(color, vec3(0.0)), vec3(TSR_MAX_10BIT_FLOAT));
+    COLOR_WRITE(vec4(color, 1.0));
+    VALID_WRITE(vec4(valid));
+    PICTURE_WRITE(vec4(color, 1.0));
+}

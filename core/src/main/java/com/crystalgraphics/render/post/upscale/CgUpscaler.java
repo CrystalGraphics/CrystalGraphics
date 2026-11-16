@@ -44,6 +44,14 @@ public interface CgUpscaler {
     /** The bias material textures sample by while it rebuilds a picture drawn at {@code fraction}. */
     float materialMipBias(float fraction);
 
+    /**
+     * Whether {@link #apply} answers the picture at the view's output size while drawing at {@code fraction}: the chain
+     * then presents there, and what records after it runs at the output size.
+     */
+    default boolean presents(float fraction) {
+        return false;
+    }
+
     /** Resolves {@code input}, this frame's jittered picture, and answers the chain's picture after it. */
     CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input);
 

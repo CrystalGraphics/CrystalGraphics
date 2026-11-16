@@ -13152,10 +13152,22 @@ com/crystalgraphics/render/post/settings/CgPostSettings$Region
   field public,static,final SHADOWS Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
   method public,static values ()[Lcom/crystalgraphics/render/post/settings/CgPostSettings$Region;
+com/crystalgraphics/render/post/tsr/CgTemporalSuperResolution
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/render/post/upscale/CgUpscaler
+  method public <init> ()V
+  method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public jitterSamples (F)I
+  method public materialMipBias (F)F
+  method public minFraction ()F
+  method public presents (F)Z
+  method public,static precache ()V
 com/crystalgraphics/render/post/upscale/CgAntiAliasing
   access public,final,enum
   extends java/lang/Enum
-  field public,static,final TEMPORAL_AA Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+  field public,static,final TAA Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
+  field public,static,final TSR Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
   method public,static values ()[Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
 com/crystalgraphics/render/post/upscale/CgSpatialUpscale
@@ -13179,6 +13191,7 @@ com/crystalgraphics/render/post/upscale/CgUpscaler
   access public,abstract,interface
   extends java/lang/Object
   method public bloomLight (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public presents (F)Z
   method public rebuilds (F)Z
   method public,abstract apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public,abstract jitterSamples (F)I
