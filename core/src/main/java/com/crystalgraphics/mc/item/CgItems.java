@@ -22,6 +22,15 @@ import javax.annotation.Nullable;
  * <pre>{@code
  * CgPlatform.provide(CgItems.HOST, new ItemsModern());
  * }</pre>
+ *
+ * An item by the game's raw id (what an entity's hand reports, {@code CgEntityProperties.MAIN_ITEM}), against an item
+ * id or an item tag:
+ *
+ * <pre>{@code
+ * String name = CgItems.name(itemId);                          // "minecraft:bow", or null for none
+ * boolean sword = CgItems.matches(itemId, "#minecraft:swords"); // an item tag: every item in it
+ * boolean bow = CgItems.matches(itemId, "minecraft:bow");       // one item
+ * }</pre>
  */
 public final class CgItems {
 
@@ -55,6 +64,13 @@ public final class CgItems {
 
         Shape shape();
 
+        /** The registry name of the item the game numbers {@code itemId}, or null for none. */
+        @Nullable
+        String name(int itemId);
+
+        /** Whether that item is in item tag {@code tag} ({@code minecraft:swords}); false where the version has no item tags. */
+        boolean inTag(int itemId, String tag);
+
         Host NONE = new Host() {
             @Override public boolean isStack(Object o) { return false; }
             @Override public CgNbtCompound save(Object stack) { throw absent(); }
@@ -62,6 +78,8 @@ public final class CgItems {
             @Override public int maxDamage(Object stack) { throw absent(); }
             @Override public int stamp(Object stack) { throw absent(); }
             @Override public Shape shape() { return Shape.COMPONENTS; }
+            @Override public String name(int itemId) { return null; }
+            @Override public boolean inTag(int itemId, String tag) { return false; }
 
             private IllegalStateException absent() {
                 return new IllegalStateException("No game here: nothing provides crystalgraphics:items (a test, or a dedicated tool)");
@@ -77,6 +95,23 @@ public final class CgItems {
 
     private static Host host() {
         return CgPlatform.get(HOST);
+    }
+
+    /** The registry name of the item the game numbers {@code itemId} ({@code minecraft:bow}), or null for none or no game. */
+    @Nullable
+    public static String name(int itemId) {
+        return itemId < 0 ? null : host().name(itemId);
+    }
+
+    /**
+     * Whether the item the game numbers {@code itemId} is what {@code reference} names: an item id ({@code minecraft:bow})
+     * or an item tag ({@code #minecraft:swords}, every item in it). An item no host knows matches nothing, as does a tag
+     * on a version without item tags (before 1.13).
+     */
+    public static boolean matches(int itemId, String reference) {
+        if (itemId < 0) return false;
+        if (reference.startsWith("#")) return host().inTag(itemId, reference.substring(1));
+        return reference.equals(host().name(itemId));
     }
 
     /** A copy of the game's stack; {@link CgItemStack#EMPTY} for null or an empty one. */

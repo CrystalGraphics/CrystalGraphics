@@ -1,0 +1,34 @@
+package com.crystalgraphics.mc.legacy.platform.world;
+
+import net.minecraft.client.entity.EntityPlayerSP;
+import net.minecraft.util.MovementInput;
+
+/**
+ * The client's own player's movement keys held: its {@code movementInput} swapped for the base one, which reads
+ * nothing, and its own put back on release. Client only, its game thread.
+ */
+final class InputHoldLegacy {
+
+    private static MovementInput saved;
+    private static EntityPlayerSP holder;
+
+    private InputHoldLegacy() {
+    }
+
+    static boolean hold(boolean held) {
+        EntityPlayerSP p = ClientLegacy.player();
+        if (held) {
+            if (p == null) return false;
+            if (holder == p) return true;
+            saved = p.movementInput;
+            holder = p;
+            p.movementInput = new MovementInput();
+            return true;
+        }
+        // a respawn made a new player with its own input: the old one is gone with its body
+        if (holder != null && holder == p) p.movementInput = saved;
+        saved = null;
+        holder = null;
+        return true;
+    }
+}

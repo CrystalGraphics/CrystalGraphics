@@ -13,8 +13,8 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.frame.CgFrameBoundary;
-import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.sequence.net.CgSequenceNet;
+import com.crystalgraphics.world.CgEntityTags;
 import com.crystalgraphics.tag.CgTagNet;
 import com.crystalgraphics.trace.CgThreadAllocation;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
@@ -155,8 +155,8 @@ public final class CgNetwork {
         if (CgGauntlet.plays("crystalgraphics:net")) CgNetProbe.install();
         CgCollisionShow.install();
         CgTagNet.install();
-        CgCueNet.install();
         CgSequenceNet.install();
+        CgEntityTags.install();
         return true;
     }
 
@@ -185,6 +185,11 @@ public final class CgNetwork {
     }
 
     /** Whether {@link #install} installed. A server with no networking otherwise boots and looks healthy. */
+    /** Whether this is the server's thread: a dedicated server's, or an integrated server's in a client's process. */
+    public static boolean onServerThread() {
+        return Thread.currentThread() == serverThread;
+    }
+
     public static boolean isInstalled() {
         return server != null;
     }

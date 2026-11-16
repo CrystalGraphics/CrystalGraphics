@@ -458,6 +458,10 @@ public final class GLStateFilter implements CgGLDriver {
     @Override public boolean hasExtension(String name) { return raw.hasExtension(name); }
     @Override public CgGLWorkerContext createIsolatedContext() { return raw.createIsolatedContext(); }
     @Override public boolean glIsEnabled(int cap) { return raw.glIsEnabled(cap); }
+    @Override public void glPushAttrib(int mask) { raw.glPushAttrib(mask); }
+    @Override public void glPopAttrib() { raw.glPopAttrib(); }
+    @Override public void glPushClientAttrib(int mask) { raw.glPushClientAttrib(mask); }
+    @Override public void glPopClientAttrib() { raw.glPopClientAttrib(); }
     @Override public boolean glIsEnabledi(int cap, int index) { return raw.glIsEnabledi(cap, index); }
     @Override public void glGetIntegerv(int name, int[] out) { raw.glGetIntegerv(name, out); }
     @Override public void glGetFloatv(int name, float[] out) { raw.glGetFloatv(name, out); }

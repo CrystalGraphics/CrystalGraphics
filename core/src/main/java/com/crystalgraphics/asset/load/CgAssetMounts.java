@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.LockSupport;
 import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
@@ -32,6 +33,7 @@ import com.crystalgraphics.object.CgTypes;
 import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.platform.service.CgModLoader;
 import com.crystalgraphics.util.io.CgIO;
+import com.crystalgraphics.world.actor.CgActorFiles;
 
 /**
  * Mounts every loaded mod's assets into the process's registry, as Unreal mounts each content plugin and its asset
@@ -86,6 +88,49 @@ public final class CgAssetMounts {
         List<Path> dev = new ArrayList<>();
         for (File f : CgIO.overrideRoots()) dev.add(f.toPath());
         namespaces = mount(CgVfxAssets.instance().registry(), dev, CgModLoader.roots()).mounted();
+        declareNetTypes(CgVfxAssets.instance());
+        CgActorFiles.declare(CgVfxAssets.instance());
+    }
+
+    /**
+     * Every {@code net_type} asset compiled now, at pre-init on each side: its type is declared before any entity
+     * enters a level and before anyone connects, whose hello names its namespace. Small files, read once.
+     * {@link #mount()} calls it; a tool or a test holding its own assets calls it after its scan.
+     *
+     * <pre>{@code
+     * registry.scanResources(folder);
+     * CgAssetMounts.declareNetTypes(new CgVfxAssets(registry));
+     * CgNetType form = CgNetType.named("mymod:form");
+     * }</pre>
+     */
+    public static void declareNetTypes(CgVfxAssets assets) {
+        for (CgAssetRef<?> r : compileNow(assets, CgGameplayKinds.NET_TYPE)) {
+            if (r.state() == CgAssetState.FAILED) LOGGER.error("net_type {} failed, so it is declared nowhere: {}", r.id(), r.failure());
+        }
+    }
+
+    /**
+     * Every asset of {@code kind} compiled now, on the calling thread's wait: what pre-init declares from files before
+     * anything enters a level. Each answered ref is {@code COMPILED} or {@code FAILED}.
+     *
+     * @throws IllegalStateException where they do not compile in 30 s
+     */
+    public static List<CgAssetRef<?>> compileNow(CgVfxAssets assets, CgType kind) {
+        List<CgAssetRef<?>> refs = new ArrayList<>();
+        for (CgAssetEntry e : assets.registry().entries(kind)) {
+            if (e.redirect() == null) refs.add(assets.declare(kind, e.id()));
+        }
+        if (refs.isEmpty()) return refs;
+        assets.load(refs, CgLoadPriority.PLAYING);
+        long deadline = System.nanoTime() + 30_000_000_000L;
+        while (true) {
+            assets.drain();
+            boolean done = true;
+            for (CgAssetRef<?> r : refs) done &= r.state().atLeast(CgAssetState.COMPILED) || r.state() == CgAssetState.FAILED;
+            if (done) return refs;
+            if (System.nanoTime() > deadline) throw new IllegalStateException("the " + kind.id() + " assets did not compile in 30 s");
+            LockSupport.parkNanos(50_000);
+        }
     }
 
     /**

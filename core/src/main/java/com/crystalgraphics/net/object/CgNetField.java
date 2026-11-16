@@ -56,13 +56,14 @@ public final class CgNetField<V> {
 
     private static final Pattern NAME = Pattern.compile("[a-z0-9_./-]+");
 
-    enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CODEC }
+    /** What a field holds: a primitive, stored without boxing, or anything with a codec. */
+    public enum Kind { INT, LONG, FLOAT, DOUBLE, BOOL, CODEC }
 
     final String name;
     final Kind kind;
     final CgCodec<V> codec;
 
-    boolean initialOnly, ownerOnly, skipOwner, serverOnly;
+    boolean initialOnly, ownerOnly, skipOwner, serverOnly, local;
     /** A predicted field's way to the server: a command its type lists after its own. */
     @Nullable
     CgNetCommand<V> command;
@@ -130,8 +131,33 @@ public final class CgNetField<V> {
     /** Never sent; kept and persisted on the server. */
     public CgNetField<V> serverOnly() {
         if (command != null) throw new IllegalStateException(name + " is predicted");
+        if (local) throw new IllegalStateException(name + " is local");
         mutable().serverOnly = true;
         return this;
+    }
+
+    /**
+     * Kept on each side and never sent or saved: a value each side works out for itself, which either side's code
+     * writes. An entity's speed, read off what the entity's own movement already tells every side, is one.
+     *
+     * <pre>{@code
+     * public static final CgNetField<Float> SPEED = CgNetField.ofFloat("speed").local();
+     *
+     * MOTION.of(entity).setFloat(SPEED, s);    // on either side, by its behaviour
+     * }</pre>
+     *
+     * A type whose fields are all local never touches the wire: each side makes its own objects of it.
+     */
+    public CgNetField<V> local() {
+        if (command != null) throw new IllegalStateException(name + " is predicted");
+        if (serverOnly) throw new IllegalStateException(name + " is serverOnly");
+        mutable().local = true;
+        return this;
+    }
+
+    /** Whether it is {@link #local()}: kept on each side, never sent. */
+    public boolean isLocal() {
+        return local;
     }
 
     /**
@@ -145,7 +171,7 @@ public final class CgNetField<V> {
 
     /** {@link #predicted()}, leaving the client at {@code rate}. */
     public CgNetField<V> predicted(CgRatePolicy rate) {
-        if (serverOnly || initialOnly) throw new IllegalStateException(name + " is never sent after spawn: it cannot be predicted");
+        if (serverOnly || initialOnly || local) throw new IllegalStateException(name + " is never sent after spawn: it cannot be predicted");
         mutable().command = CgNetCommand.of("field/" + name, codec).rate(rate);
         command.field = this;
         return this;
@@ -184,9 +210,31 @@ public final class CgNetField<V> {
         return fallback;
     }
 
+    /** What it holds: {@code FLOAT} for {@link #ofFloat}, {@code CODEC} for {@link #of}. */
+    public Kind kind() {
+        return kind;
+    }
+
+    /** Its {@link #fallback} as a number, a bool 0 or 1: as {@link CgNetObject#getNumber} reads it unset. */
+    public float fallbackNumber() {
+        return number(kind, fallbackBits);
+    }
+
+    /** A primitive's stored bits as a number. */
+    static float number(Kind kind, long bits) {
+        switch (kind) {
+            case INT: return (int) bits;
+            case LONG: return bits;
+            case FLOAT: return Float.intBitsToFloat((int) bits);
+            case DOUBLE: return (float) Double.longBitsToDouble(bits);
+            case BOOL: return bits != 0 ? 1f : 0f;
+            default: throw new IllegalArgumentException("a codec field is no number");
+        }
+    }
+
     /** Sent to a viewer who is, or is not, the owner. */
     boolean sentTo(boolean owner) {
-        if (serverOnly) return false;
+        if (serverOnly || local) return false;
         return owner ? !skipOwner : !ownerOnly;
     }
 

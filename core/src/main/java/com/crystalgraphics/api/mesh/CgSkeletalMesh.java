@@ -98,13 +98,27 @@ public final class CgSkeletalMesh {
      * </ul>
      */
     public CgSkeletalMesh withVirtualBones(List<CgVirtualBone> bones) {
-        if (bones.isEmpty()) return this;
-        CgSkeleton next = skeleton.withVirtualBones(bones);
+        return bones.isEmpty() ? this : withSkeleton(skeleton.withVirtualBones(bones));
+    }
+
+    /**
+     * This mesh over {@code next}, a skeleton starting with every bone of its own: bones added after them (a
+     * retargeter's carried effect bones, {@code CgRetargetProcessor.mesh}) that no vertex is bound to.
+     *
+     * <pre>{@code
+     * CgSkeletalMesh carrying = player.withSkeleton(processor.targetSkeleton());
+     * }</pre>
+     *
+     * @throws IllegalArgumentException where {@code next} does not start with this mesh's bones
+     */
+    public CgSkeletalMesh withSkeleton(CgSkeleton next) {
+        if (next.equals(skeleton)) return this;
+        if (!next.extendsSkeleton(skeleton)) throw new IllegalArgumentException(next + " does not start with " + skeleton + "'s bones");
         float[] binds = Arrays.copyOf(inverseBinds, next.boneCount() * 16);
         Matrix4f[] global = next.restGlobal(newMatrices(next.boneCount()));
-        // no vertex is bound to a virtual bone: its inverse bind is only kept consistent with its rest
+        // no vertex is bound to an added bone: its inverse bind is only kept consistent with its rest
         for (int b = skeleton.boneCount(); b < next.boneCount(); b++) global[b].invertAffine().get(binds, b * 16);
-        return new CgSkeletalMesh(mesh, next, binds, materials, morphTargets, sequences, sockets);
+        return new CgSkeletalMesh(mesh, next, binds, materials, morphTargets, sequences, checkSockets(next, sockets));
     }
 
     private static Matrix4f[] newMatrices(int n) {

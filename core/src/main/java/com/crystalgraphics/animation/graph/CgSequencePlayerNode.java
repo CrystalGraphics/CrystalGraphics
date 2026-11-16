@@ -254,7 +254,7 @@ public final class CgSequencePlayerNode extends CgAnimNode {
 
         @Override
         public void forEachSample(float weight, SampleSink sink) {
-            if (clip != null) sink.sample(clip, time, weight);
+            if (clip != null) sink.sample(clip, time, lastDelta, weight);
         }
 
         @Override
@@ -330,7 +330,7 @@ public final class CgSequencePlayerNode extends CgAnimNode {
                 g.giveBack(base);
             } else {
                 out.rest();
-                clip.sample(out, time);
+                clip.sample(out, time, g.extractsRootMotion());
             }
         }
     }

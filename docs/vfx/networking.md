@@ -69,6 +69,83 @@ CgGameplayTag tag = CgTagNet.fromServer().fromWire(in.readVarInt());   // null: 
 - A client missing a tag the server has logs it once; its index reads as `null`.
 - `CgTagLink.bits()` is the width that holds every index and `invalid()`, the index meaning "no tag".
 
+## Tags an entity owns
+
+`CgEntityTags` gives any of the game's entities gameplay tags with counts, on the server, and every client tracking the
+entity is sent them: Unreal's loose gameplay tags on an ability system component. A tag added twice is owned until
+removed twice, so two sources can grant one tag; asked about a tag, the counts include every tag under it.
+
+```java
+static final CgGameplayTag FLYING = CgTagRegistry.global().register("mymod:state.flying");
+static final CgGameplayTag FAST = CgTagRegistry.global().register("mymod:state.flying.fast");
+
+CgEntityTags.add(entity, FAST);                     // server
+CgEntityTags.count(entity, FLYING);                 // 1: its child counts
+CgEntityTags.remove(entity, FAST);
+CgEntityTags.client(entityId).has(FLYING);          // a client: what the server last sent
+```
+
+- **A graph reads them with no code**: its `tags:` block ([`../animation/guides/graphs.md`](../animation/guides/graphs.md)
+  § *Variables an entity fills*) sets a variable from a tag's count each frame, on both sides.
+- They cross the wire as the table's indices, above: declare a tag before setting it.
+- **They end with the entity**: its death, its leaving the level or its dimension. A client joining later is sent the
+  counts as they stand.
+- `remove` of a tag the entity does not own explicitly answers false and changes nothing: a parent is never removed
+  through its child.
+
+## Your own data on an entity
+
+Anything else your mod keeps on an entity (mana, a form, a charge) is a networked type with one object per entity,
+like the tags above: your server sets its fields, every client that sees the entity has them, a late joiner is sent
+them as they stand, and its events reach the same clients. A graph reads a number or bool field with no code, as
+`<type>#<field>`.
+
+```java
+public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");
+public static final CgNetEvent<Void> BURST = CgNetEvent.of("burst");
+public static final CgNetType MANA = CgNetType.define("mymod:mana").fields(CURRENT).events(BURST).perHolder().build();
+
+MANA.of(entity).setFloat(CURRENT, 80f);             // server: the entity's own object, made on first use
+MANA.of(entity).emit(BURST, null);                  // server: to every client that sees it
+MANA.find(entity);                                  // either side: its object, or null
+```
+
+```yaml
+# anim_graphs/mymod/hero.yaml
+entity:
+  ki: mymod:mana#current
+```
+
+The same type as a file, with no Java: a `net_type` asset, compiled at startup on each side into the type
+its id names, on the entities it lists as they enter a level.
+
+```yaml
+# assets/mymod/net_types/mana.yaml                 -> the type mymod:mana
+_v: 1
+fields:
+  current: { kind: float, fallback: 100.0 }          # sync: all, unless said
+  regen:   { kind: float, sync: owner }              # the holder's own client only
+  shown:   { kind: bool, sync: local }               # each side's own, never sent
+events:
+  burst: {}                                          # or { payload: float }
+entities: players                                    # or all, or [ minecraft:zombie, mymod:fighter ]
+```
+
+```java
+CgNetType mana = CgNetType.named("mymod:mana");      // either side, once mounted
+CgNetObject bar = mana.of(player);
+bar.setFloat((CgNetField<Float>) mana.field("current"), 80f);
+```
+
+- A file and a Java declaration of the same shape are one type: a mod may declare it either way, never both differently.
+- `kind` is `bool`, `int`, `long`, `float`, `double` or `string`; a codec field is Java's.
+- A reload that changes its fields, events or entities fails by name until a restart; a field's fallback is part of its
+  shape.
+- `persisted: true` fails at load for now: an entity's properties are not yet saved with it.
+- Every rule a networked field has applies: `ownerOnly()`, `serverOnly()`, prediction (`docs/NETWORKING.md`).
+- What the engine works out for itself each frame on each side (speed, ground, hands) is never sent: it is the
+  entity's state ([`prefabs.md`](prefabs.md) § *What the entity is doing*).
+
 ## Cues: what a gameplay moment plays
 
 A cue is what plays when gameplay says *this happened*: a hit, a charge, a beam. Gameplay names it by its tag and
@@ -237,7 +314,6 @@ cues.execute(MYMOD_CUE_HIT_SPARK, hit);
   does, through the tag's parents, and answers null for no cue). Ask once and keep the answer: `get()` loads the cue
   now if it has not compiled.
 - A looping play starts with them, then its providers (`beam.writes(...)`) take over each frame.
-- At most 32 names a play, as a cue declares.
 
 ### Where a play stands, which way it faces, how big it is
 
@@ -391,6 +467,9 @@ beam.field("level", 3);                                     // one of the cue's 
 CgCueManager.client().onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not authoritative: computed here
 ```
 
+- **Each cue is a networked type of its own**, `mymod:cue/beam` for `mymod:beam`, declared as the cue compiles at
+  startup on each side: its `writes` and `fields` are its fields, as many as it names. A reload that changes them fails
+  by the cue's id until a restart.
 - **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point
   (64 blocks unwritten). `CgAnchor.on(entity)` for an actor, `CgAnchor.at(level, x, y, z)` for a place; a client's
   `predict` needs one too, since the server is asked through it.
@@ -440,4 +519,3 @@ CgSequenceNet.acceptJumps((player, section) -> !player.section().equals("recover
   corrects a simulated montage. **The owner** keeps its own jumps and is never pulled back by the trip's delay.
 - **Stopping** the server's play ends every viewer's copy.
 - Time is in the server's game ticks, so it agrees across viewers. A viewer's copy trails the server by the trip there.
-- A cue sends at most 32 `writes`, 8 number or bool `fields` and 4 string ones.

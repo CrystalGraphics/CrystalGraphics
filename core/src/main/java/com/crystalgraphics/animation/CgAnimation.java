@@ -64,7 +64,8 @@ public final class CgAnimation extends CgWorldSubsystem {
         return of(CgWorld.serverWorld());
     }
 
-    private static CgAnimation of(CgWorld world) {
+    /** {@code world}'s, added on first use: a test's or a preview's world. */
+    public static CgAnimation of(CgWorld world) {
         CgAnimation existing = world.subsystem(CgAnimation.class);
         return existing != null ? existing : world.add(new CgAnimation());
     }
@@ -102,6 +103,11 @@ public final class CgAnimation extends CgWorldSubsystem {
 
     public int size() {
         return instances.size();
+    }
+
+    /** The tick function posing them: what one reading this tick's poses and root motion runs {@code after}. */
+    public CgTickFunction tickFunction() {
+        return pose;
     }
 
     private void updateAndEvaluate(float dt) {

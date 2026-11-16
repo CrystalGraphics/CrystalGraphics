@@ -10,6 +10,7 @@
 | `CgAnimVariable` | A typed variable (float, bool, int) by name, with a default; a handle by name and type works on any graph declaring it |
 | `CgSequencePlayerNode`, `CgRefPoseNode`, `CgTwoWayBlendNode`, `CgBlendListNode`, `CgSlotNode`, `CgLayeredBlendNode`, `CgApplyAdditiveNode`, `CgCachedPoseNode` | Unreal's nodes, each citing its `AnimNode_*.cpp` |
 | `CgLinkedAnimLayerNode`, `CgLinkedAnimGraphNode`, `CgLinkedInputPoseNode` | Unreal's linked anim layer (the graph's own layer, or a linked graph's: `linkLayers`, one run per group), linked anim graph (another graph as a node, swapped by tag), linked input pose. A graph declares `layers` and `inputs`; a linked run is a `CgAnimGraphInstance` in its main's frame (sync, curves, slots, inertializers and clock its main's; variables copied by name and type) |
+| `CgRootMotionMode`, `CgRootMotionParams` | Where a character's root motion comes from (none, ignored, the root-motion montage, or every player at its weight, `FROM_EVERYTHING`), and a frame's motion gathered, blended (`accumulateWithBlend`, `makeUpToFullWeight`) or composed, then consumed. The instance's `rootMotionMode` and `rootMotion()`: each recorded player's clips extracted over the tick's move (`SampleSink`'s `moved`), for warping nodes to read and replace; the montages hold the mover's |
 | `CgAnimSlot`, `CgBlendMask` | A slot's entries this frame (montage weights, a root held where the montage moves the character, a stop blending them out); a layer's per-bone weights from branches and bone entries |
 | `CgAnimGraphCodec`, `CgAnimGraphDefinition`, `CgAnimNodeWriter`, `CgAnimNodeKind` | The `anim_graph` kind's compiler and writer; the compiled file, bound to a skeleton and its clips by id, with the assets its nodes name (blend spaces) resolved at compile; where a node writes itself (and a graph-level section, a machine); how a kind outside this package is read (`registerKind`: `state_machine`, `inertialization`, `blend_space_player`, `aim_offset`), with clips, dependencies and sync groups through its context |
 
@@ -24,7 +25,9 @@
   instance's pool and given back last first (`evaluate` checks the balance).
 - **This package names only `animation.sync`**, which lies beneath it: `animation.state` and `animation.blend` join
   through `CgAnimNodeKind`, the public `Runtime` contract and the instance's hooks (player scopes, inertializers,
-  records, `forEachRuntime`).
+  records, `forEachRuntime`). Outside animation it names `net.object`'s types and fields and `world.CgEntityProperties` (a graph's
+  `entity:` bindings, `CgAnimGraph.EntityBinding`) and `tag` (its `tags:`), checked at build and load; the actor that
+  feeds them each frame is `world.actor`'s.
 - **The order is update, tick, evaluate**: a player advances in the sync tick after the walk, never in its update, so a
   group's leader moves first and its followers after it.
 - **A node kind with a data form** writes itself through `CgAnimNodeWriter` and is read in `CgAnimGraphCodec`; the

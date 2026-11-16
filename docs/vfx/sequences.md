@@ -658,9 +658,29 @@ CgNotifyKind.builder("mymod:glow").properties(GLOW).writes("tint")
 - **`chance`** draws from the player's seed, so every viewer of one play agrees; a span ignores it, as Unreal's
   notify states do. **`filter: { significance }`** fires only where the sequencer's tier is at least that.
 - **Queued by default**: called after the frame's blend. **`branching_point: true`** calls it inside the evaluation.
-- **On the client only**: a dedicated server's sequencer runs no behaviour. Gameplay's moments are `event` sections of
-  side `rpg`.
+- **On the client only**, unless the kind says `runs(CgNotifyKind.Runs.BOTH)`: a dedicated server's sequencer runs
+  only those, for an effect both sides apply. Gameplay's moments are `event` sections of side `rpg`.
 - **A kind no one registered fails at load**, naming the section; so do properties its type does not accept.
+
+### Holding the character still: `crystalgraphics:move_lock`
+
+A built-in span that runs on both sides: while it plays, the entity its track binds keeps still (Kakarot's
+`SetCharacterMoveFlag`: a landing holds you until its clip lets go). Its properties are `input` (the client's own
+player's movement keys, held unless said), `ai` (a mob's AI on the server, held unless said) and `gravity` (let be
+unless said).
+
+```yaml
+- { id: t4, kind: notify, binding: { role: caster }, sections: [
+    { id: n1, range: [0, 600], kind: crystalgraphics:move_lock, properties: { gravity: true } } ] }
+```
+
+- **Released** by playing past its end, by the sequence stopping, or by a seek before it; holds count, so two moves
+  holding at once let go only when both have, and the entity's own state comes back (a mob summoned without AI stays so).
+- **Its target names the entity** (`CgSequenceTarget.hostEntity()`): an entity actor answers it, as its reactions do; a role of your
+  own answers its entity, the loader's object on that side. Code holds the same way through `CgMoveLocks.hold`.
+- **Each part applies where it can**: the keys on the client whose player it is, the AI on the server, gravity on the
+  server (sent to the entity's clients) and on a client for its own player. 1.7.10 has no AI or gravity switch, Forge
+  1.8.9 no gravity one.
 
 # A clip on every particle
 

@@ -31,6 +31,6 @@ root; a new track kind is a subpackage of its own when it brings types besides i
 - **The definition is shared and never changed by playing**: per-play state lives in the player (montage links,
   triggers, cursors) or an evaluator's bound data.
 - **What runs on a dedicated server**: the clock, sections, `rpg` events; nothing that draws (`CgSequencer.server()`).
-  A server binds only a kind whose evaluator is `headless()` (`event`, `notify`); any other is never bound there.
+  A server binds only a kind whose evaluator is `headless()` (`event`, `notify`, `animation`); any other is never bound there. `animation` binds there only a role with a body (an entity actor's on the server), so its root motion moves the entity.
   The whole package's tests are headless (`core/src/headlessTest`), the `animation` kind's aside.
 - **Unreal decides behaviour**: each evaluator's javadoc cites the source file it follows.

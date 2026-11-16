@@ -1,4 +1,4 @@
-# asset.kind — the format's 27 kinds
+# asset.kind — the format's 29 kinds
 
 Every kind of the format (`docs/vfx/assets.md` § The kinds), its structs, elements and dispatch families, declared once
 against `object`'s model. `CgAssetKinds.register()` declares them all; `all()` and `byFolder()` read them.
@@ -7,10 +7,10 @@ against `object`'s model. `CgAssetKinds.register()` declares them all; `all()` a
 |---|---|
 | `CgParticleKinds` | `system`, `emitter`, `module`, `effect_type`, `ending`; renderers (`RENDERERS`) |
 | `CgLookKinds` | `material`, `texture`, `mesh`, `parameters`, `curve`, `text_style`, `widget`; widgets by kind (`WIDGETS`) |
-| `CgBodyKinds` | `prefab`, `skeleton`, `clip`, `anim_graph`, `springs`, `rig`, `retargeter`; anim graph nodes (`ANIM_NODES`), retarget ops (`OPS`) |
+| `CgBodyKinds` | `prefab`, `skeleton`, `clip`, `anim_graph`, `springs`, `rig`, `retargeter`, `actor` (what draws an entity; compiled and registered by `world.actor.CgActorFiles`); anim graph nodes (`ANIM_NODES`), retarget ops (`OPS`) |
 | `CgSequenceKinds` | `sequence`; tracks (`TRACKS`), each with its section; `figure` (a body type's effect transforms) |
 | `CgCameraKinds` | `camera_rig`, `shake`; camera nodes (`NODES`), blends, shake patterns, and the post block (`POST`) |
-| `CgGameplayKinds` | `cue` and its effects block |
+| `CgGameplayKinds` | `cue` and its effects block; `net_type` (a networked type declared as data; compiled by `net.object.CgNetTypeCompiler`) |
 | `CgStageKinds` | `stage`: a level's post volumes and its height fog |
 | `CgFieldKinds` | `field`; graph nodes (`NODES`) |
 | `CgCommonStructs` | what several kinds share: placement, binding, condition, socket, mesh slot, transform, input declaration |
@@ -27,7 +27,7 @@ sets only where the private plan checkout sits beside this one, and skips withou
   `UPROPERTY`s, snake-cased. A mismatch is this package's bug; a disagreement in the format goes to its designer.
 - **The declarations order exactly what the schemas order**: where a schema is open, the reference writer keeps read
   order, so a declared order there makes the two writers disagree. The gate reports it.
-- **Public**: the 27 kinds, the families a mod extends, and the shared post block, placement, condition, binding
+- **Public**: the 29 kinds, the families a mod extends, and the shared post block, placement, condition, binding
   and input declaration. Every other struct is package-private: reach it through its kind's properties.
 - **Nothing is guessed**: a type the format and Unreal leave open is `VALUE`; a subtree kept as written (`editor`,
   `unsupported`, an event's `args`) is `TREE`.

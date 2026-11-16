@@ -1,12 +1,17 @@
 package com.crystalgraphics.mc.modern.platform.world;
 
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 //? if >=1.15 <1.21.5 {
 import net.minecraft.client.multiplayer.ClientLevel;
 import java.util.UUID;
 //?}
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
+//? if >=1.21.5 {
+/*import net.minecraft.world.phys.Vec2;
+*///?}
 
 /**
  * {@link LevelEntityQueryModern} over the client's level, with what only a client has: the local and camera entity.
@@ -30,6 +35,28 @@ public final class EntityQueryModern extends LevelEntityQueryModern {
     @Override
     boolean isLocal(Entity e) {
         return e == Minecraft.getInstance().player;
+    }
+
+    /** The local player's keys: its input's impulses (no Vec2 per read before 1.21.5), jump and sprint. */
+    @Override
+    void input(Entity e, CgEntityFacts out) {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer p = mc.player;
+        if (p == null || e != p) return;
+        //? if >=1.21.5 {
+        /*Vec2 move = p.input.getMoveVector();
+        out.inputStrafe = move.x;
+        out.inputForward = move.y;
+        *///?} else {
+        out.inputStrafe = p.input.leftImpulse;
+        out.inputForward = p.input.forwardImpulse;
+        //?}
+        //? if >=1.21.3 {
+        /*boolean jump = p.input.keyPresses.jump(), sprint = p.input.keyPresses.sprint();
+        *///?} else {
+        boolean jump = p.input.jumping, sprint = mc.options.keySprint.isDown();
+        //?}
+        out.bits |= CgEntityFacts.INPUT | (jump ? CgEntityFacts.INPUT_JUMP : 0) | (sprint ? CgEntityFacts.INPUT_SPRINT : 0);
     }
 
     @Override

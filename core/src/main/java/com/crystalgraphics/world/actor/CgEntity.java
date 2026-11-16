@@ -1,6 +1,13 @@
 package com.crystalgraphics.world.actor;
 
+import javax.annotation.Nullable;
+
+import com.crystalgraphics.net.object.CgNetObject;
+import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.tag.CgTagCounts;
+import com.crystalgraphics.world.CgEntityProperties;
+import com.crystalgraphics.world.CgEntityQueries;
 
 /**
  * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
@@ -8,8 +15,9 @@ import com.crystalgraphics.platform.world.CgEntityQuery;
  *
  * <pre>{@code
  * protected void tick(CgEntity dragon, float dt) {
- *     boolean flying = !dragon.flag(CgEntityQuery.ON_GROUND);
- *     double speed = Math.hypot(dragon.pose(CgEntityQuery.VELOCITY_X), dragon.pose(CgEntityQuery.VELOCITY_Z));
+ *     CgNetObject motion = dragon.properties(CgEntityProperties.MOTION);   // what it is doing: speed, ground, hands
+ *     if (motion.get(CgEntityProperties.LANDED)) body.anim().montages().play(LAND);
+ *     float ki = dragon.properties(Ki.TYPE).get(Ki.CURRENT);                // a mod's own, the same way
  * }
  * }</pre>
  *
@@ -23,6 +31,13 @@ public final class CgEntity {
     private final int id;
     private final String type;
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
+    /** Its owned tags, on its side: the server's counts, or a client's mirror of them. Set at spawn. */
+    CgTagCounts tags = new CgTagCounts();
+    /** Whether {@link #tags} is a client's mirror held for it, let go when its actor ends. */
+    boolean heldTags;
+    /** The server's entity, on a server; null on a client, which looks its own up. */
+    @Nullable
+    Object serverHost;
     int flags;
     boolean present;
     long hostFrame = -1;
@@ -71,6 +86,40 @@ public final class CgEntity {
     /** Any value of its pose, by {@link CgEntityQuery}'s indices: velocity, size, limb swing. */
     public double pose(int index) {
         return pose[index];
+    }
+
+
+    /**
+     * The gameplay tags it owns, with counts ({@code CgEntityTags}): on a server its own, on a client what its server last
+     * sent. Read them; change them on the server through {@code CgEntityTags.add}.
+     */
+    public CgTagCounts tags() {
+        return tags;
+    }
+
+    /**
+     * The loader's own entity on this side: the server's, or the client's copy looked up by id; null where the client
+     * has none loaded. What a mod's entity field reads.
+     */
+    @Nullable
+    public Object entity() {
+        return serverHost != null ? serverHost : CgEntityQueries.client().entity(id);
+    }
+
+    /** Whether its actor runs on the server, reading the server's entity. */
+    public boolean onServer() {
+        return serverHost != null;
+    }
+
+    /**
+     * Its object of {@code type}, a per-holder type on entities: its properties, the engine's
+     * ({@link CgEntityProperties#MOTION}) or a mod's, on this side. A local type's is made if absent; a sent type's is
+     * the server's on the server and this client's copy on a client, null until it arrives.
+     */
+    @Nullable
+    public CgNetObject properties(CgNetType type) {
+        if (serverHost != null) return type.isLocal() ? type.of(serverHost) : type.find(serverHost);
+        return type.isLocal() ? type.of(id) : type.find(id);
     }
 
     /** Its state bits ({@link CgEntityQuery#ALIVE}, {@link CgEntityQuery#SNEAKING}, ...). */

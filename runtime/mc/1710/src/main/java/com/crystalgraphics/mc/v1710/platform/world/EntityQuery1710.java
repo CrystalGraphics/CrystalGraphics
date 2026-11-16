@@ -1,6 +1,8 @@
 package com.crystalgraphics.mc.v1710.platform.world;
 
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityClientPlayerMP;
 import net.minecraft.client.multiplayer.WorldClient;
 import net.minecraft.entity.Entity;
 import net.minecraft.util.AxisAlignedBB;
@@ -27,6 +29,19 @@ public final class EntityQuery1710 extends LevelEntityQuery1710 {
     @Override
     boolean isLocal(Entity e) {
         return e == Minecraft.getMinecraft().thePlayer;
+    }
+
+    /** The local player's keys: its movement input's impulses, jump, and the sprint key. */
+    @Override
+    void input(Entity e, CgEntityFacts out) {
+        Minecraft mc = Minecraft.getMinecraft();
+        EntityClientPlayerMP p = mc.thePlayer;
+        if (p == null || e != p) return;
+        out.inputStrafe = p.movementInput.moveStrafe;
+        out.inputForward = p.movementInput.moveForward;
+        boolean sprint = mc.gameSettings.keyBindSprint.getIsKeyPressed();
+        out.bits |= CgEntityFacts.INPUT | (p.movementInput.jump ? CgEntityFacts.INPUT_JUMP : 0)
+                | (sprint ? CgEntityFacts.INPUT_SPRINT : 0);
     }
 
     @Override

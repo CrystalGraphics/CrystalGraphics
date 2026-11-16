@@ -562,11 +562,167 @@ CgEntityActors.register("mymod:wyvern", WyvernActor::new).prefab("mymod:wyvern")
 - **An actor leaves with its entity**: the frame the client's entity query no longer finds it, or sooner where the
   host has a leave event. `CgEntity.hostFrame()` is the frame the host's renderer last reached it: behind while the host
   culls it.
-- **What a host does**: `CgEntityActors.entered(id, type)` when an entity joins the client's level, `left(id)` when it
-  leaves, and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
+- **What a host does**: `CgNetEntities.entered(id, type)` when an entity joins the client's level, `left(id)` when it
+  leaves (its properties and its actor both hear it), and `replacesModel(id)` in its entity renderer, once an entity a frame. A harness scene does the same for fake
   entities, served by a `CgEntityQuery` it installs with `CgLevels.single(...)`.
+- **What it holds draws in its hands.** The host's renderer draws each hand's item stack, Minecraft's own model in its
+  third-person display, where the actor's body holds it: its skeleton's grip socket, `right_hand_item` or
+  `left_hand_item`, else the hand's own, `right_hand` or `left_hand` (a grip is a hand's pose for an item, in
+  Minecraft's held-item frame). The right arm holds the main hand unless the entity is left-handed. A body with neither
+  socket draws no items. Every era from 1.15, and legacy Forge and 1.7.10 (one hand on 1.7.10 and 1.8.9); below 1.15
+  the hands draw nothing. `CgEntityActors.grip(id, hand, out)` is what a host reads.
 - **The gauntlet's `crystalgraphics:actors`** proves a host's binding in a running game: an actor spawned for a summoned
   target with a prefab on its root, following it, its model left to the actor, and gone with it.
+
+### On the server too, and moved by its root motion
+
+A registered type's actor spawns on the server as well, for each entity of the type in the server's levels, from the
+same class. There its components live in `CgScene.server()`: never drawn, its skeletal meshes posed each tick for
+their bones, sockets and root motion. `server()` tells the two copies apart where they must differ.
+
+Name the body whose moves carry the entity, and its montages' root motion moves it, as Unreal's character is moved by
+its mesh. The server's actor moves its entity each tick, swept against blocks as the entity's own movement is, then
+turns it. On a client, only the local player's actor moves its entity, at once; any other actor follows its server's
+position.
+
+```java
+public final class FighterActor extends CgEntityActor {
+    private CgSkeletalMeshComponent body;
+
+    @Override protected void onSpawn(CgEntity fighter) {
+        body = rootMotion(add(scene().skeletal(FIGHTER).materials(SKINS::get)));
+    }
+}
+
+// the server, as a move starts: its sequence's montage now carries the entity, onto its target at arm's length
+CgEntityActor actor = CgEntityActors.serverActor(entityId);
+body.anim().motionWarping().target("opponent", x, y, z, yaw).standOff("opponent", 0.9f);
+sequencer.play(LUNGE, Map.of("caster", role));
+```
+
+- **The entity's own movement still runs**: its AI and its gravity. Hold its AI still while a move plays.
+- **The travel is the body's**: its component's world transform puts the clip's motion in the world, so a body
+  scaled or lifted under the root moves the entity by what is drawn.
+- **What a host does on the server**: `CgNetEntities.enteredServer(entity, type)` when an entity joins a server level
+  and `leftServer(entity)` where the loader has a leave event, both sides; and the entity's movement through
+  `CgEntityMovement`, the entity's own members on every era (`move` places it unswept on Forge 1.13.2).
+- **The rest of a move's motion** is `CgEntityMovement`'s too, on the side that owns the entity: `push` for a
+  knockback or a launch, `velocity` and `gravity(false)` to hold a fighter in the air, `resetFall` after a dive,
+  `teleport` for a vanish strike, `rotate` for yaw and pitch.
+
+### What the entity is doing: its properties
+
+`CgEntityProperties.MOTION` is what the engine works out of every entity, each tick on the server and each frame on a
+client before actors read it, the same on every version and never sent or saved: how fast it moves, whether it is on
+the ground, sneaking, sprinting, swimming, crawling, gliding, riding or sleeping, its head against its body, each
+hand's item and arm pose, the item in use and the swing, and what just happened. It is an entity property type like any
+of your mod's ([`networking.md`](networking.md) § *Your own data on an entity*): its fields are all `local()`.
+
+```java
+@Override protected void tick(CgEntity fighter, float dt) {
+    CgNetObject m = fighter.properties(CgEntityProperties.MOTION);
+    body.anim().set(SPEED, m.get(CgEntityProperties.SPEED));                 // blocks a second along the ground
+    body.anim().set(IN_AIR, m.get(CgEntityProperties.AIRBORNE));
+    if (m.get(CgEntityProperties.LANDED) && m.get(CgEntityProperties.LAND_HEIGHT) > 3) {
+        body.anim().montages().play(HARD_LANDING);
+    }
+    if (m.get(CgEntityProperties.SWING_STARTED)) {
+        body.anim().montages().play(m.get(CgEntityProperties.SWING_HAND) == CgEntityProperties.OFF ? JAB : SLASH);
+    }
+}
+```
+
+Any entity, read by code that is no actor, the same way:
+
+```java
+CgNetObject m = CgEntityProperties.MOTION.of(serverEntity);          // the server's
+CgNetObject seen = CgEntityProperties.MOTION.of(entityId);   // a client's, by network id
+```
+
+| Event, true for its frame | With, the same frame | When |
+|---|---|---|
+| `JUMPED` | | it left the ground going up (walking off a ledge is not a jump) |
+| `LANDED` | `LAND_HEIGHT`, the fall from the highest point it reached | it touched the ground again |
+| `HURT` | `HURT_TIME` from 0 | it was hit, a second hit before the first wore off included |
+| `SWING_STARTED` | `SWING_HAND` | an arm began a swing, or began it again mid-swing |
+| `USE_STARTED`, `USE_STOPPED` | `USE_HAND` | it began or stopped using an item: eating, drawing a bow, blocking |
+| `MOUNTED`, `DISMOUNTED` | `VEHICLE` | it got on or off something; changing mounts raises both |
+| `DIED` | `DEAD_TIME` from 0 | it died |
+
+- **An entity's object is made the first time something asks for it**, from then worked out with its entity and ended
+  with it; a frame its host says nothing of keeps the last values and raises no event. The first frame an entity is
+  seen raises none, so one seen in mid-air does not jump.
+- **What only your server knows** (an ability fired, a hit's damage) is a `CgNetEvent` on your own networked type,
+  sent by your server ([`networking.md`](networking.md)).
+- **The arm pose is Minecraft's own rule for a player's arms**, the newest version's, for every entity: a bow drawn, a
+  shield up, a crossbow charging or held charged, a trident raised, a spyglass, a horn, a brush, a spear. A bow or a
+  crossbow takes both arms, and the other hand then only holds its item.
+- **What a version lacks reads as not happening**: no swimming pose before 1.13, no gliding and no off hand before
+  1.10.2, no charged crossbow before 1.14.3. Items are the host's raw ids, the same item for the session.
+- **The swim amount** eases 0 to 1 over 0.45 s into the swimming pose and back, as Minecraft's own does.
+- **Its motion is smooth between Minecraft's 20 ticks a second**: `SPEED`, `VERTICAL_SPEED`, `MOVE_DIRECTION`
+  (degrees against the body's facing) and `ACCELERATION` follow the last two ticks' movement across the frame, as
+  the drawn position does, so a 144 fps gait never steps. `TURN_RATE` (degrees a second, left positive) and
+  `GROUND_DISTANCE` (the feet over the first surface under them, 64 blocks down at most) are read each frame;
+  `AIR_TIME` counts from leaving the ground.
+- **Intent is not speed.** `INPUT` (0 to 1) and `INPUT_DIRECTION` (degrees against the facing, 90 to the left) are
+  how hard and where it means to move: what a locomotion graph keys its gait on, since a slope or a shove changes its
+  speed. They are the player's own keys or stick on its client, and on a 1.21.3+ server from the player's input packet
+  (`INPUT_FROM_PLAYER`), with `SPRINT_HELD` and `JUMP_HELD`. Anywhere else they are read from its movement against its
+  facing: 1 moving (0.3 sneaking, as Minecraft's input), 0 standing, the sprint key as whether it sprints.
+- **What a host does**: `CgEntityQuery.facts(id, partialTick, out)`, the entity's facts as `CgEntityFacts` (bits, how
+  far it moved over its tick, its vehicle, Minecraft's hurt and death countdowns, the swing, the use, each hand's item
+  and use animation). Core turns them into the properties; a host never decides an event.
+
+### An actor as a file, and its reactions
+
+An actor that needs no code of its own is a file, `actors/`: what it binds, its prefab, the graph its body runs, the
+body whose root motion moves the entity, and its reactions. Each file registers itself as the game starts, on both
+sides, before any entity enters.
+
+```yaml
+# assets/mymod/actors/golem.yaml
+_v: 1
+binds: { entities: [ mymod:golem ] }        # or { local_player: true }: the client's own player
+prefab: mymod:golem
+anim_graph: mymod:golem_locomotion          # bound to its body's mesh and clips
+root_motion: body                           # the prefab node whose montages carry the entity
+keep_vanilla_model: false
+reactions:                                  # an event plays a sequence on a slot
+  - { event: hurt, sequence: mymod:golem_flinch }
+  - { event: landed, sequence: mymod:golem_land, slot: FullBody, when: { variable: entity.land_height, op: ">", value: 3 } }
+item_layers:                                # a held item gives a linked anim layer its graph
+  - { item: "#minecraft:swords", layer: upper_body, graph: mymod:golem_sword_arms }
+  - { item: minecraft:bow, layer: upper_body, graph: mymod:golem_bow_arms }
+  - { item: minecraft:shield, layer: off_arm, graph: mymod:golem_shield_arm }
+```
+
+The same registration in Java, for an actor with code of its own or none (`plain()`):
+
+```java
+CgEntityActors.register("mymod:golem", CgEntityActors.plain()).prefab("mymod:golem")
+        .graph("mymod:golem_locomotion")
+        .rootMotion("body")
+        .react(CgReaction.of(CgEntityProperties.HURT, "mymod:golem_flinch"))
+        .react(CgReaction.of(CgEntityProperties.LANDED, "mymod:golem_land", "FullBody",
+                CgReaction.when(Map.of("variable", "entity.land_height", "op", ">", "value", 3))));
+```
+
+- **A reaction** is Unreal's slot animation played from a gameplay event: its sequence plays with the actor's body in
+  every role, each animation section on the reaction's slot. One playing is stopped by the next. Each side plays its
+  own from its own events: the server's moves the entity where the sequence carries root motion, a client's draws it.
+- **`event`** is one of the nine above (`jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`,
+  `mounted`, `dismounted`, `died`); **`when`** is a graph rule ([`../animation/guides/graphs.md`](../animation/guides/graphs.md)
+  § *State machines*) over the entity's properties by their graph names, `entity.grounded` or `mymod:ki#current`.
+- **An item layer** is Unreal's per-weapon linked anim layers: while the entity holds a matching item, the layer's
+  graph plays in place of the body's own (`linkLayers`), and once it holds none it is unlinked. Per layer, the first
+  entry the main hand matches wins, else the first the off hand matches; chosen again only when a hand's item changes.
+  `item` is an item id or `#` an item tag (every item in it; a tag matches nothing before 1.13, which has none); an id
+  no mod registers matches nothing and is no error. In Java: `.itemLayer(new CgItemLayer(item, layer, graph))`.
+- **The body** is the `root_motion` node's, else the first skeletal mesh the actor added, else its prefab's first.
+- **What it plays loads with its prefab**, behind the loading screen: its graph and its reactions' sequences.
+- **Fails at load, naming the file**: a prefab, graph, rig or sequence no file declares, an unknown event, a rule
+  naming a property no entity has, `binds` with neither form or both, and an entity type two actors bind.
 
 ## Drawing a palette yourself
 

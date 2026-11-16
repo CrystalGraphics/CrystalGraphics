@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation.retarget;
 
 import com.crystalgraphics.api.animation.CgAnimSequence;
+import com.crystalgraphics.asset.load.CgAssetPreparer;
 import com.crystalgraphics.job.CgJob;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -20,6 +21,14 @@ import java.util.function.Function;
  * playerInstance.play(clips.resolve("punch"), false);
  * }</pre>
  *
+ * <pre>{@code
+ * // baked as the role's asset is prepared: READY once every clip it plays is baked
+ * assets.preparer(MyKinds.FIGHTER, (definition, plan) -> clips.plan(plan, ((Fighter) definition).moveClips()));
+ *
+ * // a sequence's animation section asks its role for its clip at bind: own, retargeted, or the play fails naming it
+ * @Override public CgAnimSequence clip(String id) { return clips.find(id.substring(id.lastIndexOf('/') + 1)); }
+ * }</pre>
+ *
  * <ul>
  *   <li>A name not baked by {@link #bakeAll} bakes on first {@link #resolve}, on the caller's thread, and counts
  *       {@code retarget.late}: a hitch to fix by naming it to {@code bakeAll}.</li>
@@ -29,7 +38,6 @@ import java.util.function.Function;
 public final class CgClipResolver {
 
     private final Function<String, CgAnimSequence> own, source;
-    private final CgRetargeter retargeter;
     private final CgRetargetProcessor processor;
 
     /**
@@ -41,7 +49,6 @@ public final class CgClipResolver {
         this.own = own;
         this.source = source;
         this.processor = processor;
-        this.retargeter = processor.retargeter();
     }
 
     /** The clip for {@code name}: own, else retargeted, else it throws naming it. */
@@ -62,6 +69,19 @@ public final class CgClipResolver {
         return CgRetargetBake.cached(processor, theirs);
     }
 
+    /**
+     * A prepare step baking {@code names} on workers: started when the plan reaches it, done once every clip is baked,
+     * so the asset is READY with nothing left to bake in play.
+     */
+    public void plan(CgAssetPreparer.Plan plan, List<String> names) {
+        List<String> copy = List.copyOf(names);
+        CgJob<?>[] job = {null};
+        plan.warm("retarget " + copy.size() + " clips", () -> {
+            if (job[0] == null) job[0] = CgJob.run(() -> bakeAll(copy));
+            return job[0].isDone();
+        });
+    }
+
     /** Bakes every name of {@code names} the character lacks, across workers; returns once all are baked. */
     public void bakeAll(List<String> names) {
         CgJob.forEach(names.size(), i -> {
@@ -69,7 +89,7 @@ public final class CgClipResolver {
             if (own.apply(name) != null) return;
             CgAnimSequence theirs = source.apply(name);
             if (theirs == null) return;
-            CgRetargetProcessor mine = new CgRetargetProcessor(retargeter, processor.sourceSkeleton(), processor.targetSkeleton());
+            CgRetargetProcessor mine = processor.copy();
             CgRetargetBake.cached(mine, theirs);
         });
     }

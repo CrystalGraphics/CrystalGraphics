@@ -37,4 +37,13 @@ public interface CgSequenceSkeletal extends CgSequenceTarget {
     /** The clip a sequence names {@code id} ({@code kakarot:Art/ANM/cpl/C001A/BTL/SKL/C001A_S_SKL001_Bgn_01ST}), or null. */
     @Nullable
     CgAnimSequence clip(String id);
+
+    /**
+     * The montage slot every section plays on in place of the one it names, or null to keep each section's: an actor's
+     * reaction plays a sequence on the slot its reaction names.
+     */
+    @Nullable
+    default String montageSlot() {
+        return null;
+    }
 }

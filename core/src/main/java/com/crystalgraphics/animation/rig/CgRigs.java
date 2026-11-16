@@ -11,6 +11,7 @@ import javax.annotation.Nullable;
  * <pre>{@code
  * CgRig goku = CgRigs.detect(gokuMesh.skeleton(), CgRigAdapters.CRYSTALGRAPHICS);     // the standard humanoid names
  * CgRig player = CgRigs.detect(playerMesh.skeleton(), CgRigAdapters.GECKOLIB);        // GeckoLib's humanoid
+ * CgRig zombie = CgRigs.detect(CgVanillaHumanoid.SKELETON, CgRigAdapters.VANILLA);    // Minecraft's humanoid
  * if (player == null) { ... }   // neither shape: give it a rig of its own (CgRig.builder or rigs/)
  * }</pre>
  *
@@ -22,6 +23,10 @@ import javax.annotation.Nullable;
  *       {@code left_hand_locator}, {@code left_leg} to {@code left_foot_locator}. Its clips hold its limbs straight, so
  *       its knees are given a bend toward its front and its elbows toward its back; its arms and head hang from its
  *       pelvis, so they ride {@code body}; its torso pivots at its neck, so it turns about its hips.</li>
+ *   <li>Minecraft's humanoid ({@code mc.model.CgVanillaHumanoid}): {@code hips} (its pelvis), {@code body},
+ *       {@code head}, {@code right_arm} and its {@code right_hand}, {@code right_leg} and its {@code right_foot}, the
+ *       left's the same. Each limb is one rigid part, so it points at its goal; the torso pivots at its neck, so it
+ *       turns about its hips, and the arms and head ride it.</li>
  *   <li>Goals are {@code ik_hand_l}, {@code ik_foot_l} and the right's: virtual bones where the skeleton has none
  *       ({@link CgRig#ikBones}).</li>
  * </ul>
@@ -37,7 +42,9 @@ public final class CgRigs {
     @Nullable
     public static CgRig detect(CgSkeleton skeleton, CgRigAdapter adapter) {
         CgRig standard = standardHumanoid(skeleton, adapter);
-        return standard != null ? standard : geckoHumanoid(skeleton, adapter);
+        if (standard != null) return standard;
+        CgRig gecko = geckoHumanoid(skeleton, adapter);
+        return gecko != null ? gecko : vanillaHumanoid(skeleton, adapter);
     }
 
     /** The standard humanoid's rig, or null where {@code skeleton} lacks its body's bones. */
@@ -85,7 +92,24 @@ public final class CgRigs {
         return b.build();
     }
 
-    /** GeckoLib's humanoid's hip height at rest: where its legs hang from. */
+    /** Minecraft's humanoid's rig, or null where {@code skeleton} lacks its parts. */
+    @Nullable
+    public static CgRig vanillaHumanoid(CgSkeleton skeleton, CgRigAdapter adapter) {
+        for (String bone : new String[] {"hips", "body", "head", "left_arm", "left_hand", "right_arm", "right_hand", "left_leg",
+                "left_foot", "right_leg", "right_foot"}) {
+            if (skeleton.indexOf(bone) < 0) return null;
+        }
+        CgRig.Builder b = CgRig.builder("crystalgraphics:vanilla_humanoid", adapter).root(skeleton.name(0)).pelvis("hips")
+                .chain("spine", "body", "body").pivot("spine", 0f, hips(skeleton), 0f)
+                .chain("head", "head", "head").rides("head", "body");
+        for (String[] side : new String[][] {{"l", "left"}, {"r", "right"}}) {
+            b.chain("arm_" + side[0], side[1] + "_arm", side[1] + "_hand", "ik_hand_" + side[0]).rides("arm_" + side[0], "body");
+            b.chain("leg_" + side[0], side[1] + "_leg", side[1] + "_foot", "ik_foot_" + side[0]);
+        }
+        return b.build();
+    }
+
+    /** A humanoid's hip height at rest: where its legs hang from. */
     private static float hips(CgSkeleton skeleton) {
         Matrix4f[] rest = new Matrix4f[skeleton.boneCount()];
         for (int i = 0; i < rest.length; i++) rest[i] = new Matrix4f();

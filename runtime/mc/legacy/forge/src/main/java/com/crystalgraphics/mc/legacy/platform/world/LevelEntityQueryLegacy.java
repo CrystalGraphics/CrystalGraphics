@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.world;
 
 import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityList;
@@ -13,7 +14,14 @@ import net.minecraft.entity.item.EntityMinecart;
 import net.minecraft.entity.monster.IMob;
 import net.minecraft.entity.passive.EntityAnimal;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.item.EnumAction;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.util.DamageSource;
+//? if >=1.10 {
+import net.minecraft.util.EnumHand;
+import net.minecraft.util.EnumHandSide;
+//?}
 import net.minecraft.world.World;
 import net.minecraft.world.WorldServer;
 //? if >=1.12 {
@@ -253,6 +261,97 @@ public class LevelEntityQueryLegacy implements CgEntityQuery {
         *///?}
         if (e.getCollisionBoundingBox() != null) f |= SOLID;
         return f;
+    }
+
+    // The swing is read from its fields, as getSwingProgress does: the getter is client-only. 1.8.9's item use is the
+    // player's, and its ticks in are client-only: a server says none, and the use's length is its held item's.
+    @Override
+    public boolean facts(int id, float partialTick, CgEntityFacts out) {
+        Entity e = find(id);
+        if (e == null) return false;
+        out.moveX = e.posX - e.lastTickPosX;
+        out.moveY = e.posY - e.lastTickPosY;
+        out.moveZ = e.posZ - e.lastTickPosZ;
+        out.y = e.lastTickPosY + (e.posY - e.lastTickPosY) * partialTick;
+        int f = 0;
+        if (e.onGround) f |= CgEntityFacts.GROUNDED;
+        if (e.isSneaking()) f |= CgEntityFacts.SNEAKING;
+        if (e.isSprinting()) f |= CgEntityFacts.SPRINTING;
+        if (e.isInWater()) f |= CgEntityFacts.IN_WATER;
+        //? if >=1.10 {
+        Entity vehicle = e.getRidingEntity();
+        //?} else {
+        /*Entity vehicle = e.ridingEntity;
+        *///?}
+        out.vehicle = vehicle == null ? -1 : vehicle.getEntityId();
+        if (e instanceof EntityLivingBase) f |= living((EntityLivingBase) e, partialTick, out);
+        out.bits |= f;
+        input(e, out);
+        return true;
+    }
+
+    /** A player's own input, where this side has it: the client's, for its own player. */
+    void input(Entity e, CgEntityFacts out) {
+    }
+
+    private static int living(EntityLivingBase e, float partialTick, CgEntityFacts out) {
+        int f = CgEntityFacts.LIVING;
+        if (e.isPlayerSleeping()) f |= CgEntityFacts.SLEEPING;
+        if (e.getHealth() <= 0f) f |= CgEntityFacts.DEAD;
+        out.hurtTime = e.hurtTime;
+        out.deathTime = e.deathTime;
+        float d = e.swingProgress - e.prevSwingProgress;
+        if (d < 0f) d += 1f;
+        out.swing = e.prevSwingProgress + d * partialTick;
+        if (e.isSwingInProgress) f |= CgEntityFacts.SWINGING;
+        //? if >=1.10 {
+        if (e.isElytraFlying()) f |= CgEntityFacts.GLIDING;
+        if (e.getPrimaryHand() == EnumHandSide.LEFT) f |= CgEntityFacts.LEFT_HANDED;
+        if (e.isSwingInProgress) out.swingHand = e.swingingHand == EnumHand.OFF_HAND ? CgEntityFacts.OFF : CgEntityFacts.MAIN;
+        if (e.isHandActive()) {
+            f |= CgEntityFacts.USING;
+            out.useHand = e.getActiveHand() == EnumHand.OFF_HAND ? CgEntityFacts.OFF : CgEntityFacts.MAIN;
+            out.useTicks = e.getItemInUseMaxCount();
+            out.useLength = out.useTicks + e.getItemInUseCount();
+        }
+        held(e.getHeldItemMainhand(), CgEntityFacts.MAIN, out);
+        held(e.getHeldItemOffhand(), CgEntityFacts.OFF, out);
+        //?} else {
+        /*if (e instanceof EntityPlayer && ((EntityPlayer) e).isUsingItem()) {
+            EntityPlayer p = (EntityPlayer) e;
+            f |= CgEntityFacts.USING;
+            if (p.worldObj.isRemote) {
+                out.useTicks = p.getItemInUseDuration();
+                out.useLength = out.useTicks + p.getItemInUseCount();
+            } else if (p.getHeldItem() != null) {
+                out.useLength = p.getHeldItem().getMaxItemUseDuration();
+            }
+        }
+        held(e.getHeldItem(), CgEntityFacts.MAIN, out);
+        *///?}
+        return f;
+    }
+
+    private static void held(ItemStack stack, int hand, CgEntityFacts out) {
+        //? if >=1.11 {
+        if (stack.isEmpty()) return;
+        //?} else {
+        /*if (stack == null) return;
+        *///?}
+        out.item[hand] = Item.getIdFromItem(stack.getItem());
+        out.use[hand] = useOf(stack.getItemUseAction());
+    }
+
+    private static int useOf(EnumAction action) {
+        if (action == null) return CgEntityFacts.USE_NONE;
+        switch (action) {
+            case EAT: return CgEntityFacts.USE_EAT;
+            case DRINK: return CgEntityFacts.USE_DRINK;
+            case BLOCK: return CgEntityFacts.USE_BLOCK;
+            case BOW: return CgEntityFacts.USE_BOW;
+            case NONE: return CgEntityFacts.USE_NONE;
+            default: return CgEntityFacts.USE_OTHER;
+        }
     }
 
     @Override

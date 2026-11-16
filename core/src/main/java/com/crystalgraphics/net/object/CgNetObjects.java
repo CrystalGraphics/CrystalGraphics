@@ -181,6 +181,10 @@ public final class CgNetObjects {
     /** Client: this client's per-holder object of {@code type} riding entity {@code entityId}, or null. */
     @Nullable
     static CgNetObject clientHolder(CgNetType type, int entityId) {
+        if (local != null) {
+            ClientObjects objects = local.get();
+            return objects == null ? null : objects.holder(type, entityId);
+        }
         CgProtocolConnection<Object> connection = CgNetwork.client();
         if (connection == null || !connection.hasAttachment(ClientObjects.class)) return null;
         return connection.attachment(ClientObjects.class, ClientObjects::new).holder(type, entityId);
@@ -350,15 +354,17 @@ public final class CgNetObjects {
         BY_ID.clear();
         FIRED.clear();
         for (CgNetType type : CgNetType.REGISTERED) type.holders.clear();
+        CgNetEntities.clear(true);
         Arrays.fill(unsaved, false);
     }
+
 
     // ── Each server tick ────────────────────────────────────────────────────────────────────────
 
     /** Sends this tick's spawns, changes, moves and despawns, one frame per player. Server thread. */
     public static void serverTick() {
         tick = CgEngineLifecycle.serverTicks();
-        List<CgNetType> types = CgNetType.REGISTERED;
+        List<CgNetType> types = CgNetType.USED;
         for (int t = 0; t < types.size(); t++) {
             CgNetType type = types.get(t);
             type.tickLive = type.tickViewers = type.tickBytes = 0;
@@ -399,7 +405,7 @@ public final class CgNetObjects {
     public static String report() {
         StringBuilder out = new StringBuilder();
         int types = 0, objects = 0;
-        for (CgNetType type : CgNetType.REGISTERED) {
+        for (CgNetType type : CgNetType.USED) {
             long refused = type.refusals();
             if (type.tickLive == 0 && type.tickBytes == 0 && refused == 0) continue;
             types++;
@@ -806,6 +812,7 @@ public final class CgNetObjects {
         if (!allowed) {
             command.refused++;
             obj.type.refusedCommands++;
+            obj.type.markUsed();
             in.skip(length);
             return;
         }
@@ -895,7 +902,10 @@ public final class CgNetObjects {
             }
         }
         if (!accepted) {
-            if (type != null) type.refusedPredictions++;
+            if (type != null) {
+                type.refusedPredictions++;
+                type.markUsed();
+            }
             viewer.refuse(key);
             return;
         }

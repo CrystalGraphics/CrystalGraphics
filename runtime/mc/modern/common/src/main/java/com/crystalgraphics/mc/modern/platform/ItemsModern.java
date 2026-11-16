@@ -7,7 +7,21 @@ import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+//? if >=1.19.3 {
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.tags.TagKey;
+//?} elif >=1.18.2 {
+/*import net.minecraft.core.Registry;
+import net.minecraft.tags.TagKey;
+*///?} else {
+/*import net.minecraft.core.Registry;
+import net.minecraft.tags.ItemTags;
+import net.minecraft.tags.Tag;
+*///?}
 //? if >=1.20.6 {
 /*import com.mojang.serialization.DynamicOps;
 import net.minecraft.core.HolderLookup;
@@ -111,5 +125,30 @@ public final class ItemsModern implements CgItems.Host {
         *///?} else {
         return CgItems.Shape.TAG;
         //?}
+    }
+
+    @Override
+    public String name(int itemId) {
+        Item item = Item.byId(itemId);
+        if (item == null || item == Items.AIR) return null;
+        //? if >=1.19.3 {
+        return String.valueOf(BuiltInRegistries.ITEM.getKey(item));
+        //?} else {
+        /*return String.valueOf(Registry.ITEM.getKey(item));
+        *///?}
+    }
+
+    @Override
+    public boolean inTag(int itemId, String tag) {
+        Item item = Item.byId(itemId);
+        if (item == null || item == Items.AIR) return false;
+        //? if >=1.19.3 {
+        return item.builtInRegistryHolder().is(TagKey.create(Registries.ITEM, ResourceIds.parse(tag)));
+        //?} elif >=1.18.2 {
+        /*return item.builtInRegistryHolder().is(TagKey.create(Registry.ITEM_REGISTRY, ResourceIds.parse(tag)));
+        *///?} else {
+        /*Tag<Item> items = ItemTags.getAllTags().getTag(ResourceIds.parse(tag));
+        return items != null && items.contains(item);
+        *///?}
     }
 }

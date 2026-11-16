@@ -10,6 +10,7 @@ only through a `Host` slot an era fills.
 | `mc` | The reload path: `CgAssetReloader`, `CgHotReload`, `CgReloadable`, `CgReloadListener` |
 | `mc.item` | `CgItemStack` (item, count and all its data as modern's components; facets and `with*` edits; a codec), `CgItems` (the `HOST` slot, `of`/`toHost`/`stampOf`), and `ItemShapes`, `TextComponents`: each era's saved stack projected into components and back, pure on tags. Guide: [`docs/ITEMS.md`](../../../../../../docs/ITEMS.md) |
 | `mc.container` | `CgContainers` (the `HOST` slot, `mirror()`, `act`, the slot and menu records), `ContainerMirror` (deltas: the changed slots, cursor and state), `Action`, `ClickType`, `SlotKind`, `Capabilities`, `MenuTypes` (every 26.3 kind: plain, state or unsupported); built on `CgItemStack`. Guide: [`docs/CONTAINERS.md`](../../../../../../docs/CONTAINERS.md) |
+| `mc.model` | Minecraft's own entity models posed by the engine: `CgVanillaHumanoid` (the humanoid as a skeleton at the game's pivots, its default rig, `parts` writing a pose as the game's part fields), `CgVanillaPoses` (an entity's animation instance; `parts(id, out)` for a host's model setup, `hosted()` once a host applies them). Gate: `CgVanillaHumanoidTest` (headless) |
 
 ## Rules
 

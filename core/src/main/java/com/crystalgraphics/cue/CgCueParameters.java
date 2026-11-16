@@ -1,5 +1,7 @@
 package com.crystalgraphics.cue;
 
+import java.util.Arrays;
+
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.net.object.CgAnchor;
@@ -50,9 +52,9 @@ public final class CgCueParameters {
     private String surface;
     @Nullable
     private CgAnchor anchor;
-    private static final int WRITES = CgCueNet.WRITES;
-    private final String[] writeNames = new String[WRITES];
-    private final float[] writeValues = new float[WRITES * 4];
+    /** Grown past a play's most names, never shrunk: a pooled instance allocates only past its peak. */
+    private String[] writeNames = new String[8];
+    private float[] writeValues = new float[32];
     private int writes;
 
     public CgCueParameters at(double x, double y, double z) {
@@ -156,13 +158,11 @@ public final class CgCueParameters {
 
     /**
      * A {@code writes} value as its four floats, replacing one written before under {@code name}.
-     *
-     * @throws IllegalStateException past {@link CgCueNet#WRITES} names, the most a cue declares
      */
     public CgCueParameters write(String name, float x, float y, float z, float w) {
         int i = writeIndex(name);
         if (i < 0) {
-            if (writes == WRITES) throw new IllegalStateException("a play writes at most " + WRITES + " names: " + name);
+            if (writes == writeNames.length) grow(writes * 2);
             i = writes++;
             writeNames[i] = name;
         }
@@ -194,8 +194,14 @@ public final class CgCueParameters {
         return -1;
     }
 
+    private void grow(int names) {
+        writeNames = Arrays.copyOf(writeNames, names);
+        writeValues = Arrays.copyOf(writeValues, names * 4);
+    }
+
     /** Becomes a copy of {@code other}. */
     public CgCueParameters set(CgCueParameters other) {
+        if (other.writes > writeNames.length) grow(other.writeNames.length);
         x = other.x;
         y = other.y;
         z = other.z;

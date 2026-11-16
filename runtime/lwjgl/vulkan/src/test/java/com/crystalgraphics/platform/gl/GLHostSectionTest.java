@@ -21,11 +21,13 @@ import com.crystalgraphics.platform.rhi.shader.CgShaderModule;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.vulkan.shader.SpvcGlslTranslator;
 import org.junit.Test;
+import org.lwjgl.opengl.GL11;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -86,6 +88,50 @@ public class GLHostSectionTest {
             GLContextState after = new GLContextState();
             host.read(after);
             assertEquals("fields the section left changed", List.of(), differences(before, after));
+            assertEquals("GL errors: " + window.errors, 0, window.errors.size());
+            device.fromHost();
+            device.close();
+            device.toHost();
+        }
+    }
+
+    /**
+     * On a compatibility context (1.7.10's) the attribute stack keeps the host's state across a section: what the host
+     * left is there after it, its alpha test included, read from the driver itself.
+     */
+    @Test
+    public void aCompatibilitySectionLeavesTheHostsStateAsItFoundIt() {
+        try (GLTestWindow window = new GLTestWindow(true)) {
+            CgGLDriver driver = new Lwjgl3GLDriver();
+            hostState();
+            GL11.glEnable(GL11.GL_ALPHA_TEST);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            int texture = glGetInteger(GL_TEXTURE_BINDING_2D);
+
+            CgGLDevice device = new CgGLDevice(driver, new SpvcGlslTranslator(), 64, 64, false, GLHostState.byQuery(driver));
+            device.fromHost();
+            assertFalse("the alpha test off inside the section", glIsEnabled(GL11.GL_ALPHA_TEST));
+            draw(window, device);
+            device.toHost();
+            device.endFrame();
+
+            assertTrue(glIsEnabled(GL_BLEND));
+            assertEquals(GL_ONE, glGetInteger(GL_BLEND_SRC_RGB));
+            assertEquals(GL_ONE, glGetInteger(GL_BLEND_DST_RGB));
+            assertTrue(glIsEnabled(GL_DEPTH_TEST));
+            assertEquals(GL_GREATER, glGetInteger(GL_DEPTH_FUNC));
+            assertFalse(glGetBoolean(GL_DEPTH_WRITEMASK));
+            assertTrue(glIsEnabled(GL_CULL_FACE));
+            assertEquals(GL_FRONT, glGetInteger(GL_CULL_FACE_MODE));
+            int[] viewport = new int[4];
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            assertEquals("[1, 2, 30, 40]", Arrays.toString(viewport));
+            assertEquals(1, glGetInteger(GL_UNPACK_ALIGNMENT));
+            assertEquals(texture, glGetInteger(GL_TEXTURE_BINDING_2D));
+            assertEquals(0, glGetInteger(GL_CURRENT_PROGRAM));
+            assertTrue("the host's alpha test back on", glIsEnabled(GL11.GL_ALPHA_TEST));
+            assertFalse("sRGB writes left on", glIsEnabled(GL_FRAMEBUFFER_SRGB));
+            assertEquals(GL_NEGATIVE_ONE_TO_ONE, glGetInteger(GL_CLIP_DEPTH_MODE));
             assertEquals("GL errors: " + window.errors, 0, window.errors.size());
             device.fromHost();
             device.close();

@@ -1,12 +1,23 @@
 package com.crystalgraphics.world.actor;
 
+import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.api.vertex.CgVertexFormat;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgNetEntities;
+import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.world.CgBoxSink;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.render.scene.component.CgSceneRoot;
+import com.crystalgraphics.world.CgEntityProperties;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -26,7 +37,10 @@ public class CgEntityActorsTest {
     /** One entity, id 7, walking along +x a block a frame. */
     private static final class Walker implements CgEntityQuery {
         double x;
+        int hurtTime;
         boolean here = true;
+        /** Whether it answers facts: a frame it does not keeps the last state. */
+        boolean facts = true;
 
         @Override public int localPlayer() { return -1; }
         @Override public int cameraEntity() { return -1; }
@@ -38,6 +52,14 @@ public class CgEntityActorsTest {
             out[X] = x;
             out[Y] = 64;
             out[BODY_YAW] = 180;
+            return true;
+        }
+
+        @Override
+        public boolean facts(int id, float partialTick, CgEntityFacts out) {
+            if (id != 7 || !here || !facts) return false;
+            out.bits = CgEntityFacts.LIVING | CgEntityFacts.GROUNDED;
+            out.hurtTime = hurtTime;
             return true;
         }
 
@@ -80,7 +102,7 @@ public class CgEntityActorsTest {
 
     @After
     public void leave() {
-        CgEntityActors.left(7);
+        CgNetEntities.left(7);
         if (registration != null) registration.close();
         CgPlatform.provide(CgLevels.HOST, null);
     }
@@ -89,9 +111,9 @@ public class CgEntityActorsTest {
     public void anActorFollowsItsEntityUntilItLeaves() {
         Counting actor = new Counting();
         registration = CgEntityActors.register("test:walker", () -> actor);
-        CgEntityActors.entered(8, "test:nobody");                     // a type with no actor: the host's
+        CgNetEntities.entered(8, "test:nobody");                     // a type with no actor: the host's
         assertNull(CgEntityActors.actor(8));
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertSame(actor, CgEntityActors.actor(7));
         assertTrue("it replaces the vanilla model", CgEntityActors.replacesModel(7));
         assertEquals(1, actor.spawned);
@@ -106,7 +128,7 @@ public class CgEntityActorsTest {
         assertEquals(3, actor.ticks);
         assertTrue("its flags read", actor.sprinting);
 
-        CgEntityActors.left(7);
+        CgNetEntities.left(7);
         assertEquals(1, actor.removed);
         assertTrue("its root removed with it", root.removed());
         assertNull(CgEntityActors.actor(7));
@@ -114,10 +136,38 @@ public class CgEntityActorsTest {
     }
 
     @Test
+    public void anEntitysMotionIsWorkedOutEachFrameItsEventsTrueForTheirFrame() {
+        Counting actor = new Counting();
+        registration = CgEntityActors.register("test:walker", () -> actor);
+        CgNetEntities.entered(7, "test:walker");
+        CgNetObject motion = actor.entity().properties(CgEntityProperties.MOTION);
+        assertSame("made once asked for, the actor's entity's own", motion, CgEntityProperties.MOTION.of(7));
+        CgWorld.client().frame(null);
+        assertFalse(motion.get(CgEntityProperties.HURT));
+        assertTrue("worked out by the frame, before the actor reads it", motion.get(CgEntityProperties.GROUNDED));
+        walker.hurtTime = 10;
+        CgWorld.client().frame(null);
+        assertTrue(motion.get(CgEntityProperties.HURT));
+        assertEquals(0f, motion.get(CgEntityProperties.HURT_TIME), 1e-6);
+        walker.facts = false;
+        CgWorld.client().frame(null);
+        assertFalse("a frame with no facts keeps the values, and nothing happened in it", motion.get(CgEntityProperties.HURT));
+        assertTrue(motion.get(CgEntityProperties.GROUNDED));
+        walker.facts = true;
+        walker.hurtTime = 9;
+        CgWorld.client().frame(null);
+        assertFalse(motion.get(CgEntityProperties.HURT));
+
+        walker.here = false;
+        CgWorld.client().frame(null);
+        assertTrue("ended with its entity", motion.isRemoved());
+    }
+
+    @Test
     public void anEntityTheHostNoLongerAnswersTakesItsActorWithItAndTheHostsDrawsAreStamped() {
         Counting actor = new Counting();
         registration = CgEntityActors.register("test:walker", () -> actor);
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertEquals("never drawn by the host yet", -1, actor.entity().hostFrame());
         CgWorld.client().frame(null);
         CgEntityActors.replacesModel(7);
@@ -134,7 +184,7 @@ public class CgEntityActorsTest {
     public void anEntityBindingBeatsItsTypeAndClosingItGivesTheEntityBack() {
         Counting byType = new Counting(), bound = new Counting();
         registration = CgEntityActors.register("test:walker", () -> byType);
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertSame(byType, CgEntityActors.actor(7));
 
         CgEntityActors.Registration binding = CgEntityActors.bind(7, () -> bound);
@@ -149,13 +199,46 @@ public class CgEntityActorsTest {
         assertEquals(1, byType.removed);
         assertTrue(CgEntityActors.replacesModel(7));
 
-        CgEntityActors.entered(7, "test:walker");                      // the host announces it again: still the binding's
+        CgNetEntities.entered(7, "test:walker");                      // the host announces it again: still the binding's
         assertSame(bound, CgEntityActors.actor(7));
 
         binding.close();
         assertEquals(1, bound.removed);
         assertNull(CgEntityActors.actor(7));
         assertFalse("the host's model again", CgEntityActors.replacesModel(7));
+    }
+
+    /** A body whose right hand is a bone 0.3 to the side, 1.2 up and 0.1 ahead, and whose left hand has a grip socket. */
+    static final class Holding extends CgEntityActor {
+        @Override
+        protected void onSpawn(CgEntity entity) {
+            CgSkeleton skeleton = CgSkeleton.builder().bone("root", null, new Vector3f())
+                    .bone("right_hand", "root", new Vector3f(0.3f, 1.2f, 0.1f))
+                    .bone("left_hand", "root", new Vector3f(-0.3f, 1.2f, 0.1f)).build();
+            CgSkeletalMesh mesh = CgSkeletalMesh.builder(CgMesh.build(CgVertexFormat.SKINNED, m -> {
+            }), skeleton).socket(CgSocket.of("left_hand_item", "left_hand", new Vector3f(0f, -0.1f, 0f))).build();
+            add(scene().skeletal(mesh));
+        }
+    }
+
+    @Test
+    public void anActorsBodyHoldsEachHandsItemAtItsGrip() {
+        registration = CgEntityActors.register("test:walker", Holding::new);
+        CgNetEntities.entered(7, "test:walker");
+        walker.x = 5;
+        CgWorld.client().frame(null);
+        Matrix4f grip = new Matrix4f();
+        Vector3f at = new Vector3f();
+        assertEquals("the main hand in the right arm", CgEntityActors.RIGHT, CgEntityActors.grip(7, CgEntityProperties.MAIN, grip));
+        grip.getTranslation(at);
+        // body yaw 180: the root turned half round, so the hand's +x and +z land at -x and -z of the feet
+        assertEquals(-0.3f, at.x, 1e-4f);
+        assertEquals(1.2f, at.y, 1e-4f);
+        assertEquals(-0.1f, at.z, 1e-4f);
+        assertEquals(CgEntityActors.LEFT, CgEntityActors.grip(7, CgEntityProperties.OFF, grip));
+        grip.getTranslation(at);
+        assertEquals("the off hand at its grip socket, under its hand", 1.1f, at.y, 1e-4f);
+        assertEquals(CgEntityActors.NO_GRIP, CgEntityActors.grip(8, CgEntityProperties.MAIN, grip));
     }
 
     @Test
@@ -167,7 +250,7 @@ public class CgEntityActorsTest {
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("test:walker"));
         }
-        CgEntityActors.entered(7, "test:walker");
+        CgNetEntities.entered(7, "test:walker");
         assertFalse("kept: drawn beside its actor", CgEntityActors.replacesModel(7));
     }
 }

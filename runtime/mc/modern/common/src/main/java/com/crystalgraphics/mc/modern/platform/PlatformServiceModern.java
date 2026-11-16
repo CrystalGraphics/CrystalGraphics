@@ -28,6 +28,7 @@ import com.crystalgraphics.mc.modern.platform.world.NbtModern;
 import com.crystalgraphics.mc.modern.platform.world.HostShapesModern;
 import com.crystalgraphics.mc.modern.platform.world.HostVolumeModern;
 import com.crystalgraphics.mc.modern.platform.world.LevelsModern;
+import com.crystalgraphics.mc.modern.platform.world.EntityMovementModern;
 import com.crystalgraphics.mc.modern.platform.world.MirrorHostModern;
 import com.crystalgraphics.mc.modern.platform.world.PlayersModern;
 
@@ -47,6 +48,7 @@ import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgHostDebug;
 import com.crystalgraphics.platform.world.CgHostShapes;
+import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.platform.world.CgLevels;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.platform.service.CgGameThreads;
@@ -107,6 +109,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgModLoader.HOST, loader);
         CgPlatform.provide(CgGameClasses.HOST, new GameClassesModern());
         CgPlatform.provide(CgLevels.HOST, LevelsModern.INSTANCE);
+        CgPlatform.provide(CgEntityMovement.HOST, EntityMovementModern.INSTANCE);
         CgPlatform.provide(CgPlayers.HOST, PlayersModern.INSTANCE);
         CgPlatform.provide(CgServers.HOST, ServersModern.INSTANCE);
         CgPlatform.provide(CgHostShapes.HOST, new HostShapesModern());

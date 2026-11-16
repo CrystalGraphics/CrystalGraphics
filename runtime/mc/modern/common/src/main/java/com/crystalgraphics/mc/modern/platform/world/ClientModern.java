@@ -2,7 +2,7 @@ package com.crystalgraphics.mc.modern.platform.world;
 
 import net.minecraft.client.Minecraft;
 
-/** The client's halves of the levels and players. Client only: its lambdas name client types the verifier loads. */
+/** The client's halves of the levels, the players and movement. Client only: its lambdas name client types the verifier loads. */
 public final class ClientModern {
 
     private ClientModern() {
@@ -12,5 +12,6 @@ public final class ClientModern {
     public static void install() {
         LevelsModern.INSTANCE.client(new WorldQueryModern(), new EntityQueryModern(), () -> Minecraft.getInstance().level);
         PlayersModern.INSTANCE.client(() -> Minecraft.getInstance().player);
+        EntityMovementModern.INSTANCE.client(InputHoldModern::hold);
     }
 }

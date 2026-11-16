@@ -53,7 +53,8 @@ public final class CgAnimDemo {
             CgKeyCodes.KEY_GRAVE, CgKeyCodes.KEY_BACKSLASH};
 
     private final List<CgKitActor.Spec> kitCharacters;
-    private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation(), new ReachStation(), new RetargetStation());
+    private final List<AnimDemoStation> stations = List.of(new ClipsStation(), new IkStation(), new ReachStation(), new RetargetStation(),
+            new LocomotionStation(), new MotionWarpingStation(), new RootMotionStation());
     private final CgFont labelFont = CgDefaultFont.bold(48);
     /** Each station's name over it: its number, the key that brings the harness's camera to it, then its name. */
     private final String[] titles = new String[stations.size()];

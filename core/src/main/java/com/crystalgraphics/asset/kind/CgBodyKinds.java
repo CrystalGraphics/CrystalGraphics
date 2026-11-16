@@ -9,6 +9,7 @@ import com.crystalgraphics.object.value.CgValueForm;
 
 import static com.crystalgraphics.asset.kind.CgCommonStructs.hard;
 import static com.crystalgraphics.asset.kind.CgCommonStructs.mapOfValues;
+import static com.crystalgraphics.asset.kind.CgCommonStructs.soft;
 import static com.crystalgraphics.object.CgValueType.BOOL;
 import static com.crystalgraphics.object.CgValueType.FLOAT;
 import static com.crystalgraphics.object.CgValueType.INT;
@@ -107,12 +108,30 @@ public final class CgBodyKinds {
             .property("base_frame", INT).forms(CgValueForm.CONSTANT).defaultValue(0).flags(CgPropertyFlag.HEADLESS)
             .register();
 
-    /** {@code clips/}: a clip's settings ({@code UAnimSequence}'s): sync markers, root motion, additive, notifies. */
+    /** A span of a clip whose root motion is bent so the character ends it at a named target. */
+    static final CgType WARP_WINDOW = CgTypes.struct("crystalgraphics:clip.warp_window")
+            .property("target", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("start", FLOAT).forms(CgValueForm.CONSTANT).required().quantity(CgQuantity.TIME).flags(CgPropertyFlag.HEADLESS)
+            .property("end", FLOAT).forms(CgValueForm.CONSTANT).required().quantity(CgQuantity.TIME).flags(CgPropertyFlag.HEADLESS)
+            .property("translation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("ignore_height", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("facing", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("method", CgValueType.enumOf("slerp", "slerp_with_clamped_rate", "constant_rate", "scale")).defaultValue("slerp")
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_time", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_rotation_rate", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_speed_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("yaw_offset", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** {@code clips/}: a clip's settings ({@code UAnimSequence}'s): sync markers, root motion, additive, notifies, warp windows. */
     public static final CgType CLIP = CgTypes.kind("crystalgraphics:clip").folder("clips").version(1)
             .property("sync_markers", CgValueType.listOf(CgValueType.struct(SYNC_MARKER))).flags(CgPropertyFlag.HEADLESS)
             .property("root_motion", CgValueType.struct(ROOT_MOTION)).flags(CgPropertyFlag.HEADLESS)
             .property("additive", CgValueType.struct(ADDITIVE)).flags(CgPropertyFlag.HEADLESS)
             .property("notifies", hard("sequence")).flags(CgPropertyFlag.HEADLESS)
+            .property("warp_windows", CgValueType.listOf(CgValueType.struct(WARP_WINDOW))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     // ── Anim graph ───────────────────────────────────────────────────────────────────────
@@ -462,6 +481,80 @@ public final class CgBodyKinds {
             .property("owner_velocity", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    // ── Locomotion warping ──
+
+    private static final CgValueType WARPING_MODE = CgValueType.enumOf("manual", "graph");
+    static final CgType STRIDE_WARPING_FOOT = CgTypes.struct("crystalgraphics:anim_graph.stride_warping_foot")
+            .property("ik_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("fk_foot_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("thigh_bone", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** Feet fitted to the real speed: strides scaled along the way travelled, the pelvis pulled down, in metres. */
+    static final CgType ANIM_STRIDE_WARPING = controlNode("stride_warping")
+            .property("pelvis", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("ik_foot_root", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("feet", CgValueType.listOf(CgValueType.struct(STRIDE_WARPING_FOOT))).required().flags(CgPropertyFlag.HEADLESS)
+            .property("mode", WARPING_MODE).defaultValue("graph").flags(CgPropertyFlag.HEADLESS)
+            .property("locomotion_speed", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("stride_scale", ALPHA).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("stride_direction", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("min_root_motion_speed", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("scale_clamp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("scale_interp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .property("pelvis_alpha", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("pelvis_max_distance", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("pelvis_stiffness", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("pelvis_damping", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("compensate_thighs", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("clamp_to_fk", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("orient_to_floor", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /** Legs and root turned toward the way travelled, the spine turned back; angles in degrees about +y. */
+    static final CgType ANIM_ORIENTATION_WARPING = controlNode("orientation_warping")
+            .property("ik_foot_root", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("spine_bones", CgValueType.listOf(STRING)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("ik_foot_bones", CgValueType.listOf(STRING)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("mode", WARPING_MODE).defaultValue("graph").flags(CgPropertyFlag.HEADLESS)
+            .property("locomotion_angle", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("orientation_angle", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("distribution", FLOAT).forms(CgValueForm.CONSTANT).range(0, 1).defaultValue(0.5).flags(CgPropertyFlag.HEADLESS)
+            .property("interp_speed", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(10.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_correction", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(180.0).flags(CgPropertyFlag.HEADLESS)
+            .property("min_root_motion_speed", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("flip_beyond", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(90.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    private static final CgValueType OFFSET_ROOT_MODE = CgValueType.enumOf("accumulate", "interpolate", "hold_and_consume",
+            "hold_shrink_and_consume", "hold", "release");
+    /** The body let lag behind the entity and eased back: turn in place. Half-lives in seconds, errors in metres and degrees. */
+    static final CgType ANIM_OFFSET_ROOT_BONE = animNode("offset_root_bone")
+            .property("source", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
+            .property("translation_mode", OFFSET_ROOT_MODE).defaultValue("interpolate").flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_mode", OFFSET_ROOT_MODE).defaultValue("interpolate").flags(CgPropertyFlag.HEADLESS)
+            .property("translation_half_life", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.1).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_half_life", FLOAT).forms(CgValueForm.CONSTANT).quantity(CgQuantity.TIME).defaultValue(0.2).flags(CgPropertyFlag.HEADLESS)
+            .property("max_translation_error", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(-1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("max_rotation_error", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(-1.0).flags(CgPropertyFlag.HEADLESS)
+            .property("translation_speed_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("rotation_speed_ratio", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("on_ground", BOOL).defaultValue(true).flags(CgPropertyFlag.HEADLESS)
+            .property("teleport_distance", FLOAT).forms(CgValueForm.CONSTANT).defaultValue(3.0).flags(CgPropertyFlag.HEADLESS)
+            .register();
+    /**
+     * {@code FAnimNode_SequenceEvaluator}: a clip held at a time set each frame, seconds or a share of the clip (a
+     * constant or a float variable), or matched by distance.
+     */
+    static final CgType ANIM_SEQUENCE_EVALUATOR = animNode("sequence_evaluator")
+            .property("clip", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("time", ALPHA).defaultValue(0.0).flags(CgPropertyFlag.HEADLESS)
+            .property("normalized", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("loop", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("mode", CgValueType.enumOf("explicit", "advance_by_distance", "match_to_target")).defaultValue("explicit")
+            .flags(CgPropertyFlag.HEADLESS)
+            .property("distance", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("curve", STRING).defaultValue("Distance").flags(CgPropertyFlag.HEADLESS)
+            .property("play_rate_clamp", CgValueType.listOf(FLOAT)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     private static final CgValueType AXIS = CgValueType.enumOf("x", "y", "z");
     private static final CgValueType LINEAR_LIMIT = CgValueType.enumOf("free", "limited");
     /** {@code FAnimPhysConstraintSetup}, angles in degrees. */
@@ -621,12 +714,23 @@ public final class CgBodyKinds {
             .property("transitions", CgValueType.listOf(CgValueType.struct(ANIM_TRANSITION))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
+    /** A variable fed by a gameplay tag the entity owns: Unreal's {@code FGameplayTagBlueprintPropertyMapping}. */
+    static final CgType ANIM_TAG = CgTypes.struct("crystalgraphics:anim_graph.tag")
+            .property("tag", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("as", CgValueType.enumOf("bool", "count", "float")).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
     /**
      * {@code anim_graphs/}: an anim blueprint's graph ({@code UAnimBlueprint}): its variables, its nodes by name, the one
-     * whose pose is the output, and its state machines by name.
+     * whose pose is the output, and its state machines by name. {@code entity} binds a variable to one of the entity's
+     * properties by name, {@code entity.<field>} (the engine's) or {@code <type>#<field>} ({@code CgAnimGraph.EntityBinding}),
+     * set each frame by the entity's actor; {@code tags} a variable
+     * to a gameplay tag the entity owns ({@code world.CgEntityTags}).
      */
     public static final CgType ANIM_GRAPH = CgTypes.kind("crystalgraphics:anim_graph").folder("anim_graphs").version(1)
             .property("variables", CgValueType.mapOf(CgValueType.struct(ANIM_VARIABLE))).flags(CgPropertyFlag.HEADLESS)
+            .property("entity", CgValueType.mapOf(STRING)).flags(CgPropertyFlag.HEADLESS)
+            .property("tags", CgValueType.mapOf(CgValueType.struct(ANIM_TAG))).flags(CgPropertyFlag.HEADLESS)
             .property("inputs", CgValueType.listOf(STRING)).flags(CgPropertyFlag.HEADLESS)
             .property("output", NODE_NAME).required().flags(CgPropertyFlag.HEADLESS)
             .property("nodes", CgValueType.mapOf(CgValueType.dispatch(ANIM_NODES))).required().flags(CgPropertyFlag.HEADLESS)
@@ -841,6 +945,45 @@ public final class CgBodyKinds {
             .property("ops", CgValueType.idList(OPS))
             .property("sockets", CgValueType.idList(RETARGET_SOCKET))
             .property("scale_effects", BOOL)
+            .register();
+
+    // ── Actor ────────────────────────────────────────────────────────────────────────────
+
+    /** What an actor draws: the local player, or entities by type id. */
+    static final CgType ACTOR_BINDS = CgTypes.struct("crystalgraphics:actor.binds")
+            .property("local_player", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("entities", CgValueType.listOf(CgValueType.NAMESPACED_ID)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** An entity event playing a sequence on a slot, where a rule over the entity's properties holds. */
+    static final CgType ACTOR_REACTION = CgTypes.struct("crystalgraphics:actor.reaction")
+            .property("event", CgValueType.enumOf("jumped", "landed", "hurt", "swing_started", "use_started", "use_stopped",
+                    "mounted", "dismounted", "died")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("sequence", soft("sequence")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("slot", STRING).defaultValue("DefaultSlot").flags(CgPropertyFlag.HEADLESS)
+            .property("when", CgValueType.struct(ANIM_RULE)).flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /** A held item, by id or {@code #} tag, giving a linked anim layer its graph. */
+    static final CgType ACTOR_ITEM_LAYER = CgTypes.struct("crystalgraphics:actor.item_layer")
+            .property("item", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("layer", STRING).required().flags(CgPropertyFlag.HEADLESS)
+            .property("graph", soft("anim_graph")).required().flags(CgPropertyFlag.HEADLESS)
+            .register();
+
+    /**
+     * {@code actors/}: what draws an entity, a Character Blueprint's defaults: the entities it binds, its prefab, the
+     * graph its body runs, the body whose root motion moves the entity, and its reactions to the entity's events.
+     */
+    public static final CgType ACTOR = CgTypes.kind("crystalgraphics:actor").folder("actors").version(1)
+            .property("binds", CgValueType.struct(ACTOR_BINDS)).required().flags(CgPropertyFlag.HEADLESS)
+            .property("prefab", soft("prefab")).required().flags(CgPropertyFlag.HEADLESS)
+            .property("anim_graph", soft("anim_graph")).flags(CgPropertyFlag.HEADLESS)
+            .property("rig", soft("rig")).flags(CgPropertyFlag.HEADLESS)
+            .property("root_motion", STRING).flags(CgPropertyFlag.HEADLESS)
+            .property("keep_vanilla_model", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS)
+            .property("reactions", CgValueType.listOf(CgValueType.struct(ACTOR_REACTION))).flags(CgPropertyFlag.HEADLESS)
+            .property("item_layers", CgValueType.listOf(CgValueType.struct(ACTOR_ITEM_LAYER))).flags(CgPropertyFlag.HEADLESS)
             .register();
 
     static void register() {

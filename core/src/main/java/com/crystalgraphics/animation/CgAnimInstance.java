@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation;
 
 import java.util.ArrayList;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -16,6 +17,7 @@ import com.crystalgraphics.animation.graph.CgAnimGraphInstance;
 import com.crystalgraphics.animation.graph.CgAnimSlot;
 import com.crystalgraphics.animation.graph.CgAnimVariable;
 import com.crystalgraphics.animation.graph.CgSequencePlayerNode;
+import com.crystalgraphics.animation.warping.CgMotionWarping;
 import com.crystalgraphics.animation.montage.CgMontages;
 import com.crystalgraphics.animation.state.CgAnimStateMachineNode;
 import com.crystalgraphics.api.animation.CgAnimPose;
@@ -68,7 +70,7 @@ public final class CgAnimInstance {
     private final CgMontages montages;
     private final CgAnimPose pose;
     private final Matrix4f[] skinning;
-    private final Matrix4f socketScratch = new Matrix4f();
+    private final Matrix4f socketScratch = new Matrix4f(), rootMotionStep = new Matrix4f();
     @Nullable
     private Consumer<Matrix4d> placedBy;
     private final Matrix4d placement = new Matrix4d();
@@ -202,6 +204,18 @@ public final class CgAnimInstance {
     }
 
     /**
+     * Its motion warping: where the targets its moves' warp windows aim at stand. Set them on the game thread before
+     * and while a window plays.
+     *
+     * <pre>{@code
+     * anim.motionWarping().target("opponent", x, y, z, yaw);
+     * }</pre>
+     */
+    public CgMotionWarping motionWarping() {
+        return montages.motionWarping();
+    }
+
+    /**
      * Sets a variable of its graph, on the game thread; boxes nothing, so it is set every frame freely.
      *
      * @throws IllegalArgumentException where the graph does not declare it
@@ -308,6 +322,7 @@ public final class CgAnimInstance {
             graph.placement(placement);
         }
         graph.ground(ground);
+        graph.rootMotionMode(montages.rootMotionMode());
         graph.preUpdate();
         return this;
     }
@@ -320,6 +335,8 @@ public final class CgAnimInstance {
         graph.update(delta);
         gatherCurves();
         graph.evaluate(pose);
+        // the players' root motion, as the graph's warping nodes left it, joins the montages' for the mover
+        if (graph.rootMotion().hasRootMotion()) montages.accumulateRootMotion(graph.rootMotion().get(rootMotionStep));
         pose.resolve();
         pose.skinning(mesh, skinning);
         evaluations++;
@@ -394,6 +411,7 @@ public final class CgAnimInstance {
      */
     public CgAnimInstance placedBy(@Nullable Consumer<Matrix4d> placedBy) {
         this.placedBy = placedBy;
+        montages.motionWarping().placedBy(placedBy);
         return this;
     }
 

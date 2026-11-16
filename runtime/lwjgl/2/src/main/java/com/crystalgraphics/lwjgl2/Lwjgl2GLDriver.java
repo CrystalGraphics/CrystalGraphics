@@ -47,6 +47,14 @@ public final class Lwjgl2GLDriver implements CgGLDriver {
 
     @Override public boolean glIsEnabled(int cap) { return GL11.glIsEnabled(cap); }
 
+    @Override public void glPushAttrib(int mask) { GL11.glPushAttrib(mask); }
+
+    @Override public void glPopAttrib() { GL11.glPopAttrib(); }
+
+    @Override public void glPushClientAttrib(int mask) { GL11.glPushClientAttrib(mask); }
+
+    @Override public void glPopClientAttrib() { GL11.glPopClientAttrib(); }
+
     @Override public boolean glIsEnabledi(int cap, int index) { return GL30.glIsEnabledi(cap, index); }
 
     @Override public void glObjectLabel(int identifier, int name, String label) { GL43.glObjectLabel(identifier, name, label); }

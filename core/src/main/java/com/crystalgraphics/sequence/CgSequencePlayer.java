@@ -134,6 +134,11 @@ public final class CgSequencePlayer {
     private double drivenTo;
     private boolean drivenWraps;
 
+    /** Whether it plays on a server's world: what an evaluator binding there asks. */
+    public boolean server() {
+        return sequencer.server();
+    }
+
     CgSequencePlayer(CgSequencer sequencer, CgSequenceDefinition definition, Map<String, ? extends CgSequenceTarget> roles) {
         this.sequencer = sequencer;
         this.definition = definition;

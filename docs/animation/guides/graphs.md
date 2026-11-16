@@ -49,6 +49,80 @@ anim.graph(hero(mesh))
 - **Building checks it**: a cycle, a node read twice, a cached pose never saved, an undeclared variable, each throws
   with the graph's id.
 
+### Variables an entity fills: `entity`
+
+A graph that animates a Minecraft entity needs no `onUpdate` for what the entity is doing: it binds its variables to
+the entity's properties, and the entity's actor sets them every frame before the graph runs, on both sides. Unreal's
+gameplay tag property map, over the entity's properties. An entity's properties are a networked type on entities
+([`docs/NETWORKING.md`](../../NETWORKING.md) § *An entity's properties*): the engine's own, `CgEntityProperties.MOTION`,
+named `entity.<field>`, and any of your mod's, named `<type>#<field>`.
+
+```yaml
+# anim_graphs/mymod/hero.yaml
+variables:
+  speed: { type: float }
+  grounded: { type: bool, default: true }
+  draw: { type: float }
+  ki: { type: float }
+entity:
+  speed: entity.speed           # the graph's own name: the property feeding it
+  grounded: entity.grounded
+  draw: entity.use_time
+  ki: mymod:ki#current          # your mod's own type on entities
+```
+
+```java
+CgAnimGraph.builder("mymod:hero", mesh.skeleton())
+        .variables(SPEED, GROUNDED, KI)
+        .entity(SPEED, CgEntityProperties.SPEED)
+        .entity(GROUNDED, CgEntityProperties.GROUNDED)
+        .entity(KI, Ki.TYPE, Ki.CURRENT)          // or .entity(KI, Ki.CURRENT): the one type listing it
+        ...;
+```
+
+| Group | `entity.` names |
+|---|---|
+| Motion, smooth across the frame | `speed`, `vertical_speed`, `move_direction` (degrees against the facing, 90 left), `acceleration`, `turn_rate` |
+| Intent | `input` (0 to 1), `input_direction`, `input_from_player`, `sprint_held`, `jump_held` |
+| Ground and air | `grounded`, `airborne`, `air_time`, `ground_distance`, `land_height` |
+| Stance | `living`, `sneaking`, `sprinting`, `swimming`, `crawling`, `swim_amount`, `gliding`, `spin_attack`, `in_water`, `riding`, `vehicle` (an id, -1 none), `sleeping` |
+| Life | `dead`, `dead_time`, `hurt_time` (seconds since the last hit) |
+| Look | `head_yaw` (against the body), `head_pitch` |
+| Hands | `left_handed`, `main_item` and `off_item` (raw ids), `main_arm` and `off_arm` (an arm pose, int), `using`, `use_hand`, `use_animation` (int), `use_time`, `use_length`, `swinging`, `swing` (0 to 1), `swing_hand` |
+| Events, true for their frame | `jumped`, `landed`, `hurt`, `swing_started`, `use_started`, `use_stopped`, `mounted`, `dismounted`, `died` |
+
+- **Each fails at load, naming it**: a name no type or field has, a field no number or bool, a type not on entities,
+  a graph variable the graph does not declare, or a type that cannot take the value. A float takes any (a bool as 0
+  or 1); a bool or an int only its own type.
+- **What each means**: [`docs/vfx/prefabs.md`](../../vfx/prefabs.md) § *What the entity is doing*. An actor feeds
+  every skeletal mesh it `add`s and every skeletal node of its prefab.
+- A graph's own variable keeps its name: a state machine's rule reads `speed`, never `entity.speed`, so the same graph
+  runs fed by an entity or by a hand-written `onUpdate`.
+- A mod's type is declared before the graph loads. Until the entity has an object of it on a side, a field reads its
+  `fallback`; a local type's object is made when first read.
+
+**A tag the entity owns** (`CgEntityTags`, [`docs/vfx/networking.md`](../../vfx/networking.md) § *Tags an entity
+owns*) feeds a variable the same way: Unreal's gameplay tag property map. A bool is whether the tag is owned, an int
+its count, a float its count; `as` says otherwise for a float. A tag counts the tags under it.
+
+```yaml
+variables:
+  flying: { type: bool }
+  stacks: { type: int }
+  stunned: { type: float }
+tags:
+  flying: { tag: mymod:state.flying }               # owned, mymod:state.flying.fast included
+  stacks: { tag: mymod:buff.rage }                  # its count
+  stunned: { tag: mymod:state.stunned, as: bool }   # 0 or 1, into a float a blend reads
+```
+
+```java
+builder.variables(FLYING).tag(FLYING, CgTagRegistry.global().require("mymod:state.flying"));
+```
+
+- **Each fails at load, naming it**: a tag no one declared, an undeclared variable, an `as` its type cannot take, or a
+  variable bound both to an entity property and to a tag.
+
 ### The nodes
 
 | Node | Unreal | Does |
@@ -147,6 +221,8 @@ if (hero.anim().montages().consumeRootMotion(1f, step)) mover.move(step);   // a
   blends in there.
 - **One montage moves the character at a time** (`CgRootMotionMode.FROM_MONTAGES_ONLY`, Unreal's default): a root-motion
   montage played stops the one moving it. Its root is held at its clip's lock while it moves the character.
+  `FROM_EVERYTHING` adds every playing clip's motion at its weight: what locomotion warping reads
+  ([locomotion.md](locomotion.md)).
 - **Gameplay moments are `event` sections** of side `rpg` (a hit window above), heard as every sequence's events are.
 
 ## Layers and cached poses
@@ -337,6 +413,55 @@ nodes:
   idle: { clip: mymod:goku/idle }
   run:  { blend_space: mymod:goku/run }
 ```
+
+### The humanoid template: `crystalgraphics:humanoid`
+
+The engine ships a graph for any humanoid body, Minecraft's own set of states driven by the entity's properties: give
+it your clips in a child graph and an actor plays a full character with no graph of your own.
+
+```yaml
+# anim_graphs/mymod/knight.yaml
+_v: 1
+parent: crystalgraphics:humanoid
+nodes:
+  idle:       { clip: mymod:knight/idle }
+  walk:       { clip: mymod:knight/walk }
+  run:        { clip: mymod:knight/run }
+  sneak_idle: { clip: mymod:knight/crouch }
+  sneak_walk: { clip: mymod:knight/crouch_walk }
+  fall:       { clip: mymod:knight/fall }
+  swim:       { clip: mymod:knight/swim }
+  crawl:      { clip: mymod:knight/crawl }
+  glide:      { clip: mymod:knight/glide }
+  ride:       { clip: mymod:knight/sit }
+  sleep:      { clip: mymod:knight/sleep }
+  dead:       { clip: mymod:knight/death }
+  swing:      { clip: mymod:knight/swing }   # held at Minecraft's own swing progress, over the upper body
+```
+
+| Node | Plays while (`entity.*`), the first that holds | Loops |
+|---|---|---|
+| `dead` | `dead` | no |
+| `sleep` | `sleeping` | yes |
+| `ride` | `riding` | yes |
+| `glide` | `gliding` | yes |
+| `swim` | `swimming` | yes |
+| `crawl` | `crawling` | yes |
+| `fall` | `airborne` | yes |
+| `sneak_walk` | `sneaking` and `speed` over 0.3 | yes |
+| `sneak_idle` | `sneaking` | yes |
+| `run` | `sprinting` and `speed` over 0.3 | yes |
+| `walk` | `speed` over 0.3 blocks a second | yes |
+| `idle` | otherwise | yes |
+
+- **Each state leaves** once its own rule stops holding or a state above it starts, through a conduit, then into the
+  first state that holds.
+- **Over the states**: an `upper_body` linked layer (empty: the states' own pose), which an actor's `item_layers` fill
+  with a weapon's arms; an `UpperBody` slot; the swing, held at `entity.swing` (0 to 1) from the `spine_01` branch while
+  `entity.swinging`; and `DefaultSlot` over everything, for whole-body moves and reactions.
+- **The swing's mask names `spine_01`**, the standard humanoid's: a body with other bone names overrides `with_swing`'s
+  layers in its child, as any node.
+- **Bound as it is, it fails** naming one of its clips (`crystalgraphics:humanoid/<node>`): they are placeholders.
 
 ## Linked layers and linked graphs
 

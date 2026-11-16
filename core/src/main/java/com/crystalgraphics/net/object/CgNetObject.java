@@ -113,6 +113,9 @@ public final class CgNetObject {
     int[] eventSpans = new int[6];
     int eventCount;
 
+    /** A local type's: made by this side for an entity, never sent, ended when the entity leaves. */
+    boolean localObject;
+
     /** What it is on this side; on a client, the client holding it. */
     @Nullable
     CgNetBehaviour behaviour;
@@ -140,6 +143,7 @@ public final class CgNetObject {
     CgNetObject(CgNetType type, boolean server) {
         this.type = type;
         this.server = server;
+        if (server) type.markUsed();
         int n = type.fields.length;
         bits = new long[n];
         refs = new Object[n];
@@ -245,6 +249,19 @@ public final class CgNetObject {
         if (predicting) client.submit(this, true);
         else CgNetObjects.fire(this);
         return this;
+    }
+
+    /** Starts it as this side's own object on an entity: a local type's, never sent. */
+    void startLocal(@Nullable Object entity, int entityId) {
+        localObject = true;
+        kind = CgAnchor.Kind.ENTITY;
+        holder = entity;
+        this.entityId = entityId;
+        state = LIVE;
+    }
+
+    void endLocal() {
+        state = REMOVED;
     }
 
     private void pending() {
@@ -466,6 +483,16 @@ public final class CgNetObject {
         return bits[primitive(field, CgNetField.Kind.BOOL)] != 0;
     }
 
+    /**
+     * A primitive field's value as a float, whatever its kind (a bool 0 or 1): for a reader that takes any number, as an
+     * animation variable does. Allocates nothing.
+     *
+     * @throws IllegalArgumentException for a codec field, or one its type does not list
+     */
+    public float getNumber(CgNetField<?> field) {
+        return CgNetField.number(field.kind, bits[type.require(field)]);
+    }
+
     private int primitive(CgNetField<?> field, CgNetField.Kind kind) {
         if (field.kind != kind) throw new IllegalArgumentException(field + " is not " + kind);
         return type.require(field);
@@ -475,6 +502,11 @@ public final class CgNetObject {
 
     public <V> CgNetObject set(CgNetField<V> field, V value) {
         int i = type.require(field);
+        if (field.local) {
+            if (field.kind == CgNetField.Kind.CODEC) refs[i] = value;
+            else bits[i] = field.bitsOf(Objects.requireNonNull(value, "a primitive field's value"));
+            return this;
+        }
         if (field.kind == CgNetField.Kind.CODEC) {
             if (predictLocally(i)) {
                 refs[i] = value;
@@ -535,6 +567,11 @@ public final class CgNetObject {
     }
 
     private CgNetObject setBits(int i, long value) {
+        // a local field is this side's own: either side writes it, and nothing is sent
+        if (type.fields[i].local) {
+            bits[i] = value;
+            return this;
+        }
         if (predictLocally(i)) {
             bits[i] = value;
             client.predicted(this, i, type.fields[i].box(value));
@@ -627,8 +664,13 @@ public final class CgNetObject {
     }
 
     private <P> CgNetObject emit(CgNetEvent<P> event, @Nullable P value, boolean toOwner) {
-        if (!server) throw new IllegalStateException("an event is the server's to emit");
         int index = type.requireEvent(event);
+        // a local object's event is heard on its own side, at once
+        if (localObject) {
+            if (state == LIVE) type.deliver(this, index, value);
+            return this;
+        }
+        if (!server) throw new IllegalStateException("an event is the server's to emit");
         if (state == PENDING) throw new IllegalStateException(this + " is not live: start it first");
         if (state == REMOVED) return this;
         if (events == null) events = new NetBuffer(128);

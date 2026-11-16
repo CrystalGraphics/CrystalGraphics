@@ -140,10 +140,22 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
             NeoForge.EVENT_BUS.addListener(Events::onRegisterCommands);
             NeoForge.EVENT_BUS.addListener(Events::onPlayerJoin);
             NeoForge.EVENT_BUS.addListener(Events::onPlayerLeave);
+            // Entities joining and leaving the server's levels, for their actors there
+            NeoForge.EVENT_BUS.addListener(Events::onServerEntityJoin);
+            NeoForge.EVENT_BUS.addListener(Events::onServerEntityLeave);
 
             // A SEPARATE CLASS, not a branch here: naming a client-only event type in a method of
             // Events would resolve it when a dedicated server links this class.
             if (FmlSide.isClient(FMLLoader.class)) ModBus.register(modBus);
+        }
+
+        // Server levels only: a client level's are ModBus's.
+        private static void onServerEntityJoin(EntityJoinLevelEvent event) {
+            if (!event.getLevel().isClientSide()) LifecycleModern.entityJoinedServer(event.getEntity());
+        }
+
+        private static void onServerEntityLeave(EntityLeaveLevelEvent event) {
+            if (!event.getLevel().isClientSide()) LifecycleModern.entityLeftServer(event.getEntity());
         }
 
         private static void onServerStarting(ServerAboutToStartEvent event) {

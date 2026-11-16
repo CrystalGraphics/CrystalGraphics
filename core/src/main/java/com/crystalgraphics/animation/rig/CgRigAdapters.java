@@ -9,7 +9,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * The rig adapters by name: {@link #CRYSTALGRAPHICS} and {@link #GECKOLIB} ship, and a library adds its own.
+ * The rig adapters by name: {@link #CRYSTALGRAPHICS}, {@link #GECKOLIB} and {@link #VANILLA} ship, and a library adds
+ * its own.
  *
  * <pre>{@code
  * CgRigAdapter a = CgRigAdapters.get("geckolib");
@@ -44,11 +45,18 @@ public final class CgRigAdapters {
         }
     };
 
+    /**
+     * Minecraft's own entity models, drawn by the game: their parts face -z and each turns about a pivot the game sets
+     * where the engine's pose puts it ({@code mc.model.CgVanillaHumanoid}, applied in the host's model setup).
+     */
+    public static final CgRigAdapter VANILLA = CgRigAdapter.of("vanilla", new Vector3f(0f, 0f, -1f));
+
     private static final Map<String, CgRigAdapter> BY_NAME = new ConcurrentHashMap<>();
 
     static {
         register(CRYSTALGRAPHICS);
         register(GECKOLIB);
+        register(VANILLA);
     }
 
     private CgRigAdapters() {

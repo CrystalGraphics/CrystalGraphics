@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.legacy.platform.actor;
 
 import com.crystalgraphics.mc.legacy.platform.world.LevelEntityQueryLegacy;
+import com.crystalgraphics.net.object.CgNetEntities;
 import com.crystalgraphics.world.actor.CgEntityActors;
 import net.minecraft.client.renderer.entity.Render;
 import net.minecraft.entity.Entity;
@@ -32,7 +33,7 @@ public final class ActorsLegacy {
             /*World world = event.world;
             Entity entity = event.entity;
             *///?}
-            if (world.isRemote) CgEntityActors.entered(entity.getEntityId(), LevelEntityQueryLegacy.typeOf(entity));
+            if (world.isRemote) CgNetEntities.entered(entity.getEntityId(), LevelEntityQueryLegacy.typeOf(entity));
         }
     }
 

@@ -1,6 +1,7 @@
 package com.crystalgraphics.animation.montage;
 
 import java.util.Arrays;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.Objects;
 
 import javax.annotation.Nullable;
@@ -263,6 +264,8 @@ public final class CgMontageInstance implements CgAnimAssetPlayer {
         if (moved == 0f || !playing) return;
         if (extractsRootMotion()) {
             clip.extractRootMotion(montages.skeleton(), from, moved, loop, step);
+            // a warp window bends the step toward its target; a loop's wrap is never inside one
+            if (!(loop && to < from)) montages.motionWarping().process(clip, montages.skeleton(), from, to, moved, step);
             montages.accumulateRootMotion(step);
         }
         markerSync = canUseMarkerSync();

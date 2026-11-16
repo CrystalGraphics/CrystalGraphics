@@ -11,6 +11,7 @@
 | `CgIkMath` | `AnimationCore`'s solvers: two-bone, aim, swing-twist, find-between, ZYX Euler |
 | `CgModifyBoneNode`, `CgTwoBoneIkNode`, `CgLookAtNode`, `CgCopyBoneNode`, `CgFabrikNode`, `CgCcdIkNode`, `CgConstraintNode`, `CgApplyLimitsNode`, `CgBoneDrivenControllerNode` | Each its `AnimNode_*.cpp`, cited in its javadoc |
 | `CgLegIkNode`, `CgFootPlacementNode` | Leg IK (two-bone or FABRIK per leg) and Foot Placement (the AnimationWarping plugin's): feet swept onto the ground on the game thread (`preUpdate`, through the instance's `CgAnimGround`), planted, aligned, the pelvis lowered |
+| `CgStrideWarpingNode`, `CgOrientationWarpingNode`, `CgOffsetRootBoneNode` | Locomotion warping: strides scaled to the real speed (the pelvis pulled down, thighs turned, a vector RK4 spring), legs turned toward the way travelled with the spine turned back, the root held off the entity and eased back (turn in place). `GRAPH` mode (`CgWarpingMode`) reads and replaces the graph's root motion from everything (`CgAnimGraphInstance.rootMotion`); `CgWarpInput` is a number or a float variable. Gates: `CgLocomotionWarpingKakarotTest` (Goku's loops from a crawl to twice his sprint, and strafing), `locomotion.CgLocomotionWarpingTest` (headless) |
 | `CgSpringBoneNode`, `CgAnimDynamicsNode` | The spring controller (120 Hz fixed steps) and AnimDynamics: boxes on joints over `CgAnimPhys`, in component, world, root or bone space |
 
 ## Rules

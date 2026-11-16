@@ -642,8 +642,8 @@ thing:
 
 - `level` is a level, an entity in it, or a dimension id (`"minecraft:overworld"`).
 - **A point-anchored object can move**: `obj.moveTo(x, y, z)`; who is in range is worked out again.
-- **One object may reach further or nearer than its type**: `.range(blocks)` before `start()` or `fire()`. One type
-  whose objects differ, as every cue's do (`crystalgraphics:cue`), sets it per object.
+- **One object may reach further or nearer than its type**: `.range(blocks)` before `start()` or `fire()`. A type
+  whose objects differ, as a cue's do, sets it per object.
 - **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server.
   `obj.entity()` is the entity on either side: the server's, or the one of `obj.entityId()` in a client's level.
 - **A player who is away** (logged out) leaves a player-anchored object waiting, `obj.isDormant()`, unless the type
@@ -681,10 +681,51 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
   CgNetObject mine = MANA_BAR.find(Minecraft.getInstance().player);   // client
   if (mine != null) mine.send(CAST, spell);
   ```
+- **`find(entityId)` and `of(entityId)`** are a client's `find` and `of` by the entity's network id, for code holding
+  the id rather than the entity; they allocate nothing. `of(id)` makes only a `local()` type's object (a sent type's are
+  the server's), and on the server's thread both throw: an id names no entity there without its level. A number or bool
+  field reads as a float with `getNumber(field)`, whatever its kind: how an animation graph reads `mymod:ki#current`.
 - **`persisted()`** keeps it with the world ([§13](#13-saving-with-the-world)).
 - **`copyOnDeath()`** keeps a player's object through death; without it, dying despawns it.
 - **`visibleToTrackers()`** lets the players around them see it too: a health bar over their head.
 - A per-holder type's objects come only from `of` and `ofChunk`; `spawn` throws.
+
+### An entity's properties: a type on entities
+
+A per-holder type is how you give any of the game's entities properties of your own: a mod's ki, a form, a gear.
+`onEntities` puts one object on every entity whose type it accepts, made as the entity appears on each side and ended
+as it leaves; there is nothing to call per entity.
+
+```java
+public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");      // the server's, sent
+public static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();    // each side's own, never sent
+public static final CgNetEvent<Void> CHARGED = CgNetEvent.of("charged");
+
+public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR).events(CHARGED)
+        .onEntities(type -> type.equals("minecraft:player"))
+        .onServer(obj -> new KiRegen())         // its tick(), each server tick
+        .onClient(obj -> new KiGear())          // its frame(obj, seconds), each client frame
+        .build();
+
+KI.of(player).get(CURRENT);                     // either side
+KI.of(player).setFloat(CURRENT, 80f);           // the server
+KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on the clients that see it
+```
+
+- **A `local()` field is kept on each side and never sent or saved**: a value each side works out for itself, which
+  either side's code writes. It is the one thing a client may write on an object that is not its prediction.
+- **A type whose fields are all local never touches the wire**: each side makes its own objects, and its events are
+  heard on the side that emits them. It cannot be `persisted()` or take commands.
+- **Behaviours run before the frame's actors read them**: on the server each tick (`NET_IN`), on a client each frame
+  (`BEGIN`, a behaviour's `frame`). A client's local objects end when its level changes, or when its host no longer
+  has the entity (Forge before 1.13 says nothing when an entity leaves).
+- **Hosts say when entities come and go once**, through `CgNetEntities`; a type declared at init hears every
+  entity from then.
+- **The same type as a file**: a `net_type` asset (`assets/mymod/net_types/ki.yaml` declares
+  `mymod:ki`), compiled as the game starts on each side, before any entity enters or anyone connects. Its fields are
+  `{ kind, fallback, sync: all | owner | local, initial_only, predicted }`, its events `{ payload }`, and `entities`
+  a list of entity type ids, `players` or `all`. Reach it with `CgNetType.named("mymod:ki")` and `field("current")`;
+  a Java declaration of the same shape is the same type (`docs/vfx/networking.md` § *Your own data on an entity*).
 
 ---
 

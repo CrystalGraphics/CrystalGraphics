@@ -669,7 +669,40 @@ public final class CrystalGraphicsForge implements VariantEntry {
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerJoin);
             MinecraftForge.EVENT_BUS.addListener(ServerEvents::onPlayerLeave);
             //?}
+            // Entities joining and leaving the server's levels, for their actors there: no leave event before 1.16.5.
+            //? if >=1.21.6 {
+            /*EntityJoinLevelEvent.BUS.addListener(ServerEvents::onEntityJoin);
+            EntityLeaveLevelEvent.BUS.addListener(ServerEvents::onEntityLeave);
+            *///?} elif >=1.16.5 {
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onEntityJoin);
+            MinecraftForge.EVENT_BUS.addListener(ServerEvents::onEntityLeave);
+            //?} else {
+            /*MinecraftForge.EVENT_BUS.addListener(ServerEvents::onEntityJoin);
+            *///?}
         }
+
+        // Server levels only: a client level's are Events'.
+        //? if >=1.19 {
+        private static void onEntityJoin(EntityJoinLevelEvent event) {
+            if (!event.getLevel().isClientSide()) LifecycleModern.entityJoinedServer(event.getEntity());
+        }
+
+        private static void onEntityLeave(EntityLeaveLevelEvent event) {
+            if (!event.getLevel().isClientSide()) LifecycleModern.entityLeftServer(event.getEntity());
+        }
+        //?} elif >=1.16.5 {
+        /*private static void onEntityJoin(EntityJoinWorldEvent event) {
+            if (!event.getWorld().isClientSide()) LifecycleModern.entityJoinedServer(event.getEntity());
+        }
+
+        private static void onEntityLeave(EntityLeaveWorldEvent event) {
+            if (!event.getWorld().isClientSide()) LifecycleModern.entityLeftServer(event.getEntity());
+        }
+        *///?} else {
+        /*private static void onEntityJoin(EntityJoinWorldEvent event) {
+            if (!event.getWorld().isClientSide()) LifecycleModern.entityJoinedServer(event.getEntity());
+        }
+        *///?}
 
         //? if >=1.18 {
         private static void onServerStarting(ServerAboutToStartEvent event) {

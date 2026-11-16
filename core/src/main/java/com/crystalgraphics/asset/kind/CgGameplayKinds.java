@@ -159,6 +159,35 @@ public final class CgGameplayKinds {
             .property("look", CgValueType.string("^(none|[a-z0-9_]+)$"))
             .register();
 
+    /** What a net type's field holds: a primitive or a string (a codec type is Java's alone). */
+    private static final CgValueType NET_KIND = CgValueType.enumOf("bool", "int", "long", "float", "double", "string");
+
+    /** One field of a net type: its kind, what it reads before it is held, and who is sent it. */
+    static final CgType NET_FIELD = CgTypes.struct("crystalgraphics:net_type.field")
+            .property("kind", NET_KIND).required()
+            .property("fallback", VALUE)
+            .property("sync", CgValueType.enumOf("all", "owner", "local")).defaultValue("all")
+            .property("initial_only", BOOL).defaultValue(false)
+            .property("predicted", BOOL).defaultValue(false)
+            .register();
+
+    /** One event of a net type, and the kind of its payload; none without one. */
+    static final CgType NET_EVENT = CgTypes.struct("crystalgraphics:net_type.event")
+            .property("payload", NET_KIND)
+            .register();
+
+    /**
+     * {@code net_types/}: a networked type declared as data, the replicated properties of a class, compiled into the type
+     * a mod would declare in Java; {@code entities} says which entities hold one. Read on a dedicated server.
+     */
+    public static final CgType NET_TYPE = CgTypes.kind("crystalgraphics:net_type").folder("net_types").version(1)
+            .property("fields", CgValueType.mapOf(CgValueType.struct(NET_FIELD))).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .property("events", CgValueType.mapOf(CgValueType.struct(NET_EVENT))).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .property("persisted", BOOL).defaultValue(false).flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .property("entities", CgValueType.oneOf(CgValueType.listOf(CgValueType.NAMESPACED_ID), CgValueType.enumOf("players", "all")))
+            .required().flags(CgPropertyFlag.HEADLESS, CgPropertyFlag.STRUCTURAL)
+            .register();
+
     static void register() {
     }
 }

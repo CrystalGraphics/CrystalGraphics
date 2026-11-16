@@ -33,6 +33,8 @@ public class CgItemStackTest {
             @Override public int maxDamage(Object stack) { return 1561; }
             @Override public int stamp(Object stack) { return ((Fake) stack).saved().hashCode(); }
             @Override public CgItems.Shape shape() { return shape; }
+            @Override public String name(int itemId) { return null; }
+            @Override public boolean inTag(int itemId, String tag) { return false; }
         };
     }
 

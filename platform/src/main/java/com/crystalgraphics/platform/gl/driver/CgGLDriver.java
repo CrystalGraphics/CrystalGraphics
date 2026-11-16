@@ -271,6 +271,18 @@ public interface CgGLDriver {
 
     void glDisable(int cap);
 
+    /**
+     * A compatibility context's attribute stack: what a host section keeps of the host's state with no round trip
+     * ({@code GLStateQuery}). A core context has none: never called there.
+     */
+    void glPushAttrib(int mask);
+
+    void glPopAttrib();
+
+    void glPushClientAttrib(int mask);
+
+    void glPopClientAttrib();
+
     void glEnablei(int cap, int index);
 
     void glDisablei(int cap, int index);

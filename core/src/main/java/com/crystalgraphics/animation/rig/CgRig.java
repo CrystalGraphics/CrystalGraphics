@@ -109,6 +109,23 @@ public final class CgRig {
         return new Builder(id, adapter);
     }
 
+    /**
+     * A builder holding everything this rig has: a detected rig given what its names cannot say.
+     *
+     * <pre>{@code
+     * CgRig goku = CgRigs.detect(skeleton, CgRigAdapters.CRYSTALGRAPHICS).toBuilder().carried("AttachPoint_r").build();
+     * }</pre>
+     */
+    public Builder toBuilder() {
+        Builder b = new Builder(id, adapter);
+        b.model = model;
+        b.root = root;
+        b.pelvis = pelvis;
+        b.chains.addAll(chains);
+        b.carried.addAll(carried);
+        return b;
+    }
+
     /** Registers {@link #COMPILER} as the rig kind's. */
     public static void register() {
         CgAssetCompiler.register(CgBodyKinds.RIG, COMPILER);
@@ -320,6 +337,7 @@ public final class CgRig {
             throw new IllegalArgumentException(id + ": no chain " + name);
         }
 
+        /** An animated bone that is not the body's (an effect's dummy): a retarget keeps its motion, adding it to a target that lacks it. */
         public Builder carried(String bone) {
             carried.add(bone);
             return this;

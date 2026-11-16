@@ -69,7 +69,8 @@ public interface CgAnimAssetPlayer {
     float currentAssetTimePlayRateAdjusted();
 
     /**
-     * Each clip it samples after its tick, at its time and its share of {@code weight}: what the curves sum. A sequence
+     * Each clip it samples after its tick, at its time, how far that time moved in the tick (seconds, signed, a wrap
+     * counted) and its share of {@code weight}: what the curves sum and root motion is extracted over. A sequence
      * player gives one; a blend space each relevant sample.
      */
     void forEachSample(float weight, SampleSink sink);
@@ -77,6 +78,6 @@ public interface CgAnimAssetPlayer {
     /** Hears a clip a player samples this frame. */
     @FunctionalInterface
     interface SampleSink {
-        void sample(CgAnimSequence clip, float time, float weight);
+        void sample(CgAnimSequence clip, float time, float moved, float weight);
     }
 }

@@ -40,6 +40,9 @@ import com.crystalgraphics.sequence.definition.CgSequenceTrack;
  *   <li>A section names its slot ({@code slot}, {@link CgAnimGraph#DEFAULT_SLOT} where it names none); a slot the
  *       character's graph lacks plays nothing, as in Unreal. A {@code stop} section plays the slot's source through
  *       ({@link CgAnimSlot#stop}).</li>
+ *   <li><b>On a server</b> too: a role with a headless instance plays its montage there, so its root motion moves its
+ *       entity ({@code CgEntityActor.rootMotion}). A role with none plays nothing there; a client fails it at
+ *       bind.</li>
  * </ul>
  */
 public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
@@ -93,11 +96,20 @@ public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
     }
 
     @Override
+    public boolean headless() {
+        return true;
+    }
+
+    @Override
     public void bind(CgSequencePlayer player, CgSequenceTrack track, @Nullable CgSequenceSection section) {
         CgSequenceTarget target = player.target(track);
         if (target == null || section == null) return;
         String at = player.definition().id() + ": tracks." + track.id() + ".sections." + section.id();
-        if (!(target instanceof CgSequenceSkeletal skeletal)) throw new CgAssetException(at + ": " + target + " plays no animation");
+        if (!(target instanceof CgSequenceSkeletal skeletal)) {
+            // a server's role may carry no body: its clients animate it
+            if (player.server()) return;
+            throw new CgAssetException(at + ": " + target + " plays no animation");
+        }
         if (section.blend() != null && section.blend() != CgSequenceSection.Blend.ABSOLUTE) {
             throw new CgAssetException(at + ": a " + section.blend().name().toLowerCase(Locale.ROOT) + " animation is not played yet");
         }
@@ -119,7 +131,8 @@ public final class CgSequenceAnimationEvaluator implements CgSequenceEvaluator {
         if (section.fields().get("start_offset") instanceof Number ticks) b.startOffset((float) d.seconds(ticks.intValue()));
         Object loop = section.fields().get("loop");
         if (Boolean.TRUE.equals(loop) || loop instanceof Number n && n.intValue() > 1) b.loop();
-        String slot = section.fields().get("slot") instanceof String name ? name : CgAnimGraph.DEFAULT_SLOT;
+        String slot = skeletal.montageSlot() != null ? skeletal.montageSlot()
+                : section.fields().get("slot") instanceof String name ? name : CgAnimGraph.DEFAULT_SLOT;
         player.data(track, section, new Bound(montage(player, skeletal), b.build(), slot));
     }
 

@@ -6,6 +6,12 @@ import com.crystalgraphics.animation.rig.CgRigs;
 import com.crystalgraphics.api.animation.CgAnimPose;
 import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.api.animation.CgSkeleton;
+import com.crystalgraphics.api.animation.CgSkeletonDefinition;
+import com.crystalgraphics.api.animation.CgSocket;
+import com.crystalgraphics.api.mesh.CgSkeletalMesh;
+import com.crystalgraphics.asset.codec.CgAssetYaml;
+import com.crystalgraphics.mc.model.CgVanillaHumanoid;
+import com.crystalgraphics.object.value.CgUnits;
 import com.crystalgraphics.api.mesh.CgMeshLoader;
 import com.crystalgraphics.api.mesh.geckolib.CgGeckoModel;
 import org.joml.Quaternionf;
@@ -17,10 +23,14 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -111,6 +121,121 @@ public class CgRetargetKakarotTest {
         assertTrue(frames > 0);
         assertTrue("every hand reaches its goal: " + worstGoal, worstGoal < 0.01f);
         assertTrue("every hand points from its shoulder as the source's: " + worstAngle, worstAngle < 3f);
+    }
+
+    @Test
+    public void everyBoneAndSocketOfGokusResolvesOnTheHumanoidAndHisDummiesKeepTheirMotion() throws IOException {
+        CgSkeletalMesh gokuMesh = CgMeshLoader.skeletal(KK.resolve("models/Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1.glb")
+                .toAbsolutePath().toString());
+        CgSkeleton goku = gokuMesh.skeleton();
+        Map<?, ?> units = (Map<?, ?>) CgAssetYaml.read(Files.readString(KK.resolve("units.yaml")));
+        Map<?, ?> tree = (Map<?, ?>) CgAssetYaml.read(Files.readString(KK.resolve("skeletons/Art/MDL/Cpl/Cpl001/Model/Cpl001p1_Skeleton.yaml")));
+        List<CgSocket> sockets = CgSkeletonDefinition.compile("kk:goku", tree, CgUnits.of(units.get("units"), CgUnits.HOST)).socketsOn(goku);
+        Path geo = KK.resolve("humanoid/geo/model.geo.json");
+        CgSkeletalMesh humanoidMesh = CgGeckoModel.read(Files.readString(geo), geo.toString()).mesh();
+        CgRig from = CgRigs.detect(goku, CgRigAdapters.CRYSTALGRAPHICS).toBuilder()
+                .carried("AttachPoint").carried("AttachPoint_l").carried("AttachPoint_r").build();
+        CgRig to = CgRigs.detect(humanoidMesh.skeleton(), CgRigAdapters.GECKOLIB);
+        CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(goku, from, humanoidMesh.skeleton(), to), goku,
+                humanoidMesh.skeleton());
+        CgSkeletalMesh target = p.mesh(humanoidMesh, sockets);
+
+        // what a move names is one of his bones or his sockets: each found on the target by name
+        List<String> names = new ArrayList<>();
+        for (int b = 0; b < goku.boneCount(); b++) names.add(goku.name(b));
+        for (CgSocket s : sockets) names.add(s.name());
+        for (String name : names) {
+            assertTrue(name + " resolves", target.skeleton().indexOfIgnoringCase(name) >= 0 || target.socket(name) != null);
+        }
+
+        // a carried dummy keeps its reach from the hand through every frame, scaled
+        CgSkeleton tgt = target.skeleton();
+        int srcPoint = goku.indexOf("AttachPoint_r"), srcHand = goku.indexOf("hand_r");
+        int point = tgt.indexOf("AttachPoint_r"), hand = tgt.indexOf("right_hand_locator");
+        assertTrue("added on the hand", tgt.parent(point) == hand);
+        CgAnimPose in = new CgAnimPose(goku), out = new CgAnimPose(tgt);
+        Vector3f a = new Vector3f(), b = new Vector3f(), c = new Vector3f();
+        float worst = 0f;
+        int frames = 0;
+        try (Stream<Path> s = Files.list(KK.resolve("models/Art/ANM/cpl/C001A/BTL"))) {
+            for (Path f : s.filter(f -> f.toString().endsWith(".glb")).sorted().toList()) {
+                for (CgAnimSequence clip : CgMeshLoader.sequences(f.toAbsolutePath().toString())) {
+                    for (int k = 0; k < clip.frameCount(); k += 4) {
+                        clip.sample(in, (float) (k / clip.frameRate()));
+                        p.run(in, out);
+                        float want = in.resolve().component(srcPoint).getTranslation(a).distance(in.component(srcHand).getTranslation(b))
+                                * p.heightRatio();
+                        float got = at(out, point, a).distance(at(out, hand, c));
+                        worst = Math.max(worst, Math.abs(got - want));
+                        frames++;
+                    }
+                }
+            }
+        }
+        System.out.printf("[retarget] %d names resolve; AttachPoint_r's reach off by at most %.4f m over %d frames%n",
+                names.size(), worst, frames);
+        assertTrue("the dummy's reach kept: " + worst, worst < 0.002f);
+    }
+
+    @Test
+    public void gokusBattleClipsBakeAtLoadOntoTheHumanoidAndAVanillaZombieAndAnOwnClipWins() throws IOException {
+        CgSkeleton goku = CgMeshLoader.skeletal(KK.resolve("models/Art/MDL/Cpl/Cpl001/Model/Cpl001p1c01s1.glb").toAbsolutePath()
+                .toString()).skeleton();
+        CgRig from = CgRigs.detect(goku, CgRigAdapters.CRYSTALGRAPHICS);
+        Map<String, CgAnimSequence> clips = new LinkedHashMap<>();
+        try (Stream<Path> s = Files.list(KK.resolve("models/Art/ANM/cpl/C001A/BTL"))) {
+            for (Path f : s.filter(f -> f.toString().endsWith(".glb")).sorted().toList()) {
+                for (CgAnimSequence clip : CgMeshLoader.sequences(f.toAbsolutePath().toString())) clips.put(clip.name(), clip);
+            }
+        }
+        List<String> names = new ArrayList<>(clips.keySet());
+        String replaced = names.get(0);
+
+        Path geo = KK.resolve("humanoid/geo/model.geo.json");
+        CgGeckoModel model = CgGeckoModel.read(Files.readString(geo), geo.toString());
+        CgSkeleton humanoid = model.mesh().skeleton();
+        CgAnimSequence idle = model.animations(KK.resolve("humanoid/animations/core/styles/default/idle.animation.json")
+                .toAbsolutePath().toString()).get(0).sequence();
+        CgSkeleton zombie = CgVanillaHumanoid.SKELETON;
+
+        CgRetargetBake.clear();
+        for (CgSkeleton target : List.of(humanoid, zombie)) {
+            CgRig to = CgRigs.detect(target, target == zombie ? CgRigAdapters.VANILLA : CgRigAdapters.GECKOLIB);
+            CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(goku, from, target, to), goku, target);
+            // the humanoid has its own animation for one move: a mod's GeckoLib clip in its place
+            Map<String, CgAnimSequence> own = target == humanoid ? Map.of(replaced, idle) : Map.of();
+            CgClipResolver resolver = new CgClipResolver(own::get, clips::get, p);
+            resolver.bakeAll(names);   // what a prepare step runs on workers before READY
+            for (String name : names) {
+                if (own.containsKey(name)) continue;
+                assertTrue(name + " baked before play", CgRetargetBake.isCached(p, clips.get(name)));
+            }
+            for (String name : names) assertNotNull(name + " binds", resolver.resolve(name));
+            if (target == humanoid) assertSame("its own clip plays in place of the retargeted one", idle, resolver.resolve(replaced));
+            assertThrows(IllegalArgumentException.class, () -> resolver.resolve("no_such_move"));
+        }
+
+        // the zombie's rigid arms point from the shoulder where Goku's hands are
+        CgRetargetProcessor p = new CgRetargetProcessor(CgRetargeter.auto(goku, from, zombie, CgVanillaHumanoid.rig()), goku, zombie);
+        int[] srcHand = {goku.indexOf("hand_l"), goku.indexOf("hand_r")}, srcShoulder = {goku.indexOf("upperarm_l"), goku.indexOf("upperarm_r")};
+        int[] hand = {zombie.indexOf("left_hand"), zombie.indexOf("right_hand")}, shoulder = {zombie.indexOf("left_arm"), zombie.indexOf("right_arm")};
+        CgAnimPose in = new CgAnimPose(goku), out = new CgAnimPose(zombie);
+        Vector3f a = new Vector3f(), b = new Vector3f(), c = new Vector3f(), d = new Vector3f();
+        float worst = 0f;
+        for (CgAnimSequence clip : clips.values()) {
+            for (int k = 0; k < clip.frameCount(); k += 2) {
+                clip.sample(in, (float) (k / clip.frameRate()));
+                p.run(in, out);
+                for (int h = 0; h < 2; h++) {
+                    Vector3f tgt = at(out, hand[h], a).sub(at(out, shoulder[h], b), c);
+                    Vector3f src = p.sourcePosition(srcHand[h], a).sub(p.sourcePosition(srcShoulder[h], b), d);
+                    if (src.length() > 0.05f) worst = Math.max(worst, (float) Math.toDegrees(tgt.angle(src)));
+                }
+            }
+        }
+        System.out.printf("[retarget] %d clips bound on both bodies; the zombie's arms point within %.2f deg of Goku's%n",
+                names.size(), worst);
+        assertTrue("the zombie's arms point as Goku's: " + worst, worst < 3f);
     }
 
     /** The middle of the source's shoulders. */

@@ -31,6 +31,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.service.CgI18n;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.platform.service.CgGameDirectory;
+import com.crystalgraphics.platform.world.CgEntityFacts;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgCameraManager;
 import com.crystalgraphics.platform.world.CgWorldBegin;
@@ -325,6 +326,16 @@ public final class CgWorldProbe {
         boolean[] found = new boolean[1];
         entities.within(px - 1, py - 1, pz - 1, px + 1, py + 2, pz + 1, id -> found[0] |= id == player);
         check("entity.within", found[0], "box round the player");
+        // Its animation facts by their own route, against flags()'s: the same ground, sneak, sprint and water.
+        CgEntityFacts facts = new CgEntityFacts();
+        boolean read = entities.facts(player, host.partialTick(), facts);
+        int[][] pairs = {{CgEntityFacts.GROUNDED, CgEntityQuery.ON_GROUND}, {CgEntityFacts.SNEAKING, CgEntityQuery.SNEAKING},
+                {CgEntityFacts.SPRINTING, CgEntityQuery.SPRINTING}, {CgEntityFacts.IN_WATER, CgEntityQuery.IN_WATER}};
+        boolean agree = read && facts.has(CgEntityFacts.LIVING) && !facts.has(CgEntityFacts.DEAD);
+        for (int[] p : pairs) agree &= facts.has(p[0]) == ((flags & p[1]) != 0);
+        check("entity.facts", agree, String.format("read %s, bits %s against flags %s, vehicle %d, hands %d %d, use %d",
+                read, Integer.toBinaryString(facts.bits), Integer.toBinaryString(flags), facts.vehicle,
+                facts.item[CgEntityFacts.MAIN], facts.item[CgEntityFacts.OFF], facts.use[CgEntityFacts.MAIN]));
 
         int bx = floor(px), bz = floor(pz);
         check("world.loaded", world.loaded(bx, bz), "column " + bx + " " + bz);

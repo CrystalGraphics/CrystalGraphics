@@ -67,6 +67,10 @@ public class CgBibleGateTest {
         List<String> found = new ArrayList<>();
         for (CgType kind : CgAssetKinds.all()) {
             String name = kind.id().substring(kind.id().indexOf(':') + 1);
+            if (!Files.exists(spec.resolve("schema/" + name + ".schema.json"))) {
+                found.add(name + ": declared, no schema");
+                continue;
+            }
             JsonObject schema = schema(name);
             new Walk(schema.has("$defs") ? schema.getAsJsonObject("$defs") : new JsonObject(), found)
                     .struct(name, schema, kind, new HashSet<String>(), null);

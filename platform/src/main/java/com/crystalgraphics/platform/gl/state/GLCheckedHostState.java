@@ -12,7 +12,9 @@ import java.util.function.BooleanSupplier;
 /**
  * A host's state as its own cache holds it, so a section opens without a driver round trip: each
  * {@link GLHostState.Domain}'s first {@value #CHECKS} reads are compared with {@code glGet}, and a domain that disagrees,
- * or that the cache does not answer, reads {@code glGet} from then on, logged once.
+ * or that the cache does not answer, reads {@code glGet} from then on, logged once; on a compatibility context such a
+ * domain is kept by the attribute stack instead, pushed as the section opens and popped as it closes, where a group
+ * holds it.
  *
  * <pre>{@code
  * GLHostCache cache = new GLHostCache(GlStateManager.class, 8, GlStateManager::setActiveTexture, driverUnit);
@@ -127,11 +129,16 @@ public class GLCheckedHostState implements GLHostState {
             }
             if ((fallback & bit) == 0) {
                 fallback |= bit;
-                LOG.info("[cg] {}'s cache holds no {}: read with glGet", host, d);
+                LOG.info("[cg] {}'s cache holds no {}: {}", host, d, query.attribBits(d) != 0 ? "kept by the attribute stack" : "read with glGet");
             }
-            CgTrace.add(GL, DRIVER_READS[d.ordinal()], 1);
-            query.read(d, into);
+            if (query.attribBits(d) != 0) {
+                query.carry(d, into);
+            } else {
+                CgTrace.add(GL, DRIVER_READS[d.ordinal()], 1);
+                query.read(d, into);
+            }
         }
+        query.push();
     }
 
     @Override
@@ -149,6 +156,7 @@ public class GLCheckedHostState implements GLHostState {
     @Override
     public void conventions(CgGLDriver gl) {
         GLStateQuery.defaults(gl, clipZeroToOne);
+        query.pop();
         query.alphaBack(gl);
     }
 

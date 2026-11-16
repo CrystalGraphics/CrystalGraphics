@@ -1,6 +1,9 @@
 package com.crystalgraphics.animation.montage;
 
 import java.util.ArrayList;
+import com.crystalgraphics.animation.warping.CgMotionWarping;
+import com.crystalgraphics.animation.graph.CgRootMotionParams;
+import com.crystalgraphics.animation.graph.CgRootMotionMode;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -64,6 +67,7 @@ public final class CgMontages {
     private CgMontageInstance rootMotionMontage;
     private CgRootMotionMode mode = CgRootMotionMode.FROM_MONTAGES_ONLY;
     private final CgRootMotionParams rootMotion = new CgRootMotionParams();
+    private final CgMotionWarping warping = new CgMotionWarping();
     private long frame;
     private int[] eventKinds = new int[4];
     private CgMontageInstance[] eventMontages = new CgMontageInstance[4];
@@ -73,6 +77,14 @@ public final class CgMontages {
     /** A character of {@code skeleton}'s; its anim instance makes it. */
     public CgMontages(CgSkeleton skeleton) {
         this.skeleton = Objects.requireNonNull(skeleton, "skeleton");
+    }
+
+    /**
+     * Its motion warping: the targets its root-motion montage's warp windows aim at. {@code anim.motionWarping()}
+     * hands out the same.
+     */
+    public CgMotionWarping motionWarping() {
+        return warping;
     }
 
     CgSkeleton skeleton() {
@@ -142,8 +154,12 @@ public final class CgMontages {
     /** {@code ZERO_ANIMWEIGHT_THRESH}. */
     private static final float ZERO_WEIGHT = 0.00001f;
 
-    void accumulateRootMotion(Matrix4f step) {
-        if (mode == CgRootMotionMode.FROM_MONTAGES_ONLY) rootMotion.accumulate(step);
+    /**
+     * {@code step} added to the root motion the mover consumes, where the mode extracts any: a montage's step, or the
+     * graph's players' under {@link CgRootMotionMode#FROM_EVERYTHING}. Its instance calls it.
+     */
+    public void accumulateRootMotion(Matrix4f step) {
+        if (mode == CgRootMotionMode.FROM_MONTAGES_ONLY || mode == CgRootMotionMode.FROM_EVERYTHING) rootMotion.accumulate(step);
     }
 
     /** Hears its montages blend in, blend out and end. */

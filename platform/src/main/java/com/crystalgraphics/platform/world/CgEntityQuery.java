@@ -107,6 +107,19 @@ public interface CgEntityQuery {
     int kind(int id);
 
     /**
+     * Entity {@code id}'s animation facts at {@code partialTick}, into {@code out}: what it does, holds and uses. False,
+     * with {@code out} untouched, when there is no such entity, and where the host does not say (a test's fake level).
+     * Core's {@code CgEntityProperties.MOTION} is worked out from it; read that instead.
+     *
+     * <pre>{@code
+     * if (entities.facts(id, partialTick, facts) && facts.has(CgEntityFacts.SLEEPING)) ...
+     * }</pre>
+     */
+    default boolean facts(int id, float partialTick, CgEntityFacts out) {
+        return false;
+    }
+
+    /**
      * Entity {@code id}'s type, its entry in the host's entity registry: what {@code CgEntityActors.register} names.
      *
      * <pre>{@code

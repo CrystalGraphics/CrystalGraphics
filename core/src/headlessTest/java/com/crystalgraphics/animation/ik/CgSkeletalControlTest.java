@@ -251,6 +251,11 @@ public class CgSkeletalControlTest {
                 .planar(new CgAnimDynamicsNode.PlanarLimit(null, new Vector3f(0f, -5f, 0f), new Vector3f(0f, 1f, 0f)));
         n = CgLegIkNode.of(n).leg(CgLegIkNode.Leg.of("side", "d").bones(3).rotationLimit(20f).hinge(CgLegIkNode.Axis.Z))
                 .soft(0.95f, 0.5f);
+        n = CgStrideWarpingNode.of(n, "a", "root").foot("side", "d", "b").manual(x).scaleClamp(0.5f, 1.5f).scaleInterp(4f, 2f)
+                .pelvis(0.4f, 0.2f, 20f, 1f);
+        n = CgOrientationWarpingNode.of(n, "root").spine("a", "b").ikFeet("side").manual(x).interp(8f, 90f).distribution(0.4f);
+        n = CgOffsetRootBoneNode.of(n).rotation(CgOffsetRootBoneNode.Mode.HOLD, 0.3f, 45f)
+                .translation(CgOffsetRootBoneNode.Mode.RELEASE, 0.15f, 0.5f).teleportDistance(2f);
         return CgAnimGraph.builder("test:controls", CHAIN).variables(x, weight, on).output(n).build();
     }
 
