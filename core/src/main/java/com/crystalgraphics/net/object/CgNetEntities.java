@@ -56,6 +56,9 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
 
+    /** A player's entity type id, on every version, as the hosts name it: what a net type's {@code entities: players} accepts. */
+    public static final String PLAYER = "minecraft:player";
+
     /** One side's objects of one type. */
     private static final class Side {
         /** Local objects: by entity on the server, by network id on a client. */
@@ -210,8 +213,8 @@ public final class CgNetEntities extends CgWorldSubsystem {
 
     /** {@code entity} (server) or entity {@code id} (client) of {@code entityType} appeared: its types' objects made. */
     private static void attach(boolean onServer, @Nullable Object entity, int id, String entityType) {
-        for (CgNetType type : CgNetType.REGISTERED) {
-            if (type.entityTypes == null || !type.entityTypes.test(entityType)) continue;
+        for (CgNetType type : CgNetType.ON_ENTITIES) {
+            if (!type.entityTypes.test(entityType)) continue;
             ensure(onServer);
             if (type.localOnly) {
                 if (onServer) server(type, entity, true);

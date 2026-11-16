@@ -7,7 +7,7 @@ import java.util.List;
 import com.crystalgraphics.object.CgType;
 
 /**
- * The format's 27 asset kinds ({@code docs/vfx/assets.md} § The kinds), each declared once with its structs, elements
+ * The format's 28 asset kinds ({@code docs/vfx/assets.md} § The kinds), each declared once with its structs, elements
  * and dispatch families, read by the codec, validation, the editor and replication alike.
  *
  * <pre>{@code
@@ -49,10 +49,11 @@ public final class CgAssetKinds {
                 CgLookKinds.PARAMETERS, CgLookKinds.CURVE_KIND, CgLookKinds.TEXT_STYLE, CgLookKinds.WIDGET, CgBodyKinds.PREFAB,
                 CgBodyKinds.SKELETON, CgBodyKinds.CLIP, CgBodyKinds.ANIM_GRAPH, CgBodyKinds.BLEND_SPACE,
                 CgBodyKinds.SPRINGS, CgBodyKinds.RIG, CgBodyKinds.RETARGETER, CgSequenceKinds.SEQUENCE, CgSequenceKinds.FIGURE,
-                CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgStageKinds.STAGE));
+                CgCameraKinds.CAMERA_RIG, CgCameraKinds.SHAKE, CgGameplayKinds.CUE, CgGameplayKinds.NET_TYPE,
+                CgStageKinds.STAGE));
     }
 
-    /** The 27 kinds, particles first. */
+    /** The 28 kinds, particles first. */
     public static List<CgType> all() {
         register();
         return all;

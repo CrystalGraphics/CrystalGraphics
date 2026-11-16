@@ -26,7 +26,10 @@ import com.crystalgraphics.net.object.CgNetField;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.serialization.CgCodecs;
 
-/** An entity's properties named by a graph: the engine's as entity.*, a mod's as type#field, written, read and refused at load by name. */
+/**
+ * An entity's properties named by a graph: the engine's as entity.*, a mod's as type#field, written, read and refused at
+ * load by name.
+ */
 public class CgEntityPropertiesTest {
 
     private static final CgAnimVariable<Float> SPEED = CgAnimVariable.floating("speed");

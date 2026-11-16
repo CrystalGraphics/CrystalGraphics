@@ -642,8 +642,8 @@ thing:
 
 - `level` is a level, an entity in it, or a dimension id (`"minecraft:overworld"`).
 - **A point-anchored object can move**: `obj.moveTo(x, y, z)`; who is in range is worked out again.
-- **One object may reach further or nearer than its type**: `.range(blocks)` before `start()` or `fire()`. One type
-  whose objects differ, as every cue's do (`crystalgraphics:cue`), sets it per object.
+- **One object may reach further or nearer than its type**: `.range(blocks)` before `start()` or `fire()`. A type
+  whose objects differ, as a cue's do, sets it per object.
 - **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server.
   `obj.entity()` is the entity on either side: the server's, or the one of `obj.entityId()` in a client's level.
 - **A player who is away** (logged out) leaves a player-anchored object waiting, `obj.isDormant()`, unless the type
@@ -721,6 +721,11 @@ KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on t
   has the entity (Forge before 1.13 says nothing when an entity leaves).
 - **Hosts say when entities come and go once**, through `CgNetEntities`; a type declared at init hears every
   entity from then.
+- **The same type as a file**: a `net_type` asset (`assets/mymod/net_types/ki.yaml` declares
+  `mymod:ki`), compiled as the game starts on each side, before any entity enters or anyone connects. Its fields are
+  `{ kind, fallback, sync: all | owner | local, initial_only, predicted }`, its events `{ payload }`, and `entities`
+  a list of entity type ids, `players` or `all`. Reach it with `CgNetType.named("mymod:ki")` and `field("current")`;
+  a Java declaration of the same shape is the same type (`docs/vfx/networking.md` § *Your own data on an entity*).
 
 ---
 

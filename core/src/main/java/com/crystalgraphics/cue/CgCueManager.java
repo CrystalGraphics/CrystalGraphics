@@ -361,7 +361,7 @@ public final class CgCueManager extends CgWorldSubsystem {
      *
      * <ul>
      *   <li>{@code at} must name its anchor, or it throws: the server is asked through it.</li>
-     *   <li>The server says which predictions it takes: {@code CgCueNet.TYPE.acceptPredictionsFrom(...)}.</li>
+     *   <li>The server says which predictions it takes: {@code CgCueNet.acceptPredictionsFrom(...)}.</li>
      * </ul>
      */
     public CgCuePlaying predict(CgGameplayTag tag, CgCueParameters at, CgPredictionKey key) {
@@ -479,7 +479,7 @@ public final class CgCueManager extends CgWorldSubsystem {
     /** A play a server sent: by its cue's id, {@code age} seconds old. Its view's; null for a burst. */
     @Nullable
     CgCuePlaying received(CgNetObject obj, CgCueParameters at, float age) {
-        Route r = byId.computeIfAbsent(obj.get(CgCueNet.CUE), id -> new Route(null, assets.declare(CgGameplayKinds.CUE, id)));
+        Route r = byId.computeIfAbsent(CgCueNet.cueOf(obj), id -> new Route(null, assets.declare(CgGameplayKinds.CUE, id)));
         CgCuePlaying p = null;
         if (!obj.isFired()) {
             p = handle();

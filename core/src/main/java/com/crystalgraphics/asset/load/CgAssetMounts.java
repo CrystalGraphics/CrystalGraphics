@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.locks.LockSupport;
 import java.util.regex.Pattern;
 
 import javax.annotation.Nullable;
@@ -86,6 +87,39 @@ public final class CgAssetMounts {
         List<Path> dev = new ArrayList<>();
         for (File f : CgIO.overrideRoots()) dev.add(f.toPath());
         namespaces = mount(CgVfxAssets.instance().registry(), dev, CgModLoader.roots()).mounted();
+        declareNetTypes(CgVfxAssets.instance());
+    }
+
+    /**
+     * Every {@code net_type} asset compiled now, at pre-init on each side: its type is declared before any entity
+     * enters a level and before anyone connects, whose hello names its namespace. Small files, read once.
+     * {@link #mount()} calls it; a tool or a test holding its own assets calls it after its scan.
+     *
+     * <pre>{@code
+     * registry.scanResources(folder);
+     * CgAssetMounts.declareNetTypes(new CgVfxAssets(registry));
+     * CgNetType form = CgNetType.named("mymod:form");
+     * }</pre>
+     */
+    public static void declareNetTypes(CgVfxAssets assets) {
+        List<CgAssetRef<?>> refs = new ArrayList<>();
+        for (CgAssetEntry e : assets.registry().entries(CgGameplayKinds.NET_TYPE)) {
+            if (e.redirect() == null) refs.add(assets.declare(CgGameplayKinds.NET_TYPE, e.id()));
+        }
+        if (refs.isEmpty()) return;
+        assets.load(refs, CgLoadPriority.PLAYING);
+        long deadline = System.nanoTime() + 30_000_000_000L;
+        while (true) {
+            assets.drain();
+            boolean done = true;
+            for (CgAssetRef<?> r : refs) done &= r.state().atLeast(CgAssetState.COMPILED) || r.state() == CgAssetState.FAILED;
+            if (done) break;
+            if (System.nanoTime() > deadline) throw new IllegalStateException("the net types did not compile in 30 s");
+            LockSupport.parkNanos(50_000);
+        }
+        for (CgAssetRef<?> r : refs) {
+            if (r.state() == CgAssetState.FAILED) LOGGER.error("net_type {} failed, so it is declared nowhere: {}", r.id(), r.failure());
+        }
     }
 
     /**

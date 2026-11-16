@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
@@ -91,6 +92,11 @@ public final class CgNetType {
     private static final Pattern NAME = Pattern.compile("[a-z0-9_.-]+:[a-z0-9_./-]+");
 
     static final List<CgNetType> REGISTERED = new CopyOnWriteArrayList<>();
+    private static final Map<String, CgNetType> BY_NAME = new ConcurrentHashMap<>();
+    /** The types {@link Builder#onEntities} put on entities: what an entity's arrival asks. */
+    static final List<CgNetType> ON_ENTITIES = new CopyOnWriteArrayList<>();
+    /** The types that have had an object or a refusal: the per-tick counters' loop, never every declared type. */
+    static final List<CgNetType> USED = new CopyOnWriteArrayList<>();
 
     final String name;
     final String namespace;
@@ -130,6 +136,7 @@ public final class CgNetType {
     int tickLive, tickViewers, tickBytes;
     /** Refusals already counted onto the trace. */
     long refusalsTraced;
+    private volatile boolean used;
     /** Its {@code CgChannels.NET} counters' names, interned once. */
     final int traceLive, traceViewers, traceBytes, traceRefused;
     /** By field index: what {@link #onChange} installed. */
@@ -345,9 +352,37 @@ public final class CgNetType {
 
         public CgNetType build() {
             synchronized (REGISTERED) {
-                for (CgNetType other : REGISTERED) {
-                    if (other.name.equals(name)) throw new IllegalStateException("Type '" + name + "' is already declared");
+                if (BY_NAME.containsKey(name)) throw new IllegalStateException("Type '" + name + "' is already declared");
+                return register();
+            }
+        }
+
+        /**
+         * This type, declared now, or the one already declared under its name if it has the same shape: what a compiler
+         * calls each time it compiles the asset declaring a type, as a reload does. The answer's own fields and events
+         * are the ones to use, found by name.
+         *
+         * <pre>{@code
+         * CgNetType type = CgNetType.define(id).fields(fieldsFromTheFile).buildOnce();
+         * CgNetField<?> current = type.field("current");
+         * }</pre>
+         *
+         * @throws IllegalStateException when a type of its name is declared with other fields, events or rules: its
+         *                               shape is fixed until a restart
+         */
+        public CgNetType buildOnce() {
+            synchronized (REGISTERED) {
+                CgNetType declared = BY_NAME.get(name);
+                if (declared == null) return register();
+                if (!declared.sameShape(this)) {
+                    throw new IllegalStateException(name + " changed its fields, events or rules while declared: restart to change them");
                 }
+                return declared;
+            }
+        }
+
+        private CgNetType register() {
+            {
                 for (CgNetField<?> field : fields) {
                     field.freeze();
                     for (CgNetCommand<?> command : commands) {
@@ -362,6 +397,8 @@ public final class CgNetType {
                 if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
                 CgNetType type = new CgNetType(this, REGISTERED.size());
                 REGISTERED.add(type);
+                BY_NAME.put(name, type);
+                if (type.entityTypes != null) ON_ENTITIES.add(type);
                 if (type.persisted) CgNetObjects.declaredLate(type);
                 return type;
             }
@@ -684,6 +721,58 @@ public final class CgNetType {
         }
     }
 
+    /** Whether {@code b} declares what this type is: its fields, events and commands by name and rule, and its rules. */
+    private boolean sameShape(Builder b) {
+        if (fields.length != b.fields.size() || events.length != b.events.size()) return false;
+        for (int i = 0; i < fields.length; i++) {
+            CgNetField<?> f = fields[i], g = b.fields.get(i);
+            if (!f.name.equals(g.name) || f.kind != g.kind || f.initialOnly != g.initialOnly || f.ownerOnly != g.ownerOnly
+                    || f.skipOwner != g.skipOwner || f.serverOnly != g.serverOnly || f.local != g.local
+                    || (f.command == null) != (g.command == null) || f.fallbackBits != g.fallbackBits
+                    || !Objects.equals(f.fallback, g.fallback)) {
+                return false;
+            }
+        }
+        for (int i = 0; i < events.length; i++) if (!events[i].name.equals(b.events.get(i).name)) return false;
+        List<String> commandNames = new ArrayList<>();
+        for (CgNetCommand<?> c : b.commands) commandNames.add(c.name);
+        for (CgNetField<?> f : b.fields) if (f.command != null) commandNames.add(f.command.name);
+        if (commands.length != commandNames.size()) return false;
+        for (int i = 0; i < commands.length; i++) if (!commands[i].name.equals(commandNames.get(i))) return false;
+        return range == b.range && persisted == b.persisted && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
+                && visibleToTrackers == b.visibleToTrackers && linger == b.linger && predictionTimeout == b.predictionTimeout
+                && keepRefused == b.keepRefused && (entityTypes == null) == (b.entityTypes == null)
+                && (visibleTo == null) == (b.visibleTo == null);
+    }
+
+    /**
+     * Its field named {@code name}: how code holding a type declared from data, by {@link Builder#buildOnce()}, reaches
+     * its fields.
+     *
+     * @throws IllegalArgumentException naming the type, where it lists no such field
+     */
+    public CgNetField<?> field(String name) {
+        for (CgNetField<?> field : fields) if (field.name.equals(name)) return field;
+        throw new IllegalArgumentException(this.name + " has no field " + name);
+    }
+
+    /** Its event named {@code name}. */
+    public CgNetEvent<?> event(String name) {
+        for (CgNetEvent<?> event : events) if (event.name.equals(name)) return event;
+        throw new IllegalArgumentException(this.name + " has no event " + name);
+    }
+
+    /** Counts it in the per-tick traffic from its first object or refusal on. */
+    void markUsed() {
+        if (used) return;
+        synchronized (USED) {
+            if (!used) {
+                USED.add(this);
+                used = true;
+            }
+        }
+    }
+
     /** Whether its fields are all {@link CgNetField#local()}: never sent, each side keeping its own objects. */
     public boolean isLocal() {
         return localOnly;
@@ -697,11 +786,7 @@ public final class CgNetType {
     /** The declared type named {@code name}, or null: what a frame, a prediction or an asset names. */
     @Nullable
     public static CgNetType named(String name) {
-        for (int i = 0; i < REGISTERED.size(); i++) {
-            CgNetType type = REGISTERED.get(i);
-            if (type.name.equals(name)) return type;
-        }
-        return null;
+        return BY_NAME.get(name);
     }
 
     @Override

@@ -16,6 +16,7 @@ import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
+import com.crystalgraphics.asset.tree.CgAssetException;
 import com.crystalgraphics.object.CgPropertyMeta;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.vfx.look.CgVfxParam;
@@ -100,8 +101,16 @@ public record CgCueDefinition(String id, @Nullable CgGameplayTag tag, Kind kind,
                               boolean persisted, Prediction prediction, List<Field> fields, @Nullable String sequence,
                               @Nullable String look) {
 
-    /** The cue kind's compiler. */
-    public static final CgAssetCompiler<CgCueDefinition> COMPILER = CgCueCompiler::compile;
+    /** The cue kind's compiler: the cue, its networked type declared on this side ({@code CgCueNet}). */
+    public static final CgAssetCompiler<CgCueDefinition> COMPILER = (asset, deps) -> {
+        CgCueDefinition cue = CgCueCompiler.compile(asset, deps);
+        try {
+            CgCueNet.declare(cue);
+        } catch (IllegalStateException changed) {
+            throw new CgAssetException(changed.getMessage());
+        }
+        return cue;
+    };
 
     /** Sets {@link #COMPILER} as the cue kind's. {@code CgBuiltInCompilers.register} calls it. */
     public static void register() {

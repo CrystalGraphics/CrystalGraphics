@@ -364,7 +364,7 @@ public final class CgNetObjects {
     /** Sends this tick's spawns, changes, moves and despawns, one frame per player. Server thread. */
     public static void serverTick() {
         tick = CgEngineLifecycle.serverTicks();
-        List<CgNetType> types = CgNetType.REGISTERED;
+        List<CgNetType> types = CgNetType.USED;
         for (int t = 0; t < types.size(); t++) {
             CgNetType type = types.get(t);
             type.tickLive = type.tickViewers = type.tickBytes = 0;
@@ -405,7 +405,7 @@ public final class CgNetObjects {
     public static String report() {
         StringBuilder out = new StringBuilder();
         int types = 0, objects = 0;
-        for (CgNetType type : CgNetType.REGISTERED) {
+        for (CgNetType type : CgNetType.USED) {
             long refused = type.refusals();
             if (type.tickLive == 0 && type.tickBytes == 0 && refused == 0) continue;
             types++;
@@ -812,6 +812,7 @@ public final class CgNetObjects {
         if (!allowed) {
             command.refused++;
             obj.type.refusedCommands++;
+            obj.type.markUsed();
             in.skip(length);
             return;
         }
@@ -901,7 +902,10 @@ public final class CgNetObjects {
             }
         }
         if (!accepted) {
-            if (type != null) type.refusedPredictions++;
+            if (type != null) {
+                type.refusedPredictions++;
+                type.markUsed();
+            }
             viewer.refuse(key);
             return;
         }

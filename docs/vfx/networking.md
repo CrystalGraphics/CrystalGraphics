@@ -116,6 +116,32 @@ entity:
   ki: mymod:mana#current
 ```
 
+The same type as a file, with no Java: a `net_type` asset, compiled at startup on each side into the type
+its id names, on the entities it lists as they enter a level.
+
+```yaml
+# assets/mymod/net_types/mana.yaml                 -> the type mymod:mana
+_v: 1
+fields:
+  current: { kind: float, fallback: 100.0 }          # sync: all, unless said
+  regen:   { kind: float, sync: owner }              # the holder's own client only
+  shown:   { kind: bool, sync: local }               # each side's own, never sent
+events:
+  burst: {}                                          # or { payload: float }
+entities: players                                    # or all, or [ minecraft:zombie, mymod:fighter ]
+```
+
+```java
+CgNetType mana = CgNetType.named("mymod:mana");      // either side, once mounted
+CgNetObject bar = mana.of(player);
+bar.setFloat((CgNetField<Float>) mana.field("current"), 80f);
+```
+
+- A file and a Java declaration of the same shape are one type: a mod may declare it either way, never both differently.
+- `kind` is `bool`, `int`, `long`, `float`, `double` or `string`; a codec field is Java's.
+- A reload that changes its fields, events or entities fails by name until a restart; a field's fallback is part of its
+  shape.
+- `persisted: true` fails at load for now: an entity's properties are not yet saved with it.
 - Every rule a networked field has applies: `ownerOnly()`, `serverOnly()`, prediction (`docs/NETWORKING.md`).
 - What the engine works out for itself each frame on each side (speed, ground, hands) is never sent: it is the
   entity's state ([`prefabs.md`](prefabs.md) § *What the entity is doing*).
@@ -288,7 +314,6 @@ cues.execute(MYMOD_CUE_HIT_SPARK, hit);
   does, through the tag's parents, and answers null for no cue). Ask once and keep the answer: `get()` loads the cue
   now if it has not compiled.
 - A looping play starts with them, then its providers (`beam.writes(...)`) take over each frame.
-- At most 32 names a play, as a cue declares.
 
 ### Where a play stands, which way it faces, how big it is
 
@@ -442,6 +467,9 @@ beam.field("level", 3);                                     // one of the cue's 
 CgCueManager.client().onNetworked(play -> play.writes("BeamLength", ...));   // a cue that is not authoritative: computed here
 ```
 
+- **Each cue is a networked type of its own**, `mymod:cue/beam` for `mymod:beam`, declared as the cue compiles at
+  startup on each side: its `writes` and `fields` are its fields, as many as it names. A reload that changes them fails
+  by the cue's id until a restart.
 - **Who sees it** is the anchor's: the players tracking what it is on, or everyone within the cue's `range` of a point
   (64 blocks unwritten). `CgAnchor.on(entity)` for an actor, `CgAnchor.at(level, x, y, z)` for a place; a client's
   `predict` needs one too, since the server is asked through it.
@@ -491,4 +519,3 @@ CgSequenceNet.acceptJumps((player, section) -> !player.section().equals("recover
   corrects a simulated montage. **The owner** keeps its own jumps and is never pulled back by the trip's delay.
 - **Stopping** the server's play ends every viewer's copy.
 - Time is in the server's game ticks, so it agrees across viewers. A viewer's copy trails the server by the trip there.
-- A cue sends at most 32 `writes`, 8 number or bool `fields` and 4 string ones.

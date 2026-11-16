@@ -143,6 +143,7 @@ public final class CgNetObject {
     CgNetObject(CgNetType type, boolean server) {
         this.type = type;
         this.server = server;
+        if (server) type.markUsed();
         int n = type.fields.length;
         bits = new long[n];
         refs = new Object[n];

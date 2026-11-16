@@ -13,7 +13,6 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.collision.debug.CgCollisionShow;
 import com.crystalgraphics.frame.CgFrameBoundary;
-import com.crystalgraphics.cue.CgCueNet;
 import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.world.CgEntityTags;
 import com.crystalgraphics.tag.CgTagNet;
@@ -156,7 +155,6 @@ public final class CgNetwork {
         if (CgGauntlet.plays("crystalgraphics:net")) CgNetProbe.install();
         CgCollisionShow.install();
         CgTagNet.install();
-        CgCueNet.install();
         CgSequenceNet.install();
         CgEntityTags.install();
         return true;

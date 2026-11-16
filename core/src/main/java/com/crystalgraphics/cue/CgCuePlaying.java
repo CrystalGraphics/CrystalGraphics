@@ -130,13 +130,7 @@ public final class CgCuePlaying {
     /** The cue's own field {@code name} as this side last had it: a number field's value, a bool as 0 or 1. */
     public double number(String name) {
         if (object == null || definition == null) return 0;
-        int values = 0;
-        for (CgCueDefinition.Field f : definition.fields()) {
-            if (f.type() == CgCueDefinition.Field.Type.STRING) continue;
-            if (f.name().equals(name)) return object.getDouble(CgCueNet.V.get(values));
-            values++;
-        }
-        throw new IllegalArgumentException(definition.id() + " has no number field " + name);
+        return CgCueNet.number(definition, object, name);
     }
 
     /** The sequence it plays as its timeline, once started; null for none. */

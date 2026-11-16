@@ -18,14 +18,17 @@ import org.junit.rules.TemporaryFolder;
 
 import com.crystalgraphics.asset.kind.CgGameplayKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
+import com.crystalgraphics.asset.load.CgAssetState;
 import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgVfxAssets;
+import com.crystalgraphics.asset.registry.CgAssetEntry;
 import com.crystalgraphics.asset.registry.CgAssetRegistry;
 import com.crystalgraphics.asset.registry.CgAssetSource;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.job.CgJobLoop;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetTestRig;
+import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
@@ -35,6 +38,9 @@ import com.crystalgraphics.tag.CgTagRegistry;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class CgCueNetTest {
@@ -55,9 +61,9 @@ public class CgCueNetTest {
     }
 
     /** A server and {@code clients} players, every client's cues into one manager, sequences on a headless sequencer. */
-    private void start(CgAssetRegistry registry, int clients, boolean timelines) {
+    private void start(CgAssetRegistry registry, int clients, boolean timelines) throws InterruptedException {
         assets = new CgVfxAssets(registry, CgJobLoop.create("cue-net-test"));
-        CgCueNet.install();
+        compileCues(registry);   // as the startup load does: every cue's type declared before anyone connects
         rig = CgNetTestRig.of(clients);
         CgSequencer sequencer = new CgWorld(true).add(new CgSequencer());
         CgCueManager.SequenceStarter starter = !timelines ? null : (cue, sequence, at) -> {
@@ -69,6 +75,18 @@ public class CgCueNetTest {
         clientWorld = new CgWorld();
         client = clientWorld.add(new CgCueManager(assets)).effects(seen).sequences(starter);
         CgCueNet.client(obj -> client);
+        rig.tick(2);   // the hellos answered: every viewer ready
+    }
+
+    private void compileCues(CgAssetRegistry registry) throws InterruptedException {
+        List<CgAssetRef<CgCueDefinition>> cues = new ArrayList<>();
+        for (CgAssetEntry e : registry.entries(CgGameplayKinds.CUE)) cues.add(assets.declare(CgGameplayKinds.CUE, e.id()));
+        for (CgAssetRef<CgCueDefinition> cue : cues) cue.request(CgLoadPriority.MOVE);
+        for (int i = 0; i < 3000 && !cues.stream().allMatch(c -> c.state() == CgAssetState.READY || c.state() == CgAssetState.FAILED); i++) {
+            assets.drain();
+            assets.publish();
+            Thread.sleep(1);
+        }
     }
 
     /** Server ticks, three client frames each, loads running, until {@code done}. */
@@ -135,7 +153,7 @@ public class CgCueNetTest {
         start(beamKit(), 1, false);
         rig.client(0).local();
         rig.latencyTicks(2);
-        CgCueNet.TYPE.acceptPredictionsFrom((peer, obj) -> true);
+        CgCueNet.acceptPredictionsFrom((peer, obj) -> true);
         ready("cuenet:beam");
         CgPredictionKey key = CgPredictionKey.open();
         int[] rolledBack = {0};
@@ -160,7 +178,7 @@ public class CgCueNetTest {
         start(beamKit(), 1, false);
         rig.client(0).local();
         rig.latencyTicks(2);
-        CgCueNet.TYPE.acceptPredictionsFrom((peer, obj) -> false);
+        CgCueNet.acceptPredictionsFrom((peer, obj) -> false);
         ready("cuenet:beam");
         CgPredictionKey key = CgPredictionKey.open();
         int[] rolledBack = {0};
@@ -214,8 +232,10 @@ public class CgCueNetTest {
         beam.field("level", 3);
         ticks(1, () -> false);
         t[0] = 0.05;   // the head leaves as it starts
-        ticks(100, () -> !rig.client(0).visible(CgCueNet.TYPE).isEmpty());
-        CgNetObject obj = rig.client(0).visible(CgCueNet.TYPE).get(0);
+        CgNetType type = CgNetType.named("cuenet:cue/beam");
+        assertNotNull("declared as the cue compiled", type);
+        ticks(100, () -> !rig.client(0).visible(type).isEmpty());
+        CgNetObject obj = rig.client(0).visible(type).get(0);
         CgCueDefinition.Write head = assets.<CgCueDefinition>declare(CgGameplayKinds.CUE, "cuenet:beam").loaded().writes().get("Head");
         CgCueNet.Replica viewer = new CgCueNet.Replica(obj, 0, head);
 
@@ -233,7 +253,21 @@ public class CgCueNetTest {
         }
         assertTrue("never past the obstacle: " + most, most <= stop + 1e-3f);
         assertEquals("where the server's head stopped", stop, out[0], 0.01f);
-        assertEquals("its own field", 3.0, obj.getDouble(CgCueNet.V.get(0)), 0);
+        assertEquals("its own field, under its name", 3f, obj.getNumber(type.field("field.level")), 0);
+    }
+
+    /** A cue's type holds every write it names, however many; a reload that changes them fails by the cue's id. */
+    @Test
+    public void aCuesTypeHoldsAllItsWritesAndAChangedShapeFailsByName() {
+        CgCueDefinition.Builder wide = CgCueDefinition.builder("cuenet:wide").looping();
+        for (int i = 0; i < 40; i++) wide.writes("W" + i, "write " + i);
+        CgNetType type = CgCueNet.type(wide.build());
+        assertEquals("cuenet:cue/wide", type.name());
+        type.field("write.w39.3");
+        assertSame("the same shape again: the same type", type, CgCueNet.declare(wide.build()).type);
+        IllegalStateException changed = assertThrows(IllegalStateException.class,
+                () -> CgCueNet.declare(CgCueDefinition.builder("cuenet:wide").looping().writes("Other", "x").build()));
+        assertTrue(changed.getMessage(), changed.getMessage().startsWith("cuenet:wide") && changed.getMessage().contains("restart"));
     }
 
     @Test

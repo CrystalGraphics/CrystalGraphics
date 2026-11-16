@@ -4375,6 +4375,7 @@ com/crystalgraphics/asset/kind/CgGameplayKinds
   access public,final
   extends java/lang/Object
   field public,static,final CUE Lcom/crystalgraphics/object/CgType;
+  field public,static,final NET_TYPE Lcom/crystalgraphics/object/CgType;
 com/crystalgraphics/asset/kind/CgKitFiles
   access public,final
   extends java/lang/Object
@@ -4504,6 +4505,7 @@ com/crystalgraphics/asset/load/CgAssetLoad
 com/crystalgraphics/asset/load/CgAssetMounts
   access public,final
   extends java/lang/Object
+  method public,static declareNetTypes (Lcom/crystalgraphics/asset/load/CgVfxAssets;)V
   method public,static file (Ljava/lang/String;)Ljava/nio/file/Path;
   method public,static folder (Ljava/lang/String;)Ljava/nio/file/Path;
   method public,static loadAhead ()V
@@ -7173,12 +7175,10 @@ com/crystalgraphics/cue/CgCueNet
   access public,final
   extends java/lang/Object
   field public,static,final DEFAULT_RANGE F
-  field public,static,final TEXTS I
-  field public,static,final TYPE Lcom/crystalgraphics/net/object/CgNetType;
-  field public,static,final VALUES I
-  field public,static,final WRITES I
+  method public,static acceptPredictionsFrom (Ljava/util/function/BiPredicate;)V
   method public,static client (Ljava/util/function/Function;)V
-  method public,static install ()V
+  method public,static cueOf (Lcom/crystalgraphics/net/object/CgNetObject;)Ljava/lang/String;
+  method public,static type (Lcom/crystalgraphics/cue/CgCueDefinition;)Lcom/crystalgraphics/net/object/CgNetType;
 com/crystalgraphics/cue/CgCueParameters
   access public,final
   extends java/lang/Object
@@ -9766,6 +9766,7 @@ com/crystalgraphics/net/object/CgNetCommand$Handler
 com/crystalgraphics/net/object/CgNetEntities
   access public,final
   extends com/crystalgraphics/frame/CgWorldSubsystem
+  field public,static,final PLAYER Ljava/lang/String;
   method public,static entered (ILjava/lang/String;)V
   method public,static enteredServer (Ljava/lang/Object;Ljava/lang/String;)V
   method public,static left (I)V
@@ -9952,6 +9953,8 @@ com/crystalgraphics/net/object/CgNetType
   access public,final
   extends java/lang/Object
   method public acceptPredictionsFrom (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType;
+  method public event (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetEvent;
+  method public field (Ljava/lang/String;)Lcom/crystalgraphics/net/object/CgNetField;
   method public fields ()Ljava/util/List;
   method public find (I)Lcom/crystalgraphics/net/object/CgNetObject;
   method public find (Ljava/lang/Object;)Lcom/crystalgraphics/net/object/CgNetObject;
@@ -9982,6 +9985,7 @@ com/crystalgraphics/net/object/CgNetType$Builder
   access public,final
   extends java/lang/Object
   method public build ()Lcom/crystalgraphics/net/object/CgNetType;
+  method public buildOnce ()Lcom/crystalgraphics/net/object/CgNetType;
   method public commands ([Lcom/crystalgraphics/net/object/CgNetCommand;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public copyOnDeath ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public events ([Lcom/crystalgraphics/net/object/CgNetEvent;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
@@ -9995,6 +9999,10 @@ com/crystalgraphics/net/object/CgNetType$Builder
   method public range (D)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleTo (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleToTrackers ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
+com/crystalgraphics/net/object/CgNetTypeCompiler
+  access public,final
+  extends java/lang/Object
+  method public,static register ()V
 com/crystalgraphics/net/object/CgNetWire
   access public,abstract,interface
   extends java/lang/Object
