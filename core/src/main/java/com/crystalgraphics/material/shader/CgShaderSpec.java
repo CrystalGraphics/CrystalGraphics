@@ -114,6 +114,8 @@ public final class CgShaderSpec {
     final boolean fog, media, handedLights, handedSun, handedScene, writesCustomData;
     /** A translucent shader's {@code TranslucencyPass}; null for an opaque one. */
     @Nullable final CgTranslucencyPass translucencyPass;
+    /** {@code DitherOpacityMask On}: a Masked material clipped at a noise rather than its threshold. */
+    final boolean ditherOpacityMask;
     final boolean templateReadsSceneColor;
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
@@ -152,6 +154,7 @@ public final class CgShaderSpec {
         this.templateReadsSceneColor = b.templateReadsSceneColor;
         this.writesCustomData = b.writesCustomData;
         this.translucencyPass = b.translucencyPass;
+        this.ditherOpacityMask = b.ditherOpacityMask;
         this.maskClip = b.maskClip;
         this.postLocation = b.postLocation;
         this.tube = b.tube;
@@ -186,6 +189,7 @@ public final class CgShaderSpec {
         this.templateReadsSceneColor = of.templateReadsSceneColor;
         this.writesCustomData = of.writesCustomData;
         this.translucencyPass = of.translucencyPass;
+        this.ditherOpacityMask = of.ditherOpacityMask;
         this.maskClip = of.maskClip;
         this.postLocation = of.postLocation;
         this.tube = of.tube;
@@ -320,6 +324,14 @@ public final class CgShaderSpec {
     @Nullable
     public CgTranslucencyPass translucencyPass() {
         return translucencyPass;
+    }
+
+    /**
+     * {@code DitherOpacityMask On} (Unreal's): its clip keeps a texel where the opacity mask passes a noise that turns
+     * each frame, so temporal anti-aliasing settles it to the mask's coverage, a cheap translucency that writes depth.
+     */
+    public boolean ditherOpacityMask() {
+        return ditherOpacityMask;
     }
 
     public DepthMode depthMode() {

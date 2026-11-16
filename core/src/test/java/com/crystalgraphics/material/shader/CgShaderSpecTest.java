@@ -114,6 +114,8 @@ public class CgShaderSpecTest {
         assertEquals(CgTranslucencyPass.AFTER_MOTION_BLUR,
                 surface("BlendMode Additive  TranslucencyPass AfterMotionBlur", "s.baseColor = vec3(1.0);").translucencyPass());
         assertNull(surface("", "s.baseColor = vec3(1.0);").translucencyPass());
+        assertTrue(surface("BlendMode Masked  DitherOpacityMask On", "s.opacityMask = 0.5;").ditherOpacityMask());
+        assertThrows(CgShaderError.class, () -> surface("BlendMode Translucent  DitherOpacityMask On", "s.opacity = 0.5;"));
         assertTrue(surface("ShadingModel Unlit", "s.emissive = vec3(1.0);").unlit());
         assertEquals(CgShaderSpec.Lighting.SURFACE,
                 surface("BlendMode Translucent  TranslucencyLighting Surface", "s.opacity = 0.5; s.normal = vec3(0, 0, 1);")

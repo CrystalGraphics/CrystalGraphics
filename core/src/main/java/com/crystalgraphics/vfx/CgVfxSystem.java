@@ -1371,6 +1371,9 @@ public final class CgVfxSystem {
             CgVfxSystem h = new CgVfxSystem().scene(new CgScene());
             h.rehearsing = true;
             view = CgView.of(h.scene);
+            // A rehearsal warms what plays: nothing it draws is looked at, so nothing resolves over frames
+            view.showFlags().temporalAA(false);
+            view.jitter(false);
             // What this system built and warmed, shared: a pass rebuilding the meshes or re-warming the looks was 12 ms.
             buildMeshes();
             h.tubeMesh = tubeMesh;

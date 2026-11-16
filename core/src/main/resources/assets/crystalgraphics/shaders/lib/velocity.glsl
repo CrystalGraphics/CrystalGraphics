@@ -15,6 +15,8 @@ vec2 cg_DecodeVelocity(vec2 encoded) {
     return (encoded - 32767.0 / 65535.0) / (0.499 * 0.5);
 }
 
+// Fragment stage: they read the scene's depth as a world point (cg_DepthToWorld)
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // The camera's own motion at uv (0 to 1, bottom left) for window depth windowDepth: the point reconstructed in this
 // pass's camera-relative world, projected by last frame's view (cg_PrevViewProj). 0 where there is no history.
 vec2 cg_CameraVelocity(vec2 uv, float windowDepth) {
@@ -28,3 +30,4 @@ vec2 cg_Velocity(sampler2D velocity, vec2 uv, float windowDepth) {
     vec2 written = textureLod(velocity, uv, 0.0).xy;
     return written.x > 0.0 ? cg_DecodeVelocity(written) : cg_CameraVelocity(uv, windowDepth);
 }
+#endif

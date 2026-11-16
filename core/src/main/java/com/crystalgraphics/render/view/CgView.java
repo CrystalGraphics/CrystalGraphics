@@ -77,6 +77,10 @@ public final class CgView {
     private final CgScene scene;
     private final CgViewState state;
     private final CgCamera camera = new CgCamera(this::writeState);
+    private boolean jitter, jittering;
+    /** This frame's jitter in clip space, and the matrix moving by it. */
+    private float jitterX, jitterY;
+    private final Matrix4f jitterMatrix = new Matrix4f();
     private final CgHostEnvironment environment = new CgHostEnvironment();
     private final CgHostTextures hostTextures = new CgHostTextures();
     private final CgSceneTextures textures = new CgSceneTextures();
@@ -350,6 +354,50 @@ public final class CgView {
         return historyValid;
     }
 
+    /**
+     * Whether its projection moves a fraction of a texel each frame while its world draws (Unreal's temporal jitter, 8
+     * Halton samples), which temporal anti-aliasing resolves into its edges. For a view whose every draw is ours: a host
+     * drawing beside us unjittered would shimmer against it. Off by default, with the {@code temporalAA} show flag.
+     */
+    public CgView jitter(boolean on) {
+        jitter = on;
+        return this;
+    }
+
+    public boolean jitters() {
+        return jitter;
+    }
+
+    /**
+     * Engine side, the post renderer's: whether this frame's world passes are drawn jittered, from its prepare to the
+     * end of its chain, so what draws after (the overlay) is not. Sets this frame's offset from its frame index.
+     */
+    public void jittering(boolean on) {
+        jittering = on && width > 0 && height > 0;
+        if (!jittering) return;
+        int i = (state.frameIndex() & 7) + 1;
+        jitterX = (halton(i, 2) - 0.5f) * 2f / width;
+        jitterY = (halton(i, 3) - 0.5f) * 2f / height;
+    }
+
+    /** This frame's jitter in texels, x and y: 0 when it is not jittering. */
+    public float jitterTexelsX() {
+        return jittering ? jitterX * width * 0.5f : 0f;
+    }
+
+    public float jitterTexelsY() {
+        return jittering ? jitterY * height * 0.5f : 0f;
+    }
+
+    private static float halton(int index, int base) {
+        float f = 1f, r = 0f;
+        for (int i = index; i > 0; i /= base) {
+            f /= base;
+            r += f * (i % base);
+        }
+        return r;
+    }
+
     /** Last frame's view-projection of this frame's camera-relative points: what reprojects a history. */
     public Matrix4f previousViewProjection() {
         return previous;
@@ -537,6 +585,9 @@ public final class CgView {
     /** What the view adds to a pass of its camera: its scene, the scene's encoding, last frame's view, the sun and fog. */
     private void writeState(CgPassConstants constants) {
         constants.scene(scene().gpu()).linearScene(textures.linear()).history(previous, state.frameIndex(), historyValid);
+        // Moved in clip space, so a point lands jitter texels off: last frame's matrix stays unjittered, which is what a
+        // history is fetched by
+        if (jittering) constants.projection.mulLocal(jitterMatrix.translation(jitterX, jitterY, 0f));
         CgWorldAtmosphere.apply(environment, constants);
     }
 

@@ -436,7 +436,9 @@ public final class CgGlslWriter {
      */
     private static void clip(StringBuilder sb, CgShaderSpec spec, CgShaderPass pass, Set<String> keywords) {
         if (spec.depthMode() == CgShaderSpec.DepthMode.NONE && !pass.namesClip()) return;
-        sb.append("#define CG_CLIP_THRESHOLD ").append(spec.maskClip() != null ? spec.maskClip() : "0.5").append('\n');
+        // Dithered, the threshold is a noise each texel and frame: the mask's value is the share of frames it shows
+        sb.append("#define CG_CLIP_THRESHOLD ").append(spec.ditherOpacityMask() ? "cg_TemporalDither(gl_FragCoord.xy)"
+                : spec.maskClip() != null ? spec.maskClip() : "0.5").append('\n');
         if (spec.depthMode() == CgShaderSpec.DepthMode.NONE) {
             sb.append("#define cg_Clip(v)\n");
         } else if (pass.variant() == CgRenderPassVariant.DEPTH || keywords.contains(CgEngineKeywords.DEPTH_PREPASS)) {

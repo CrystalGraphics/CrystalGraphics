@@ -7,6 +7,7 @@ import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.bloom.CgBloom;
+import com.crystalgraphics.render.post.aa.CgTemporalAA;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 import com.crystalgraphics.render.post.look.CgFilmLut;
@@ -39,7 +40,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * }</pre>
  *
  * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, depth of
- * field, separate translucency composed, {@code SCENE}, bloom taken from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
+ * field, separate translucency composed, temporal anti-aliasing, {@code SCENE}, bloom taken from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
  * encoding into the host's target), {@code DISPLAY}, the crossfade, the debug view; a picture left in another texture
  * is copied into the host's target last.</p>
  */
@@ -61,7 +62,8 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/world/scene_in.shader", "crystalgraphics:shaders/world/scene_out.shader",
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
-            CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4]};
+            CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
+            CgTemporalAA.SHADER};
 
     private static boolean installed;
     @Nullable
@@ -144,6 +146,10 @@ public final class CgPostRenderer {
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
         settings.blend(view.post().camera(), 1f, 0.5f, 0.5f);
         CgSceneTextures textures = view.textures();
+        // Temporal AA's velocity, and its jitter from here to the chain's end: the world's passes, not the overlay's
+        boolean temporal = view.showFlags().temporalAA();
+        if (temporal) textures.requestVelocity();
+        view.jittering(temporal && view.jitters());
         if (CgPostLooks.drawsImpact(settings)) textures.requestSubject(settings.impactSubject());
         if (readsScene(view.post(), settings)) {
             textures.requestNormals();
@@ -208,6 +214,12 @@ public final class CgPostRenderer {
                 ctx.input(picture);
             }
             post.translucency.compose(ctx, picture);
+            if (CgTemporalAA.shows(view)) {
+                try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporalAA")) {
+                    picture = post.temporalAA.apply(ctx, picture);
+                }
+                ctx.input(picture);
+            }
             picture = carry(post, CgPostPoint.SCENE, entries, i, picture);
             i = skip(CgPostPoint.SCENE, entries, i);
 
@@ -236,6 +248,7 @@ public final class CgPostRenderer {
             ctx.input(picture);
             if (post.debug != null) picture = post.debug.apply(ctx, picture);
             settle(ctx, picture, host);
+            view.jittering(false);
         }
     }
 

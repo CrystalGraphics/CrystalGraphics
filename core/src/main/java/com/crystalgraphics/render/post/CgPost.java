@@ -12,6 +12,7 @@ import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 
+import com.crystalgraphics.render.post.aa.CgTemporalAA;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 
 import javax.annotation.Nullable;
@@ -70,6 +71,7 @@ public final class CgPost {
     /** The camera's, blended over every volume: a rig's lens. */
     private final CgPostSettings camera = new CgPostSettings();
     final CgDepthOfField depthOfField = new CgDepthOfField();
+    final CgTemporalAA temporalAA = new CgTemporalAA();
     final CgTranslucencyComposition translucency = new CgTranslucencyComposition();
     /** {@code -Dcrystalgraphics.post.debug}'s view; null when unset. */
     @Nullable

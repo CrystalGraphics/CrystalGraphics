@@ -480,6 +480,12 @@ vec3 cg_DirectionalLightColor(vec2 light) {
 // of this view, and where a camera-relative point was in last frame's clip space.
 #define CG_FRAME_INDEX   int(cg_FrameParams.x)
 #define CG_HISTORY_VALID (cg_FrameParams.y > 0.5)
+// A noise in (0, 1) at a pixel that turns each frame of the view (interleaved gradient noise, Jimenez 2014, stepped
+// along a golden-ratio offset): DitherOpacityMask's clip threshold, which temporal anti-aliasing averages away.
+float cg_TemporalDither(vec2 pixel) {
+    pixel += 5.588238 * float(CG_FRAME_INDEX & 63);
+    return fract(52.9829189 * fract(dot(pixel, vec2(0.06711056, 0.00583715)))) * 0.998 + 0.001;
+}
 vec4 cg_PreviousClip(vec3 worldPos) {
     return cg_PrevViewProj * vec4(worldPos, 1.0);
 }

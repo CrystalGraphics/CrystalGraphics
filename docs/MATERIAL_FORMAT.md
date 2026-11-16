@@ -233,6 +233,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | `DepthPrepass` | `Off`, `On` | A translucent material's solid core drawn into depth first (`opacityMask`): smoke |
 | `ClipDepth` | `Off`, `On` | A translucent material writing depth where `opacityMask` passes: ink, debris |
 | `MaskClip` | `0.5`, a number or a float property | The `opacityMask` threshold |
+| `DitherOpacityMask` | `Off`, `On` | `Masked` only: the clip's threshold a noise turning each frame, so temporal anti-aliasing settles the mask to its coverage: a cheap translucency that writes depth (Unreal's) |
 | `Fog` | `On`, `Off` | Fogged with distance |
 | `Media` | `On`, `Off` | Dimmed by the smoke and dust in front of it |
 | `ColorSpace` | `sRGB`, `Linear` | What its colours are written in |

@@ -7020,6 +7020,18 @@ com/crystalgraphics/demo/CgDemoStyles
   access public,final
   extends java/lang/Object
   field public,static,final LABEL Lcom/crystalgraphics/text/style/CgTextStyle;
+com/crystalgraphics/demo/CgDepthOfFieldDemo
+  access public,final
+  extends java/lang/Object
+  field public,static,final KEYS [I
+  method public <init> ()V
+  method public clear ()V
+  method public delete ()V
+  method public hud ()Ljava/lang/String;
+  method public precache ()V
+  method public press (IZ)Z
+  method public ready ()Z
+  method public submit (Lcom/crystalgraphics/render/scene/CgScene;Lcom/crystalgraphics/camera/CgCamera;DDDD)V
 com/crystalgraphics/demo/CgGlassDemo
   access public,final
   extends java/lang/Object
@@ -8984,6 +8996,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public buffers ()Ljava/util/List;
   method public colorSpace ()Lcom/crystalgraphics/material/shader/CgShaderSpec$ColorSpace;
   method public depthMode ()Lcom/crystalgraphics/material/shader/CgShaderSpec$DepthMode;
+  method public ditherOpacityMask ()Z
   method public domain ()Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public emissionMerge ()Lcom/crystalgraphics/material/shader/CgShaderSpec$EmissionMerge;
   method public engineBuffers ()Ljava/util/List;
@@ -12429,6 +12442,13 @@ com/crystalgraphics/render/post/CgScreenPass
   method public over (Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public reads (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/render/post/CgScreenPass;
   method public weight (F)Lcom/crystalgraphics/render/post/CgScreenPass;
+com/crystalgraphics/render/post/aa/CgTemporalAA
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHADER Ljava/lang/String;
+  method public <init> ()V
+  method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public,static shows (Lcom/crystalgraphics/render/view/CgView;)Z
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
@@ -14355,12 +14375,16 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public requestCustomData ()V
   method public requestNormals ()V
   method public requestSubject (I)V
+  method public requestVelocity ()V
   method public sceneColor ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public sceneColor (Lcom/crystalgraphics/render/graph/CgGraphTexture;Z)V
   method public subject ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public subject (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public subjectKey ()I
   method public subjectRequested ()Z
+  method public velocity ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public velocity (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public velocityRequested ()Z
 com/crystalgraphics/render/view/CgShowFlags
   access public,final
   extends java/lang/Object
@@ -14380,6 +14404,8 @@ com/crystalgraphics/render/view/CgShowFlags
   method public overdraw (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public post ()Z
   method public post (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
+  method public temporalAA ()Z
+  method public temporalAA (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public translucency ()Z
   method public translucency (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
 com/crystalgraphics/render/view/CgView
@@ -14400,6 +14426,11 @@ com/crystalgraphics/render/view/CgView
   method public hide (Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;)Lcom/crystalgraphics/render/view/CgView;
   method public historyValid ()Z
   method public hostTextures ()Lcom/crystalgraphics/render/host/CgHostTextures;
+  method public jitter (Z)Lcom/crystalgraphics/render/view/CgView;
+  method public jitterTexelsX ()F
+  method public jitterTexelsY ()F
+  method public jittering (Z)V
+  method public jitters ()Z
   method public name ()Ljava/lang/String;
   method public override (Lcom/crystalgraphics/variable/CgVar$Bool;Z)Lcom/crystalgraphics/render/view/CgView;
   method public override (Lcom/crystalgraphics/variable/CgVar$Int;I)Lcom/crystalgraphics/render/view/CgView;

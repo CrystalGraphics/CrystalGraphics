@@ -32,9 +32,9 @@ import javax.annotation.Nullable;
 public final class CgSceneTextures {
 
     @Nullable
-    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw;
+    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity;
     private boolean linear;
-    private boolean normalsAsked, customDataAsked, subjectAsked;
+    private boolean normalsAsked, customDataAsked, subjectAsked, velocityAsked;
     private int subjectKey;
 
     CgSceneTextures() {
@@ -116,6 +116,24 @@ public final class CgSceneTextures {
         normalsAsked = true;
     }
 
+    /**
+     * What moved or deformed this frame wrote where it was last frame, RG16F, 0 where nothing wrote ({@code
+     * lib/velocity.glsl}'s {@code cg_Velocity}); null unless asked, or where the host lends no depth to test it against.
+     */
+    @Nullable
+    public CgGraphTexture velocity() {
+        return velocity;
+    }
+
+    /** That this frame writes {@link #velocity()}: ask before the translucent callback draws. */
+    public void requestVelocity() {
+        velocityAsked = true;
+    }
+
+    public boolean velocityRequested() {
+        return velocityAsked;
+    }
+
     /** That this frame writes {@link #customData()}: ask before the translucent callback draws. */
     public void requestCustomData() {
         customDataAsked = true;
@@ -158,6 +176,10 @@ public final class CgSceneTextures {
         depth = texture;
     }
 
+    public void velocity(@Nullable CgGraphTexture texture) {
+        velocity = texture;
+    }
+
     public void normals(@Nullable CgGraphTexture texture) {
         normals = texture;
     }
@@ -188,9 +210,9 @@ public final class CgSceneTextures {
 
     /** A new frame of the view: every texture and request dropped. */
     void reset() {
-        sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = null;
+        sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = velocity = null;
         linear = false;
-        normalsAsked = customDataAsked = subjectAsked = false;
+        normalsAsked = customDataAsked = subjectAsked = velocityAsked = false;
         subjectKey = 0;
     }
 }

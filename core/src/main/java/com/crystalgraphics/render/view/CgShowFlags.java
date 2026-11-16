@@ -16,7 +16,7 @@ import com.crystalgraphics.render.post.debug.CgPostDebug;
 public final class CgShowFlags {
 
     private boolean lights = true, media = true, post = true, labels = true, distortion = true, decals = true,
-            translucency = true, depthOfField = true, overdraw;
+            translucency = true, depthOfField = true, overdraw, temporalAA;
 
     CgShowFlags() {
     }
@@ -31,6 +31,7 @@ public final class CgShowFlags {
         decals = other.decals;
         translucency = other.translucency;
         depthOfField = other.depthOfField;
+        temporalAA = other.temporalAA;
         overdraw = other.overdraw;
     }
 
@@ -125,5 +126,19 @@ public final class CgShowFlags {
 
     public boolean depthOfField() {
         return depthOfField;
+    }
+
+    /**
+     * Temporal anti-aliasing's resolve: each frame blended into the view's history, settling dithered masks, and with
+     * the view's {@code jitter} its edges. Off by default on every view: a capture, a picker or a pixel check wants
+     * each frame as drawn.
+     */
+    public CgShowFlags temporalAA(boolean on) {
+        temporalAA = on;
+        return this;
+    }
+
+    public boolean temporalAA() {
+        return temporalAA;
     }
 }

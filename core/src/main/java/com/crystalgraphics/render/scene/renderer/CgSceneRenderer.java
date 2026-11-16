@@ -163,7 +163,7 @@ public final class CgSceneRenderer {
     private CgMaterialInterface depthIn;
     /** The custom data and depth targets, kept while the view's size holds: a steady frame makes no handle. */
     @Nullable
-    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget;
+    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget;
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
@@ -408,6 +408,7 @@ public final class CgSceneRenderer {
         if (showLabels) recordLabelDepth(firing);
         if (textures.customDataRequested()) recordCustomData(firing, passes);
         recordCustomDepth(firing, passes);
+        if (textures.velocityRequested() && firing.host().target().lendsAttachments()) recordVelocity(firing, passes);
         CgGraphTexture normals = normalsWritten(view);
         textures.normals(normals);
 
@@ -639,6 +640,22 @@ public final class CgSceneRenderer {
         }
         pass.add(passes.commands(CgEnginePasses.CUSTOM_DATA, rec, customData)).end();
         view.textures().customData(target);
+    }
+
+    /**
+     * Unreal's velocity pass: what moved or deformed this frame, tested against the scene's depth, writing where it was
+     * last frame into an RG16F target cleared to 0; the rest stood still, its motion the camera's over its depth.
+     */
+    private void recordVelocity(CgStageFiring firing, CgViewPasses passes) {
+        CgView view = firing.view();
+        int w = Math.max(1, view.width()), h = Math.max(1, view.height());
+        if (velocityTarget == null || velocityTarget.getWidth() != w || velocityTarget.getHeight() != h) {
+            velocityTarget = CgGraphTexture.transientTexture("cg_velocity", CgTextureDesc.of(w, h, CgEnginePasses.VELOCITY_FORMAT));
+        }
+        firing.recording().raster("scene.velocity").color(velocityTarget, CgLoad.clear(0f, 0f, 0f, 0f))
+                .depth(firing.depth(), CgLoad.load(), CgDepthAccess.READ).constants(firing.constants())
+                .add(passes.commands(CgEnginePasses.VELOCITY, firing.recording())).end();
+        view.textures().velocity(velocityTarget);
     }
 
     /** Unreal's CustomDepth: the primitives marked {@code customDepth}, depth alone, writing their stencil value. */

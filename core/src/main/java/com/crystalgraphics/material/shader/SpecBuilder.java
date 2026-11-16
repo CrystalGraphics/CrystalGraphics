@@ -100,7 +100,7 @@ final class SpecBuilder {
     String renderType = "Opaque";
     CgShaderSpec.Lighting lighting = CgShaderSpec.Lighting.LIT;
     CgShaderSpec.ColorSpace colorSpace = CgShaderSpec.ColorSpace.SRGB;
-    boolean fog = true, media = true;
+    boolean fog = true, media = true, ditherOpacityMask;
     @Nullable CgTranslucencyPass translucencyPass;
     CgShaderSpec.DepthMode depthMode = CgShaderSpec.DepthMode.NONE;
     @Nullable String sceneColorMarginText;

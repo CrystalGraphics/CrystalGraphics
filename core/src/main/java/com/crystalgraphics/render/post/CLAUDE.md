@@ -19,6 +19,7 @@ CgPostRenderer.record
   TRANSLUCENT                 colour regions: the scene before separate translucency
   depth of field              CgDepthOfField: the lens's blur by distance, into a texture of its own
   translucency                CgTranslucencyComposition: CgSeparateTranslucency over the scene and its graded layers
+  temporal AA                 CgTemporalAA: the jittered picture resolved into the view's history (temporalAA show flag)
   SCENE                       the linear scene: what bloom sees, it blooms
   bloom                       CgBloom from the chain's picture, into the composite
   HDR                         linear, never bloomed
@@ -39,6 +40,7 @@ CgPostRenderer.record
 | `CgPostMaterial` | A `#domain post` file as an effect (`post.material(...)`, `weight`, `remove`), or the engine's drawer (`drawer(m)`, `draw(ctx, t)`, `drawOver(ctx, layer)`). A `Step` with `Target` draws into a transient of its format and `Scale`, bound by name for the steps after; held until every pass is built where the view skips unready draws |
 | `CgPostCrossfade` | `hold.shader` copies the final picture into an RGBA8 texture; `crossfade.shader` lays it over the frames after at a falling weight on `CgFrameClock` |
 | `CgTranslucencyComposition` | Separate translucency (`AfterDOF`, `AfterMotionBlur`) over the scene and each graded layer (`translucency_compose.shader`) |
+| `aa` | `CgTemporalAA`: temporal anti-aliasing where the view's `temporalAA` show flag is on (off by default on every view): the resolve (`shaders/post/aa/taa_resolve.shader`) fetches the history by the nearest texel's velocity (`CgSceneTextures.velocity`, asked for in `prepare`, else the camera's motion over the depth), Catmull-Rom, clipped to the 3x3's YCoCg spread, blended at 0.04 (0.2 at 8 texels a frame) with brightness-falling weights; a copy keeps the history, as the chain may draw over its picture. The jitter (`CgView.jitter`, 8 Halton samples) moves the world passes' projection constant from `prepare` to the chain's end, so the overlay is not jittered; last frame's matrix stays unjittered |
 | `dof` | `CgDepthOfField`: depth of field from the blended settings' lens (`depthOfField...`, a post block's `depth_of_field`, the camera's focus and f-stop), off with no focus. Half size: setup (scene and signed circle of confusion), 8x8 tiles of the largest near and far radius, dilated, the far and near layers gathered on rings shaped by the aperture's blades, then a full-size recombine (`shaders/post/dof/`). Thin lens on the view's FOV and the settings' sensor; each layer's radius held to 2.5% of the width |
 
 | Package | Holds |
@@ -80,8 +82,9 @@ every point draws onto the host's target and the composite draws in its blend fo
 - **Recording allocates nothing**: effect lists are array snapshots, `CgScreenTexture` is kept on its texture, and
   `ctx.screen` and `ctx.texture` reuse theirs.
 - Gates: `post-looks` (every look through a volume, from the pixels), `post-effects` (an effect at each point, one
-  answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `depth-of-field` (a board in
-  focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp). `dof-lab` to play with.
+  answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `temporal-aa` (a dithered pane settles, a turned bar's edges resolve, a moved
+  bar leaves no ghost), `depth-of-field` (a board in
+  focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp). `dof-lab` and `taa-lab` to play with.
 
 ## Writing an effect
 
