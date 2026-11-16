@@ -127,10 +127,13 @@ public final class CgCueNet {
         return "field." + name.toLowerCase(Locale.ROOT);
     }
 
-    /** {@code cue}'s type name: {@code mymod:beam} plays as {@code mymod:cue/beam}. */
+    /**
+     * {@code cue}'s type name: {@code mymod:beam} plays as {@code mymod:cue/beam}, lowercased as type names are (an
+     * imported cue keeps its game's capitals).
+     */
     static String typeName(String cue) {
         int colon = cue.indexOf(':');
-        return cue.substring(0, colon) + ":cue/" + cue.substring(colon + 1);
+        return (cue.substring(0, colon) + ":cue/" + cue.substring(colon + 1)).toLowerCase(Locale.ROOT);
     }
 
     /**
