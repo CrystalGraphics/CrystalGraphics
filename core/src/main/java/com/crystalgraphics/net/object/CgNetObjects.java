@@ -103,6 +103,12 @@ public final class CgNetObjects {
     static Object server() {
         return startedServer;
     }
+
+    /** The one connected player's entity: a single-player world's, for a probe. Null with none, or more than one. */
+    @Nullable
+    static Object onlyPlayer() {
+        return VIEWERS.size() == 1 ? VIEWERS.get(0).peer.player() : null;
+    }
     private static boolean[] unsaved = new boolean[8];
 
     private CgNetObjects() {

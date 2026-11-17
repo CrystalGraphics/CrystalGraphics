@@ -64,8 +64,8 @@ public final class CgEntitySavesProbe {
      * and suffocate in the ground).
      */
     private static volatile double summonX, summonY, summonZ;
-    /** The local player's network id, which a single-player server shares, for the server to find them by. */
-    private static volatile int localPlayer = -1;
+    /** Why the server has not yet placed the summon: said if it never does. */
+    private static volatile String placing = "it has not looked yet";
     private static volatile String failure;
 
     private CgEntitySavesProbe() {
@@ -121,12 +121,11 @@ public final class CgEntitySavesProbe {
                 case LANDING:
                     // the far chunks generate and load around the player first, and they land
                     if (now - waitedSince < 8) return;
-                    localPlayer = CgEntityQueries.client().localPlayer();
                     phase = Phase.PLACE;
                     waitedSince = now;
                     return;
                 case PLACE:
-                    if (now - waitedSince > 10) fail("the server never found the player to summon beside");
+                    if (now - waitedSince > 10) fail("the server never placed the summon: " + placing);
                     return;
                 case SUMMON: {
                     stimulus.stand(summonX, summonY, summonZ);
@@ -193,13 +192,25 @@ public final class CgEntitySavesProbe {
             if (test == null || CgNetwork.side() != CgNetwork.Side.SERVER) return;
             switch (phase) {
                 case PLACE: {
-                    Object player = CgPlayers.player(localPlayer);
-                    if (player == null || !CgEntityQueries.position(player, at)) return;
+                    // the single-player world's one player, on the server: a client's ids are not the server's on every version
+                    Object player = CgNetObjects.onlyPlayer();
+                    if (player == null) {
+                        placing = "not exactly one player connected";
+                        return;
+                    }
+                    if (!CgEntityQueries.position(player, at)) {
+                        placing = "the server player has no position";
+                        return;
+                    }
                     // on the surface: a player moved over chunks not yet made can fall through them to bedrock
                     Object level = CgWorldQueries.level(CgNetObjects.server(), CgWorldQueries.dimension(player));
                     int top = level == null ? Integer.MIN_VALUE
                             : CgWorldQueries.of(level).surfaceY((int) Math.floor(at[0] + 3), (int) Math.floor(at[2]), CgWorldQuery.HEIGHT_TOP);
-                    if (top == Integer.MIN_VALUE) return;
+                    if (top == Integer.MIN_VALUE) {
+                        placing = level == null ? "no level for " + CgWorldQueries.dimension(player)
+                                : "no surface at " + (int) (at[0] + 3) + ", " + (int) at[2] + " (column not loaded)";
+                        return;
+                    }
                     summonLevel = level;
                     summonX = at[0] + 3;
                     summonY = top;
