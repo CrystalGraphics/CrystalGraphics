@@ -22,8 +22,6 @@ import com.crystalgraphics.world.CgEntityTags;
  *
  * // the server
  * CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);
- * CgSequencePlayer swing = CgEntities.of(zombie).play("mymod:zombie_swing");
- * swing.onFinished(() -> CgEntities.of(zombie).removeTag(STUNNED));
  *
  * // the owner's client: one input, one prediction window, taken or refused together
  * CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(CHARGE_CUE));

@@ -153,12 +153,6 @@ public class CgEntitiesTest {
             } catch (IllegalStateException e) {
                 assertTrue("it names the verb: " + e.getMessage(), e.getMessage().contains("addTag"));
             }
-            try {
-                theirs.play("handle:swing");
-                fail("play is the server's");
-            } catch (IllegalStateException e) {
-                assertTrue(e.getMessage().contains("play"));
-            }
         });
     }
 

@@ -2,7 +2,6 @@ package com.crystalgraphics.world.actor;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.cue.CgCueManager;
 import com.crystalgraphics.cue.CgCueParameters;
 import com.crystalgraphics.cue.CgCuePlaying;
@@ -10,8 +9,6 @@ import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.net.object.CgPredictionKey;
-import com.crystalgraphics.sequence.CgSequencePlayer;
-import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.tag.CgTagCounts;
@@ -51,9 +48,6 @@ public final class CgEntity {
     int flags;
     boolean present;
     long hostFrame = -1;
-    /** Its actor on this side, where it has one: set as the actor spawns, cleared as it ends. */
-    @Nullable
-    CgEntityActor actor;
 
     /** Reads its pose and flags from the host's entities at {@code partialTick}; whether the host has it. */
     boolean refresh(CgEntityQuery entities, float partialTick) {
@@ -291,52 +285,19 @@ public final class CgEntity {
     }
 
     /**
-     * Server: plays {@code sequence} on its body and shows it to everyone who sees it. The play ends with
-     * {@link CgSequencePlayer#stop()}, and {@link CgSequencePlayer#onFinished} hears its end.
-     *
-     * @throws IllegalStateException on a client, or where it has no actor with a body
-     */
-    public CgSequencePlayer play(String sequence) {
-        return play(sequence, null);
-    }
-
-    /** As {@link #play(String)}, its animation on {@code slot}: the sequence's own where null. */
-    public CgSequencePlayer play(String sequence, @Nullable String slot) {
-        if (serverHost == null) {
-            throw new IllegalStateException("play(" + sequence + ") is the server's: " + this + " is on a client");
-        }
-        if (actor == null) throw new IllegalStateException(this + " has no actor to play " + sequence + " on");
-        CgSequencePlayer player = actor.playSequence(sequence, slot);
-        CgSequenceNet.serve(player, CgAnchor.on(serverHost), id).start();
-        return player;
-    }
-
-    /**
      * Raises the entity event {@code name} ({@code hurt}, {@code landed}, ...) as if the game had: its reactions play,
      * on this side's actor, for this frame.
      *
-     * @throws IllegalStateException on a client, or with no actor
+     * @throws IllegalStateException on a client
      * @throws IllegalArgumentException for a name that is no entity event
      */
     public CgEntity raiseEvent(String name) {
         var event = CgReaction.event(name);
         if (serverHost == null) throw new IllegalStateException("raiseEvent(" + name + ") is the server's: " + this + " is on a client");
         CgNetObject motion = properties(CgEntityProperties.MOTION);
-        if (actor == null || motion == null) throw new IllegalStateException(this + " has no actor to raise " + name + " on");
+        if (motion == null) throw new IllegalStateException(this + " has no motion to raise " + name + " on");
         motion.setBool(event, true);
         return this;
-    }
-
-    /**
-     * The animation inputs of its body, where {@code set(variable, value)} drives its graph: the same variables a
-     * graph reads, on this side's body.
-     *
-     * @throws IllegalStateException with no actor or body
-     */
-    public CgAnimInstance animation() {
-        CgAnimInstance anim = actor == null ? null : actor.animation();
-        if (anim == null) throw new IllegalStateException(this + " has no body to animate");
-        return anim;
     }
 
     private void requireOwner(String verb) {

@@ -7,11 +7,13 @@ import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.sequence.animation.CgSequenceSkeletal;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.world.CgEntityProperties;
@@ -322,7 +324,30 @@ public abstract class CgEntityActor {
      * Plays {@code sequence} on this actor's body, its every role the body: in {@code slot}, or the sequence's own where
      * null. The play a reaction makes, and what an entity's gameplay handle plays.
      */
-    public final CgSequencePlayer playSequence(String sequence, @Nullable String slot) {
+    /**
+     * Server: plays {@code sequence} on its body and shows it to everyone who sees it. {@code slot} is the montage slot
+     * its animation plays on; null is the sequence's own. The play ends with {@link CgSequencePlayer#stop()}, and
+     * {@link CgSequencePlayer#onFinished} hears its end.
+     *
+     * <pre>{@code
+     * CgEntityActors.actor(id).play("mymod:zombie_swing").onFinished(() -> CgEntities.of(zombie).removeTag(SWINGING));
+     * }</pre>
+     *
+     * @throws IllegalStateException on a client
+     */
+    public final CgSequencePlayer play(String sequence, @Nullable String slot) {
+        if (!server || host == null) throw new IllegalStateException("play(" + sequence + ") is the server's: " + entity + " is on a client");
+        CgSequencePlayer player = playSequence(sequence, slot);
+        CgSequenceNet.serve(player, CgAnchor.on(host), entity.id()).start();
+        return player;
+    }
+
+    /** As {@link #play(String, String)} on the sequence's own slot. */
+    public final CgSequencePlayer play(String sequence) {
+        return play(sequence, null);
+    }
+
+    final CgSequencePlayer playSequence(String sequence, @Nullable String slot) {
         CgSkeletalMeshComponent body = body();
         if (body == null) throw new IllegalStateException("no body to play " + sequence + " on: its prefab has no skeletal mesh");
         CgSequenceDefinition d = CgVfxAssets.<CgSequenceDefinition>ref(CgSequenceKinds.SEQUENCE, sequence).get();

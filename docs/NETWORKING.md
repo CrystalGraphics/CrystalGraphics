@@ -911,11 +911,11 @@ refuses the lot, and a refusal puts back everything under the key.
 ```java
 CgEntityTags.acceptTags((entity, tag, delta) -> tag == CHARGING);          // server, at init: what an owner may change
 CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(CHARGE_CUE));   // owner's client
-CgEntities.of(zombie).addTag(STUNNED).play("mymod:zombie_stun");            // server
+CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);                 // server
 ```
 
 - With no rule set, the server takes nothing: an owner's change shows, then goes back.
-- Any other client's `addTag`, `addCue` or `play` throws, naming the verb.
+- Any other client's `addTag` or `addCue` throws, naming the verb.
 
 ## 13. Saving with the world
 

@@ -24911,7 +24911,6 @@ com/crystalgraphics/world/actor/CgEntity
   method public addCue (Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/cue/CgCueParameters;)Lcom/crystalgraphics/cue/CgCuePlaying;
   method public addTag (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/world/actor/CgEntity;
   method public addTag (Lcom/crystalgraphics/tag/CgGameplayTag;I)Lcom/crystalgraphics/world/actor/CgEntity;
-  method public animation ()Lcom/crystalgraphics/animation/CgAnimInstance;
   method public bodyYaw ()F
   method public entity ()Ljava/lang/Object;
   method public executeCue (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/world/actor/CgEntity;
@@ -24929,8 +24928,6 @@ com/crystalgraphics/world/actor/CgEntity
   method public onServer ()Z
   method public onTagChanged (Lcom/crystalgraphics/tag/CgGameplayTag;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/world/CgEntityTags$Watch;
   method public pitch ()F
-  method public play (Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
-  method public play (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public pose (I)D
   method public present ()Z
   method public properties (Lcom/crystalgraphics/net/object/CgNetType;)Lcom/crystalgraphics/net/object/CgNetObject;
@@ -24961,7 +24958,8 @@ com/crystalgraphics/world/actor/CgEntityActor
   method public,final body ()Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public,final entity ()Lcom/crystalgraphics/world/actor/CgEntity;
   method public,final hostEntity ()Ljava/lang/Object;
-  method public,final playSequence (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public,final play (Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public,final play (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public,final root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
 com/crystalgraphics/world/actor/CgEntityActors
   access public,final
