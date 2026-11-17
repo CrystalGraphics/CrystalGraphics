@@ -58,6 +58,7 @@ import com.crystalgraphics.render.stage.CgStageFiring;
 import com.crystalgraphics.render.view.CgSceneTextures;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
+import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.trace.CgTraceRun;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -184,6 +185,8 @@ public final class CgSceneRenderer {
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
+    /** The all-opaque prepass's and the base pass's GPU time: what the prepass costs against the overdraw it saves. */
+    private static final int GPU_PREPASS = CgGpuTrace.name("scene.prepass"), GPU_BASE = CgGpuTrace.name("scene.base");
     /**
      * Solid, queued before the translucent: the opaque callback's base pass, testing the prepass's depth near-or-equal
      * and writing none.
@@ -344,7 +347,7 @@ public final class CgSceneRenderer {
                 }
                 CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, n != null ? allOpaquePrepassNormals : allOpaquePrepass);
                 if (prepass.size() > 0) {
-                    CgRasterPass pass = scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false);
+                    CgRasterPass pass = scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false).timed(GPU_PREPASS);
                     if (n != null) pass.colorIfTaken(n, CgLoad.load());
                     pass.add(prepass).end();
                 }
@@ -353,7 +356,7 @@ public final class CgSceneRenderer {
                         ? CgAmbientOcclusion.record(firing, rec, view, post, n) : null;
                 CgDrawCommands base = passes.commands(CgEnginePasses.BASE, rec, opaque);
                 if (base.size() > 0) {
-                    CgRasterPass pass = scenePass(firing, "scene.base", constants, OPAQUE_STATE, true);
+                    CgRasterPass pass = scenePass(firing, "scene.base", constants, OPAQUE_STATE, true).timed(GPU_BASE);
                     if (occlusion != null) pass.texture(CgBindingModel.AMBIENT_OCCLUSION, occlusion);
                     pass.add(base).end();
                 }
