@@ -17,6 +17,8 @@ public record CgColorMask(boolean r, boolean g, boolean b, boolean a, int target
 
     /** All channels disabled, applied to all render targets ({@code targetIndex == -1}). */
     public static final CgColorMask NONE = new CgColorMask(false, false, false, false, -1);
+    /** The first colour target closed and the rest as they are: a depth draw writing a second target beside it. */
+    public static final CgColorMask FIRST_NONE = new CgColorMask(false, false, false, false, 0);
 
     public static CgColorMask of(boolean r, boolean g, boolean b, boolean a) {
         return new CgColorMask(r, g, b, a, -1);

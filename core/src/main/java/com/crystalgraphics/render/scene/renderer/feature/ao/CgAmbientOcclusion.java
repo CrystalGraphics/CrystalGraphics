@@ -71,6 +71,12 @@ public final class CgAmbientOcclusion {
                 && !view.camera().isOrthographic();
     }
 
+    /** Whether {@code view} runs GTAO on the prepass's normals this frame: they are then written beside its depth. */
+    public static boolean wantsNormals(CgView view, CgPostSettings settings) {
+        return wants(view, settings) && Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1
+                && CgGTAO.USE_NORMALS.get();
+    }
+
     /** Whether its kernels are built; until then a frame draws without it. */
     public static boolean ready() {
         load();
@@ -79,12 +85,13 @@ public final class CgAmbientOcclusion {
 
     /**
      * This firing's occlusion, once {@code stage}'s depth holds every opaque surface and the solids' velocity is
-     * written: the texture the solids bind at
+     * written, GTAO reading {@code normals} where the prepass wrote them (null: none): the texture the solids bind at
      * {@code CgBindingModel.AMBIENT_OCCLUSION}, 1 where open, published as {@link #RESULT} for the rest of the frame;
      * null where its kernels are not built yet.
      */
     @Nullable
-    public static CgGraphTexture record(CgStageFiring stage, CgRecording recording, CgView view, CgPostSettings s) {
+    public static CgGraphTexture record(CgStageFiring stage, CgRecording recording, CgView view, CgPostSettings s,
+                                        @Nullable CgGraphTexture normals) {
         if (!ready()) return null;
         CgGraphTexture depth = stage.depth();
         // The render size: a host's depth, imported, does not know its own
@@ -100,7 +107,7 @@ public final class CgAmbientOcclusion {
         CgGraphTexture pyramid = method == 1 ? CgGTAO.pyramid(recording, depth, stage.constants(), view, w, h) : null;
         CgComputePass pass = recording.compute("world.ambientOcclusion", stage.constants()).readsDepth(depth).timed(GPU_AO);
         if (pyramid != null) {
-            CgGTAO.record(pass, recording, view, s, level, pyramid, t.ao, w, h, fadeMul, fadeAdd);
+            CgGTAO.record(pass, recording, view, s, level, pyramid, normals, t.ao, w, h, fadeMul, fadeAdd);
         } else if (method == 2) {
             CgCACAO.record(pass, view, s, level, t.ao, w, h, view.showFlags().temporalAA() ? view.state().frameIndex() : -1);
         } else {

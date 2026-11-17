@@ -40,6 +40,13 @@ final class CgGTAO {
     /** The spatial filter; off, the search's occlusion goes on unfiltered, its power and intensity unapplied. */
     static final CgVar.Bool SPATIAL_FILTER = CgVar.bool("crystalgraphics.gtao.spatialFilter", true, CgVar.DEV,
             "GTAO's spatial filter; off, the search's occlusion goes on unfiltered, without its power and intensity.");
+    /**
+     * The prepass's normals where it wrote them, else normals from depth; off, depth alone, which shows a mesh's
+     * triangles (Unreal's {@code r.GTAO.UseNormals}, there off by default).
+     */
+    static final CgVar.Bool USE_NORMALS = CgVar.bool("crystalgraphics.gtao.useNormals", true, CgVar.DEV,
+            "GTAO reads the prepass's normals where it wrote them, else normals from depth; off, depth alone, which shows a"
+                    + " low-poly mesh's triangles.");
     /** The temporal filter; off, each frame's occlusion stands alone, its noise unaveraged. */
     static final CgVar.Bool TEMPORAL_FILTER = CgVar.bool("crystalgraphics.gtao.temporalFilter", true, CgVar.DEV,
             "GTAO's temporal filter; off, each frame's occlusion stands alone, its noise unaveraged.");
@@ -93,11 +100,12 @@ final class CgGTAO {
 
     /**
      * Records the search, the filters and the upsample at shader {@code level} (0-4) into {@code ao},
-     * {@code w} by {@code h}, from {@code pyramid} ({@link #pyramid}); {@code fadeMul} and {@code fadeAdd} fade it out
-     * over eye depth.
+     * {@code w} by {@code h}, from {@code pyramid} ({@link #pyramid}) and {@code normals}, the prepass's (null: depth's
+     * alone); {@code fadeMul} and {@code fadeAdd} fade it out over eye depth.
      */
     static void record(CgComputePass pass, CgRecording recording, CgView view, CgPostSettings s, int level,
-                       CgGraphTexture pyramid, CgGraphTexture ao, int w, int h, float fadeMul, float fadeAdd) {
+                       CgGraphTexture pyramid, @Nullable CgGraphTexture normals, CgGraphTexture ao, int w, int h,
+                       float fadeMul, float fadeAdd) {
         load();
         int aw = aoWidth(w), ah = aoHeight(h);
         Targets t = view.state().get(TARGETS).size(w, h, aw, ah);
@@ -112,8 +120,11 @@ final class CgGTAO {
         float thickness = Math.max(0f, Math.min(0.99f, 1f - THICKNESS_BLEND * THICKNESS_BLEND));
         int taps = TAPS[Math.max(0, Math.min(4, level))], bias = BIAS_LEVEL[Math.max(0, Math.min(4, level))];
 
-        common(pass.dispatch(kernels[HORIZON], aw, ah, 1), w, h, aw, ah, fadeMul, fadeAdd, s)
-                .image("HORIZON", t.horizon).texture("_Pyramid", pyramid)
+        CgDispatch horizon = common(pass.dispatch(kernels[HORIZON], aw, ah, 1), w, h, aw, ah, fadeMul, fadeAdd, s);
+        if (normals != null && USE_NORMALS.get()) {
+            horizon.texture("_Normals", normals).set("_Fade", fadeMul, fadeAdd, s.ambientOcclusionFadeDistance(), 1f);
+        }
+        horizon.image("HORIZON", t.horizon).texture("_Pyramid", pyramid)
                 .set("_Search", RADIUS, thickness, taps, ANGLES)
                 .set("_Search2", bias, MAX_PIXEL_RADIUS, (float) Math.sin(delta), (float) Math.cos(delta))
                 .set("_Frame", (float) Math.cos(rotation), (float) Math.sin(rotation), offset, 0f);

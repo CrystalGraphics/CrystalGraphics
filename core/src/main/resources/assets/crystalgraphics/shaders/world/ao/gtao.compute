@@ -1,7 +1,8 @@
 // Ground-truth ambient occlusion (CgGTAO; Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
 // Occlusion"), four kernels:
 // - Horizon: each pixel's two horizons along a few screen directions, searched through the scene's furthest depth
-//   pyramid, and the visible arc integrated against its normal from depth. At the AO size, the render size or half it.
+//   pyramid, and the visible arc integrated against its normal: the prepass's where it wrote one, else from depth. At
+//   the AO size, the render size or half it.
 // - Spatial: a 5x5 bilateral blur on a plane fitted to the depth about the pixel, then the power and intensity.
 // - Temporal: blended into the view's own history, reprojected by the pixel's velocity (the camera's over its depth
 //   where the velocity pass wrote none), the history held within a range of this frame's value and within this frame's
@@ -19,9 +20,10 @@ Properties {
     _Search  ("x the world radius (metres), y the thickness blend, z taps a direction, w directions", vec4) = (2, 0.75, 8, 2)
     _Search2 ("x the bias level into the pyramid, y the most pixels a search reaches, z, w the next direction's sine and cosine", vec4) = (0, 256, 1, 0)
     _Frame   ("x, y this frame's rotation's cosine and sine, z its step offset", vec4) = (1, 0, 0, 0)
-    _Fade    ("x, y the fade's multiply and add over eye depth (metres), z the distance past which nothing is occluded", vec4) = (0, 0, 80, 0)
+    _Fade    ("x, y the fade's multiply and add over eye depth (metres), z the distance past which nothing is occluded; w 1 where _Normals is bound", vec4) = (0, 0, 80, 0)
     _Output  ("x intensity, y power, z the temporal blend weight, w 1 where the history holds last frame", vec4) = (0.5, 2, 0.1, 0)
     _Pyramid ("The scene's eye depth, level 0, and each level after it the farthest of what it covers", sampler2D) = "black"
+    _Normals ("The prepass's normals: xyz the world normal * 0.5 + 0.5, w its eye depth, 0 or below where none", sampler2D) = "black"
     _Horizon ("The horizon search's occlusion", sampler2D) = "white"
     _Filtered ("The spatial filter's occlusion", sampler2D) = "white"
     _History ("Last frame's filtered occlusion", sampler2D) = "white"
@@ -95,6 +97,17 @@ vec3 normal_from_depth(ivec2 p, vec2 uv, vec3 position) {
     return normalize(cross(up, right));
 }
 
+// The surface's normal in the search's view space, facing the eye: the prepass's interpolated normal where it wrote one
+// (a mesh's own smooth normal), else from depth (each triangle's flat one).
+vec3 surface_normal(ivec2 p, vec2 uv, vec3 position) {
+    vec4 written = _Fade.w > 0.5 ? texelFetch(_Normals, clamp(p, ivec2(0), textureSize(_Normals, 0) - 1), 0) : vec4(0.0);
+    if (written.w > 0.0) {
+        vec3 view = mat3(cg_ViewMatrix) * (written.xyz * 2.0 - 1.0);
+        return normalize(vec3(view.xy, -view.z));
+    }
+    return normal_from_depth(p, uv, position);
+}
+
 // Interleaved gradient noise (Jimenez 2014) at a pixel.
 float gradient_noise(vec2 p) {
     return fract(52.9829189 * fract(p.x * 0.06711056 + p.y * 0.00583715));
@@ -160,7 +173,7 @@ void Horizon() {
         return;
     }
     vec3 position = view_position(uv, z);
-    vec3 normal = normal_from_depth(at, uv, position);
+    vec3 normal = surface_normal(at, uv, position);
     vec3 view = normalize(-position);
 
     float radius = _Search.x, taps = _Search.z;

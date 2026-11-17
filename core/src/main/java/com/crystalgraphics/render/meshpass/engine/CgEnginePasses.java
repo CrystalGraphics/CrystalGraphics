@@ -285,7 +285,7 @@ public final class CgEnginePasses {
         CgPipeline depth = forward.as(CgPipelineForm.DEPTH);
         if (depth != null) return depth;
         CgRenderState own = forward.state();
-        return forward.withState(COLOURLESS.computeIfAbsent(own, s -> s.withColorMask(CgColorMask.NONE)));
+        return forward.withState(COLOURLESS.computeIfAbsent(own, s -> s.withColorMask(CgColorMask.FIRST_NONE)));
     }
 
     /**

@@ -72,12 +72,15 @@ public enum CgPipelineForm {
             CgDepthState depth = own.getDepth();
             return CgRenderState.builder().blend(CgBlendState.DISABLED)
                     .depth(depth != null && depth.test() ? new CgDepthState(true, true, depth.compareFunc()) : CgDepthState.TEST_WRITE)
-                    .cull(own.getCull()).colorMask(CgColorMask.NONE).build();
+                    .cull(own.getCull()).colorMask(CgColorMask.FIRST_NONE).build();
         }
     },
     /** Beside its colour, at location 1, the depth {@code CG_VOLUME_DEPTH(eye)} names: what a temporal resolve reprojects by. */
     VOLUME(CgEngineKeywords.VOLUME_TARGET, true, true),
-    /** Beside its colour, at location 1, the vertex normal: what the world lights read for our surfaces. */
+    /**
+     * Beside its colour, at location 1, the vertex normal: what the world lights and GTAO read for our surfaces. Over
+     * {@link #DEPTH}, the prepass's: depth, and the normal beside it, the colour still closed.
+     */
     NORMALS(CgEngineKeywords.NORMAL_TARGET, true, true),
     /** In place of its colour, the custom data and shading model its fragment names, for a post material reading them. */
     CUSTOM_DATA(CgEngineKeywords.CUSTOM_DATA_TARGET, true, true),
@@ -130,7 +133,7 @@ public enum CgPipelineForm {
         FOLD.excludes(OVERDRAW, COVER);
         DEPTH.excludes(OVERDRAW, COVER, FOLD);
         VOLUME.excludes(OVERDRAW, COVER, DEPTH);
-        NORMALS.excludes(OVERDRAW, COVER, FOLD, DEPTH, VOLUME);
+        NORMALS.excludes(OVERDRAW, COVER, FOLD, VOLUME);
         CUSTOM_DATA.excludes(OVERDRAW, COVER, FOLD, DEPTH, VOLUME, NORMALS);
         COVER.excludes(OVERDRAW);
         SOLID.excludes(OVERDRAW, COVER, FOLD, DEPTH, VOLUME, NORMALS);

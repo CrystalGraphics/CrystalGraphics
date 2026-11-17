@@ -79,8 +79,8 @@ import java.util.WeakHashMap;
  * views passed in. Engine side: a consumer reaches it only through stages ({@link CgRenderStage}) and flags.
  *
  * <p><b>Opaque</b>: the client world's frame (once a frame); {@code PREPARE}; a keyed subject's glow; our opaque scene in;
- * the instance cull; the depth prepass; the solids' velocity; ambient occlusion; the base pass (normals beside it where
- * asked); our opaque scene out; {@code OPAQUE}.</p>
+ * the instance cull; the depth prepass (normals beside it where asked); the solids' velocity; ambient occlusion; the
+ * base pass; our opaque scene out; {@code OPAQUE}.</p>
  * <p><b>Translucent</b>: the HDR scene in; the labels' depth; custom data; custom depth; the blends' velocity and
  * responsive marks; normals published; lights;
  * media; the scene glows; decals; {@code SURFACES}; graded layers prepared; the instance cull; the translucent prepass;
@@ -186,20 +186,22 @@ public final class CgSceneRenderer {
     private boolean linear, merge, layered;
     /**
      * Solid, queued before the translucent: the opaque callback's base pass, testing the prepass's depth near-or-equal
-     * and writing none; with our normals beside it.
+     * and writing none.
      */
     private final CgCommandForm opaque = (rows, b, p) -> queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD ? depthRead(p) : null;
-    private final CgCommandForm opaqueNormals = (rows, b, p) -> {
-        if (queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD) return null;
-        CgPipeline n = p.as(CgPipelineForm.NORMALS);
-        return depthRead(n != null ? n : p);
-    };
     /**
      * Every solid's depth, the lit solids queued after the lights too: the all-opaque prepass forward shading forces
      * (Unreal's DDM_AllOpaque), before the base pass and the ambient occlusion.
      */
     private final CgCommandForm allOpaquePrepass = (rows, b, p) ->
             queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD || CgMaterialProxy.of(rows.material(b)).solid() ? p : null;
+    /** The prepass with our normals beside its depth: what the world lights and GTAO read (Unreal's G-buffer normal). */
+    private final CgCommandForm allOpaquePrepassNormals = (rows, b, p) -> {
+        CgPipeline depth = allOpaquePrepass.form(rows, b, p);
+        if (depth == null) return null;
+        CgPipeline n = depth.as(CgPipelineForm.NORMALS);
+        return n != null ? n : depth;
+    };
     /** A translucent draw with a depth prepass ({@code "Depth" = "Prepass"}). */
     private final CgCommandForm translucentPrepass = (rows, b, p) ->
             queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD && CgMaterialProxy.of(rows.material(b)).hasDepthPrepass() ? p : null;
@@ -327,7 +329,10 @@ public final class CgSceneRenderer {
                 recordVelocity(firing, passes);
             } else {
                 warnShaderPack();
-                CgGraphTexture n = textures.normalsRequested() || lights.wantsNormals() ? normalsFor(firing) : null;
+                CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
+                boolean normalsWanted = textures.normalsRequested() || lights.wantsNormals()
+                        || post != null && CgAmbientOcclusion.wantsNormals(view, post);
+                CgGraphTexture n = normalsWanted ? normalsFor(firing) : null;
                 if (n == null) normals.written = Long.MIN_VALUE;
                 boolean opaqueScene = colour.opaqueIn(firing);
                 cull(firing, passes);
@@ -337,16 +342,18 @@ public final class CgSceneRenderer {
                 for (int b = 0, count = rows.size(); b < count; b++) {
                     if (CgMaterialProxy.of(rows.material(b)).handedLights()) lights.handNone(rows.material(b), rec);
                 }
-                CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, allOpaquePrepass);
-                if (prepass.size() > 0) scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false).add(prepass).end();
+                CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, n != null ? allOpaquePrepassNormals : allOpaquePrepass);
+                if (prepass.size() > 0) {
+                    CgRasterPass pass = scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false);
+                    if (n != null) pass.colorIfTaken(n, CgLoad.load());
+                    pass.add(prepass).end();
+                }
                 recordVelocity(firing, passes);
-                CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
                 CgGraphTexture occlusion = post != null && prepass.size() > 0 && CgAmbientOcclusion.wants(view, post)
-                        ? CgAmbientOcclusion.record(firing, rec, view, post) : null;
-                CgDrawCommands base = passes.commands(CgEnginePasses.BASE, rec, n != null ? opaqueNormals : opaque);
+                        ? CgAmbientOcclusion.record(firing, rec, view, post, n) : null;
+                CgDrawCommands base = passes.commands(CgEnginePasses.BASE, rec, opaque);
                 if (base.size() > 0) {
                     CgRasterPass pass = scenePass(firing, "scene.base", constants, OPAQUE_STATE, true);
-                    if (n != null) pass.colorIfTaken(n, CgLoad.load());
                     if (occlusion != null) pass.texture(CgBindingModel.AMBIENT_OCCLUSION, occlusion);
                     pass.add(base).end();
                 }

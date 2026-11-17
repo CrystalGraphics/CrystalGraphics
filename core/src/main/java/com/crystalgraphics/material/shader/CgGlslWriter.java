@@ -240,11 +240,11 @@ public final class CgGlslWriter {
 
     private static String fragment(CgShaderSpec spec, CgShaderPass pass, List<CgAttachedBuffer> buffers,
                                    @Nullable CgUniformBuffer block, Set<String> keywords, Set<String> extensions) {
-        // Depth alone from a material cutting nothing and offsetting no depth: no fragment work (Unreal's null pixel shader)
-        if (keywords.contains(CgEngineKeywords.DEPTH_PREPASS) && spec.depthMode() == CgShaderSpec.DepthMode.NONE
-                && !pass.namesPixelDepthOffset()) {
-            return VERSION + "void main() {\n}\n";
-        }
+        // Depth alone from a material cutting nothing and offsetting no depth: no fragment work (Unreal's null pixel
+        // shader), or with the normal beside it, that alone
+        boolean noFragment = keywords.contains(CgEngineKeywords.DEPTH_PREPASS) && spec.depthMode() == CgShaderSpec.DepthMode.NONE
+                && !pass.namesPixelDepthOffset();
+        if (noFragment && !forward(pass, keywords, CgEngineKeywords.NORMAL_TARGET)) return VERSION + "void main() {\n}\n";
         StringBuilder sb = new StringBuilder(8192).append(VERSION).append(CgBindless.header()).append(BINDLESS_EXTENSION);
         keywordDefines(sb, spec, keywords);
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
@@ -297,9 +297,11 @@ public final class CgGlslWriter {
               .append("  _cg_normalOut = dot(_cg_n, _cg_n) > 1.0e-12 ? vec4(normalize(gl_FrontFacing ? _cg_n : -_cg_n)")
               .append(" * 0.5 + 0.5, _cg_eye) : vec4(0.0, 0.0, 0.0, -_cg_eye);\n");
         }
-        sb.append(MATERIAL_LOAD).append('\n');
-        mainBody(sb, pass, spec, keywords.contains(CgEngineKeywords.DEBUG_OVERDRAW), cover, fold,
-                keywords.contains(CgEngineKeywords.DEPTH_PREPASS));
+        if (!noFragment) {
+            sb.append(MATERIAL_LOAD).append('\n');
+            mainBody(sb, pass, spec, keywords.contains(CgEngineKeywords.DEBUG_OVERDRAW), cover, fold,
+                    keywords.contains(CgEngineKeywords.DEPTH_PREPASS));
+        }
         if (solid) sb.append("  _cg_fragColor.a = 1.0;\n");
         if (customData && !layer) customData(sb);
         sb.append("}\n");
