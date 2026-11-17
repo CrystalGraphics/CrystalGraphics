@@ -1,5 +1,7 @@
 package com.crystalgraphics.vfx.particle.renderer;
 
+import com.crystalgraphics.api.state.CgBlendState;
+import com.crystalgraphics.platform.gl.driver.GLC;
 import com.crystalgraphics.vfx.look.CgVfxFlipbook;
 
 import javax.annotation.Nullable;
@@ -22,17 +24,26 @@ import java.util.Map;
  * @param cameraDistance the camera distances it draws between, null for any
  * @param castShadows    whether it casts shadows
  * @param softDepth      the depth it fades into what is behind it over, blocks; NaN for its material's
+ * @param pixelCoverage  under a pixel, drawn a pixel in half-size and its colour scaled ({@code PixelCoverageMode})
+ * @param pixelCoverageBlend how far its colour is scaled by its coverage, 0 to 1 ({@code PixelCoverageBlend})
  */
 public record CgVfxSpriteRendererProperties(Common common, Map<String, Object> tree, Alignment alignment, Facing facing,
                                             @Nullable float[] facingBlend, Sort sort, float[] pivot,
                                             @Nullable CgVfxFlipbook subImage, @Nullable float[] cameraDistance,
-                                            boolean castShadows, float softDepth) implements CgVfxRendererProperties {
+                                            boolean castShadows, float softDepth, PixelCoverage pixelCoverage,
+                                            float pixelCoverageBlend) implements CgVfxRendererProperties {
 
     /** {@code ENiagaraSpriteAlignment}. */
     public enum Alignment { UNALIGNED, VELOCITY, CUSTOM }
 
     /** {@code ENiagaraSpriteFacingMode}. */
     public enum Facing { CAMERA, CAMERA_PLANE, CAMERA_POSITION, CUSTOM, CAMERA_DISTANCE_BLEND }
+
+    /**
+     * {@code ENiagaraRendererPixelCoverageMode}: {@code AUTOMATIC} on for a translucent or additive material, the others
+     * as named; {@code ENABLED} widens without scaling its colour.
+     */
+    public enum PixelCoverage { AUTOMATIC, DISABLED, ENABLED, RGBA, RGB, A }
 
     /** {@code ENiagaraSortMode}, and the spawn orders ours adds. */
     public enum Sort { NONE, VIEW_DEPTH, VIEW_DISTANCE, SPAWN_ORDER, OLDEST_FIRST, NEWEST_FIRST }
@@ -57,6 +68,27 @@ public record CgVfxSpriteRendererProperties(Common common, Map<String, Object> t
      *
      * @throws IllegalArgumentException for a distance blend: not built yet
      */
+    /**
+     * The sprite factory's pixel coverage for its material's Forward blend ({@code _cg_PixelCoverageBlend}): the colour
+     * channels' share scaled by coverage, or null where it is off. As {@code NiagaraRendererSprites.cpp}: automatic is on
+     * for a translucent blend (alpha) and an additive one (RGBA), off for a solid and any other blend.
+     */
+    @Nullable
+    public float[] coverageBlend(@Nullable CgBlendState blend) {
+        float b = pixelCoverageBlend;
+        return switch (pixelCoverage) {
+            case DISABLED -> null;
+            case ENABLED -> new float[] {0f, 0f, 0f, 0f};
+            case RGBA -> new float[] {b, b, b, b};
+            case RGB -> new float[] {b, b, b, 0f};
+            case A -> new float[] {0f, 0f, 0f, b};
+            case AUTOMATIC -> blend == null || !blend.enabled() ? null
+                    : blend.dstRgb() == GLC.GL_ONE && blend.blendEquationRgb() == GLC.GL_FUNC_ADD ? new float[] {b, b, b, b}
+                    : blend.srcRgb() == GLC.GL_SRC_ALPHA && blend.dstRgb() == GLC.GL_ONE_MINUS_SRC_ALPHA ? new float[] {0f, 0f, 0f, b}
+                    : null;
+        };
+    }
+
     public float factoryFacing(String who) {
         if (facing == Facing.CAMERA_DISTANCE_BLEND) {
             throw new IllegalArgumentException(who + " faces camera_distance_blend, which is not built yet");

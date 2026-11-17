@@ -96,7 +96,9 @@ public final class CgVfxRenderers {
                             : tree.get("pivot") != null ? vector(who, "pivot", tree.get("pivot"), 2) : new float[] {0.5f, 0.5f},
                     flipbook(who, tree.get("sub_image")), floats(tree.get("camera_distance"), 2),
                     Boolean.TRUE.equals(tree.get("cast_shadows")),
-                    tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN);
+                    tree.get("soft_depth") instanceof Number n ? n.floatValue() : Float.NaN,
+                    choice(who, tree, "pixel_coverage", CgVfxSpriteRendererProperties.PixelCoverage.class, "automatic"),
+                    tree.get("pixel_coverage_blend") instanceof Number n ? Math.max(0f, Math.min(1f, n.floatValue())) : 1f);
             case "mesh" -> mesh(who, common, tree, deps);
             case "ribbon" -> ribbon(who, common, tree);
             case "arc" -> new CgVfxArcRendererProperties(common, tree, integer(tree.get("subdivisions")));
@@ -722,6 +724,27 @@ public final class CgVfxRenderers {
          */
         public Builder softDepth(float blocks) {
             return field("soft_depth", (double) blocks);
+        }
+
+        /**
+         * A sprite's pixel coverage, Niagara's: under a pixel it is drawn a pixel in half-size and its colour scaled by
+         * what it covers, so it holds still under temporal anti-aliasing's jitter. {@code automatic} (the default) is on
+         * for a translucent material (alpha) and an additive one (RGBA); {@code enabled} widens without scaling;
+         * {@code rgba}, {@code rgb} and {@code a} scale those channels; {@code disabled} draws it as it is.
+         *
+         * <pre>{@code
+         * CgVfxRenderers.sprite("sparks").material(spark).pixelCoverage("disabled").build();   // a deliberate twinkle
+         * CgVfxRenderers.sprite("dust").material(dust).pixelCoverage("rgb", 0.5f).build();     // half the dimming
+         * }</pre>
+         */
+        public Builder pixelCoverage(String mode) {
+            return field("pixel_coverage", mode);
+        }
+
+        /** {@link #pixelCoverage(String)}, its colour scaled {@code blend} of the way (0 to 1): Niagara's PixelCoverageBlend. */
+        public Builder pixelCoverage(String mode, float blend) {
+            field("pixel_coverage", mode);
+            return field("pixel_coverage_blend", (double) blend);
         }
 
         /** A sprite's or mesh's flipbook, its {@code sub_image} map. */

@@ -94,6 +94,8 @@ public final class CgEngineBufferRegistry {
                     _cg_KeepSize ("1: the camera offset shrinks it by (d - offset) / d, so it looks the size it would where it is", float) = 0
                     _cg_RotationBias ("Radians added to each sprite's rotation: Cascade's axis lock bias", float) = 0
                     _cg_Pivot ("Niagara's pivot in UV space: the point of the quad on the particle, and turned about", vec4) = (0.5, 0.5, 0, 0)
+                    _cg_PixelCoverage ("1: a sprite under a pixel drawn a pixel in half-size, Niagara's pixel coverage", float) = 0
+                    _cg_PixelCoverageBlend ("Pixel coverage's colour scaling, per channel: 1 by what it covers, 0 none", vec4) = (0, 0, 0, 0)
                     _cg_Drawn ("Drawn slots its pool writes: dynamic parameters 0-3 a bit each, 32 sub-image, 64 camera offset, 128 every index reads the first, 256 Cascade's GPU sprites reading 0, 512 pivot", float) = 0
                     _cg_Bounds ("Its system's fixed bounds: absolute centre, sphere radius; written per effect", vec4) = (0, 0, 0, 0)
                     _cg_MacroUVSystem ("Its system's macro UV centre, absolute, and radius; written per effect", vec4) = (0, 0, 0, 0)

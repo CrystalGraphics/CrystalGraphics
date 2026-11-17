@@ -222,6 +222,15 @@ final class CgVfxMaterials {
                 material.requireRow(PIVOT, who);
                 rowValues.put(PIVOT, floats(new float[]{pivot[0], pivot[1], 0f, 0f}));
             }
+            float[] coverage = sprite.coverageBlend(CgMaterialProxy.of(probe).forwardBlend());
+            // Automatic passes over a material placing its own quads; one asked for by name fails here without the rows
+            boolean placesSprites = material.rows().slot(PIXEL_COVERAGE) >= 0;
+            if (coverage != null && (placesSprites || sprite.pixelCoverage() != CgVfxSpriteRendererProperties.PixelCoverage.AUTOMATIC)) {
+                material.requireRow(PIXEL_COVERAGE, who);
+                material.requireRow(PIXEL_COVERAGE_BLEND, who);
+                rowValues.put(PIXEL_COVERAGE, 1f);
+                rowValues.put(PIXEL_COVERAGE_BLEND, floats(coverage));
+            }
         }
         float soft = renderer instanceof CgVfxSpriteRendererProperties sprite ? sprite.softDepth()
                 : renderer instanceof CgVfxMeshRendererProperties mesh ? mesh.softDepth() : Float.NaN;
@@ -441,7 +450,8 @@ final class CgVfxMaterials {
     private static final int FROM_EXPOSURE = -6;
     private final Vector3f turned = new Vector3f();
     private static final String FACING = "_cg_Facing", SUB_IMAGE = "_cg_SubImage", SUB_UV = "_cg_SubUV", DRAWN = "_cg_Drawn",
-            PIVOT = "_cg_Pivot", SOFT_DISTANCE = "_SoftDistance";
+            PIVOT = "_cg_Pivot", SOFT_DISTANCE = "_SoftDistance", PIXEL_COVERAGE = "_cg_PixelCoverage",
+            PIXEL_COVERAGE_BLEND = "_cg_PixelCoverageBlend";
 
     /**
      * The factory's {@code _cg_Drawn} for {@code emitter}'s renderers: its dynamic parameter slots a bit each, then 32

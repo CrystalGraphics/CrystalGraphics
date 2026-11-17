@@ -855,6 +855,7 @@ two includes of it are one.
 | `uv.glsl` | `rotate_uv`, `scale_uv`, `tile_uv`, `pan_uv`, `flip_uv_x/y`, `cartesian_to_polar_uv` |
 | `noise.glsl` | `hash12`/`hash22`/`hash13` (sin-free), `value_noise`, `fbm4`/`fbm6`, `fbm(p, octaves)`, `fbm_ridged` |
 | `sdf.glsl` | `sdf_rounded_box` (uniform / per-corner / elliptical), `sdf_segment`, `sdf_bezier` (exact quadratic, with a straight-line fallback), `sdf_coverage` (**fragment-only, guarded**) |
+| `pixel_coverage.glsl` | `cg_render_pixel_size(p)` (a render pixel's width in blocks at camera-relative `p`), `cg_sprite_pixel_coverage` (Niagara's, which sprites take from their renderer), `cg_min_pixel_width(v, objectToWorld, halfExtent, pixels)`: a mesh's vertex() keeps each object axis at least that many pixels wide and gets back the coverage to blend by, so a wire thinner than a pixel holds still under temporal AA (velocity-correct: pass `CG_OBJECT_TO_WORLD`) |
 | `rng.glsl` | `cg_rng4(seed, element, step, stream)` (PCG4D, counter-based: any element draws its own numbers in any order), `cg_rng`, `cg_rng_unit` (the top 24 bits in [0, 1)), `cg_rng_unit4`, `cg_rng_direction`. Integer-exact on every tier; `compute.ops.CgRng` gives the same bits in Java |
 
 The canvas's own (`texel`, pixel-art filtering; `stroke`, the one copy of a curve's caps and taper; `rect_blur`,

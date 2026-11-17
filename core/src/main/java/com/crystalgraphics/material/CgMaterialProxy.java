@@ -1243,6 +1243,21 @@ public final class CgMaterialProxy {
     }
 
     /**
+     * The blend its Forward draw uses: its state's blend mode where it sets one, else its shader's; null for none (a
+     * solid, or a shader that does not parse). A parse, never a compile.
+     */
+    @Nullable
+    public CgBlendState forwardBlend() {
+        CgBlendState blend = state.blend() != null ? state.blend().state() : null;
+        if (blend == null && cgMaterialShader != null) {
+            CgShaderSpec parsed = cgMaterialShader.ensureParsed();
+            CgShaderPass forward = parsed == null ? null : parsed.pass(CgRenderPassVariant.FORWARD);
+            blend = forward == null ? null : forward.state().getBlend();
+        }
+        return blend != null && blend.enabled() ? blend : null;
+    }
+
+    /**
      * Whether this material authors a Distortion pass: the world renderer then adds it into the distortion target, which
      * bends the scene after the transparent pass. A parse, never a compile.
      */

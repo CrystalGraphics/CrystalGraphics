@@ -9025,6 +9025,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public domain ()Lcom/crystalgraphics/api/material/CgMaterialDomain;
   method public drawn ()Lcom/crystalgraphics/api/material/CgMaterialInterface;
   method public enableKeyword (Ljava/lang/String;)V
+  method public forwardBlend ()Lcom/crystalgraphics/api/state/CgBlendState;
   method public getMaterialId ()I
   method public getPassRenderState (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)Lcom/crystalgraphics/api/state/CgRenderState;
   method public getPropertyForTest (Ljava/lang/String;)Lcom/crystalgraphics/material/CgMaterialProperty;
@@ -23063,6 +23064,8 @@ com/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder
   method public material (Ljava/util/function/Consumer;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
   method public materialOverrides ([Lcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
   method public maxDrawCount (I)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
+  method public pixelCoverage (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
+  method public pixelCoverage (Ljava/lang/String;F)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
   method public quality (Lcom/crystalgraphics/settings/CgQuality;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
   method public shader (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
   method public softDepth (F)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRenderers$Builder;
@@ -23257,15 +23260,18 @@ com/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties
   field public,static,final FACE_CAMERA F
   field public,static,final FACE_POSITION_UP F
   implements com/crystalgraphics/vfx/particle/renderer/CgVfxRendererProperties
-  method public <init> (Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRendererProperties$Common;Ljava/util/Map;Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Alignment;Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;[FLcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Sort;[FLcom/crystalgraphics/vfx/look/CgVfxFlipbook;[FZF)V
+  method public <init> (Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRendererProperties$Common;Ljava/util/Map;Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Alignment;Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;[FLcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Sort;[FLcom/crystalgraphics/vfx/look/CgVfxFlipbook;[FZFLcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;F)V
   method public alignment ()Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Alignment;
   method public cameraDistance ()[F
   method public castShadows ()Z
   method public common ()Lcom/crystalgraphics/vfx/particle/renderer/CgVfxRendererProperties$Common;
+  method public coverageBlend (Lcom/crystalgraphics/api/state/CgBlendState;)[F
   method public facing ()Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;
   method public facingBlend ()[F
   method public factoryFacing (Ljava/lang/String;)F
   method public pivot ()[F
+  method public pixelCoverage ()Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  method public pixelCoverageBlend ()F
   method public softDepth ()F
   method public sort ()Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Sort;
   method public subImage ()Lcom/crystalgraphics/vfx/look/CgVfxFlipbook;
@@ -23291,6 +23297,17 @@ com/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing
   field public,static,final CUSTOM Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;
   method public,static values ()[Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Facing;
+com/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final A Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  field public,static,final AUTOMATIC Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  field public,static,final DISABLED Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  field public,static,final ENABLED Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  field public,static,final RGB Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  field public,static,final RGBA Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
+  method public,static values ()[Lcom/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$PixelCoverage;
 com/crystalgraphics/vfx/particle/renderer/CgVfxSpriteRendererProperties$Sort
   access public,final,enum
   extends java/lang/Enum

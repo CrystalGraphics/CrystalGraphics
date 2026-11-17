@@ -79,6 +79,16 @@ static final CgVfxRendererProperties SPARKS = CgVfxRenderers.sprite("sparks")
 
   A material of your own fades with `cg_depth_fade` (`docs/SHADERS.md` § *Unreal's material expressions*), declaring
   `_SoftDistance` under `PerDrawValues On`, into `s.opacity`: an additive one adds its colour times its opacity, as Unreal's does.
+- **A sprite thinner than a pixel holds still**: `pixel_coverage`, Niagara's, draws it a pixel in half-size and scales
+  its colour by what it covers, so temporal anti-aliasing's jitter cannot make it twinkle. `automatic` (the default) is
+  on for a translucent material (its alpha) and an additive one (RGBA); `enabled` widens without scaling, `rgba`, `rgb`
+  and `a` scale those channels, `disabled` draws it as it is. `pixel_coverage_blend` (0 to 1, default 1) is how far
+  the colour is scaled. Beams, ribbons and trails take none, as Unreal's take none.
+
+  ```yaml
+  - { id: r1, kind: sprite, material: mymod:materials/fx/spark }                              # automatic
+  - { id: r2, kind: sprite, material: mymod:materials/fx/glint, pixel_coverage: disabled }   # meant to twinkle
+  ```
 - **Its renderers decide its draw layout**: a mesh renderer lays its particles out as meshes (a prefab's and a
   `sequence` renderer's as a clip), an arc renderer as arcs, every other kind as quads, and an emitter whose renderers
   need two layouts fails at build.
