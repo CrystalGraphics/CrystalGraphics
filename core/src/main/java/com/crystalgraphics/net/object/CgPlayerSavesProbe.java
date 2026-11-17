@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.apache.logging.log4j.LogManager;
@@ -70,6 +71,8 @@ public final class CgPlayerSavesProbe {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
+        // declared now, at network init: a type declared later misses every entity already in the world
+        Objects.requireNonNull(Saved.TYPE);
         Server server = new Server();
         CgEngineLifecycle.onServerTick(server::tick);
         LOGGER.info("player saves probe: armed ({} fields persisted)", SAVED.length);

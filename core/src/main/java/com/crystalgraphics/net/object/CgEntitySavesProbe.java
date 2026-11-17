@@ -1,5 +1,8 @@
 package com.crystalgraphics.net.object;
 
+import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -31,8 +34,12 @@ public final class CgEntitySavesProbe {
 
     private static final Logger LOGGER = LogManager.getLogger("CgEntitySavesProbe");
 
-    /** Far from spawn, whose chunks never unload; under every version's build limit, the player falling from there in creative. */
-    private static final double FAR = 3000, HIGH = 240;
+    /**
+     * Far from spawn, whose chunks never unload, and somewhere no earlier run stood (the gauntlet's world is kept, and
+     * an earlier run's mob there still holds its values); under every version's build limit, the player falling from
+     * there in creative.
+     */
+    private static final double FAR = 3000 + 64 * ThreadLocalRandom.current().nextInt(1000), HIGH = 240;
 
     /** Declared at install only: a declaration is in every connection's hello. */
     private static final class Saved {
@@ -73,6 +80,8 @@ public final class CgEntitySavesProbe {
     public static synchronized void install() {
         if (installed) return;
         installed = true;
+        // declared now, at network init: a type declared later misses every entity already in the world
+        Objects.requireNonNull(Saved.TYPE);
         Server server = new Server();
         CgEngineLifecycle.onServerTick(server::tick);
         LOGGER.info("entity saves probe: armed");
