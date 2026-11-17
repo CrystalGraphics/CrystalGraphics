@@ -104,7 +104,10 @@ void update(bool spatial) {
     float lowRejection = min(rejection.x, dilated.x), disableClamp = min(rejection.y, dilated.y);
     float decreaseValidity = max(rejection.z, dilated.z);
     bool parallaxRejected = (uint(round(dilated.w * 255.0)) & 1u) == 0u;
-    // A pixel the reject pass resurrected fetches the oldest snapshot instead, along its own reprojection there
+    // A pixel the reject pass resurrected fetches the oldest snapshot instead, along its own reprojection there, and is
+    // always clamped (a departure from Unreal, which may skip it): resurrection fires where a moving edge uncovers the
+    // pixel, whose 3x3 the reject pass measures spans edge and background, so a snapshot holding what was uncovered then
+    // passes, and each later snapshot keeps it, a trail of the edge's old places
     bool resurrected = _Resurrect.x > 0.5 && (uint(round(dilated.w * 255.0)) & 2u) != 0u;
     if (resurrected) {
         float device = texelFetch(_Closest, fetchAt, 0).g;
@@ -112,6 +115,7 @@ void update(bool spatial) {
                 + _ClipToResurrection3;
         vector = screen - clip.xy / clip.w;
         upscaleCorrection = 1.0;
+        disableClamp = 0.0;
     }
     vec2 prevScreen = screen - vector;
     float pixelSpeed = length(vector * _Output.xy);
