@@ -97,6 +97,7 @@ final class CgComputeEncoder {
                 if (d.counters[b] != null) device.bufferStorage(d.counters[b], false);
             }
             if (d.args != null) device.bufferStorage(d.args, false);
+            makeHistories(d);
         }
         device.compute.begin(pass.name());
         device.computing = true;
@@ -256,6 +257,20 @@ final class CgComputeEncoder {
             int id = device.bufferStorage(read.view(), false);
             execution.transitions.buffer(id, CgAccess.COPY_READ);
             CgReadback.buffer(id, read.offset(), read.size(), read);
+        }
+    }
+
+    /**
+     * The storage of every history {@code d} writes or samples, made before the compute pass opens: a history's first
+     * use clears both its versions, a clear no compute pass may hold.
+     */
+    private void makeHistories(CgDispatch d) {
+        for (CgGraphTexture image : d.images) {
+            if (image != null && image.kind() == CgGraphTexture.Kind.HISTORY) device.storage(image);
+        }
+        for (CgTexture sampled : d.samplers) {
+            CgGraphTexture graph = CgGraphTexture.sampled(sampled);
+            if (graph != null && graph.kind() == CgGraphTexture.Kind.HISTORY) device.storage(graph);
         }
     }
 
