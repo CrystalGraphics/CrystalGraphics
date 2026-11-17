@@ -9,8 +9,8 @@
 // inside lines. The resolve picks between them by the light, through the engine's tone ramp (TONE, the game's
 // /Engine/EngineMaterials/Tone, its row TonePattern), and lights them by the stage's directional light.
 //
-// Not carried yet: cast and contact shadows (the host has no shadow map: visibility is 1), the sky's indirect
-// irradiance, blood and damage (they read uv2; the custom data's colour is the shadow side without them), DBuffer
+// Not carried yet: contact shadows (the sun's shadow is the engine's apply; the game's characters take no screen-space AO: its
+// resolve binds a 1x1 white where Unreal binds the AO), the sky's SH irradiance, blood and damage (they read uv2; the custom data's colour is the shadow side without them), DBuffer
 // decals, the outline ID's in-line and fresnel switches, and the petrifaction, mob-colour and rim-cell switches. Without SWITCH_USEDIFFUSETEXTURE (an NPC's eye, its own shader map) the light
 // side is the flat Diffuse and the shadow side the flat AmbientShadow, read with the other switches off.
 //
@@ -253,6 +253,10 @@ void surface(in v2f i, inout CgSurface s) {
 
     KkCellSurface surface = KkCellSurface(lit, dark, second, painted, rimLit, shadowBias, castWeight);
     vec3 c = kk_cell_resolve(surface, bent, CG_SUN_DIRECTION, TONE, TonePattern, AffectedLight, CG_GLOBAL_directional_light_colour.rgb, StageShadowTint.rgb);
+    // TEST ONLY: the screen's ambient occlusion on the sky's share of the world light, never the sun's, as Unreal's
+    // IndirectOcclusion (the game binds none here)
+    vec3 sunPart = CG_DIRECTIONAL_LIGHT_COLOR, skyPart = CG_SKY_LIGHT_COLOR;
+    c *= (sunPart + skyPart * cg_ScreenAmbientOcclusion()) / max(sunPart + skyPart, vec3(1.0e-3));
 #ifdef CELL_DRAGON
     vec2 maskUv = cg_panner(i.uv3 * vec2(EFF_Scale_U, EFF_Scale_V), CG_TIME, vec2(0.0, Speed), false);
     vec2 bendUv = cg_panner(i.uv3 * vec2(EFF_Scale_U_2, EFF_Scale_V_2), CG_TIME, vec2(0.0, Speed_2), false);

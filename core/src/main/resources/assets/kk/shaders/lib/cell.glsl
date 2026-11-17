@@ -24,8 +24,14 @@ struct KkCellSurface {
     float castWeight;
 };
 
-// The ramp's row is TonePattern, the stage light scaled by AffectedLight; visibility 1 (the host has no shadow map).
-// Its first blend reads the base colour's alpha, which model 13 stores as 1, so it is the toned mix.
+// The world's light where the object stands, sun and sky: 1 by full day, falling at night and under cover. It scales
+// the game's resolve whole, as Minecraft's lightmap lights an entity, so by day the look is the game's own.
+vec3 kk_world_light() { return CG_DIRECTIONAL_LIGHT_COLOR + CG_SKY_LIGHT_COLOR; }
+
+// The ramp's row is TonePattern, the stage light scaled by AffectedLight; visibility 1: the sun's shadow darkens the
+// pixel in the engine's deferred apply, never here. Its first blend reads the base colour's alpha, which model 13
+// stores as 1, so it is the toned mix. The stage's light and shadow tint are the game's constants; the world's light
+// scales the result.
 vec3 kk_cell_resolve(KkCellSurface s, vec3 normal, vec3 sun, sampler2D tone, float tonePattern, float affectedLight,
                      vec3 stageLight, vec3 stageShadowTint) {
     float visibility = 1.0;
@@ -44,7 +50,7 @@ vec3 kk_cell_resolve(KkCellSurface s, vec3 normal, vec3 sun, sampler2D tone, flo
             + mix(toned, mix(toned, mixed, s.painted), s.painted), 0.0, 1.0);
     vec3 edge = vec3(1.0) + sunDark - (vec3(1.0) - sunLit) * (vec3(1.0) - s.rimLit * clamp(sunLit + 0.3, 0.0, 1.0));
     c = mix(c, mix(mixed, edge, toneMix), s.rimLit);
-    return c * clamp(0.5 * (sunDark + 0.1) + clamp(1.0 + visibility - s.castWeight, 0.0, 1.0), 0.0, 1.0);
+    return c * clamp(0.5 * (sunDark + 0.1) + clamp(1.0 + visibility - s.castWeight, 0.0, 1.0), 0.0, 1.0) * kk_world_light();
 }
 
 // The normal turned about the material's own light axis (LightDirection_Vertical, 0, LightDirection_Side in object
