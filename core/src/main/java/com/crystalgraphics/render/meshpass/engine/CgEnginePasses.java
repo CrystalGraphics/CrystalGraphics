@@ -57,8 +57,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #VELOCITY_WITH_STILL}: every solid, those still or keeping no previous transform writing no motion of
  *       their own: a written texel then means the engine drew it (Unreal's
  *       {@code VelocityIncludeStationaryPrimitives}), what temporal AA keeps to.</li>
- *   <li>{@link #RESPONSIVE}: what blends, its Responsive pass, 1 into an R8 target where it covers (Unreal's
- *       Responsive AA): temporal AA keeps a short history there.</li>
+ *   <li>{@link #RESPONSIVE}: what blends, its Responsive pass, its mark into an R8 target where it covers: 1 with
+ *       {@code ResponsiveAA On} (Unreal's Responsive AA), where temporal AA keeps a short history; 0.5 with it Off.</li>
  *   <li>{@link #DECAL}: decal components' boxes, their {@code #domain decal} material reading the scene's depth and
  *       blending into the scene's colour after the opaque scene, in their sort order (Unreal's deferred decals as its
  *       forward renderer draws them). A raster pass of it reads the scene's depth ({@code readsDepth}).</li>

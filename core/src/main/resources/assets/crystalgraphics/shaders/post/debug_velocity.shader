@@ -30,7 +30,7 @@ void fragment(in v2f i, out vec4 fragColor) {
     ivec2 at = ivec2(gl_FragCoord.xy);
     vec2 written = texelFetch(_Source, at, 0).xy;
     if (written.x <= 0.0) {
-        fragColor = vec4(0.0, 0.0, texelFetch(_Responsive, at, 0).r > 0.5 ? 0.5 : 0.0, 1.0);
+        fragColor = vec4(0.0, 0.0, cg_MarkResponsive(texelFetch(_Responsive, at, 0).r) ? 0.5 : 0.0, 1.0);
         return;
     }
     vec2 texels = cg_DecodeVelocity(written) * 0.5 * vec2(textureSize(_Source, 0));

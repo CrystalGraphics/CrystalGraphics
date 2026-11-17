@@ -234,6 +234,7 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | `ClipDepth` | `Off`, `On` | A translucent material writing depth where `opacityMask` passes: ink, debris |
 | `MaskClip` | `0.5`, a number or a float property | The `opacityMask` threshold |
 | `DitherOpacityMask` | `Off`, `On` | `Masked` only: the clip's threshold a noise turning each frame, so temporal anti-aliasing settles the mask to its coverage: a cheap translucency that writes depth (Unreal's) |
+| `ResponsiveAA` | `On`, `Off` | Translucent only (Unreal's Responsive AA): where it covers, temporal anti-aliasing keeps a short history, so a blend that moves and writes no velocity (a particle) leaves no trail. `Off` for a blend that holds still, whose history should settle: a wire kept a pixel wide |
 | `Fog` | `On`, `Off` | Fogged with distance |
 | `Media` | `On`, `Off` | Dimmed by the smoke and dust in front of it |
 | `ColorSpace` | `sRGB`, `Linear` | What its colours are written in |

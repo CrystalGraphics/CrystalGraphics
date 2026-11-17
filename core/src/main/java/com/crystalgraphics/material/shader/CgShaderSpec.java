@@ -116,6 +116,8 @@ public final class CgShaderSpec {
     @Nullable final CgTranslucencyPass translucencyPass;
     /** {@code DitherOpacityMask On}: a Masked material clipped at a noise rather than its threshold. */
     final boolean ditherOpacityMask;
+    /** {@code ResponsiveAA}: a translucent shader's short temporal history where it covers. */
+    final boolean responsiveAA;
     final boolean templateReadsSceneColor;
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
@@ -157,6 +159,7 @@ public final class CgShaderSpec {
         this.writesCustomData = b.writesCustomData;
         this.translucencyPass = b.translucencyPass;
         this.ditherOpacityMask = b.ditherOpacityMask;
+        this.responsiveAA = b.responsiveAA;
         this.maskClip = b.maskClip;
         this.postLocation = b.postLocation;
         this.tube = b.tube;
@@ -194,6 +197,7 @@ public final class CgShaderSpec {
         this.writesCustomData = of.writesCustomData;
         this.translucencyPass = of.translucencyPass;
         this.ditherOpacityMask = of.ditherOpacityMask;
+        this.responsiveAA = of.responsiveAA;
         this.maskClip = of.maskClip;
         this.postLocation = of.postLocation;
         this.tube = of.tube;
@@ -338,6 +342,15 @@ public final class CgShaderSpec {
      */
     public boolean ditherOpacityMask() {
         return ditherOpacityMask;
+    }
+
+    /**
+     * {@code ResponsiveAA} (Unreal's Responsive AA), On by default for a translucent material: where it covers, temporal
+     * anti-aliasing keeps a short history, so what blends and writes no velocity leaves no trail. Off for a blended
+     * surface that holds still, a thin wire kept a pixel wide, whose history should settle.
+     */
+    public boolean responsiveAA() {
+        return responsiveAA;
     }
 
     public DepthMode depthMode() {

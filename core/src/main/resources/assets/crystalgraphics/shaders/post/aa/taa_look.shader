@@ -20,7 +20,7 @@ Properties {
     _History    ("The colour's history as this frame resolved it: alpha its age", sampler2D) = "black"
     _PrevLook   ("Last frame's resolved look weights", sampler2D) = "black"
     _Velocity   ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
-    _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
+    _Responsive ("Where a blended draw covered: 1 Responsive AA, 0.5 one that keeps its history", sampler2D) = "black"
     _Resolve    ("As the resolve's: x the least share, y the share at speed, z 1 with a history to blend", vec4) = (0.04, 0.2, 1, 0.25)
     _Jitter     ("xy this frame's jitter in normalized device coordinates", vec4) = (0, 0, 0, 0)
 }
@@ -66,7 +66,7 @@ void fragment(in v2f i, out vec4 fragColor) {
         return;
     }
     float speed = length(motion * size);
-    bool responsive = texelFetch(_Responsive, at, 0).r > 0.5;
+    bool responsive = cg_MarkResponsive(texelFetch(_Responsive, at, 0).r);
     float share = taa_share(_Resolve, speed, taa_still(speed, length(farMotion * size)), age - 1.0, responsive);
     vec4 history = clamp(textureLod(_PrevLook, from, 0.0), lo, hi);
     fragColor = mix(history, current, share);

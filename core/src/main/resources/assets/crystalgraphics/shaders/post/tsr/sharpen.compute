@@ -7,7 +7,7 @@ Properties {
     _Source  ("The resolved picture, at the output size", sampler2D) = "black"
     _Sharpen ("x RCAS's sharpness, 2^-stops (1 its most); y 1 where every engine solid writes velocity", vec4) = (1, 0, 0, 0)
     _Velocity ("What the velocity pass wrote, at the input size, 0 where it wrote nothing", sampler2D) = "black"
-    _Responsive ("1 where a blended draw covered, at the input size", sampler2D) = "black"
+    _Responsive ("Where a blended draw covered, at the input size: 1 Responsive AA, 0.5 one that keeps its history", sampler2D) = "black"
 }
 
 Images {
@@ -26,7 +26,7 @@ void Sharpen() {
     ivec2 last = textureSize(_Source, 0) - 1;
     if (_Sharpen.y > 0.5) {
         ivec2 at = ivec2((vec2(p) + 0.5) * vec2(textureSize(_Velocity, 0)) / vec2(last + 1));
-        if (texelFetch(_Responsive, at, 0).r < 0.5 && !cg_EngineDrew(_Velocity, at)) {
+        if (!cg_EngineDrew(_Velocity, _Responsive, at)) {
             PICTURE_WRITE(vec4(texelFetch(_Source, p, 0).rgb, 1.0));
             return;
         }

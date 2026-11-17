@@ -138,7 +138,7 @@ void Decimate() {
     bool disoccluded = !offScreen && seen < 0.5;
     bool holeFilled = anyValid && encodable && disoccluded;
     if (holeFilled) vector = holeVelocity / (_Input.xy * 0.5);
-    bool responsive = textureLod(_Responsive, (vec2(p) + 0.5) * _Input.zw, 0.0).r > 0.5;
+    bool responsive = cg_MarkResponsive(textureLod(_Responsive, (vec2(p) + 0.5) * _Input.zw, 0.0).r);
 
     // The oldest snapshot's guide where this pixel's surface was then, bilinear: what resurrection compares
     bool unseen = false;

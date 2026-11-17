@@ -25,6 +25,25 @@ bool cg_EngineDrew(sampler2D velocity, ivec2 at) {
     return false;
 }
 
+// The responsive target's marks: every blended draw marks where it covers, the larger kept where draws overlap
+// (ResponsivePass, which writes these values). Responsive (ResponsiveAA On, Unreal's Responsive AA): temporal AA keeps
+// a short history there. Blended (ResponsiveAA Off): the history is kept. Either is the engine's drawing.
+const float CG_MARK_RESPONSIVE = 1.0, CG_MARK_BLENDED = 0.5;
+
+bool cg_MarkResponsive(float mark) {
+    return mark > 0.5 * (CG_MARK_RESPONSIVE + CG_MARK_BLENDED);
+}
+
+bool cg_MarkBlended(float mark) {
+    return mark > 0.5 * CG_MARK_BLENDED;
+}
+
+// Whether the engine drew at texel at: a solid's velocity at or beside it, or a blended draw's mark. What it did not
+// draw is a host's world, which temporal AA passes through as it came.
+bool cg_EngineDrew(sampler2D velocity, sampler2D responsive, ivec2 at) {
+    return cg_MarkBlended(texelFetch(responsive, at, 0).r) || cg_EngineDrew(velocity, at);
+}
+
 // Fragment stage: they read the scene's depth as a world point (cg_DepthToWorld)
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // The camera's own motion at uv (0 to 1, bottom left) for window depth windowDepth: the point reconstructed in this

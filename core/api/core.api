@@ -9287,6 +9287,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public queue ()I
   method public readsObjectRecord ()Z
   method public renderType ()Ljava/lang/String;
+  method public responsiveAA ()Z
   method public sceneColorMargin ()F
   method public sceneFolds ()Z
   method public surfaceLit ()Z
@@ -12552,6 +12553,14 @@ com/crystalgraphics/render/look/CgLookIds
   method public,static frame (J)V
   method public,static look (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public,static of (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)I
+com/crystalgraphics/render/look/CgLookPost
+  access public,final
+  extends java/lang/Object
+  field public,static,final MASK Ljava/lang/String;
+  method public,static grades (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
+  method public,static readsScene (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
+  method public,static record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
+  method public,static releaseAll ()V
 com/crystalgraphics/render/look/CgLookWeights
   access public,final
   extends java/lang/Object
@@ -12840,6 +12849,7 @@ com/crystalgraphics/render/post/aa/CgTemporalGlow
   field public,static,final SHADER Ljava/lang/String;
   method public <init> (Lcom/crystalgraphics/render/view/CgViewState$HistoryKey;)V
   method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Lcom/crystalgraphics/render/graph/CgScreenTexture;F)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static coversEngine (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;)F
 com/crystalgraphics/render/post/bloom/CgBloom
   access public,final
   extends java/lang/Object
@@ -12950,16 +12960,6 @@ com/crystalgraphics/render/post/look/CgFilmLut
   method public,static shape (D)D
   method public,static srgbToAp1 ()[D
   method public,static tonemap ([FDDD[D)V
-com/crystalgraphics/render/post/look/CgLayerLooks
-  access public,final
-  extends java/lang/Object
-  field public,static,final MASK Ljava/lang/String;
-  field public,static,final PREMULTIPLY Ljava/lang/String;
-  field public,static,final UNPREMULTIPLY Ljava/lang/String;
-  method public,static grades (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
-  method public,static readsScene (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
-  method public,static record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
-  method public,static releaseAll ()V
 com/crystalgraphics/render/post/look/CgPostLooks
   access public,final
   extends java/lang/Object
@@ -14876,6 +14876,7 @@ com/crystalgraphics/render/view/CgView
   access public,final
   extends java/lang/Object
   field public,static,final MIN_SCREEN_PERCENTAGE F
+  field public,static,final TSR_SCREEN_PERCENTAGE F
   method public antiAliasing ()Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;
   method public antiAliasing (Lcom/crystalgraphics/render/post/upscale/CgAntiAliasing;)Lcom/crystalgraphics/render/view/CgView;
   method public beginDraw ()V

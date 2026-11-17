@@ -50,9 +50,10 @@ public enum CgRenderPassVariant {
     VELOCITY("Velocity"),
 
     /**
-     * Where a blended surface covers, 1 into the responsive target (Unreal's Responsive AA): temporal AA keeps a short
-     * history there, so what blends over the scene and writes no velocity leaves no trail. Lowered for every blended
-     * surface; drawn while temporal AA shows. Takes the material's keywords.
+     * Where a blended surface covers, its mark in the responsive target: 1 with {@code ResponsiveAA On} (Unreal's
+     * Responsive AA, the default), where temporal AA keeps a short history so what blends and writes no velocity leaves
+     * no trail; 0.5 with it Off, a blend that keeps its history. Either marks the texel as the engine's. Lowered for
+     * every blended surface; drawn while temporal AA shows. Takes the material's keywords.
      */
     RESPONSIVE("Responsive");
 

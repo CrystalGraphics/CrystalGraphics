@@ -40,7 +40,7 @@ final class SurfaceDomain {
     static final String MATERIAL_VERTEX = SpecReader.MATERIAL_VERTEX;
 
     private static final List<String> SETTINGS = List.of("BlendMode", "ShadingModel", "TranslucencyLighting", "Faces",
-            "TranslucencyPass", "DepthTest", "DepthWrite", "DepthPrepass", "ClipDepth", "MaskClip", "DitherOpacityMask", "Fog", "Media",
+            "TranslucencyPass", "DepthTest", "DepthWrite", "DepthPrepass", "ClipDepth", "MaskClip", "DitherOpacityMask", "ResponsiveAA", "Fog", "Media",
             "ColorSpace", "SceneColorMargin", "Sky", "PerDrawValues", "VertexFactory");
 
     /** A surface's outputs. */
@@ -211,7 +211,7 @@ final class SurfaceDomain {
                     + blendMode);
         }
         if (!translucent) {
-            for (String k : List.of("DepthPrepass", "ClipDepth", "TranslucencyLighting", "TranslucencyPass")) {
+            for (String k : List.of("DepthPrepass", "ClipDepth", "TranslucencyLighting", "TranslucencyPass", "ResponsiveAA")) {
                 if (m.containsKey(k)) {
                     throw t.error(m.get(k).keyToken(), "'" + k + "' is a translucent blend mode's, not BlendMode " + blendMode
                             + (k.equals("ClipDepth") ? ": Masked is an opaque material cut by opacityMask" : ""));
@@ -353,6 +353,7 @@ final class SurfaceDomain {
                 : pass.equals("Overlay") ? CgRenderQueue.OVERLAY : CgRenderQueue.TRANSPARENT;
         spec.maskClip = maskClip;
         spec.ditherOpacityMask = dither;
+        spec.responsiveAA = !translucent || SpecReader.onOff(file, m, "ResponsiveAA", true);
         // AfterDistortion and Overlay are queues of the scene's own: they draw into it, as BeforeDOF does
         spec.translucencyPass = !translucent ? null : CgTranslucencyPass.of(pass) != null ? CgTranslucencyPass.of(pass)
                 : CgTranslucencyPass.BEFORE_DOF;

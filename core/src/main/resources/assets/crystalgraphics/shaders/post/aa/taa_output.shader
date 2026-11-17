@@ -17,7 +17,7 @@ Properties {
     _History ("This frame's resolve", sampler2D) = "black"
     _Sharpen ("x RCAS's sharpness, 2^-stops (1 its most); 0 copies unsharpened. y 1 where every engine solid wrote velocity", vec4) = (0, 0, 0, 0)
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
-    _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
+    _Responsive ("Where a blended draw covered: 1 Responsive AA, 0.5 one that keeps its history", sampler2D) = "black"
 }
 
 struct v2f { vec2 uv; };
@@ -35,7 +35,7 @@ void fragment(in v2f i, out vec4 fragColor) {
     ivec2 at = ivec2(gl_FragCoord.xy);
     float alpha = texelFetch(cg_SceneColor, at, 0).a;
     // Unsharpened where the engine drew nothing: the resolve passed it through, as temporal AA off shows it
-    if (_Sharpen.x == 0.0 || _Sharpen.y > 0.5 && texelFetch(_Responsive, at, 0).r < 0.5 && !cg_EngineDrew(_Velocity, at)) {
+    if (_Sharpen.x == 0.0 || _Sharpen.y > 0.5 && !cg_EngineDrew(_Velocity, _Responsive, at)) {
         fragColor = vec4(texelFetch(_History, at, 0).rgb, alpha);
         return;
     }

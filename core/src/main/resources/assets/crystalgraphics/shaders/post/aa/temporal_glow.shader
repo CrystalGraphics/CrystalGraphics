@@ -21,7 +21,7 @@ Properties {
     _History  ("Last frame's glow", sampler2D) = "black"
     _Resolved ("This frame's resolve, the glow's bound: the size drawn or the output's", sampler2D) = "black"
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
-    _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
+    _Responsive ("Where a blended draw covered: 1 Responsive AA, 0.5 one that keeps its history", sampler2D) = "black"
     _Glow     ("x this frame's share, y bloom's threshold, z 1 with a history to blend", vec4) = (0.0625, 1, 1, 0)
     _Jitter   ("xy this frame's jitter in normalized device coordinates; z 1 where every engine solid wrote velocity", vec4) = (0, 0, 0, 0)
 }
@@ -41,8 +41,8 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec3 result = excess;
     // What the engine did not draw glows as this frame's, as the resolve passes it through; under a blended draw a
     // quarter of the new frame, as the resolve keeps it
-    bool responsive = texelFetch(_Responsive, at, 0).r > 0.5;
-    if (_Glow.z > 0.5 && (_Jitter.z < 0.5 || responsive || cg_EngineDrew(_Velocity, at))) {
+    bool responsive = cg_MarkResponsive(texelFetch(_Responsive, at, 0).r);
+    if (_Glow.z > 0.5 && (_Jitter.z < 0.5 || cg_EngineDrew(_Velocity, _Responsive, at))) {
         // The nearest surface round the texel moves its glow, as the resolve's (the engine's depth: nearer is greater)
         ivec2 nearest = at;
         float nearestDepth = cg_EngineDepth(texelFetch(cg_DepthBuffer, at, 0).r);

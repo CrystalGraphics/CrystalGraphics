@@ -29,7 +29,7 @@ RenderState {
 Properties {
     _History  ("Last frame's resolve", sampler2D) = "black"
     _Velocity ("What the velocity pass wrote, 0 where it wrote nothing", sampler2D) = "black"
-    _Responsive ("1 where a blended draw covered (Responsive AA)", sampler2D) = "black"
+    _Responsive ("Where a blended draw covered: 1 Responsive AA, 0.5 one that keeps its history", sampler2D) = "black"
     _Resolve  ("x this frame's least share, y its share at speed, z 1 with a history to blend, w its share where the fetch is ambiguous", vec4) = (0.04, 0.2, 1, 0.25)
     _Jitter   ("xy this frame's jitter in normalized device coordinates; z 1 where every engine solid wrote velocity", vec4) = (0, 0, 0, 0)
 }
@@ -78,9 +78,9 @@ vec3 taa_history(vec2 uv, vec2 size) {
 void fragment(in v2f i, out vec4 fragColor) {
     ivec2 at = ivec2(gl_FragCoord.xy);
     // Under a blended draw, which writes no velocity: a quarter of the new frame, as Unreal's Responsive AA
-    bool responsive = texelFetch(_Responsive, at, 0).r > 0.5;
+    bool responsive = cg_MarkResponsive(texelFetch(_Responsive, at, 0).r);
     // What the engine did not draw (a host's world): as it came, and a history starting over
-    if (_Jitter.z > 0.5 && !responsive && !cg_EngineDrew(_Velocity, at)) {
+    if (_Jitter.z > 0.5 && !cg_EngineDrew(_Velocity, _Responsive, at)) {
         fragColor = vec4(max(texelFetch(cg_SceneColor, at, 0).rgb, vec3(0.0)), 0.0);
         return;
     }
