@@ -236,6 +236,13 @@ public abstract class CgEntityActor {
         body.anim().onUpdate(new EntityFeed(entity));
     }
 
+    /**
+     * Its body's anim instance: set a variable, fire a montage. Null where it has no body.
+     *
+     * <pre>{@code
+     * CgEntityActors.serverActor(id).animation().set(CHARGE, 0.8f);
+     * }</pre>
+     */
     @Nullable
     public final CgAnimInstance animation() {
         CgSkeletalMeshComponent b = body();
@@ -321,16 +328,12 @@ public abstract class CgEntityActor {
     }
 
     /**
-     * Plays {@code sequence} on this actor's body, its every role the body: in {@code slot}, or the sequence's own where
-     * null. The play a reaction makes, and what an entity's gameplay handle plays.
-     */
-    /**
      * Server: plays {@code sequence} on its body and shows it to everyone who sees it. {@code slot} is the montage slot
      * its animation plays on; null is the sequence's own. The play ends with {@link CgSequencePlayer#stop()}, and
      * {@link CgSequencePlayer#onFinished} hears its end.
      *
      * <pre>{@code
-     * CgEntityActors.actor(id).play("mymod:zombie_swing").onFinished(() -> CgEntities.of(zombie).removeTag(SWINGING));
+     * CgEntityActors.serverActor(id).play("mymod:zombie_swing").onFinished(() -> CgEntities.of(zombie).removeTag(SWINGING));
      * }</pre>
      *
      * @throws IllegalStateException on a client
@@ -347,6 +350,7 @@ public abstract class CgEntityActor {
         return play(sequence, null);
     }
 
+    /** Plays {@code sequence} on its body, its every role the body, on this side only: what a reaction plays. */
     final CgSequencePlayer playSequence(String sequence, @Nullable String slot) {
         CgSkeletalMeshComponent body = body();
         if (body == null) throw new IllegalStateException("no body to play " + sequence + " on: its prefab has no skeletal mesh");

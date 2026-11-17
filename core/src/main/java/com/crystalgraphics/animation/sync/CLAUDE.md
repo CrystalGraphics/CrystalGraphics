@@ -1,6 +1,6 @@
 # animation.sync — asset players ticked together
 
-> Using it: `docs/animation/guides/graphs.md` § *Sync groups*. The graph that records players is `animation.graph`.
+> Using it: `docs/animation/guides/sync-groups.md`. The graph that records players is `animation.graph`.
 
 | Type | Role |
 |---|---|

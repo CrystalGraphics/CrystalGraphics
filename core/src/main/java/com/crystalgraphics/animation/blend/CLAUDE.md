@@ -1,6 +1,6 @@
 # animation.blend — blend spaces, aim offsets, blend curves and inertialization
 
-> Using it: `docs/animation/guides/graphs.md` § *Blend spaces*, § *Inertialization*.
+> Using it: `docs/animation/guides/blend-spaces.md`, `transitions-and-blending.md`.
 
 | Type | Role |
 |---|---|

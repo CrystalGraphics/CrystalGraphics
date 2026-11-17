@@ -101,6 +101,32 @@ other `CgNbt` call runs.
 running version's tags, read twice so a read is shown to leave the tag as it was.
 Forge 1.13.2's dev server does not load mods at all, so its `a(String, Tag)` is proven by compiling only.
 
+### Entities and actors — `net.object.CgNetEntities`, `world.actor`
+
+What a mod sees (properties, motion, tags, actors) is `docs/entities/` and `docs/animation/guides/actors.md`. What
+each era's host tells the engine, once, for every entity:
+
+| Call | When |
+|---|---|
+| `CgNetEntities.entered(id, type)`, `left(id)` | an entity joins or leaves the client's level: its properties and its actor both hear it. Forge before 1.13 has no leave event; an entity the host no longer answers for ends at the next frame |
+| `CgNetEntities.enteredServer(entity, type)`, `leftServer(entity)` | the same in a server level |
+| `CgEntityActors.replacesModel(id)` | from inside the dispatcher's draw of each entity, once a frame: the renderer is swapped for one that draws everything but the model (name tag, leash, shadow, fire, hitbox) |
+| `CgEntityActors.grip(id, hand, out)` | where the actor's body holds a hand's item: the host draws the stack there, in its third-person display |
+| `CgEntityQuery.facts(id, partialTick, out)` | the entity's facts as `CgEntityFacts`; core turns them into `CgEntityProperties.MOTION`, and a host never decides an event |
+| `CgEntityMovement` | the entity's own members, both sides: what root motion, a knockback and `CgMoveLocks` move and hold it through |
+
+- **The type** is the registry key on every era: `minecraft:zombie`, `mymod:wyvern`, and `minecraft:player` for a
+  player. Below 1.11 it is Forge's string with the namespace split off (`minecraft:Zombie`, `mymod.wyvern` as
+  `mymod:wyvern`).
+- **Every era from 1.7.10 to 26.3 swaps the model**, except Forge 1.13.2 and 1.14.3, which load no mixins: an actor
+  draws beside the vanilla model there. An inventory's player preview draws through the same dispatcher, so a player
+  with an actor shows there as its name tag alone.
+- **Held items** draw on every era from 1.15, legacy Forge and 1.7.10 (one hand on 1.7.10 and 1.8.9).
+- **An entity's saved properties** go into its own saved data under `crystalgraphics`: inside the loader's persistent
+  entity data on Forge and NeoForge, a key of the entity's own on Fabric (`world.CgEntitySaves`).
+- A harness scene serves fake entities the same way, through a `CgEntityQuery` it installs with `CgLevels.single(...)`.
+- **Proven** by the gauntlet's `crystalgraphics:actors` ([`GAUNTLET.md`](GAUNTLET.md)).
+
 ### Collision — `collision`, `shape`
 
 World queries, hitboxes and snapshots are core (`docs/COLLISION.md`); a host only answers what a level holds, in

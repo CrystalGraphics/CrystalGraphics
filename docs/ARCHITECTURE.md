@@ -60,7 +60,8 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`runtime/mc/modern/README.md`](../runtime/mc/modern/README.md) | Before touching a modern node; each branch has its own `CLAUDE.md` |
 | CrystalGUI's `docs/CGUI_CROSS_VERSION.md` | Code that must run on every version |
 | [`docs/VFX.md`](VFX.md) | Writing effects: emitters, modules, events, a module of your own, and the gates for each |
-| [`docs/animation/`](animation/guides/graphs.md) | Animating a skinned character: one clip, anim graphs and their variables, slots and montages, layers and cached poses, state machines and inertialization, the `anim_graph` file; clips' markers, root motion and additives (`guides/clips.md`) |
+| [`docs/animation/`](animation/README.md) | Animating a skinned character, start to finish: seven tutorials, a guide per task (graphs, state machines, blend spaces, montages, IK, warping, retargeting, actors on Minecraft entities), generated file and node references, concepts, a glossary |
+| [`docs/entities/`](entities/README.md) | An entity's data and gameplay state: properties of your own (Java or `net_type` files), what it is doing (`CgEntityProperties.MOTION`), tags, the gameplay handle `CgEntities.of`, saving, moving it |
 | [`docs/LIGHTS.md`](LIGHTS.md) | The world's lights: adding them, how they light Minecraft (deferred, the G-buffer rebuilt from depth and colour), falloff, day and night, the light grid, lights from effects, what is planned |
 | [`docs/COLLISION.md`](COLLISION.md) | Questions about space: shapes, world queries (overlap, cast, ray), hits, hitboxes over time, shields, hitboxes on every side, snapshots, exact tests, the debug view, recipes |
 | [`docs/JOBS.md`](JOBS.md) | Work off the game's thread: jobs handed back at the next tick, keys and debounce, lanes, repeating simulations, `forEach` across cores, cancelling, progress, replies |

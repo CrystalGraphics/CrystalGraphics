@@ -1,5 +1,15 @@
 # Motion warping: a move that lands where its target is
 
+**What you will have:** a lunge that lands on its target whether the target stands nearer or further than the clip
+was drawn, ending at arm's length and facing it.
+
+## In plain words
+
+A lunge is drawn once, travelling a fixed distance, but in a fight the enemy stands nearer or further every time.
+**Motion warping** stretches or shrinks the lunge while it plays so it ends right on the target, like a long jumper
+adjusting their last steps to hit the board. The timing still looks as the animator drew it.
+
+
 A rush, a dive or a grab is drawn once, covering a fixed distance in a fixed direction. In a game the opponent stands
 somewhere else every time. Motion warping bends the move's root motion while it plays, so it ends on the target. The
 clip's pacing stays as drawn: where it was slow it stays slow, and where it was fast it stays fast.
@@ -113,6 +123,9 @@ the target in a straight line instead.
 - **The clip's own pause after the window is its own.** Measure where a move lands as its window closes.
 - Warping allocates nothing once warm.
 
-Gates: `CgMotionWarpingTest` (headless: a 4 m rush landing 2, 8 and 13 m away and off its line, a stand-off, its turn,
-the data form, 0 B) and `CgMotionWarpingKakarotTest` (Goku's back attack landing on nine targets from a quarter of its 22 m reach to one
-and a half times it, up to 70 degrees off its line). The anim demo's **Motion warping** station plays Goku's lunging strike in two lanes, warped and as drawn.
+The animation demo's **Motion warping** station plays a lunging strike in two lanes, warped and as drawn.
+
+## Where next
+
+- On a Minecraft entity, from the server: [`root-motion-moves-the-entity.md`](root-motion-moves-the-entity.md).
+- Root motion itself: [`root-motion.md`](root-motion.md).

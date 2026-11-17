@@ -700,40 +700,22 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 
 ### An entity's properties: a type on entities
 
-A per-holder type is how you give any of the game's entities properties of your own: a mod's ki, a form, a gear.
-`onEntities` puts one object on every entity whose type it accepts, made as the entity appears on each side and ended
-as it leaves; there is nothing to call per entity.
+`onEntities` puts one object of a per-holder type on every entity whose type it accepts, made as the entity appears
+on each side and ended as it leaves: an entity's **properties**. Their guide is [`entities/`](entities/README.md):
+declaring them in Java or as a `net_type` file, the engine's own motion type, tags, the gameplay handle and saving.
 
 ```java
-public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");      // the server's, sent
-public static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();    // each side's own, never sent
-public static final CgNetEvent<Void> CHARGED = CgNetEvent.of("charged");
-
-public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR).events(CHARGED)
-        .onEntities(type -> type.equals("minecraft:player"))
-        .onServer(obj -> new KiRegen())         // its tick(), each server tick
-        .onClient(obj -> new KiGear())          // its frame(obj, seconds), each client frame
-        .build();
-
-KI.of(player).get(CURRENT);                     // either side
-KI.of(player).setFloat(CURRENT, 80f);           // the server
-KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on the clients that see it
+public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR)
+        .onEntities(type -> type.equals("minecraft:player")).build();
+KI.onServer(obj -> new KiRegen());              // the built type's, not the builder's
 ```
+
+Two rules the net layer adds for them, on any type:
 
 - **A `local()` field is kept on each side and never sent or saved**: a value each side works out for itself, which
   either side's code writes. It is the one thing a client may write on an object that is not its prediction.
 - **A type whose fields are all local never touches the wire**: each side makes its own objects, and its events are
   heard on the side that emits them. It cannot be `persisted()` or take commands.
-- **Behaviours run before the frame's actors read them**: on the server each tick (`NET_IN`), on a client each frame
-  (`BEGIN`, a behaviour's `frame`). A client's local objects end when its level changes, or when its host no longer
-  has the entity (Forge before 1.13 says nothing when an entity leaves).
-- **Hosts say when entities come and go once**, through `CgNetEntities`; a type declared at init hears every
-  entity from then.
-- **The same type as a file**: a `net_type` asset (`assets/mymod/net_types/ki.yaml` declares
-  `mymod:ki`), compiled as the game starts on each side, before any entity enters or anyone connects. Its fields are
-  `{ kind, fallback, sync: all | owner | local, initial_only, predicted, persisted }`, its events `{ payload }`, and `entities`
-  a list of entity type ids, `players` or `all`. Reach it with `CgNetType.named("mymod:ki")` and `field("current")`;
-  a Java declaration of the same shape is the same type (`docs/vfx/networking.md` § *Your own data on an entity*).
 
 ---
 
@@ -903,19 +885,11 @@ The other viewers are sent the sanitized value; the owner is sent it only when s
 
 ---
 
-### An entity's tags, cues and moves: `CgEntities.of(entity)`
+### An entity's tags and cues, predicted
 
-The owner's client changes its own entity through one handle, in one prediction window. The server's rule takes or
-refuses the lot, and a refusal puts back everything under the key.
-
-```java
-CgEntityTags.acceptTags((entity, tag, delta) -> tag == CHARGING);          // server, at init: what an owner may change
-CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(CHARGE_CUE));   // owner's client
-CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);                 // server
-```
-
-- With no rule set, the server takes nothing: an owner's change shows, then goes back.
-- Any other client's `addTag` or `addCue` throws, naming the verb.
+A player's own client predicts changes to its own player (tags, cues) through the entity's gameplay handle, grouped by
+`CgEntities.predicted` under one key the server takes or refuses whole:
+[`entities/guides/the-gameplay-handle.md`](entities/guides/the-gameplay-handle.md).
 
 ## 13. Saving with the world
 

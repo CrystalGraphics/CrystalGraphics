@@ -1,6 +1,6 @@
 # animation.state — Unreal's state machines
 
-> Using it: `docs/animation/guides/graphs.md` § *State machines*. The graph it runs in is `animation.graph`.
+> Using it: `docs/animation/guides/state-machines.md`, `transitions-and-blending.md`. The graph it runs in is `animation.graph`.
 
 | Type | Role |
 |---|---|

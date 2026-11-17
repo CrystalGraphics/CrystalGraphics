@@ -1,7 +1,7 @@
 # animation — what a skeletal mesh plays, posed here every frame
 
 > Root guide: [`CrystalGraphics/AGENTS.md`](../../../../../../../AGENTS.md) · using it:
-> `docs/animation/guides/graphs.md`. The data it plays is `api/animation`; the graph runtime is `graph/`, with its own
+> `docs/animation/README.md`. The data it plays is `api/animation`; the graph runtime is `graph/`, with its own
 > guide; montages are `montage/`; where a mesh stands and what draws it is `render/scene/component/CgSkeletalMeshComponent`.
 
 | Type | Role |

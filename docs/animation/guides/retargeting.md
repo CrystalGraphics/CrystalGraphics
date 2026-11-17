@@ -1,5 +1,16 @@
 # Retargeting — one character's clips on another
 
+**What you will have:** a clip made for one character (a Goku punch) playing on your own model at its size, feet on the
+floor and hands where they should be, baked once as it loads.
+
+## In plain words
+
+Every character has its own skeleton: different heights, bone names and arm lengths. **Retargeting** copies a
+movement from one skeleton to another, the way one puppeteer can work two puppets of different sizes with the same
+hand moves. A **rig** tells the engine which bones are the arms, legs and spine; a **retargeter** says how one rig's
+movement maps onto the other's.
+
+
 A game's character comes with hundreds of clips; your mod's model has a handful. Retargeting plays the first one's
 clips on the second: a Goku punch on a Minecraft player model, at the player's size, its feet on the floor and its hands
 where Goku's are. You name what each skeleton is (a **rig**), say how one plays on the other (a **retargeter**), and
@@ -204,9 +215,7 @@ The animation demo (`anim-demo` in the harness, `anim` in the game's demo) has t
 - **Retarget**: Goku beside every RPG-Core body playing his clips, with each step switchable, the rigs drawn over the
   bodies and trails behind the hands.
 
-## Where it came from
+## Where next
 
-The design is Unreal's IK Retargeter: rigs of named chains, retarget poses, chain mapping by name, and the op stack of
-scale source, pelvis motion, FK chains, IK chains and floor constraint; static sockets found by name on the target.
-Facing frames from adapters, hips-based scaling, `rides` and `pivot`, carried bones added to the target, and pointing a
-rigid part at its goal are ours, for model libraries built unlike Unreal's skeletons.
+- A vanilla zombie or player in a retargeted pose: [`vanilla-models.md`](vanilla-models.md).
+- Your model drawn on an entity: [`actors.md`](actors.md).

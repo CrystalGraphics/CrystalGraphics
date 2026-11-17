@@ -17,8 +17,17 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityTags;
 
 /**
- * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
- * Read on the client world's thread; refreshed each frame before the actor's {@code tick}.
+ * One of the game's entities on this side, from {@link CgEntities#of}: its tags, its cues, its properties, and where
+ * it stands. The server's calls change it; the owner's client may predict its own player's tags and cues; any other
+ * client only reads.
+ *
+ * <pre>{@code
+ * CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);                         // server
+ * CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(AURA_CUE));   // the player's own client
+ * if (CgEntities.of(zombieId).hasTag(STUNNED)) { ... }                                // any client
+ * }</pre>
+ *
+ * An actor reads the entity it draws the same way:
  *
  * <pre>{@code
  * protected void tick(CgEntity dragon, float dt) {
@@ -30,7 +39,8 @@ import com.crystalgraphics.world.CgEntityTags;
  *
  * <ul>
  *   <li>Angles are Minecraft's, in degrees: yaw 0 faces +z.</li>
- *   <li>Its numbers hold until the next frame's refresh; a field holding a {@code CgEntity} sees them change.</li>
+ *   <li>Its pose is refreshed each frame an actor draws it, before the actor's {@code tick}; a handle with no actor
+ *       holds no pose.</li>
  * </ul>
  */
 public final class CgEntity {
@@ -110,7 +120,7 @@ public final class CgEntity {
 
     /**
      * The gameplay tags it owns, with counts ({@code CgEntityTags}): on a server its own, on a client what its server last
-     * sent. Read them; change them on the server through {@code CgEntityTags.add}.
+     * sent, its owner's predictions included. Read them; change them through {@link #addTag} and {@link #removeTag}.
      */
     public CgTagCounts tags() {
         return tags;

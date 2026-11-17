@@ -1,6 +1,6 @@
 # animation.montage — montages on a character: weight, slot groups, root motion
 
-> Using it: `docs/animation/guides/graphs.md` § *Montages*. What drives a montage is a sequence's `animation` track
+> Using it: `docs/animation/guides/montages-and-slots.md`. What drives a montage is a sequence's `animation` track
 > (`sequence.animation.CgSequenceAnimationEvaluator`); this package is the character's side.
 
 | Type | Role |

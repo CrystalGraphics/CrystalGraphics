@@ -170,6 +170,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     // The format's schemas, where the private plan checkout sits beside this one; the bible gate skips without them.
     val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
     if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
+    // The user docs' generated reference tables rewritten (ReferenceDocsTest): -PupdateDocs=true
+    providers.gradleProperty("updateDocs").orNull?.let { systemProperty("crystalgraphics.docs.update", it) }
     // The kits' round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
     providers.gradleProperty("kits").orNull?.let {
         systemProperty("crystalgraphics.kits", it)

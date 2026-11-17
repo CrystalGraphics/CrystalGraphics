@@ -1,5 +1,17 @@
 # Locomotion: feet that keep up with the character
 
+**What you will have:** a character whose feet never slide, from a crawl to a sprint on a speed potion, running sideways
+with its chest ahead, turning on the spot and stopping exactly where it means to.
+
+## In plain words
+
+A run clip is recorded at one speed, going straight ahead. The game moves the character at any speed, sideways, and
+turns it on the spot. Played as recorded, the feet slide over the ground as if on ice. These tools bend the clip to
+fit how the character really moves: longer strides when faster (**stride warping**), hips turned to run sideways with
+the chest still ahead (**orientation warping**), feet planted while the body turns (**turn in place**), and a stop
+timed by how much ground is left rather than by the clock (**distance matching**).
+
+
 A run clip is drawn at one speed, facing one way. A game moves its character at many speeds, in every direction, on
 potions and slopes, and turns it on the spot. Played as it is, the clip's feet slide. These tools fit the clip to the
 movement instead:
@@ -14,7 +26,7 @@ movement instead:
 | Distance matching | a start or stop played by ground covered, not by time |
 
 Distances are metres; angles are degrees about the skeleton's +y, from its facing (+z), positive toward +x. The nodes
-are graph nodes ([graphs.md](graphs.md)), each shown in Java and in an `anim_graph` file.
+are graph nodes ([graphs-and-variables.md](graphs-and-variables.md)), each shown in Java and in an `anim_graph` file.
 
 ## Clips that travel
 
@@ -37,7 +49,7 @@ run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_l", "foot_l",
 run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_r", "foot_r", true);
 ```
 
-A blend space of marked loops then syncs by those markers ([graphs.md](graphs.md) § *Sync groups and markers*).
+A blend space of marked loops then syncs by those markers ([sync-groups.md](sync-groups.md)).
 
 ## Root motion from everything
 
@@ -220,3 +232,9 @@ idle ──► offset root bone ──► output
 ```
 
 Stride warping comes before orientation warping, as both read and bend the root motion. Leg IK comes after both.
+
+## Where next
+
+- The blend space the loops come from: [`blend-spaces.md`](blend-spaces.md).
+- Feet on stairs and slabs: [`ik-and-look-at.md`](ik-and-look-at.md).
+- A move landing on a target: [`motion-warping.md`](motion-warping.md).
