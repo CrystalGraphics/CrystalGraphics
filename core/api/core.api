@@ -24811,16 +24811,28 @@ com/crystalgraphics/world/CgEntitySaves$Host
 com/crystalgraphics/world/CgEntityTags
   access public,final
   extends java/lang/Object
+  method public,static acceptTags (Lcom/crystalgraphics/world/CgEntityTags$Rule;)V
   method public,static add (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)V
   method public,static add (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)V
+  method public,static ask (ILcom/crystalgraphics/tag/CgGameplayTag;ILcom/crystalgraphics/net/object/CgPredictionKey;)V
   method public,static client (I)Lcom/crystalgraphics/tag/CgTagCounts;
   method public,static count (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)I
   method public,static hold (I)Lcom/crystalgraphics/tag/CgTagCounts;
   method public,static install ()V
   method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/tag/CgTagCounts;
+  method public,static owns (I)Z
   method public,static release (I)V
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;)Z
   method public,static remove (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
+  method public,static watch (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/world/CgEntityTags$Watch;
+com/crystalgraphics/world/CgEntityTags$Rule
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract accepts (Ljava/lang/Object;Lcom/crystalgraphics/tag/CgGameplayTag;I)Z
+com/crystalgraphics/world/CgEntityTags$Watch
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract cancel ()V
 com/crystalgraphics/world/CgMoveLocks
   access public,final
   extends java/lang/Object
@@ -24884,21 +24896,48 @@ com/crystalgraphics/world/actor/CgAnimDebugOverlay
   access public,final
   extends java/lang/Object
   method public,static toggle ()Z
+com/crystalgraphics/world/actor/CgEntities
+  access public,final
+  extends java/lang/Object
+  method public,static local ()Lcom/crystalgraphics/world/actor/CgEntity;
+  method public,static of (I)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public,static of (Ljava/lang/Object;)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public,static predicted (Ljava/lang/Runnable;)Lcom/crystalgraphics/net/object/CgPredictionKey;
+  method public,static resetForTesting ()V
 com/crystalgraphics/world/actor/CgEntity
   access public,final
   extends java/lang/Object
+  method public addCue (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/cue/CgCuePlaying;
+  method public addCue (Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/cue/CgCueParameters;)Lcom/crystalgraphics/cue/CgCuePlaying;
+  method public addTag (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public addTag (Lcom/crystalgraphics/tag/CgGameplayTag;I)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public animation ()Lcom/crystalgraphics/animation/CgAnimInstance;
   method public bodyYaw ()F
   method public entity ()Ljava/lang/Object;
+  method public executeCue (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public executeCue (Lcom/crystalgraphics/tag/CgGameplayTag;Lcom/crystalgraphics/cue/CgCueParameters;)Lcom/crystalgraphics/world/actor/CgEntity;
   method public flag (I)Z
   method public flags ()I
+  method public hasAllTags ([Lcom/crystalgraphics/tag/CgGameplayTag;)Z
+  method public hasAnyTag ([Lcom/crystalgraphics/tag/CgGameplayTag;)Z
+  method public hasTag (Lcom/crystalgraphics/tag/CgGameplayTag;)Z
   method public headYaw ()F
   method public hostFrame ()J
   method public id ()I
+  method public isAuthority ()Z
+  method public isOwner ()Z
   method public onServer ()Z
+  method public onTagChanged (Lcom/crystalgraphics/tag/CgGameplayTag;Ljava/util/function/BiConsumer;)Lcom/crystalgraphics/world/CgEntityTags$Watch;
   method public pitch ()F
+  method public play (Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
+  method public play (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public pose (I)D
   method public present ()Z
   method public properties (Lcom/crystalgraphics/net/object/CgNetType;)Lcom/crystalgraphics/net/object/CgNetObject;
+  method public raiseEvent (Ljava/lang/String;)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public removeTag (Lcom/crystalgraphics/tag/CgGameplayTag;)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public removeTag (Lcom/crystalgraphics/tag/CgGameplayTag;I)Lcom/crystalgraphics/world/actor/CgEntity;
+  method public setTagCount (Lcom/crystalgraphics/tag/CgGameplayTag;I)Lcom/crystalgraphics/world/actor/CgEntity;
   method public tags ()Lcom/crystalgraphics/tag/CgTagCounts;
   method public toString ()Ljava/lang/String;
   method public type ()Ljava/lang/String;

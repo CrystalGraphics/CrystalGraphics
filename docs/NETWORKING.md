@@ -903,6 +903,20 @@ The other viewers are sent the sanitized value; the owner is sent it only when s
 
 ---
 
+### An entity's tags, cues and moves: `CgEntities.of(entity)`
+
+The owner's client changes its own entity through one handle, in one prediction window. The server's rule takes or
+refuses the lot, and a refusal puts back everything under the key.
+
+```java
+CgEntityTags.acceptTags((entity, tag, delta) -> tag == CHARGING);          // server, at init: what an owner may change
+CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(CHARGE_CUE));   // owner's client
+CgEntities.of(zombie).addTag(STUNNED).play("mymod:zombie_stun");            // server
+```
+
+- With no rule set, the server takes nothing: an owner's change shows, then goes back.
+- Any other client's `addTag`, `addCue` or `play` throws, naming the verb.
+
 ## 13. Saving with the world
 
 What is saved is chosen field by field, as Unreal's `SaveGame` properties are: a field marked `persisted()` is saved,

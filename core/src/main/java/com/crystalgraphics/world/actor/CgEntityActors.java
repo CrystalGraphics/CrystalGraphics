@@ -709,6 +709,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         CgEntity entity = new CgEntity(id, type);
         CgEntityActor actor = r.factory.get();
         actor.entity = entity;
+        entity.actor = actor;
         actor.server = world().server();
         actor.host = host;
         entity.heldTags = !(actor.server && host != null);
