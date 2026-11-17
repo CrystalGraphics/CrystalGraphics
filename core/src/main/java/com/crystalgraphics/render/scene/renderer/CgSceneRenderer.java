@@ -164,7 +164,7 @@ public final class CgSceneRenderer {
     private CgMaterialInterface depthIn;
     /** The custom data and depth targets, kept while the view's size holds: a steady frame makes no handle. */
     @Nullable
-    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget, responsiveTarget;
+    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget, velocityDepth, responsiveTarget;
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
@@ -636,14 +636,10 @@ public final class CgSceneRenderer {
                     : CgGraphTexture.current();
         }
         CgGraphTexture target = customDataTarget, targetDepth = customDataDepth;
-        CgRasterPass pass = rec.raster("scene.customData").color(target, HOST_LIT_CLEAR).constants(firing.constants())
-                .depth(targetDepth, depth != null ? STENCIL_CLEAR : CgLoad.load(), CgDepthAccess.WRITE);
-        if (depth != null) {
-            if (depthIn == null) depthIn = CgMaterial.load(DEPTH_IN_SHADER).instance();
-            pass.readsDepth(CgGraphTexture.current());
-            pass.draw(CgSceneColour.FULLSCREEN, depthIn);
-        }
-        pass.add(passes.commands(CgEnginePasses.CUSTOM_DATA, rec, customData)).end();
+        if (depth != null) seedDepth(firing, "scene.customDataDepth", CgGraphTexture.current(), targetDepth, STENCIL_CLEAR);
+        rec.raster("scene.customData").color(target, HOST_LIT_CLEAR).constants(firing.constants())
+                .depth(targetDepth, CgLoad.load(), CgDepthAccess.WRITE)
+                .add(passes.commands(CgEnginePasses.CUSTOM_DATA, rec, customData)).end();
         view.textures().customData(target);
     }
 
@@ -651,7 +647,9 @@ public final class CgSceneRenderer {
      * Unreal's velocity pass: what moved or deformed this frame, tested against the scene's depth, writing where it was
      * last frame into an RG16 target cleared to 0; the rest stood still, its motion the camera's over its depth. With
      * still solids asked ({@code requestVelocityWithStill}), every engine solid writes, the still ones zero, and what
-     * blends marks the responsive target where it covers (Unreal's Responsive AA).
+     * blends marks the responsive target where it covers (Unreal's Responsive AA). What blends with {@code OutputVelocity On}
+     * then writes its velocity and depth where it covers, over a copy of the scene's depth: Unreal's early translucency
+     * velocity, which leaves the depth the translucent pass tests against as it was.
      */
     private void recordVelocity(CgStageFiring firing, CgViewPasses passes) {
         CgView view = firing.view();
@@ -664,6 +662,7 @@ public final class CgSceneRenderer {
                 .add(passes.commands(view.textures().velocityWithStill() ? CgEnginePasses.VELOCITY_WITH_STILL
                         : CgEnginePasses.VELOCITY, firing.recording())).end();
         view.textures().velocity(velocityTarget);
+        recordTranslucentVelocity(firing, passes, w, h);
         if (!view.textures().velocityWithStill()) return;
         if (responsiveTarget == null || responsiveTarget.getWidth() != w || responsiveTarget.getHeight() != h) {
             responsiveTarget = CgGraphTexture.transientTexture("cg_responsive", CgTextureDesc.of(w, h, CgEnginePasses.RESPONSIVE_FORMAT));
@@ -672,6 +671,28 @@ public final class CgSceneRenderer {
                 .depth(firing.depth(), CgLoad.load(), CgDepthAccess.READ).constants(firing.constants())
                 .add(passes.commands(CgEnginePasses.RESPONSIVE, firing.recording())).end();
         view.textures().responsive(responsiveTarget);
+    }
+
+    private void recordTranslucentVelocity(CgStageFiring firing, CgViewPasses passes, int w, int h) {
+        CgDrawCommands blends = passes.commands(CgEnginePasses.TRANSLUCENT_VELOCITY, firing.recording());
+        if (blends.size() == 0) return;
+        if (velocityDepth == null || velocityDepth.getWidth() != w || velocityDepth.getHeight() != h) {
+            velocityDepth = CgGraphTexture.transientTexture("cg_velocity_depth",
+                    CgTextureDesc.of(w, h, CgEnginePasses.TRANSLUCENT_VELOCITY.layout().depth()));
+        }
+        seedDepth(firing, "scene.velocityDepth", firing.depth(), velocityDepth, CgLoad.CLEAR_DEPTH);
+        firing.recording().raster("scene.translucentVelocity").color(velocityTarget, CgLoad.load())
+                .depth(velocityDepth, CgLoad.load(), CgDepthAccess.WRITE).constants(firing.constants()).add(blends).end();
+        firing.view().textures().velocityDepth(velocityDepth);
+    }
+
+    /** {@code from}'s depth drawn into {@code into}, a pass of its own: mesh-pass commands cannot share a pass with a draw. */
+    private void seedDepth(CgStageFiring firing, String name, CgGraphTexture from, CgGraphTexture into, CgLoad clear) {
+        if (depthIn == null) depthIn = CgMaterial.load(DEPTH_IN_SHADER).instance();
+        CgRasterPass pass = firing.recording().raster(name).depth(into, clear, CgDepthAccess.WRITE).constants(firing.constants());
+        pass.readsDepth(from);
+        pass.draw(CgSceneColour.FULLSCREEN, depthIn);
+        pass.end();
     }
 
     /** Unreal's CustomDepth: the primitives marked {@code customDepth}, depth alone, writing their stencil value. */

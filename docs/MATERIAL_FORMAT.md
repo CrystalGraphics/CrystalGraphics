@@ -232,9 +232,10 @@ Name–value pairs; every one has a default, so most materials set one or two.
 | `DepthWrite` | by blend mode | Writes depth: on when solid, off when translucent |
 | `DepthPrepass` | `Off`, `On` | A translucent material's solid core drawn into depth first (`opacityMask`): smoke |
 | `ClipDepth` | `Off`, `On` | A translucent material writing depth where `opacityMask` passes: ink, debris |
-| `MaskClip` | `0.5`, a number or a float property | The `opacityMask` threshold |
+| `MaskClip` | `0.5`, a number or a float property | The `opacityMask` threshold; with `OutputVelocity`, the share a blend must cover to write its velocity |
 | `DitherOpacityMask` | `Off`, `On` | `Masked` only: the clip's threshold a noise turning each frame, so temporal anti-aliasing settles the mask to its coverage: a cheap translucency that writes depth (Unreal's) |
 | `ResponsiveAA` | `On`, `Off` | Translucent only (Unreal's Responsive AA): where it covers, temporal anti-aliasing keeps a short history, so a blend that moves and writes no velocity (a particle) leaves no trail. `Off` for a blend that holds still, whose history should settle: a wire kept a pixel wide |
+| `OutputVelocity` | `Off`, `On` | Translucent only (Unreal's Output Velocity): its velocity and depth written where it covers at least `MaskClip`, so temporal anti-aliasing moves it with itself, not with what is behind it, when the camera moves. `On` for a blend that stands in the world (a wire, a pane); a particle leaves it `Off` |
 | `Fog` | `On`, `Off` | Fogged with distance |
 | `Media` | `On`, `Off` | Dimmed by the smoke and dust in front of it |
 | `ColorSpace` | `sRGB`, `Linear` | What its colours are written in |

@@ -563,6 +563,13 @@ public final class CgMaterialProxy {
         return getDeclaredFeatureNames();
     }
 
+    /** Whether it blends and writes its velocity and depth where it covers ({@code OutputVelocity On}), from the parse alone. */
+    public boolean outputsVelocity() {
+        checkNotDeleted();
+        CgShaderSpec parsed = cgMaterialShader == null ? null : cgMaterialShader.ensureParsed();
+        return parsed != null && parsed.outputVelocity();
+    }
+
     /**
      * The keywords a renderer switches on its shader at runtime (its {@code switched} keywords and one-ofs), from the parse alone:
      * every combination a precache of the shader builds.

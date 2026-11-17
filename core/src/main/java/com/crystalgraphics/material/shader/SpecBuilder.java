@@ -100,13 +100,13 @@ final class SpecBuilder {
     String renderType = "Opaque";
     CgShaderSpec.Lighting lighting = CgShaderSpec.Lighting.LIT;
     CgShaderSpec.ColorSpace colorSpace = CgShaderSpec.ColorSpace.SRGB;
-    boolean fog = true, media = true, ditherOpacityMask, responsiveAA = true;
+    boolean fog = true, media = true, ditherOpacityMask, responsiveAA = true, outputVelocity;
     @Nullable CgTranslucencyPass translucencyPass;
     CgShaderSpec.DepthMode depthMode = CgShaderSpec.DepthMode.NONE;
     @Nullable String sceneColorMarginText;
     @Nullable String maskClip, postLocation;
     @Nullable CgShaderSpec.Tube tube;
-    /** A solid surface's vertex stage as of last frame (PreviousFrame), for its Velocity pass. */
+    /** A solid or OutputVelocity surface's vertex stage as of last frame (PreviousFrame), for its Velocity pass. */
     @Nullable String previousVertex;
     boolean vertexAnimates;
     final List<CgShaderSpec.PostTarget> postTargets = new ArrayList<>();

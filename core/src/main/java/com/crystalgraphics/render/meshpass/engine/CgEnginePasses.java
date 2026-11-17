@@ -57,6 +57,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@link #VELOCITY_WITH_STILL}: every solid, those still or keeping no previous transform writing no motion of
  *       their own: a written texel then means the engine drew it (Unreal's
  *       {@code VelocityIncludeStationaryPrimitives}), what temporal AA keeps to.</li>
+ *   <li>{@link #TRANSLUCENT_VELOCITY}: what blends with {@code OutputVelocity On}, its Velocity pass writing velocity
+ *       and depth where it covers, into the velocity target over a copy of the scene's depth (Unreal's early translucency
+ *       velocity, {@code FTranslucentVelocityMeshProcessor}).</li>
  *   <li>{@link #RESPONSIVE}: what blends, its Responsive pass, its mark into an R8 target where it covers: 1 with
  *       {@code ResponsiveAA On} (Unreal's Responsive AA), where temporal AA keeps a short history; 0.5 with it Off.</li>
  *   <li>{@link #DECAL}: decal components' boxes, their {@code #domain decal} material reading the scene's depth and
@@ -102,6 +105,9 @@ public final class CgEnginePasses {
     public static final CgMeshPassType VELOCITY_WITH_STILL = CgMeshPassType.registerPerFrame("crystalgraphics:velocity.still",
             CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::velocityWithStill);
     /** The responsive target's format: 1 where a blended draw covers, 0 elsewhere. */
+    public static final CgMeshPassType TRANSLUCENT_VELOCITY = CgMeshPassType.registerPerFrame("crystalgraphics:velocity.translucent",
+            CgPassLayout.color(VELOCITY_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::translucentVelocity);
+
     public static final CgFormat RESPONSIVE_FORMAT = CgFormat.R8_UNORM;
     public static final CgMeshPassType RESPONSIVE = CgMeshPassType.register("crystalgraphics:responsive",
             CgPassLayout.color(RESPONSIVE_FORMAT).depth(CgFormat.DEPTH32_FLOAT), CgEnginePasses::responsive);
@@ -218,6 +224,14 @@ public final class CgEnginePasses {
         if ((batch.relevance() & CgPrimitiveRelevance.MAIN) == 0) return;
         if (!primitive.hasVelocity()
                 && !(primitive.keepsPrevious() && CgMaterialProxy.of(batch.material()).animatesVertices())) {
+            return;
+        }
+        out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.VELOCITY));
+    }
+
+    /** What blends and outputs velocity ({@link #TRANSLUCENT_VELOCITY}), still or moving: it writes the depth too. */
+    private static void translucentVelocity(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.relevance() & CgPrimitiveRelevance.TRANSLUCENT) == 0 || !CgMaterialProxy.of(batch.material()).outputsVelocity()) {
             return;
         }
         out.draw(batch, batch.material(), CgMeshPassCommands.pipeline(batch.material(), CgRenderPassVariant.VELOCITY));

@@ -9044,6 +9044,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public lastForwardPass ()Ljava/lang/String;
   method public material ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public names (Ljava/lang/String;)Z
+  method public outputsVelocity ()Z
   method public overrideBlock (Lcom/crystalgraphics/gpu/resource/CgUniformBuffer;Lcom/crystalgraphics/gpu/staging/CgBufferWriter;)Lcom/crystalgraphics/material/CgMaterialProxy;
   method public owner (Lcom/crystalgraphics/api/material/CgMaterial;)V
   method public permutations ()Lcom/crystalgraphics/material/shader/CgShaderPermutations;
@@ -9277,6 +9278,7 @@ com/crystalgraphics/material/shader/CgShaderSpec
   method public media ()Z
   method public mediated ()Z
   method public names (Ljava/lang/String;)Z
+  method public outputVelocity ()Z
   method public pass (Lcom/crystalgraphics/api/material/CgRenderPassVariant;)Lcom/crystalgraphics/material/shader/CgShaderPass;
   method public pass (Ljava/lang/String;)Lcom/crystalgraphics/material/shader/CgShaderPass;
   method public passes ()Ljava/util/List;
@@ -12720,6 +12722,7 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
   field public,static,final SCENE Lcom/crystalgraphics/render/meshpass/CgPassLayout;
   field public,static,final SEPARATE Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final TRANSLUCENT Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
+  field public,static,final TRANSLUCENT_VELOCITY Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VELOCITY Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VELOCITY_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final VELOCITY_WITH_STILL Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
@@ -14848,6 +14851,8 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public subjectRequested ()Z
   method public velocity ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public velocity (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public velocityDepth ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public velocityDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public velocityRequested ()Z
   method public velocityWithStill ()Z
 com/crystalgraphics/render/view/CgShowFlags

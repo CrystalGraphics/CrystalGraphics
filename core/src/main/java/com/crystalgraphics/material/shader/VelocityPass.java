@@ -14,14 +14,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A solid surface's Velocity pass, generated from its Forward pass where it is first asked for, never compiled with the
+ * A surface's Velocity pass, generated from its Forward pass where it is first asked for, never compiled with the
  * material: Unreal's velocity shaders, which the velocity pass compiles per material it draws. The vertex is its Forward
  * vertex, then last frame's world position from the material's vertex stage compiled as of last frame
  * ({@link PreviousFrame}); the fragment writes the clip-space difference in {@code lib/velocity.glsl}'s encoding, after
- * the Forward fragment's cut where it clips (masked).
+ * the Forward fragment's cut where it clips (masked). A blended surface has one with {@code OutputVelocity On} alone
+ * (Unreal's translucent velocity pass): it writes depth too, where what it covers reaches its {@code MaskClip}.
  *
  * <pre>{@code
- * CgShaderPass velocity = spec.pass(CgRenderPassVariant.VELOCITY);   // null for what blends, a sky, or no Forward pass
+ * CgShaderPass velocity = spec.pass(CgRenderPassVariant.VELOCITY);   // null for a blend without OutputVelocity, a sky
  * }</pre>
  */
 final class VelocityPass {
@@ -32,18 +33,19 @@ final class VelocityPass {
 
     private VelocityPass() {}
 
-    /** {@code spec}'s Velocity pass, or null where it has none: a surface that blends, a sky, or none of its own. */
+    /** {@code spec}'s Velocity pass, or null where it has none: a blend without OutputVelocity, a sky, or no Forward pass. */
     @Nullable
     static CgShaderPass of(CgShaderSpec spec) {
         if (spec.domain() != CgMaterialDomain.SURFACE || spec.previousVertex() == null) return null;
         CgShaderPass forward = spec.pass(CgRenderPassVariant.FORWARD);
         if (forward == null) return null;
         CgBlendState blend = forward.state().getBlend();
-        if (blend != null && blend.enabled()) return null;
+        boolean blends = blend != null && blend.enabled();
+        if (blends && !spec.outputVelocity()) return null;
 
         CgDepthState depth = forward.state().getDepth();
         CgRenderState state = forward.state().withBlend(CgBlendState.DISABLED)
-                .withDepth(new CgDepthState(depth == null || depth.test(), false, depth == null ? GLC.GL_LEQUAL : depth.compareFunc()))
+                .withDepth(new CgDepthState(depth == null || depth.test(), blends, depth == null ? GLC.GL_LEQUAL : depth.compareFunc()))
                 .withColorMask(RG);
         List<CgVarying> varyings = new ArrayList<>(forward.varyings());
         varyings.add(new CgVarying("vec4", NOW, ""));
@@ -51,7 +53,11 @@ final class VelocityPass {
         String vertex = forward.vertexBody() + "\n        o." + NOW + " = gl_Position;\n        o." + THEN
                 + " = cg_PreviousClip(" + PreviousFrame.WORLD + "());\n";
         // A masked surface's cut is its Forward fragment's: run for its discard, its colour dropped
-        String cut = forward.clips() ? "\n        vec4 " + forward.output() + ";" + forward.fragmentBody() : "";
+        // A blend's, where what it covers is under its MaskClip (null for 0.5, as a Masked surface's)
+        String c = forward.output();
+        String cut = blends ? "\n        vec4 " + c + ";" + forward.fragmentBody() + "\n        if (" + ResponsivePass.covers(blend, c)
+                + " < " + (spec.maskClip() != null ? spec.maskClip() : "0.5") + ") discard;"
+                : forward.clips() ? "\n        vec4 " + c + ";" + forward.fragmentBody() : "";
         String fragment = cut + "\n        velocity = vec4(cg_EncodeVelocity(i." + NOW + ".xy / i." + NOW + ".w - i." + THEN
                 + ".xy / i." + THEN + ".w), 0.0, 0.0);\n    ";
         // After the environment, which the encoding's camera motion reads: code, not a directive

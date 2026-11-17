@@ -32,7 +32,7 @@ import javax.annotation.Nullable;
 public final class CgSceneTextures {
 
     @Nullable
-    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity,
+    private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity, velocityDepth,
             responsive;
     private boolean linear;
     private boolean normalsAsked, customDataAsked, subjectAsked, velocityAsked, velocityWithStill;
@@ -124,6 +124,20 @@ public final class CgSceneTextures {
     @Nullable
     public CgGraphTexture velocity() {
         return velocity;
+    }
+
+    /**
+     * The depth {@link #velocity()} was written over: the scene's, with what blends and outputs velocity drawn into it
+     * (Unreal's early translucency velocity depth); the scene's own {@link #depth()} where nothing did. Temporal
+     * anti-aliasing reads it to dilate the velocity by the nearest surface.
+     */
+    @Nullable
+    public CgGraphTexture velocityDepth() {
+        return velocityDepth != null ? velocityDepth : depth;
+    }
+
+    public void velocityDepth(@Nullable CgGraphTexture texture) {
+        velocityDepth = texture;
     }
 
     /** That this frame writes {@link #velocity()}: ask before the translucent callback draws. */
@@ -238,7 +252,7 @@ public final class CgSceneTextures {
 
     /** A new frame of the view: every texture and request dropped. */
     void reset() {
-        sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = velocity = null;
+        sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = velocity = velocityDepth = null;
         responsive = null;
         linear = false;
         normalsAsked = customDataAsked = subjectAsked = velocityAsked = false;

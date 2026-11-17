@@ -277,7 +277,7 @@ public final class CgTemporalSuperResolution implements CgUpscaler {
         pass.dispatch(clear, w, h, 1).image("ATOMICS", atomics);
         CgDispatch d = pass.dispatch(dilate, w, h, 1).image("ATOMICS", atomics).image("CLOSEST", closest)
                 .image("DILATE", dilateMask).image("VECTOR", vector).image("MOVING", moving).image("BOUNDARY", boundary)
-                .image("JACOBIAN", jacobian).texture("_SceneDepth", ctx.depth().sampledDepth());
+                .image("JACOBIAN", jacobian).texture("_SceneDepth", ctx.scene().velocityDepth().sampledDepth());
         if (velocity != null) d.texture("_Velocity", velocity);
         frameValues(d, w, h, jx, jy, cutFlag, depthX, depthY, radius);
         if (flicker) flickerValues(d, view, w, refresh);

@@ -51,14 +51,20 @@ final class ResponsivePass {
                 .withDepth(new CgDepthState(depth == null || depth.test(), false, depth == null ? GLC.GL_LEQUAL : depth.compareFunc()))
                 .withColorMask(R);
         String c = forward.output();
-        // The Forward fragment writes straight colour and opacity, whatever the blend
-        String covers = blend.dstRgb() == GLC.GL_ONE ? "max(max(" + c + ".r, " + c + ".g), " + c + ".b) * " + c + ".a"
-                : blend.srcRgb() == GLC.GL_DST_COLOR ? "max(max(abs(1.0 - " + c + ".r), abs(1.0 - " + c + ".g)), abs(1.0 - "
-                        + c + ".b)) * " + c + ".a"
-                : c + ".a";
-        String fragment = "\n        vec4 " + c + ";" + forward.fragmentBody() + "\n        if (" + covers + " < " + COVERS
+        String fragment = "\n        vec4 " + c + ";" + forward.fragmentBody() + "\n        if (" + covers(blend, c) + " < " + COVERS
                 + ") discard;\n        responsive = vec4(" + (spec.responsiveAA() ? MARK_RESPONSIVE : MARK_BLENDED) + ");\n    ";
         return new CgShaderPass(CgRenderPassVariant.RESPONSIVE, NAME, state, forward.varyings(), forward.directives(),
                 forward.code(), forward.vertexBody(), fragment, "responsive", false);
+    }
+
+    /**
+     * How much a blended draw covers, from its Forward fragment's output {@code c} (straight colour and opacity, whatever
+     * the blend): its opacity, or for an additive or modulating blend how far its colour moves what is behind.
+     */
+    static String covers(CgBlendState blend, String c) {
+        return blend.dstRgb() == GLC.GL_ONE ? "max(max(" + c + ".r, " + c + ".g), " + c + ".b) * " + c + ".a"
+                : blend.srcRgb() == GLC.GL_DST_COLOR ? "max(max(abs(1.0 - " + c + ".r), abs(1.0 - " + c + ".g)), abs(1.0 - "
+                        + c + ".b)) * " + c + ".a"
+                : c + ".a";
     }
 }

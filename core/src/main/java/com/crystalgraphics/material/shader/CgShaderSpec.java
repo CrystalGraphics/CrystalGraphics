@@ -118,6 +118,8 @@ public final class CgShaderSpec {
     final boolean ditherOpacityMask;
     /** {@code ResponsiveAA}: a translucent shader's short temporal history where it covers. */
     final boolean responsiveAA;
+    /** {@code OutputVelocity}: a translucent shader's velocity and depth written where it covers. */
+    final boolean outputVelocity;
     final boolean templateReadsSceneColor;
     final DepthMode depthMode;
     @Nullable final String maskClip, postLocation;
@@ -160,6 +162,7 @@ public final class CgShaderSpec {
         this.translucencyPass = b.translucencyPass;
         this.ditherOpacityMask = b.ditherOpacityMask;
         this.responsiveAA = b.responsiveAA;
+        this.outputVelocity = b.outputVelocity;
         this.maskClip = b.maskClip;
         this.postLocation = b.postLocation;
         this.tube = b.tube;
@@ -198,6 +201,7 @@ public final class CgShaderSpec {
         this.translucencyPass = of.translucencyPass;
         this.ditherOpacityMask = of.ditherOpacityMask;
         this.responsiveAA = of.responsiveAA;
+        this.outputVelocity = of.outputVelocity;
         this.maskClip = of.maskClip;
         this.postLocation = of.postLocation;
         this.tube = of.tube;
@@ -351,6 +355,19 @@ public final class CgShaderSpec {
      */
     public boolean responsiveAA() {
         return responsiveAA;
+    }
+
+    /**
+     * {@code OutputVelocity} (Unreal's Output Velocity), Off by default: a translucent material's velocity and depth
+     * written where its opacity reaches {@link #maskClip()}, so temporal anti-aliasing moves what it covers with it rather
+     * than with what is behind. On for a blended surface that stands in the world, a wire or a pane; Off for a particle.
+     *
+     * <pre>{@code
+     * Material { BlendMode Translucent  OutputVelocity On  MaskClip 0.1 }
+     * }</pre>
+     */
+    public boolean outputVelocity() {
+        return outputVelocity;
     }
 
     public DepthMode depthMode() {

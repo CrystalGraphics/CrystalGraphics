@@ -40,7 +40,7 @@ final class SurfaceDomain {
     static final String MATERIAL_VERTEX = SpecReader.MATERIAL_VERTEX;
 
     private static final List<String> SETTINGS = List.of("BlendMode", "ShadingModel", "TranslucencyLighting", "Faces",
-            "TranslucencyPass", "DepthTest", "DepthWrite", "DepthPrepass", "ClipDepth", "MaskClip", "DitherOpacityMask", "ResponsiveAA", "Fog", "Media",
+            "TranslucencyPass", "DepthTest", "DepthWrite", "DepthPrepass", "ClipDepth", "MaskClip", "DitherOpacityMask", "ResponsiveAA", "OutputVelocity", "Fog", "Media",
             "ColorSpace", "SceneColorMargin", "Sky", "PerDrawValues", "VertexFactory");
 
     /** A surface's outputs. */
@@ -211,7 +211,8 @@ final class SurfaceDomain {
                     + blendMode);
         }
         if (!translucent) {
-            for (String k : List.of("DepthPrepass", "ClipDepth", "TranslucencyLighting", "TranslucencyPass", "ResponsiveAA")) {
+            for (String k : List.of("DepthPrepass", "ClipDepth", "TranslucencyLighting", "TranslucencyPass", "ResponsiveAA",
+                    "OutputVelocity")) {
                 if (m.containsKey(k)) {
                     throw t.error(m.get(k).keyToken(), "'" + k + "' is a translucent blend mode's, not BlendMode " + blendMode
                             + (k.equals("ClipDepth") ? ": Masked is an opaque material cut by opacityMask" : ""));
@@ -232,9 +233,10 @@ final class SurfaceDomain {
             throw t.error(m.get("DepthWrite").keyToken(), "'DepthWrite' is decided by "
                     + (masked ? "BlendMode Masked" : prepass ? "DepthPrepass" : "ClipDepth"));
         }
-        if (maskClip != null && !clips) {
-            throw t.error(maskSetting.keyToken(), "'MaskClip' is the threshold of Masked, ClipDepth and DepthPrepass, and it"
-                    + " has none of them");
+        boolean outputVelocity = translucent && SpecReader.onOff(file, m, "OutputVelocity", false);
+        if (maskClip != null && !clips && !outputVelocity) {
+            throw t.error(maskSetting.keyToken(), "'MaskClip' is the threshold of Masked, ClipDepth, DepthPrepass and"
+                    + " OutputVelocity, and it has none of them");
         }
         if (named.contains("opacityMask") && !clips) {
             throw t.error(surface.first(), "'s.opacityMask' cuts only under BlendMode Masked, ClipDepth or DepthPrepass");
@@ -354,6 +356,7 @@ final class SurfaceDomain {
         spec.maskClip = maskClip;
         spec.ditherOpacityMask = dither;
         spec.responsiveAA = !translucent || SpecReader.onOff(file, m, "ResponsiveAA", true);
+        spec.outputVelocity = outputVelocity;
         // AfterDistortion and Overlay are queues of the scene's own: they draw into it, as BeforeDOF does
         spec.translucencyPass = !translucent ? null : CgTranslucencyPass.of(pass) != null ? CgTranslucencyPass.of(pass)
                 : CgTranslucencyPass.BEFORE_DOF;
@@ -393,8 +396,8 @@ final class SurfaceDomain {
             passCode.material(file, own, vertex, surface, true, layers.glsl(file, functions));
         }
 
-        // Its vertex stage as of last frame, for a Velocity pass: a solid surface's alone
-        if (!translucent && !sky) {
+        // Its vertex stage as of last frame, for a Velocity pass: a solid surface's, or one that blends and outputs velocity
+        if ((!translucent || outputVelocity) && !sky) {
             spec.previousVertex = PreviousFrame.code(file, code, functions, vertex, factory.fill(), path);
             spec.vertexAnimates = PreviousFrame.animates(file, functions, vertex, factory.fill(), path);
         }
