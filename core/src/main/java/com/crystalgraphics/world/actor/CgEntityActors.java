@@ -711,7 +711,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         actor.host = host;
         CgEntity entity = actor.server && host != null ? CgEntities.of(host) : CgEntities.of(id);
         entity.type(type);
-        entity.presence = actor;
+        entity.actor = actor;
         actor.entity = entity;
         CgScene scene = actor.scene();
         actor.root = scene.root().spawn();
@@ -744,7 +744,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
             actor.removeAll();
             if (l.outline != null) l.outline.close();
-            entity.presence = null;
+            entity.actor = null;
             return false;
         }
         order.add(l);
@@ -826,7 +826,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         l.actor.removeAll();
         if (l.outline != null) l.outline.close();
         l.outline = null;
-        l.entity.presence = null;
+        l.entity.actor = null;
     }
 
 

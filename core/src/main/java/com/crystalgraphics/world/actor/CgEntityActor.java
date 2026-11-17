@@ -96,7 +96,7 @@ import java.util.Map;
  * }
  * }</pre>
  */
-public abstract class CgEntityActor implements CgEntity.Presence {
+public abstract class CgEntityActor {
 
     private final List<CgPrimitiveComponent<?>> components = new ArrayList<>();
     CgEntity entity;
@@ -234,7 +234,6 @@ public abstract class CgEntityActor implements CgEntity.Presence {
         body.anim().onUpdate(new EntityFeed(entity));
     }
 
-    @Override
     @Nullable
     public final CgAnimInstance animation() {
         CgSkeletalMeshComponent b = body();
@@ -323,7 +322,6 @@ public abstract class CgEntityActor implements CgEntity.Presence {
      * Plays {@code sequence} on this actor's body, its every role the body: in {@code slot}, or the sequence's own where
      * null. The play a reaction makes, and what an entity's gameplay handle plays.
      */
-    @Override
     public final CgSequencePlayer playSequence(String sequence, @Nullable String slot) {
         CgSkeletalMeshComponent body = body();
         if (body == null) throw new IllegalStateException("no body to play " + sequence + " on: its prefab has no skeletal mesh");

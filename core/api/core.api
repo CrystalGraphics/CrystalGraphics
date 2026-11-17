@@ -24947,7 +24947,6 @@ com/crystalgraphics/world/actor/CgEntity
 com/crystalgraphics/world/actor/CgEntityActor
   access public,abstract
   extends java/lang/Object
-  implements com/crystalgraphics/world/actor/CgEntity$Presence
   method protected onRemove (Lcom/crystalgraphics/world/actor/CgEntity;)V
   method protected tick (Lcom/crystalgraphics/world/actor/CgEntity;F)V
   method protected,abstract onSpawn (Lcom/crystalgraphics/world/actor/CgEntity;)V
