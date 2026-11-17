@@ -246,7 +246,7 @@ public final class CgRenderDemo {
             CgKeyCodes.KEY_L, CgKeyCodes.KEY_V, CgKeyCodes.KEY_G, CgKeyCodes.KEY_LBRACKET, CgKeyCodes.KEY_RBRACKET,
             CgKeyCodes.KEY_MINUS, CgKeyCodes.KEY_EQUALS, CgKeyCodes.KEY_O, CgKeyCodes.KEY_K, CgKeyCodes.KEY_J,
             CgKeyCodes.KEY_U, CgKeyCodes.KEY_M, CgKeyCodes.KEY_R, CgKeyCodes.KEY_Z, CgKeyCodes.KEY_X, CgKeyCodes.KEY_F6, CgKeyCodes.KEY_F7, CgKeyCodes.KEY_F8,
-            CgKeyCodes.KEY_F9, CgKeyCodes.KEY_F10},
+            CgKeyCodes.KEY_F9, CgKeyCodes.KEY_F10, CgKeyCodes.KEY_F11, CgKeyCodes.KEY_F12},
             CgVfxDemoControls.KEYS, CgAnimDemo.KEYS, CgDepthOfFieldDemo.KEYS);
     private final boolean[] held = new boolean[KEYS.length];
     private static float bloomIntensity = 1f;
@@ -1008,6 +1008,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_F9 -> CgGraphicsSettings.ANTI_ALIASING.set(next(CgQuality.values(), CgGraphicsSettings.ANTI_ALIASING.get(), shift));
             case CgKeyCodes.KEY_F10 -> stepScreenPercentage(CgView.main(), shift);
             case CgKeyCodes.KEY_F11 -> CgGraphicsSettings.MOTION_BLUR.set(!CgGraphicsSettings.MOTION_BLUR.get());
+            case CgKeyCodes.KEY_F12 -> stepAmbientOcclusion(shift);
             case CgKeyCodes.KEY_X -> CgView.main().override(CgSceneRenderer.GRADE_DRAWS, !CgView.main().flag(CgSceneRenderer.GRADE_DRAWS));
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) / 1.25f);
@@ -1138,16 +1139,26 @@ public final class CgRenderDemo {
         if (next >= 0) view.screenPercentage(PERCENTAGES[next]);
     }
 
+    /** Ambient occlusion off, SSAO, GTAO, and round; back with shift. */
+    private static void stepAmbientOcclusion(boolean shift) {
+        int now = !CgGraphicsSettings.AMBIENT_OCCLUSION.get() ? 0 : 1 + Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get());
+        int next = (now + (shift ? 2 : 1)) % 3;
+        CgGraphicsSettings.AMBIENT_OCCLUSION.set(next != 0);
+        if (next != 0) CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.set((float) (next - 1));
+    }
+
     private static String temporalHud(CgView view) {
-        if (!CgTemporalAA.enabled(view)) return "Temporal [F7]: off";
+        String effects = (CgGraphicsSettings.MOTION_BLUR.get() ? ", motion blur [F11]: on" : ", motion blur [F11]: off")
+                + ", AO [F12]: " + (!CgGraphicsSettings.AMBIENT_OCCLUSION.get() ? "off"
+                : Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1 ? "GTAO" : "SSAO");
+        if (!CgTemporalAA.enabled(view)) return "Temporal [F7]: off" + effects;
         CgAntiAliasing method = view.antiAliasing();
         String size = view.screenPercentageAuto()
                 ? String.format(Locale.ROOT, "auto %.0f%%", view.resolutionFraction() * 100f)
                 : String.format(Locale.ROOT, "%.0f%%", view.screenPercentage());
         return "Temporal [F7]: " + method + " [F6]"
                 + (method == CgAntiAliasing.TSR ? ", " + CgGraphicsSettings.ANTI_ALIASING.get() + " [F9]" : "")
-                + ", " + size + " [F10]" + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off")
-                + (CgGraphicsSettings.MOTION_BLUR.get() ? ", motion blur [F11]: on" : ", motion blur [F11]: off");
+                + ", " + size + " [F10]" + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off") + effects;
     }
 
     // ── capture ───────────────────────────────────────────────────────────────
