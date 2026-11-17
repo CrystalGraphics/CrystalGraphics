@@ -16670,6 +16670,7 @@ com/crystalgraphics/settings/CgGraphicsSettings
   access public,final
   extends java/lang/Object
   field public,static,final AMBIENT_OCCLUSION Lcom/crystalgraphics/settings/CgSetting$Toggle;
+  field public,static,final AMBIENT_OCCLUSION_DOWNSAMPLE Lcom/crystalgraphics/settings/CgSetting$Toggle;
   field public,static,final AMBIENT_OCCLUSION_LEVELS Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final AMBIENT_OCCLUSION_MAX_QUALITY Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final AMBIENT_OCCLUSION_METHOD Lcom/crystalgraphics/settings/CgSetting$Number;

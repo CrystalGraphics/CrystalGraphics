@@ -14,6 +14,7 @@
 //   memory;
 // - view space is the engine's (CgAmbientOcclusion's view_position), depth its linear eye depth;
 // - Q0 and Q1 dispatch a thread a texel, not its sparse layout: the same texels, each once;
+// - the bilateral upscale keeps 32-bit floats in shared memory where CACAO packs two halves a word;
 // - a normal is turned to face the eye, as the GTAO port's: the texel rows run the other way from D3D's;
 // - the output takes Unreal's intensity last: 1 - (1 - ao) * intensity.
 #pragma kernel GenerateQ0 8 8 image
@@ -29,6 +30,9 @@
 #pragma kernel Apply 8 8 image
 #pragma kernel NonSmartApply 8 8 image
 #pragma kernel NonSmartHalfApply 8 8 image
+#pragma kernel UpscaleSmart 8 8 general
+#pragma kernel UpscaleNonSmart 8 8 general
+#pragma kernel UpscaleHalf 8 8 general
 
 Properties {
     _Size       ("x, y the full render size; z, w their inverse", vec4) = (1, 1, 1, 1)
@@ -55,6 +59,11 @@ Properties {
     _Ssao1      ("Layer 1's", sampler2D) = "black"
     _Ssao2      ("Layer 2's", sampler2D) = "black"
     _Ssao3      ("Layer 3's", sampler2D) = "black"
+    _LayerDepth0 ("Layer 0's view depth, level 0 (the upscale)", sampler2D) = "black"
+    _LayerDepth1 ("Layer 1's", sampler2D) = "black"
+    _LayerDepth2 ("Layer 2's", sampler2D) = "black"
+    _LayerDepth3 ("Layer 3's", sampler2D) = "black"
+    _Bilateral  ("x the upscale's Gaussian sigma squared, y its depth similarity sigma", vec4) = (5, 0.01, 0, 0)
 }
 
 Images {
@@ -473,4 +482,121 @@ void NonSmartApply() {
 void NonSmartHalfApply() {
     vec2 uv = vec2(CG_TEXEL.xy) * _Size.zw;
     AO_WRITE(vec4(shaped((ssao_sample(0, uv) + ssao_sample(3, uv)) * 0.5, CG_TEXEL.xy)));
+}
+
+// ── Bilateral upscale (the downsampled presets) ───────────────────────────────────────────────────────────────────
+
+// FFX_CACAO_BilateralUpscaleNxN and UpscaleBilateral5x5Half: the four quarter-size layers as the half-size image they
+// make, then each full-resolution pixel a 5x5 Gaussian of it weighted by depth likeness. A thread writes a 2x2 block.
+// Its shared values are 32-bit floats where CACAO packs two halves to a word, and a tap off the image clamps to it.
+const int UPSCALE_W = 8, UPSCALE_H = 8, UPSCALE_BW = UPSCALE_W + 4, UPSCALE_BH = UPSCALE_H + 8;
+const int UPSCALE_SMART = 0, UPSCALE_NON_SMART = 1, UPSCALE_HALF = 2;
+
+shared float upscaleDepth[UPSCALE_BW][UPSCALE_BH];
+shared float upscaleAo[UPSCALE_BW][UPSCALE_BH];
+
+float layer_view_depth(int layer, ivec2 p) {
+    ivec2 size = textureSize(_LayerDepth0, 0);
+    p = clamp(p, ivec2(0), size - 1);
+    if (layer == 0) return texelFetch(_LayerDepth0, p, 0).r;
+    if (layer == 1) return texelFetch(_LayerDepth1, p, 0).r;
+    if (layer == 2) return texelFetch(_LayerDepth2, p, 0).r;
+    return texelFetch(_LayerDepth3, p, 0).r;
+}
+
+// FFX_CACAO_BilateralUpscale_SampleSSAOPoint
+float ssao_point(int layer, vec2 uv) {
+    ivec2 size = textureSize(_Ssao0, 0);
+    return ssao_load(layer, clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1)).x;
+}
+
+// The half-size image's occlusion at its texel p: edge-aware as Apply (smart), the four layers' average (non-smart), or
+// the two diagonal layers' (half)
+float upscale_source(int mode, ivec2 p) {
+    int mx = p.x % 2, my = p.y % 2;
+    vec2 inv = _SsaoSize.zw;
+    if (mode == UPSCALE_SMART) {
+        int ic = mx + my * 2, ih = (1 - mx) + my * 2, iv = mx + (1 - my) * 2, id = (1 - mx) + (1 - my) * 2;
+        vec2 centerVal = ssao_load(ic, p / 2);
+        vec4 edges = unpack_edges(centerVal.y, _Effect4.x);
+        float fmx = float(mx), fmy = float(my), fmxe = edges.y - edges.x, fmye = edges.w - edges.z;
+        vec2 q = vec2(p);
+        float aoH = ssao_sample(ih, (q + vec2(fmx + fmxe - 0.5, 0.5 - fmy)) * 0.5 * inv);
+        float aoV = ssao_sample(iv, (q + vec2(0.5 - fmx, fmy - 0.5 + fmye)) * 0.5 * inv);
+        float aoD = ssao_sample(id, (q + vec2(fmx - 0.5 + fmxe, fmy - 0.5 + fmye)) * 0.5 * inv);
+        vec4 weights = vec4(1.0, (edges.x + edges.y) * 0.5, (edges.z + edges.w) * 0.5, 0.0);
+        weights.w = (weights.y + weights.z) * 0.5;
+        return dot(vec4(centerVal.x, aoH, aoV, aoD), weights) / dot(weights, vec4(1.0));
+    }
+    vec2 loc0 = (vec2(p / 2) + 0.5) * inv, loc1 = loc0, loc2 = loc0, loc3 = loc0;
+    int corner = my * 2 + mx;
+    if (mode == UPSCALE_HALF) {
+        if (corner == 0) loc1 -= 0.5 * inv;
+        else if (corner == 1) { loc0.x += 0.5 * inv.x; loc1.y -= 0.5 * inv.y; }
+        else if (corner == 2) { loc0.y += 0.5 * inv.y; loc1.x -= 0.5 * inv.x; }
+        else loc0 += 0.5 * inv;
+        return (ssao_point(0, loc0) + ssao_point(3, loc1)) * 0.5;
+    }
+    if (corner == 0) { loc1.x -= 0.5 * inv.x; loc2.y -= 0.5 * inv.y; loc3 -= 0.5 * inv; }
+    else if (corner == 1) { loc0.x += 0.5 * inv.x; loc2 += vec2(0.5, -0.5) * inv; loc3.y -= 0.5 * inv.y; }
+    else if (corner == 2) { loc0.y += 0.5 * inv.y; loc1 += vec2(-0.5, 0.5) * inv; loc3.x -= 0.5 * inv.x; }
+    else { loc0 += 0.5 * inv; loc1.y += 0.5 * inv.y; loc2.x += 0.5 * inv.x; }
+    return (ssao_point(0, loc0) + ssao_point(1, loc1) + ssao_point(2, loc2) + ssao_point(3, loc3)) * 0.25;
+}
+
+void upscale(int mode) {
+    ivec2 gtid = ivec2(CG_LOCAL_ID.xy), gid = ivec2(CG_GROUP_ID.xy);
+    // Three texels a thread into the group's tile and its 2-texel border
+    int threadNum = (gtid.y * UPSCALE_W + gtid.x) * 3;
+    ivec2 bufferCoord = ivec2(threadNum % UPSCALE_BW, threadNum / UPSCALE_BW);
+    ivec2 imageCoord = gid * ivec2(UPSCALE_W, UPSCALE_H) + bufferCoord - 2;
+    ivec2 last = 2 * ivec2(_SsaoSize.xy) - 1;
+    for (int i = 0; i < 3; i++) {
+        ivec2 p = clamp(imageCoord + ivec2(i, 0), ivec2(0), last);
+        int layer = mode == UPSCALE_HALF ? (p.y % 2) * 3 : (p.x % 2) + 2 * (p.y % 2);
+        upscaleAo[bufferCoord.x + i][bufferCoord.y] = upscale_source(mode, p);
+        upscaleDepth[bufferCoord.x + i][bufferCoord.y] = layer_view_depth(layer, p / 2);
+    }
+    barrier();
+
+    ivec2 tid = gid * ivec2(UPSCALE_W, UPSCALE_H) + gtid, full = 2 * tid, size = ivec2(_Size.xy);
+    vec4 depths = vec4(scene_depth(full, size), scene_depth(full + ivec2(1, 0), size), scene_depth(full + ivec2(0, 1), size),
+            scene_depth(full + ivec2(1, 1), size));
+    ivec2 base = gtid + ivec2(2, 2);
+    const float epsilonWeight = 1e-3;
+    vec4 totals = vec4(epsilonWeight * upscaleAo[base.x][base.y]), weights = vec4(epsilonWeight);
+    float invSigma = 1.0 / _Bilateral.x, invDistanceSigma = 1.0 / _Bilateral.y;
+    for (int x = -2; x <= 2; x++) {
+        for (int y = -2; y <= 2; y++) {
+            ivec2 b = base + ivec2(x, y);
+            vec2 u = vec2(float(x)) - vec2(0.0, 0.5), v1 = vec2(float(y)), v2 = vec2(float(y)) - vec2(0.5);
+            u *= u;
+            v1 *= v1;
+            v2 *= v2;
+            vec2 wx1 = exp(-(u + v1) * invSigma), wx2 = exp(-(u + v2) * invSigma);
+            float bufferDepth = upscaleDepth[b.x][b.y];
+            vec2 diff1 = depths.xy - bufferDepth, diff2 = depths.zw - bufferDepth;
+            vec2 weight1 = wx1 * exp(-diff1 * diff1 * invDistanceSigma), weight2 = wx2 * exp(-diff2 * diff2 * invDistanceSigma);
+            float ao = upscaleAo[b.x][b.y];
+            totals.xy += ao * weight1;
+            totals.zw += ao * weight2;
+            weights.xy += weight1;
+            weights.zw += weight2;
+        }
+    }
+    vec4 result = totals / weights;
+    for (int k = 0; k < 4; k++) {
+        ivec2 at = full + ivec2(k % 2, k / 2);
+        if (all(lessThan(at, size))) AO_STORE(at, vec4(shaped(result[k], at)));
+    }
+}
+
+void UpscaleSmart() {
+    upscale(UPSCALE_SMART);
+}
+void UpscaleNonSmart() {
+    upscale(UPSCALE_NON_SMART);
+}
+void UpscaleHalf() {
+    upscale(UPSCALE_HALF);
 }

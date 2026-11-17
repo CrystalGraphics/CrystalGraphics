@@ -44,6 +44,10 @@ public final class CgGraphicsSettings {
                     + " Off, only where a camera or an area asks for it.",
             true);
 
+    public static final CgSetting.Toggle AMBIENT_OCCLUSION_DOWNSAMPLE = FILE.toggle("rendering", "ambient_occlusion_downsample",
+            "Downsampled ambient occlusion", "CACAO at a quarter of the pixels, brought back up by depth: cheaper, softer.",
+            false);
+
     public static final CgSetting.Number AMBIENT_OCCLUSION_METHOD = FILE.number("rendering", "ambient_occlusion_method",
             "Ambient occlusion method", "0 SSAO, Unreal's default and the cheapest; 1 GTAO, nearer a ray-traced reference;"
                     + " 2 AMD's FidelityFX CACAO.",

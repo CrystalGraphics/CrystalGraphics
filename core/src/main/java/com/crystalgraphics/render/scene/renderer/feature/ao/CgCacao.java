@@ -13,10 +13,13 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
+import com.crystalgraphics.settings.CgGraphicsSettings;
 
 /**
- * SSAO, Unreal's {@code r.AmbientOcclusion.Method 0}, as AMD's FidelityFX CACAO: the scene's depth deinterleaved into
- * four half-size layers, each layer's occlusion generated and blurred along its edges, then applied back to full size.
+ * AMD's FidelityFX CACAO, {@code ambient_occlusion_method} 2: the scene's depth deinterleaved into four layers, each
+ * layer's occlusion generated and blurred along its edges, then brought back to full size. Its layers are half the
+ * screen's size, or a quarter under {@code ambient_occlusion_downsample} (its downsampled presets), which a bilateral
+ * upscale brings back.
  * {@link CgAmbientOcclusion} runs it.
  *
  * <p>Ported from FidelityFX CACAO 1.x (MIT; Copyright (c) 2016 Intel Corporation, modifications Copyright (c) 2021
@@ -32,10 +35,16 @@ final class CgCacao {
     private static final int PREPARE_KERNELS = 4;
     private static final String[] NAMES = {"PrepareDepths", "PrepareDepthsHalf", "DepthMip", "PrepareNormals", "GenerateQ0",
             "GenerateQ1", "GenerateQ2", "GenerateQ3Base", "GenerateQ3", "ImportanceMap", "ImportanceA", "ImportanceB",
-            "ClearLoadCounter", "Blur", "Apply", "NonSmartApply", "NonSmartHalfApply"};
+            "ClearLoadCounter", "Blur", "Apply", "NonSmartApply", "NonSmartHalfApply", "UpscaleSmart", "UpscaleNonSmart",
+            "UpscaleHalf"};
     private static final int PREPARE_DEPTHS = 0, PREPARE_DEPTHS_HALF = 1, DEPTH_MIP = 2, PREPARE_NORMALS = 3, GENERATE_Q0 = 4,
             GENERATE_Q3_BASE = 7, GENERATE_Q3 = 8, IMPORTANCE_MAP = 9, IMPORTANCE_A = 10, IMPORTANCE_B = 11, CLEAR_LOAD_COUNTER = 12,
-            BLUR = 13, APPLY = 14, NON_SMART_APPLY = 15, NON_SMART_HALF_APPLY = 16;
+            BLUR = 13, APPLY = 14, NON_SMART_APPLY = 15, NON_SMART_HALF_APPLY = 16, UPSCALE_SMART = 17, UPSCALE_NON_SMART = 18,
+            UPSCALE_HALF = 19;
+    /** The bilateral upscale's Gaussian sigma squared and depth similarity sigma (FFX_CACAO_DEFAULT_SETTINGS). */
+    private static final float BILATERAL_SIGMA_SQUARED = 5f, BILATERAL_SIMILARITY_DISTANCE_SIGMA = 0.01f;
+    /** An upscale thread's 2x2 block, a group's 8x8 threads: the full-resolution pixels a group covers on a side. */
+    private static final int UPSCALE_TILE = 16;
     /** FFX_CACAO_Quality, LOWEST to HIGHEST: Unreal's shader levels 0 to 4. */
     private static final int LOWEST = 0, LOW = 1, MEDIUM = 2, HIGHEST = 4;
     /**
@@ -87,7 +96,8 @@ final class CgCacao {
     static void record(CgComputePass pass, CgView view, CgPostSettings s, int level, CgGraphTexture ao, int w, int h, int frame) {
         load();
         int quality = Math.max(LOWEST, Math.min(HIGHEST, level));
-        Consts c = new Consts(view, s, quality, w, h, frame);
+        boolean downsampled = CgGraphicsSettings.AMBIENT_OCCLUSION_DOWNSAMPLE.get();
+        Consts c = new Consts(view, s, quality, w, h, frame, downsampled);
         Targets t = view.state().get(TARGETS).size(c.hw, c.hh, c.iw, c.ih);
         // Only Q2 and up sample the depth levels (FFX_CACAO_DEPTH_MIPS_ENABLE_AT_QUALITY_PRESET)
         boolean half = quality == LOWEST, mips = quality > MEDIUM;
@@ -147,9 +157,18 @@ final class CgCacao {
         }
 
         // Back to full size; the lowest quality's two layers stand in for the two it never made
-        int apply = half ? NON_SMART_HALF_APPLY : quality == LOW ? NON_SMART_APPLY : APPLY;
-        c.common(pass.dispatch(kernels[apply], w, h, 1)).image("AO", ao).texture("_Ssao0", blurred[0])
-                .texture("_Ssao1", blurred[half ? 0 : 1]).texture("_Ssao2", blurred[half ? 3 : 2]).texture("_Ssao3", blurred[3]);
+        CgDispatch out;
+        if (downsampled) {
+            int upscale = half ? UPSCALE_HALF : quality <= MEDIUM ? UPSCALE_NON_SMART : UPSCALE_SMART;
+            out = c.common(pass.dispatchGroups(kernels[upscale], ceilDiv(w, UPSCALE_TILE), ceilDiv(h, UPSCALE_TILE), 1))
+                    .set("_Bilateral", BILATERAL_SIGMA_SQUARED, BILATERAL_SIMILARITY_DISTANCE_SIGMA, 0f, 0f)
+                    .texture("_LayerDepth0", t.depth[0][0]).texture("_LayerDepth1", t.depth[half ? 0 : 1][0])
+                    .texture("_LayerDepth2", t.depth[half ? 3 : 2][0]).texture("_LayerDepth3", t.depth[3][0]);
+        } else {
+            out = c.common(pass.dispatch(kernels[half ? NON_SMART_HALF_APPLY : quality == LOW ? NON_SMART_APPLY : APPLY], w, h, 1));
+        }
+        out.image("AO", ao).texture("_Ssao0", blurred[0]).texture("_Ssao1", blurred[half ? 0 : 1])
+                .texture("_Ssao2", blurred[half ? 3 : 2]).texture("_Ssao3", blurred[3]);
     }
 
     private static int ceilDiv(int a, int b) {
@@ -172,14 +191,16 @@ final class CgCacao {
 
     /** FFX_CACAO_UpdateConstants, from Unreal's settings and AMD's defaults. */
     private static final class Consts {
-        final int w, h, hw, hh, iw, ih, blurPasses;
+        final int w, h, hw, hh, iw, ih, blurPasses, step;
         final float radius, strength, power, fadeMul, fadeAdd, nearLimit, loadDiv, intensity, angleOffset, radiusScale;
 
-        Consts(CgView view, CgPostSettings s, int quality, int w, int h, int frame) {
+        Consts(CgView view, CgPostSettings s, int quality, int w, int h, int frame, boolean downsampled) {
             this.w = w;
             this.h = h;
-            hw = (w + 1) / 2;
-            hh = (h + 1) / 2;
+            // FFX_CACAO_UpdateBufferSizeInfo: half-size layers, or quarter-size downsampled
+            step = downsampled ? 2 : 1;
+            hw = downsampled ? ((w + 1) / 2 + 1) / 2 : (w + 1) / 2;
+            hh = downsampled ? ((h + 1) / 2 + 1) / 2 : (h + 1) / 2;
             iw = (hw + 1) / 2;
             ih = (hh + 1) / 2;
             blurPasses = BLUR_PASSES[quality];
@@ -209,7 +230,8 @@ final class CgCacao {
 
         /** The prepare file's two values. */
         CgDispatch prepare(CgDispatch d) {
-            return d.set("_Size", w, h, 1f / w, 1f / h).set("_Effect", radius, strength, power, clamp(SHADOW_CLAMP, 0f, 1f));
+            return d.set("_Size", w, h, 1f / w, 1f / h).set("_Effect", radius, strength, power, clamp(SHADOW_CLAMP, 0f, 1f))
+                    .set("_Step", step, 0f, 0f, 0f);
         }
 
         CgDispatch common(CgDispatch d) {

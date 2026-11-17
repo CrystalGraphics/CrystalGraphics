@@ -1,5 +1,8 @@
-// FidelityFX CACAO's prepare (CgCacao): the scene's depth deinterleaved into four half-size layers, their levels, and
-// each layer's normals from depth. Its other kernels are cacao.compute: a file binds 8 images at most.
+// FidelityFX CACAO's prepare (CgCacao): the scene's depth deinterleaved into four layers, their levels, and each
+// layer's normals from depth. Its other kernels are cacao.compute: a file binds 8 images at most.
+//
+// _Step.x is 1 for its native kernels (half-size layers, FFX_CACAO_PrepareNative*) and 2 for its downsampled ones
+// (quarter-size layers, FFX_CACAO_PrepareDownsampled*): the same reads, a full-resolution pixel apart or two.
 //
 // Copyright (c) 2016, Intel Corporation (ASSAO). Modifications Copyright (c) 2021, Advanced Micro Devices, Inc. (CACAO).
 // MIT licence: permission is granted, free of charge, to deal in the Software without restriction, provided this notice
@@ -14,6 +17,7 @@
 Properties {
     _Size   ("x, y the full render size; z, w their inverse", vec4) = (1, 1, 1, 1)
     _Effect ("x radius, y shadow strength, z shadow power, w shadow clamp", vec4) = (1.2, 4.3, 1.5, 0.98)
+    _Step   ("x full-resolution pixels between a layer's taps: 1 native, 2 downsampled", vec4) = (1, 0, 0, 0)
     _Prev   ("The level above, view depth (DepthMip)", sampler2D) = "black"
 }
 
@@ -34,20 +38,26 @@ float depth_at(ivec2 px) {
     return scene_depth(px, ivec2(_Size.xy));
 }
 
-// FFX_CACAO_PrepareNativeDepths: a half-resolution texel's four full-resolution depths, one a layer
-void PrepareDepths() {
-    ivec2 t = CG_TEXEL.xy, d = 2 * t;
-    DEPTH0_WRITE(vec4(depth_at(d)));
-    DEPTH1_WRITE(vec4(depth_at(d + ivec2(1, 0))));
-    DEPTH2_WRITE(vec4(depth_at(d + ivec2(0, 1))));
-    DEPTH3_WRITE(vec4(depth_at(d + ivec2(1, 1))));
+int step_() {
+    return max(1, int(_Step.x));
 }
 
-// FFX_CACAO_PrepareNativeDepthsHalf: the lowest quality's two diagonal layers alone
-void PrepareDepthsHalf() {
-    ivec2 d = 2 * CG_TEXEL.xy;
+// FFX_CACAO_PrepareNativeDepths / PrepareDownsampledDepths: a layer texel's four depths, one a layer
+void PrepareDepths() {
+    int s = step_();
+    ivec2 d = 2 * s * CG_TEXEL.xy;
     DEPTH0_WRITE(vec4(depth_at(d)));
-    DEPTH3_WRITE(vec4(depth_at(d + ivec2(1, 1))));
+    DEPTH1_WRITE(vec4(depth_at(d + ivec2(s, 0))));
+    DEPTH2_WRITE(vec4(depth_at(d + ivec2(0, s))));
+    DEPTH3_WRITE(vec4(depth_at(d + ivec2(s, s))));
+}
+
+// FFX_CACAO_PrepareNativeDepthsHalf / PrepareDownsampledDepthsHalf: the lowest quality's two diagonal layers alone
+void PrepareDepthsHalf() {
+    int s = step_();
+    ivec2 d = 2 * s * CG_TEXEL.xy;
+    DEPTH0_WRITE(vec4(depth_at(d)));
+    DEPTH3_WRITE(vec4(depth_at(d + ivec2(s, s))));
 }
 
 // FFX_CACAO_MipSmartAverage. The weight's falloff is CACAO's: -1 / r * r, which is -1.
@@ -67,17 +77,19 @@ void DepthMip() {
     DEPTH0_WRITE(vec4(mip_smart_average(d)));
 }
 
-// FFX_CACAO_PrepareNativeNormals: the four layers' normals of a half-resolution texel, from twelve depths about it
+// FFX_CACAO_PrepareNativeNormals / PrepareDownsampledNormals: the four layers' normals of a layer texel, from twelve
+// depths about it
 void PrepareNormals() {
-    ivec2 t = CG_TEXEL.xy, d = 2 * t;
-    float d10 = depth_at(d + ivec2(0, -1)), d20 = depth_at(d + ivec2(1, -1));
-    float d01 = depth_at(d + ivec2(-1, 0)), d11 = depth_at(d), d21 = depth_at(d + ivec2(1, 0));
-    float d31 = depth_at(d + ivec2(2, 0));
-    float d02 = depth_at(d + ivec2(-1, 1)), d12 = depth_at(d + ivec2(0, 1)), d22 = depth_at(d + ivec2(1, 1));
-    float d32 = depth_at(d + ivec2(2, 1));
-    float d13 = depth_at(d + ivec2(0, 2)), d23 = depth_at(d + ivec2(1, 2));
+    int s = step_();
+    ivec2 d = 2 * s * CG_TEXEL.xy;
+    float d10 = depth_at(d + s * ivec2(0, -1)), d20 = depth_at(d + s * ivec2(1, -1));
+    float d01 = depth_at(d + s * ivec2(-1, 0)), d11 = depth_at(d), d21 = depth_at(d + s * ivec2(1, 0));
+    float d31 = depth_at(d + s * ivec2(2, 0));
+    float d02 = depth_at(d + s * ivec2(-1, 1)), d12 = depth_at(d + s * ivec2(0, 1)), d22 = depth_at(d + s * ivec2(1, 1));
+    float d32 = depth_at(d + s * ivec2(2, 1));
+    float d13 = depth_at(d + s * ivec2(0, 2)), d23 = depth_at(d + s * ivec2(1, 2));
 
-    vec2 pixel = _Size.zw, uv = (vec2(d) + 0.5) * pixel;
+    vec2 pixel = float(s) * _Size.zw, uv = (vec2(d) + 0.5) * _Size.zw;
     vec3 p10 = view_position(uv + vec2(0.0, -1.0) * pixel, d10), p20 = view_position(uv + vec2(1.0, -1.0) * pixel, d20);
     vec3 p01 = view_position(uv + vec2(-1.0, 0.0) * pixel, d01), p11 = view_position(uv, d11);
     vec3 p21 = view_position(uv + vec2(1.0, 0.0) * pixel, d21), p31 = view_position(uv + vec2(2.0, 0.0) * pixel, d31);
