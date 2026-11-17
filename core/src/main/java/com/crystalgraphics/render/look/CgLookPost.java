@@ -26,26 +26,38 @@ import com.crystalgraphics.render.post.settings.CgPostSettings;
  * goku.grade(CgVfxKitLook.grade("kk", stage));                              // Kakarot's tone, the arena's character colour
  * }</pre>
  *
+ * <p>A look's materials at {@code SCENE}, {@code HDR} and {@code DISPLAY} draw after the look weights, on a copy of the
+ * picture laid back by the look's share of each pixel ({@link #weighted}): its solids, its translucent light, resolved
+ * by the temporal step where one ran. A screen-wide part of a game's post (a vignette) is the kit's to strip first.</p>
+ *
  * <ul>
- *   <li>Before anything translucent: a look's translucent draws are not graded by its materials, as Unreal draws a
- *       material at BeforeTranslucency.</li>
- *   <li>A look's materials at any other point draw nowhere: they would grade the whole screen.</li>
+ *   <li>{@code SURFACES} materials grade before anything translucent: a look's translucent draws are not graded by them,
+ *       as Unreal draws a material at BeforeTranslucency.</li>
+ *   <li>A look's materials at {@code TRANSLUCENT} draw nowhere: the weights are not drawn yet there.</li>
  * </ul>
  */
 public final class CgLookPost {
 
-    public static final String MASK = "crystalgraphics:shaders/post/look/look_mask.shader";
+    public static final String MASK = "crystalgraphics:shaders/post/look/look_mask.shader",
+            BLEND = "crystalgraphics:shaders/post/look/look_blend.shader";
     private static final String COPY = "crystalgraphics:shaders/post/hold.shader";
     private static final String[] GRADED = {"cg_look_post0", "cg_look_post1", "cg_look_post2", "cg_look_post3"};
 
     @Nullable
     private static CgMaterialInstance copy;
-    private static final CgMaterialInstance[] MASKS = new CgMaterialInstance[CgLookChannels.MAX];
+    private static final CgMaterialInstance[] MASKS = new CgMaterialInstance[CgLookChannels.MAX],
+            BLENDS = new CgMaterialInstance[CgLookChannels.MAX];
+    private static final float[][] CHANNELS = {{1f, 0f, 0f, 0f}, {0f, 1f, 0f, 0f}, {0f, 0f, 1f, 0f}, {0f, 0f, 0f, 1f}};
 
     /** Whether {@code look} has a post material to draw on its solids. */
     public static boolean grades(@Nullable CgPostSettings look) {
+        return grades(look, CgPostPoint.SURFACES);
+    }
+
+    /** Whether {@code look} has a post material at {@code point}. */
+    public static boolean grades(@Nullable CgPostSettings look, CgPostPoint point) {
         if (look == null) return false;
-        for (int i = 0; i < look.blendableCount(); i++) if (look.blendable(i).point() == CgPostPoint.SURFACES) return true;
+        for (int i = 0; i < look.blendableCount(); i++) if (look.blendable(i).point() == point) return true;
         return false;
     }
 
@@ -87,16 +99,55 @@ public final class CgLookPost {
         }
     }
 
+    /**
+     * Each look channel's materials at {@code point} ({@code SCENE}, {@code HDR} or {@code DISPLAY}) over a copy of
+     * {@code picture}, laid back by the channel's look weight. Nothing without the weights this firing. Render thread.
+     *
+     * <pre>{@code
+     * picture = carry(post, CgPostPoint.HDR, entries, i, picture);
+     * CgLookPost.weighted(ctx, CgPostPoint.HDR, picture);   // a kit's before-tonemapping post, on the kit's pixels
+     * }</pre>
+     */
+    public static void weighted(CgPostContext ctx, CgPostPoint point, CgScreenTexture picture) {
+        CgLookChannels looks = ctx.view().read(CgLookChannels.KEY);
+        CgGraphTexture weights = CgLookWeights.current(ctx.view());
+        if (looks == null || weights == null) return;
+        for (int k = 0; k < CgLookChannels.MAX; k++) {
+            CgPostSettings look = looks.look(k);
+            if (!grades(look, point)) continue;
+            materials();
+            CgScreenTexture graded = ctx.texture(GRADED[k], picture);
+            ctx.screen(copy).from(picture).into(graded);
+            for (int i = 0; i < look.blendableCount(); i++) {
+                CgPostSettings.Blendable b = look.blendable(i);
+                if (b.point() != point) continue;
+                CgPostMaterial drawer = b.drawer();
+                drawer.weight(b.weight());
+                drawer.drawOver(ctx, graded.texture());
+            }
+            CgMaterialInstance blend = BLENDS[k];
+            CgMaterialProxy proxy = CgMaterialProxy.of(blend);
+            float[] c = CHANNELS[k];
+            blend.sampler("_Graded", proxy.samplerUnit("_Graded"), graded.texture())
+                    .sampler("_Weights", proxy.samplerUnit("_Weights"), weights).vec4("_Channel", c[0], c[1], c[2], c[3]);
+            ctx.screen(blend).from(picture).reads(graded.texture()).reads(weights).over(picture);
+        }
+    }
+
     private static void materials() {
         if (copy != null) return;
         copy = CgMaterial.load(COPY).instance();
-        for (int k = 0; k < MASKS.length; k++) MASKS[k] = CgMaterial.load(MASK).instance();
+        for (int k = 0; k < MASKS.length; k++) {
+            MASKS[k] = CgMaterial.load(MASK).instance();
+            BLENDS[k] = CgMaterial.load(BLEND).instance();
+        }
     }
 
     /** Forgets its materials: the registry freed them. At context teardown. */
     public static void releaseAll() {
         copy = null;
         Arrays.fill(MASKS, null);
+        Arrays.fill(BLENDS, null);
     }
 
     private CgLookPost() {

@@ -5,6 +5,7 @@ import org.joml.Matrix4f;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
+import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgScreenTexture;
 import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
@@ -46,7 +47,12 @@ public final class CgDepthOfField {
     private static final int TILE = 8;
 
     private CgMaterialInstance setup, tiles, dilate, far, near, recombine;
+    private CgMaterialInstance setupCarry, farCarry, nearCarry, recombineCarry;
     private final Matrix4f projection = new Matrix4f();
+    /** The last apply's blur, which {@link #carry} repeats; {@code blurred} false where it blurred nothing. */
+    private boolean blurred;
+    private CgScreenTexture lastInput, lastHalf, lastDilated, lastFar, lastNear;
+    private final float[] lastCoc = new float[4], lastShape = new float[2];
 
     /** Whether it blurs this firing: the settings focus, the view is a lens's, and it may. */
     public boolean shows(CgPostContext ctx) {
@@ -58,6 +64,7 @@ public final class CgDepthOfField {
 
     /** Blurs {@code input} by depth into a texture of its own and answers it; {@code input} itself where nothing blurs. */
     public CgScreenTexture apply(CgPostContext ctx, CgScreenTexture input) {
+        blurred = false;
         CgPostSettings s = ctx.settings();
         int width = input.width();
         projection.set(ctx.view().camera().projection());
@@ -95,8 +102,63 @@ public final class CgDepthOfField {
         CgScreenTexture nearLayer = gather(ctx, near, "cg.dof.near", half, dilated, hw, hh);
         CgScreenTexture out = ctx.texture("cg.dof.out", input);
         recombine.sampler("_Far", 0, farLayer.texture()).sampler("_Near", 1, nearLayer.texture());
+        blurred = true;
+        lastInput = input;
+        lastHalf = half;
+        lastDilated = dilated;
+        lastFar = farLayer;
+        lastNear = nearLayer;
+        System.arraycopy(coc, 0, lastCoc, 0, 4);
+        lastShape[0] = blades;
+        lastShape[1] = polygon;
         return ctx.screen(recombine).name("dof.recombine").from(input).reads(ctx.depth()).reads(farLayer.texture())
                 .reads(nearLayer.texture()).into(out);
+    }
+
+    /**
+     * {@code beside} blurred as the last {@link #apply} blurred the colour, this firing: the same texels chosen, the same
+     * samples weighed the same, so a channel riding beside the colour (the look weights) stays where its colour went, as
+     * Unreal's depth of field propagates alpha. {@code beside} itself where that apply blurred nothing.
+     *
+     * <pre>{@code
+     * picture = dof.apply(ctx, picture);
+     * solids = dof.carry(ctx, solids);   // after apply, before the next firing
+     * }</pre>
+     */
+    public CgGraphTexture carry(CgPostContext ctx, CgGraphTexture beside) {
+        if (!blurred || beside == null || beside.desc() == null) return beside;
+        if (setupCarry == null) {
+            setupCarry = CgMaterial.load(SHADERS[0]).instance().vec4("_Carry", 1f, 0f, 0f, 0f);
+            farCarry = CgMaterial.load(SHADERS[3]).instance().vec4("_Carry", 1f, 0f, 0f, 0f);
+            nearCarry = CgMaterial.load(SHADERS[3]).instance().vec4("_Carry", 1f, 0f, 0f, 0f);
+            recombineCarry = CgMaterial.load(SHADERS[4]).instance().vec4("_Carry", 1f, 0f, 0f, 0f);
+        }
+        float[] coc = lastCoc;
+        int hw = lastHalf.width(), hh = lastHalf.height();
+        setupCarry.vec4("_Coc", coc[0], coc[1], coc[2], coc[3]).sampler("_Carried", 0, beside);
+        CgScreenTexture half = ctx.texture("cg.dof.halfCarry", hw, hh, CgFormat.RGBA16_FLOAT);
+        ctx.screen(setupCarry).name("dof.setupCarry").from(lastInput).reads(ctx.depth()).reads(beside).into(half);
+        CgScreenTexture farLayer = gatherCarry(ctx, farCarry, "cg.dof.farCarry", 0f, half, hw, hh);
+        CgScreenTexture nearLayer = gatherCarry(ctx, nearCarry, "cg.dof.nearCarry", 1f, half, hw, hh);
+        CgFormat format = beside.desc().format();
+        CgScreenTexture out = ctx.texture("cg.dof.carried", lastInput.width(), lastInput.height(),
+                format != null ? format : CgFormat.RGBA8_UNORM);
+        recombineCarry.vec4("_Coc", coc[0], coc[1], coc[2], coc[3]).sampler("_Far", 0, lastFar.texture())
+                .sampler("_Near", 1, lastNear.texture()).sampler("_Carried", 2, beside)
+                .sampler("_FarCarry", 3, farLayer.texture()).sampler("_NearCarry", 4, nearLayer.texture());
+        return ctx.screen(recombineCarry).name("dof.recombineCarry").from(lastInput).reads(ctx.depth()).reads(beside)
+                .reads(lastFar.texture()).reads(lastNear.texture()).reads(farLayer.texture()).reads(nearLayer.texture())
+                .into(out).texture();
+    }
+
+    private CgScreenTexture gatherCarry(CgPostContext ctx, CgMaterialInstance layer, String name, float near,
+                                        CgScreenTexture half, int hw, int hh) {
+        CgScreenTexture out = ctx.texture(name, hw, hh, CgFormat.RGBA16_FLOAT);
+        layer.vec4("_Shape", lastShape[0], lastShape[1], 0f, 0f).vec4("_Layer", near, 0f, 0f, 0f)
+                .sampler("_Half", 0, lastHalf.texture()).sampler("_Tiles", 1, lastDilated.texture())
+                .sampler("_HalfCarry", 2, half.texture());
+        return ctx.screen(layer).name(name.substring(3)).reads(lastHalf.texture()).reads(lastDilated.texture())
+                .reads(half.texture()).into(out);
     }
 
     private static CgScreenTexture gather(CgPostContext ctx, CgMaterialInstance layer, String name, CgScreenTexture half,

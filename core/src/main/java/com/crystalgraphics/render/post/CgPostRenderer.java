@@ -76,7 +76,8 @@ public final class CgPostRenderer {
             "crystalgraphics:shaders/post/distortion_bend.shader", CgTranslucencyComposition.SHADER,
             "crystalgraphics:shaders/post/composite.shader", COMPOSITE_COPY, COPY, CgDepthOfField.SHADERS[0],
             CgDepthOfField.SHADERS[1], CgDepthOfField.SHADERS[2], CgDepthOfField.SHADERS[3], CgDepthOfField.SHADERS[4],
-            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalGlow.SHADER, CgViewRenderTarget.fillShader(), CgLookPost.MASK};
+            CgTemporalAA.SHADER, CgTemporalAA.OUTPUT, CgTemporalGlow.SHADER, CgViewRenderTarget.fillShader(), CgLookPost.MASK,
+            CgLookPost.BLEND};
 
     private static boolean installed;
     @Nullable
@@ -242,15 +243,19 @@ public final class CgPostRenderer {
             post.ranSurfaces = false;
             i = run(post, CgPostPoint.TRANSLUCENT, entries, i, picture);
             ctx.input(picture);
+            // The graded solids' shares ride the colour from here: bent as the scene was, blurred with it
+            CgGraphTexture solids = post.lookWeights.solids(ctx, picture);
+            if (solids != null) solids = ctx.distorted(solids);
             if (post.depthOfField.shows(ctx)) {
                 try (CgTrace.Zone dof = CgTrace.zone(CgChannels.WORLD, "post.depthOfField")) {
                     picture = post.depthOfField.apply(ctx, picture);
+                    if (solids != null) solids = post.depthOfField.carry(ctx, solids);
                 }
                 ctx.input(picture);
             }
             CgUpscaler upscaler = CgTemporalAA.shows(view) ? post.upscaler(view.antiAliasing()) : null;
             post.translucency.compose(ctx, picture, upscaler == null || !upscaler.composesTranslucency());
-            post.lookWeights.record(ctx, picture, upscaler != null && upscaler.composesTranslucency());
+            post.lookWeights.record(ctx, picture, upscaler != null && upscaler.composesTranslucency(), solids);
             CgGraphTexture glow = null;
             if (upscaler != null) {
                 try (CgTrace.Zone taa = CgTrace.zone(CgChannels.WORLD, "post.temporal")) {
@@ -267,12 +272,14 @@ public final class CgPostRenderer {
                 ctx.input(picture);
             }
             picture = carry(post, CgPostPoint.SCENE, entries, i, picture);
+            CgLookPost.weighted(ctx, CgPostPoint.SCENE, picture);
             i = skip(CgPostPoint.SCENE, entries, i);
 
             CgSceneTextures textures = view.textures();
             boolean linear = textures.linear();
             if (linear && post.bloom.shows(ctx)) post.bloom.record(ctx, picture.texture(), glow, post.composite);
             picture = carry(post, CgPostPoint.HDR, entries, i, picture);
+            CgLookPost.weighted(ctx, CgPostPoint.HDR, picture);
             i = skip(CgPostPoint.HDR, entries, i);
 
             post.looks.feed(ctx, post.composite);
@@ -289,6 +296,7 @@ public final class CgPostRenderer {
             }
             post.composite.record(firing.recording(), host, firing.constants());
             picture = carry(post, CgPostPoint.DISPLAY, entries, i, sized(host, firing));
+            CgLookPost.weighted(ctx, CgPostPoint.DISPLAY, picture);
             ctx.input(picture);
             picture = post.crossfade.apply(ctx, picture);
             ctx.input(picture);

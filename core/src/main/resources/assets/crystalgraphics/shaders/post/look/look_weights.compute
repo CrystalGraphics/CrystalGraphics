@@ -2,19 +2,23 @@
 // look (CgLookChannels), the rest the frame's. A graded solid is where custom depth's stencil bits 5-7 hold its look id
 // and custom depth is the scene's depth (Unreal's custom-stencil test, made a weight so the temporal step can resolve
 // it); a channel's translucent draws take the larger of the cover they laid, shared out front to back, and their share
-// of the pixel's light, so dark smoke counts by what it hides and an additive aura by what it adds.
+// of the pixel's light, so dark smoke counts by what it hides and an additive aura by what it adds. The solids' shares
+// are their own kernel's (Solids), drawn before depth of field and the distortion's bend move the colour, and carried
+// through both beside it as Unreal propagates alpha; Weights gives them what the translucency left.
+#pragma kernel Solids 8 8 image
 #pragma kernel Weights 8 8 image
 
 Properties {
     _Depth         ("View depth from device depth: x / (d + y)", vec4) = (0, 0, 0, 0)
     _Ids           ("Each channel's look id (CgLookIds), 0 for none", vec4) = (0, 0, 0, 0)
     _Bound         ("Each channel's textures bound: 1 its layer, 2 its separate translucency", vec4) = (0, 0, 0, 0)
-    _Options       ("x 1 laying in the separate translucency (an upscaler composes it later); y 1 with custom depth", vec4) = (0, 0, 0, 0)
+    _Options       ("x 1 laying in the separate translucency (an upscaler composes it later); y 1 with solids", vec4) = (0, 0, 0, 0)
     _Scene         ("The HDR scene after the translucency", sampler2D) = "black"
     _Separate      ("The separate translucency, uncomposed: rgb its light, a its cover", sampler2D) = "black"
     _SceneDepth    ("The scene's depth", sampler2D) = "black"
     _CustomDepth   ("Custom depth", sampler2D) = "black"
     _CustomStencil ("Custom depth's stencil: bits 5-7 a graded solid's look id", usampler2D) = "zero"
+    _Solids        ("Each channel's solid share, carried through depth of field and the bend", sampler2D) = "black"
     _Layer0        ("Channel 0's translucent light, and in alpha its cover", sampler2D) = "black"
     _Layer1        ("Channel 1's", sampler2D) = "black"
     _Layer2        ("Channel 2's", sampler2D) = "black"
@@ -27,6 +31,7 @@ Properties {
 
 Images {
     WEIGHTS ("Each channel's share of the pixel", rgba8, writeonly)
+    SOLIDS  ("Each channel's graded solid where it is the visible surface: 1 its channel, 0 the rest", rgba8, writeonly)
 }
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -43,6 +48,21 @@ vec4 channel(sampler2D layer, sampler2D apart, ivec2 p, float bound) {
     int b = int(bound + 0.5);
     vec4 l = (b & 1) != 0 ? texelFetch(layer, p, 0) : vec4(0.0), a = (b & 2) != 0 ? texelFetch(apart, p, 0) : vec4(0.0);
     return vec4(l.rgb + a.rgb, 1.0 - (1.0 - clamp(l.a, 0.0, 1.0)) * (1.0 - clamp(a.a, 0.0, 1.0)));
+}
+
+void Solids() {
+    ivec2 p = CG_TEXEL.xy;
+    vec4 s = vec4(0.0);
+    uint id = (texelFetch(_CustomStencil, p, 0).r >> 5u) & 7u;
+    if (id != 0u) {
+        float custom = eye(texelFetch(_CustomDepth, p, 0).r), scene = eye(texelFetch(_SceneDepth, p, 0).r);
+        if (abs(custom - scene) <= SAME_DEPTH * scene + 1.0e-4) {
+            for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the four channels
+                if (uint(_Ids[k] + 0.5) == id) s[k] = 1.0;
+            }
+        }
+    }
+    SOLIDS_WRITE(s);
 }
 
 void Weights() {
@@ -67,19 +87,8 @@ void Weights() {
         float byCover = coverSum > 0.0 ? l[k].a / coverSum * covered : 0.0;
         w[k] = max(byCover, clamp(dot(l[k].rgb, LUMA) / lit, 0.0, 1.0));
     }
-    // What the translucency left is the visible graded solid's, where there is one
-    if (_Options.y > 0.5) {
-        uint id = (texelFetch(_CustomStencil, p, 0).r >> 5u) & 7u;
-        if (id != 0u) {
-            float custom = eye(texelFetch(_CustomDepth, p, 0).r), scene = eye(texelFetch(_SceneDepth, p, 0).r);
-            if (abs(custom - scene) <= SAME_DEPTH * scene + 1.0e-4) {
-                float rest = max(1.0 - dot(w, vec4(1.0)), 0.0);
-                for (int k = 0; k < 4; k++) {   // LOOP-BOUND: the four channels
-                    if (uint(_Ids[k] + 0.5) == id) w[k] += rest;
-                }
-            }
-        }
-    }
+    // What the translucency left is the visible graded solids', by their carried shares
+    if (_Options.y > 0.5) w += max(1.0 - dot(w, vec4(1.0)), 0.0) * texelFetch(_Solids, p, 0);
     float total = dot(w, vec4(1.0));
     if (total > 1.0) w /= total;
     WEIGHTS_WRITE(w);

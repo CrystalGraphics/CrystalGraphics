@@ -17,11 +17,14 @@ CgSceneRenderer.translucent   ... lights, media, decals
                               ... our translucent passes, the TRANSLUCENT stage
 CgPostRenderer.record
   TRANSLUCENT                 colour regions: the scene before separate translucency
-  depth of field              CgDepthOfField: the lens's blur by distance, into a texture of its own
+  look solids                 CgLookWeights.solids: graded solids' shares, bent as the scene was (ctx.distorted)
+  depth of field              CgDepthOfField: the lens's blur by distance, into a texture of its own; carry() blurs
+                              the solids' shares the same way (Unreal's alpha propagation)
   translucency                CgTranslucencyComposition: CgSeparateTranslucency over the scene
   look weights                CgLookWeights: each graded look's share of each pixel (render/look)
   temporal AA                 CgTemporalAA: the jittered picture resolved into the view's history (temporalAA show flag)
-  SCENE                       the linear scene: what bloom sees, it blooms
+  SCENE                       the linear scene: what bloom sees, it blooms; a look's own materials here, at HDR and
+                              at DISPLAY, drawn on a copy laid back by its weight (CgLookPost.weighted)
   bloom                       CgBloom from the chain's picture, into the composite
   HDR                         linear, never bloomed
   composite                   CgPostLooks feeds it; one full-screen pass encoding into the host's target
@@ -90,7 +93,8 @@ every point draws onto the host's target and the composite draws in its blend fo
   fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **Recording allocates nothing**: effect lists are array snapshots, `CgScreenTexture` is kept on its texture, and
   `ctx.screen` and `ctx.texture` reuse theirs.
-- Gates: `post-looks` (every look through a volume, from the pixels), `post-effects` (an effect at each point, one
+- Gates: `post-looks` (every look through a volume, from the pixels), `kit-looks` (two looks per pixel through TSR and
+  TAA against their tables, an aura, smoke, a masked card, a defocused look's blur), `post-effects` (an effect at each point, one
   answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `velocity-conformance` (rigid, attached, instanced and skinned motion against the CPU's projection; still objects, frame records and a blended pane's responsive mark), `temporal-aa` (a dithered pane settles, a turned bar's edges resolve, a moved
   bar leaves no ghost), `depth-of-field` (a board in
   focus keeps its edges, a far board and a `BeforeDOF` ring blur, an `AfterDOF` ring stays sharp), `screen-percentage` (the
