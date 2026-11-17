@@ -63,11 +63,12 @@ The character's graph needs a slot for it to play on: `CgSlotNode.of(CgAnimGraph
 
 ## How a montage plays
 
-- **It blends in** as it starts, and **out by itself** at its end or when stopped.
-- **A montage played stops the other montage of its slot group**, blending it out over its own blend in.
-- **A branch is no new play**: `jumpToSection` and `nextSection` keep the montage at its weight.
-- **Its end** is the end of a section that hands play to none, or of the sequence. A looping section never blends out
-  until gameplay relinks it.
+- **It fades in** as it starts, and **fades out by itself** at its end or when stopped.
+- **Starting a montage stops the one already playing in its slot group**, fading that one out as the new one fades in.
+- **Jumping between sections does not restart the move**: `jumpToSection` and `nextSection` carry on at full weight,
+  so a combo flows from strike to strike without a fade.
+- **It ends** where a section names no next section, or at the sequence's end. A section that names itself as next
+  loops (a charge held) until your code points it elsewhere with `nextSection`.
 - **Gameplay moments are `event` sections** of side `rpg` (the hit window above), heard as every sequence's events are
   ([`notifies-and-events.md`](notifies-and-events.md)).
 

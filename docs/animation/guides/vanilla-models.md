@@ -86,10 +86,12 @@ A zombie, skeleton or player drawn by the game is Minecraft's humanoid: `CgVanil
 where the game pivots them. Retarget a clip onto it and play it on one entity:
 
 ```java
-// a client: the zombie the player looks at throws Goku's punch
+// a client: the zombie the player looks at throws your fighter's punch
+CgSkeleton fighter = fighterMesh.skeleton();
+CgRig fighterRig = CgRigs.detect(fighter, CgRigAdapters.CRYSTALGRAPHICS);
 CgRetargetProcessor toZombie = new CgRetargetProcessor(
-        CgRetargeter.auto(goku, gokuRig, CgVanillaHumanoid.SKELETON, CgVanillaHumanoid.rig()),
-        goku, CgVanillaHumanoid.SKELETON);
+        CgRetargeter.auto(fighter, fighterRig, CgVanillaHumanoid.SKELETON, CgVanillaHumanoid.rig()),
+        fighter, CgVanillaHumanoid.SKELETON);
 CgVanillaPoses.play(zombieId).play(CgRetargetBake.cached(toZombie, punch), false);
 ...
 CgVanillaPoses.stop(zombieId);                  // its own animation again

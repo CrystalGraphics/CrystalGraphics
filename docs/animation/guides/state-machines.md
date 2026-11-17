@@ -80,14 +80,19 @@ machines:
 
 ## How it moves between states
 
-- **A state's exits are tried by priority**, lower first (1 by default), then in the order made. The first whose rule
-  holds is taken; up to three a frame (`maxTransitionsPerFrame`), each from the state the last entered.
-- **A state restarts** when it is entered from no weight, or on every entry with `alwaysResetOnEntry()`.
-- **`automatic`** is taken when the state's clip has `triggerTime` left (the crossfade by default).
-- **On its first frame** a machine enters at once whatever its transitions reach, with no crossfade.
-- `minReentry(s)` keeps a state from being entered again within `s` seconds.
-- **Events** are queued for a time to live; the first transition to take one consumes it, or each transition once with
-  `requestTransitionEvent(name, ttl, true, Replace.APPEND)`.
+- **Which door first**: a state's exits are checked by `priority`, lowest number first (1 unless set), then in the
+  order you wrote them. The first whose rule is true is taken. In one frame the machine may walk through up to three
+  doors in a row (`maxTransitionsPerFrame`).
+- **Starting a state over**: a state starts its clip from the beginning when it is entered while not showing at all,
+  or every time with `alwaysResetOnEntry()` (a landing should).
+- **`automatic`**: the door opens by itself as the state's clip nears its end, `triggerTime` before it (the crossfade's
+  length unless set).
+- **The very first frame** jumps straight to wherever the doors lead, with no crossfade, so a character spawned in
+  mid-air starts falling at once.
+- **`minReentry(s)`** keeps a state from being entered again within `s` seconds: no flicker between two states.
+- **Events**: `anim.requestTransitionEvent("jump", 0.25)` leaves a note for 0.25 s; the first door whose rule is
+  `{ event: jump }` takes it and uses it up. `requestTransitionEvent(name, ttl, true, Replace.APPEND)` lets every door
+  take it once.
 
 How a transition blends, and inertialization: [`transitions-and-blending.md`](transitions-and-blending.md).
 
@@ -125,7 +130,7 @@ In a file: `initial` (its first state), `max_transitions_per_frame` (3), `skip_f
 - **A rule naming an undeclared variable** fails at build or load, naming it.
 - **A transition that never fires**: its rule compares against the wrong type (a bool against a number), or a
   higher-priority exit always wins first.
-- **A landing that loops**: it lacks `alwaysResetOnEntry()` and was entered from a weight above zero.
+- **A landing that starts halfway through**: it lacks `alwaysResetOnEntry()`, and was entered while it still showed.
 - **Blend profiles, custom curves and custom transition graphs** fail at load: not supported.
 
 ## Where next

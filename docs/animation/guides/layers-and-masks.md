@@ -48,8 +48,10 @@ CgLayeredBlendNode.of(run).layer(aim, spine, AIM_WEIGHT);                     //
 In a file: `mask: { branches: [{ bone, depth }], bones: [{ bone, weight }] }`, and a layer's `weight` a number or a
 float variable.
 
-- **A branch** weighs a bone `d` levels below its root `(d + 1) / depth`, at most 1; depth 0 takes the whole branch.
-  Branches add, at most 1; a bone weight replaces what the branches gave it.
+- **A branch** covers a bone and everything below it. Depth 0 covers it all at full strength. A depth of 3 fades in
+  down the chain: the first bone a third, the next two thirds, full from the third on, so a spine bends smoothly
+  rather than snapping at one joint.
+- **Several branches add up**, never past full; a weight given to one bone by name replaces what the branches gave it.
 - **Material curves**: a layer's replace the base's; `curvesFromBase()` keeps the base's.
 
 ## Variations

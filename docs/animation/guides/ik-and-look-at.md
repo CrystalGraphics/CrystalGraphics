@@ -1,35 +1,23 @@
 # IK and look-at: bones placed by the game
 
-**What you will have:** feet that stand on Minecraft's stairs and slabs, a head that turns toward a target, a hand
-that reaches a lever, a weapon that follows the hand, all on top of whatever the clips play.
+**What you will have:** feet that stand on Minecraft's stairs and slabs instead of floating or sinking, a head that
+turns toward whatever the character watches, a hand that reaches a lever, and a weapon that follows the hand, all on
+top of whatever the clips play.
 
 ## In plain words
 
 A clip is recorded on flat ground, but Minecraft has stairs, slabs and hills. **IK** (inverse kinematics) works
-backwards from where a hand or foot must end up: you say "the foot goes on this step", and it bends the knee and hip so
-the foot gets there, the way you reach for a cup without thinking about each joint. **Look-at** turns the head toward a
-point. Both change the pose after the clip plays, as the game runs.
+backwards from where a hand or foot must end up: you say "the foot goes on this step", and it bends the knee and hip
+so the foot gets there, the way you reach for a cup without thinking about each joint. **Look-at** turns the head
+toward a point. Both change the pose after the clip plays, every frame, as nodes in the graph.
 
-A clip says where every bone goes. A **bone controller** changes that afterwards. Each is a node in the graph
-([`graphs-and-variables.md`](graphs-and-variables.md)), taking a pose in and giving one out. Distances are the
-skeleton's units, metres. Every node can be written in Java or in an `anim_graph` file.
+## The code: feet on the blocks
 
-## The code: feet on the ground
-
-**Foot placement** sweeps each foot down onto the ground, plants it while it is slow, aligns it to the slope and
-lowers the pelvis so every leg reaches; **leg IK** after it bends the legs to the placed feet. It needs IK foot bones
-(`ik_foot_l`, `ik_foot_r` under `ik_foot_root`), as Unreal's does.
-
-```java
-CgAnimNode placed = CgFootPlacementNode.of(locomotion, "pelvis", "ik_foot_root")
-        .leg("foot_l", "ik_foot_l", "ball_l").leg("foot_r", "ik_foot_r", "ball_r");
-CgAnimNode legs = CgLegIkNode.of(placed).leg("ik_foot_l", "foot_l").leg("ik_foot_r", "foot_r");
-
-// what the feet stand on: Minecraft's blocks under the component
-anim.ground(CgCollisionGround.of(() -> CgCollisionWorld.client(partialTick), component::worldTransform));
-```
+**Foot placement** sweeps each foot down onto what is under it, plants it while it moves slowly, tilts it to the
+slope, and lowers the hips so every leg still reaches. **Leg IK** after it bends the legs to the placed feet.
 
 ```yaml
+# in the graph, after the locomotion
 nodes:
   placed:
     kind: foot_placement
@@ -47,97 +35,58 @@ nodes:
       - { ik_foot_bone: ik_foot_r, fk_foot_bone: foot_r }
 ```
 
-**A skeleton with no IK foot bones** (a character exported without them) gains them as virtual bones: each
-follows its foot in every clip, under an IK root that follows the root, and the graph above runs unchanged. Nothing
-in the mesh or the clips changes. The animation demo's IK station plants Goku this way.
-
 ```java
-CgSkeletalMesh goku = mesh.withVirtualBones(List.of(
-        new CgVirtualBone("ik_foot_root", "root", "root"),
-        new CgVirtualBone("ik_foot_l", "ik_foot_root", "foot_l"),
-        new CgVirtualBone("ik_foot_r", "ik_foot_root", "foot_r")));
-// build the graph on goku.skeleton(): it has the IK bones now
+CgAnimNode placed = CgFootPlacementNode.of(locomotion, "pelvis", "ik_foot_root")
+        .leg("foot_l", "ik_foot_l", "ball_l").leg("foot_r", "ik_foot_r", "ball_r");
+CgAnimNode legs = CgLegIkNode.of(placed).leg("ik_foot_l", "foot_l").leg("ik_foot_r", "foot_r");
 ```
 
+What the feet stand on is Minecraft's blocks, read from the world under the character:
+
+```java
+anim.ground(CgCollisionGround.of(() -> CgCollisionWorld.client(partialTick), component::worldTransform));
+```
+
+### IK foot bones
+
+Foot placement moves **IK foot bones** (`ik_foot_l`, `ik_foot_r` under `ik_foot_root`). A model exported without them
+gains them as virtual bones, each following its foot in every clip, with nothing in the mesh or clips changed:
+
 ```yaml
-# or in the skeleton asset, which every mesh built on it takes
+# assets/mymod/skeletons/hero.yaml, which every mesh built on the skeleton takes
+_v: 1
+model: mymod:models/hero.glb
+sockets: []
 virtual_bones:
   - { name: ik_foot_root, source: root, target: root }
   - { name: ik_foot_l, source: ik_foot_root, target: foot_l }
   - { name: ik_foot_r, source: ik_foot_root, target: foot_r }
 ```
 
-- The IK root's up is whichever of its axes points up at rest, so an import that keeps another engine's bone frames under a
-  turned root plants the same as one that converts them.
-- Make the IK root follow the bone that stands on the floor at rest (`root`), not the pelvis: the feet keep their
-  height above it. A GeckoLib model's bone 0 is a root at its origin for this.
-- **Leg IK keeps the bend a limb has in its clips**: it cannot choose one for a limb its clips hold
-  straight (a Minecraft-style model's legs), and that limb folds onto itself. Give such a limb two-bone IK with a pole:
-
 ```java
-CgTwoBoneIkNode.of(placed, "left_foot_locator", CgIkTarget.of(CgBoneSpace.BONE, "ik_foot_l", 0f, 0f, 0f),
-        CgIkTarget.of(CgBoneSpace.BONE, "left_leg_2", 0f, 0f, -0.4f))   // the knee bends toward its own -z: forward
-        .rotationFromEffector();
+CgSkeletalMesh hero = mesh.withVirtualBones(List.of(
+        new CgVirtualBone("ik_foot_root", "root", "root"),
+        new CgVirtualBone("ik_foot_l", "ik_foot_root", "foot_l"),
+        new CgVirtualBone("ik_foot_r", "ik_foot_root", "foot_r")));
 ```
+
+Make the IK root follow the bone on the floor at rest (`root`), not the pelvis, so the feet keep their height above
+it. A GeckoLib model's bone 0 is such a root.
 
 ## Variations
 
-### Every control node has an alpha
-
-The alpha blends the node's result over its input: 1 is all of it, 0 none.
+### Turn the head: look-at
 
 ```java
-CgAnimVariable<Boolean> aiming = CgAnimVariable.bool("aiming", false);
-CgAnimVariable<Float> weight = CgAnimVariable.floating("weight", 1f);
-
-node.alpha(CgControlAlpha.of(0.5f));                          // half
-node.alpha(CgControlAlpha.of(weight));                        // a variable
-node.alpha(CgControlAlpha.bool(aiming, 0.2f, 0.3f));          // blends in over 0.2 s while true, out over 0.3 s
+CgLookAtNode.of(pose, "head", CgIkTarget.world(lookX, lookY, lookZ)).clamp(70f);   // never more than 70°
 ```
 
-```yaml
-alpha: 0.5
-alpha: weight
-alpha: { bool: aiming, blend_in: 0.2, blend_out: 0.3 }
-```
+On an entity, the humanoid template already turns `head` by `entity.head_yaw` and `entity.head_pitch`
+([`vanilla-models.md`](vanilla-models.md)).
 
-### Targets
+### Reach a point: two-bone IK, FABRIK, CCD
 
-A target (`CgIkTarget`) is a point in one of four spaces: `WORLD`, `COMPONENT` (the mesh's), `PARENT_BONE` or `BONE`
-(a bone's own). Each coordinate is a number or a float variable.
-
-```java
-CgIkTarget.of(CgBoneSpace.COMPONENT, null, 0.3f, 1.0f, 0.2f);   // a fixed point by the mesh
-CgIkTarget.of(CgBoneSpace.BONE, "hand_l", 0f, 0.1f, 0f);        // 10 cm off the left hand
-CgIkTarget.world(targetX, targetY, targetZ);                    // the world, from three variables
-```
-
-A world target needs the instance to know where it stands. A skeletal mesh component tells its own instance; an
-instance of your own is told with `anim.placedBy(out -> out.set(myWorldMatrix))`.
-
-### Moving a bone by hand: modify bone
-
-```java
-// turn the head 30 degrees about its parent's Z, on top of the clip
-CgModifyBoneNode.of(locomotion, "head")
-        .rotation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.PARENT_BONE, 0f, 0f, 30f);
-
-// lower the pelvis by a variable, in the mesh's space
-CgModifyBoneNode.of(locomotion, "pelvis")
-        .translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.COMPONENT, null, pelvisDrop, null);
-```
-
-```yaml
-nodes:
-  head_turn: { kind: modify_bone, source: locomotion, bone: head, rotation: { mode: add, space: parent_bone, value: [0, 0, 30] } }
-  pelvis_drop: { kind: modify_bone, source: head_turn, bone: pelvis, translation: { mode: add, space: component, value: [0, pelvis_drop, 0] } }
-```
-
-A value is a number or a declared float variable's name.
-
-### Reaching: two-bone IK, FABRIK and CCD
-
-**Two-bone IK** bends an arm or a leg so its end lands on a target, the middle joint bending toward a second one.
+**Two-bone IK** bends an arm or leg so its end lands on a target, the elbow or knee bending toward a second point.
 
 ```java
 CgTwoBoneIkNode.of(pose, "hand_r",
@@ -152,57 +101,80 @@ CgFabrikNode.of(pose, "tail_01", "tail_08", CgIkTarget.world(x, y, z));
 CgCcdIkNode.of(pose, "tail_01", "tail_08", CgIkTarget.world(x, y, z)).rotationLimits(true, 20f, 20f, 20f);
 ```
 
-### Looking: look-at
+### Targets
+
+A target (`CgIkTarget`) is a point in one of four spaces, each coordinate a number or a float variable:
+
+| Space | Means |
+|---|---|
+| `WORLD` | the world: a lever, an enemy |
+| `COMPONENT` | the model's own space |
+| `PARENT_BONE` | a bone's parent's space |
+| `BONE` | a bone's own space: 10 cm off the left hand |
 
 ```java
-CgLookAtNode.of(pose, "head", CgIkTarget.world(x, y, z)).clamp(70f);   // never turns more than 70 degrees
+CgIkTarget.world(targetX, targetY, targetZ);                    // three float variables
+CgIkTarget.of(CgBoneSpace.BONE, "hand_l", 0f, 0.1f, 0f);
 ```
 
-### Copying and constraining
+### Move a bone by hand: modify bone
+
+```java
+CgModifyBoneNode.of(locomotion, "head")
+        .rotation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.PARENT_BONE, 0f, 0f, 30f);        // 30° on top of the clip
+CgModifyBoneNode.of(locomotion, "pelvis")
+        .translation(CgModifyBoneNode.Mode.ADD, CgBoneSpace.COMPONENT, null, pelvisDrop, null);   // a variable
+```
+
+```yaml
+head_turn: { kind: modify_bone, source: locomotion, bone: head, rotation: { mode: add, space: parent_bone, value: [0, 0, 30] } }
+```
+
+### Follow or limit another bone
 
 ```java
 CgCopyBoneNode.of(pose, "hand_r", "weapon").copy(true, true, false);            // the weapon follows the hand
 CgConstraintNode.of(pose, "shoulder_pad").constraint("upperarm_l", CgConstraintNode.Type.ROTATION, true, 0.5f);
 CgApplyLimitsNode.of(pose).limit("neck_01", -40f, -60f, -30f, 40f, 60f, 30f);   // degrees, per axis
+CgBoneDrivenControllerNode.of(pose, "calf_l", CgBoneDrivenControllerNode.Source.ROTATION_Y, "kneepad_l")
+        .affects(CgBoneDrivenControllerNode.Part.ROTATION_Y).multiplier(0.5f);  // the knee pad turns with the knee
 ```
 
-A **bone-driven controller** maps one bone's motion onto another's:
+### Fade a node in and out: alpha
+
+Every one of these nodes has an alpha: 1 applies it fully, 0 not at all.
 
 ```java
-// the knee pad turns with the knee
-CgBoneDrivenControllerNode.of(pose, "calf_l", CgBoneDrivenControllerNode.Source.ROTATION_Y, "kneepad_l")
-        .affects(CgBoneDrivenControllerNode.Part.ROTATION_Y).multiplier(0.5f);
+node.alpha(CgControlAlpha.of(0.5f));                          // half
+node.alpha(CgControlAlpha.of(WEIGHT));                        // a variable
+node.alpha(CgControlAlpha.bool(AIMING, 0.2f, 0.3f));          // in over 0.2 s while true, out over 0.3 s
 ```
 
+```yaml
+alpha: { bool: aiming, blend_in: 0.2, blend_out: 0.3 }
+```
 
-### The kinds
-
-| Kind | Fields (besides `source` and `alpha`) |
-|---|---|
-| `modify_bone` | `bone`, `translation`, `rotation`, `scale`: each `{ mode: ignore\|replace\|add, space, value }` |
-| `two_bone_ik` | `bone`, `effector`, `joint_target`, `stretch`, `rotation_from_effector`, `keep_relative_rotation`, `no_twist` |
-| `look_at` | `bone`, `target`, `look_at_axis`, `look_up_axis`, `clamp`, `interpolation`, `interpolation_time`, `interpolation_trigger` |
-| `copy_bone` | `source_bone`, `target_bone`, `translation`, `rotation`, `scale`, `space` |
-| `fabrik`, `ccd_ik` | `root_bone`, `tip_bone`, `effector`, `precision`, `max_iterations`; FABRIK's `tip_rotation`; CCD's `start_from_tail`, `enable_rotation_limit`, `rotation_limits` |
-| `constraint` | `bone`, `constraints: [{ target_bone, type, maintain_offset, axes, weight }]` |
-| `apply_limits` | `limits: [{ bone, min, max }]`, degrees |
-| `bone_driven_controller` | `source_bone`, `source_component`, `target_bone`, `affects`, `multiplier` or `range`, `mode` |
-| `leg_ik`, `foot_placement` | as above |
-| `spring_bone` | `bone`, `stiffness`, `damping`, `error_reset`, `max_displacement`, `translate`, `rotate`, `owner_velocity` |
-| `anim_dynamics` | `bone`, `chain_end`, `simulation_space`, `bodies`, gravity, damping, springs, iterations, limits |
-
-The schema generated from the engine's declarations has every field and default.
+Every node's file fields: [`../reference/nodes.md`](../reference/nodes.md).
 
 ## What goes wrong
 
-- **Order matters.** Nodes run in the order they are chained: plant the feet before simulating hair, so the hair
-  feels where the body ended up; put a look-at after the locomotion it turns.
-- **A world target needs the instance to know where it stands**: a component tells its own instance; an instance of
-  your own is told with `anim.placedBy(...)`.
-- **A limb its clips hold straight** cannot be bent by leg IK: give it two-bone IK with a pole, as above.
-- **A bone a node names that the skeleton lacks** fails when an instance runs the graph.
+- **Order matters.** Nodes run in the order they are chained: plant the feet, then turn the head, then swing the hair
+  ([`springs-hair-and-cloth.md`](springs-hair-and-cloth.md)), so each sees where the last left the body.
+- **Feet float or sink**: no ground was given (`anim.ground(...)`), or the IK root follows the pelvis instead of the
+  floor bone.
+- **A knee bends backwards or folds**: leg IK keeps the bend a limb has in its clips, and a limb its clips hold
+  straight (a Minecraft-style leg) has none. Give it two-bone IK with a pole:
+
+  ```java
+  CgTwoBoneIkNode.of(placed, "left_foot_locator", CgIkTarget.of(CgBoneSpace.BONE, "ik_foot_l", 0f, 0f, 0f),
+          CgIkTarget.of(CgBoneSpace.BONE, "left_leg_2", 0f, 0f, -0.4f))   // the knee bends toward its own -z: forward
+          .rotationFromEffector();
+  ```
+- **A world target lands at the origin**: the instance does not know where it stands. A component tells its own
+  instance; one of your own needs `anim.placedBy(...)`.
+- **A bone a node names that the skeleton lacks** fails when an instance runs the graph, naming it.
 
 ## Where next
 
-- Hair, tails and cloth that swing: [`springs-hair-and-cloth.md`](springs-hair-and-cloth.md).
-- Feet planted at every speed: [`locomotion.md`](locomotion.md).
+- Hair, tails and capes that swing: [`springs-hair-and-cloth.md`](springs-hair-and-cloth.md).
+- Feet that fit any speed: [`locomotion.md`](locomotion.md).
