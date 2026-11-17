@@ -368,12 +368,19 @@ public final class CgNetEntities extends CgWorldSubsystem {
         }
         if (saved == null) return;
         CgEntitySaves.write(entity, saved);
+        entitiesWritten++;
         if (restoring == entity) restoring = null;
     }
+
+    /** Entities written into since the server started: what the gauntlet's check reads. */
+    static int entitiesWritten;
+    /** Objects that ended with a change their entity's save never took. */
+    static int endedUnsaved;
 
     /** Server: an ended object's change no longer waits on its entity's save. */
     static void dropped(CgNetObject obj) {
         if (!obj.unsavedOnEntity) return;
+        endedUnsaved++;
         obj.unsavedOnEntity = false;
         unsavedOnEntities--;
     }

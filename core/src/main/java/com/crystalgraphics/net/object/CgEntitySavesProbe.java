@@ -17,6 +17,7 @@ import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**
@@ -39,7 +40,8 @@ public final class CgEntitySavesProbe {
      * an earlier run's mob there still holds its values); under every version's build limit, the player falling from
      * there in creative.
      */
-    private static final double FAR = 3000 + 64 * ThreadLocalRandom.current().nextInt(1000), HIGH = 240;
+    private static final double FAR_X = 3000 + 64 * ThreadLocalRandom.current().nextInt(1000),
+            FAR_Z = 3000 + 64 * ThreadLocalRandom.current().nextInt(1000), HIGH = 240;
 
     /** Declared at install only: a declaration is in every connection's hello. */
     private static final class Saved {
@@ -110,7 +112,7 @@ public final class CgEntitySavesProbe {
             switch (phase) {
                 case GO_FAR:
                     stimulus.keepRunning();
-                    if (!stimulus.teleport(FAR, HIGH, FAR)) {
+                    if (!stimulus.teleport(FAR_X, HIGH, FAR_Z)) {
                         skip("saves.entity", "no single-player server to move the player in");
                         endTest();
                         return;
@@ -145,7 +147,7 @@ public final class CgEntitySavesProbe {
                     if (now - waitedSince > 120) fail("the far chunk never unloaded: the mob's object never ended");
                     return;
                 case COME_BACK:
-                    stimulus.teleport(FAR, HIGH, FAR);
+                    stimulus.teleport(FAR_X, HIGH, FAR_Z);
                     phase = Phase.DONE;
                     waitedSince = now;
                     return;
@@ -243,7 +245,8 @@ public final class CgEntitySavesProbe {
                     if (filled != null && filled.isRemoved()) {
                         // a few ticks for the chunk's save to finish before it loads again
                         if (++settle < 40) return;
-                        test.said("saves.entity.unloaded", "its object ended with the chunk");
+                        test.said("saves.entity.unloaded", "its object ended with the chunk; entities written "
+                                + CgNetEntities.entitiesWritten + ", objects ended unsaved " + CgNetEntities.endedUnsaved);
                         filled = null;
                         phase = Phase.COME_BACK;
                     }
@@ -257,6 +260,8 @@ public final class CgEntitySavesProbe {
                             "level " + level + ", title " + title + " after the chunk saved and loaded");
                     test.stated("saves.entity.unpersisted", back.getInt(Saved.TAUNTS) == 0,
                             "taunts " + back.getInt(Saved.TAUNTS) + ": not saved, back at its fallback");
+                    // tells a save never written into the entity from one written and not read back
+                    test.said("saves.entity.compound", "the loaded entity's is " + CgEntitySaves.read(back.entity()) + ", " + seen());
                     phase = Phase.GO_FAR;
                     test.done();
                     return;
