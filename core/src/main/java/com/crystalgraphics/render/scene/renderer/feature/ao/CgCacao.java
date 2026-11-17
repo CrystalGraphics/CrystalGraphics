@@ -38,8 +38,11 @@ final class CgCacao {
             BLUR = 13, APPLY = 14, NON_SMART_APPLY = 15, NON_SMART_HALF_APPLY = 16;
     /** FFX_CACAO_Quality, LOWEST to HIGHEST: Unreal's shader levels 0 to 4. */
     private static final int LOWEST = 0, LOW = 1, MEDIUM = 2, HIGHEST = 4;
-    /** Blur passes by quality: the sample's native presets. */
-    private static final int[] BLUR_PASSES = {6, 6, 2, 2, 2};
+    /**
+     * Blur passes by quality: the sample's native presets, but 4 where they run 2. The five sample rotations repeat every
+     * five texels of a layer, a grid that 2 passes of the 5-tap blur leave on a flat wall.
+     */
+    private static final int[] BLUR_PASSES = {6, 6, 4, 4, 4};
     /** FFX_CACAO_DEFAULT_SETTINGS, for what Unreal's settings do not name. */
     private static final float SHADOW_MULTIPLIER = 1f, SHADOW_CLAMP = 0.98f, HORIZON_ANGLE_THRESHOLD = 0.06f,
             ADAPTIVE_QUALITY_LIMIT = 0.45f, SHARPNESS = 0.98f, DETAIL_SHADOW_STRENGTH = 0.5f, DEPTH_PRECISION_OFFSET = 0.9992f;
@@ -77,11 +80,14 @@ final class CgCacao {
         return true;
     }
 
-    /** Records CACAO at Unreal's shader {@code level} (0-4) into {@code ao}, {@code w} by {@code h}. */
-    static void record(CgComputePass pass, CgView view, CgPostSettings s, int level, CgGraphTexture ao, int w, int h) {
+    /**
+     * Records CACAO at Unreal's shader {@code level} (0-4) into {@code ao}, {@code w} by {@code h}; {@code frame} turns
+     * its sample pattern where a temporal step resolves it, -1 where none does.
+     */
+    static void record(CgComputePass pass, CgView view, CgPostSettings s, int level, CgGraphTexture ao, int w, int h, int frame) {
         load();
         int quality = Math.max(LOWEST, Math.min(HIGHEST, level));
-        Consts c = new Consts(view, s, quality, w, h);
+        Consts c = new Consts(view, s, quality, w, h, frame);
         Targets t = view.state().get(TARGETS).size(c.hw, c.hh, c.iw, c.ih);
         // Only Q2 and up sample the depth levels (FFX_CACAO_DEPTH_MIPS_ENABLE_AT_QUALITY_PRESET)
         boolean half = quality == LOWEST, mips = quality > MEDIUM;
@@ -167,9 +173,9 @@ final class CgCacao {
     /** FFX_CACAO_UpdateConstants, from Unreal's settings and AMD's defaults. */
     private static final class Consts {
         final int w, h, hw, hh, iw, ih, blurPasses;
-        final float radius, strength, power, fadeMul, fadeAdd, nearLimit, loadDiv, intensity;
+        final float radius, strength, power, fadeMul, fadeAdd, nearLimit, loadDiv, intensity, angleOffset, radiusScale;
 
-        Consts(CgView view, CgPostSettings s, int quality, int w, int h) {
+        Consts(CgView view, CgPostSettings s, int quality, int w, int h, int frame) {
             this.w = w;
             this.h = h;
             hw = (w + 1) / 2;
@@ -195,6 +201,10 @@ final class CgCacao {
             // The load counter sums every ninth importance texel, 0-255 each
             loadDiv = 9f / (iw * ih * 255f);
             intensity = s.ambientOcclusionIntensity();
+            // ASSAO's temporal supersampling (Intel's sample, which CACAO dropped): three turns and scales in turn,
+            // which the temporal step averages
+            angleOffset = frame >= 0 ? (frame % 3) / 3f * (float) Math.PI : 0f;
+            radiusScale = frame >= 0 ? 1f + ((frame % 3) - 1f) / 3f * 0.1f : 1f;
         }
 
         /** The prepare file's two values. */
@@ -220,10 +230,10 @@ final class CgCacao {
             for (int l = 1; l < MIPS; l++) d.texture("_DepthMip" + l, t.depth[p][mips ? l : 0]);
             for (int sub = 0; sub < 5; sub++) {
                 float a = p, b = SUB_PASS_MAP[sub];
-                // CACAO 1.x reads temporal angle and radius offsets in its settings and applies neither
-                float angle = (a + b / 5f) * (float) Math.PI * 0.5f;
+                // ASSAO's UpdateConstants adds the temporal offsets; CACAO 1.x reads them and applies neither
+                float angle = (a + b / 5f) * (float) Math.PI * 0.5f + angleOffset;
                 float ca = (float) Math.cos(angle), sa = (float) Math.sin(angle);
-                float scale = 1f + (a - 1.5f + (b - 2f) / 5f) * 0.07f;
+                float scale = (1f + (a - 1.5f + (b - 2f) / 5f) * 0.07f) * radiusScale;
                 d.set(ROTATIONS[sub], scale * ca, scale * -sa, -scale * sa, -scale * ca);
             }
             return d;

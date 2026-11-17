@@ -130,7 +130,7 @@ public final class CgAmbientOcclusion {
                     .set("_Size", w, h, 1f / w, 1f / h).set("_Gtao2", XE_FINAL_POWER, XE_DISTRIBUTION, XE_MIP_OFFSET, XE_BLUR_BETA)
                     .set("_Output", s.ambientOcclusionIntensity(), s.ambientOcclusionPower(), fadeMul, fadeAdd);
         } else if (method == 2) {
-            CgCacao.record(pass, view, s, level, t.ao, w, h);
+            CgCacao.record(pass, view, s, level, t.ao, w, h, view.showFlags().temporalAA() ? view.state().frameIndex() : -1);
         } else {
             boolean world = s.ambientOcclusionRadiusInWorldSpace();
             // Unreal's radius off world space is a view-space 400 units a screen, a quarter of that per its mip scale:
@@ -164,11 +164,16 @@ public final class CgAmbientOcclusion {
         return CgGraphicsSettings.QUALITY.get() == CgQuality.LOW ? 0 : 1;
     }
 
+    /** Unreal's shader levels by name, 0 to 4: CACAO's presets of the same rank. */
+    public static final String[] LEVEL_NAMES = {"Lowest", "Low", "Medium", "High", "Highest"};
+    /** A post settings quality that lands on each shader level, 0 to 4 (r.AmbientOcclusionQuality's steps). */
+    public static final float[] LEVEL_QUALITIES = {0f, 15f, 40f, 65f, 100f};
+
     /**
      * Unreal's shader level, 0 to 4, from the settings' quality under {@code r.AmbientOcclusionMaxQuality}: the player's
      * {@code ambient_occlusion_max_quality}, else its tier's (Low 0, Medium 60, High and Ultra 100).
      */
-    private static int shaderLevel(CgPostSettings s) {
+    public static int shaderLevel(CgPostSettings s) {
         float set = CgGraphicsSettings.AMBIENT_OCCLUSION_MAX_QUALITY.get();
         float max = set >= 0f ? set : switch (CgGraphicsSettings.QUALITY.get()) {
             case LOW -> 0f;
