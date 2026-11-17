@@ -603,13 +603,20 @@ float cg_DepthFadeOf(float sceneEye, float distance) {
 #define cg_DepthFade(distance) cg_DepthFadeOf(CG_SCENE_EYE_DEPTH(gl_FragCoord.xy / cg_Resolution), (distance))
 #endif
 
+// The lightmap at light, under the screen's ambient occlusion as DefaultLit's sky is (default_lit.glsl): the sun's share
+// whole, the sky's and block light's times the occlusion. 1 where no pass bound one: a translucent takes none.
+vec3 cg_OccludedLightmap(vec2 light) {
+    vec3 sun = cg_DirectionalLightColor(light);
+    return sun + (CG_LIGHTMAP(light) - sun) * cg_ScreenAmbientOcclusion();
+}
+
 // What a lit material's colour becomes: times the lightmap at cg_Light, and lit by the world's lights as the opaque
 // scene is (world/lights/lights.shader adds scene x light): in a transparent firing, at this fragment. In the linear scene the
 // colour is decoded after, so the gain is taken to the decode's inverse power.
 vec4 cg_Lit(vec4 color) {
     vec3 local = cg_LocalLightAt(cg_FragmentPosition());
     vec3 gain = CG_LINEAR_SCENE ? pow(1.0 + local, vec3(1.0 / 2.4)) : 1.0 + local;
-    return vec4(color.rgb * CG_LIGHTMAP(cg_Light) * gain, color.a);
+    return vec4(color.rgb * cg_OccludedLightmap(cg_Light) * gain, color.a);
 }
 
 #ifdef CG_SURFACE_LIT
@@ -622,7 +629,7 @@ vec4 cg_LitSurface(vec4 color, vec3 n) {
     vec3 hue = ambient / (dot(ambient, vec3(0.3, 0.59, 0.11)) + 1.0e-5);
     vec3 local = max(ambient + 1.0233267 * dot(cg_LocalLightDirectional(p), n) * hue, vec3(0.0));
     vec3 gain = CG_LINEAR_SCENE ? pow(1.0 + local, vec3(1.0 / 2.4)) : 1.0 + local;
-    return vec4(color.rgb * CG_LIGHTMAP(cg_Light) * gain, color.a);
+    return vec4(color.rgb * cg_OccludedLightmap(cg_Light) * gain, color.a);
 }
 #endif
 
