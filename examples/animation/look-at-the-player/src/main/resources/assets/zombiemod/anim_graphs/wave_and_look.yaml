@@ -1,0 +1,18 @@
+# docs:begin whole
+_v: 1
+variables:
+  look_x: { type: float }
+  look_y: { type: float }
+  look_z: { type: float }
+output: look
+nodes:
+  wave: { kind: sequence_player, clip: zombiemod:anims/wave, loop: true }
+  look:
+    kind: look_at
+    source: wave
+    bone: head
+    target: { space: world, location: [look_x, look_y, look_z] }   # the variables, set each frame
+    look_at_axis: [0, 0, -1]    # the way a vanilla mob's face looks: -z
+    look_up_axis: [0, 1, 0]     # keeps the head level
+    clamp: 70                   # never more than 70 degrees: no owl necks
+# docs:end whole

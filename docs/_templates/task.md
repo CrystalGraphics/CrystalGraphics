@@ -14,8 +14,8 @@ One or two sentences: what this does, and when you'd want it.
 
 ## The whole thing
 
-The complete working example, data first, then the same in Java. A reader who copies this and nothing else has it
-working.
+The complete working example, data first, then the same in Java, each file whole and named by its path from the
+project root. A reader who copies this and nothing else has it working.
 
 <!-- example: examples/subject/task/src/main/resources/assets/zombiemod/graphs/zombie.yaml#whole -->
 ```yaml
@@ -28,6 +28,8 @@ The same in Java:
 ```java
 // complete, with the critical line commented
 ```
+
+**You should see:** what happens on screen, in words, when the reader runs it.
 
 ## How it works
 

@@ -133,6 +133,7 @@ public class DocsRulesTest {
 
         String body = text.substring(end + 5);
         String[] lines = body.split("\n", -1);
+        int first = (int) text.substring(0, end + 5).chars().filter(c -> c == '\n').count() + 1;   // the page's line of body line 0
         Path dir = page.toAbsolutePath().getParent();
         int h1 = 0;
         String fence = null;
@@ -145,7 +146,7 @@ public class DocsRulesTest {
             if (f.matches()) {
                 if (fence == null) {
                     fence = f.group(1);
-                    if (f.group(2).trim().isEmpty()) out.add(where + ":" + (i + 1) + ": a code block names no language");
+                    if (f.group(2).trim().isEmpty()) out.add(where + ":" + (i + first) + ": a code block names no language");
                 } else if (f.group(1).equals(fence) && f.group(2).trim().isEmpty()) {
                     fence = null;
                 }
@@ -156,53 +157,53 @@ public class DocsRulesTest {
             if (line.startsWith("# ")) {
                 h1++;
                 if (title != null && !line.substring(2).trim().equals(title)) {
-                    out.add(where + ":" + (i + 1) + ": the H1 is not the header's title");
+                    out.add(where + ":" + (i + first) + ": the H1 is not the header's title");
                 }
             }
-            if (line.matches("#{1,6} .*") && line.contains("`")) out.add(where + ":" + (i + 1) + ": a heading has code in it");
+            if (line.matches("#{1,6} .*") && line.contains("`")) out.add(where + ":" + (i + first) + ": a heading has code in it");
             if (line.startsWith("## ") && firstSection < 0) firstSection = i;
 
             Matcher ex = EXAMPLE.matcher(line.trim());
             if (ex.matches()) {
                 String ref = ex.group(1);
-                if (ref.startsWith("untested")) untested.add(where + ":" + (i + 1) + ": " + ref);
-                else if (resolve) out.addAll(example(where + ":" + (i + 1), ref, lines, i + 1));
+                if (ref.startsWith("untested")) untested.add(where + ":" + (i + first) + ": " + ref);
+                else if (resolve) out.addAll(example(where + ":" + (i + first), ref, lines, i + 1));
             }
 
             String prose = line.replaceAll("`[^`]*`", "");
             String bare = ALLOWED_HTML.matcher(prose).replaceAll("");
-            if (bare.contains("<")) out.add(where + ":" + (i + 1) + ": bare < outside code (put it in backticks)");
-            if (bare.contains("{")) out.add(where + ":" + (i + 1) + ": bare { outside code (put it in backticks)");
+            if (bare.contains("<")) out.add(where + ":" + (i + first) + ": bare < outside code (put it in backticks)");
+            if (bare.contains("{")) out.add(where + ":" + (i + first) + ": bare { outside code (put it in backticks)");
 
             Matcher l = LINK.matcher(prose);
             while (l.find()) {
                 boolean image = !l.group(1).isEmpty();
                 String target = l.group(3);
                 if (image && firstImage < 0) firstImage = i;
-                if (image && l.group(2).trim().isEmpty()) out.add(where + ":" + (i + 1) + ": an image has no alt text");
+                if (image && l.group(2).trim().isEmpty()) out.add(where + ":" + (i + first) + ": an image has no alt text");
                 if (target.startsWith("http://") || target.startsWith("https://")) continue;
                 if (target.contains("plan/")) {
-                    out.add(where + ":" + (i + 1) + ": a link into plan/");
+                    out.add(where + ":" + (i + first) + ": a link into plan/");
                     continue;
                 }
                 String path = target.contains("#") ? target.substring(0, target.indexOf('#')) : target;
                 String anchor = target.contains("#") ? target.substring(target.indexOf('#') + 1) : null;
                 if (!path.isEmpty() && !path.endsWith(".md") && !IMAGE.matcher(path).matches()) {
-                    out.add(where + ":" + (i + 1) + ": a link to '" + target + "' is neither a page nor a picture (code links are GitHub URLs)");
+                    out.add(where + ":" + (i + first) + ": a link to '" + target + "' is neither a page nor a picture (code links are GitHub URLs)");
                     continue;
                 }
                 if (!resolve) continue;
                 Path file = path.isEmpty() ? page.toAbsolutePath() : dir.resolve(path).normalize();
                 if (!Files.exists(file)) {
-                    out.add(where + ":" + (i + 1) + ": '" + target + "' does not exist");
+                    out.add(where + ":" + (i + first) + ": '" + target + "' does not exist");
                     continue;
                 }
                 linked.add(file.toString());
                 if (image && path.matches(".*\\.(webp|gif)") && size(file) > CLIP_BYTES) {
-                    out.add(where + ":" + (i + 1) + ": '" + path + "' is over 1 MB");
+                    out.add(where + ":" + (i + first) + ": '" + path + "' is over 1 MB");
                 }
                 if (anchor != null && path.endsWith(".md") || anchor != null && path.isEmpty()) {
-                    if (!anchors(read(file)).contains(anchor)) out.add(where + ":" + (i + 1) + ": no heading '#" + anchor + "' in " + (path.isEmpty() ? "this page" : path));
+                    if (!anchors(read(file)).contains(anchor)) out.add(where + ":" + (i + first) + ": no heading '#" + anchor + "' in " + (path.isEmpty() ? "this page" : path));
                 }
             }
         }
@@ -224,16 +225,31 @@ public class DocsRulesTest {
         return out;
     }
 
-    /** An overview links every page beside it and every sub-folder's README. */
+    /**
+     * An overview links every rewritten page beside it, and each sub-folder's README, or each rewritten page in a
+     * sub-folder with none (reference/). Old pages are left to the overview's judgement until they are rewritten.
+     */
     private static List<String> mapsItsFolder(String where, Path page, Set<String> linked) {
         List<String> out = new ArrayList<>();
         Path dir = page.toAbsolutePath().getParent();
         try (Stream<Path> s = Files.list(dir)) {
             for (Path p : s.sorted().collect(Collectors.toList())) {
-                Path target = Files.isDirectory(p) ? p.resolve("README.md") : p;
-                if (p.equals(page.toAbsolutePath()) || !target.toString().endsWith(".md") || !Files.exists(target)) continue;
-                if (p.getFileName().toString().startsWith("_") || p.getFileName().toString().equals("img")) continue;
-                if (!linked.contains(target.normalize().toString())) out.add(where + ": the overview's map lacks " + dir.relativize(target).toString().replace('\\', '/'));
+                String name = p.getFileName().toString();
+                if (p.equals(page.toAbsolutePath()) || name.startsWith("_") || name.equals("img")) continue;
+                List<Path> targets = new ArrayList<>();
+                if (!Files.isDirectory(p)) {
+                    targets.add(p);
+                } else if (Files.exists(p.resolve("README.md"))) {
+                    targets.add(p.resolve("README.md"));
+                } else {
+                    try (Stream<Path> inner = Files.list(p)) {
+                        inner.sorted().forEach(targets::add);
+                    }
+                }
+                for (Path target : targets) {
+                    if (!target.toString().endsWith(".md") || !read(target).startsWith("---\n")) continue;
+                    if (!linked.contains(target.normalize().toString())) out.add(where + ": the overview's map lacks " + dir.relativize(target).toString().replace('\\', '/'));
+                }
             }
         } catch (IOException e) {
             out.add(where + ": " + e);
@@ -241,26 +257,36 @@ public class DocsRulesTest {
         return out;
     }
 
-    /** The tagged block below line {@code at} equals the region it names, indentation aside. */
+    /**
+     * The tagged block below line {@code at} equals the region it names, indentation aside; a tag with no
+     * {@code #region} names the whole file (JSON, which has no comment to mark one).
+     */
     private static List<String> example(String where, String ref, String[] lines, int at) {
         int hash = ref.indexOf('#');
-        if (hash < 0) return List.of(where + ": example '" + ref + "' names no #region");
-        Path file = REPO.resolve(ref.substring(0, hash));
-        String region = ref.substring(hash + 1);
-        if (!Files.exists(file)) return List.of(where + ": example file " + ref.substring(0, hash) + " does not exist");
+        String path = hash < 0 ? ref : ref.substring(0, hash);
+        Path file = REPO.resolve(path);
+        String region = hash < 0 ? null : ref.substring(hash + 1);
+        if (!Files.exists(file)) return List.of(where + ": example file " + path + " does not exist");
         int open = at;
         while (open < lines.length && lines[open].trim().isEmpty()) open++;
         if (open >= lines.length || !FENCE.matcher(lines[open]).matches()) return List.of(where + ": an example tag with no code block under it");
         List<String> block = new ArrayList<>();
         for (int i = open + 1; i < lines.length && !lines[i].trim().matches("`{3,}"); i++) block.add(lines[i]);
 
+        if (region == null) {
+            List<String> whole = Stream.of(read(file).split("\n", -1))
+                    .filter(l -> !l.contains("docs:begin ") && !l.contains("docs:end ")).collect(Collectors.toList());
+            return dedent(block).equals(dedent(whole)) ? List.of() : List.of(where + ": the block differs from " + ref);
+        }
         List<String> source = new ArrayList<>();
         boolean in = false;
         boolean found = false;
+        Pattern begin = Pattern.compile("docs:begin " + Pattern.quote(region) + "\\b"), end = Pattern.compile("docs:end " + Pattern.quote(region) + "\\b");
         for (String line : read(file).split("\n", -1)) {
-            if (line.contains("docs:end " + region)) in = false;
-            if (in) source.add(line);
-            if (line.contains("docs:begin " + region)) in = found = true;
+            if (end.matcher(line).find()) in = false;
+            // a region nested inside this one shows without its markers
+            if (in && !line.contains("docs:begin ") && !line.contains("docs:end ")) source.add(line);
+            if (begin.matcher(line).find()) in = found = true;
         }
         if (!found) return List.of(where + ": " + file + " has no region '" + region + "'");
         if (!dedent(block).equals(dedent(source))) return List.of(where + ": the block differs from " + ref);

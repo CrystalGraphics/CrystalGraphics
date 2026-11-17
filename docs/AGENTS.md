@@ -59,7 +59,7 @@ from memory, never from another page.
 |---|---|---|
 | `overview` | What this is, and is it for me? | two sentences on what it is · a picture or clip of the result · why you'd want it, and when not to · the big picture in plain words, five ideas at most · the map: every page under it, one line each |
 | `lesson` | Do it once, guided | what you'll have at the end (a picture) · what you need · numbered steps, each ending in **You should see** and **If you don't** · what you just did · *Try it yourself* · what's next |
-| `task` | Do this one thing | a title that is the task · a picture of the result · the complete working example · its parts explained · variations · see also |
+| `task` | Do this one thing | a title that is the task · a picture of the result · the complete working example, every file whole · **You should see** · its parts explained · variations · see also |
 | `reference` | Look up one exact fact | a table or entry per thing: name, one-line meaning, type and units, default, a tiny example. Generated from the code wherever the code declares it |
 | `troubleshooting` | I'm stuck | a table: symptom (in the reader's words), cause, fix, linking to the page that explains it |
 
@@ -93,12 +93,24 @@ The glossary is `kind: glossary`.
   `example_id`, or a variable that is never defined.
 - **Say the critical line twice**: once in the text, and once as a comment inside the code. Many readers read only
   the code.
-- **Every lesson step ends in what the reader should see**, and the likeliest reason they don't.
+- **Every lesson step ends in what the reader should see**, and the likeliest reason they don't. A task page says it
+  once, after its example.
+- **Promise only what the code does.** If the zombies keep walking while they wave, say so; never "they stop and wave
+  at you" when nothing stops them or turns them. A reader who sees something else thinks it is broken.
+- **Explain every line a reader types that is not plain Java**, in a lesson: an array the game fills, a `1f` whose
+  meaning isn't obvious. One line each, beside the code.
+- **Every file the reader makes is named by its whole path** from the project root (`src/main/resources/assets/...`),
+  and the page says whether it is new or replaces one from an earlier page.
+- **What you need** links only to rewritten pages. Where only an old page has it, link the exact section and say that
+  nothing else on that page is needed.
+- **Older versions spell some things differently.** Where a step's file, command or id differs on an older Minecraft
+  (the language file before 1.13, entity ids before 1.11), a `> [!NOTE]` gives the old spelling beside it.
 - **No fun that doesn't teach.** A joke or a fun fact pulls attention off the lesson.
 
 ## 5. Examples
 
-- **Complete and copy-pasteable.** No `...` standing for code the reader needs, and no placeholders.
+- **Complete and copy-pasteable.** No `...` standing for code the reader needs, and no placeholders. A class the
+  reader makes is shown whole, imports included; a bare method never stands for a file.
 - **Data and Java side by side, data first.** Anything that exists in both forms shows the data file, then
   `The same in Java:` and the Java, both open. They say the same thing in the same order, so the eye can match them
   line for line.
@@ -117,7 +129,9 @@ The glossary is `kind: glossary`.
   ````
 
   In the file, the region sits between two comment lines, `// docs:begin play` and `// docs:end play` (`#` in YAML).
-  `DocsRulesTest` fails when a block and its region differ.
+  A whole file is a region from its first line to its last; a region inside another shows without its markers. A
+  tag with no `#region` names the whole file, for JSON, which has no comments. `DocsRulesTest` fails when a block
+  and its region differ.
 - **A block that cannot be tested** is tagged `<!-- example: untested, <the reason> -->`. Keep these rare: the test
   lists every one.
 
