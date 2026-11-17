@@ -148,12 +148,16 @@ vec2 noise(ivec2 px) {
     return fract(0.5 + float(index) * vec2(0.75487766624669276005, 0.5698402909980532659114));
 }
 
+// A level's depth at uv, clamped to its edge as XeGTAO's point-clamp sampler reads a tap off the screen.
+ivec2 texel_at(vec2 uv, ivec2 size) {
+    return clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1);
+}
 float depth_at(int level, vec2 uv) {
-    if (level <= 0) return texelFetch(_Depth0, ivec2(uv * vec2(textureSize(_Depth0, 0))), 0).r;
-    if (level == 1) return texelFetch(_Depth1, ivec2(uv * vec2(textureSize(_Depth1, 0))), 0).r;
-    if (level == 2) return texelFetch(_Depth2, ivec2(uv * vec2(textureSize(_Depth2, 0))), 0).r;
-    if (level == 3) return texelFetch(_Depth3, ivec2(uv * vec2(textureSize(_Depth3, 0))), 0).r;
-    return texelFetch(_Depth4, ivec2(uv * vec2(textureSize(_Depth4, 0))), 0).r;
+    if (level <= 0) return texelFetch(_Depth0, texel_at(uv, textureSize(_Depth0, 0)), 0).r;
+    if (level == 1) return texelFetch(_Depth1, texel_at(uv, textureSize(_Depth1, 0)), 0).r;
+    if (level == 2) return texelFetch(_Depth2, texel_at(uv, textureSize(_Depth2, 0)), 0).r;
+    if (level == 3) return texelFetch(_Depth3, texel_at(uv, textureSize(_Depth3, 0)), 0).r;
+    return texelFetch(_Depth4, texel_at(uv, textureSize(_Depth4, 0)), 0).r;
 }
 
 // XeGTAO_MainPass, Algorithm 1 of the paper: each slice's two horizons over the radius, the visible arc integrated
@@ -300,8 +304,8 @@ void Ssao() {
         for (int s = 1; s <= steps; s++) {
             vec2 o = dir * (float(s) / float(steps));
             vec2 uv0 = uv + o, uv1 = uv - o;
-            vec2 w0 = wedge(p, n, view_position(uv0, view_depth(ivec2(uv0 * _Size.xy))), radius);
-            vec2 w1 = wedge(p, n, view_position(uv1, view_depth(ivec2(uv1 * _Size.xy))), radius);
+            vec2 w0 = wedge(p, n, view_position(uv0, view_depth(ivec2(floor(uv0 * _Size.xy)))), radius);
+            vec2 w1 = wedge(p, n, view_position(uv1, view_depth(ivec2(floor(uv1 * _Size.xy)))), radius);
             side0 = mix(side0, vec2(max(side0.x, w0.x), 1.0), w0.y);
             side1 = mix(side1, vec2(max(side1.x, w1.x), 1.0), w1.y);
         }
