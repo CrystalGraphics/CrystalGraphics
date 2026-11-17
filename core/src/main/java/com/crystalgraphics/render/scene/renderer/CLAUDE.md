@@ -18,6 +18,7 @@ Unreal's `FDeferredShadingSceneRenderer`, cut to a forward renderer inside a hos
 | `feature/translucency/CgLayerPasses`, `CgSeparateTranslucency` | Look channels (`render/look/CgLookChannels`) and separate translucency: a graded translucent row drawn again into its channel's layer, the light and cover the look weights read; a graded solid writes its look id in custom stencil bits 5-7 instead |
 | `feature/distortion/CgDistortion`, `CgDistortionField` | Heat haze: bends drawn into an array, applies placed in the translucent pass, the final apply; the field published on the view |
 | `feature/light/CgSceneLights` | The scene's lights, lit deferred over the host's picture ([`docs/LIGHTS.md`](../../../../../../../../../docs/LIGHTS.md)): a firing's order over its parts, each one role. `CgLightCollector` the frame's CPU rows (components, `onceLights`, dynamic sources); `CgLightList` the firing's list, blocks and appenders; `CgLightGrid` the view's placement and the binned cells (LightGridInjection); `CgShadowCasters` our opaque draws as distance-field and sun casters; `CgLightGBuffer` the normals; `CgMegaLights` the shadowed lights' sample, shade, temporal and denoise; `CgSunShadows` the sun's cascades; `CgLightVolume` the translucency volume and the lit air; `CgLightSettings` the switches and quality tiers |
+| `feature/ao/CgAmbientOcclusion` | Screen-space ambient occlusion, Unreal's two methods (SSAO; GTAO ported from XeGTAO), run after the lit solids' depth joins the scene's and read by them alone as indirect occlusion (`cg_ScreenAmbientOcclusion`). The player's `AMBIENT_OCCLUSION*` settings, the post block's `ambient_occlusion`, the `ambientOcclusion` show flag |
 | `feature/media/CgSceneMedia` | Smoke in the air as a froxel grid, lit by the lights; the scene's `CgHazeComponent`s inject through the renderer's own injector |
 | `feature/field/CgVoxelWindow`, `CgVoxels`, `CgMeshDistanceFields`, `CgEntityBoxes` | The world, meshes and entities as distance fields: what shadow rays and particle collision read |
 | `feature/debug/CgOverdraw` | The overdraw view, under `view.showFlags().overdraw()` |
@@ -33,7 +34,7 @@ opaque scene in; the GPU cull; the masked prepass; the base pass (normals beside
 
 **Translucent callback**: the scene in; the labels' depth; custom data; custom depth; normals; the lights (record,
 casters, apply); the media; scene glows; decals; post before translucency; **`SURFACES`**; the translucent passes
-(prepass, late solids, half size, volumes, distortion bends, the main pass with its applies, after distortion,
+(prepass, the lit solids' depth and ambient occlusion where it runs, late solids, half size, volumes, distortion bends, the main pass with its applies, after distortion,
 separate); the layers; the subject; the overdraw view; the labels; **`TRANSLUCENT`**; post; **`OVERLAY`**.
 
 ## Rules

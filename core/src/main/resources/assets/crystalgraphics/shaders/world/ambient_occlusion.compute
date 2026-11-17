@@ -1,0 +1,314 @@
+// Screen-space ambient occlusion (CgAmbientOcclusion, R13a): Unreal's two methods on its forward path, run once the
+// scene's depth holds every opaque surface and read by the lit solids as indirect occlusion (BasePassRendering.cpp's
+// IndirectOcclusionTexture). One texture out, 1 unoccluded, Unreal's fade, power and intensity applied.
+//
+// GTAO (r.AmbientOcclusion.Method 1): Jimenez et al. 2016, ported from Intel's XeGTAO 1.30 (MIT, Copyright (C)
+// 2016-2021 Intel Corporation; XeGTAO.hlsli, vaGTAO.hlsl): ViewDepth and DepthMip build its five view-depth levels
+// (XeGTAO_PrefilterDepths16x16, a dispatch a level), Gtao searches each slice's horizons (XeGTAO_MainPass, normals from
+// depth as XE_GTAO_GENERATE_NORMALS_INPLACE), Denoise is its edge-aware filter (XeGTAO_Denoise, one pass: the temporal
+// step resolves the rest). Changed: texel fetches for gathers, floats for its packing, a normal turned to face the eye.
+//
+// SSAO (Method 0): Unreal's shape on forward, one level (PostProcessAmbientOcclusion.cpp: forward runs one): rotated
+// pairs of samples about the pixel, each side keeping its highest horizon, (1 - horizon)^2 its open fraction; 3
+// directions at shader levels 0-3 with 1, 1, 2, 3 steps, 6 directions with 3 at level 4. Written from that shape.
+#pragma kernel ViewDepth 8 8 image
+#pragma kernel DepthMip 8 8 image
+#pragma kernel Gtao 8 8 image
+#pragma kernel Denoise 8 8 image
+#pragma kernel Ssao 8 8 image
+
+Properties {
+    _Size     ("The depth's size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Output   ("x intensity, y power, z the fade's multiply, w its add (eye depth, metres)", vec4) = (0.5, 2, 0, 0)
+    _Gtao     ("x the effect radius (metres), y the falloff range (share of it), z slices, w steps a slice", vec4) = (2, 0.615, 2, 3)
+    _Gtao2    ("x the final power, y the sample distribution's power, z the mip offset, w the denoise's blur beta", vec4) = (2.2, 2, 3.3, 1.2)
+    _Ssao     ("x the radius, y 1 in world space (metres), 0 a share of the screen's height; z the bias; w the shader level", vec4) = (0.125, 0, 0.003, 2)
+    _Noise    ("x the frame's index into the noise, 0 where no temporal step resolves it", vec4) = (0, 0, 0, 0)
+    _Prev     ("The level above, view depth", sampler2D) = "black"
+    _Depth0   ("View depth, level 0", sampler2D) = "black"
+    _Depth1   ("Level 1", sampler2D) = "black"
+    _Depth2   ("Level 2", sampler2D) = "black"
+    _Depth3   ("Level 3", sampler2D) = "black"
+    _Depth4   ("Level 4", sampler2D) = "black"
+    _Working  ("GTAO's visibility (r) and its packed edges (g)", sampler2D) = "black"
+}
+
+Images {
+    DEPTH   ("View depth at a level", r32f, writeonly)
+    WORKING ("Visibility and packed edges", rg16f, writeonly)
+    AO      ("The occlusion the lit solids read: 1 open", r16f, writeonly)
+}
+
+const float AO_PI = 3.14159265, AO_HALF_PI = 1.57079633;
+// XeGTAO_ClampDepth's half-float range: the sky's depth, which nothing is behind
+const float FAR = 65504.0;
+
+// View depth at pixel px of the scene's depth; FAR for the sky.
+float view_depth(ivec2 px) {
+    px = clamp(px, ivec2(0), ivec2(_Size.xy) - 1);
+    float window = texelFetch(cg_DepthBuffer, px, 0).r;
+    if (cg_DepthParams.x > 0.5 ? window <= 0.0 : window >= 1.0) return FAR;
+    return min(cg_LinearEyeDepth(window), FAR);
+}
+
+// The view position at uv (0 to 1) and positive depth z: x and y as the projection puts them, z away from the eye.
+vec3 view_position(vec2 uv, float z) {
+    vec2 ndc = uv * 2.0 - 1.0;
+    return vec3((ndc.x + cg_ProjMatrix[2][0]) * z / cg_ProjMatrix[0][0], (ndc.y + cg_ProjMatrix[2][1]) * z / cg_ProjMatrix[1][1], z);
+}
+
+float depth0(ivec2 px) {
+    return texelFetch(_Depth0, clamp(px, ivec2(0), ivec2(_Size.xy) - 1), 0).r;
+}
+
+// The output's mapping, Unreal's: faded to open with distance, then 1 - (1 - ao^power) * intensity.
+float shaped(float ao, float z, float power) {
+    ao = mix(ao, 1.0, clamp(z * _Output.z + _Output.w, 0.0, 1.0));
+    return 1.0 - (1.0 - pow(max(ao, 0.0), power)) * _Output.x;
+}
+
+// ── View depth and its levels ───────────────────────────────────────────────────────────────────────────────────
+
+void ViewDepth() {
+    DEPTH_WRITE(vec4(view_depth(CG_TEXEL.xy)));
+}
+
+// XeGTAO_DepthMIPFilter: the 2x2 below, each weighted by how near it is to the farthest within the radius's falloff.
+void DepthMip() {
+    ivec2 at = CG_TEXEL.xy * 2, size = textureSize(_Prev, 0) - 1;
+    float d0 = texelFetch(_Prev, min(at, size), 0).r, d1 = texelFetch(_Prev, min(at + ivec2(1, 0), size), 0).r;
+    float d2 = texelFetch(_Prev, min(at + ivec2(0, 1), size), 0).r, d3 = texelFetch(_Prev, min(at + ivec2(1, 1), size), 0).r;
+    float farthest = max(max(d0, d1), max(d2, d3));
+    float radius = 0.75 * _Gtao.x, range = _Gtao.y * radius, from = radius * (1.0 - _Gtao.y);
+    float mul = -1.0 / range, add = from / range + 1.0;
+    vec4 w = clamp((farthest - vec4(d0, d1, d2, d3)) * mul + add, 0.0, 1.0);
+    DEPTH_WRITE(vec4(dot(w, vec4(d0, d1, d2, d3)) / max(w.x + w.y + w.z + w.w, 1.0e-6)));
+}
+
+// ── GTAO ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// XeGTAO_CalculateEdges: 1 where a neighbour lies on this pixel's plane, toward 0 across a depth edge.
+vec4 edges_of(float c, float l, float r, float t, float b) {
+    vec4 e = vec4(l, r, t, b) - c;
+    float slopeLR = (e.y - e.x) * 0.5, slopeTB = (e.w - e.z) * 0.5;
+    vec4 adjusted = e + vec4(slopeLR, -slopeLR, slopeTB, -slopeTB);
+    e = min(abs(e), abs(adjusted));
+    return clamp(1.25 - e / (c * 0.011), 0.0, 1.0);
+}
+
+// XeGTAO_PackEdges and XeGTAO_UnpackEdges: two bits an edge.
+float pack_edges(vec4 e) {
+    e = floor(clamp(e, 0.0, 1.0) * 2.9 + 0.5);
+    return dot(e, vec4(64.0, 16.0, 4.0, 1.0)) / 255.0;
+}
+vec4 unpack_edges(float p) {
+    uint v = uint(p * 255.5);
+    return clamp(vec4(float((v >> 6) & 3u), float((v >> 4) & 3u), float((v >> 2) & 3u), float(v & 3u)) / 3.0, 0.0, 1.0);
+}
+
+// XeGTAO_CalculateNormal: the four cross products about the pixel, each weighted by its two edges.
+vec3 normal_of(vec4 e, vec3 c, vec3 l, vec3 r, vec3 t, vec3 b) {
+    vec4 accepted = clamp(vec4(e.x * e.z, e.z * e.y, e.y * e.w, e.w * e.x) + 0.01, 0.0, 1.0);
+    l = normalize(l - c);
+    r = normalize(r - c);
+    t = normalize(t - c);
+    b = normalize(b - c);
+    vec3 n = accepted.x * cross(l, t) + accepted.y * cross(t, r) + accepted.z * cross(r, b) + accepted.w * cross(b, l);
+    n = normalize(n);
+    return dot(n, -c) < 0.0 ? -n : n;
+}
+
+// XeGTAO_FastACos (Lagarde 2014), [-1, 1] to [0, pi].
+float fast_acos(float x) {
+    float r = -0.156583 * abs(x) + AO_HALF_PI;
+    r *= sqrt(1.0 - abs(x));
+    return x >= 0.0 ? r : AO_PI - r;
+}
+
+// vaGTAO.hlsl's HilbertIndex over a 64-wide tile, and SpatioTemporalNoise's R2 sequence along it.
+uint hilbert(uint x, uint y) {
+    uint index = 0u;
+    for (uint level = 32u; level > 0u; level /= 2u) {
+        uint rx = (x & level) > 0u ? 1u : 0u, ry = (y & level) > 0u ? 1u : 0u;
+        index += level * level * ((3u * rx) ^ ry);
+        if (ry == 0u) {
+            if (rx == 1u) {
+                x = 63u - x;
+                y = 63u - y;
+            }
+            uint s = x;
+            x = y;
+            y = s;
+        }
+    }
+    return index;
+}
+vec2 noise(ivec2 px) {
+    uint index = hilbert(uint(px.x) & 63u, uint(px.y) & 63u) + 288u * (uint(_Noise.x) % 64u);
+    return fract(0.5 + float(index) * vec2(0.75487766624669276005, 0.5698402909980532659114));
+}
+
+float depth_at(int level, vec2 uv) {
+    if (level <= 0) return texelFetch(_Depth0, ivec2(uv * vec2(textureSize(_Depth0, 0))), 0).r;
+    if (level == 1) return texelFetch(_Depth1, ivec2(uv * vec2(textureSize(_Depth1, 0))), 0).r;
+    if (level == 2) return texelFetch(_Depth2, ivec2(uv * vec2(textureSize(_Depth2, 0))), 0).r;
+    if (level == 3) return texelFetch(_Depth3, ivec2(uv * vec2(textureSize(_Depth3, 0))), 0).r;
+    return texelFetch(_Depth4, ivec2(uv * vec2(textureSize(_Depth4, 0))), 0).r;
+}
+
+// XeGTAO_MainPass, Algorithm 1 of the paper: each slice's two horizons over the radius, the visible arc integrated
+// against the normal projected into the slice.
+void Gtao() {
+    ivec2 px = CG_TEXEL.xy;
+    vec2 pixel = _Size.zw, uv = (vec2(px) + 0.5) * pixel;
+    float z = depth0(px);
+    float lz = depth0(px - ivec2(1, 0)), rz = depth0(px + ivec2(1, 0)), tz = depth0(px - ivec2(0, 1)), bz = depth0(px + ivec2(0, 1));
+    vec4 edges = edges_of(z, lz, rz, tz, bz);
+    if (z >= FAR) {
+        WORKING_WRITE(vec4(1.0, pack_edges(edges), 0.0, 0.0));
+        return;
+    }
+    vec3 c = view_position(uv, z);
+    vec3 n = normal_of(edges, c, view_position(uv - vec2(pixel.x, 0.0), lz), view_position(uv + vec2(pixel.x, 0.0), rz),
+            view_position(uv - vec2(0.0, pixel.y), tz), view_position(uv + vec2(0.0, pixel.y), bz));
+    // Toward the eye against depth's imprecision (XE_GTAO_FP32_DEPTHS)
+    z *= 0.99999;
+    c = view_position(uv, z);
+    vec3 view = normalize(-c);
+
+    float radius = _Gtao.x, falloffRange = _Gtao.y * radius, falloffFrom = radius * (1.0 - _Gtao.y);
+    float falloffMul = -1.0 / falloffRange, falloffAdd = falloffFrom / falloffRange + 1.0;
+    float slices = _Gtao.z, steps = _Gtao.w;
+    vec2 local = noise(px);
+
+    // The radius in pixels at this depth
+    float pixelSize = z * 2.0 / cg_ProjMatrix[0][0] * pixel.x;
+    float screenRadius = radius / pixelSize;
+    float visibility = clamp((10.0 - screenRadius) / 100.0, 0.0, 1.0) * 0.5;
+    float minS = 1.3 / screenRadius;
+
+    for (float slice = 0.0; slice < slices; slice += 1.0) {
+        float phi = (slice + local.x) / slices * AO_PI;
+        vec2 omega = vec2(cos(phi), sin(phi)) * screenRadius;
+        vec3 direction = vec3(cos(phi), sin(phi), 0.0);
+        vec3 ortho = direction - dot(direction, view) * view;
+        vec3 axis = normalize(cross(ortho, view));
+        vec3 projected = n - axis * dot(n, axis);
+        float signN = sign(dot(ortho, projected));
+        float projectedLength = length(projected);
+        float cosN = clamp(dot(projected, view) / projectedLength, 0.0, 1.0);
+        float nAngle = signN * fast_acos(cosN);
+        float low0 = cos(nAngle + AO_HALF_PI), low1 = cos(nAngle - AO_HALF_PI);
+        float h0cos = low0, h1cos = low1;
+
+        for (float step = 0.0; step < steps; step += 1.0) {
+            float stepNoise = fract(local.y + (slice + step * steps) * 0.6180339887498948482);
+            float s = pow((step + stepNoise) / steps, _Gtao2.y) + minS;
+            vec2 offset = s * omega;
+            int level = int(clamp(log2(length(offset)) - _Gtao2.z, 0.0, 4.0) + 0.5);
+            offset = floor(offset + 0.5) * pixel;
+
+            vec2 uv0 = uv + offset, uv1 = uv - offset;
+            vec3 d0 = view_position(uv0, depth_at(level, uv0)) - c, d1 = view_position(uv1, depth_at(level, uv1)) - c;
+            float l0 = length(d0), l1 = length(d1);
+            float w0 = clamp(l0 * falloffMul + falloffAdd, 0.0, 1.0), w1 = clamp(l1 * falloffMul + falloffAdd, 0.0, 1.0);
+            float s0 = mix(low0, dot(d0 / l0, view), w0), s1 = mix(low1, dot(d1 / l1, view), w1);
+            h0cos = max(h0cos, s0);
+            h1cos = max(h1cos, s1);
+        }
+        projectedLength = mix(projectedLength, 1.0, 0.05);
+        float h0 = -fast_acos(h1cos), h1 = fast_acos(h0cos);
+        float arc0 = (cosN + 2.0 * h0 * sin(nAngle) - cos(2.0 * h0 - nAngle)) / 4.0;
+        float arc1 = (cosN + 2.0 * h1 * sin(nAngle) - cos(2.0 * h1 - nAngle)) / 4.0;
+        visibility += projectedLength * (arc0 + arc1);
+    }
+    visibility /= slices;
+    visibility = max(0.03, pow(max(visibility, 0.0), _Gtao2.x));
+    WORKING_WRITE(vec4(visibility, pack_edges(edges), 0.0, 0.0));
+}
+
+vec2 working(ivec2 px) {
+    return texelFetch(_Working, clamp(px, ivec2(0), ivec2(_Size.xy) - 1), 0).rg;
+}
+
+// XeGTAO_Denoise as its final pass: the 3x3 weighted by each side's edges, made symmetric, leaking a little where three
+// or four edges close a pixel in; then Unreal's output mapping, at half its power as Unreal's GTAO takes it.
+void Denoise() {
+    ivec2 px = CG_TEXEL.xy;
+    vec2 c = working(px), l = working(px - ivec2(1, 0)), r = working(px + ivec2(1, 0));
+    vec2 t = working(px - ivec2(0, 1)), b = working(px + ivec2(0, 1));
+    vec4 eL = unpack_edges(l.y), eR = unpack_edges(r.y), eT = unpack_edges(t.y), eB = unpack_edges(b.y);
+    vec4 e = unpack_edges(c.y) * vec4(eL.y, eR.x, eT.w, eB.z);
+    float edginess = clamp(4.0 - 2.5 - dot(e, vec4(1.0)), 0.0, 1.0) / (4.0 - 2.5) * 0.5;
+    e = clamp(e + edginess, 0.0, 1.0);
+    const float diagonal = 0.85 * 0.5;
+    float wTL = diagonal * (e.x * eL.z + e.z * eT.x), wTR = diagonal * (e.z * eT.y + e.y * eR.z);
+    float wBL = diagonal * (e.w * eB.x + e.x * eL.w), wBR = diagonal * (e.y * eR.w + e.w * eB.y);
+    float weight = _Gtao2.w, sum = c.x * weight;
+    sum += l.x * e.x + r.x * e.y + t.x * e.z + b.x * e.w;
+    weight += e.x + e.y + e.z + e.w;
+    sum += working(px + ivec2(-1, -1)).x * wTL + working(px + ivec2(1, -1)).x * wTR;
+    sum += working(px + ivec2(-1, 1)).x * wBL + working(px + ivec2(1, 1)).x * wBR;
+    weight += wTL + wTR + wBL + wBR;
+    float z = depth0(px);
+    AO_WRITE(vec4(z >= FAR ? 1.0 : shaped(sum / weight, z, _Output.y * 0.5)));
+}
+
+// ── SSAO ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A 4x4 ordered pattern: each pixel's rotation of the sample set, moved each frame where the temporal step resolves it.
+const float BAYER[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+
+// One side's horizon at view offset q from p: its rise above the surface, less the bias; and its weight, fading out over
+// the radius's far half (Unreal's halo).
+vec2 wedge(vec3 p, vec3 n, vec3 q, float radius) {
+    vec3 d = q - p;
+    float len = length(d);
+    float rise = clamp(dot(d / max(len, 1.0e-6), n) - _Ssao.z, 0.0, 1.0);
+    return vec2(rise, clamp(2.0 - 2.0 * len / radius, 0.0, 1.0));
+}
+
+void Ssao() {
+    ivec2 px = CG_TEXEL.xy;
+    vec2 pixel = _Size.zw, uv = (vec2(px) + 0.5) * pixel;
+    float z = view_depth(px);
+    if (z >= FAR) {
+        AO_WRITE(vec4(1.0));
+        return;
+    }
+    float lz = view_depth(px - ivec2(1, 0)), rz = view_depth(px + ivec2(1, 0));
+    float tz = view_depth(px - ivec2(0, 1)), bz = view_depth(px + ivec2(0, 1));
+    vec3 p = view_position(uv, z);
+    vec3 n = normal_of(edges_of(z, lz, rz, tz, bz), p, view_position(uv - vec2(pixel.x, 0.0), lz),
+            view_position(uv + vec2(pixel.x, 0.0), rz), view_position(uv - vec2(0.0, pixel.y), tz),
+            view_position(uv + vec2(0.0, pixel.y), bz));
+
+    // The radius as a share of the screen's height (Unreal's default), or in metres; its reach on screen in uv
+    float radius = _Ssao.y > 0.5 ? _Ssao.x : _Ssao.x * 2.0 * z / cg_ProjMatrix[1][1];
+    vec2 reach = radius * vec2(cg_ProjMatrix[0][0], cg_ProjMatrix[1][1]) * 0.5 / z;
+
+    int level = int(_Ssao.w);
+    int directions = level >= 4 ? 6 : 3;
+    int steps = level >= 4 ? 3 : level == 3 ? 3 : level == 2 ? 2 : 1;
+    float rotation = (BAYER[(px.y & 3) * 4 + (px.x & 3)] + float(uint(_Noise.x) % 16u)) / 16.0 * AO_PI;
+
+    vec2 total = vec2(0.0);
+    for (int i = 0; i < directions; i++) {
+        float angle = rotation + float(i) / float(directions) * AO_PI;
+        vec2 dir = vec2(cos(angle), sin(angle)) * reach;
+        vec2 side0 = vec2(0.0), side1 = vec2(0.0);   // x the highest horizon, y whether any sample counted
+        for (int s = 1; s <= steps; s++) {
+            vec2 o = dir * (float(s) / float(steps));
+            vec2 uv0 = uv + o, uv1 = uv - o;
+            vec2 w0 = wedge(p, n, view_position(uv0, view_depth(ivec2(uv0 * _Size.xy))), radius);
+            vec2 w1 = wedge(p, n, view_position(uv1, view_depth(ivec2(uv1 * _Size.xy))), radius);
+            side0 = mix(side0, vec2(max(side0.x, w0.x), 1.0), w0.y);
+            side1 = mix(side1, vec2(max(side1.x, w1.x), 1.0), w1.y);
+        }
+        // The area open above a horizon falls with its square
+        total += vec2((1.0 - side0.x) * (1.0 - side0.x) * side0.y, side0.y);
+        total += vec2((1.0 - side1.x) * (1.0 - side1.x) * side1.y, side1.y);
+    }
+    float ao = total.y > 0.0 ? total.x / total.y : 1.0;
+    AO_WRITE(vec4(shaped(ao, z, _Output.y)));
+}

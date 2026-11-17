@@ -60,13 +60,18 @@ public final class CgBindingModel {
     public static final Slot MEDIA = new Slot(VIEW, 4);
     /** {@code cg_LocalLights}: the world's lights on transparent surfaces; black where a pass names none. */
     public static final Slot LOCAL_LIGHTS = new Slot(VIEW, 5);
+    /** {@code cg_AmbientOcclusionTexture}: the screen's ambient occlusion the lit solids read; white where none. */
+    public static final Slot AMBIENT_OCCLUSION = new Slot(VIEW, 9);
     /** {@code CgEnvironmentBlock}: the sun, sky and fog, from the pass's constants. */
     public static final Slot ENVIRONMENT_BLOCK = new Slot(VIEW, 6);
-    /** The view's textures a stage binds besides a material's: scene depth and colour, lightmap, media, local lights. */
-    public static final int VIEW_TEXTURES = 5;
+    /**
+     * The view's textures a stage binds besides a material's: scene depth and colour, lightmap, media, local lights,
+     * ambient occlusion.
+     */
+    public static final int VIEW_TEXTURES = 6;
     /**
      * {@code CgViewTextureBlock}: the view's textures' bindless indices (scene depth, scene colour, lightmap, media, local
-     * lights), written as the pass executes; bound only where the view's textures are read by index.
+     * lights, ambient occlusion), written as the pass executes; bound only where the view's textures are read by index.
      */
     public static final Slot VIEW_TEXTURE_INDICES = new Slot(VIEW, 8);
     /** {@code cg_SceneObjects}: the scene's persistent records ({@code CgGpuScene}); an empty buffer where none is. */

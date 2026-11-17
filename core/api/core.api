@@ -12821,6 +12821,7 @@ com/crystalgraphics/render/post/CgPostRenderer
   method public,static present (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static record (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static releaseAll ()V
+  method public,static settings (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public,static surfaces (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
 com/crystalgraphics/render/post/CgScreenPass
   access public,final
@@ -13077,6 +13078,14 @@ com/crystalgraphics/render/post/settings/CgPostBlock
 com/crystalgraphics/render/post/settings/CgPostSettings
   access public,final
   extends java/lang/Object
+  field public,static,final AO_BIAS I
+  field public,static,final AO_FADE_DISTANCE I
+  field public,static,final AO_FADE_RADIUS I
+  field public,static,final AO_INTENSITY I
+  field public,static,final AO_POWER I
+  field public,static,final AO_QUALITY I
+  field public,static,final AO_RADIUS I
+  field public,static,final AO_RADIUS_IN_WORLD_SPACE I
   field public,static,final BLOOM I
   field public,static,final BLOOM_COLOUR I
   field public,static,final BLOOM_CONSERVING I
@@ -13088,6 +13097,13 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final BLOOM_THRESHOLD I
   field public,static,final BLUE_CORRECTION I
   field public,static,final CHROMATIC I
+  field public,static,final DEFAULT_AO_BIAS F
+  field public,static,final DEFAULT_AO_FADE_DISTANCE F
+  field public,static,final DEFAULT_AO_FADE_RADIUS F
+  field public,static,final DEFAULT_AO_INTENSITY F
+  field public,static,final DEFAULT_AO_POWER F
+  field public,static,final DEFAULT_AO_QUALITY F
+  field public,static,final DEFAULT_AO_RADIUS F
   field public,static,final DEFAULT_BLADE_COUNT I
   field public,static,final DEFAULT_BLOOM_INTENSITY F
   field public,static,final DEFAULT_FSTOP F
@@ -13128,6 +13144,24 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final VIGNETTE I
   field public,static,final WHITE_BALANCE I
   method public <init> ()V
+  method public ambientOcclusion (FF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionBias ()F
+  method public ambientOcclusionBias (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionFadeDistance ()F
+  method public ambientOcclusionFadeDistance (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionFadeRadius ()F
+  method public ambientOcclusionFadeRadius (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionIntensity ()F
+  method public ambientOcclusionIntensity (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionOn ()Z
+  method public ambientOcclusionPower ()F
+  method public ambientOcclusionPower (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionQuality ()F
+  method public ambientOcclusionQuality (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionRadius ()F
+  method public ambientOcclusionRadius (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionRadiusInWorldSpace ()Z
+  method public ambientOcclusionRadiusInWorldSpace (Z)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public blend (Lcom/crystalgraphics/render/post/settings/CgPostSettings;FFF)V
   method public blendable (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Blendable;
   method public blendable (Lcom/crystalgraphics/api/material/CgMaterialInstance;F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
@@ -13229,6 +13263,7 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public motionBlurTargetFps ()I
   method public motionBlurTargetFps (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public overrides (I)Z
+  method public overridesAmbientOcclusion (I)Z
   method public overridesCamera (I)Z
   method public overridesLayer (IZ)Z
   method public overridesMotionBlur (I)Z
@@ -14309,6 +14344,14 @@ com/crystalgraphics/render/scene/renderer/CgSceneRenderer
   method public,static install ()V
   method public,static queue (Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;I)I
   method public,static releaseAll ()V
+com/crystalgraphics/render/scene/renderer/feature/ao/CgAmbientOcclusion
+  access public,final
+  extends java/lang/Object
+  method public,static defaults (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
+  method public,static precache ()V
+  method public,static ready ()Z
+  method public,static record (Lcom/crystalgraphics/render/stage/CgStageFiring;Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,static wants (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
 com/crystalgraphics/render/scene/renderer/feature/debug/CgOverdraw
   access public,final
   extends java/lang/Object
@@ -14625,6 +14668,7 @@ com/crystalgraphics/render/scene/visibility/CgViewVisibility
 com/crystalgraphics/render/shader/CgBindingModel
   access public,final
   extends java/lang/Object
+  field public,static,final AMBIENT_OCCLUSION Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
   field public,static,final ATTACHED_COUNT I
   field public,static,final BINDLESS I
   field public,static,final BONES Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
@@ -14895,6 +14939,8 @@ com/crystalgraphics/render/view/CgSceneTextures
 com/crystalgraphics/render/view/CgShowFlags
   access public,final
   extends java/lang/Object
+  method public ambientOcclusion ()Z
+  method public ambientOcclusion (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public decals ()Z
   method public decals (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public depthOfField ()Z
@@ -16619,6 +16665,10 @@ com/crystalgraphics/serialization/nbt/CgNbtValue
 com/crystalgraphics/settings/CgGraphicsSettings
   access public,final
   extends java/lang/Object
+  field public,static,final AMBIENT_OCCLUSION Lcom/crystalgraphics/settings/CgSetting$Toggle;
+  field public,static,final AMBIENT_OCCLUSION_LEVELS Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final AMBIENT_OCCLUSION_MAX_QUALITY Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final AMBIENT_OCCLUSION_METHOD Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final ANTI_ALIASING Lcom/crystalgraphics/settings/CgSetting$Choice;
   field public,static,final DENSITY Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final FILE Lcom/crystalgraphics/settings/CgSettings;

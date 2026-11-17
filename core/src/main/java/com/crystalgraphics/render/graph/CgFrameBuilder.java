@@ -683,12 +683,13 @@ public final class CgFrameBuilder {
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
         CgFrameBindings constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,
                 CgDepthConvention.reversed(), constantsScratch);
-        boolean lightmap = false, media = false, localLights = false;
+        boolean lightmap = false, media = false, localLights = false, occlusion = false;
         for (int i = 0; i < pass.textureCount(); i++) {
             constants.texture(pass.textureSlot(i), pass.texture(i));
             lightmap |= pass.textureSlot(i) == CgBindingModel.LIGHTMAP;
             media |= pass.textureSlot(i) == CgBindingModel.MEDIA;
             localLights |= pass.textureSlot(i) == CgBindingModel.LOCAL_LIGHTS;
+            occlusion |= pass.textureSlot(i) == CgBindingModel.AMBIENT_OCCLUSION;
         }
         // A pass with no world lights nothing, and nothing in the air dims it: cg_Lightmap and cg_Media read white.
         if (!lightmap && CgFallbackTextures.WHITE_1x1 != null) {
@@ -699,6 +700,10 @@ public final class CgFrameBuilder {
         }
         if (!localLights && CgFallbackTextures.BLACK_VOLUME != null) {
             constants.texture(CgBindingModel.LOCAL_LIGHTS, CgFallbackTextures.BLACK_VOLUME);
+        }
+        // Nothing occludes a pass the scene's ambient occlusion did not run for
+        if (!occlusion && CgFallbackTextures.WHITE_1x1 != null) {
+            constants.texture(CgBindingModel.AMBIENT_OCCLUSION, CgFallbackTextures.WHITE_1x1);
         }
         // The records of the scene the pass's view draws (the client's for any other pass), or the device's empty buffer
         CgGpuScene drawn = pass.scene;

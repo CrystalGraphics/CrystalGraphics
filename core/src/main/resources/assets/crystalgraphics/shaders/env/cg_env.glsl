@@ -213,7 +213,7 @@ flat in int cg_InstanceId;
 #endif
 CG_BIND(0, 8) layout(std140) uniform CgViewTextureBlock {
     uvec4 cg_ViewTextures;    // x scene depth, y scene colour, z lightmap, w media
-    uvec4 cg_ViewTextures2;   // x local lights
+    uvec4 cg_ViewTextures2;   // x local lights, y ambient occlusion
 };
 #endif
 
@@ -393,6 +393,14 @@ vec3 cg_MediaLight(vec2 uv, float eye) {
 CG_BIND(0, 5) uniform sampler3D cg_LocalLights;
 #endif
 
+// The screen's ambient occlusion (CgAmbientOcclusion), 1 open, at the scene's render size; white in a pass it did
+// not run for.
+#ifdef CG_VIEW_TEXTURES_INDEXED
+#define cg_AmbientOcclusionTexture CG_TEXTURE_sampler2D(cg_ViewTextures2.y)
+#else
+CG_BIND(0, 9) uniform sampler2D cg_AmbientOcclusionTexture;
+#endif
+
 // Layer 0 and 1 the cascades' light, 2 and 3 their direction; n the cells a side.
 vec3 cg_local_light_cascade(vec3 u, float layer, float n, float depth) {
     vec3 t = clamp(u * n, 0.5, n - 0.5);
@@ -518,6 +526,12 @@ float cg_EyeDepth(vec3 p) {
 // The light a lit fragment takes: its draw's (CG_OBJECT_LIGHT) unless its fragment function sets another, as a
 // particle setting its own does.
 vec2 cg_Light;
+
+// The screen's ambient occlusion at this fragment, 1 where none ran: Unreal's forward IndirectOcclusion.
+float cg_ScreenAmbientOcclusion() {
+    ivec2 size = textureSize(cg_AmbientOcclusionTexture, 0);
+    return texelFetch(cg_AmbientOcclusionTexture, clamp(ivec2(gl_FragCoord.xy), ivec2(0), size - 1), 0).r;
+}
 
 // This fragment's distance from the camera, from its window position: what its fog is measured by.
 float cg_FragmentDistance() {

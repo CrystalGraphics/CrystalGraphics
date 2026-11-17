@@ -16,7 +16,7 @@ import com.crystalgraphics.render.post.debug.CgPostDebug;
 public final class CgShowFlags {
 
     private boolean lights = true, media = true, post = true, labels = true, distortion = true, decals = true,
-            translucency = true, depthOfField = true, motionBlur = true, overdraw, temporalAA;
+            translucency = true, depthOfField = true, motionBlur = true, ambientOcclusion = true, overdraw, temporalAA;
 
     CgShowFlags() {
     }
@@ -33,6 +33,7 @@ public final class CgShowFlags {
         depthOfField = other.depthOfField;
         temporalAA = other.temporalAA;
         motionBlur = other.motionBlur;
+        ambientOcclusion = other.ambientOcclusion;
         overdraw = other.overdraw;
     }
 
@@ -155,5 +156,19 @@ public final class CgShowFlags {
 
     public boolean motionBlur() {
         return motionBlur;
+    }
+
+    /**
+     * Screen-space ambient occlusion (Unreal's {@code ShowFlags.AmbientOcclusion}): the sky's light taken off where the
+     * view's own opaque surfaces crowd each other, by the view's post settings, where the player's
+     * {@code CgGraphicsSettings.AMBIENT_OCCLUSION} is on. On by default: a capture or a preview turns it off.
+     */
+    public CgShowFlags ambientOcclusion(boolean on) {
+        ambientOcclusion = on;
+        return this;
+    }
+
+    public boolean ambientOcclusion() {
+        return ambientOcclusion;
     }
 }

@@ -36,6 +36,26 @@ public final class CgGraphicsSettings {
                     + " frames; Medium and High smooth it at once; Ultra follows each edge farther.",
             CgQuality.LOW);
 
+    // Ambient occlusion, as Unreal's: r.DefaultFeature.AmbientOcclusion, r.AmbientOcclusion.Method,
+    // r.AmbientOcclusionLevels, r.AmbientOcclusionMaxQuality
+
+    public static final CgSetting.Toggle AMBIENT_OCCLUSION = FILE.toggle("rendering", "ambient_occlusion", "Ambient occlusion",
+            "Darkens the sky's light in corners, creases and under objects, from what the screen shows near each pixel."
+                    + " Off, only where a camera or an area asks for it.",
+            true);
+
+    public static final CgSetting.Number AMBIENT_OCCLUSION_METHOD = FILE.number("rendering", "ambient_occlusion_method",
+            "Ambient occlusion method", "0 SSAO, Unreal's default; 1 GTAO, nearer a ray-traced reference and dearer.",
+            0f, 0f, 1f, 1f);
+
+    public static final CgSetting.Number AMBIENT_OCCLUSION_LEVELS = FILE.number("rendering", "ambient_occlusion_levels",
+            "Ambient occlusion levels", "0 off, 1 on. -1 follows Quality (Low off).", -1f, -1f, 1f, 1f);
+
+    public static final CgSetting.Number AMBIENT_OCCLUSION_MAX_QUALITY = FILE.number("rendering",
+            "ambient_occlusion_max_quality", "Ambient occlusion max quality",
+            "The most samples an area's quality may ask for, 0 to 100. -1 follows Quality (Low 0, Medium 60, High and Ultra 100).",
+            -1f, -1f, 100f, 1f);
+
     // Motion blur, as Unreal's: r.DefaultFeature.MotionBlur, r.MotionBlurQuality, r.MotionBlur.Scale, .Amount, .Max, .TargetFPS
 
     public static final CgSetting.Toggle MOTION_BLUR = FILE.toggle("rendering", "motion_blur", "Motion blur",

@@ -63,6 +63,7 @@ public final class CgPostBlock {
         bloomLayers(block, s);
         if (block.get("depth_of_field") instanceof Map<?, ?> dof) depthOfField(dof, s);
         if (block.get("motion_blur") instanceof Map<?, ?> mb) motionBlur(mb, s);
+        if (block.get("ambient_occlusion") instanceof Map<?, ?> ao) ambientOcclusion(ao, s);
         for (Region region : Region.values()) {
             if (!(block.get(key(region)) instanceof Map<?, ?> controls)) continue;
             for (Control control : Control.values()) {
@@ -86,6 +87,18 @@ public final class CgPostBlock {
         if (dof.get("min_fstop") instanceof Number n) s.depthOfFieldMinFstop(n.floatValue());
         if (dof.get("blade_count") instanceof Number n) s.depthOfFieldBladeCount(n.intValue());
         if (dof.get("sensor_width") instanceof Number n) s.depthOfFieldSensorWidth(n.floatValue());
+    }
+
+    /** {@code ambient_occlusion}'s keys, each overriding its field alone. */
+    private static void ambientOcclusion(Map<?, ?> ao, CgPostSettings s) {
+        if (ao.get("intensity") instanceof Number n) s.ambientOcclusionIntensity(n.floatValue());
+        if (ao.get("radius") instanceof Number n) s.ambientOcclusionRadius(n.floatValue());
+        if (ao.get("radius_in_world_space") instanceof Boolean b) s.ambientOcclusionRadiusInWorldSpace(b);
+        if (ao.get("power") instanceof Number n) s.ambientOcclusionPower(n.floatValue());
+        if (ao.get("bias") instanceof Number n) s.ambientOcclusionBias(n.floatValue());
+        if (ao.get("quality") instanceof Number n) s.ambientOcclusionQuality(n.floatValue());
+        if (ao.get("fade_distance") instanceof Number n) s.ambientOcclusionFadeDistance(n.floatValue());
+        if (ao.get("fade_radius") instanceof Number n) s.ambientOcclusionFadeRadius(n.floatValue());
     }
 
     /** {@code motion_blur}'s keys, each overriding its field alone. */
@@ -224,6 +237,18 @@ public final class CgPostBlock {
         if (s.overridesMotionBlur(CgPostSettings.MB_TARGET_FPS)) mb.put("target_fps", s.motionBlurTargetFps());
         if (s.overridesMotionBlur(CgPostSettings.MB_PER_OBJECT_SIZE)) mb.put("per_object_size", (double) s.motionBlurPerObjectSize());
         if (!mb.isEmpty()) b.put("motion_blur", mb);
+        Map<String, Object> ao = new LinkedHashMap<>();
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_INTENSITY)) ao.put("intensity", (double) s.ambientOcclusionIntensity());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_RADIUS)) ao.put("radius", (double) s.ambientOcclusionRadius());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_RADIUS_IN_WORLD_SPACE)) {
+            ao.put("radius_in_world_space", s.ambientOcclusionRadiusInWorldSpace());
+        }
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_POWER)) ao.put("power", (double) s.ambientOcclusionPower());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_BIAS)) ao.put("bias", (double) s.ambientOcclusionBias());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_QUALITY)) ao.put("quality", (double) s.ambientOcclusionQuality());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_FADE_DISTANCE)) ao.put("fade_distance", (double) s.ambientOcclusionFadeDistance());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_FADE_RADIUS)) ao.put("fade_radius", (double) s.ambientOcclusionFadeRadius());
+        if (!ao.isEmpty()) b.put("ambient_occlusion", ao);
         if (s.overrides(CgPostSettings.TONE_CURVE)) b.put("tone_curve", (double) s.toneCurve());
         Map<String, Object> film = new LinkedHashMap<>();
         if (s.overrides(CgPostSettings.FILM_SLOPE)) film.put("slope", (double) s.filmSlope());

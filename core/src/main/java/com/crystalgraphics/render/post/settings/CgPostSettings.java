@@ -77,6 +77,15 @@ public final class CgPostSettings {
      */
     public static final float DEFAULT_MB_AMOUNT = 0.5f, DEFAULT_MB_MAX = 5f;
     public static final int DEFAULT_MB_TARGET_FPS = 30;
+    /** Ambient occlusion's override bits ({@link #overridesAmbientOcclusion}). */
+    public static final int AO_INTENSITY = 1, AO_RADIUS = 1 << 1, AO_POWER = 1 << 2, AO_BIAS = 1 << 3, AO_QUALITY = 1 << 4,
+            AO_FADE_DISTANCE = 1 << 5, AO_FADE_RADIUS = 1 << 6, AO_RADIUS_IN_WORLD_SPACE = 1 << 7;
+    /**
+     * Unreal's ambient occlusion defaults ({@code FPostProcessSettings}), its centimetres as metres: half strength, a
+     * radius of 2 (an eighth of the screen's height, off world space), power 2, bias 3, quality 50, faded out from 30 m to 80 m.
+     */
+    public static final float DEFAULT_AO_INTENSITY = 0.5f, DEFAULT_AO_RADIUS = 2f, DEFAULT_AO_POWER = 2f, DEFAULT_AO_BIAS = 3f,
+            DEFAULT_AO_QUALITY = 50f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -144,6 +153,11 @@ public final class CgPostSettings {
     volatile int motionBlurOverrides;
     volatile float mbAmount = DEFAULT_MB_AMOUNT, mbMax = DEFAULT_MB_MAX, mbPerObjectSize;
     volatile int mbTargetFps = DEFAULT_MB_TARGET_FPS;
+    volatile int ambientOcclusionOverrides;
+    volatile float aoIntensity = DEFAULT_AO_INTENSITY, aoRadius = DEFAULT_AO_RADIUS, aoPower = DEFAULT_AO_POWER,
+            aoBias = DEFAULT_AO_BIAS, aoQuality = DEFAULT_AO_QUALITY, aoFadeDistance = DEFAULT_AO_FADE_DISTANCE,
+            aoFadeRadius = DEFAULT_AO_FADE_RADIUS;
+    volatile boolean aoRadiusInWorldSpace;
     /** Its weighted blendables, replaced whole. */
     private volatile Blendable[] blendables = NO_BLENDABLES;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
@@ -809,6 +823,112 @@ public final class CgPostSettings {
         return mbPerObjectSize;
     }
 
+    /** Whether a setter set ambient occlusion's {@code bit} ({@link #AO_INTENSITY} and on). */
+    public boolean overridesAmbientOcclusion(int bit) {
+        return (ambientOcclusionOverrides & bit) != 0;
+    }
+
+    /** Ambient occlusion of {@code intensity} (0 to 1, Unreal's {@code AmbientOcclusionIntensity}) and {@code radius}. */
+    public CgPostSettings ambientOcclusion(float intensity, float radius) {
+        return ambientOcclusionIntensity(intensity).ambientOcclusionRadius(radius);
+    }
+
+    /** How far the occlusion darkens, 0 (none) to 1. */
+    public CgPostSettings ambientOcclusionIntensity(float intensity) {
+        aoIntensity = clamp(intensity);
+        ambientOcclusionOverrides |= AO_INTENSITY;
+        return this;
+    }
+
+    /**
+     * How far it reaches: in world space, metres; else a share of the screen's height, 2 an eighth (Unreal's 200). GTAO
+     * reaches its own 2 m ({@code r.GTAO.FalloffEnd}).
+     */
+    public CgPostSettings ambientOcclusionRadius(float radius) {
+        aoRadius = Math.max(0f, radius);
+        ambientOcclusionOverrides |= AO_RADIUS;
+        return this;
+    }
+
+    /** Whether the radius is metres in the world rather than a share of the screen (Unreal's {@code AmbientOcclusionRadiusInWS}). */
+    public CgPostSettings ambientOcclusionRadiusInWorldSpace(boolean world) {
+        aoRadiusInWorldSpace = world;
+        ambientOcclusionOverrides |= AO_RADIUS_IN_WORLD_SPACE;
+        return this;
+    }
+
+    /** The occlusion's contrast, 0.1 to 8: its value raised to it before the intensity. */
+    public CgPostSettings ambientOcclusionPower(float power) {
+        aoPower = Math.max(0.1f, Math.min(8f, power));
+        ambientOcclusionOverrides |= AO_POWER;
+        return this;
+    }
+
+    /** SSAO's tolerance for a surface occluding itself, 0 to 10 (thousandths of its horizon). */
+    public CgPostSettings ambientOcclusionBias(float bias) {
+        aoBias = Math.max(0f, Math.min(10f, bias));
+        ambientOcclusionOverrides |= AO_BIAS;
+        return this;
+    }
+
+    /** Its samples, 0 to 100, under the player's most ({@code ambient_occlusion_max_quality}). */
+    public CgPostSettings ambientOcclusionQuality(float quality) {
+        aoQuality = Math.max(0f, Math.min(100f, quality));
+        ambientOcclusionOverrides |= AO_QUALITY;
+        return this;
+    }
+
+    /** The distance, metres, past which nothing is occluded; it fades in over {@link #ambientOcclusionFadeRadius} before. */
+    public CgPostSettings ambientOcclusionFadeDistance(float metres) {
+        aoFadeDistance = Math.max(0f, metres);
+        ambientOcclusionOverrides |= AO_FADE_DISTANCE;
+        return this;
+    }
+
+    /** How far, metres, before the fade distance the occlusion starts fading. */
+    public CgPostSettings ambientOcclusionFadeRadius(float metres) {
+        aoFadeRadius = Math.max(0f, metres);
+        ambientOcclusionOverrides |= AO_FADE_RADIUS;
+        return this;
+    }
+
+    /** Whether ambient occlusion darkens at all: Unreal's floors on its intensity and radius. */
+    public boolean ambientOcclusionOn() {
+        return aoIntensity > 0f && aoRadius >= 0.001f;
+    }
+
+    public float ambientOcclusionIntensity() {
+        return aoIntensity;
+    }
+
+    public float ambientOcclusionRadius() {
+        return aoRadius;
+    }
+
+    public boolean ambientOcclusionRadiusInWorldSpace() {
+        return aoRadiusInWorldSpace;
+    }
+
+    public float ambientOcclusionPower() {
+        return aoPower;
+    }
+
+    public float ambientOcclusionBias() {
+        return aoBias;
+    }
+
+    public float ambientOcclusionQuality() {
+        return aoQuality;
+    }
+
+    public float ambientOcclusionFadeDistance() {
+        return aoFadeDistance;
+    }
+
+    public float ambientOcclusionFadeRadius() {
+        return aoFadeRadius;
+    }
+
     public float bloom() {
         return bloom;
     }
@@ -1081,6 +1201,15 @@ public final class CgPostSettings {
         mbMax = DEFAULT_MB_MAX;
         mbPerObjectSize = 0f;
         mbTargetFps = DEFAULT_MB_TARGET_FPS;
+        ambientOcclusionOverrides = 0;
+        aoIntensity = DEFAULT_AO_INTENSITY;
+        aoRadius = DEFAULT_AO_RADIUS;
+        aoPower = DEFAULT_AO_POWER;
+        aoBias = DEFAULT_AO_BIAS;
+        aoQuality = DEFAULT_AO_QUALITY;
+        aoFadeDistance = DEFAULT_AO_FADE_DISTANCE;
+        aoFadeRadius = DEFAULT_AO_FADE_RADIUS;
+        aoRadiusInWorldSpace = false;
         for (int i = 0; i < drawnCount; i++) drawn[i] = null;
         drawnCount = 0;
     }
@@ -1138,6 +1267,18 @@ public final class CgPostSettings {
             if ((mo & MB_PER_OBJECT_SIZE) != 0) mbPerObjectSize += (from.mbPerObjectSize - mbPerObjectSize) * weight;
             if ((mo & MB_TARGET_FPS) != 0 && weight >= 0.5f) mbTargetFps = from.mbTargetFps;
             motionBlurOverrides |= mo;
+        }
+        int ao = from.ambientOcclusionOverrides;
+        if (ao != 0) {
+            if ((ao & AO_INTENSITY) != 0) aoIntensity += (from.aoIntensity - aoIntensity) * weight;
+            if ((ao & AO_RADIUS) != 0) aoRadius += (from.aoRadius - aoRadius) * weight;
+            if ((ao & AO_POWER) != 0) aoPower += (from.aoPower - aoPower) * weight;
+            if ((ao & AO_BIAS) != 0) aoBias += (from.aoBias - aoBias) * weight;
+            if ((ao & AO_QUALITY) != 0) aoQuality += (from.aoQuality - aoQuality) * weight;
+            if ((ao & AO_FADE_DISTANCE) != 0) aoFadeDistance += (from.aoFadeDistance - aoFadeDistance) * weight;
+            if ((ao & AO_FADE_RADIUS) != 0) aoFadeRadius += (from.aoFadeRadius - aoFadeRadius) * weight;
+            if ((ao & AO_RADIUS_IN_WORLD_SPACE) != 0 && weight >= 0.5f) aoRadiusInWorldSpace = from.aoRadiusInWorldSpace;
+            ambientOcclusionOverrides |= ao;
         }
         Blendable[] bs = from.blendables;
         for (Blendable b : bs) {

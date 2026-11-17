@@ -37,11 +37,13 @@ import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.look.CgLookIds;
 import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
 import com.crystalgraphics.render.post.CgPostRenderer;
+import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.scene.component.CgPrimitiveComponent;
 import com.crystalgraphics.render.scene.pass.CgCommandForm;
 import com.crystalgraphics.render.scene.pass.CgViewPasses;
+import com.crystalgraphics.render.scene.renderer.feature.ao.CgAmbientOcclusion;
 import com.crystalgraphics.render.scene.renderer.feature.debug.CgOverdraw;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortion;
 import com.crystalgraphics.render.scene.renderer.feature.glow.CgSceneGlows;
@@ -175,6 +177,12 @@ public final class CgSceneRenderer {
         CgPipeline n = p.as(CgPipelineForm.NORMALS);
         return n != null ? n : p;
     };
+    /**
+     * A lit solid's depth, before ambient occlusion reads the scene's: with the solids already drawn, Unreal's forward
+     * DDM_AllOpaque prepass.
+     */
+    private final CgCommandForm lateSolidDepth = (rows, b, p) ->
+            queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD && CgMaterialProxy.of(rows.material(b)).solid() ? p : null;
     /** A masked solid's depth: the prepass, as Unreal's DDM_MaskedOnly. */
     private final CgCommandForm maskedPrepass = (rows, b, p) -> {
         int q = queue(rows, b);
@@ -464,7 +472,19 @@ public final class CgSceneRenderer {
         CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, translucentPrepass);
         if (prepass.size() > 0) scenePass(firing, "scene.translucentPrepass", constants, OPAQUE_STATE, false).add(prepass).end();
         CgDrawCommands late = passes.commands(CgEnginePasses.BASE, rec, lateSolid);
-        if (late.size() > 0) scenePass(firing, "scene.lateSolids", constants, OPAQUE_STATE, true).add(late).end();
+        if (late.size() > 0) {
+            // The lit solids read the screen's ambient occlusion, run once their depth joins the rest
+            CgGraphTexture occlusion = null;
+            CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
+            if (post != null && CgAmbientOcclusion.wants(view, post)) {
+                CgDrawCommands depth = passes.commands(CgEnginePasses.DEPTH, rec, lateSolidDepth);
+                if (depth.size() > 0) scenePass(firing, "scene.lateSolidsPrepass", constants, OPAQUE_STATE, false).add(depth).end();
+                occlusion = CgAmbientOcclusion.record(firing, rec, view, post);
+            }
+            CgRasterPass pass = scenePass(firing, "scene.lateSolids", constants, OPAQUE_STATE, true);
+            if (occlusion != null) pass.texture(CgBindingModel.AMBIENT_OCCLUSION, occlusion);
+            pass.add(late).end();
+        }
 
         boolean halfSize = view.flag(HALF_RESOLUTION);
         if (halfSize) half.recordHalf(firing, passes);

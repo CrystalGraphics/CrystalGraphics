@@ -26,15 +26,16 @@ import java.util.Arrays;
  */
 final class CgViewTextures {
 
-    private final CgTexture[] textures = new CgTexture[8];
+    private final CgTexture[] textures = new CgTexture[10];
     private final CgBindings bindings = new CgBindings();
     private int version, built = -1, builtConstants = -1;
     /**
      * The bindless path's index block: the view's textures at bindings 1 to 5 (scene depth, scene colour, lightmap,
-     * media, local lights), one uint each; a slot left bound reads none.
+     * media, local lights) and 9 (ambient occlusion), one uint each; a slot left bound reads none.
      */
-    private static final int FIRST = CgBindingModel.SCENE_DEPTH.binding(), COUNT = 5;
-    private static final int[] INDEX_OFFSETS = {0, 1, 2, 3, 4};
+    private static final int[] BINDINGS = {1, 2, 3, 4, 5, CgBindingModel.AMBIENT_OCCLUSION.binding()};
+    private static final int COUNT = BINDINGS.length;
+    private static final int[] INDEX_OFFSETS = {0, 1, 2, 3, 4, 5};
     private final CgTexture[] indexed = new CgTexture[COUNT];
 
     /** Forgets every texture: a pass begins. */
@@ -73,7 +74,7 @@ final class CgViewTextures {
         }
         if (indexing) {
             for (int i = 0; i < COUNT; i++) {
-                int binding = FIRST + i;
+                int binding = BINDINGS[i];
                 if (hostBound && mayBeHosts(binding)) {
                     indexed[i] = null;   // bound above; its index is never read
                     continue;

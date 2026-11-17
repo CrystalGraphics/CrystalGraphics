@@ -61,6 +61,18 @@ vec3 cg_subsurface_transmission(vec3 subsurfaceColor, float opacity, float occlu
     return color / 3.14159265 * mix(backScatter, 1.0, inScatter) * subsurfaceColor;
 }
 
+// Jimenez et al. 2016's multi-bounce: occlusion ao over a surface of albedo, lighter as light bounces off its walls
+// (Unreal's AOMultiBounce).
+vec3 cg_ao_multi_bounce(vec3 albedo, float ao) {
+    vec3 a = 2.0404 * albedo - 0.3324, b = -4.7951 * albedo + 0.6417, c = 2.7552 * albedo + 0.6903;
+    return max(vec3(ao), ((ao * a + b) * ao + c) * ao);
+}
+
+// Lagarde 2014's specular occlusion from ambient occlusion (Unreal's GetSpecularOcclusion).
+float cg_specular_occlusion(float nov, float roughSq, float ao) {
+    return clamp(pow(nov + ao, roughSq) - 1.0 + ao, 0.0, 1.0);
+}
+
 #if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
 // The radiance s gives off toward the eye at camera-relative position p: its base colour, metallic, specular, roughness,
 // ambient occlusion (of the sky's light alone) and world normal; with subsurface, its subsurface colour through its
@@ -71,7 +83,12 @@ vec3 cg_default_lit(CgSurface s, vec3 p, bool subsurface) {
     vec3 diffuse = s.baseColor * (1.0 - metal), f0 = mix(vec3(0.08 * clamp(s.specular, 0.0, 1.0)), s.baseColor, metal);
     vec3 n = normalize(s.normal), v = normalize(-p);
     float nov = clamp(abs(dot(n, v)) + 1.0e-5, 0.0, 1.0);
-    vec3 radiance = (diffuse + cg_default_lit_env(f0, rough, nov)) * cg_SceneDecode(CG_SKY_LIGHT_COLOR) * occlusion;
+    // The sky under Unreal's indirect occlusion: the screen's, and the material's through multi-bounce on the diffuse and
+    // as specular occlusion on the reflection
+    float specularOcclusion = cg_specular_occlusion(nov, rough * rough, occlusion);
+    vec3 sky = diffuse * cg_ao_multi_bounce(s.baseColor, occlusion)
+            + cg_default_lit_env(f0, rough, nov) * cg_ao_multi_bounce(f0, specularOcclusion);
+    vec3 radiance = sky * cg_SceneDecode(CG_SKY_LIGHT_COLOR) * cg_ScreenAmbientOcclusion();
 
     vec3 sun = cg_SceneDecode(CG_DIRECTIONAL_LIGHT_COLOR) * CG_DIRECTIONAL_SHADOW(p);
     radiance += cg_default_lit_light(diffuse, f0, rough, n, v, CG_DIRECTIONAL_LIGHT_DIRECTION, sun);

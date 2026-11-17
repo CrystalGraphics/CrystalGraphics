@@ -18,6 +18,7 @@ import com.crystalgraphics.render.view.CgViewRenderTarget;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
 import com.crystalgraphics.render.post.motionblur.CgMotionBlur;
+import com.crystalgraphics.render.scene.renderer.feature.ao.CgAmbientOcclusion;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
@@ -109,6 +110,7 @@ public final class CgPostRenderer {
         CgBloom.precache();
         CgTemporalSuperResolution.precache();
         CgMotionBlur.precache();
+        CgAmbientOcclusion.precache();
         CgFilmLut.precache();
         CgLookWeights.precache();
     }
@@ -160,10 +162,16 @@ public final class CgPostRenderer {
      * textures for what this frame's effects read (a drawn impact frame's subject, the scene textures a post material
      * is handed).
      */
+    /** {@code view}'s post settings as {@link #prepare} blended them this frame. */
+    public static CgPostSettings settings(CgView view) {
+        return view.state().get(SETTINGS);
+    }
+
     public static void prepare(CgView view) {
         CgPostSettings settings = view.state().get(SETTINGS);
         settings.reset();
         CgMotionBlur.defaults(settings);
+        CgAmbientOcclusion.defaults(settings);
         settings.blend(view.post().settings(), 1f, 0.5f, 0.5f);
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
         settings.blend(view.post().camera(), 1f, 0.5f, 0.5f);
