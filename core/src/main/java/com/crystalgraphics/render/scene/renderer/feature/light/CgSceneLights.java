@@ -474,6 +474,18 @@ public final class CgSceneLights {
     }
 
     /**
+     * Binds no lights to {@code material}, a program composing its own, where nothing was ever bound: what a draw of it
+     * before this frame's {@link #hand} binds, as its depth in the all-opaque prepass does (Unreal binds an empty
+     * buffer where a parameter is unset). Once per material; {@link #hand} replaces it.
+     */
+    public void handNone(CgMaterialInterface material, CgRecording recording) {
+        CgMaterialProxy proxy = CgMaterialProxy.of(material);
+        if (proxy.hasBuffer("WORLD_LIGHTS")) return;
+        CgGraphBuffer none = list.zeroes(recording);
+        proxy.buffer("WORLD_LIGHTS", none).buffer("WORLD_LIGHT_CELLS", none).buffer("WORLD_LIGHT_INDICES", none);
+    }
+
+    /**
      * Binds the sun's shadow map to {@code material}, a program composing its own ({@code env/handed/sun.glsl}): this
      * firing's after {@link #apply} in a transparent firing, none in an opaque one, whose pixels the deferred pass
      * shadows.

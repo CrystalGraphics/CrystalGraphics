@@ -51,7 +51,7 @@ public final class CgShaderPass {
     private final boolean copiesForward;
 
     private final boolean clips, namesGlow, namesSurfaceNormal, namesSurfaceEmissive, namesVolumeDepth, readsEmission,
-            namesEmissivePass, namesClip, simpleBody;
+            namesEmissivePass, namesClip, namesPixelDepthOffset, simpleBody;
     private final Set<String> vertexNames;
     private Set<String> identifiers;
 
@@ -75,17 +75,20 @@ public final class CgShaderPass {
         namesSurfaceEmissive = fragment.names("CG_SURFACE_EMISSIVE");
         namesVolumeDepth = fragment.names("CG_VOLUME_DEPTH");
         readsEmission = fragment.names("CG_EMISSION");
-        boolean inCode = false, clipInCode = false;
+        boolean inCode = false, clipInCode = false, offsetInCode = false;
         for (String d : directives) {
             CgCodeScan s = CgCodeScan.of(d);
             inCode |= s.names("CG_EMISSIVE_PASS");
             clipInCode |= s.names("cg_Clip");
+            offsetInCode |= s.names("CG_PIXEL_DEPTH_OFFSET");
         }
         for (Code c : code) {
             CgCodeScan s = CgCodeScan.of(c.text());
             inCode |= s.names("CG_EMISSIVE_PASS");
             clipInCode |= s.names("cg_Clip");
+            offsetInCode |= s.names("CG_PIXEL_DEPTH_OFFSET");
         }
+        namesPixelDepthOffset = offsetInCode || fragment.names("CG_PIXEL_DEPTH_OFFSET");
         namesEmissivePass = inCode || fragment.names("CG_EMISSIVE_PASS") || vertex.names("CG_EMISSIVE_PASS");
         namesClip = clipInCode || fragment.names("cg_Clip");
         vertexNames = vertex.identifiers();
@@ -120,6 +123,7 @@ public final class CgShaderPass {
         this.readsEmission = of.readsEmission;
         this.namesEmissivePass = of.namesEmissivePass;
         this.namesClip = of.namesClip;
+        this.namesPixelDepthOffset = of.namesPixelDepthOffset;
         this.vertexNames = of.vertexNames;
         this.identifiers = of.identifiers;
         this.simpleBody = of.simpleBody;
@@ -212,6 +216,11 @@ public final class CgShaderPass {
     /** Whether its fragment or code names {@code cg_Clip}. */
     public boolean namesClip() {
         return namesClip;
+    }
+
+    /** Whether its fragment or code names {@code CG_PIXEL_DEPTH_OFFSET}: it writes its depth, so a depth pass runs it. */
+    public boolean namesPixelDepthOffset() {
+        return namesPixelDepthOffset;
     }
 
     /**

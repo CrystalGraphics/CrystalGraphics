@@ -9033,6 +9033,7 @@ com/crystalgraphics/material/CgMaterialProxy
   method public handedLights ()Z
   method public handedScene ()Z
   method public handedSun ()Z
+  method public hasBuffer (Ljava/lang/String;)Z
   method public hasCompiledDepthPass ()Z
   method public hasDepthPrepass ()Z
   method public hasDistortionPass ()Z
@@ -9216,6 +9217,7 @@ com/crystalgraphics/material/shader/CgShaderPass
   method public namesClip ()Z
   method public namesEmissivePass ()Z
   method public namesGlow ()Z
+  method public namesPixelDepthOffset ()Z
   method public namesSurfaceEmissive ()Z
   method public namesSurfaceNormal ()Z
   method public namesVolumeDepth ()Z
@@ -14348,6 +14350,7 @@ com/crystalgraphics/render/scene/renderer/CgSceneRenderer
 com/crystalgraphics/render/scene/renderer/feature/ao/CgAmbientOcclusion
   access public,final
   extends java/lang/Object
+  field public,static,final RESULT Lcom/crystalgraphics/render/view/CgViewKey;
   method public,static defaults (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public,static precache ()V
   method public,static ready ()Z
@@ -14536,6 +14539,7 @@ com/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights
   method public gridX ()I
   method public gridY ()I
   method public hand (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/render/graph/CgRecording;)V
+  method public handNone (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/render/graph/CgRecording;)V
   method public handSun (Lcom/crystalgraphics/api/material/CgMaterialInterface;Z)V
   method public indices ()Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public into (Lcom/crystalgraphics/render/graph/CgDispatch;)Lcom/crystalgraphics/render/graph/CgDispatch;

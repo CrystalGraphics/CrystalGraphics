@@ -9,6 +9,7 @@ import com.crystalgraphics.render.post.CgPostContext;
 import com.crystalgraphics.render.post.bloom.CgBloom;
 import com.crystalgraphics.render.look.CgLookWeights;
 import com.crystalgraphics.render.post.tsr.CgTemporalSuperResolution;
+import com.crystalgraphics.render.scene.renderer.feature.ao.CgAmbientOcclusion;
 import com.crystalgraphics.render.scene.renderer.feature.distortion.CgDistortionField;
 import com.crystalgraphics.variable.CgVar;
 
@@ -20,7 +21,8 @@ import com.crystalgraphics.variable.CgVar;
  * 50 in red and green, the split in blue), {@code =velocity} what the velocity pass wrote (0.5 + texels a frame / 32 in
  * red and green, blue where it wrote, half blue where a blended draw covered, black where nothing did: every engine solid
  * writes while it shows), {@code =tsr.rejection|tsr.samples|tsr.guide|tsr.reprojection|tsr.flicker|tsr.resurrection}
- * one of TSR's passes' targets ({@code CgTemporalSuperResolution}'s visualize kernel says what each colour is). Each post
+ * one of TSR's passes' targets ({@code CgTemporalSuperResolution}'s visualize kernel says what each colour is),
+ * {@code =ao} the ambient occlusion as grey (white open, Unreal's {@code VisualizeSSAO}). Each post
  * chain runs it as its last step while the variable is set, following it as it changes.
  */
 public final class CgPostDebug {
@@ -29,7 +31,7 @@ public final class CgPostDebug {
     private static final String DISTORTION_SHADER = "crystalgraphics:shaders/post/debug_distortion.shader";
     private static final String VELOCITY_SHADER = "crystalgraphics:shaders/post/debug_velocity.shader";
 
-    private static final int OVERDRAW = -2, DISTORTION = -3, VELOCITY = -4, TSR = -5, LOOKS = -6;
+    private static final int OVERDRAW = -2, DISTORTION = -3, VELOCITY = -4, TSR = -5, LOOKS = -6, AO = -7;
 
     /** {@link #OVERDRAW}, {@link #DISTORTION}, {@link #VELOCITY}, else bloom's stage. */
     private final int level;
@@ -48,7 +50,8 @@ public final class CgPostDebug {
                     + " distortion: the distortion target, |offset| x 50 in red and green, the split in blue."
                     + " velocity: what the velocity pass wrote, 0.5 + texels a frame / 32 in red and green, blue where it"
                     + " wrote. tsr.rejection, tsr.samples, tsr.guide, tsr.reprojection, tsr.flicker, tsr.resurrection: TSR's"
-                    + " passes. looks: the look weights (CgLookWeights), look channels 0-2 in red, green and blue.");
+                    + " passes. looks: the look weights (CgLookWeights), look channels 0-2 in red, green and blue."
+                    + " ao: the ambient occlusion as grey, white open.");
 
     /** The view {@code view} names ({@link #VIEW}'s values); null for empty. Throws on a value it cannot read. */
     public static CgPostDebug of(String view) {
@@ -57,6 +60,7 @@ public final class CgPostDebug {
         if (view.equals("distortion")) return new CgPostDebug(DISTORTION);
         if (view.equals("velocity")) return new CgPostDebug(VELOCITY);
         if (view.equals("looks")) return new CgPostDebug(LOOKS);
+        if (view.equals("ao")) return new CgPostDebug(AO);
         if (CgTemporalSuperResolution.debugMode(view) > 0) return new CgPostDebug(TSR);
         if (view.startsWith("level")) {
             try {
@@ -66,7 +70,7 @@ public final class CgPostDebug {
             }
         }
         throw new IllegalArgumentException("crystalgraphics.post.debug=" + view
-                + ": overdraw, distortion, velocity, looks, level<N> or tsr.<rejection|samples|guide|reprojection|flicker|resurrection>");
+                + ": overdraw, distortion, velocity, looks, ao, level<N> or tsr.<rejection|samples|guide|reprojection|flicker|resurrection>");
     }
 
     /** Whether it shows the velocity target: the frame asks for it, every engine solid writing. */
@@ -93,6 +97,9 @@ public final class CgPostDebug {
         } else if (level == LOOKS) {
             source = CgLookWeights.current(ctx.view());
             if (source == null) return picture;
+        } else if (level == AO) {
+            source = ctx.view().read(CgAmbientOcclusion.RESULT);
+            if (source == null) return picture;
         } else if (level < 0) {
             source = ctx.scene().overdraw();
             if (source == null) return picture;
@@ -106,7 +113,7 @@ public final class CgPostDebug {
         if (material == null) {
             CgMaterial shown = CgMaterial.load(level == DISTORTION ? DISTORTION_SHADER
                     : level == VELOCITY ? VELOCITY_SHADER : SHADER);
-            material = (level == OVERDRAW ? shown.keyword("HEAT", true) : shown).instance();
+            material = (level == OVERDRAW ? shown.keyword("HEAT", true) : level == AO ? shown.keyword("GREY", true) : shown).instance();
         }
         if (source != bound || count != boundCount) {
             if (level == DISTORTION) material.sampler("_Fields", 0, source).set1i("_FieldCount", count);

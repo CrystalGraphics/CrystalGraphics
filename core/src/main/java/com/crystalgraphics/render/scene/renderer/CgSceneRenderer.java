@@ -162,6 +162,8 @@ public final class CgSceneRenderer {
     private final float[] casterTransform = new float[16];
     private final Matrix4f casterBasis = new Matrix4f();
     private final IdentityHashMap<CgRenderState, CgRenderState> customDataStates = new IdentityHashMap<>();
+    /** A depth-writing state tested near-or-equal and writing none, by the state it came from. */
+    private final IdentityHashMap<CgRenderState, CgRenderState> depthReadStates = new IdentityHashMap<>();
     @Nullable
     private CgMaterialInterface depthIn;
     /** The custom data and depth targets, kept while the view's size holds: a steady frame makes no handle. */
@@ -170,29 +172,33 @@ public final class CgSceneRenderer {
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
-    /** Solid, queued before the translucent: the opaque callback's base pass; with our normals beside it. */
-    private final CgCommandForm opaque = (rows, b, p) -> queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD ? p : null;
+    /**
+     * Solid, queued before the translucent: the opaque callback's base pass, testing the prepass's depth near-or-equal
+     * and writing none; with our normals beside it.
+     */
+    private final CgCommandForm opaque = (rows, b, p) -> queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD ? depthRead(p) : null;
     private final CgCommandForm opaqueNormals = (rows, b, p) -> {
         if (queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD) return null;
         CgPipeline n = p.as(CgPipelineForm.NORMALS);
-        return n != null ? n : p;
+        return depthRead(n != null ? n : p);
     };
     /**
-     * A lit solid's depth, before ambient occlusion reads the scene's: with the solids already drawn, Unreal's forward
-     * DDM_AllOpaque prepass.
+     * Every solid's depth, the lit solids queued after the lights too: the all-opaque prepass forward shading forces
+     * (Unreal's DDM_AllOpaque), before the base pass and the ambient occlusion.
      */
-    private final CgCommandForm lateSolidDepth = (rows, b, p) ->
-            queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD && CgMaterialProxy.of(rows.material(b)).solid() ? p : null;
-    /** A masked solid's depth: the prepass, as Unreal's DDM_MaskedOnly. */
-    private final CgCommandForm maskedPrepass = (rows, b, p) -> {
-        int q = queue(rows, b);
-        return q >= CgRenderQueue.ALPHA_TEST_THRESHOLD && q < CgRenderQueue.TRANSPARENT_THRESHOLD ? p : null;
-    };
+    private final CgCommandForm allOpaquePrepass = (rows, b, p) ->
+            queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD || CgMaterialProxy.of(rows.material(b)).solid() ? p : null;
     /** A translucent draw with a depth prepass ({@code "Depth" = "Prepass"}). */
     private final CgCommandForm translucentPrepass = (rows, b, p) ->
             queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD && CgMaterialProxy.of(rows.material(b)).hasDepthPrepass() ? p : null;
-    /** A solid queued with the translucent (a program lighting itself, drawn after the lights). */
-    private final CgCommandForm lateSolid = (rows, b, p) -> queue(rows, b) >= CgRenderQueue.TRANSPARENT_THRESHOLD ? p : null;
+    /**
+     * A solid queued with the translucent (a program lighting itself, drawn after the lights), on the prepass's depth as
+     * the base pass is.
+     */
+    private final CgCommandForm lateSolid = (rows, b, p) -> {
+        if (queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD) return null;
+        return CgMaterialProxy.of(rows.material(b)).solid() ? depthRead(p) : p;
+    };
     /** The translucent passes: a glow folded into its colour where it merges, a graded draw's layer its second output. */
     private final CgCommandForm translucent = this::translucentForm;
     /** Custom data, tested against the scene's depth and writing none. */
@@ -313,12 +319,21 @@ public final class CgSceneRenderer {
                 boolean opaqueScene = colour.opaqueIn(firing);
                 cull(firing, passes);
                 CgPassConstants constants = firing.constants().sceneGlow(view.flag(SCENE_EMISSION));
-                CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, maskedPrepass);
+                // Every solid's depth first, then the screen's ambient occlusion from it, before any solid shades. A lit
+                // solid draws its depth before the lights are handed it: none, until they are
+                for (int b = 0, count = rows.size(); b < count; b++) {
+                    if (CgMaterialProxy.of(rows.material(b)).handedLights()) lights.handNone(rows.material(b), rec);
+                }
+                CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, allOpaquePrepass);
                 if (prepass.size() > 0) scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false).add(prepass).end();
+                CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
+                CgGraphTexture occlusion = post != null && prepass.size() > 0 && CgAmbientOcclusion.wants(view, post)
+                        ? CgAmbientOcclusion.record(firing, rec, view, post) : null;
                 CgDrawCommands base = passes.commands(CgEnginePasses.BASE, rec, n != null ? opaqueNormals : opaque);
                 if (base.size() > 0) {
                     CgRasterPass pass = scenePass(firing, "scene.base", constants, OPAQUE_STATE, true);
                     if (n != null) pass.colorIfTaken(n, CgLoad.load());
+                    if (occlusion != null) pass.texture(CgBindingModel.AMBIENT_OCCLUSION, occlusion);
                     pass.add(base).end();
                 }
                 if (opaqueScene) colour.opaqueOut(firing);
@@ -473,14 +488,8 @@ public final class CgSceneRenderer {
         if (prepass.size() > 0) scenePass(firing, "scene.translucentPrepass", constants, OPAQUE_STATE, false).add(prepass).end();
         CgDrawCommands late = passes.commands(CgEnginePasses.BASE, rec, lateSolid);
         if (late.size() > 0) {
-            // The lit solids read the screen's ambient occlusion, run once their depth joins the rest
-            CgGraphTexture occlusion = null;
-            CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
-            if (post != null && CgAmbientOcclusion.wants(view, post)) {
-                CgDrawCommands depth = passes.commands(CgEnginePasses.DEPTH, rec, lateSolidDepth);
-                if (depth.size() > 0) scenePass(firing, "scene.lateSolidsPrepass", constants, OPAQUE_STATE, false).add(depth).end();
-                occlusion = CgAmbientOcclusion.record(firing, rec, view, post);
-            }
+            // The lit solids read the ambient occlusion the opaque callback ran from the prepass
+            CgGraphTexture occlusion = view.read(CgAmbientOcclusion.RESULT);
             CgRasterPass pass = scenePass(firing, "scene.lateSolids", constants, OPAQUE_STATE, true);
             if (occlusion != null) pass.texture(CgBindingModel.AMBIENT_OCCLUSION, occlusion);
             pass.add(late).end();
@@ -586,6 +595,18 @@ public final class CgSceneRenderer {
     /** Row {@code b}'s material queue. */
     public static int queue(CgMeshBatches rows, int b) {
         return rows.material(b).renderQueue();
+    }
+
+    /**
+     * {@code p} on the all-opaque prepass's depth: a state writing depth tests near-or-equal and writes none (Unreal's
+     * base pass under a full prepass, {@code DepthRead} and {@code CF_DepthNearOrEqual}); any other as it is.
+     */
+    private CgPipeline depthRead(CgPipeline p) {
+        CgDepthState depth = p.state().getDepth();
+        if (depth == null || !depth.write()) return p;
+        CgRenderState own = p.state(), read = depthReadStates.get(own);
+        if (read == null) depthReadStates.put(own, read = own.withDepth(CgDepthState.TEST_ONLY));
+        return p.withState(read);
     }
 
     /** Whether a translucent row lights its surface by the scene's lights (a lit translucent material). */

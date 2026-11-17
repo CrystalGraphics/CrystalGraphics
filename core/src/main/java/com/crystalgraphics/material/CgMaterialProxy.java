@@ -1036,6 +1036,11 @@ public final class CgMaterialProxy {
         return this;
     }
 
+    /** Whether a buffer is bound as {@code name} ({@link #buffer}). */
+    public boolean hasBuffer(String name) {
+        return buffers != null && buffers.containsKey(name);
+    }
+
     /**
      * The properties block as it is now, persistent: a new version only after a value moved (counted,
      * {@code material.block-writes}), so an unchanged material uploads nothing frame to frame. In its shader's arena

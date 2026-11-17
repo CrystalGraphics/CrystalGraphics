@@ -12,6 +12,7 @@ import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.stage.CgStageFiring;
 import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewKey;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.settings.CgQuality;
@@ -30,8 +31,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * view.post().settings().ambientOcclusionRadiusInWorldSpace(true);
  * }</pre>
  *
- * <p>It runs where the lit solids draw, after the lights: their depth first, so it sees every opaque surface, ours and
- * the host's, and only they read it. A translucent or a host's surface never does, as in Unreal.
+ * <p>It runs once the all-opaque prepass holds every solid's depth, ours and the host's, before any solid shades: the
+ * base pass and the lit solids read it. A translucent or a host's surface never does, as in Unreal.
  */
 public final class CgAmbientOcclusion {
 
@@ -53,6 +54,8 @@ public final class CgAmbientOcclusion {
     /** GTAO's taps a side by shader level ({@code GTAO_NUMTAPS}). */
     private static final int[] GTAO_TAPS = {4, 6, 8, 8, 8};
     private static final int GPU_AO = CgGpuTrace.name("world.ambientOcclusion");
+    /** This frame's occlusion, published for {@code crystalgraphics.post.debug=ao}; absent where none ran. */
+    public static final CgViewKey<CgGraphTexture> RESULT = new CgViewKey<>("crystalgraphics:ambient_occlusion");
     private static final CgViewState.Key<Targets> TARGETS = new CgViewState.Key<>("crystalgraphics:ambient_occlusion", Targets::new);
 
     private static CgKernel viewDepth, depthMip, gtao, denoise, ssao;
@@ -87,8 +90,9 @@ public final class CgAmbientOcclusion {
     }
 
     /**
-     * This firing's occlusion, once {@code stage}'s depth holds every opaque surface: the texture the lit solids bind at
-     * {@code CgBindingModel.AMBIENT_OCCLUSION}, 1 where open; null where its kernels are not built yet.
+     * This firing's occlusion, once {@code stage}'s depth holds every opaque surface: the texture the solids bind at
+     * {@code CgBindingModel.AMBIENT_OCCLUSION}, 1 where open, published as {@link #RESULT} for the rest of the frame;
+     * null where its kernels are not built yet.
      */
     @Nullable
     public static CgGraphTexture record(CgStageFiring stage, CgRecording recording, CgView view, CgPostSettings s) {
@@ -97,7 +101,7 @@ public final class CgAmbientOcclusion {
         // The render size: a host's depth, imported, does not know its own
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
         boolean gtaoMethod = Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1;
-        Targets t = view.state().get(TARGETS).size(w, h, gtaoMethod);
+        Targets t = view.state().get(TARGETS).size(recording, w, h, gtaoMethod);
         int level = shaderLevel(s);
         float fadeRadius = Math.max(0.01f, s.ambientOcclusionFadeRadius());
         float fadeMul = 1f / fadeRadius, fadeAdd = -(s.ambientOcclusionFadeDistance() - fadeRadius) / fadeRadius;
@@ -131,6 +135,7 @@ public final class CgAmbientOcclusion {
                     .set("_Output", s.ambientOcclusionIntensity(), s.ambientOcclusionPower(), fadeMul, fadeAdd);
         }
         pass.end();
+        view.publish(RESULT, t.ao);
         return t.ao;
     }
 
@@ -170,19 +175,26 @@ public final class CgAmbientOcclusion {
         for (CgKernel k : new CgKernel[] {viewDepth, depthMip, gtao, denoise, ssao}) k.precache();
     }
 
-    /** A view's textures, remade when its size or method changes. */
+    /**
+     * A view's textures, remade when its size or method changes. The occlusion is kept, not transient: what reads it
+     * may record in a later firing than the one it runs in (Unreal's {@code ScreenSpaceAO} lives the frame's length).
+     */
     private static final class Targets {
         final CgGraphTexture[] depth = new CgGraphTexture[LEVELS];
         CgGraphTexture working, ao;
         int w, h;
         boolean gtao;
 
-        Targets size(int width, int height, boolean method) {
+        Targets size(CgRecording recording, int width, int height, boolean method) {
             if (ao != null && width == w && height == h && method == gtao) return this;
+            if (ao != null && (width != w || height != h)) {
+                recording.release(ao);
+                ao = null;
+            }
             w = width;
             h = height;
             gtao = method;
-            ao = CgGraphTexture.transientTexture("cg_ambient_occlusion", new CgTextureDesc(w, h, CgFormat.R16_FLOAT));
+            if (ao == null) ao = CgGraphTexture.requested("cg_ambient_occlusion", new CgTextureDesc(w, h, CgFormat.R16_FLOAT));
             if (method) {
                 for (int l = 0; l < LEVELS; l++) {
                     depth[l] = CgGraphTexture.transientTexture("cg_ambient_occlusion.depth" + l,

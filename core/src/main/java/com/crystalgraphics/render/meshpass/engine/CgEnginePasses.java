@@ -273,12 +273,17 @@ public final class CgEnginePasses {
         out.draw(batch, batch.material(), forward == null ? null : forward.as(CgPipelineForm.CUSTOM_DATA));
     }
 
-    /** A material's depth prepass, or its Forward pass writing depth alone; null while it does not parse. */
+    /**
+     * A material's depth draw: its Forward pipeline's {@link CgPipelineForm#DEPTH} form (no fragment work, the fragment
+     * run to its clip where it clips), what Unreal's depth pass draws a solid with ({@code GetDepthPassShaders}); a
+     * pipeline the form refuses, a blend writing depth, draws its Forward pass colourless. Null while it does not parse.
+     */
     @Nullable
     public static CgPipeline depthPipeline(CgMaterialInterface material) {
         CgPipeline forward = CgMeshPassCommands.pipeline(material, CgRenderPassVariant.FORWARD);
         if (forward == null) return null;
-        if (CgMaterialProxy.of(material).hasDepthPrepass()) return forward.as(CgPipelineForm.DEPTH);
+        CgPipeline depth = forward.as(CgPipelineForm.DEPTH);
+        if (depth != null) return depth;
         CgRenderState own = forward.state();
         return forward.withState(COLOURLESS.computeIfAbsent(own, s -> s.withColorMask(CgColorMask.NONE)));
     }

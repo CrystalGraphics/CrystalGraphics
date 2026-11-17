@@ -18,7 +18,7 @@ Unreal's `FDeferredShadingSceneRenderer`, cut to a forward renderer inside a hos
 | `feature/translucency/CgLayerPasses`, `CgSeparateTranslucency` | Look channels (`render/look/CgLookChannels`) and separate translucency: a graded translucent row drawn again into its channel's layer, the light and cover the look weights read; a graded solid writes its look id in custom stencil bits 5-7 instead |
 | `feature/distortion/CgDistortion`, `CgDistortionField` | Heat haze: bends drawn into an array, applies placed in the translucent pass, the final apply; the field published on the view |
 | `feature/light/CgSceneLights` | The scene's lights, lit deferred over the host's picture ([`docs/LIGHTS.md`](../../../../../../../../../docs/LIGHTS.md)): a firing's order over its parts, each one role. `CgLightCollector` the frame's CPU rows (components, `onceLights`, dynamic sources); `CgLightList` the firing's list, blocks and appenders; `CgLightGrid` the view's placement and the binned cells (LightGridInjection); `CgShadowCasters` our opaque draws as distance-field casters; `CgLightGBuffer` the normals; `CgMegaLights` the shadowed lights' sample, shade, temporal and denoise; `CgSunShadows` the sun's cascades, a shadow view each drawn through the `shadow_depth` mesh pass, skinned rows posed; `CgLightVolume` the translucency volume and the lit air; `CgLightSettings` the switches and quality tiers |
-| `feature/ao/CgAmbientOcclusion` | Screen-space ambient occlusion, Unreal's two methods (SSAO; GTAO ported from XeGTAO), run after the lit solids' depth joins the scene's and read by them alone as indirect occlusion (`cg_ScreenAmbientOcclusion`). The player's `AMBIENT_OCCLUSION*` settings, the post block's `ambient_occlusion`, the `ambientOcclusion` show flag |
+| `feature/ao/CgAmbientOcclusion` | Screen-space ambient occlusion, Unreal's two methods (SSAO; GTAO ported from XeGTAO), run from the all-opaque prepass's depth before any solid shades, and read by the base pass and the lit solids as indirect occlusion (`cg_ScreenAmbientOcclusion`). A kept texture, published as `RESULT` (`crystalgraphics.post.debug=ao` shows it). The player's `AMBIENT_OCCLUSION*` settings, the post block's `ambient_occlusion`, the `ambientOcclusion` show flag |
 | `feature/media/CgSceneMedia` | Smoke in the air as a froxel grid, lit by the lights; the scene's `CgHazeComponent`s inject through the renderer's own injector |
 | `feature/field/CgVoxelWindow`, `CgVoxels`, `CgMeshDistanceFields`, `CgEntityBoxes` | The world, meshes and entities as distance fields: what shadow rays and particle collision read |
 | `feature/debug/CgOverdraw` | The overdraw view, under `view.showFlags().overdraw()` |
@@ -29,13 +29,14 @@ Unreal's `FDeferredShadingSceneRenderer`, cut to a forward renderer inside a hos
 
 **Opaque callback**: the client world's schedule once a frame (the scene's first view), the parameter collections,
 `CgScenePipelines.settle`; the scene's post volumes blended at the view's camera (`CgPostRenderer.prepare`); **`PREPARE`**; the keyed subject; the
-opaque scene in; the GPU cull; the masked prepass; the base pass (normals beside it where asked); the opaque scene out;
-**`OPAQUE`**.
+opaque scene in; the GPU cull; the all-opaque prepass (every solid, the lit solids queued late too, each through its
+`DEPTH` form); the ambient occlusion; the base pass, testing that depth and writing none (normals beside it where
+asked); the opaque scene out; **`OPAQUE`**.
 
 **Translucent callback**: the scene in; the labels' depth; custom data; custom depth; normals; the lights (record,
 casters, apply); the media; scene glows; decals; post before translucency; **`SURFACES`**; the translucent passes
-(prepass, the lit solids' depth and ambient occlusion where it runs, late solids, half size, volumes, distortion bends, the main pass with its applies, after distortion,
-separate); the layers; the subject; the overdraw view; the labels; **`TRANSLUCENT`**; post; **`OVERLAY`**.
+(the translucent prepass, the late solids on the prepass's depth and occlusion, half size, volumes, distortion bends,
+the main pass with its applies, after distortion, separate); the layers; the subject; the overdraw view; the labels; **`TRANSLUCENT`**; post; **`OVERLAY`**.
 
 ## Rules
 

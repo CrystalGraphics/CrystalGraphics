@@ -53,14 +53,18 @@ public enum CgPipelineForm {
         }
     },
     /**
-     * Depth alone where it is solid: a {@code "Depth" = "Prepass"} material's prepass, its fragment run up to
-     * {@code cg_Clip}. Both programs declare {@code invariant gl_Position}, so its colour draw passes its depth test
-     * exactly where this wrote.
+     * Depth alone: the all-opaque prepass's draw of a solid writing depth, and a {@code "Depth" = "Prepass"} material's
+     * solid core. Its vertex is the Forward pass's; its fragment is empty, run up to {@code cg_Clip} where the material
+     * clips, and whole where it writes a pixel depth offset (Unreal's null and depth-only pixel shaders). Both programs
+     * declare {@code invariant gl_Position}, so its colour draw passes its depth test exactly where this wrote.
      */
     DEPTH(CgEngineKeywords.DEPTH_PREPASS, true, false) {
         @Override
         boolean admits(CgShaderSpec parsed, CgRenderState own) {
-            return parsed.depthMode() == CgShaderSpec.DepthMode.PREPASS;
+            if (parsed.depthMode() == CgShaderSpec.DepthMode.PREPASS) return true;
+            CgDepthState depth = own.getDepth();
+            CgBlendState blend = own.getBlend();
+            return depth != null && depth.test() && depth.write() && (blend == null || !blend.enabled());
         }
 
         @Override

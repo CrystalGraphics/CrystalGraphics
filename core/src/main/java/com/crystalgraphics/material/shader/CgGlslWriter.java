@@ -201,10 +201,11 @@ public final class CgGlslWriter {
         boolean normals = forward(pass, keywords, CgEngineKeywords.NORMAL_TARGET);
         v2fBlock(sb, "out", pass, normals);
         code(sb, pass, CgShaderPass.VERTEX);
-        // Its prepass and its colour are two programs over one vertex body: invariance lands them on the same depth.
-        // A custom-data writer's redraw is tested against its colour draw's depth, as is a rows effect's layer redraw.
-        if (spec.depthMode() == CgShaderSpec.DepthMode.PREPASS || spec.writesCustomData()
-                || spec.engineBuffers().contains(CgShaderSpec.ROWS)) {
+        // A surface's prepass and its colour are two programs over one vertex body: invariance lands them on the same
+        // depth, which the base pass tests near-or-equal. A custom-data writer's redraw is tested against its colour
+        // draw's depth, as is a rows effect's layer redraw.
+        if (spec.domain() == CgMaterialDomain.SURFACE || spec.depthMode() == CgShaderSpec.DepthMode.PREPASS
+                || spec.writesCustomData() || spec.engineBuffers().contains(CgShaderSpec.ROWS)) {
             sb.append("invariant gl_Position;\n");
         }
         sb.append("// User vertex function\nvoid vertex(out v2f o) {\n").append(pass.vertexBody()).append("\n}\n");
@@ -259,6 +260,11 @@ public final class CgGlslWriter {
 
     private static String fragment(CgShaderSpec spec, CgShaderPass pass, List<CgAttachedBuffer> buffers,
                                    @Nullable CgUniformBuffer block, Set<String> keywords, Set<String> extensions) {
+        // Depth alone from a material cutting nothing and offsetting no depth: no fragment work (Unreal's null pixel shader)
+        if (keywords.contains(CgEngineKeywords.DEPTH_PREPASS) && spec.depthMode() == CgShaderSpec.DepthMode.NONE
+                && !pass.namesPixelDepthOffset()) {
+            return VERSION + "void main() {\n}\n";
+        }
         StringBuilder sb = new StringBuilder(8192).append(VERSION).append(CgBindless.header()).append(BINDLESS_EXTENSION);
         keywordDefines(sb, spec, keywords);
         sb.append("#define CG_FRAGMENT_STAGE 1\n");
@@ -312,7 +318,8 @@ public final class CgGlslWriter {
               .append(" * 0.5 + 0.5, _cg_eye) : vec4(0.0, 0.0, 0.0, -_cg_eye);\n");
         }
         sb.append(MATERIAL_LOAD).append('\n');
-        mainBody(sb, pass, spec, keywords.contains(CgEngineKeywords.DEBUG_OVERDRAW), cover, fold);
+        mainBody(sb, pass, spec, keywords.contains(CgEngineKeywords.DEBUG_OVERDRAW), cover, fold,
+                keywords.contains(CgEngineKeywords.DEPTH_PREPASS));
         if (solid) sb.append("  _cg_fragColor.a = 1.0;\n");
         if (customData && !layer) customData(sb);
         sb.append("}\n");
@@ -337,7 +344,7 @@ public final class CgGlslWriter {
 
     /** The generated main's body: the fragment run, then what the engine applies to its colour. */
     private static void mainBody(StringBuilder sb, CgShaderPass pass, CgShaderSpec spec, boolean overdraw, boolean cover,
-                                 boolean fold) {
+                                 boolean fold, boolean depthOnly) {
         sb.append("  v2f _v2f_local;\n");
         for (CgVarying v : pass.varyings()) {
             sb.append("  _v2f_local.").append(v.name()).append(" = _cg_v2f.").append(v.name()).append(";\n");
@@ -357,6 +364,8 @@ public final class CgGlslWriter {
                     + " * CG_EMISSIVE_DEPTH_SLACK + CG_EMISSIVE_DEPTH_BIAS) discard;\n");
         }
         sb.append("  fragment(_v2f_local, _cg_fragColor);\n");
+        // Depth alone: the fragment ran for its clip and its depth offset; nothing it would colour is written
+        if (depthOnly) return;
         if (overdraw) {
             // The fragment runs for its discard; what it wrote is replaced by one count
             sb.append("  _cg_fragColor = vec4(1.0, 0.0, 0.0, 0.0);\n");

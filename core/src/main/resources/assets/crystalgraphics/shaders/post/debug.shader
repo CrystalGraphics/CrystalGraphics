@@ -1,11 +1,13 @@
 // The post chain's debug view: one texture bloom works from (the emission, or a level of the chain) over the whole
-// frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp. The distortion view is
+// frame, as it is, clamped to the target; with HEAT, the overdraw count through a heat ramp; with GREY, its red channel
+// as grey (the ambient occlusion). The distortion view is
 // debug_distortion.shader. CgPostDebug draws it (-Dcrystalgraphics.post.debug); nothing else should.
 #domain global
 Material { Media On }
 
 Keywords {
     HEAT ("HEAT")
+    GREY ("GREY")
 }
 
 RenderState {
@@ -35,6 +37,8 @@ void fragment(in v2f i, out vec4 fragColor) {
                            vec3(1.0, 1.0, 0.0), vec3(1.0, 0.0, 0.0), vec3(1.0));
     int k = min(int(t), 5);
     fragColor = vec4(mix(ramp[k], ramp[k + 1], t - float(k)), 1.0);
+#elif defined(GREY)
+    fragColor = vec4(vec3(textureLod(_Source, i.uv, 0.0).r), 1.0);
 #else
     fragColor = vec4(textureLod(_Source, i.uv, 0.0).rgb, 1.0);
 #endif
