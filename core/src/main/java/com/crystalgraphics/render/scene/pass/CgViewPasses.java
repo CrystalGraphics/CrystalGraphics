@@ -176,6 +176,7 @@ public final class CgViewPasses {
         originZ = camera.originZ();
         slotsRecording = null;
         culledRecording = null;
+        recordsRecording = null;
         palettesRecording = null;
         built = kept = unready = 0;
         int rows = seen.batches().size();
