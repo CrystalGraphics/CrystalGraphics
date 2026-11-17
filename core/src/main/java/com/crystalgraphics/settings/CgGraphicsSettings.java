@@ -45,19 +45,19 @@ public final class CgGraphicsSettings {
             true);
 
     public static final CgSetting.Toggle AMBIENT_OCCLUSION_DOWNSAMPLE = FILE.toggle("rendering", "ambient_occlusion_downsample",
-            "Downsampled ambient occlusion", "CACAO at a quarter of the pixels, brought back up by depth: the default, and"
-                    + " under half the cost at full resolution.",
+            "Downsampled ambient occlusion", "CACAO at a quarter of the pixels, brought back up by depth: under half the"
+                    + " cost at full resolution.",
             true);
 
     public static final CgSetting.Toggle GTAO_DOWNSAMPLE = FILE.toggle("rendering", "gtao_downsample",
-            "Half-resolution GTAO", "GTAO's search at half the resolution, brought back up: about a quarter of its cost,"
-                    + " softer in fine creases. Off by default, as in Unreal.",
-            false);
+            "Half-resolution GTAO", "GTAO at half the resolution, brought back up: about a third of its cost, softer in"
+                    + " fine creases and silhouettes. On by default (Unreal's is off).",
+            true);
 
     public static final CgSetting.Number AMBIENT_OCCLUSION_METHOD = FILE.number("rendering", "ambient_occlusion_method",
-            "Ambient occlusion method", "0 SSAO, Unreal's; 1 GTAO, nearer a ray-traced reference; 2 AMD's FidelityFX CACAO,"
-                    + " the default.",
-            2f, 0f, 2f, 1f);
+            "Ambient occlusion method", "0 SSAO, Unreal's; 1 GTAO, Unreal's nearer a ray-traced reference, the default;"
+                    + " 2 AMD's FidelityFX CACAO, darker by design.",
+            1f, 0f, 2f, 1f);
 
     public static final CgSetting.Number AMBIENT_OCCLUSION_LEVELS = FILE.number("rendering", "ambient_occlusion_levels",
             "Ambient occlusion levels", "0 off, 1 on. -1 follows Quality (Low off).", -1f, -1f, 1f, 1f);

@@ -83,11 +83,11 @@ public final class CgPostSettings {
     /**
      * Unreal's ambient occlusion defaults ({@code FPostProcessSettings}), its centimetres as metres: half strength, a
      * radius of 2 (an eighth of the screen's height, off world space), power 2, bias 3, faded out from 30 m to 80 m.
-     * Quality is 100 where Unreal's is 50: the default method, downsampled CACAO, runs its Highest preset for 0.44 ms at
-     * 1440p, and the Quality tiers still cap it ({@code ambient_occlusion_max_quality}).
+     * Quality is 65 where Unreal's is 50: the default method, GTAO at half size, runs its High level (12 taps) for
+     * 0.44 ms at 1440p, and the Quality tiers still cap it ({@code ambient_occlusion_max_quality}).
      */
     public static final float DEFAULT_AO_INTENSITY = 0.5f, DEFAULT_AO_RADIUS = 2f, DEFAULT_AO_POWER = 2f, DEFAULT_AO_BIAS = 3f,
-            DEFAULT_AO_QUALITY = 100f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f,
+            DEFAULT_AO_QUALITY = 65f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f,
             DEFAULT_AO_TEMPORAL_BLEND_WEIGHT = 0.1f;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
