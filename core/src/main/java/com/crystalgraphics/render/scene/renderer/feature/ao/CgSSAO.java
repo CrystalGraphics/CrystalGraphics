@@ -13,6 +13,7 @@ import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.settings.CgGraphicsSettings;
+import com.crystalgraphics.variable.CgVar;
 
 /**
  * Screen-space ambient occlusion, {@code ambient_occlusion_method} 0: Unreal's deferred SSAO at up to three sizes.
@@ -34,8 +35,11 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
 final class CgSSAO {
 
     private static final String KERNELS = "crystalgraphics:shaders/world/ao/ssao.compute";
-    private static final String[] NAMES = {"Setup", "Step", "Final"};
-    private static final int SETUP = 0, STEP = 1, FINAL = 2;
+    /** The 4 x 4 box over the final size: the rotation pattern's tile, which a temporal resolve leaves as a checker. */
+    static final CgVar.Bool SMOOTH = CgVar.bool("crystalgraphics.ssao.smooth", true, CgVar.DEV,
+            "SSAO's 4 x 4 smooth pass over its rotation pattern.");
+    private static final String[] NAMES = {"Setup", "Step", "Final", "Smooth"};
+    private static final int SETUP = 0, STEP = 1, FINAL = 2, SMOOTH_KERNEL = 3;
     /** Steps a sample takes, by shader level 0 to 4. */
     private static final int[] STEPS = {1, 1, 2, 3, 3};
     /** The pattern's move a frame, in its texels: eight frames, then it repeats. */
@@ -120,8 +124,8 @@ final class CgSSAO {
      */
     private static final class Chain {
         @Nullable
-        CgGraphTexture setupHalf, setupQuarter, stepHalf, stepQuarter;
-        int levels, hw, hh, qw, qh;
+        CgGraphTexture setupHalf, setupQuarter, stepHalf, stepQuarter, unsmoothed;
+        int levels, w0, h0, hw, hh, qw, qh;
 
         @Nullable
         CgView view;
@@ -145,7 +149,7 @@ final class CgSSAO {
             this.fadeMul = fadeMul;
             this.fadeAdd = fadeAdd;
             int halfW = Math.max(1, (w + 1) / 2), halfH = Math.max(1, (h + 1) / 2);
-            size(levels(s), halfW, halfH, Math.max(1, (halfW + 1) / 2), Math.max(1, (halfH + 1) / 2));
+            size(levels(s), w, h, halfW, halfH, Math.max(1, (halfW + 1) / 2), Math.max(1, (halfH + 1) / 2));
 
             if (levels >= 2) setup(pass, setupHalf, hw, hh, w, h);
             if (levels >= 3) setup(pass, setupQuarter, qw, qh, hw, hh);
@@ -158,7 +162,12 @@ final class CgSSAO {
                 occlusion(pass, kernels[STEP], "STEP", stepHalf, hw, hh, 2, setupHalf, smaller);
                 smaller = stepHalf;
             }
-            occlusion(pass, kernels[FINAL], "AO", ao, w, h, 1, levels >= 2 ? setupHalf : null, smaller);
+            boolean smooth = SMOOTH.get();
+            occlusion(pass, kernels[FINAL], "AO", smooth ? unsmoothed : ao, w, h, 1, levels >= 2 ? setupHalf : null, smaller);
+            if (smooth) {
+                pass.dispatch(kernels[SMOOTH_KERNEL], w, h, 1).image("AO", ao).texture("_Unsmoothed", unsmoothed)
+                        .set("_Size", w, h, 1f / w, 1f / h);
+            }
             this.view = null;
             this.s = null;
             this.pyramid = null;
@@ -208,9 +217,13 @@ final class CgSSAO {
             if (smaller != null) d.texture("_Smaller", smaller);
         }
 
-        private void size(int levelCount, int halfW, int halfH, int quarterW, int quarterH) {
-            if (levelCount == levels && halfW == hw && halfH == hh && quarterW == qw && quarterH == qh) return;
+        private void size(int levelCount, int fullW, int fullH, int halfW, int halfH, int quarterW, int quarterH) {
+            if (levelCount == levels && fullW == w0 && fullH == h0 && halfW == hw && halfH == hh && quarterW == qw
+                    && quarterH == qh) return;
             levels = levelCount;
+            w0 = fullW;
+            h0 = fullH;
+            unsmoothed = CgGraphTexture.transientTexture("cg_ssao.unsmoothed", new CgTextureDesc(w0, h0, CgFormat.R16_FLOAT));
             hw = halfW;
             hh = halfH;
             qw = quarterW;

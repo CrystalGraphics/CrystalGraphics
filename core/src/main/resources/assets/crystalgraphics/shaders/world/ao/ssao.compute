@@ -6,6 +6,7 @@
 #pragma kernel Setup 8 8 image
 #pragma kernel Step 8 8 general
 #pragma kernel Final 8 8 general
+#pragma kernel Smooth 8 8 image
 
 Properties {
     _Size     ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
@@ -21,6 +22,7 @@ Properties {
     _Setup    ("This size's setup: xyz the view normal * 0.5 + 0.5, w the farthest eye depth", sampler2D) = "black"
     _UpNormals ("The setup the upsample weighs by, as _Setup", sampler2D) = "black"
     _Smaller  ("The next smaller size's occlusion", sampler2D) = "white"
+    _Unsmoothed ("The final size's occlusion before the smooth pass", sampler2D) = "white"
 }
 
 Images {
@@ -244,6 +246,14 @@ void Step() {
     float ao = quad_blur(occlusion(true, z, n, shaded), z, n);
     ivec2 px = ivec2(CG_GROUP_ID.xy) * 8 + ivec2(CG_LOCAL_ID.xy);
     if (all(lessThan(px, ivec2(_OutSize.xy)))) STEP_STORE(px, vec4(ao));
+}
+
+// A 4 x 4 box over the final occlusion, the rotation pattern's tile: four bilinear taps from the pixel's corner.
+void Smooth() {
+    vec2 uv = vec2(CG_TEXEL.xy) * _Size.zw;
+    float sum = texture(_Unsmoothed, uv).r + texture(_Unsmoothed, uv + vec2(2.0, 0.0) * _Size.zw).r
+            + texture(_Unsmoothed, uv + vec2(0.0, 2.0) * _Size.zw).r + texture(_Unsmoothed, uv + 2.0 * _Size.zw).r;
+    AO_WRITE(vec4(sum * 0.25));
 }
 
 void Final() {
