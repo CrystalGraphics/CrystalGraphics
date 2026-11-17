@@ -22,7 +22,7 @@ This is the top of the CrystalShader material stack.
 | `CgParameterCollections` | The `parameters` kind's compiler (`CgBuiltInCompilers`): an asset declares its collection, `base` and `overrides` applied; compiled again with the same layout it answers the same collection, a changed layout throws |
 | `CgMaterialState` | A material's render state where it is not its shader's (Unreal's base property overrides): `builder().blend(CgBlendMode).clip().cull(..)/twoSided().depthWrite(b).separateTranslucency()`; the last orders a translucent draw after every other (`CgSortLayer.SEPARATE_TRANSLUCENCY`). Blend and clip are its shader asset's (`changesProgram`, `programKey`); cull and depth write are applied per pass by `CgMaterial.getPassRenderState` through `onPass`. `CgMaterial.load(path, state)`, `fromSource(source, state)`, `state()`. `docs/SHADERS.md` § *A material's state* |
 | `CgBlendMode` | `OPAQUE`, `ALPHA`, `PREMULTIPLIED`, `ADDITIVE`, `MODULATE`, `SUBTRACT`: each the `CgBlendState` of the `Blend` line it stands for (`state()`) |
-| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `DEPTH("Depth")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, `getPassRenderState(CgRenderPassVariant)`, and `hasDepthPass()`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgSceneLights`), so no material draws from a light's side. |
+| `CgRenderPassVariant` | Public enum bridging orchestrators to per-pass LightMode routing. `FORWARD("Forward")`, `EMISSIVE("Emissive")` (the world's bloom; `CgMaterial.hasEmissivePass()`), `DISTORTION("Distortion")` (offsets the world renderer applies to the scene; `CgMaterial.hasDistortionPass()`). `lightModeName()` returns the canonical LightMode tag value. Used by `pipeline(CgRenderPassVariant, CgInstanceKind)`, and `getPassRenderState(CgRenderPassVariant)`. A depth draw is the Forward pipeline's `CgPipelineForm.DEPTH`. No shadow-caster variant: the world's shadows are ray-traced from each pixel (`CgSceneLights`), so no material draws from a light's side. |
 | `CgAttachedBuffer` | Immutable descriptor for an engine token's buffer, declared for a compile by its factory's or primitive's `EngineBuffers`: an SSBO or a UBO. Created via `CgAttachedBuffer.of(buffer, macroName)` (SSBO, STD430) or `CgAttachedBuffer.of(CgUniformBuffer)` (UBO, STD140). `isUbo()` returns `true` for UBO entries (macroName is null). SSBO fields: `buffer`, `macroName`, `structName` (= `format.getGlslName()`), `ssboArrayName` (`_cg_{lowerFirst}Arr`), `tboGetterName` (`_cg_get{structName}`). UBO entries: only `buffer` is set; macroName/structName/ssboArrayName/tboGetterName are all null. Block/sampler/UBO block name is always `buffer.getName()` — required for `wireShader()`. |
 | `CgMaterialRegistry` | Singleton load/reload/delete lifecycle manager. `get()` returns the singleton. Every material is cached here by its shader asset and state (`of(asset, state)`); `getOrCreate(String)` / `getOrCreate(CgMaterialKey)` are a path's with the shader's state. `reloadAll()` marks every material's shader asset dirty; each material and instance made from it rebuilds its values from the new parse at its next capture, keeping each value whose property kept its name and type. `deleteAll()` deletes every material (each with its keyword variants), then the shader registry frees the programs. Registered for teardown in `CgEngineLifecycle.shutdown()`. `getOrCreate(definition, drawKeyword)` is a `CgMaterialDefinition`'s material (`CgMaterial.of(definition)` with none): one a definition and draw keyword, by identity, its archetype under `definition.state()`, its keywords, constants and textures with their samplers, a texture made in code bound as the object (`Texture.resolve`), each file made as its `texture` asset says (`texture(path)`: sRGB or linear, mips, a `.hdr` as RGBA16F, `cube: true` as six stacked faces), each texture bound only to its kind's sampler (a cube's `samplerCube`, an array's `sampler2DArray`, a volume's `sampler3D`); `release(definition)` deletes an old generation's |
 | `CgMaterialKey` | `@Desugar record` wrapping a resource-path string. `of(String)` factory. Value equality. Used as a typed alternative to raw strings. |
@@ -54,11 +54,8 @@ CgScene.client().once().mesh(mesh, material).at(x, y, z).customData(0, r, g, b, 
 
 `getPassRenderState(CgRenderPassVariant)` returns the `CgRenderState` for the given pass, compiling nothing.
 
-`hasDepthPass()` — true when an explicit authored `[Depth]` pass is present in the last successful parse
-(`hasParsedPass("Depth")`). Parse-state only — does NOT include auto-generated depth variants. `hasCompiledDepthPass()` —
-true when a compiled depth program exists (under key `"Depth"`): includes both explicit and auto-generated depth
-variants produced by `recompile()`. The query a depth prepass asks before `pipeline(DEPTH, kind)`. Always false for
-transparent materials (depth auto-gen is opaque-only).
+A solid's depth draw is its Forward pipeline's `CgPipelineForm.DEPTH` form (`CgEnginePasses.depthPipeline`); there is
+no separate depth pass to ask about.
 
 ### Materials and instances
 
@@ -153,9 +150,7 @@ rock.material(0, current);                          // the old picture until the
 - A draw before it answers true waits for the compile there, exactly as an unprecached material does.
 - It answers false without submitting while `CgWarmBudget` is spent for the frame, so many materials precached at
   once spread over frames.
-- It compiles the Forward pass only. The auto-generated depth program is built, synchronously,
-  the first time a Depth pipeline or `hasCompiledDepthPass()` asks — a preview never does, and they
-  were half of what an edit compiled.
+- It compiles the Forward pass only; its depth form is a keyword variant, precached as the scene's pipelines are.
 - `-Dcrystalgraphics.shader.parallelCompile=false` makes it answer true at once: the escape hatch.
 
 ### Recording — `pipeline(kind)` and `bindings()`

@@ -135,8 +135,11 @@ public class MaterialFormatTest {
                 }
             }
         }
-        if (parsed.queue() < 3000 && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName())) {
-            failures.add(path + ": the generated depth pass did not build (see log)");
+        if (parsed.queue() < 3000 && forward != null) {   // the all-opaque prepass's depth draw
+            programs++;
+            if (shader.getOrCompile(forward.name(), Set.of(CgEngineKeywords.DEPTH_PREPASS)) == null) {
+                failures.add(path + ": its depth draw did not build (see log)");
+            }
         }
         return programs;
     }
@@ -152,8 +155,9 @@ public class MaterialFormatTest {
     @Test
     public void worldPositionOffsetReachesTheDepthPass() {
         CgShaderSpec waves = parse(path("waves"));
-        CgShaderPass forward = waves.passes().get(0);
-        assertFalse("the material's vertex() is no simple vertex", forward.simpleVertex());
+        String vertex = CgGlslWriter.write(waves, waves.passes().get(0), List.of(), null,
+                Set.of(CgEngineKeywords.DEPTH_PREPASS)).vertex();
+        assertTrue("the depth draw runs the material's vertex()", vertex.contains("cg_MaterialVertex("));
     }
 
     @Test

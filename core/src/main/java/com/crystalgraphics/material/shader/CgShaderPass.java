@@ -51,7 +51,7 @@ public final class CgShaderPass {
     private final boolean copiesForward;
 
     private final boolean clips, namesGlow, namesSurfaceNormal, namesSurfaceEmissive, namesVolumeDepth, readsEmission,
-            namesEmissivePass, namesClip, namesPixelDepthOffset, simpleBody;
+            namesEmissivePass, namesClip, namesPixelDepthOffset;
     private final Set<String> vertexNames;
     private Set<String> identifiers;
 
@@ -92,15 +92,6 @@ public final class CgShaderPass {
         namesEmissivePass = inCode || fragment.names("CG_EMISSIVE_PASS") || vertex.names("CG_EMISSIVE_PASS");
         namesClip = clipInCode || fragment.names("cg_Clip");
         vertexNames = vertex.identifiers();
-        boolean props = false;
-        for (String id : vertexNames) {
-            props |= id.length() >= 3 && id.charAt(0) == '_' && id.charAt(1) >= 'A' && id.charAt(1) <= 'Z';
-        }
-        boolean animated = vertex.namesPrefix("cg_Time") || vertex.namesPrefix("CG_OBJECT_CUSTOM0")
-                || vertex.namesPrefix("CG_OBJECT_CUSTOM1") || vertex.namesPrefix("CG_OBJECT_CUSTOM2")
-                || vertex.namesPrefix("CG_OBJECT_CUSTOM3");
-        simpleBody = !props && !animated && !clips && !vertexNames.contains(SurfaceDomain.MATERIAL_VERTEX)
-                && !vertexNames.contains("cg_material_vertex");
     }
 
     /** {@code of} under {@code state}: its code and what it names are the same, only a culling vertex changes. */
@@ -126,7 +117,6 @@ public final class CgShaderPass {
         this.namesPixelDepthOffset = of.namesPixelDepthOffset;
         this.vertexNames = of.vertexNames;
         this.identifiers = of.identifiers;
-        this.simpleBody = of.simpleBody;
     }
 
     /** This pass under another render state, its code the same. */
@@ -221,14 +211,6 @@ public final class CgShaderPass {
     /** Whether its fragment or code names {@code CG_PIXEL_DEPTH_OFFSET}: it writes its depth, so a depth pass runs it. */
     public boolean namesPixelDepthOffset() {
         return namesPixelDepthOffset;
-    }
-
-    /**
-     * Whether a depth pass may draw it with the minimal transform: its vertex reads no property, time or custom slot,
-     * runs no material {@code vertex()} or particle factory; its fragment cuts nothing; it culls.
-     */
-    public boolean simpleVertex() {
-        return simpleBody && state.getCull() != CgCullState.NONE;
     }
 
     /** Whether its vertex body names {@code identifier}. */

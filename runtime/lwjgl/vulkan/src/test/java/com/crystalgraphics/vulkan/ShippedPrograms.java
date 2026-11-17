@@ -78,10 +78,9 @@ public final class ShippedPrograms {
                     each.accept(path, shader, pass.name(), keywords);
                 }
             }
-            String depth = CgRenderPassVariant.DEPTH.lightModeName();
-            if (parsed.pass(depth) == null && shader.hasCompiledPass(depth)) {   // the generated depth pass
+            if (parsed.queue() < 3000 && forward != null) {   // the all-opaque prepass's depth draw
                 programs++;
-                each.accept(path, shader, depth, Set.of());
+                each.accept(path, shader, forward.name(), Set.of(CgEngineKeywords.DEPTH_PREPASS));
             }
             if (forward != null) {   // the world renderer's volume pass, folded or not
                 List<Set<String>> volumes = new ArrayList<>(List.of(Set.of(CgEngineKeywords.VOLUME_TARGET)));
@@ -93,8 +92,6 @@ public final class ShippedPrograms {
                     each.accept(path, shader, forward.name(), keywords);
                 }
             }
-            if (parsed.queue() < 3000 && forward != null && !shader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName()))
-                failures.add(path + ": the generated depth pass did not link (see log)");
         }
         return programs;
     }

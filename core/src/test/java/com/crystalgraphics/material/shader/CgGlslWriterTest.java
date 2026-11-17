@@ -107,19 +107,18 @@ public class CgGlslWriterTest {
     }
 
     @Test
-    public void theGeneratedDepthPassKeepsAVertexThatIsNotSimple() {
-        CgShaderSpec simple = surface("", "s.baseColor = vec3(1.0);");
-        CgShaderPass forward = simple.pass(CgRenderPassVariant.FORWARD);
-        assertTrue(forward.simpleVertex());
-        CgGlslProgram minimal = CgGlslWriter.writeDepth(simple, forward, Collections.emptyList(), null, Collections.emptySet());
-        assertFalse(minimal.fragment(), minimal.fragment().contains("discard"));
+    public void theDepthFormRunsTheForwardVertexInvariantAndNoFragment() {
+        Set<String> depth = Set.of(CgEngineKeywords.DEPTH_PREPASS);
+        CgShaderSpec plain = surface("", "s.baseColor = vec3(1.0);");
+        CgGlslProgram prepass = write(plain, depth);
+        assertTrue(prepass.fragment(), prepass.fragment().contains("void main() {\n}"));
+        assertTrue(prepass.vertex().contains("invariant gl_Position;"));
+        assertTrue(write(plain).vertex().contains("invariant gl_Position;"));
 
         CgShaderSpec waving = CgShaderSpec.read("#domain surface\n" + CgShaderSpecTest.V2F
                 + "void vertex(inout CgVertex v, out v2f o) { v.position.y += sin(cg_Time); o.uv0 = v.uv0; }\n"
                 + "void surface(in v2f i, inout CgSurface s) { s.baseColor = vec3(1.0); }\n", "test:w.shader");
-        CgShaderPass waves = waving.pass(CgRenderPassVariant.FORWARD);
-        assertFalse(waves.simpleVertex());
-        String vertex = CgGlslWriter.writeDepth(waving, waves, Collections.emptyList(), null, Collections.emptySet()).vertex();
+        String vertex = write(waving, depth).vertex();
         assertTrue(vertex, vertex.contains("sin(cg_Time)"));
     }
 

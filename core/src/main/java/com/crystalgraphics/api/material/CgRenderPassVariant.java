@@ -5,7 +5,8 @@ package com.crystalgraphics.api.material;
  * the outputs its {@code surface()} names ({@code docs/MATERIAL_FORMAT.md} § 4.4).
  *
  * <pre>{@code
- * CgPipeline depth = material.pipeline(CgRenderPassVariant.DEPTH, CgInstanceKind.OBJECT);
+ * CgPipeline forward = material.pipeline(CgRenderPassVariant.FORWARD, CgInstanceKind.OBJECT);
+ * CgPipeline depth = forward.as(CgPipelineForm.DEPTH);   // its depth alone: the depth prepass draws it
  * boolean glows = material.hasEmissivePass();          // it writes s.emissive
  * }</pre>
  *
@@ -13,7 +14,8 @@ package com.crystalgraphics.api.material;
  * {@code CgSceneLights}), so nothing is drawn from a light's side.</p>
  *
  * <ul>
- *   <li>{@link #FORWARD} takes the material's enabled keywords; {@link #DEPTH} none.</li>
+ *   <li>{@link #FORWARD} takes the material's enabled keywords. A depth draw is a form of it ({@code CgPipelineForm.DEPTH}),
+ *       so it keeps them.</li>
  *   <li>Forward resolves through {@code getOrCompileForwardPass(keywords)}, by the first Forward pass's own name, not
  *       {@link #lightModeName()}.</li>
  * </ul>
@@ -22,12 +24,6 @@ public enum CgRenderPassVariant {
 
     /** The colour pass. */
     FORWARD("Forward"),
-
-    /**
-     * Depth only: a solid material's, or a translucent one's under {@code DepthPrepass}
-     * ({@link CgMaterial#hasCompiledDepthPass()}). Keywords are always {@code emptySet()}.
-     */
-    DEPTH("Depth"),
 
     /**
      * The light a surface emits ({@code s.emissive}), added into the HDR scene and spread by bloom. Takes the

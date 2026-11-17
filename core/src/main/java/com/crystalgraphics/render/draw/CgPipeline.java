@@ -376,7 +376,7 @@ public final class CgPipeline {
     private boolean startOrPoll() {
         if (shader.isDirty()) {
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, SUBMIT_ZONE)) {
-                shader.submitRecompile(pass == CgRenderPassVariant.FORWARD);
+                shader.submitRecompile();
             }
             return false;
         }

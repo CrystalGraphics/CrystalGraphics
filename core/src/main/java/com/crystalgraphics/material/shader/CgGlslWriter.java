@@ -37,7 +37,7 @@ import java.util.Set;
  * CgShaderPass forward = spec.pass(CgRenderPassVariant.FORWARD);
  * CgGlslProgram base = CgGlslWriter.write(spec, forward, buffers, block, Set.of());
  * CgGlslProgram normals = CgGlslWriter.write(spec, forward, buffers, block, Set.of(CgEngineKeywords.NORMAL_TARGET));
- * CgGlslProgram depth = CgGlslWriter.writeDepth(spec, forward, buffers, block, Set.of());   // an opaque material's
+ * CgGlslProgram depth = CgGlslWriter.write(spec, forward, buffers, block, Set.of(CgEngineKeywords.DEPTH_PREPASS));
  * }</pre>
  *
  * <ul>
@@ -125,26 +125,6 @@ public final class CgGlslWriter {
         }
         return new CgGlslProgram(vertex(spec, pass, buffers, block, keywords, extensions, format),
                 fragment(spec, pass, buffers, block, keywords, extensions), format);
-    }
-
-    /**
-     * The depth pass an opaque material leaves to the engine, from its Forward pass: the minimal transform where its
-     * vertex is simple, its vertex body where it moves vertices, its fragment where it cuts pixels away.
-     */
-    public static CgGlslProgram writeDepth(CgShaderSpec spec, CgShaderPass forward, List<CgAttachedBuffer> buffers,
-                                           @Nullable CgUniformBuffer block, Set<String> keywords) {
-        CgVertexFormat format = CgVertexFormat.forShaderType(spec.vertexType());
-        boolean positioned = format != null && format.indexOf("cg_Position") >= 0;
-        boolean readsBuffers = false;
-        for (CgBufferDecl b : spec.buffers()) readsBuffers |= forward.vertexNames(b.name());
-        String vertexBody = positioned && forward.simpleVertex() && !readsBuffers
-                && spec.depthMode() != CgShaderSpec.DepthMode.PREPASS
-                ? "    gl_Position = CG_MATRIX_MVP * vec4(cg_Position, 1.0);\n"
-                : forward.vertexBody() + "\n";
-        CgShaderPass depth = new CgShaderPass(CgRenderPassVariant.DEPTH, CgRenderPassVariant.DEPTH.lightModeName(),
-                CgRenderState.DEFAULT, forward.varyings(), forward.directives(), forward.code(), vertexBody,
-                forward.clips() ? forward.fragmentBody() : "", "fragColor", false);
-        return write(spec, depth, buffers, block, keywords);
     }
 
     /** Whether this variant places its vertices with the strip factory, reading no vertex data. */
@@ -460,7 +440,7 @@ public final class CgGlslWriter {
                 : spec.maskClip() != null ? spec.maskClip() : "0.5").append('\n');
         if (spec.depthMode() == CgShaderSpec.DepthMode.NONE) {
             sb.append("#define cg_Clip(v)\n");
-        } else if (pass.variant() == CgRenderPassVariant.DEPTH || keywords.contains(CgEngineKeywords.DEPTH_PREPASS)) {
+        } else if (keywords.contains(CgEngineKeywords.DEPTH_PREPASS)) {
             sb.append("#define cg_Clip(v) { if ((v) < CG_CLIP_THRESHOLD) discard; return; }\n");
         } else if (spec.depthMode() == CgShaderSpec.DepthMode.PREPASS) {
             sb.append("#define cg_Clip(v)\n");

@@ -763,9 +763,6 @@ public final class CgMaterialProxy {
      * the head start its own compile threads get. False too while the frame's {@link CgWarmBudget} is spent, so
      * many materials precached at once spread over frames. Drawing before it answers true waits for the compile, as
      * a material that was never precached does.</p>
-     *
-     * <p>It compiles the Forward pass. A depth program the shader does not author is generated the first time a Depth
-     * pipeline or {@link #hasCompiledDepthPass} asks for it.</p>
      */
     public boolean precache() {
         checkNotDeleted();
@@ -775,7 +772,7 @@ public final class CgMaterialProxy {
         long start = System.nanoTime();
         try {
             if (cgMaterialShader.isDirty()) {
-                cgMaterialShader.submitRecompile(true);
+                cgMaterialShader.submitRecompile();
                 return false;
             }
             return cgMaterialShader.pollPending();
@@ -1277,14 +1274,6 @@ public final class CgMaterialProxy {
         if (cgMaterialShader == null) return false;
         CgShaderSpec parsed = cgMaterialShader.ensureParsed();
         return parsed != null && parsed.pass(CgRenderPassVariant.DISTORTION) != null;
-    }
-
-    /**
-     * Whether its generated depth pass is compiled ({@code CgMaterialShaderMap.autoGenDepth()}, an opaque material's):
-     * what a depth prepass asks before binding {@code DEPTH} rather than falling back to the forward pass.
-     */
-    public boolean hasCompiledDepthPass() {
-        return cgMaterialShader != null && cgMaterialShader.hasCompiledPass(CgRenderPassVariant.DEPTH.lightModeName());
     }
 
     /**

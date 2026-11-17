@@ -358,13 +358,6 @@ public final class CgMaterialShader implements CgReloadable {
      * every declared pass immediately, then increments {@link #revisionNumber} so
      * materials detect the change on the next {@code bind()} call.
      * Keyword variants are compiled lazily via {@link #getOrCompile(String, Set)}.</p>
-     *
-     * <h3>Depth auto-generation</h3>
-     * <p>When no explicit {@code Depth} pass is authored and the shader renders in queue
-     * &lt; {@link CgRenderQueue#TRANSPARENT}, a depth-prepass program is auto-generated
-     * from the first Forward pass and cached under {@code ProgramKey("Depth", emptySet)}.
-     * Every opaque material needs a correct depth variant. Failure is non-fatal: a warning is logged and the
-     * engine depth shader fallback is used instead.</p>
      */
     public void recompile() {
         if (!deferring) waited(resourcePath, "every pass");
@@ -548,30 +541,15 @@ public final class CgMaterialShader implements CgReloadable {
             next.programs.put(new ProgramKey(pass.name(), Collections.emptySet()), program);
         }
 
-        // ── Step 6: Depth auto-generation, waiting for the first pass that asks in a forward-only compile ──
-        CgShader generated = null;
-        if (!forwardOnly) try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.depthAutoGen")) {
-            generated = next.autoGenDepth(deferring);
-        } catch (CgPreprocessorException e) {
-            next.delete();
-            if (isFirst) throw e;
-            LOGGER.error("Reload failed for '{}' depth auto-gen: buffer injection error — {}", resourcePath, e.getMessage());
-            return;
-        }
-
         if (deferring) {
-            pendingCommit = new PendingCommit(next, expanded, isFirst, generated, forwardOnly);
+            pendingCommit = new PendingCommit(next, expanded, isFirst);
             return;
         }
-        commit(next, expanded, isFirst, forwardOnly);
+        commit(next, expanded, isFirst);
     }
 
-    /** Set for the length of a forward-only {@link #submitRecompile}. */
-    private boolean forwardOnly;
-
-    /** Step 7: the new map's programs replace the old map. */
-    private void commit(CgMaterialShaderMap next, String expanded, boolean isFirst, boolean skippedAutoGen) {
-        next.autoGenSkipped = skippedAutoGen;
+    /** Step 6: the new map's programs replace the old map. */
+    private void commit(CgMaterialShaderMap next, String expanded, boolean isFirst) {
         if (map != null) map.delete();
         map = next;
         // lastParsed / renderQueue / renderType were committed in Step 2a — they are parse products,
@@ -601,26 +579,16 @@ public final class CgMaterialShader implements CgReloadable {
      * the call that finds them made submits. Poll it while {@link #isDirty()}, as a warm-up does.</p>
      */
     public void submitRecompile() {
-        submitRecompile(false);
-    }
-
-    /**
-     * {@link #submitRecompile()}; with {@code forwardOnly}, the shadow and depth auto-generation wait for the first
-     * pass that asks for one, for a caller that only ever binds the Forward pass.
-     */
-    public void submitRecompile(boolean forwardOnly) {
         if (!sourcesReady()) {
-            carryOn(forwardOnly);
+            carryOn();
             return;
         }
         carried = false;
         deferring = true;
-        this.forwardOnly = forwardOnly;
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "material.submitRecompile")) {
             recompile();
         } finally {
             deferring = false;
-            this.forwardOnly = false;
         }
     }
 
@@ -664,25 +632,19 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
 
-    /** Verifies each submitted program; a failed pass fails the recompile, a failed auto-generated one is dropped. */
+    /** Verifies each submitted program: a failed pass fails the recompile. */
     private void finish(PendingCommit pending) {
         CgMaterialShaderMap next = pending.map();
         for (Map.Entry<ProgramKey, CgShader> entry : new HashMap<>(next.programs).entrySet()) {
             CgShader shader = entry.getValue();
             if (shader.isCompiled()) continue;
             String err = shader.getLastCompileError();
-            if (shader == pending.generated()) {
-                next.drop(entry.getKey());
-                LOGGER.error("'" + resourcePath + "' " + entry.getKey().passName()
-                        + " auto-gen failed (continuing without it): " + err);
-                continue;
-            }
             next.delete();
             failed((pending.isFirst() ? "Compile failed for '" : "Reload failed for '") + resourcePath
                     + "' pass '" + entry.getKey().passName() + "': " + err);
             return;
         }
-        commit(next, pending.expanded(), pending.isFirst(), pending.forwardOnly());
+        commit(next, pending.expanded(), pending.isFirst());
     }
 
     /** Drops a pending submit that a newer compile supersedes. */
@@ -700,8 +662,7 @@ public final class CgMaterialShader implements CgReloadable {
     @Nullable
     private PendingCommit pendingCommit;
 
-    private record PendingCommit(CgMaterialShaderMap map, String expanded, boolean isFirst,
-                                 @Nullable CgShader generated, boolean forwardOnly) {
+    private record PendingCommit(CgMaterialShaderMap map, String expanded, boolean isFirst) {
     }
 
 
@@ -844,11 +805,10 @@ public final class CgMaterialShader implements CgReloadable {
     /** Submits waiting on their worker, carried on once a frame by {@link #advanceSubmits}. Render thread. */
     private static final ArrayList<CgMaterialShader> CARRIED = new ArrayList<>();
 
-    /** In {@link #CARRIED}, to submit forward-only or not. */
-    private boolean carried, carriedForwardOnly;
+    /** In {@link #CARRIED}. */
+    private boolean carried;
 
-    private void carryOn(boolean forwardOnly) {
-        carriedForwardOnly = forwardOnly;
+    private void carryOn() {
         if (carried) return;
         carried = true;
         CARRIED.add(this);
@@ -865,7 +825,7 @@ public final class CgMaterialShader implements CgReloadable {
             if (shader.carried && !shader.deleted && shader.dirty && CgWarmBudget.allows()) {
                 long start = System.nanoTime();
                 try {
-                    shader.submitRecompile(shader.carriedForwardOnly);
+                    shader.submitRecompile();
                 } finally {
                     CgWarmBudget.spend(System.nanoTime() - start);
                 }
