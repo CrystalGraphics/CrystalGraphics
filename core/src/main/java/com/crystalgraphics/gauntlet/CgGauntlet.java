@@ -21,6 +21,7 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.lifecycle.CgLifecycleListener;
 import com.crystalgraphics.loading.CgLoadingScreen;
 import com.crystalgraphics.net.object.CgNetProbe;
+import com.crystalgraphics.net.object.CgEntitySavesProbe;
 import com.crystalgraphics.net.object.CgPlayerSavesProbe;
 import com.crystalgraphics.platform.io.CgAtomicFile;
 import com.crystalgraphics.platform.service.CgGameDirectory;
@@ -115,6 +116,7 @@ public final class CgGauntlet {
         register("crystalgraphics:actors", CgActorProbe::test);
         register("crystalgraphics:net", CgNetProbe::test);
         register("crystalgraphics:player-saves", CgPlayerSavesProbe::test);
+        register("crystalgraphics:entity-saves", CgEntitySavesProbe::test);
         register("crystalgraphics:server", CgServerSmoke::new);
         register("crystalgraphics:pipelines", CgDemoPipelinesTest::new);
     }

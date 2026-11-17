@@ -111,6 +111,14 @@ public interface CgWorldStimulus {
         return false;
     }
 
+    /**
+     * The local player put in creative and moved to the point: a far move for a probe (a chunk left to unload, then
+     * entered again) that no fall can kill. False where there is no player.
+     */
+    default boolean teleport(double x, double y, double z) {
+        return false;
+    }
+
     /** A lightning bolt at the point. */
     boolean lightning(double x, double y, double z);
 

@@ -9784,6 +9784,11 @@ com/crystalgraphics/net/object/CgCharacterClockNet
   field public,static,final TYPE Lcom/crystalgraphics/net/object/CgNetType;
   method public,static install (Ljava/util/function/LongSupplier;)V
   method public,static publish (Ljava/lang/Object;Lcom/crystalgraphics/world/CgCharacterClock;J)V
+com/crystalgraphics/net/object/CgEntitySavesProbe
+  access public,final
+  extends java/lang/Object
+  method public,static install ()V
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/net/object/CgNetBehaviour
   access public,abstract,interface
   extends java/lang/Object

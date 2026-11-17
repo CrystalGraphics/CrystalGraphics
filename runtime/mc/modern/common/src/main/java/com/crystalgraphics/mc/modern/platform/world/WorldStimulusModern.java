@@ -82,6 +82,14 @@ public final class WorldStimulusModern implements CgWorldStimulus {
         return player != null && run("kill " + player.getScoreboardName());
     }
 
+    @Override
+    public boolean teleport(double x, double y, double z) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) return false;
+        String name = player.getScoreboardName();
+        return run("gamemode creative " + name, String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z));
+    }
+
     // The respawn packet closes the death screen.
     @Override
     public boolean respawn() {

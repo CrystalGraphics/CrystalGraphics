@@ -31,6 +31,9 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * {@link CgWorldStimulus} through the single-player server on Minecraft 1.7.10. Its server takes no queued task, so the
  * work waits here and runs at the start of its next tick, on its own thread. Client only.
@@ -41,6 +44,8 @@ import java.util.function.Consumer;
  * </ul>
  */
 public final class WorldStimulus1710 implements CgWorldStimulus {
+    private static final Logger LOGGER = LogManager.getLogger("CrystalGraphics");
+
 
     private final Queue<Consumer<MinecraftServer>> work = new ConcurrentLinkedQueue<Consumer<MinecraftServer>>();
     private boolean listening;
@@ -102,6 +107,14 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
             EntityPlayerMP body = server.getConfigurationManager().func_152612_a(name);
             if (body != null) body.attackEntityFrom(DamageSource.outOfWorld, Float.MAX_VALUE);
         });
+    }
+
+    @Override
+    public boolean teleport(double x, double y, double z) {
+        EntityClientPlayerMP player = Minecraft.getMinecraft().thePlayer;
+        if (player == null) return false;
+        String name = player.getCommandSenderName();
+        return run(command("gamemode 1 " + name), command(String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z)));
     }
 
     // As the death screen's button does: nothing closes the screen for it.
@@ -206,7 +219,12 @@ public final class WorldStimulus1710 implements CgWorldStimulus {
     }
 
     private static Consumer<MinecraftServer> command(String command) {
-        return server -> server.getCommandManager().executeCommand(server, command);
+        return server -> {
+            // the server is the sender, so its refusal reaches no chat: said here, or a probe waits blind
+            if (server.getCommandManager().executeCommand(server, command) == 0) {
+                LOGGER.warn("[crystalgraphics] a stimulus command did nothing: /{}", command);
+            }
+        };
     }
 
     @SafeVarargs
