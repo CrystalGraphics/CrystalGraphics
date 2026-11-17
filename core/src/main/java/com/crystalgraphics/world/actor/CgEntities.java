@@ -13,8 +13,9 @@ import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.world.CgEntityTags;
 
 /**
- * Where gameplay reaches an entity: {@link #of} answers the one {@link CgEntity} of a host entity on this side, with or
- * without an actor, carrying gameplay's three verbs. Unreal's ability system component, on any entity.
+ * Where gameplay reaches an entity: {@link #of} answers the one {@link CgEntity} of a host entity on this side, made
+ * here and owned here; an actor, where the entity has one, attaches to it and is never asked for it. Carries gameplay's
+ * three verbs. Unreal's ability system component, on any entity.
  *
  * <pre>{@code
  * static final CgGameplayTag STUNNED = CgTagRegistry.global().register("mymod:state.stunned");
@@ -73,13 +74,10 @@ public final class CgEntities {
         Objects.requireNonNull(entity, "entity");
         int id = CgEntityQueries.idOf(entity);
         if (id < 0) throw new IllegalArgumentException(entity + " is no entity");
-        CgEntityActor actor = CgEntityActors.serverActor(id);
-        if (actor != null) return actor.entity;
         return SERVER.computeIfAbsent(entity, e -> {
             CgEntity bare = new CgEntity(id, "entity");
             bare.serverHost = e;
             bare.tags = CgEntityTags.of(e);
-            bare.bare = true;
             return bare;
         });
     }
@@ -87,13 +85,10 @@ public final class CgEntities {
     /** Client: the handle of the entity with network id {@code id}, which the client's level need not have loaded yet. */
     public static CgEntity of(int id) {
         if (id < 0) throw new IllegalArgumentException("entity id " + id);
-        CgEntityActor actor = CgEntityActors.actor(id);
-        if (actor != null) return actor.entity;
         return CLIENT.computeIfAbsent(id, i -> {
             CgEntity bare = new CgEntity(i, "entity");
             bare.heldTags = true;
             bare.tags = CgEntityTags.hold(i);
-            bare.bare = true;
             return bare;
         });
     }

@@ -24947,6 +24947,7 @@ com/crystalgraphics/world/actor/CgEntity
 com/crystalgraphics/world/actor/CgEntityActor
   access public,abstract
   extends java/lang/Object
+  implements com/crystalgraphics/world/actor/CgEntity$Presence
   method protected onRemove (Lcom/crystalgraphics/world/actor/CgEntity;)V
   method protected tick (Lcom/crystalgraphics/world/actor/CgEntity;F)V
   method protected,abstract onSpawn (Lcom/crystalgraphics/world/actor/CgEntity;)V
@@ -24957,9 +24958,11 @@ com/crystalgraphics/world/actor/CgEntityActor
   method protected,final server ()Z
   method protected,final serverEntity ()Ljava/lang/Object;
   method public <init> ()V
+  method public,final animation ()Lcom/crystalgraphics/animation/CgAnimInstance;
   method public,final body ()Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public,final entity ()Lcom/crystalgraphics/world/actor/CgEntity;
   method public,final hostEntity ()Ljava/lang/Object;
+  method public,final playSequence (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/sequence/CgSequencePlayer;
   method public,final root ()Lcom/crystalgraphics/render/scene/component/CgSceneRoot;
 com/crystalgraphics/world/actor/CgEntityActors
   access public,final

@@ -39,7 +39,7 @@ import com.crystalgraphics.world.CgEntityTags;
 public final class CgEntity {
 
     private final int id;
-    private final String type;
+    private String type;
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     /** Its owned tags, on its side: the server's counts, or a client's mirror of them. Set at spawn. */
     CgTagCounts tags = new CgTagCounts();
@@ -51,11 +51,29 @@ public final class CgEntity {
     int flags;
     boolean present;
     long hostFrame = -1;
-    /** Its actor on this side, where it has one. */
+    /** What its actor gives it on this side, where it has one: set as the actor spawns, cleared as it ends. */
     @Nullable
-    CgEntityActor actor;
-    /** Whether {@link CgEntities} made it for an entity with no actor. */
-    boolean bare;
+    Presence presence;
+
+    /** What an actor lends its entity's handle: the moves and the animation inputs of its body. */
+    interface Presence {
+        CgSequencePlayer playSequence(String sequence, @Nullable String slot);
+
+        @Nullable
+        CgAnimInstance animation();
+    }
+
+    /** Reads its pose and flags from the host's entities at {@code partialTick}; whether the host has it. */
+    boolean refresh(CgEntityQuery entities, float partialTick) {
+        present = entities.pose(id, partialTick, pose);
+        if (present) flags = entities.flags(id);
+        return present;
+    }
+
+    /** Names its type as its actor spawns. */
+    void type(String type) {
+        this.type = type;
+    }
 
     CgEntity(int id, String type) {
         this.id = id;
@@ -295,8 +313,8 @@ public final class CgEntity {
         if (serverHost == null) {
             throw new IllegalStateException("play(" + sequence + ") is the server's: " + this + " is on a client");
         }
-        if (actor == null) throw new IllegalStateException(this + " has no actor to play " + sequence + " on");
-        CgSequencePlayer player = actor.playSequence(sequence, slot);
+        if (presence == null) throw new IllegalStateException(this + " has no actor to play " + sequence + " on");
+        CgSequencePlayer player = presence.playSequence(sequence, slot);
         CgSequenceNet.serve(player, CgAnchor.on(serverHost), id).start();
         return player;
     }
@@ -312,7 +330,7 @@ public final class CgEntity {
         var event = CgReaction.event(name);
         if (serverHost == null) throw new IllegalStateException("raiseEvent(" + name + ") is the server's: " + this + " is on a client");
         CgNetObject motion = properties(CgEntityProperties.MOTION);
-        if (actor == null || motion == null) throw new IllegalStateException(this + " has no actor to raise " + name + " on");
+        if (presence == null || motion == null) throw new IllegalStateException(this + " has no actor to raise " + name + " on");
         motion.setBool(event, true);
         return this;
     }
@@ -324,8 +342,9 @@ public final class CgEntity {
      * @throws IllegalStateException with no actor or body
      */
     public CgAnimInstance animation() {
-        if (actor == null || actor.body() == null) throw new IllegalStateException(this + " has no body to animate");
-        return actor.body().anim();
+        CgAnimInstance anim = presence == null ? null : presence.animation();
+        if (anim == null) throw new IllegalStateException(this + " has no body to animate");
+        return anim;
     }
 
     private void requireOwner(String verb) {

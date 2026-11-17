@@ -706,15 +706,13 @@ public final class CgEntityActors extends CgWorldSubsystem {
         // a level's entities join before its first frame: the last level's actors go now, not over the new ones
         syncLevel();
         despawn(id);
-        CgEntity entity = new CgEntity(id, type);
         CgEntityActor actor = r.factory.get();
-        actor.entity = entity;
-        entity.actor = actor;
         actor.server = world().server();
         actor.host = host;
-        entity.heldTags = !(actor.server && host != null);
-        entity.tags = entity.heldTags ? CgEntityTags.hold(id) : CgEntityTags.of(host);
-        if (!entity.heldTags) entity.serverHost = host;
+        CgEntity entity = actor.server && host != null ? CgEntities.of(host) : CgEntities.of(id);
+        entity.type(type);
+        entity.presence = actor;
+        actor.entity = entity;
         CgScene scene = actor.scene();
         actor.root = scene.root().spawn();
         Live l = new Live(entity, actor, !r.keepVanillaModel, r, host);
@@ -746,7 +744,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
             LOGGER.error("the actor of {} failed to spawn: its entity is left to its host", entity, e);
             actor.removeAll();
             if (l.outline != null) l.outline.close();
-            if (entity.heldTags) CgEntityTags.release(id);
+            entity.presence = null;
             return false;
         }
         order.add(l);
@@ -828,7 +826,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         l.actor.removeAll();
         if (l.outline != null) l.outline.close();
         l.outline = null;
-        if (l.entity.heldTags) CgEntityTags.release(l.entity.id());
+        l.entity.presence = null;
     }
 
 
@@ -888,9 +886,7 @@ public final class CgEntityActors extends CgWorldSubsystem {
         CgEntityQuery entities = onServer ? CgEntityQueries.of(l.host) : CgEntityQueries.client();
         CgEntity e = l.entity;
         float partialTick = onServer ? 1f : CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick();
-        e.present = entities.pose(e.id(), partialTick, e.pose);
-        if (!e.present) return;
-        e.flags = entities.flags(e.id());
+        if (!e.refresh(entities, partialTick)) return;
         // The engine's meshes face +z (glTF), which Minecraft's yaw 0 faces: -bodyYaw turns +z to the body's facing.
         // Minecraft's own models face -z, hence its 180 - bodyYaw (LivingEntityRenderer.setupRotations)
         turn.rotationY((float) Math.toRadians(-e.bodyYaw()));
