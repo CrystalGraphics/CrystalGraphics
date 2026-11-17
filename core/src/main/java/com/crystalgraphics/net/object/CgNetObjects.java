@@ -29,6 +29,7 @@ import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
+import com.crystalgraphics.serialization.CgStateMap;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
@@ -1191,6 +1192,12 @@ public final class CgNetObjects {
     /** {@code obj}'s set fields that its type saves, as a map by name. */
     @SuppressWarnings("unchecked")
     static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
+        CgNetSaveForm form = obj.type.saveForm;
+        if (form != null) {
+            CgStateMap<T> out = new CgStateMap<>(ops);
+            form.write(obj, out);
+            return out.encode();
+        }
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
         for (int i = 0; i < all.length; i++) {
@@ -1207,6 +1214,11 @@ public final class CgNetObjects {
 
     /** The saved fields {@link #encodeFields} wrote, set on {@code obj}; one it does not name keeps its fallback. */
     static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
+        CgNetSaveForm form = obj.type.saveForm;
+        if (form != null) {
+            form.read(obj, new CgStateMap<>(ops, in));
+            return;
+        }
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, in);
         for (int i = 0; i < all.length; i++) {

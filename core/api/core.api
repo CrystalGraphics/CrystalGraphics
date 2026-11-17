@@ -9959,6 +9959,11 @@ com/crystalgraphics/net/object/CgNetProbe
   extends java/lang/Object
   method public,static install ()V
   method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/net/object/CgNetSaveForm
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract read (Lcom/crystalgraphics/net/object/CgNetObject;Lcom/crystalgraphics/serialization/CgStateMap;)V
+  method public,abstract write (Lcom/crystalgraphics/net/object/CgNetObject;Lcom/crystalgraphics/serialization/CgStateMap;)V
 com/crystalgraphics/net/object/CgNetStress
   access public,final
   extends java/lang/Object
@@ -10058,6 +10063,7 @@ com/crystalgraphics/net/object/CgNetType$Builder
   method public persisted ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public predictionTimeout (I)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public range (D)Lcom/crystalgraphics/net/object/CgNetType$Builder;
+  method public savedAs (Lcom/crystalgraphics/net/object/CgNetSaveForm;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleTo (Ljava/util/function/BiPredicate;)Lcom/crystalgraphics/net/object/CgNetType$Builder;
   method public visibleToTrackers ()Lcom/crystalgraphics/net/object/CgNetType$Builder;
 com/crystalgraphics/net/object/CgNetTypeCompiler

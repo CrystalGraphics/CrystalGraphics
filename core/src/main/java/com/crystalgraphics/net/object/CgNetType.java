@@ -119,6 +119,9 @@ public final class CgNetType {
     final boolean persisted;
     /** By field index: whether the field is saved, by its own {@code persisted()} or the type's. */
     final boolean[] saves;
+    /** Its own saved form, in place of each saved field by its codec; null for that. */
+    @Nullable
+    final CgNetSaveForm saveForm;
     @Nullable
     final BiPredicate<CgNetObject, CgPeer> visibleTo;
     final boolean perHolder;
@@ -176,6 +179,7 @@ public final class CgNetType {
             any |= saves[i];
         }
         this.persisted = any;
+        this.saveForm = b.saveForm;
         this.visibleTo = b.visibleTo;
         this.perHolder = b.perHolder;
         this.copyOnDeath = b.copyOnDeath;
@@ -219,6 +223,8 @@ public final class CgNetType {
         private final List<CgNetCommand<?>> commands = new ArrayList<>();
         private double range = -1;
         private boolean persisted;
+        @Nullable
+        private CgNetSaveForm saveForm;
         @Nullable
         private BiPredicate<CgNetObject, CgPeer> visibleTo;
         private boolean perHolder;
@@ -306,6 +312,21 @@ public final class CgNetType {
          */
         public Builder persisted() {
             persisted = true;
+            return this;
+        }
+
+        /**
+         * Saves its objects in a form of its own, written and read by {@code form}, in place of each saved field under its
+         * name. The fields saved ({@code persisted()}) still decide when a change is saved. See {@link CgNetSaveForm}.
+         *
+         * <pre>{@code
+         * .fields(X.persisted(), Y.persisted()).savedAs(new PointAsText())
+         * }</pre>
+         *
+         * @throws IllegalStateException at {@code build()} when no field is saved: the form would never be asked
+         */
+        public Builder savedAs(CgNetSaveForm form) {
+            saveForm = Objects.requireNonNull(form, "form");
             return this;
         }
 
@@ -429,6 +450,9 @@ public final class CgNetType {
                 if (local && persisted) throw new IllegalStateException(name + ": its fields are all local, and a local field is never saved");
                 if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
                 CgNetType type = new CgNetType(this, REGISTERED.size());
+                if (saveForm != null && !type.persisted) {
+                    throw new IllegalStateException(name + " has a saved form and saves no field: mark the fields it saves persisted()");
+                }
                 REGISTERED.add(type);
                 BY_NAME.put(name, type);
                 if (type.entityTypes != null) ON_ENTITIES.add(type);
@@ -770,7 +794,7 @@ public final class CgNetType {
             if (!f.name.equals(g.name) || f.kind != g.kind || f.initialOnly != g.initialOnly || f.ownerOnly != g.ownerOnly
                     || f.skipOwner != g.skipOwner || f.serverOnly != g.serverOnly || f.local != g.local
                     || (f.command == null) != (g.command == null) || f.fallbackBits != g.fallbackBits
-                    || !Objects.equals(f.fallback, g.fallback)) {
+                    || !Objects.equals(f.fallback, g.fallback) || saves[i] != (!g.local && (b.persisted || g.persisted))) {
                 return false;
             }
         }
@@ -780,7 +804,8 @@ public final class CgNetType {
         for (CgNetField<?> f : b.fields) if (f.command != null) commandNames.add(f.command.name);
         if (commands.length != commandNames.size()) return false;
         for (int i = 0; i < commands.length; i++) if (!commands[i].name.equals(commandNames.get(i))) return false;
-        return range == b.range && persisted == b.persisted && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
+        // whether a field saves is compared above: the type's persisted() and each field's both decide it
+        return range == b.range && saveForm == b.saveForm && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
                 && visibleToTrackers == b.visibleToTrackers && linger == b.linger && predictionTimeout == b.predictionTimeout
                 && keepRefused == b.keepRefused && (entityTypes == null) == (b.entityTypes == null)
                 && (visibleTo == null) == (b.visibleTo == null);

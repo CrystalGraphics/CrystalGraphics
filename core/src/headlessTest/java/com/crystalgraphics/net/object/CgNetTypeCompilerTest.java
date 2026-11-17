@@ -90,6 +90,11 @@ public class CgNetTypeCompilerTest {
                 entities: all
                 """);
         assertTrue("a field persisted saves it alone", rage.persisted && rage.saves[0] && !rage.saves[1]);
+        assertSame("a reload of the same file is the same type", rage, compile("filetest:rage", """
+                _v: 1
+                fields: { level: { kind: int, persisted: true }, target: { kind: int } }
+                entities: all
+                """));
         CgNetType all = compile("filetest:whole", """
                 _v: 1
                 fields: { level: { kind: int }, mood: { kind: float, sync: local } }

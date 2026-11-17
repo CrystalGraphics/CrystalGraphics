@@ -22,6 +22,7 @@ import com.crystalgraphics.platform.world.CgBoxSink;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.platform.world.CgWorldQuery;
 import com.crystalgraphics.serialization.CgCodecs;
+import com.crystalgraphics.serialization.CgStateMap;
 import com.crystalgraphics.serialization.nbt.CgNbtCompound;
 import com.crystalgraphics.world.CgEntitySaves;
 
@@ -225,6 +226,60 @@ public class CgNetEntitiesTest {
             assertEquals(41, (int) ((CgNbtCompound) saves.get(e).get(RAGE.name())).get("level", CgCodecs.INT));
         } finally {
             CgPlatform.provide(CgEntitySaves.HOST, null);
+        }
+    }
+
+    /** Two fields saved as one "x,y" text: a saved form of its own. */
+    static final CgNetField<Integer> MARK_X = CgNetField.ofInt("x").persisted();
+    static final CgNetField<Integer> MARK_Y = CgNetField.ofInt("y").persisted();
+    static final CgNetType MARK = CgNetType.define("entitytest:mark").fields(MARK_X, MARK_Y)
+            .onEntities(type -> type.equals("test:zombie"))
+            .savedAs(new CgNetSaveForm() {
+                @Override public <T> void write(CgNetObject obj, CgStateMap<T> out) {
+                    out.putString("at", obj.getInt(MARK_X) + "," + obj.getInt(MARK_Y));
+                }
+                @Override public <T> void read(CgNetObject obj, CgStateMap<T> in) {
+                    String[] at = in.getString("at", "0,0").split(",");
+                    obj.setInt(MARK_X, Integer.parseInt(at[0])).setInt(MARK_Y, Integer.parseInt(at[1]));
+                }
+            })
+            .build();
+
+    @Test
+    public void aTypeWithASavedFormOfItsOwnIsSavedAndReadThroughIt() {
+        Map<Object, CgNbtCompound> saves = new IdentityHashMap<>();
+        CgPlatform.provide(CgEntitySaves.HOST, new CgEntitySaves.Host() {
+            @Override public CgNbtCompound read(Object entity) { return saves.get(entity); }
+            @Override public void write(Object entity, CgNbtCompound data) { saves.put(entity, data); }
+            @Override public boolean savesWhenSaved() { return false; }
+        });
+        try {
+            CgNetTestRig.Entity e = zombie();
+            MARK.find(e).setInt(MARK_X, 12).setInt(MARK_Y, -3);
+            rig.tick(1);
+            CgNbtCompound mark = (CgNbtCompound) saves.get(e).get(MARK.name());
+            assertEquals("its own form", "12,-3", mark.get("at", CgCodecs.STRING));
+            assertTrue("in place of the fields", !mark.has("x") && !mark.has("y"));
+
+            CgNetTestRig.Entity loaded = rig.entity(0, 64, 0);
+            alive.add(loaded);
+            saves.put(loaded, saves.get(e));
+            CgNetEntities.enteredServer(loaded, "test:zombie");
+            assertEquals("read back through it", 12, MARK.find(loaded).getInt(MARK_X));
+            assertEquals(-3, MARK.find(loaded).getInt(MARK_Y));
+        } finally {
+            CgPlatform.provide(CgEntitySaves.HOST, null);
+        }
+    }
+
+    @Test
+    public void aSavedFormOnATypeThatSavesNothingIsRefused() {
+        try {
+            CgNetType.define("entitytest:unsaved_form").fields(CgNetField.ofInt("n")).perHolder()
+                    .savedAs(MARK.saveForm).build();
+            throw new AssertionError("a form nothing would ask for");
+        } catch (IllegalStateException expected) {
+            assertTrue(expected.getMessage(), expected.getMessage().contains("saves no field"));
         }
     }
 

@@ -948,6 +948,25 @@ any player joins. A player's and an entity's per-holder ones are saved with them
   It is kept under the key `crystalgraphics`, each type under its name: inside the loader's persistent entity data on
   Forge, NeoForge and Forge before 1.13, and as a key of the entity's own on Fabric. A field that no longer reads is
   logged and starts from its fallback.
+- **A saved form of your own**: by default each saved field is written under its name by its codec. A type whose save
+  should look otherwise (a compact form, the keys an older version wrote, one value from several fields) gives a
+  `CgNetSaveForm`, which writes and reads a `CgStateMap` in its place, Unreal's `Serialize` override. It is used
+  everywhere the type saves: an entity's data, a player's file, the world's file.
+
+  ```java
+  public static final CgNetType MARK = CgNetType.define("mymod:mark").fields(X.persisted(), Y.persisted())
+          .onEntities(type -> type.equals("minecraft:zombie"))
+          .savedAs(new CgNetSaveForm() {
+              public <T> void write(CgNetObject obj, CgStateMap<T> out) { out.putString("at", obj.getInt(X) + "," + obj.getInt(Y)); }
+              public <T> void read(CgNetObject obj, CgStateMap<T> in) {
+                  String[] at = in.getString("at", "0,0").split(",");
+                  obj.setInt(X, Integer.parseInt(at[0])).setInt(Y, Integer.parseInt(at[1]));
+              }
+          })
+          .build();
+  ```
+
+  Which fields are `persisted()` still decides when a change is saved, so a type saving none refuses a form.
 - **Elsewhere, in the world's file** (`crystalgraphics/objects/`): objects at a point, a chunk's, a dimension's, and
   objects spawned on a player by hand (several of a type may be).
 - **Files a person can open**: every file here is JSONC (JSON that allows `//` comments and trailing commas), so an
