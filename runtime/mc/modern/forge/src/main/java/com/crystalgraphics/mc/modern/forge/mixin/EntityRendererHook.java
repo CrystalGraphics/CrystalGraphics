@@ -87,18 +87,9 @@ public abstract class EntityRendererHook implements HostEntityRenderer {
     public void crystalgraphics$renderNameTag(EntityRenderState state, Component name, PoseStack poseStack, MultiBufferSource buffers, int light) {
         renderNameTag(state, name, poseStack, buffers, light);
     }
-    *///?} else {
-    @Shadow(aliases = {"f_114477_", "field_76989_e"})
-    protected float shadowRadius;
+    *///?}
 
-    @Override
-    public float crystalgraphics$shadowRadius() {
-        return shadowRadius;
-    }
-
-    //?}
-
-    // A field to 1.21.3, asked of the state from 1.21.4; from 1.21.10 the state carries the shadow
+    // A field to 1.21.3 (ShadowFieldsHook, ShadowFieldsSrgHook), asked of the state from 1.21.4; from 1.21.10 the state carries the shadow
     //? if >=1.21.4 <1.21.10 {
     /*@Shadow
     protected abstract float getShadowStrength(EntityRenderState state);
@@ -107,15 +98,7 @@ public abstract class EntityRendererHook implements HostEntityRenderer {
     public float crystalgraphics$shadowStrength(EntityRenderState state) {
         return getShadowStrength(state);
     }
-    *///?} elif <1.21.4 {
-    @Shadow(aliases = {"f_114478_", "field_76987_f"})
-    protected float shadowStrength;
-
-    @Override
-    public float crystalgraphics$shadowStrength() {
-        return shadowStrength;
-    }
-    //?}
+    *///?}
 
     //? if >=1.15 <1.21.3 {
     @Shadow(aliases = {"m_6512_", "func_177070_b"})
