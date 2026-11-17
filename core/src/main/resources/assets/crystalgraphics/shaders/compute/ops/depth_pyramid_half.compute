@@ -1,0 +1,29 @@
+// depth_pyramid.compute into 16-bit float levels (CgGpuOps.depthPyramid into an R16F target): half the bytes a texel,
+// for a search reading it far and scattered (GTAO's).
+#pragma kernel Seed 16 16 general
+#pragma kernel Reduce 16 16 general
+
+Properties {
+    _Levels ("Levels this dispatch makes past its first: 1 to 6", int) = 6
+}
+
+Images {
+    SRC  ("The level this dispatch starts from (Reduce)", r16f, readonly)
+    OUT0 ("Level 0: eye depth (Seed)",                     r16f, writeonly)
+    OUT1 ("The first level made",                           r16f, writeonly)
+    OUT2 ("The second",                                     r16f, writeonly)
+    OUT3 ("The third",                                      r16f, writeonly)
+    OUT4 ("The fourth",                                     r16f, writeonly)
+    OUT5 ("The fifth",                                      r16f, writeonly)
+    OUT6 ("The sixth",                                      r16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/lib/ops/depth_pyramid.glsl"
+
+void Seed() {
+    pyramid_seed();
+}
+
+void Reduce() {
+    pyramid_reduce();
+}

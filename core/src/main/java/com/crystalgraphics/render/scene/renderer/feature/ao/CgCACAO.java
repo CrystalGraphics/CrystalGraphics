@@ -27,7 +27,7 @@ import com.crystalgraphics.settings.CgGraphicsSettings;
  * {@code FFX_CACAO_UpdatePerPassConstants}, {@code ffx_cacao_impl.cpp}'s dispatch order, and the sample's native
  * presets. The kernels are {@code world/ao/cacao.compute}; {@code THIRD-PARTY.md} holds the notice.</p>
  */
-final class CgCacao {
+final class CgCACAO {
 
     /** Its kernels, in two files since a file binds 8 images at most: the first {@link #PREPARE_KERNELS} are the prepare's. */
     private static final String KERNELS = "crystalgraphics:shaders/world/ao/cacao.compute",
@@ -58,7 +58,7 @@ final class CgCacao {
     /**
      * Unreal's radius onto AMD's calibration: its default 2 m lands on CACAO's default 1.2 m. CACAO's falloff counts
      * an occluder at full weight to near its radius, so at Unreal's reach a figure standing a metre off the floor
-     * shadows it in streaks. XeGTAO's radius multiplier does the same for GTAO.
+     * shadows it in streaks.
      */
     private static final float RADIUS_SCALE = 0.6f;
     /** The depth levels CACAO keeps (its mips 0 to 3). */
@@ -72,7 +72,7 @@ final class CgCacao {
 
     private static CgKernel[] kernels;
 
-    private CgCacao() {
+    private CgCACAO() {
     }
 
     static void precache() {

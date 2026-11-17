@@ -28,7 +28,7 @@ import javax.annotation.Nullable;
  *
  * <ul>
  *   <li>The history is fetched by velocity: what the velocity pass wrote, else the camera's motion over the depth.
- *       Asked for when it shows ({@code CgSceneTextures.requestVelocity}).</li>
+ *       Every engine solid writes while it shows ({@code CgSceneTextures.requestVelocityWithStill}).</li>
  *   <li>Unreal's classic TAA's frame (the input filtered by the jitter, Catmull-Rom history, YCoCg), with a variance
  *       clip and three departures for what it shimmers or smears on: where the texels round one part in motion (a
  *       dithered or thin surface over what moves behind it) the history is cut to as many frames as smear it a texel;

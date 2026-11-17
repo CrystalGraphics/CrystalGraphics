@@ -97,6 +97,11 @@ public final class CgGpuOps {
     /** A depth pyramid's: one float a texel, the eye depth. */
     public static final CgFormat PYRAMID_FORMAT =
             CgFormat.R32_FLOAT;
+    /**
+     * {@link #depthPyramid}'s other format: half the bytes a texel, for a search reading it far and scattered (GTAO's),
+     * which a culling test's precision does not need.
+     */
+    public static final CgFormat PYRAMID_HALF_FORMAT = CgFormat.R16_FLOAT;
 
     /** What one element of a level folds of the level below it. */
     static final int BLOCK = 16;
@@ -125,14 +130,16 @@ public final class CgGpuOps {
     private static final String CULL_PATH = "crystalgraphics:shaders/compute/ops/cull.compute";
     private static final String INDIRECT_ARGS = "crystalgraphics:shaders/compute/ops/args.compute";
     private static final String EXPAND_PATH = "crystalgraphics:shaders/compute/ops/expand.compute";
-    private static final String PYRAMID_PATH = "crystalgraphics:shaders/compute/ops/depth_pyramid.compute";
+    private static final String PYRAMID_PATH = "crystalgraphics:shaders/compute/ops/depth_pyramid.compute",
+            PYRAMID_HALF_PATH = "crystalgraphics:shaders/compute/ops/depth_pyramid_half.compute";
     /** Levels one pyramid dispatch makes past its first: a 64-texel tile to one texel, and seven images bound. */
     private static final int PYRAMID_BATCH = 6, PYRAMID_TILE = 64;
     private static final int GPU_PYRAMID = CgGpuTrace.name("ops.depthPyramid");
     private static final String[] PYRAMID_OUTS = {"OUT0", "OUT1", "OUT2", "OUT3", "OUT4", "OUT5", "OUT6"};
-    /** What a dispatch making fewer than six levels binds where the rest would go: never written. */
+    /** What a dispatch making fewer than six levels binds where the rest would go, by format: never written. */
     private static final CgGraphTexture PYRAMID_UNUSED = CgGraphTexture.transientTexture("ops.pyramid.unused",
-            new CgTextureDesc(1, 1, PYRAMID_FORMAT));
+            new CgTextureDesc(1, 1, PYRAMID_FORMAT)), PYRAMID_HALF_UNUSED = CgGraphTexture.transientTexture(
+            "ops.pyramid.unusedHalf", new CgTextureDesc(1, 1, PYRAMID_HALF_FORMAT));
     /** An object record's bytes: what each instance and each kept record of a cull is. */
     private static final int RECORD_BYTES = CgPrimitiveTable.FLOATS * 4;
     /** Each instance buffer's keys start at a multiple of this in a batched cull: a binding offset is a whole 256 bytes. */
@@ -453,10 +460,12 @@ public final class CgGpuOps {
         precacheScan(Scan.EXCLUSIVE, Fold.SUM, Element.UINT);
     }
 
-    /** {@link #precacheSort}, for {@link #depthPyramid}: its two kernels. */
+    /** {@link #precacheSort}, for {@link #depthPyramid}: its two kernels in each format. */
     public static void precacheDepthPyramid() {
-        precache(Files.pyramid().kernel("Seed"));
-        precache(Files.pyramid().kernel("Reduce"));
+        for (boolean half : new boolean[] {false, true}) {
+            precache(Files.pyramid(half).kernel("Seed"));
+            precache(Files.pyramid(half).kernel("Reduce"));
+        }
     }
 
     /** {@link #precacheSort}, for {@link #blur} and {@link #blurScaled} over images of {@code type}. */
@@ -665,7 +674,8 @@ public final class CgGpuOps {
     /**
      * The scene's depth as {@link #cull} reads it: level 0 the eye depth of each texel of {@code depth}
      * under {@code constants}' projection and depth convention, each level after it the farthest of what it covers.
-     * {@code pyramid} is {@link #PYRAMID_FORMAT} with mips, the size of {@code depth}. Recorded where it stands: after
+     * {@code pyramid} is {@link #PYRAMID_FORMAT}, or {@link #PYRAMID_HALF_FORMAT}, with mips, the size of {@code depth}.
+     * Recorded where it stands: after
      * whatever should hide the instances has drawn. One compute pass, a dispatch per six levels: two up to 4096 texels a
      * side ({@code depth_pyramid.compute}, SPD's tile through shared memory).
      *
@@ -679,18 +689,24 @@ public final class CgGpuOps {
     public static void depthPyramid(CgRecording recording, CgGraphTexture depth, CgPassConstants constants,
                                     CgGraphTexture pyramid) {
         if (pyramid.getLevels() < 2) throw new IllegalArgumentException(pyramid + " has one level: describe it withMips()");
+        CgFormat format = pyramid.desc().format();
+        if (format != PYRAMID_FORMAT && format != PYRAMID_HALF_FORMAT) {
+            throw new IllegalArgumentException(pyramid + " is " + format + ": a pyramid is PYRAMID_FORMAT or PYRAMID_HALF_FORMAT");
+        }
+        boolean half = format == PYRAMID_HALF_FORMAT;
+        CgGraphTexture unused = half ? PYRAMID_HALF_UNUSED : PYRAMID_UNUSED;
         int w = pyramid.getWidth(), h = pyramid.getHeight(), last = pyramid.getLevels() - 1;
         CgComputePass pass = recording.compute("cg.depthPyramid", constants).readsDepth(depth).timed(GPU_PYRAMID);
         for (int from = 0; from < last; from += PYRAMID_BATCH) {
             int made = Math.min(PYRAMID_BATCH, last - from);
             int gx = (size(w, from) + PYRAMID_TILE - 1) / PYRAMID_TILE, gy = (size(h, from) + PYRAMID_TILE - 1) / PYRAMID_TILE;
-            CgDispatch d = pass.dispatchGroups(Files.pyramid().kernel(from == 0 ? "Seed" : "Reduce"), gx, gy, 1)
+            CgDispatch d = pass.dispatchGroups(Files.pyramid(half).kernel(from == 0 ? "Seed" : "Reduce"), gx, gy, 1)
                     .set("_Levels", made);
             if (from == 0) d.image(PYRAMID_OUTS[0], pyramid, 0, -1);
             else d.image("SRC", pyramid, from, -1);
             for (int k = 1; k <= PYRAMID_BATCH; k++) {
                 if (k <= made) d.image(PYRAMID_OUTS[k], pyramid, from + k, -1);
-                else d.image(PYRAMID_OUTS[k], PYRAMID_UNUSED, 0, -1);
+                else d.image(PYRAMID_OUTS[k], unused, 0, -1);
             }
         }
         pass.end();
@@ -1188,7 +1204,7 @@ public final class CgGpuOps {
 
     /** The ops' kernel files, each loaded the first time an op needs it. */
     private static final class Files {
-        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand, pyramid;
+        private static volatile CgCompute fill, scan, sort, histogram, image, cull, expand, pyramid, pyramidHalf;
 
         static CgCompute fill() {
             CgCompute f = fill;
@@ -1253,12 +1269,13 @@ public final class CgGpuOps {
             }
         }
 
-        static CgCompute pyramid() {
-            CgCompute f = pyramid;
+        static CgCompute pyramid(boolean half) {
+            CgCompute f = half ? pyramidHalf : pyramid;
             if (f != null) return f;
             synchronized (Files.class) {
-                if (pyramid == null) pyramid = CgCompute.load(PYRAMID_PATH);
-                return pyramid;
+                if (half && pyramidHalf == null) pyramidHalf = CgCompute.load(PYRAMID_HALF_PATH);
+                if (!half && pyramid == null) pyramid = CgCompute.load(PYRAMID_PATH);
+                return half ? pyramidHalf : pyramid;
             }
         }
     }

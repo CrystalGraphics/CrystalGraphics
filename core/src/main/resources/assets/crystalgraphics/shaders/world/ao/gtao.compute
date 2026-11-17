@@ -1,0 +1,356 @@
+// Ground-truth ambient occlusion (CgGTAO; Jimenez et al. 2016, "Practical Real-Time Strategies for Accurate Indirect
+// Occlusion"), four kernels:
+// - Horizon: each pixel's two horizons along a few screen directions, searched through the scene's furthest depth
+//   pyramid, and the visible arc integrated against its normal from depth. At the AO size, the render size or half it.
+// - Spatial: a 5x5 bilateral blur on a plane fitted to the depth about the pixel, then the power and intensity.
+// - Temporal: blended into the view's own history, reprojected by the pixel's velocity (the camera's over its depth
+//   where the velocity pass wrote none), the history held within a range of this frame's value and within this frame's
+//   values about the pixel.
+// - Upsample: the history brought to the render size, the minimum of four bilinear taps a quarter texel about the pixel.
+// Each frame turns the search directions and steps through a fixed 6 x 4 cycle, which the temporal step averages.
+#pragma kernel Horizon 8 8 image
+#pragma kernel Spatial 16 8 general
+#pragma kernel Temporal 8 8 image
+#pragma kernel Upsample 8 8 image
+
+Properties {
+    _Size    ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _AoSize  ("The AO size (the render size, or half it), and its inverse", vec4) = (1, 1, 1, 1)
+    _Search  ("x the world radius (metres), y the thickness blend, z taps a direction, w directions", vec4) = (2, 0.75, 8, 2)
+    _Search2 ("x the bias level into the pyramid, y the most pixels a search reaches, z, w the next direction's sine and cosine", vec4) = (0, 256, 1, 0)
+    _Frame   ("x, y this frame's rotation's cosine and sine, z its step offset", vec4) = (1, 0, 0, 0)
+    _Fade    ("x, y the fade's multiply and add over eye depth (metres), z the distance past which nothing is occluded", vec4) = (0, 0, 80, 0)
+    _Output  ("x intensity, y power, z the temporal blend weight, w 1 where the history holds last frame", vec4) = (0.5, 2, 0.1, 0)
+    _Pyramid ("The scene's eye depth, level 0, and each level after it the farthest of what it covers", sampler2D) = "black"
+    _Horizon ("The horizon search's occlusion", sampler2D) = "white"
+    _Filtered ("The spatial filter's occlusion", sampler2D) = "white"
+    _History ("Last frame's filtered occlusion", sampler2D) = "white"
+    _Velocity ("The velocity pass's target: 0 where nothing wrote", sampler2D) = "black"
+    _Resolved ("This frame's filtered occlusion, at the AO size", sampler2D) = "white"
+}
+
+Images {
+    HORIZON  ("The horizon search's occlusion", r8, writeonly)
+    FILTERED ("The spatial filter's occlusion", r8, writeonly)
+    HISTORY  ("This frame's filtered occlusion, the next frame's history", r8, writeonly)
+    AO       ("The occlusion the lit solids read: 1 open", r16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/lib/velocity.glsl"
+
+const float GTAO_PI = 3.14159265, GTAO_HALF_PI = 1.57079633;
+// Farther than any search reaches: what the sky's infinite depth is held to
+const float GTAO_FAR = 1.0e6;
+
+// The view position at uv (0 to 1, bottom left) and eye depth z: x and y as the projection puts them, z away from the eye.
+vec3 view_position(vec2 uv, float z) {
+    vec2 ndc = uv * 2.0 - 1.0;
+    return vec3((ndc.x + cg_ProjMatrix[2][0]) * z / cg_ProjMatrix[0][0], (ndc.y + cg_ProjMatrix[2][1]) * z / cg_ProjMatrix[1][1], z);
+}
+
+ivec2 full_texel(vec2 uv) {
+    return clamp(ivec2(floor(uv * _Size.xy)), ivec2(0), ivec2(_Size.xy) - 1);
+}
+
+float window_depth(ivec2 p) {
+    return texelFetch(cg_DepthBuffer, clamp(p, ivec2(0), ivec2(_Size.xy) - 1), 0).r;
+}
+
+float eye_depth(float window) {
+    return min(cg_LinearEyeDepth(window), GTAO_FAR);
+}
+
+// The pyramid's eye depth at uv, at a level of size size: its texel there, clamped to its edge.
+float pyramid_depth(vec2 uv, int level, ivec2 size) {
+    return min(texelFetch(_Pyramid, clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1), level).r, GTAO_FAR);
+}
+
+// A search's view of the projection: x, y the reciprocals of its scale, z, w its offsets; position_at's terms.
+vec4 view_terms() {
+    return vec4(1.0 / cg_ProjMatrix[0][0], 1.0 / cg_ProjMatrix[1][1], cg_ProjMatrix[2][0], cg_ProjMatrix[2][1]);
+}
+
+// view_position through view_terms: the search's taps.
+vec3 position_at(vec2 uv, float z, vec4 terms) {
+    return vec3((uv * 2.0 - 1.0 + terms.zw) * terms.xy * z, z);
+}
+
+// ── Horizon search and integration ─────────────────────────────────────────────────────────────────────────────────
+
+// The step toward the neighbour whose depth runs on from this pixel's: a silhouette beside the pixel does not bend its
+// normal.
+float smaller_delta(float before, float mid, float after) {
+    float a = mid - before, b = after - mid;
+    return abs(a) < abs(b) ? a : b;
+}
+
+// The normal from depth, facing the eye: the pixel's neighbours a pixel right and up, each along the smaller window
+// depth step. Window depth runs linearly across a plane in either convention, so the two tangents lie in it.
+vec3 normal_from_depth(ivec2 p, vec2 uv, vec3 position) {
+    float d = window_depth(p);
+    float dx = smaller_delta(window_depth(p - ivec2(1, 0)), d, window_depth(p + ivec2(1, 0)));
+    float dy = smaller_delta(window_depth(p - ivec2(0, 1)), d, window_depth(p + ivec2(0, 1)));
+    vec3 right = view_position(uv + vec2(_Size.z, 0.0), eye_depth(d + dx)) - position;
+    vec3 up = view_position(uv + vec2(0.0, _Size.w), eye_depth(d + dy)) - position;
+    return normalize(cross(up, right));
+}
+
+// Interleaved gradient noise (Jimenez 2014) at a pixel.
+float gradient_noise(vec2 p) {
+    return fract(52.9829189 * fract(p.x * 0.06711056 + p.y * 0.00583715));
+}
+
+// A direction's two horizons, as angles from the view direction, its taps reading the pyramid a level coarser as they
+// step out. Past the radius a tap counts for nothing; within it a lower horizon than the best so far pulls the best
+// down by the thickness blend, so a thin object in front does not hide the sky behind it.
+vec2 search(vec2 uv, vec2 dir, float stepRadius, float offset, vec3 position, vec3 view, float atten, vec4 terms) {
+    int taps = int(_Search.z), bias = int(_Search2.x) + 1;   // the pyramid's level 1 is half the render size
+    ivec2 size0 = textureSize(_Pyramid, bias), size1 = textureSize(_Pyramid, bias + 1), size2 = textureSize(_Pyramid, bias + 2);
+    float thickness = _Search.y;
+    vec2 best = vec2(-1.0);
+    for (int i = 1; i <= taps; i++) {   // LOOP-BOUND: _Search.z, 20 at most
+        float fi = float(i);
+        vec2 o = dir * max(stepRadius * (fi + offset), fi + 1.0);
+        // The first tap and the third at the bias level, the second one coarser, the rest two coarser
+        int step = i == 2 ? 1 : i > 3 ? 2 : 0, level = bias + step;
+        ivec2 size = step == 0 ? size0 : step == 1 ? size1 : size2;
+        vec2 uv0 = uv + o, uv1 = uv - o;
+
+        vec3 v = position_at(uv0, pyramid_depth(uv0, level, size), terms) - position;
+        float lenSq = dot(v, v), falloff = clamp(lenSq * atten, 0.0, 1.0);
+        if (falloff < 1.0) {
+            float a = mix(dot(v, view) * inversesqrt(lenSq + 1.0e-8), best.x, falloff);
+            best.x = a > best.x ? a : mix(a, best.x, thickness);
+        }
+        v = position_at(uv1, pyramid_depth(uv1, level, size), terms) - position;
+        lenSq = dot(v, v);
+        falloff = clamp(lenSq * atten, 0.0, 1.0);
+        if (falloff < 1.0) {
+            float a = mix(dot(v, view) * inversesqrt(lenSq + 1.0e-8), best.y, falloff);
+            best.y = a > best.y ? a : mix(a, best.y, thickness);
+        }
+    }
+    return acos(clamp(best, -1.0, 1.0));
+}
+
+// The visible arc between the two horizons, clamped to the normal's hemisphere, integrated against the normal
+// projected into the direction's slice and weighted by that projection's length.
+float integrate(vec2 horizons, vec2 dir, vec3 view, vec3 normal) {
+    vec3 planeNormal = normalize(cross(vec3(dir, 0.0), view));
+    vec3 perp = cross(view, planeNormal);
+    vec3 projected = normal - planeNormal * dot(normal, planeNormal);
+    float len = length(projected) + 1.0e-6;
+    float cosAng = dot(projected, perp) / len;
+    float gamma = acos(clamp(cosAng, -1.0, 1.0)) - GTAO_HALF_PI;
+    float cosGamma = dot(projected, view) / len;
+    float sinGamma = cosAng * -2.0;
+    float h0 = gamma + max(-horizons.x - gamma, -GTAO_HALF_PI);
+    float h1 = gamma + min(horizons.y - gamma, GTAO_HALF_PI);
+    return len * 0.25 * ((h0 * sinGamma + cosGamma - cos(2.0 * h0 - gamma)) + (h1 * sinGamma + cosGamma - cos(2.0 * h1 - gamma)));
+}
+
+void Horizon() {
+    ivec2 px = CG_TEXEL.xy;
+    // An eighth of a render pixel on: at half size the centre never lands between two render pixels
+    vec2 uv = (vec2(px) + 0.5) * _AoSize.zw + _Size.zw * 0.125;
+    ivec2 at = full_texel(uv);
+    float z = eye_depth(window_depth(at));
+    if (z > _Fade.z) {
+        HORIZON_WRITE(vec4(1.0));
+        return;
+    }
+    vec3 position = view_position(uv, z);
+    vec3 normal = normal_from_depth(at, uv, position);
+    vec3 view = normalize(-position);
+
+    float radius = _Search.x, taps = _Search.z;
+    // The radius in render pixels at this depth, as many as the taps at least, and the step between taps
+    float pixelRadius = max(min(radius * _Size.y * cg_ProjMatrix[0][0] / z, _Search2.y), taps);
+    float stepRadius = pixelRadius / (taps + 1.0);
+    float atten = 2.0 / (radius * radius);
+
+    // The pixel's direction turned by the frame's rotation, and its step offset: a 4-pixel diagonal cycle, moved by the frame's
+    uvec2 noisePx = uvec2(uint(px.x), uint(16384 - px.y));
+    float g = gradient_noise(vec2(noisePx)) * GTAO_PI;
+    vec2 local = vec2(cos(g), sin(g));
+    vec2 dir = vec2(dot(local, vec2(_Frame.x, -_Frame.y)), dot(local, vec2(_Frame.y, _Frame.x)));
+    float offset = fract(0.25 * float((noisePx.y - noisePx.x) & 3u) + _Frame.z);
+
+    int angles = int(_Search.w);
+    vec4 terms = view_terms();
+    float sum = 0.0;
+    for (int a = 0; a < angles; a++) {   // LOOP-BOUND: _Search.w, 16 at most
+        sum += integrate(search(uv, dir * _Size.zw, stepRadius, offset, position, view, atten, terms), dir, view, normal);
+        dir = vec2(dir.x * _Search2.w - dir.y * _Search2.z, dir.x * _Search2.z + dir.y * _Search2.w);
+        offset = fract(offset + 0.617);
+    }
+    float ao = sum / float(angles) * (2.0 / GTAO_PI);
+    ao = mix(ao, 1.0, clamp(z * _Fade.x + _Fade.y, 0.0, 1.0));
+    HORIZON_WRITE(vec4(ao));
+}
+
+// ── Spatial filter ──────────────────────────────────────────────────────────────────────────────────────────────────
+
+// A 16 x 8 tile and its 2-pixel border, two pixels a thread
+const int TILE_W = 16, TILE_H = 8, BORDER = 2, LDS_W = TILE_W + 2 * BORDER, LDS_H = TILE_H + 2 * BORDER;
+// The depth the bilateral weight compares: the reciprocal of eye depth at a 10 cm near plane (0.1 / z, metres), linear
+// across a plane on screen, its weight falling to 0 at a 1/20000 step off the fitted plane.
+const float PLANE_NEAR = 0.1, PLANE_WEIGHT = 20000.0;
+const int FILTER_MIN = -2, FILTER_MAX = 2;
+
+shared float tileAo[LDS_W * LDS_H];
+shared float tileZ[LDS_W * LDS_H];
+
+int lds(int x, int y) {
+    return (y + BORDER) * LDS_W + x + BORDER;
+}
+
+void Spatial() {
+    ivec2 group = CG_GROUP_ID.xy, local = ivec2(CG_LOCAL_ID.xy);
+    ivec2 origin = group * ivec2(TILE_W, TILE_H) - BORDER;
+    ivec2 aoLast = ivec2(_AoSize.xy) - 1, fullLast = ivec2(_Size.xy) - 1;
+    float scale = _Size.x * _AoSize.z;   // render pixels an AO pixel
+    int index = CG_LOCAL_INDEX * 2;
+    if (index < LDS_W * LDS_H) {
+        for (int k = 0; k < 2; k++) {
+            int i = index + k;
+            ivec2 p = clamp(origin + ivec2(i % LDS_W, i / LDS_W), ivec2(0), aoLast);
+            tileAo[i] = texelFetch(_Horizon, p, 0).r;
+            // The scene's own depth, not the pyramid's half floats: the weight resolves a millimetre at a few metres
+            tileZ[i] = PLANE_NEAR / max(eye_depth(window_depth(min(ivec2(vec2(p) * scale), fullLast))), 1.0e-6);
+        }
+    }
+    barrier();
+
+    int centre = lds(local.x, local.y);
+    float z = tileZ[centre];
+    // Each axis's gradient: from whichever side's two neighbours extrapolate nearer this pixel's depth
+    vec2 slope;
+    {
+        float m2 = tileZ[centre - 2], m1 = tileZ[centre - 1], p1 = tileZ[centre + 1], p2 = tileZ[centre + 2];
+        slope.x = abs(m1 + (m1 - m2) - z) < abs(p1 + (p1 - p2) - z) ? m1 - m2 : p2 - p1;
+    }
+    {
+        float m2 = tileZ[centre - 2 * LDS_W], m1 = tileZ[centre - LDS_W], p1 = tileZ[centre + LDS_W], p2 = tileZ[centre + 2 * LDS_W];
+        slope.y = abs(m1 + (m1 - m2) - z) < abs(p1 + (p1 - p2) - z) ? m1 - m2 : p2 - p1;
+    }
+
+    float sum = 0.0, weights = 0.0;
+    float rowZ = z + slope.x * float(FILTER_MIN) + slope.y * float(FILTER_MIN);
+    for (int y = FILTER_MIN; y <= FILTER_MAX; y++) {
+        float planeZ = rowZ;
+        for (int x = FILTER_MIN; x <= FILTER_MAX; x++) {
+            int at = lds(local.x + x, local.y + y);
+            float w = 1.0 - clamp(abs(planeZ - tileZ[at]) * PLANE_WEIGHT, 0.0, 1.0);
+            sum += tileAo[at] * w;
+            weights += w;
+            planeZ += slope.x;
+        }
+        rowZ += slope.y;
+    }
+    float ao = sum / weights * GTAO_HALF_PI;
+    ao = 1.0 - (1.0 - pow(abs(ao), _Output.y * 0.5)) * _Output.x;
+
+    ivec2 px = group * ivec2(TILE_W, TILE_H) + local;
+    if (all(lessThanEqual(px, aoLast))) FILTERED_STORE(px, vec4(ao));
+}
+
+// ── Temporal filter ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+// Where the surface at uv, of window depth window, was last frame: its written velocity, else the camera's motion over it.
+vec2 previous_uv(vec2 uv, float window) {
+    vec2 ndc = uv * 2.0 - 1.0;
+    ivec2 size = textureSize(_Velocity, 0);
+    vec2 written = texelFetch(_Velocity, clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1), 0).xy;
+    if (written.x > 0.0) return (ndc - cg_DecodeVelocity(written)) * 0.5 + 0.5;
+    float eye = cg_LinearEyeDepth(window);
+    vec3 v = vec3((ndc.x + cg_ProjMatrix[2][0]) * eye / cg_ProjMatrix[0][0], (ndc.y + cg_ProjMatrix[2][1]) * eye / cg_ProjMatrix[1][1], -eye);
+    vec4 previous = cg_PreviousClip(transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz));
+    return previous.xy / previous.w * 0.5 + 0.5;
+}
+
+// This frame's filtered occlusion at uv, bilinear, clamped to its edge.
+float filtered_bilinear(vec2 uv) {
+    vec2 p = uv * _AoSize.xy - 0.5, f = fract(p);
+    ivec2 i = ivec2(floor(p)), last = ivec2(_AoSize.xy) - 1;
+    float a = texelFetch(_Filtered, clamp(i, ivec2(0), last), 0).r;
+    float b = texelFetch(_Filtered, clamp(i + ivec2(1, 0), ivec2(0), last), 0).r;
+    float c = texelFetch(_Filtered, clamp(i + ivec2(0, 1), ivec2(0), last), 0).r;
+    float e = texelFetch(_Filtered, clamp(i + ivec2(1, 1), ivec2(0), last), 0).r;
+    return mix(mix(a, b, f.x), mix(c, e, f.x), f.y);
+}
+
+// The range of this frame's occlusion about the pixel: it and four taps a texel and a half out on the diagonals. What a
+// still surface uncovered this frame may take of last frame's: the occlusion of what moved off it falls outside.
+vec2 neighbourhood(vec2 uv, float now) {
+    vec2 d = _AoSize.zw * 1.5;
+    float a = filtered_bilinear(uv + vec2(-d.x, -d.y)), b = filtered_bilinear(uv + vec2(-d.x, d.y));
+    float c = filtered_bilinear(uv + vec2(d.x, -d.y)), e = filtered_bilinear(uv + vec2(d.x, d.y));
+    return vec2(min(now, min(min(a, b), min(c, e))), max(now, max(max(a, b), max(c, e))));
+}
+
+// Last frame's occlusion at a texel: 1 off the screen.
+float history_at(ivec2 p) {
+    return any(lessThan(p, ivec2(0))) || any(greaterThan(p, ivec2(_AoSize.xy) - 1)) ? 1.0 : texelFetch(_History, p, 0).r;
+}
+
+// Last frame's at uv: its four texels each held within [lo, hi], then blended bilinearly.
+float history_clamped(vec2 uv, float lo, float hi) {
+    vec2 p = uv * _AoSize.xy - 0.5, f = fract(p);
+    ivec2 i = ivec2(floor(p));
+    float h00 = clamp(history_at(i), lo, hi), h10 = clamp(history_at(i + ivec2(1, 0)), lo, hi);
+    float h01 = clamp(history_at(i + ivec2(0, 1)), lo, hi), h11 = clamp(history_at(i + ivec2(1, 1)), lo, hi);
+    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+
+void Temporal() {
+    ivec2 px = CG_TEXEL.xy;
+    vec2 uv = (vec2(px) + 0.5) * _AoSize.zw + _Size.zw * 0.125;
+    float now = texelFetch(_Filtered, px, 0).r;
+    float window = window_depth(full_texel(uv));
+    if (eye_depth(window) > _Fade.z) {
+        HISTORY_WRITE(vec4(now));
+        return;
+    }
+    vec2 prevUv = previous_uv(uv, window);
+    vec2 motion = uv - prevUv;
+    float speed = clamp(length(motion) * 100.0, 0.0, 1.0);
+    float range = mix(0.1, 0.0, speed);
+    vec2 around = neighbourhood(uv, now);
+    float lo = max(clamp(now - range, 0.0, 1.0), around.x), hi = min(clamp(now + range, 0.0, 1.0), around.y);
+
+    float history;
+    if (_Output.w < 0.5) {
+        // No history: last frame's taken as open, as an empty history reads
+        history = hi;
+    } else {
+        // Whether the surface found where this one was moves as this one does: where it does not, this pixel was
+        // uncovered this frame, and last frame's value at its own place stands in
+        vec2 there = clamp(prevUv, vec2(0.0), vec2(1.0));
+        vec2 thereMotion = there - previous_uv(there, window_depth(full_texel(there)));
+        vec2 d = motion - thereMotion;
+        float same = 1.0 - clamp(abs(d.x + d.y) * 100.0, 0.0, 1.0);
+        history = mix(clamp(history_at(px), lo, hi), history_clamped(prevUv, lo, hi), same);
+    }
+    HISTORY_WRITE(vec4(mix(history, now, _Output.z)));
+}
+
+// ── Upsample ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+float resolved_bilinear(vec2 uv) {
+    vec2 p = uv * _AoSize.xy - 0.5, f = fract(p);
+    ivec2 i = ivec2(floor(p)), last = ivec2(_AoSize.xy) - 1;
+    float a = texelFetch(_Resolved, clamp(i, ivec2(0), last), 0).r;
+    float b = texelFetch(_Resolved, clamp(i + ivec2(1, 0), ivec2(0), last), 0).r;
+    float c = texelFetch(_Resolved, clamp(i + ivec2(0, 1), ivec2(0), last), 0).r;
+    float e = texelFetch(_Resolved, clamp(i + ivec2(1, 1), ivec2(0), last), 0).r;
+    return clamp(mix(mix(a, b, f.x), mix(c, e, f.x), f.y), 0.0, 1.0);
+}
+
+// The darkest of four bilinear taps a quarter of an AO texel about the pixel: a crease kept as thin as it was found.
+void Upsample() {
+    vec2 uv = (vec2(CG_TEXEL.xy) + 0.5) * _Size.zw, o = _AoSize.zw * 0.25;
+    float ao = min(min(resolved_bilinear(uv + vec2(-o.x, -o.y)), resolved_bilinear(uv + vec2(o.x, -o.y))),
+            min(resolved_bilinear(uv + vec2(-o.x, o.y)), resolved_bilinear(uv + vec2(o.x, o.y))));
+    AO_WRITE(vec4(ao));
+}

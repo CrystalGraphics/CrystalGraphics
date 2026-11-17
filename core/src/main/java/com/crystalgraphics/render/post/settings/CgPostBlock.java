@@ -99,6 +99,7 @@ public final class CgPostBlock {
         if (ao.get("quality") instanceof Number n) s.ambientOcclusionQuality(n.floatValue());
         if (ao.get("fade_distance") instanceof Number n) s.ambientOcclusionFadeDistance(n.floatValue());
         if (ao.get("fade_radius") instanceof Number n) s.ambientOcclusionFadeRadius(n.floatValue());
+        if (ao.get("temporal_blend_weight") instanceof Number n) s.ambientOcclusionTemporalBlendWeight(n.floatValue());
     }
 
     /** {@code motion_blur}'s keys, each overriding its field alone. */
@@ -248,6 +249,9 @@ public final class CgPostBlock {
         if (s.overridesAmbientOcclusion(CgPostSettings.AO_QUALITY)) ao.put("quality", (double) s.ambientOcclusionQuality());
         if (s.overridesAmbientOcclusion(CgPostSettings.AO_FADE_DISTANCE)) ao.put("fade_distance", (double) s.ambientOcclusionFadeDistance());
         if (s.overridesAmbientOcclusion(CgPostSettings.AO_FADE_RADIUS)) ao.put("fade_radius", (double) s.ambientOcclusionFadeRadius());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_TEMPORAL_BLEND_WEIGHT)) {
+            ao.put("temporal_blend_weight", (double) s.ambientOcclusionTemporalBlendWeight());
+        }
         if (!ao.isEmpty()) b.put("ambient_occlusion", ao);
         if (s.overrides(CgPostSettings.TONE_CURVE)) b.put("tone_curve", (double) s.toneCurve());
         Map<String, Object> film = new LinkedHashMap<>();

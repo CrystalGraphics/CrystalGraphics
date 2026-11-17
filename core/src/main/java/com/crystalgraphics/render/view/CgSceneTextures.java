@@ -35,7 +35,7 @@ public final class CgSceneTextures {
     private CgGraphTexture sceneColor, depth, normals, customDepth, customData, hzb, distortion, subject, overdraw, velocity, velocityDepth,
             responsive;
     private boolean linear;
-    private boolean normalsAsked, customDataAsked, subjectAsked, velocityAsked, velocityWithStill;
+    private boolean normalsAsked, customDataAsked, subjectAsked, velocityWithStill;
     private int subjectKey;
 
     CgSceneTextures() {
@@ -119,7 +119,8 @@ public final class CgSceneTextures {
 
     /**
      * What moved or deformed this frame wrote where it was last frame, RG16F, 0 where nothing wrote ({@code
-     * lib/velocity.glsl}'s {@code cg_Velocity}); null unless asked, or where the host lends no depth to test it against.
+     * lib/velocity.glsl}'s {@code cg_Velocity}): written every frame in the opaque callback, right after the depth
+     * prepass; null before, or where the host lends no depth to test it against.
      */
     @Nullable
     public CgGraphTexture velocity() {
@@ -140,22 +141,13 @@ public final class CgSceneTextures {
         velocityDepth = texture;
     }
 
-    /** That this frame writes {@link #velocity()}: ask before the translucent callback draws. */
-    public void requestVelocity() {
-        velocityAsked = true;
-    }
-
     /**
      * That this frame writes {@link #velocity()} for every still solid of the engine too, as zero motion: a texel nothing
-     * wrote is then one the engine did not draw (a host's world, a frame record). What temporal AA asks.
+     * wrote is then one the engine did not draw (a host's world, a frame record). What temporal AA asks, before the
+     * opaque callback's prepass.
      */
     public void requestVelocityWithStill() {
-        velocityAsked = true;
         velocityWithStill = true;
-    }
-
-    public boolean velocityRequested() {
-        return velocityAsked;
     }
 
     /** Whether {@link #requestVelocityWithStill} was asked this frame. */
@@ -255,7 +247,7 @@ public final class CgSceneTextures {
         sceneColor = depth = normals = customDepth = customData = hzb = distortion = subject = overdraw = velocity = velocityDepth = null;
         responsive = null;
         linear = false;
-        normalsAsked = customDataAsked = subjectAsked = velocityAsked = false;
+        normalsAsked = customDataAsked = subjectAsked = false;
         velocityWithStill = false;
         subjectKey = 0;
     }

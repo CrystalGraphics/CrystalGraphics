@@ -1,4 +1,4 @@
-// FidelityFX CACAO's prepare (CgCacao): the scene's depth deinterleaved into four layers, their levels, and each
+// FidelityFX CACAO's prepare (CgCACAO): the scene's depth deinterleaved into four layers, their levels, and each
 // layer's normals from depth. Its other kernels are cacao.compute: a file binds 8 images at most.
 //
 // _Step.x is 1 for its native kernels (half-size layers, FFX_CACAO_PrepareNative*) and 2 for its downsampled ones

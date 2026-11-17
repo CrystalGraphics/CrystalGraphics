@@ -79,7 +79,7 @@ public final class CgPostSettings {
     public static final int DEFAULT_MB_TARGET_FPS = 30;
     /** Ambient occlusion's override bits ({@link #overridesAmbientOcclusion}). */
     public static final int AO_INTENSITY = 1, AO_RADIUS = 1 << 1, AO_POWER = 1 << 2, AO_BIAS = 1 << 3, AO_QUALITY = 1 << 4,
-            AO_FADE_DISTANCE = 1 << 5, AO_FADE_RADIUS = 1 << 6, AO_RADIUS_IN_WORLD_SPACE = 1 << 7;
+            AO_FADE_DISTANCE = 1 << 5, AO_FADE_RADIUS = 1 << 6, AO_RADIUS_IN_WORLD_SPACE = 1 << 7, AO_TEMPORAL_BLEND_WEIGHT = 1 << 8;
     /**
      * Unreal's ambient occlusion defaults ({@code FPostProcessSettings}), its centimetres as metres: half strength, a
      * radius of 2 (an eighth of the screen's height, off world space), power 2, bias 3, faded out from 30 m to 80 m.
@@ -87,7 +87,8 @@ public final class CgPostSettings {
      * 1440p, and the Quality tiers still cap it ({@code ambient_occlusion_max_quality}).
      */
     public static final float DEFAULT_AO_INTENSITY = 0.5f, DEFAULT_AO_RADIUS = 2f, DEFAULT_AO_POWER = 2f, DEFAULT_AO_BIAS = 3f,
-            DEFAULT_AO_QUALITY = 100f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f;
+            DEFAULT_AO_QUALITY = 100f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f,
+            DEFAULT_AO_TEMPORAL_BLEND_WEIGHT = 0.1f;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -158,7 +159,7 @@ public final class CgPostSettings {
     volatile int ambientOcclusionOverrides;
     volatile float aoIntensity = DEFAULT_AO_INTENSITY, aoRadius = DEFAULT_AO_RADIUS, aoPower = DEFAULT_AO_POWER,
             aoBias = DEFAULT_AO_BIAS, aoQuality = DEFAULT_AO_QUALITY, aoFadeDistance = DEFAULT_AO_FADE_DISTANCE,
-            aoFadeRadius = DEFAULT_AO_FADE_RADIUS;
+            aoFadeRadius = DEFAULT_AO_FADE_RADIUS, aoTemporalBlendWeight = DEFAULT_AO_TEMPORAL_BLEND_WEIGHT;
     volatile boolean aoRadiusInWorldSpace;
     /** Its weighted blendables, replaced whole. */
     private volatile Blendable[] blendables = NO_BLENDABLES;
@@ -894,6 +895,16 @@ public final class CgPostSettings {
         return this;
     }
 
+    /**
+     * GTAO's share of this frame in its history, 0.01 to 1: lower is smoother and slower to follow a change (Unreal's
+     * {@code AmbientOcclusionTemporalBlendWeight}, 0.1).
+     */
+    public CgPostSettings ambientOcclusionTemporalBlendWeight(float weight) {
+        aoTemporalBlendWeight = Math.max(0.01f, Math.min(1f, weight));
+        ambientOcclusionOverrides |= AO_TEMPORAL_BLEND_WEIGHT;
+        return this;
+    }
+
     /** Whether ambient occlusion darkens at all: Unreal's floors on its intensity and radius. */
     public boolean ambientOcclusionOn() {
         return aoIntensity > 0f && aoRadius >= 0.001f;
@@ -929,6 +940,10 @@ public final class CgPostSettings {
 
     public float ambientOcclusionFadeRadius() {
         return aoFadeRadius;
+    }
+
+    public float ambientOcclusionTemporalBlendWeight() {
+        return aoTemporalBlendWeight;
     }
 
     public float bloom() {
@@ -1211,6 +1226,7 @@ public final class CgPostSettings {
         aoQuality = DEFAULT_AO_QUALITY;
         aoFadeDistance = DEFAULT_AO_FADE_DISTANCE;
         aoFadeRadius = DEFAULT_AO_FADE_RADIUS;
+        aoTemporalBlendWeight = DEFAULT_AO_TEMPORAL_BLEND_WEIGHT;
         aoRadiusInWorldSpace = false;
         for (int i = 0; i < drawnCount; i++) drawn[i] = null;
         drawnCount = 0;
@@ -1279,6 +1295,9 @@ public final class CgPostSettings {
             if ((ao & AO_QUALITY) != 0) aoQuality += (from.aoQuality - aoQuality) * weight;
             if ((ao & AO_FADE_DISTANCE) != 0) aoFadeDistance += (from.aoFadeDistance - aoFadeDistance) * weight;
             if ((ao & AO_FADE_RADIUS) != 0) aoFadeRadius += (from.aoFadeRadius - aoFadeRadius) * weight;
+            if ((ao & AO_TEMPORAL_BLEND_WEIGHT) != 0) {
+                aoTemporalBlendWeight += (from.aoTemporalBlendWeight - aoTemporalBlendWeight) * weight;
+            }
             if ((ao & AO_RADIUS_IN_WORLD_SPACE) != 0 && weight >= 0.5f) aoRadiusInWorldSpace = from.aoRadiusInWorldSpace;
             ambientOcclusionOverrides |= ao;
         }

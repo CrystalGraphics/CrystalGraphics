@@ -49,6 +49,11 @@ public final class CgGraphicsSettings {
                     + " under half the cost at full resolution.",
             true);
 
+    public static final CgSetting.Toggle GTAO_DOWNSAMPLE = FILE.toggle("rendering", "gtao_downsample",
+            "Half-resolution GTAO", "GTAO's search at half the resolution, brought back up: about a quarter of its cost,"
+                    + " softer in fine creases. Off by default, as in Unreal.",
+            false);
+
     public static final CgSetting.Number AMBIENT_OCCLUSION_METHOD = FILE.number("rendering", "ambient_occlusion_method",
             "Ambient occlusion method", "0 SSAO, Unreal's; 1 GTAO, nearer a ray-traced reference; 2 AMD's FidelityFX CACAO,"
                     + " the default.",

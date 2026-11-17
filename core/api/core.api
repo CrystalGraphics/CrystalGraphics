@@ -6346,6 +6346,7 @@ com/crystalgraphics/compute/ops/CgGpuOps
   field public,static,final IMAGE_TYPES Ljava/util/List;
   field public,static,final MAX_BLUR_SIGMA F
   field public,static,final PYRAMID_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  field public,static,final PYRAMID_HALF_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;IIFFLcom/crystalgraphics/compute/ops/CgGpuOps$Edge;)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;ILcom/crystalgraphics/render/graph/CgGraphTexture;IF)V
   method public,static blur (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;F)V
@@ -13084,6 +13085,7 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final AO_QUALITY I
   field public,static,final AO_RADIUS I
   field public,static,final AO_RADIUS_IN_WORLD_SPACE I
+  field public,static,final AO_TEMPORAL_BLEND_WEIGHT I
   field public,static,final BLOOM I
   field public,static,final BLOOM_COLOUR I
   field public,static,final BLOOM_CONSERVING I
@@ -13102,6 +13104,7 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final DEFAULT_AO_POWER F
   field public,static,final DEFAULT_AO_QUALITY F
   field public,static,final DEFAULT_AO_RADIUS F
+  field public,static,final DEFAULT_AO_TEMPORAL_BLEND_WEIGHT F
   field public,static,final DEFAULT_BLADE_COUNT I
   field public,static,final DEFAULT_BLOOM_INTENSITY F
   field public,static,final DEFAULT_FSTOP F
@@ -13160,6 +13163,8 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public ambientOcclusionRadius (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public ambientOcclusionRadiusInWorldSpace ()Z
   method public ambientOcclusionRadiusInWorldSpace (Z)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionTemporalBlendWeight ()F
+  method public ambientOcclusionTemporalBlendWeight (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public blend (Lcom/crystalgraphics/render/post/settings/CgPostSettings;FFF)V
   method public blendable (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings$Blendable;
   method public blendable (Lcom/crystalgraphics/api/material/CgMaterialInstance;F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
@@ -14349,6 +14354,7 @@ com/crystalgraphics/render/scene/renderer/feature/ao/CgAmbientOcclusion
   field public,static,final LEVEL_QUALITIES [F
   field public,static,final RESULT Lcom/crystalgraphics/render/view/CgViewKey;
   method public,static defaults (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
+  method public,static downsampleSetting ()Lcom/crystalgraphics/settings/CgSetting$Toggle;
   method public,static methodName ()Ljava/lang/String;
   method public,static precache ()V
   method public,static ready ()Z
@@ -14924,7 +14930,6 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public requestCustomData ()V
   method public requestNormals ()V
   method public requestSubject (I)V
-  method public requestVelocity ()V
   method public requestVelocityWithStill ()V
   method public responsive ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public responsive (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
@@ -14938,7 +14943,6 @@ com/crystalgraphics/render/view/CgSceneTextures
   method public velocity (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public velocityDepth ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public velocityDepth (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
-  method public velocityRequested ()Z
   method public velocityWithStill ()Z
 com/crystalgraphics/render/view/CgShowFlags
   access public,final
@@ -16680,6 +16684,7 @@ com/crystalgraphics/settings/CgGraphicsSettings
   field public,static,final FLASHES Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final FOLLOW_MINECRAFT_PARTICLES Lcom/crystalgraphics/settings/CgSetting$Toggle;
   field public,static,final FOV_KICK Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final GTAO_DOWNSAMPLE Lcom/crystalgraphics/settings/CgSetting$Toggle;
   field public,static,final MOTION_BLUR Lcom/crystalgraphics/settings/CgSetting$Toggle;
   field public,static,final MOTION_BLUR_AMOUNT Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final MOTION_BLUR_MAX Lcom/crystalgraphics/settings/CgSetting$Number;

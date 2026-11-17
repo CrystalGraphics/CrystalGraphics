@@ -79,9 +79,10 @@ import java.util.WeakHashMap;
  * views passed in. Engine side: a consumer reaches it only through stages ({@link CgRenderStage}) and flags.
  *
  * <p><b>Opaque</b>: the client world's frame (once a frame); {@code PREPARE}; a keyed subject's glow; our opaque scene in;
- * the instance cull; the depth prepass; the base pass (normals beside it where asked); our opaque scene out;
- * {@code OPAQUE}.</p>
- * <p><b>Translucent</b>: the HDR scene in; the labels' depth; custom data; custom depth; normals published; lights;
+ * the instance cull; the depth prepass; the solids' velocity; ambient occlusion; the base pass (normals beside it where
+ * asked); our opaque scene out; {@code OPAQUE}.</p>
+ * <p><b>Translucent</b>: the HDR scene in; the labels' depth; custom data; custom depth; the blends' velocity and
+ * responsive marks; normals published; lights;
  * media; the scene glows; decals; {@code SURFACES}; graded layers prepared; the instance cull; the translucent prepass;
  * late solids; half size; volumes; distortion's bends; the translucent pass; distortion's final apply; after distortion;
  * separate translucency; graded layers; the subject; overdraw; labels; {@code TRANSLUCENT}; post; {@code OVERLAY}.</p>
@@ -139,6 +140,17 @@ public final class CgSceneRenderer {
 
     private static final CgViewState.Key<Normals> NORMALS = new CgViewState.Key<>("scene.normals", Normals::new);
 
+    /**
+     * A view's velocity target and the frame its solids wrote it in: kept, as the post chain reads it in a later firing than
+     * the opaque callback's that writes it.
+     */
+    private static final class Velocity {
+        CgGraphTexture target;
+        long written = Long.MIN_VALUE;
+    }
+
+    private static final CgViewState.Key<Velocity> VELOCITY = new CgViewState.Key<>("scene.velocity", Velocity::new);
+
     private static boolean shaderPackWarned, normalsRefusedWarned;
 
     private final CgScene scene;
@@ -168,7 +180,7 @@ public final class CgSceneRenderer {
     private CgMaterialInterface depthIn;
     /** The custom data and depth targets, kept while the view's size holds: a steady frame makes no handle. */
     @Nullable
-    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityTarget, velocityDepth, responsiveTarget;
+    private CgGraphTexture customDataTarget, customDataDepth, customDepthTarget, velocityDepth, responsiveTarget;
 
     // The forms the passes are drawn through this firing
     private boolean linear, merge, layered;
@@ -312,6 +324,7 @@ public final class CgSceneRenderer {
             Normals normals = view.state().get(NORMALS);
             if (rows.size() == 0) {
                 normals.written = Long.MIN_VALUE;
+                recordVelocity(firing, passes);
             } else {
                 warnShaderPack();
                 CgGraphTexture n = textures.normalsRequested() || lights.wantsNormals() ? normalsFor(firing) : null;
@@ -326,6 +339,7 @@ public final class CgSceneRenderer {
                 }
                 CgDrawCommands prepass = passes.commands(CgEnginePasses.DEPTH, rec, allOpaquePrepass);
                 if (prepass.size() > 0) scenePass(firing, "scene.prepass", constants, OPAQUE_STATE, false).add(prepass).end();
+                recordVelocity(firing, passes);
                 CgPostSettings post = view.showFlags().post() ? CgPostRenderer.settings(view) : null;
                 CgGraphTexture occlusion = post != null && prepass.size() > 0 && CgAmbientOcclusion.wants(view, post)
                         ? CgAmbientOcclusion.record(firing, rec, view, post) : null;
@@ -435,7 +449,8 @@ public final class CgSceneRenderer {
         if (linear && view.flag(GRADE_DRAWS) && layers.looksReadScene(rows)) textures.requestCustomData();
         if (textures.customDataRequested()) recordCustomData(firing, passes);
         recordCustomDepth(firing, passes);
-        if (textures.velocityRequested() && firing.host().target().lendsAttachments()) recordVelocity(firing, passes);
+        recordVelocity(firing, passes);
+        recordTranslucentVelocity(firing, passes);
         CgGraphTexture normals = normalsWritten(view);
         textures.normals(normals);
 
@@ -685,25 +700,52 @@ public final class CgSceneRenderer {
     }
 
     /**
-     * Unreal's velocity pass: what moved or deformed this frame, tested against the scene's depth, writing where it was
-     * last frame into an RG16 target cleared to 0; the rest stood still, its motion the camera's over its depth. With
-     * still solids asked ({@code requestVelocityWithStill}), every engine solid writes, the still ones zero, and what
-     * blends marks the responsive target where it covers (Unreal's Responsive AA). What blends with {@code OutputVelocity On}
-     * then writes its velocity and depth where it covers, over a copy of the scene's depth: Unreal's early translucency
-     * velocity, which leaves the depth the translucent pass tests against as it was.
+     * Unreal's velocity pass in its depth pass ({@code r.VelocityOutputPass 0}), which then renders every frame whatever
+     * asks for it: once a frame, as soon as the depth holds every solid, what moved or deformed this frame writes where
+     * it was last frame into an RG16 target cleared to 0; the rest stood still, its motion the camera's over its depth.
+     * With still solids asked ({@code requestVelocityWithStill}), every engine solid writes, the still ones zero. The
+     * opaque callback runs it after the prepass, so ambient occlusion reads it; a frame whose opaque callback did not
+     * run gets it in the translucent. Where the host's target lends no attachment, nothing.
      */
     private void recordVelocity(CgStageFiring firing, CgViewPasses passes) {
         CgView view = firing.view();
+        if (!firing.host().target().lendsAttachments()) return;
+        Velocity velocity = view.state().get(VELOCITY);
+        if (velocity.written == view.state().frame()) return;
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
-        if (velocityTarget == null || velocityTarget.getWidth() != w || velocityTarget.getHeight() != h) {
-            velocityTarget = CgGraphTexture.transientTexture("cg_velocity", CgTextureDesc.of(w, h, CgEnginePasses.VELOCITY_FORMAT));
+        CgRecording rec = firing.recording();
+        if (velocity.target == null || velocity.target.getWidth() != w || velocity.target.getHeight() != h) {
+            if (velocity.target != null) rec.release(velocity.target);
+            velocity.target = CgGraphTexture.requested("cg_velocity", CgTextureDesc.of(w, h, CgEnginePasses.VELOCITY_FORMAT));
         }
-        firing.recording().raster("scene.velocity").color(velocityTarget, CgLoad.clear(0f, 0f, 0f, 0f))
+        rec.raster("scene.velocity").color(velocity.target, CgLoad.clear(0f, 0f, 0f, 0f))
                 .depth(firing.depth(), CgLoad.load(), CgDepthAccess.READ).constants(firing.constants())
                 .add(passes.commands(view.textures().velocityWithStill() ? CgEnginePasses.VELOCITY_WITH_STILL
-                        : CgEnginePasses.VELOCITY, firing.recording())).end();
+                        : CgEnginePasses.VELOCITY, rec)).end();
+        velocity.written = view.state().frame();
+        view.textures().velocity(velocity.target);
+    }
+
+    /** This frame's velocity target, once the solids wrote it; null before, or where the host lends no attachment. */
+    @Nullable
+    private static CgGraphTexture velocityWritten(CgView view) {
+        Velocity velocity = view.state().get(VELOCITY);
+        return velocity.written == view.state().frame() ? velocity.target : null;
+    }
+
+    /**
+     * After the solids' velocity, in the translucent callback: what blends with {@code OutputVelocity On} writes its
+     * velocity and depth where it covers, over a copy of the scene's depth (Unreal's early translucency velocity, which
+     * leaves the depth the translucent pass tests against as it was); and with still solids asked, what blends marks the
+     * responsive target where it covers (Unreal's Responsive AA).
+     */
+    private void recordTranslucentVelocity(CgStageFiring firing, CgViewPasses passes) {
+        CgView view = firing.view();
+        CgGraphTexture velocityTarget = velocityWritten(view);
+        if (velocityTarget == null) return;
         view.textures().velocity(velocityTarget);
-        recordTranslucentVelocity(firing, passes, w, h);
+        int w = Math.max(1, view.width()), h = Math.max(1, view.height());
+        recordBlendVelocity(firing, passes, velocityTarget, w, h);
         if (!view.textures().velocityWithStill()) return;
         if (responsiveTarget == null || responsiveTarget.getWidth() != w || responsiveTarget.getHeight() != h) {
             responsiveTarget = CgGraphTexture.transientTexture("cg_responsive", CgTextureDesc.of(w, h, CgEnginePasses.RESPONSIVE_FORMAT));
@@ -714,7 +756,7 @@ public final class CgSceneRenderer {
         view.textures().responsive(responsiveTarget);
     }
 
-    private void recordTranslucentVelocity(CgStageFiring firing, CgViewPasses passes, int w, int h) {
+    private void recordBlendVelocity(CgStageFiring firing, CgViewPasses passes, CgGraphTexture velocityTarget, int w, int h) {
         CgDrawCommands blends = passes.commands(CgEnginePasses.TRANSLUCENT_VELOCITY, firing.recording());
         if (blends.size() == 0) return;
         if (velocityDepth == null || velocityDepth.getWidth() != w || velocityDepth.getHeight() != h) {

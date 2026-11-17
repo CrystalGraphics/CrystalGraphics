@@ -183,7 +183,6 @@ public final class CgPostRenderer {
         // Every engine solid writes, the still ones zero: temporal AA keeps to the texels the engine drew
         CgPostDebug debug = view.post().debug();
         if (temporal || debug != null && debug.showsVelocity()) textures.requestVelocityWithStill();
-        else if (CgMotionBlur.wants(view, settings)) textures.requestVelocity();
         CgUpscaler upscaler = view.post().upscaler(view.antiAliasing());
         float fraction = view.resolutionFraction();
         boolean rebuilds = temporal && upscaler.rebuilds(fraction);
