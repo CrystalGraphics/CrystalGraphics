@@ -1,0 +1,57 @@
+// The sun's shadow map (CgSunShadows): each cascade's depth, drawn by the shadow-depth mesh pass under its orthographic
+// light view, written into the atlas the receivers read (world/lights/sample.compute, env/handed/sun.glsl) as the
+// nearest caster's distance from the light in blocks, a cascade a quadrant, nearest bottom left. With Unreal's caster
+// bias (ShadowDepthCommon.ush): the cascade's constant, plus three times it by the slope to the light, at most 1
+// (r.Shadow.CSMSlopeScaleDepthBias, r.Shadow.MaxSlopeScaleDepthBias), the slope read from the map's own gradient, the
+// nearer step each way, as a rasterizer's slope-scaled bias measures it.
+#pragma kernel Resolve 8 8 image
+
+Properties {
+    _Size   ("x a cascade's texels a side, y the cascades drawn", vec4) = (1, 1, 0, 0)
+    _Proj22 ("Each cascade's projection m22: depth from the light to clip", vec4) = (1, 1, 1, 1)
+    _Proj32 ("Each cascade's projection m32", vec4) = (0, 0, 0, 0)
+    _Bias   ("Each cascade's constant caster bias, blocks", vec4) = (0, 0, 0, 0)
+    _Texel  ("Each cascade's texel, blocks", vec4) = (1, 1, 1, 1)
+    _Depth0 ("Cascade 0's depth", sampler2D) = "white"
+    _Depth1 ("Cascade 1's depth", sampler2D) = "white"
+    _Depth2 ("Cascade 2's depth", sampler2D) = "white"
+    _Depth3 ("Cascade 3's depth", sampler2D) = "white"
+}
+
+Images {
+    MAP ("The cascades' casters' distance from the light, blocks", r32f, writeonly)
+}
+
+// Nothing cast: a distance past any receiver's.
+const float NOTHING = 1.0e30;
+
+float window_at(int k, ivec2 p) {
+    p = clamp(p, ivec2(0), ivec2(int(_Size.x) - 1));
+    if (k == 0) return texelFetch(_Depth0, p, 0).r;
+    if (k == 1) return texelFetch(_Depth1, p, 0).r;
+    if (k == 2) return texelFetch(_Depth2, p, 0).r;
+    return texelFetch(_Depth3, p, 0).r;
+}
+
+// Distance from the light at window depth w: an orthographic projection's clip depth is linear in it.
+float blocks(int k, float w) {
+    return (_Proj32[k] - cg_EngineDepth(w)) / _Proj22[k];
+}
+
+void Resolve() {
+    int n = int(_Size.x);
+    ivec2 t = CG_TEXEL.xy;
+    int k = (t.x >= n ? 1 : 0) + (t.y >= n ? 2 : 0);
+    ivec2 p = t - ivec2(k & 1, k >> 1) * n;
+    float w = window_at(k, p);
+    // Cleared to far, the engine's 0: nothing drawn there
+    if (k >= int(_Size.y) || cg_EngineDepth(w) <= 0.0) {
+        MAP_WRITE(vec4(NOTHING));
+        return;
+    }
+    float d = blocks(k, w);
+    float dx = min(abs(blocks(k, window_at(k, p + ivec2(1, 0))) - d), abs(d - blocks(k, window_at(k, p - ivec2(1, 0)))));
+    float dy = min(abs(blocks(k, window_at(k, p + ivec2(0, 1))) - d), abs(d - blocks(k, window_at(k, p - ivec2(0, 1)))));
+    float slope = clamp(max(dx, dy) / _Texel[k], 0.0, 1.0);
+    MAP_WRITE(vec4(d + _Bias[k] * (1.0 + 3.0 * slope)));
+}

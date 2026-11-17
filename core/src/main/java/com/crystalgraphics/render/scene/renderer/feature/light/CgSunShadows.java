@@ -1,23 +1,29 @@
 package com.crystalgraphics.render.scene.renderer.feature.light;
 
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgMaterialValues;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.render.draw.CgChunkBuilder;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.draw.CgMaterialBindings;
+import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgPassConstants;
-import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
-import com.crystalgraphics.render.graph.CgRasterPass;
+import com.crystalgraphics.render.graph.CgComputePass;
+import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
+import com.crystalgraphics.render.meshpass.engine.CgEnginePasses;
+import com.crystalgraphics.render.scene.CgScene;
+import com.crystalgraphics.render.scene.pass.CgCommandForm;
+import com.crystalgraphics.render.scene.pass.CgViewPasses;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.view.CgViewState;
+import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.compute.CgCompute;
+import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.render.stage.CgStageFiring;
 import com.crystalgraphics.trace.CgGpuTrace;
 import com.crystalgraphics.trace.CgTrace;
@@ -29,8 +35,10 @@ import java.util.Arrays;
 
 /**
  * The sun's cascaded shadow map, Unreal's for a movable directional light (DirectionalLightComponent.cpp:1043-1057): 4
- * cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next, our opaque
- * casters drawn depth-only under each one's light view. MegaLights' rays and a composing program read it.
+ * cascades, each 3 times the depth of the last, overlapping by a tenth of each for the blend into the next. Each cascade
+ * a shadow view of its own, Unreal's {@code FProjectedShadowInfo}: an orthographic light camera, the scene culled and
+ * drawn through the shadow-depth mesh pass (every solid casting shadows, by its own vertex factory, so a skinned one
+ * posed), resolved into one atlas of distances from the light. MegaLights' rays and a composing program read it.
  */
 final class CgSunShadows {
 
@@ -38,25 +46,28 @@ final class CgSunShadows {
     private static final float CASCADE_EXPONENT = 3f, CASCADE_TRANSITION = 0.1f, SUN_NEAR = 0.05f;
     /** Blocks the sun's ray through the blocks and entities runs: world/lights/sample.compute's sun_visibility. */
     static final float RAY = 96f;
-    static final String SHADER = "crystalgraphics:shaders/world/lights/sun_shadow.shader";
+    private static final String RESOLVE = "crystalgraphics:shaders/world/lights/sun_resolve.compute";
+    private static final CgViewState.Key<Cascades> CASCADE_VIEWS = new CgViewState.Key<>("crystalgraphics:sun.cascades", Cascades::new);
+    /** The rows whose draws the CPU makes: an instanced or GPU-fed row's need the main view's cull, half-size ones none. */
+    private static final CgCommandForm CASTS = (rows, b, p) ->
+            rows.instances(b) == null && rows.count(b) == null && rows.records(b) == null ? p : null;
     private static final int GPU_SUN = CgGpuTrace.name("world.sunShadow");
     private static final int ZONE_SUN = CgTrace.name("world.lights.sun");
-    /** The cascades' atlas, a quadrant each: the casters' depth from the light in blocks, drawn with a depth test's. */
+    /** The cascades' atlas, a quadrant each: the casters' distance from the light in blocks, the resolve's. */
     private static final CgFormat MAP_FORMAT = CgFormat.R32_FLOAT, DEPTH_FORMAT = CgFormat.DEPTH32_FLOAT;
-    /** Nothing cast: a depth past any receiver's. */
-    private static final CgLoad CLEAR = CgLoad.clear(1.0e30f, 0f, 0f, 0f);
 
     private final CgLightGrid grid;
     private final CgShadowCasters casters;
-    private CgMaterial material;
+    private CgKernel resolve;
     CgGraphTexture map;
-    private CgGraphTexture depth;
     /**
      * Each cascade's rows, four texels after the casters' in the casters' texture: eye-relative world to its uv (two),
      * to its depth from the light, then its view depths and depth bias.
      */
     final float[] rows = new float[CASCADES * 16];
-    private final CgPassConstants constants = new CgPassConstants();
+    private final Matrix4f ortho = new Matrix4f();
+    private final float[] proj22 = new float[CASCADES], proj32 = new float[CASCADES], bias = new float[CASCADES],
+            texels = new float[CASCADES];
     private final Matrix4f rotation = new Matrix4f(), viewToEye = new Matrix4f();
     private final Vector3f centre = new Vector3f();
     private final float[] direction = new float[3];
@@ -83,29 +94,22 @@ final class CgSunShadows {
     /**
      * Its map, Unreal's for a directional light: each cascade a sphere round its slice of the view
      * (GetShadowSplitBoundsDepthRange, DirectionalLightComponent.cpp:818-925), grown into the next by the transition
-     * (:947-969), its centre snapped to whole texels in absolute light space (ShadowSetup.cpp:1090-1100), and our opaque
-     * casters within its box drawn depth-only under its orthographic light view. Whether drawn: not while its program
+     * (:947-969), its centre snapped to whole texels in absolute light space (ShadowSetup.cpp:1090-1100), the scene's
+     * casters drawn under its orthographic light view, then resolved into the atlas. Whether drawn: not while the resolve
      * is unbuilt.
      */
     boolean record(CgStageFiring stage, CgRecording recording) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, ZONE_SUN)) {
-            if (material == null) material = CgMaterial.load(SHADER);
-            if (!material.precache()) return false;
-            CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
-            if (pipeline == null) return false;
+            if (resolve == null) resolve = CgCompute.load(RESOLVE).kernel("Resolve");
+            if (!resolve.isReady()) return false;
             int res = CgLightSettings.SUN_RESOLUTION.get();
             casters.texture();
             if (map == null || map.getWidth() != 2 * res) {
-                depth = CgGraphTexture.transientTexture("cg_world_lights.sun_depth", CgTextureDesc.of(2 * res, 2 * res, DEPTH_FORMAT));
                 map = CgGraphTexture.transientTexture("cg_world_lights.sun", CgTextureDesc.of(2 * res, 2 * res, MAP_FORMAT));
             }
-            // The pass places each vertex itself, from its cascade's rows: only its depth convention matters.
-            stage.defaults(constants).resolution(2 * res, 2 * res);
-            constants.view.identity();
-            constants.projection.identity();
-            CgRasterPass pass = recording.raster("world.sunMap").color(map, CLEAR)
-                    .depth(depth, CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE).constants(constants).timed(GPU_SUN);
-            CgChunkBuilder chunks = recording.chunks().begin();
+            CgView view = stage.view();
+            CgScene scene = view.scene();
+            Cascades cascades = view.state().get(CASCADE_VIEWS).of(scene, res);
             float length = (float) Math.sqrt(direction[0] * direction[0] + direction[1] * direction[1]
                     + direction[2] * direction[2]);
             float sx = direction[0] / length, sy = direction[1] / length, sz = direction[2] / length;
@@ -116,7 +120,6 @@ final class CgSunShadows {
             float distance = CgLightSettings.SUN_DISTANCE.get(), back = CgLightSettings.SUN_TRACE.get();
             float[] rays = grid.rays;
             float tanX = (rays[2] - rays[0]) * 0.5f, tanY = (rays[3] - rays[1]) * 0.5f;
-            CgMaterialBindings binding = CgMaterialProxy.of(material).bindings();
             int count = CgLightSettings.SUN_CASCADES.get();
             for (int k = 0; k < CASCADES; k++) {
                 if (k >= count) {
@@ -170,37 +173,38 @@ final class CgSunShadows {
                 // Unreal's r.Shadow.CSMDepthBias of 10 times the cascade's world texel scale, its radius over its
                 // resolution (ShadowRendering.cpp:1985-1995): the casters' bias, and the receivers' soft transition.
                 rows[o + 12] = splitNear; rows[o + 13] = fadeStart; rows[o + 14] = fadeEnd; rows[o + 15] = 10f * radius / res;
-                float qx = (k & 1) == 0 ? -0.5f : 0.5f, qy = (k & 2) == 0 ? -0.5f : 0.5f;
-                float[] bounds = casters.sunBounds;
-                for (int i = 0; i < casters.sunCount; i++) {
-                    float bx = bounds[i * 4] - ex, by = bounds[i * 4 + 1] - ey, bz = bounds[i * 4 + 2] - ez;
-                    float br = bounds[i * 4 + 3];
-                    float vx = r.m00() * bx + r.m10() * by + r.m20() * bz, vy = r.m01() * bx + r.m11() * by + r.m21() * bz;
-                    float d = -(r.m02() * bx + r.m12() * by + r.m22() * bz);
-                    if (Math.abs(vx) > radius + br || Math.abs(vy) > radius + br || d + br < 0f || d - br > far) continue;
-                    chunks.draw(pipeline, binding, casters.sunMeshes[i]);
-                    int[] ranges = casters.sunRanges;
-                    if (ranges[i * 3] >= 0) chunks.range(ranges[i * 3], ranges[i * 3 + 1], ranges[i * 3 + 2]);
-                    int at = chunks.instance();
-                    float[] data = chunks.data();
-                    System.arraycopy(casters.sunModels, i * 16, data, at, 16);
-                    // CUSTOM0 to 3: the uv rows as -1 to 1 across the cascade, the depth row, the quadrant, 1 / far, the bias.
-                    for (int c = 0; c < 4; c++) {
-                        data[at + 32 + c] = 2f * rows[o + c] - (c == 3 ? 1f : 0f);
-                        data[at + 36 + c] = 2f * rows[o + 4 + c] - (c == 3 ? 1f : 0f);
-                        data[at + 40 + c] = rows[o + 8 + c];
-                    }
-                    data[at + 44] = qx;
-                    data[at + 45] = qy;
-                    data[at + 46] = 1f / far;
-                    data[at + 47] = rows[o + 15];
-                }
+                // Its shadow view: the light's eye, an orthographic box over the cascade's sphere, culled and drawn as any
+                // view (Unreal's FProjectedShadowInfo, its CSMShadowDepth draws)
+                CgCamera.orthographicMatrix(ortho, -radius, radius, -radius, radius, 0f, far);
+                CgCamera camera = cascades.cameras[k].set(grid.cameraX + ex, grid.cameraY + ey, grid.cameraZ + ez, r, ortho);
+                proj22[k] = ortho.m22();
+                proj32[k] = ortho.m32();
+                bias[k] = rows[o + 15];
+                texels[k] = 2f * radius / res;
+                CgDrawCommands draws = CgViewPasses.of(cascades.views[k], scene, camera)
+                        .commands(CgEnginePasses.SHADOW_DEPTH, recording, CASTS);
+                CgPassConstants constants = stage.defaults(cascades.constants[k]).seenThrough(camera, res, res)
+                        .scene(scene.gpu());
+                recording.raster("world.sunCascade").depth(cascades.depth[k], CgLoad.CLEAR_DEPTH, CgDepthAccess.WRITE)
+                        .constants(constants).timed(GPU_SUN).add(draws).end();
             }
-            pass.add(chunks.end());
+            CgComputePass pass = recording.compute("world.sunResolve", stage.constants()).timed(GPU_SUN);
+            CgDispatch d = pass.dispatch(resolve, 2 * res, 2 * res, 1).image("MAP", map);
+            for (int k = 0; k < CASCADES; k++) {
+                d.texture("_Depth" + k, cascades.depth[k < count ? k : 0].sampledDepth());
+            }
+            d.set("_Size", res, count, 0f, 0f).set("_Proj22", proj22[0], proj22[1], proj22[2], proj22[3])
+                    .set("_Proj32", proj32[0], proj32[1], proj32[2], proj32[3]).set("_Bias", bias[0], bias[1], bias[2], bias[3])
+                    .set("_Texel", texels[0], texels[1], texels[2], texels[3]);
             pass.end();
             casters.uploadSun(recording, rows);
             return mapped = true;
         }
+    }
+
+    /** Its resolve, for the precache. */
+    static void precache() {
+        CgCompute.load(RESOLVE).kernel("Resolve").precache();
     }
 
     /** Unreal's ComputeAccumulatedScale: where split {@code index} of {@code count} falls, 0 to 1. */
@@ -229,5 +233,34 @@ final class CgSunShadows {
         b.sampler("_cg_SunMap", handUnit, handLive ? map : CgFallbackTextures.WHITE_1x1)
                 .array("_cg_SunRows", rows).vec4("_cg_Sun", handLive ? 1f : 0f, 0f, 0f, 0f)
                 .vec4("_cg_SunEye", grid.eye.x, grid.eye.y, grid.eye.z, 0f);
+    }
+
+    /** A view's cascades: a shadow view, its light camera, its constants and its depth target each. */
+    private static final class Cascades {
+        final CgView[] views = new CgView[CASCADES];
+        final CgCamera[] cameras = new CgCamera[CASCADES];
+        final CgPassConstants[] constants = new CgPassConstants[CASCADES];
+        final CgGraphTexture[] depth = new CgGraphTexture[CASCADES];
+        private CgScene scene;
+        private int res;
+
+        /** Made for {@code of}'s scene at {@code size} texels a side, remade when either changes. */
+        Cascades of(CgScene of, int size) {
+            if (of != scene) {
+                scene = of;
+                for (int k = 0; k < CASCADES; k++) {
+                    views[k] = CgView.of(of);
+                    cameras[k] = CgCamera.orthographic(-1f, 1f, -1f, 1f, 0f, 1f);
+                    constants[k] = new CgPassConstants();
+                }
+            }
+            if (size != res) {
+                res = size;
+                for (int k = 0; k < CASCADES; k++) {
+                    depth[k] = CgGraphTexture.transientTexture("cg_world_lights.sun_cascade" + k, CgTextureDesc.of(size, size, DEPTH_FORMAT));
+                }
+            }
+            return this;
+        }
     }
 }

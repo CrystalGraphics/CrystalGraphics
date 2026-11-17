@@ -12725,6 +12725,7 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
   field public,static,final RESPONSIVE_FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
   field public,static,final SCENE Lcom/crystalgraphics/render/meshpass/CgPassLayout;
   field public,static,final SEPARATE Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
+  field public,static,final SHADOW_DEPTH Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final TRANSLUCENT Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final TRANSLUCENT_VELOCITY Lcom/crystalgraphics/render/meshpass/CgMeshPassType;
   field public,static,final VELOCITY Lcom/crystalgraphics/render/meshpass/CgMeshPassType;

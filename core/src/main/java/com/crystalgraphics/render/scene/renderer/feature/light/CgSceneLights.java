@@ -335,6 +335,7 @@ public final class CgSceneLights {
         CgLightGrid.precache();
         CgLightVolume.precache();
         CgLightGBuffer.precache();
+        CgSunShadows.precache();
         CgMegaLights.precache();
     }
 

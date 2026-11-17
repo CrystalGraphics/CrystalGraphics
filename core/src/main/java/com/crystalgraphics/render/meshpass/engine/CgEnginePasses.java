@@ -74,6 +74,12 @@ public final class CgEnginePasses {
 
     public static final CgMeshPassType DEPTH = CgMeshPassType.register("crystalgraphics:depth",
             CgPassLayout.depthOnly(CgFormat.DEPTH32_FLOAT), CgEnginePasses::depth);
+    /**
+     * A light's shadow depth, Unreal's {@code CSMShadowDepth} (FShadowDepthPassMeshProcessor): every solid casting
+     * shadows, through its own depth pipeline and so its own vertex factory (a skinned mesh posed, a masked one clipped).
+     */
+    public static final CgMeshPassType SHADOW_DEPTH = CgMeshPassType.register("crystalgraphics:shadow_depth",
+            CgPassLayout.depthOnly(CgFormat.DEPTH32_FLOAT), CgEnginePasses::shadowDepth);
     public static final CgMeshPassType BASE = CgMeshPassType.register("crystalgraphics:base", SCENE, CgEnginePasses::base);
     public static final CgMeshPassType TRANSLUCENT = CgMeshPassType.register("crystalgraphics:translucent", SCENE,
             CgEnginePasses::translucent);
@@ -128,6 +134,13 @@ public final class CgEnginePasses {
     private static void depth(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
         if ((batch.relevance() & CgPrimitiveRelevance.DEPTH) == 0) return;
         out.draw(batch, batch.material(), depthPipeline(batch.material()));
+    }
+
+    private static void shadowDepth(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {
+        if ((batch.flags() & CgMeshBatch.CASTS_SHADOW) == 0) return;
+        if ((batch.relevance() & (CgPrimitiveRelevance.MAIN | CgPrimitiveRelevance.DEPTH)) != (CgPrimitiveRelevance.MAIN | CgPrimitiveRelevance.DEPTH)) return;
+        CgPipeline depth = depthPipeline(batch.material());
+        if (depth != null) out.draw(batch, batch.material(), depth);
     }
 
     private static void base(CgMeshBatch batch, CgPrimitiveInfo primitive, CgMeshPassCommands out) {

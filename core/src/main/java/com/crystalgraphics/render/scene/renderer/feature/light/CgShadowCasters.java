@@ -6,7 +6,6 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.scene.renderer.feature.field.CgMeshDistanceFields;
-import com.crystalgraphics.shape.bounds.CgAABB;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;
@@ -14,12 +13,11 @@ import org.joml.Vector3f;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Arrays;
 
 /**
  * Our opaque draws as shadow casters this firing: each a row of its mesh's distance field for MegaLights' rays
- * (Unreal's distance field shadowing), and each a mesh for the sun's map. Both kinds of row share one texture, the
- * casters' then the sun's cascades', since the sample pass reads four buffers already.
+ * (Unreal's distance field shadowing). The sun's map draws its casters itself, as a mesh pass ({@link CgSunShadows});
+ * its cascades' rows share this texture after the casters', since the sample pass reads four buffers already.
  */
 final class CgShadowCasters {
 
@@ -40,14 +38,6 @@ final class CgShadowCasters {
     private final Matrix4f local = new Matrix4f(), inverse = new Matrix4f(), voxel = new Matrix4f();
     private final Vector3f scale = new Vector3f();
 
-    /** This firing's casters for the sun's map: mesh, range, eye-relative model and bounding sphere. */
-    final CgMesh[] sunMeshes = new CgMesh[MOST];
-    final int[] sunRanges = new int[MOST * 3];
-    final float[] sunModels = new float[MOST * 16], sunBounds = new float[MOST * 4];
-    int sunCount;
-    private final CgAABB sunBox = new CgAABB();
-    private final Matrix4f sunModel = new Matrix4f();
-    private final Vector3f sunCentre = new Vector3f();
 
     CgShadowCasters(CgLightGrid grid) {
         this.grid = grid;
@@ -56,7 +46,6 @@ final class CgShadowCasters {
     /** None yet this firing. */
     void reset() {
         count = 0;
-        sunCount = 0;
     }
 
     /**
@@ -68,7 +57,6 @@ final class CgShadowCasters {
         if (!CgLightSettings.SHADOWS.get()) return;
         double dx = x - grid.cameraX, dy = y - grid.cameraY, dz = z - grid.cameraZ;
         if (dx * dx + dy * dy + dz * dz > (double) REACH * REACH) return;
-        if (sunCount < MOST) sun(mesh, submesh, first, count, (float) dx, (float) dy, (float) dz, transforms, at);
         if (this.count == MOST) return;
         CgMeshDistanceFields.Entry entry = fields.field(mesh, submesh, first, count);
         if (entry == null) return;
@@ -87,25 +75,6 @@ final class CgShadowCasters {
         c[r + 8] = m.m02(); c[r + 9] = m.m12(); c[r + 10] = m.m22(); c[r + 11] = m.m32();
         c[r + 12] = field.nx(); c[r + 13] = field.ny(); c[r + 14] = field.nz(); c[r + 15] = entry.offset(fields);
         c[r + 16] = s; c[r + 17] = field.voxel() * s; c[r + 18] = field.voxel(); c[r + 19] = 0f;
-    }
-
-    /** One caster of the sun's map: its eye-relative model, and its bounds as a sphere for the cascades' culling. */
-    private void sun(CgMesh mesh, int submesh, int first, int count, float dx, float dy, float dz, float[] transforms, int at) {
-        if (mesh.bounds(sunBox) == null) return;
-        int s = sunCount++;
-        sunMeshes[s] = mesh;
-        sunRanges[s * 3] = submesh;
-        sunRanges[s * 3 + 1] = first;
-        sunRanges[s * 3 + 2] = count;
-        sunModel.set(transforms, at).translateLocal(dx, dy, dz).get(sunModels, s * 16);
-        sunModel.transformPosition(sunCentre.set((float) sunBox.centerX(), (float) sunBox.centerY(), (float) sunBox.centerZ()));
-        sunModel.getScale(scale);
-        float half = (float) Math.sqrt(sunBox.halfX() * sunBox.halfX() + sunBox.halfY() * sunBox.halfY()
-                + sunBox.halfZ() * sunBox.halfZ());
-        sunBounds[s * 4] = sunCentre.x;
-        sunBounds[s * 4 + 1] = sunCentre.y;
-        sunBounds[s * 4 + 2] = sunCentre.z;
-        sunBounds[s * 4 + 3] = half * Math.max(scale.x, Math.max(scale.y, scale.z));
     }
 
     /** The texture and its stagings, made once. */
@@ -131,12 +100,11 @@ final class CgShadowCasters {
         CgTrace.counter(CgChannels.WORLD, "world.lights-casters", count);
     }
 
-    /** The sun's cascades' rows after the casters', four texels each, and its casters let go. */
+    /** The sun's cascades' rows after the casters', four texels each. */
     void uploadSun(CgRecording recording, float[] cascadeRows) {
         sunStaging.clear();
         for (float v : cascadeRows) sunStaging.putFloat(v);
         sunStaging.flip();
         recording.update(texture, 0, SUN_ROWS_AT, 0, CgSunShadows.CASCADES * 4, 1, sunStaging);
-        Arrays.fill(sunMeshes, 0, sunCount, null);
     }
 }

@@ -207,8 +207,11 @@ scene.pointLight().at(x, y, z).radius(2f).color(0xFFFFE080).intensity(4f)
   through a **cascaded shadow map**, Unreal's for a movable directional light, while it is up and something of ours is
   drawn. Four cascades to `crystalgraphics.world.sunShadowDistance` (96 blocks), each 3 times the depth of the last
   and a tenth into the next, a sphere round each slice of the view snapped to whole texels, in one atlas of
-  `crystalgraphics.world.sunShadowResolution` (1024) a cascade; our opaque casters drawn into it with Unreal's caster
-  bias, read with its `Manual3x3PCF` and soft comparison. On our objects' pixels a ray toward it also crosses the
+  `crystalgraphics.world.sunShadowResolution` (1024) a cascade. Each cascade is a shadow view of its own (Unreal's
+  `FProjectedShadowInfo`): an orthographic light camera, the scene culled and drawn through the `shadow_depth` mesh pass,
+  every solid casting shadows by its own depth pipeline, so a skinned mesh casts posed and a masked one clipped; a
+  resolve writes the cascades' depth into the atlas as distance from the light with Unreal's caster bias, read with its
+  `Manual3x3PCF` and soft comparison. Instanced and GPU-fed rows do not cast yet (their draws need the main view's cull). On our objects' pixels a ray toward it also crosses the
   blocks and entities. So our objects receive its shadow from blocks, entities and each other; Minecraft's world
   receives it from our objects alone, its own blocks keeping the light Minecraft baked. A shadow takes the sun's
   direct share (`crystalgraphics.world.sunShare`, 0.6) out of the pixel's sky light, through Minecraft's own lightmap,
