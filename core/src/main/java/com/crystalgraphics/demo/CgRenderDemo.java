@@ -1007,6 +1007,7 @@ public final class CgRenderDemo {
             case CgKeyCodes.KEY_F6 -> CgView.main().antiAliasing(next(CgAntiAliasing.values(), CgView.main().antiAliasing(), shift));
             case CgKeyCodes.KEY_F9 -> CgGraphicsSettings.ANTI_ALIASING.set(next(CgQuality.values(), CgGraphicsSettings.ANTI_ALIASING.get(), shift));
             case CgKeyCodes.KEY_F10 -> stepScreenPercentage(CgView.main(), shift);
+            case CgKeyCodes.KEY_F11 -> CgGraphicsSettings.MOTION_BLUR.set(!CgGraphicsSettings.MOTION_BLUR.get());
             case CgKeyCodes.KEY_X -> CgView.main().override(CgSceneRenderer.GRADE_DRAWS, !CgView.main().flag(CgSceneRenderer.GRADE_DRAWS));
             // A quarter down or up, as the harness's.
             case CgKeyCodes.KEY_LBRACKET -> CgView.main().override(CgSceneRenderer.SCENE_EMISSION, CgView.main().flag(CgSceneRenderer.SCENE_EMISSION) / 1.25f);
@@ -1145,7 +1146,8 @@ public final class CgRenderDemo {
                 : String.format(Locale.ROOT, "%.0f%%", view.screenPercentage());
         return "Temporal [F7]: " + method + " [F6]"
                 + (method == CgAntiAliasing.TSR ? ", " + CgGraphicsSettings.ANTI_ALIASING.get() + " [F9]" : "")
-                + ", " + size + " [F10]" + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off");
+                + ", " + size + " [F10]" + (CgTemporalAA.sharpening() ? ", RCAS [F8]: on" : ", RCAS [F8]: off")
+                + (CgGraphicsSettings.MOTION_BLUR.get() ? ", motion blur [F11]: on" : ", motion blur [F11]: off");
     }
 
     // ── capture ───────────────────────────────────────────────────────────────

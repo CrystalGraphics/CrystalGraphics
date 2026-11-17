@@ -163,9 +163,11 @@ public final class CgPostRenderer {
     public static void prepare(CgView view) {
         CgPostSettings settings = view.state().get(SETTINGS);
         settings.reset();
+        CgMotionBlur.defaults(settings);
         settings.blend(view.post().settings(), 1f, 0.5f, 0.5f);
         view.scene().primitives().blendPostVolumes(view.camera(), settings);
         settings.blend(view.post().camera(), 1f, 0.5f, 0.5f);
+        CgMotionBlur.overrides(settings);
         CgSceneTextures textures = view.textures();
         // The temporal step's velocity, and its jitter from here to the chain's end: the world's passes, not the
         // overlay's. Its sequence, and the material mip bias, follow how far it rebuilds the picture

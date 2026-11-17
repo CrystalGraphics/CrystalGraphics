@@ -36,6 +36,30 @@ public final class CgGraphicsSettings {
                     + " frames; Medium and High smooth it at once; Ultra follows each edge farther.",
             CgQuality.LOW);
 
+    // Motion blur, as Unreal's: r.DefaultFeature.MotionBlur, r.MotionBlurQuality, r.MotionBlur.Scale, .Amount, .Max, .TargetFPS
+
+    public static final CgSetting.Toggle MOTION_BLUR = FILE.toggle("rendering", "motion_blur", "Motion blur",
+            "Blurs what moves, and the world while the camera turns, along its motion as a film camera's shutter would."
+                    + " Off, nothing blurs unless a camera or an area asks for it.",
+            false);
+
+    public static final CgSetting.Number MOTION_BLUR_QUALITY = FILE.number("rendering", "motion_blur_quality", "Motion blur quality",
+            "Samples per pixel: 0 off, 1 to 4 for 4, 8, 12 or 16. -1 follows Quality (Low off, Medium and High 12, Ultra 16).",
+            -1f, -1f, 4f, 1f);
+
+    public static final CgSetting.Number MOTION_BLUR_SCALE = FILE.number("rendering", "motion_blur_scale", "Motion blur scale",
+            "Scales every camera's and area's motion blur amount.", 1f, 0f, 50f, 0.05f);
+
+    public static final CgSetting.Number MOTION_BLUR_AMOUNT = FILE.number("rendering", "motion_blur_amount", "Motion blur amount",
+            "Replaces every camera's and area's amount, 0 to 1 of a frame's motion; -1 keeps theirs.", -1f, -1f, 1f, 0.05f);
+
+    public static final CgSetting.Number MOTION_BLUR_MAX = FILE.number("rendering", "motion_blur_max", "Motion blur max",
+            "Replaces the longest blur, in percent of the screen's width; -1 keeps theirs.", -1f, -1f, 100f, 0.5f);
+
+    public static final CgSetting.Number MOTION_BLUR_TARGET_FPS = FILE.number("rendering", "motion_blur_target_fps",
+            "Motion blur target FPS", "Replaces the frame rate whose shutter the blur is; 0 follows the game's, -1 keeps theirs.",
+            -1f, -1f, 120f, 1f);
+
     public static final CgSetting.Number SHAKE = FILE.number("comfort", "shake", "Camera shake",
             "Scales camera shake, on top of Minecraft's Screen Effects.", 1f, 0f, 1f, 0.05f);
 

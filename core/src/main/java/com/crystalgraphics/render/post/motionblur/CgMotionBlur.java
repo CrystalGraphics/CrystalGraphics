@@ -34,7 +34,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * Engine side; a view turns it on and a consumer sets its look.
  *
  * <pre>{@code
- * view.showFlags().motionBlur(true);                                  // Unreal's defaults: half a frame, 5% at most, 30 fps
+ * CgGraphicsSettings.MOTION_BLUR.set(false);                        // the player's default off: only cameras and areas asking blur
+ * capture.showFlags().motionBlur(false);                             // a view that must not blur
  * CgPost.client().camera().motionBlur(1f, 10f);                       // a whole frame's motion, up to a tenth of the width
  * scene.postVolume(new CgPostSettings().motionBlurAmount(0f)).spawn(); // none inside a volume
  * view.cameraMotionBlur(false);                                       // only what moves on its own blurs
@@ -43,8 +44,12 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * <ul>
  *   <li>The blur is the shutter of a {@code motionBlurTargetFps} camera (30 by default) whatever the frame rate: each
  *       frame's motion is scaled by the target's frame time over this frame's.</li>
- *   <li>Off on a camera cut, at {@code CgQuality.LOW}, and while the amount or the longest blur is under 0.001. Medium
- *       and High take 12 samples (Medium at half size where the blur is long), Ultra 16.</li>
+ *   <li>The player's settings are Unreal's ({@code CgGraphicsSettings}): {@code motion_blur} the default feature (off,
+ *       the default amount is 0, which a camera or volume may raise), {@code motion_blur_quality} (0 off, 1-4 for 4, 8, 12
+ *       or 16 samples; -1 follows the Quality tier: Low off, Medium and High 12, Ultra 16, Medium and below gathering long
+ *       blurs at half size), and {@code motion_blur_scale}, {@code _amount}, {@code _max}, {@code _target_fps} applied
+ *       after the blend ({@link #defaults}, {@link #overrides}).</li>
+ *   <li>Off on a camera cut and while the amount or the longest blur is under 0.001.</li>
  *   <li>A material drawn {@code AfterMotionBlur} is laid over by the filter itself, unsmeared; with motion blur off,
  *       by {@link #compose}.</li>
  *   <li>The resolved look weights are blurred with the colour, so a smeared graded silhouette keeps its look; the
@@ -58,6 +63,8 @@ public final class CgMotionBlur {
     /** How far the tile dilation gathers, in tiles; past it the tiles scatter (Unreal's 3). */
     private static final float GATHER_TILES = 3f;
     private static final int LISTS = 4;
+    /** Each quality's most samples (Unreal's kMaxSampleCountPerQuality), 0 off. */
+    private static final int[] SAMPLES = {0, 4, 8, 12, 16};
     private static final String[] FILTERS = {"GatherHalf", "GatherFull", "ScatterHalf", "ScatterFull"};
     private static final int GPU_TILES = CgGpuTrace.name("post.motionBlur.tiles"), GPU_FILTER = CgGpuTrace.name("post.motionBlur.filter");
     private static final CgViewState.Key<Shutter> SHUTTER = new CgViewState.Key<>("crystalgraphics:motion_blur.shutter", Shutter::new);
@@ -89,8 +96,29 @@ public final class CgMotionBlur {
      * frame knows whether it draws a linear scene.
      */
     public static boolean wants(CgView view, CgPostSettings settings) {
-        return view.showFlags().motionBlur() && settings.motionBlurOn() && quality() != CgQuality.LOW
-                && !view.camera().isOrthographic();
+        return view.showFlags().motionBlur() && settings.motionBlurOn() && quality() > 0 && !view.camera().isOrthographic();
+    }
+
+    /**
+     * Before a view's volumes and camera blend: Unreal's {@code r.DefaultFeature.MotionBlur}. With the player's
+     * {@code motion_blur} off the default amount is 0, which a volume or a camera may still raise.
+     */
+    public static void defaults(CgPostSettings settings) {
+        if (!CgGraphicsSettings.MOTION_BLUR.get()) settings.motionBlurAmount(0f);
+    }
+
+    /**
+     * After they blend: Unreal's {@code r.MotionBlur.Scale}, {@code .Amount}, {@code .Max} and {@code .TargetFPS}, the
+     * scale on the blended amount, each override (0 and up) in place of the blended value.
+     */
+    public static void overrides(CgPostSettings settings) {
+        float scale = CgGraphicsSettings.MOTION_BLUR_SCALE.get();
+        if (scale != 1f) settings.motionBlurAmount(settings.motionBlurAmount() * scale);
+        float amount = CgGraphicsSettings.MOTION_BLUR_AMOUNT.get(), max = CgGraphicsSettings.MOTION_BLUR_MAX.get();
+        int fps = Math.round(CgGraphicsSettings.MOTION_BLUR_TARGET_FPS.get());
+        if (amount >= 0f) settings.motionBlurAmount(amount);
+        if (max >= 0f) settings.motionBlurMax(max);
+        if (fps >= 0) settings.motionBlurTargetFps(fps);
     }
 
     /**
@@ -120,9 +148,8 @@ public final class CgMotionBlur {
         outH = oh;
         tilesX = tx;
         tilesY = ty;
-        CgQuality quality = quality();
-        int most = quality.atLeast(CgQuality.ULTRA) ? 16 : 12;
-        boolean halfGather = quality == CgQuality.MEDIUM;
+        int most = SAMPLES[quality()];
+        boolean halfGather = !CgGraphicsSettings.QUALITY.get().atLeast(CgQuality.HIGH);
 
         // Clip motion (this frame's position less last frame's, -2 to 2) to output pixels: half the size, the amount, half
         // again as the samples run both ways, and the shutter's time scale (Unreal's VelocityScale)
@@ -238,8 +265,18 @@ public final class CgMotionBlur {
         return apart != null ? apart.afterMotionBlur() : null;
     }
 
-    private static CgQuality quality() {
-        return CgGraphicsSettings.QUALITY.get();
+    /**
+     * Unreal's {@code r.MotionBlurQuality}, 0 (off) to 4: the player's {@code motion_blur_quality}, else its Quality tier's
+     * ({@code BaseScalability.ini}'s PostProcessQuality: Low 0, Medium and High 3, Ultra 4).
+     */
+    private static int quality() {
+        int set = Math.round(CgGraphicsSettings.MOTION_BLUR_QUALITY.get());
+        if (set >= 0) return Math.min(set, 4);
+        return switch (CgGraphicsSettings.QUALITY.get()) {
+            case LOW -> 0;
+            case MEDIUM, HIGH -> 3;
+            case ULTRA -> 4;
+        };
     }
 
     private void load() {

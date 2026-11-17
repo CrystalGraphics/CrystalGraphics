@@ -12985,6 +12985,8 @@ com/crystalgraphics/render/post/motionblur/CgMotionBlur
   method public compose (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
   method public glow (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public,static defaults (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
+  method public,static overrides (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
   method public,static precache ()V
   method public,static wants (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
 com/crystalgraphics/render/post/settings/CgImpact
@@ -16623,6 +16625,12 @@ com/crystalgraphics/settings/CgGraphicsSettings
   field public,static,final FLASHES Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final FOLLOW_MINECRAFT_PARTICLES Lcom/crystalgraphics/settings/CgSetting$Toggle;
   field public,static,final FOV_KICK Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final MOTION_BLUR Lcom/crystalgraphics/settings/CgSetting$Toggle;
+  field public,static,final MOTION_BLUR_AMOUNT Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final MOTION_BLUR_MAX Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final MOTION_BLUR_QUALITY Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final MOTION_BLUR_SCALE Lcom/crystalgraphics/settings/CgSetting$Number;
+  field public,static,final MOTION_BLUR_TARGET_FPS Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final QUALITY Lcom/crystalgraphics/settings/CgSetting$Choice;
   field public,static,final SHAKE Lcom/crystalgraphics/settings/CgSetting$Number;
   field public,static,final SUBTITLES Lcom/crystalgraphics/settings/CgSetting$Toggle;

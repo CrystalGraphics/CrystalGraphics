@@ -16,7 +16,7 @@ import com.crystalgraphics.render.post.debug.CgPostDebug;
 public final class CgShowFlags {
 
     private boolean lights = true, media = true, post = true, labels = true, distortion = true, decals = true,
-            translucency = true, depthOfField = true, overdraw, temporalAA, motionBlur;
+            translucency = true, depthOfField = true, motionBlur = true, overdraw, temporalAA;
 
     CgShowFlags() {
     }
@@ -145,8 +145,8 @@ public final class CgShowFlags {
 
     /**
      * Motion blur (Unreal's {@code ShowFlags.MotionBlur}): what moved this frame, and the camera's own turn and travel,
-     * blurred along their motion by the view's post settings ({@code motionBlur(amount, max)}). Off by default on every
-     * view, as {@link #temporalAA} is: a host's world is not blurred unasked.
+     * blurred along their motion by the view's post settings ({@code motionBlur(amount, max)}), where the player's
+     * {@code CgGraphicsSettings.MOTION_BLUR} is on (off by default). On by default: a capture or a preview turns it off.
      */
     public CgShowFlags motionBlur(boolean on) {
         motionBlur = on;
