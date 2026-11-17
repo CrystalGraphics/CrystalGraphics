@@ -33,6 +33,58 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * view.post().settings().ambientOcclusionRadiusInWorldSpace(true);
  * }</pre>
  *
+ * <p>Which method, how many samples and at what size: the player's settings, and the post settings' quality (a level
+ * from Lowest to Highest, {@link #LEVEL_QUALITIES}):
+ *
+ * <pre>{@code
+ * // crystalgraphics.toml
+ * [rendering]
+ * ambient_occlusion_method = 1        # 0 SSAO, 1 GTAO, 2 CACAO
+ * gtao_downsample = true              # GTAO at half size; CACAO's is ambient_occlusion_downsample
+ * }</pre>
+ * <pre>{@code
+ * view.post().settings().ambientOcclusionQuality(65f);           // High: 0 Lowest, 15 Low, 40 Medium, 65 High, 100 Highest
+ * }</pre>
+ *
+ * <h2>GTAO and CACAO compared</h2>
+ *
+ * <p>Measured by the harness's {@code ambient-occlusion} gate on an RTX 4070 SUPER, at 2560 x 1440. GTAO's half size
+ * is {@code gtao_downsample}; CACAO's quarter size is {@code ambient_occlusion_downsample}.
+ *
+ * <table>
+ *   <caption>GPU time a frame, ms (GTAO's includes its depth pyramid, 0.10 ms)</caption>
+ *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th></tr>
+ *   <tr><td>Lowest</td>  <td>0.66</td><td>0.30</td><td>0.33</td><td>0.21</td></tr>
+ *   <tr><td>Low</td>     <td>0.81</td><td>0.33</td><td>0.57</td><td>0.28</td></tr>
+ *   <tr><td>Medium</td>  <td>1.01</td><td>0.39</td><td>0.72</td><td>0.29</td></tr>
+ *   <tr><td>High</td>    <td>1.13</td><td>0.44</td><td>0.97</td><td>0.40</td></tr>
+ *   <tr><td>Highest</td> <td>1.51</td><td>0.53</td><td>0.99</td><td>0.45</td></tr>
+ * </table>
+ *
+ * <table>
+ *   <caption>What it leaves of the sky at full intensity, 1 open: a floor point 40 cm from a wall / a box's side</caption>
+ *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th></tr>
+ *   <tr><td>Lowest</td>  <td>0.91 / 0.85</td><td>0.94 / 0.86</td><td>0.60 / 0.47</td><td>0.62 / 0.60</td></tr>
+ *   <tr><td>Low</td>     <td>0.83 / 0.72</td><td>0.87 / 0.75</td><td>0.53 / 0.41</td><td>0.57 / 0.51</td></tr>
+ *   <tr><td>Medium</td>  <td>0.79 / 0.66</td><td>0.83 / 0.69</td><td>0.41 / 0.36</td><td>0.44 / 0.41</td></tr>
+ *   <tr><td>High</td>    <td>0.77 / 0.66</td><td>0.80 / 0.69</td><td>0.42 / 0.35</td><td>0.50 / 0.43</td></tr>
+ *   <tr><td>Highest</td> <td>0.76 / 0.67</td><td>0.77 / 0.70</td><td>0.42 / 0.36</td><td>0.50 / 0.45</td></tr>
+ * </table>
+ *
+ * <p>At the wall point the exact answer is 0.61 counting the wall up to 2 m away, and 0.75 counting it through GTAO's
+ * falloff, which lets an occluder fade out by 1.4 m.
+ *
+ * <ul>
+ *   <li><b>GTAO</b> lands on its falloff's answer from Medium up, steady from frame to frame: a 6 x 4 cycle of sample
+ *       directions averaged by its temporal filter, and the prepass's smooth normals, so a low-poly mesh shows no
+ *       triangles. Half size halves its cost and softens fine creases and silhouettes.</li>
+ *   <li><b>CACAO</b> is darker than either exact answer from Medium up: AMD's shadow multiplier and power, a stylised
+ *       look. No temporal filter; its Lowest to Medium presets streak under figures standing near the floor.
+ *       Downsampled is its quarter-size layers and a bilateral upscale.</li>
+ *   <li><b>SSAO</b>, Unreal's forward method, costs 1.1 to 3.0 ms there (Medium to Highest).</li>
+ *   <li>The intensity scales either at the end: {@code 1 - (1 - ao) * intensity}, 0.5 by default (Unreal's).</li>
+ * </ul>
+ *
  * <p>It runs once the all-opaque prepass holds every solid's depth, ours and the host's, and the solids' velocity is
  * written, before any solid shades: the base pass and the lit solids read it. A translucent or a host's surface never
  * does, as in Unreal.
