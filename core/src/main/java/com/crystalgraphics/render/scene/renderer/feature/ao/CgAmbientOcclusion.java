@@ -46,29 +46,30 @@ import com.crystalgraphics.trace.CgGpuTrace;
  * view.post().settings().ambientOcclusionQuality(65f);           // High: 0 Lowest, 15 Low, 40 Medium, 65 High, 100 Highest
  * }</pre>
  *
- * <h2>GTAO and CACAO compared</h2>
+ * <h2>GTAO, CACAO and SSAO compared</h2>
  *
  * <p>Measured by the harness's {@code ambient-occlusion} gate on an RTX 4070 SUPER, at 2560 x 1440. GTAO's half size
- * is {@code gtao_downsample}; CACAO's quarter size is {@code ambient_occlusion_downsample}.
+ * is {@code gtao_downsample}; CACAO's quarter size is {@code ambient_occlusion_downsample}. SSAO has no such switch:
+ * its level picks how many sizes it runs (one at Lowest and Low, two at Medium and High, three at Highest).
  *
  * <table>
- *   <caption>GPU time a frame, ms (GTAO's includes its depth pyramid, 0.10 ms)</caption>
- *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th></tr>
- *   <tr><td>Lowest</td>  <td>0.66</td><td>0.30</td><td>0.33</td><td>0.21</td></tr>
- *   <tr><td>Low</td>     <td>0.81</td><td>0.33</td><td>0.57</td><td>0.28</td></tr>
- *   <tr><td>Medium</td>  <td>1.01</td><td>0.39</td><td>0.72</td><td>0.29</td></tr>
- *   <tr><td>High</td>    <td>1.13</td><td>0.44</td><td>0.97</td><td>0.40</td></tr>
- *   <tr><td>Highest</td> <td>1.51</td><td>0.53</td><td>0.99</td><td>0.45</td></tr>
+ *   <caption>GPU time a frame, ms (GTAO's and SSAO's include their depth pyramid, 0.10 ms)</caption>
+ *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th><th>SSAO</th></tr>
+ *   <tr><td>Lowest</td>  <td>0.66</td><td>0.30</td><td>0.33</td><td>0.21</td><td>0.60</td></tr>
+ *   <tr><td>Low</td>     <td>0.81</td><td>0.33</td><td>0.57</td><td>0.28</td><td>0.60</td></tr>
+ *   <tr><td>Medium</td>  <td>1.01</td><td>0.39</td><td>0.72</td><td>0.29</td><td>1.23</td></tr>
+ *   <tr><td>High</td>    <td>1.13</td><td>0.44</td><td>0.97</td><td>0.40</td><td>1.60</td></tr>
+ *   <tr><td>Highest</td> <td>1.51</td><td>0.53</td><td>0.99</td><td>0.45</td><td>2.37</td></tr>
  * </table>
  *
  * <table>
  *   <caption>What it leaves of the sky at full intensity, 1 open: a floor point 40 cm from a wall / a box's side</caption>
- *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th></tr>
- *   <tr><td>Lowest</td>  <td>0.91 / 0.85</td><td>0.94 / 0.86</td><td>0.60 / 0.47</td><td>0.62 / 0.60</td></tr>
- *   <tr><td>Low</td>     <td>0.83 / 0.72</td><td>0.87 / 0.75</td><td>0.53 / 0.41</td><td>0.57 / 0.51</td></tr>
- *   <tr><td>Medium</td>  <td>0.79 / 0.66</td><td>0.83 / 0.69</td><td>0.41 / 0.36</td><td>0.44 / 0.41</td></tr>
- *   <tr><td>High</td>    <td>0.77 / 0.66</td><td>0.80 / 0.69</td><td>0.42 / 0.35</td><td>0.50 / 0.43</td></tr>
- *   <tr><td>Highest</td> <td>0.76 / 0.67</td><td>0.77 / 0.70</td><td>0.42 / 0.36</td><td>0.50 / 0.45</td></tr>
+ *   <tr><th>Level</th><th>GTAO</th><th>GTAO half</th><th>CACAO</th><th>CACAO quarter</th><th>SSAO</th></tr>
+ *   <tr><td>Lowest</td>  <td>0.91 / 0.85</td><td>0.94 / 0.86</td><td>0.60 / 0.47</td><td>0.62 / 0.60</td><td>0.55 / 0.68</td></tr>
+ *   <tr><td>Low</td>     <td>0.83 / 0.72</td><td>0.87 / 0.75</td><td>0.53 / 0.41</td><td>0.57 / 0.51</td><td>0.55 / 0.67</td></tr>
+ *   <tr><td>Medium</td>  <td>0.79 / 0.66</td><td>0.83 / 0.69</td><td>0.41 / 0.36</td><td>0.44 / 0.41</td><td>0.48 / 0.58</td></tr>
+ *   <tr><td>High</td>    <td>0.77 / 0.66</td><td>0.80 / 0.69</td><td>0.42 / 0.35</td><td>0.50 / 0.43</td><td>0.47 / 0.53</td></tr>
+ *   <tr><td>Highest</td> <td>0.76 / 0.67</td><td>0.77 / 0.70</td><td>0.42 / 0.36</td><td>0.50 / 0.45</td><td>0.49 / 0.54</td></tr>
  * </table>
  *
  * <p>At the wall point the exact answer is 0.61 counting the wall up to 2 m away, and 0.75 counting it through GTAO's
@@ -81,10 +82,9 @@ import com.crystalgraphics.trace.CgGpuTrace;
  *   <li><b>CACAO</b> is darker than either exact answer from Medium up: AMD's shadow multiplier and power, a stylised
  *       look. No temporal filter; its Lowest to Medium presets streak under figures standing near the floor.
  *       Downsampled is its quarter-size layers and a bilateral upscale.</li>
- *   <li><b>SSAO</b>, Unreal's deferred method with a bilinear pyramid read, an edge-aware smooth and GTAO's temporal
- *       filter, costs 0.60 / 0.60 / 1.23 / 1.60 / 2.37 ms there (Lowest to Highest, the pyramid included) and leaves
- *       0.47 near the wall: smooth, but several times GTAO's cost and farther from the exact answer. Its smaller sizes
- *       reach wide and soft, and darken a wall behind a figure.</li>
+ *   <li><b>SSAO</b> is Unreal's deferred method with a bilinear pyramid read, an edge-aware smooth and GTAO's
+ *       temporal filter: smooth, but several times GTAO's half-size cost and farther from the exact answer. Its
+ *       smaller sizes reach wide and soft, and darken a wall behind a figure.</li>
  *   <li>The intensity scales either at the end: {@code 1 - (1 - ao) * intensity}, 0.5 by default (Unreal's).</li>
  * </ul>
  *
