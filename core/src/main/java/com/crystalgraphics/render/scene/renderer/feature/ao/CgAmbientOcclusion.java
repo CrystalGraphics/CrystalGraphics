@@ -81,8 +81,10 @@ import com.crystalgraphics.trace.CgGpuTrace;
  *   <li><b>CACAO</b> is darker than either exact answer from Medium up: AMD's shadow multiplier and power, a stylised
  *       look. No temporal filter; its Lowest to Medium presets streak under figures standing near the floor.
  *       Downsampled is its quarter-size layers and a bilateral upscale.</li>
- *   <li><b>SSAO</b>, Unreal's deferred method, costs 0.79 / 1.07 / 1.62 ms there (Medium / High / Highest, at two,
- *       two and three sizes); its smaller sizes reach wide and soft, and darken a wall behind a figure.</li>
+ *   <li><b>SSAO</b>, Unreal's deferred method with a bilinear pyramid read, an edge-aware smooth and GTAO's temporal
+ *       filter, costs 0.60 / 0.60 / 1.23 / 1.60 / 2.37 ms there (Lowest to Highest, the pyramid included) and leaves
+ *       0.47 near the wall: smooth, but several times GTAO's cost and farther from the exact answer. Its smaller sizes
+ *       reach wide and soft, and darken a wall behind a figure.</li>
  *   <li>The intensity scales either at the end: {@code 1 - (1 - ao) * intensity}, 0.5 by default (Unreal's).</li>
  * </ul>
  *
@@ -167,7 +169,8 @@ public final class CgAmbientOcclusion {
             case 1 -> CgGTAO.record(pass, recording, view, s, level, t.pyramid, normals, t.ao, w, h, fadeMul, fadeAdd);
             case 2 -> CgCACAO.record(pass, view, s, level, t.ao, w, h,
                     view.showFlags().temporalAA() ? view.state().frameIndex() : -1);
-            default -> CgSSAO.record(pass, view, s, level, t.pyramid, t.pyramidLast, normals, t.ao, w, h, fadeMul, fadeAdd);
+            default -> CgSSAO.record(pass, recording, view, s, level, t.pyramid, t.pyramidLast, normals, t.ao, w, h,
+                    fadeMul, fadeAdd);
         }
         pass.end();
         view.publish(RESULT, t.ao);

@@ -38,8 +38,6 @@ Images {
     AO       ("The occlusion the lit solids read: 1 open", r16f, writeonly)
 }
 
-#include "crystalgraphics:shaders/lib/velocity.glsl"
-
 const float GTAO_PI = 3.14159265, GTAO_HALF_PI = 1.57079633;
 // Farther than any search reaches: what the sky's infinite depth is held to
 const float GTAO_FAR = 1.0e6;
@@ -270,51 +268,7 @@ void Spatial() {
 
 // ── Temporal filter ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-// Where the surface at uv, of window depth window, was last frame: its written velocity, else the camera's motion over it.
-vec2 previous_uv(vec2 uv, float window) {
-    vec2 ndc = uv * 2.0 - 1.0;
-    ivec2 size = textureSize(_Velocity, 0);
-    vec2 written = texelFetch(_Velocity, clamp(ivec2(floor(uv * vec2(size))), ivec2(0), size - 1), 0).xy;
-    if (written.x > 0.0) return (ndc - cg_DecodeVelocity(written)) * 0.5 + 0.5;
-    float eye = cg_LinearEyeDepth(window);
-    vec3 v = vec3((ndc.x + cg_ProjMatrix[2][0]) * eye / cg_ProjMatrix[0][0], (ndc.y + cg_ProjMatrix[2][1]) * eye / cg_ProjMatrix[1][1], -eye);
-    vec4 previous = cg_PreviousClip(transpose(mat3(cg_ViewMatrix)) * (v - cg_ViewMatrix[3].xyz));
-    return previous.xy / previous.w * 0.5 + 0.5;
-}
-
-// This frame's filtered occlusion at uv, bilinear, clamped to its edge.
-float filtered_bilinear(vec2 uv) {
-    vec2 p = uv * _AoSize.xy - 0.5, f = fract(p);
-    ivec2 i = ivec2(floor(p)), last = ivec2(_AoSize.xy) - 1;
-    float a = texelFetch(_Filtered, clamp(i, ivec2(0), last), 0).r;
-    float b = texelFetch(_Filtered, clamp(i + ivec2(1, 0), ivec2(0), last), 0).r;
-    float c = texelFetch(_Filtered, clamp(i + ivec2(0, 1), ivec2(0), last), 0).r;
-    float e = texelFetch(_Filtered, clamp(i + ivec2(1, 1), ivec2(0), last), 0).r;
-    return mix(mix(a, b, f.x), mix(c, e, f.x), f.y);
-}
-
-// The range of this frame's occlusion about the pixel: it and four taps a texel and a half out on the diagonals. What a
-// still surface uncovered this frame may take of last frame's: the occlusion of what moved off it falls outside.
-vec2 neighbourhood(vec2 uv, float now) {
-    vec2 d = _AoSize.zw * 1.5;
-    float a = filtered_bilinear(uv + vec2(-d.x, -d.y)), b = filtered_bilinear(uv + vec2(-d.x, d.y));
-    float c = filtered_bilinear(uv + vec2(d.x, -d.y)), e = filtered_bilinear(uv + vec2(d.x, d.y));
-    return vec2(min(now, min(min(a, b), min(c, e))), max(now, max(max(a, b), max(c, e))));
-}
-
-// Last frame's occlusion at a texel: 1 off the screen.
-float history_at(ivec2 p) {
-    return any(lessThan(p, ivec2(0))) || any(greaterThan(p, ivec2(_AoSize.xy) - 1)) ? 1.0 : texelFetch(_History, p, 0).r;
-}
-
-// Last frame's at uv: its four texels each held within [lo, hi], then blended bilinearly.
-float history_clamped(vec2 uv, float lo, float hi) {
-    vec2 p = uv * _AoSize.xy - 0.5, f = fract(p);
-    ivec2 i = ivec2(floor(p));
-    float h00 = clamp(history_at(i), lo, hi), h10 = clamp(history_at(i + ivec2(1, 0)), lo, hi);
-    float h01 = clamp(history_at(i + ivec2(0, 1)), lo, hi), h11 = clamp(history_at(i + ivec2(1, 1)), lo, hi);
-    return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
-}
+#include "crystalgraphics:shaders/lib/ao/temporal.glsl"
 
 void Temporal() {
     ivec2 px = CG_TEXEL.xy;
@@ -325,27 +279,7 @@ void Temporal() {
         HISTORY_WRITE(vec4(now));
         return;
     }
-    vec2 prevUv = previous_uv(uv, window);
-    vec2 motion = uv - prevUv;
-    float speed = clamp(length(motion) * 100.0, 0.0, 1.0);
-    float range = mix(0.1, 0.0, speed);
-    vec2 around = neighbourhood(uv, now);
-    float lo = max(clamp(now - range, 0.0, 1.0), around.x), hi = min(clamp(now + range, 0.0, 1.0), around.y);
-
-    float history;
-    if (_Output.w < 0.5) {
-        // No history: last frame's taken as open, as an empty history reads
-        history = hi;
-    } else {
-        // Whether the surface found where this one was moves as this one does: where it does not, this pixel was
-        // uncovered this frame, and last frame's value at its own place stands in
-        vec2 there = clamp(prevUv, vec2(0.0), vec2(1.0));
-        vec2 thereMotion = there - previous_uv(there, window_depth(full_texel(there)));
-        vec2 d = motion - thereMotion;
-        float same = 1.0 - clamp(abs(d.x + d.y) * 100.0, 0.0, 1.0);
-        history = mix(clamp(history_at(px), lo, hi), history_clamped(prevUv, lo, hi), same);
-    }
-    HISTORY_WRITE(vec4(mix(history, now, _Output.z)));
+    HISTORY_WRITE(vec4(ao_temporal(px, uv, now, window, _Output.w > 0.5, _Output.z)));
 }
 
 // ── Upsample ────────────────────────────────────────────────────────────────────────────────────────────────────────

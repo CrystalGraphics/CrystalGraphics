@@ -1,12 +1,13 @@
 // Screen-space ambient occlusion (CgSSAO, ambient_occlusion_method 0), Unreal's deferred SSAO: up to three sizes.
 // Setup halves the scene's normals and depth (twice for three levels); each smaller size's occlusion feeds the next
 // larger one's, the full size's last. Each pass walks rotated pairs of samples through the furthest depth pyramid,
-// each side keeping its highest horizon. Unreal's centimetres are metres here. Read by the lit solids as indirect
-// occlusion.
+// each side keeping its highest horizon. Unreal's centimetres are metres here. Then an edge-aware 4 x 4 smooth and
+// GTAO's temporal filter. Read by the lit solids as indirect occlusion.
 #pragma kernel Setup 8 8 image
 #pragma kernel Step 8 8 general
 #pragma kernel Final 8 8 general
-#pragma kernel Smooth 8 8 image
+#pragma kernel Smooth 8 8 general
+#pragma kernel Temporal 8 8 image
 
 Properties {
     _Size     ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
@@ -23,12 +24,19 @@ Properties {
     _UpNormals ("The setup the upsample weighs by, as _Setup", sampler2D) = "black"
     _Smaller  ("The next smaller size's occlusion", sampler2D) = "white"
     _Unsmoothed ("The final size's occlusion before the smooth pass", sampler2D) = "white"
+    _AoSize   ("The temporal filter's size (the render size), and its inverse", vec4) = (1, 1, 1, 1)
+    _Temporal ("x this frame's share of the history, y 1 where the history holds last frame", vec4) = (0.1, 0, 0, 0)
+    _Filtered ("The smoothed occlusion", sampler2D) = "white"
+    _History  ("Last frame's resolved occlusion", sampler2D) = "white"
+    _Velocity ("The velocity pass's target: 0 where nothing wrote", sampler2D) = "black"
 }
 
 Images {
     SETUP   ("This size's setup: xyz the view normal * 0.5 + 0.5, w the farthest eye depth", rgba16f, writeonly)
     STEP    ("A smaller size's occlusion, unshaped", r8, writeonly)
     AO      ("The occlusion the lit solids read: 1 open", r16f, writeonly)
+    FILTERED ("The smoothed occlusion", r16f, writeonly)
+    HISTORY ("This frame's resolved occlusion, the next frame's history", r16f, writeonly)
 }
 
 // The sky's depth, which nothing is behind: a half float's range
@@ -82,6 +90,7 @@ ivec2 render_texel(vec2 uv) {
     return clamp(ivec2(floor(uv * _Size.xy)), ivec2(0), ivec2(_Size.xy) - 1);
 }
 
+
 // 1 where two depths match, falling to 0 a 1/scale apart.
 float depth_similarity(float a, float b, float scale) {
     return clamp(1.0 - abs(a - b) * scale, 0.0, 1.0);
@@ -125,12 +134,11 @@ vec2 random_base(ivec2 t) {
 }
 
 // The pyramid's eye depth at a screen position (-1 to 1), at its furthest level step: Unreal's level 0 is half the
-// render size, our level 1; the step rounds to the nearest level.
+// render size, our level 1; the step rounds to the nearest level. Bilinear within the level, where Unreal reads the
+// nearest texel: a half-size texel's step would show as a block.
 float pyramid_depth(vec2 screen, float level) {
-    int l = clamp(int(floor(level + 0.5)) + 1, 1, int(_Random.z));
-    ivec2 size = textureSize(_Pyramid, l);
-    ivec2 p = clamp(ivec2(floor((screen * 0.5 + 0.5) * vec2(size))), ivec2(0), size - 1);
-    return min(texelFetch(_Pyramid, p, l).r, SSAO_FAR);
+    float l = float(clamp(int(floor(level + 0.5)) + 1, 1, int(_Random.z)));
+    return min(textureLod(_Pyramid, screen * 0.5 + 0.5, l).r, SSAO_FAR);
 }
 
 // Each side's openness against the normal, a sample offset either way: x left, y right.
@@ -248,12 +256,58 @@ void Step() {
     if (all(lessThan(px, ivec2(_OutSize.xy)))) STEP_STORE(px, vec4(ao));
 }
 
-// A 4 x 4 box over the final occlusion, the rotation pattern's tile: four bilinear taps from the pixel's corner.
+// The smooth pass's tile: an 8 x 8 group and the 4 x 4 box's border, one up and left, two down and right
+const int SMOOTH_TILE = 11;
+shared float tileAo[SMOOTH_TILE * SMOOTH_TILE];
+shared float tileZ[SMOOTH_TILE * SMOOTH_TILE];
+shared vec4 tileN[SMOOTH_TILE * SMOOTH_TILE];
+
+// A 4 x 4 box over the final occlusion, the rotation pattern's tile, each texel weighed by how near its depth (within
+// 5% of this pixel's) and how alike its normal where the prepass wrote both: a silhouette's two sides stay apart. The
+// group loads its tile once.
 void Smooth() {
-    vec2 uv = vec2(CG_TEXEL.xy) * _Size.zw;
-    float sum = texture(_Unsmoothed, uv).r + texture(_Unsmoothed, uv + vec2(2.0, 0.0) * _Size.zw).r
-            + texture(_Unsmoothed, uv + vec2(0.0, 2.0) * _Size.zw).r + texture(_Unsmoothed, uv + 2.0 * _Size.zw).r;
-    AO_WRITE(vec4(sum * 0.25));
+    ivec2 local = ivec2(CG_LOCAL_ID.xy), origin = ivec2(CG_GROUP_ID.xy) * 8 - 1, last = ivec2(_Size.xy) - 1;
+    bool normals = _Ssao3.z > 0.5;
+    for (int i = CG_LOCAL_INDEX; i < SMOOTH_TILE * SMOOTH_TILE; i += 64) {
+        ivec2 p = clamp(origin + ivec2(i % SMOOTH_TILE, i / SMOOTH_TILE), ivec2(0), last);
+        tileAo[i] = texelFetch(_Unsmoothed, p, 0).r;
+        tileZ[i] = eye_depth(window_depth(p));
+        vec4 n = normals ? texelFetch(_Normals, p, 0) : vec4(0.0);
+        tileN[i] = vec4(n.xyz * 2.0 - 1.0, n.w);
+    }
+    barrier();
+
+    ivec2 px = origin + 1 + local;
+    int centre = (local.y + 1) * SMOOTH_TILE + local.x + 1;
+    float z = tileZ[centre];
+    vec4 n = tileN[centre];
+    float tolerance = 1.0 / (0.05 * z);
+    float sum = 0.0, weights = 0.0;
+    for (int y = 0; y < 4; y++) {
+        for (int x = 0; x < 4; x++) {
+            int t = (local.y + y) * SMOOTH_TILE + local.x + x;
+            float w = depth_similarity(tileZ[t], z, tolerance);
+            vec4 m = tileN[t];
+            if (n.w > 0.0 && m.w > 0.0) w *= pow(clamp(dot(m.xyz, n.xyz), 0.0, 1.0), 4.0);
+            sum += tileAo[t] * w;
+            weights += w;
+        }
+    }
+    if (all(lessThanEqual(px, last))) FILTERED_STORE(px, vec4(weights > 0.0 ? sum / weights : tileAo[centre]));
+}
+
+#include "crystalgraphics:shaders/lib/ao/temporal.glsl"
+
+// GTAO's temporal filter over the smoothed occlusion, into the history and the occlusion the solids read.
+void Temporal() {
+    ivec2 px = CG_TEXEL.xy;
+    vec2 uv = (vec2(px) + 0.5) * _Size.zw;
+    float now = texelFetch(_Filtered, px, 0).r;
+    float window = window_depth(px);
+    float ao = eye_depth(window) * _Output.z + _Output.w >= 1.0 ? now
+            : ao_temporal(px, uv, now, window, _Temporal.y > 0.5, _Temporal.x);
+    HISTORY_WRITE(vec4(ao));
+    AO_WRITE(vec4(ao));
 }
 
 void Final() {

@@ -9,11 +9,11 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.view.CgViewState;
 import com.crystalgraphics.settings.CgGraphicsSettings;
-import com.crystalgraphics.variable.CgVar;
 
 /**
  * Screen-space ambient occlusion, {@code ambient_occlusion_method} 0: Unreal's deferred SSAO at up to three sizes.
@@ -28,6 +28,8 @@ import com.crystalgraphics.variable.CgVar;
  *   <li>Each size walks 3 or 6 rotated pairs of samples, 1 to 3 steps each, through the furthest depth pyramid; the
  *       rotation is a 4 x 4 pattern, moved each frame while temporal anti-aliasing runs to resolve it.</li>
  *   <li>Low and Medium blur each 2 x 2 quad by its normals.</li>
+ *   <li>Past Unreal: the pyramid read bilinear, then a 4 x 4 smooth that keeps depth and normal edges, then GTAO's
+ *       temporal filter into the view's own history; with them the pattern and its grain average out.</li>
  * </ul>
  *
  * <p>The kernels are {@code world/ao/ssao.compute}.</p>
@@ -35,11 +37,9 @@ import com.crystalgraphics.variable.CgVar;
 final class CgSSAO {
 
     private static final String KERNELS = "crystalgraphics:shaders/world/ao/ssao.compute";
-    /** The 4 x 4 box over the final size: the rotation pattern's tile, which a temporal resolve leaves as a checker. */
-    static final CgVar.Bool SMOOTH = CgVar.bool("crystalgraphics.ssao.smooth", true, CgVar.DEV,
-            "SSAO's 4 x 4 smooth pass over its rotation pattern.");
-    private static final String[] NAMES = {"Setup", "Step", "Final", "Smooth"};
-    private static final int SETUP = 0, STEP = 1, FINAL = 2, SMOOTH_KERNEL = 3;
+    private static final String[] NAMES = {"Setup", "Step", "Final", "Smooth", "Temporal"};
+    private static final int SETUP = 0, STEP = 1, FINAL = 2, SMOOTH = 3, TEMPORAL = 4;
+    private static final CgViewState.HistoryKey HISTORY = new CgViewState.HistoryKey("crystalgraphics:ssao");
     /** Steps a sample takes, by shader level 0 to 4. */
     private static final int[] STEPS = {1, 1, 2, 3, 3};
     /** The pattern's move a frame, in its texels: eight frames, then it repeats. */
@@ -79,10 +79,11 @@ final class CgSSAO {
      * {@code pyramid} (its last level {@code pyramidLast}) and {@code normals}, the prepass's (null: depth's alone);
      * {@code fadeMul} and {@code fadeAdd} fade it out over eye depth.
      */
-    static void record(CgComputePass pass, CgView view, CgPostSettings s, int level, CgGraphTexture pyramid, int pyramidLast,
-                       @Nullable CgGraphTexture normals, CgGraphTexture ao, int w, int h, float fadeMul, float fadeAdd) {
+    static void record(CgComputePass pass, CgRecording recording, CgView view, CgPostSettings s, int level,
+                       CgGraphTexture pyramid, int pyramidLast, @Nullable CgGraphTexture normals, CgGraphTexture ao, int w,
+                       int h, float fadeMul, float fadeAdd) {
         load();
-        view.state().get(CHAIN).record(pass, view, s, level, pyramid, pyramidLast, normals, ao, w, h, fadeMul, fadeAdd);
+        view.state().get(CHAIN).record(pass, recording, view, s, level, pyramid, pyramidLast, normals, ao, w, h, fadeMul, fadeAdd);
     }
 
     /** Unreal's {@code r.AmbientOcclusionMipLevelFactor} by Quality tier: how soon a step reads a coarser pyramid level. */
@@ -124,7 +125,7 @@ final class CgSSAO {
      */
     private static final class Chain {
         @Nullable
-        CgGraphTexture setupHalf, setupQuarter, stepHalf, stepQuarter, unsmoothed;
+        CgGraphTexture setupHalf, setupQuarter, stepHalf, stepQuarter, unsmoothed, filtered;
         int levels, w0, h0, hw, hh, qw, qh;
 
         @Nullable
@@ -136,8 +137,9 @@ final class CgSSAO {
         int level, pyramidLast, w, h;
         float fadeMul, fadeAdd;
 
-        void record(CgComputePass pass, CgView view, CgPostSettings s, int level, CgGraphTexture pyramid, int pyramidLast,
-                    @Nullable CgGraphTexture normals, CgGraphTexture ao, int w, int h, float fadeMul, float fadeAdd) {
+        void record(CgComputePass pass, CgRecording recording, CgView view, CgPostSettings s, int level,
+                    CgGraphTexture pyramid, int pyramidLast, @Nullable CgGraphTexture normals, CgGraphTexture ao, int w,
+                    int h, float fadeMul, float fadeAdd) {
             this.view = view;
             this.s = s;
             this.level = level;
@@ -162,12 +164,19 @@ final class CgSSAO {
                 occlusion(pass, kernels[STEP], "STEP", stepHalf, hw, hh, 2, setupHalf, smaller);
                 smaller = stepHalf;
             }
-            boolean smooth = SMOOTH.get();
-            occlusion(pass, kernels[FINAL], "AO", smooth ? unsmoothed : ao, w, h, 1, levels >= 2 ? setupHalf : null, smaller);
-            if (smooth) {
-                pass.dispatch(kernels[SMOOTH_KERNEL], w, h, 1).image("AO", ao).texture("_Unsmoothed", unsmoothed)
-                        .set("_Size", w, h, 1f / w, 1f / h);
-            }
+            occlusion(pass, kernels[FINAL], "AO", unsmoothed, w, h, 1, levels >= 2 ? setupHalf : null, smaller);
+            common(pass.dispatchGroups(kernels[SMOOTH], groups(w), groups(h), 1), w, h).image("FILTERED", filtered).texture("_Unsmoothed", unsmoothed)
+                    .set("_Ssao3", 0f, 0f, normals != null ? 1f : 0f, 0f);
+            CgViewState state = view.state();
+            CgGraphTexture history = state.history(HISTORY, new CgTextureDesc(w, h, CgFormat.R16_FLOAT), recording);
+            boolean valid = !state.fresh(HISTORY) && view.historyValid();
+            CgDispatch temporal = common(pass.dispatch(kernels[TEMPORAL], w, h, 1), w, h).image("HISTORY", history).image("AO", ao)
+                    .texture("_Filtered", filtered).texture("_History", history.previous())
+                    .set("_AoSize", w, h, 1f / w, 1f / h)
+                    .set("_Temporal", s.ambientOcclusionTemporalBlendWeight(), valid ? 1f : 0f, 0f, 0f)
+                    .set("_Output", s.ambientOcclusionIntensity(), s.ambientOcclusionPower(), fadeMul, fadeAdd);
+            CgGraphTexture velocity = view.textures().velocity();
+            if (velocity != null) temporal.texture("_Velocity", velocity);
             this.view = null;
             this.s = null;
             this.pyramid = null;
@@ -224,6 +233,7 @@ final class CgSSAO {
             w0 = fullW;
             h0 = fullH;
             unsmoothed = CgGraphTexture.transientTexture("cg_ssao.unsmoothed", new CgTextureDesc(w0, h0, CgFormat.R16_FLOAT));
+            filtered = CgGraphTexture.transientTexture("cg_ssao.filtered", new CgTextureDesc(w0, h0, CgFormat.R16_FLOAT));
             hw = halfW;
             hh = halfH;
             qw = quarterW;
