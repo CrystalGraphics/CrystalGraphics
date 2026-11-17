@@ -21,8 +21,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 /**
  * Screen-space ambient occlusion: how much of the sky each opaque pixel sees past what is near it, which a
  * {@code DefaultLit} solid takes off its sky light (Unreal's forward {@code IndirectOcclusionTexture}). Unreal's two methods,
- * picked by the player's {@code ambient_occlusion_method}: SSAO, the default and the cheapest, and GTAO, ported from
- * Intel's XeGTAO; and a third, AMD's FidelityFX CACAO ({@link CgCacao}).
+ * picked by the player's {@code ambient_occlusion_method}: SSAO, and GTAO, ported from Intel's XeGTAO; and a third,
+ * AMD's FidelityFX CACAO ({@link CgCacao}), the default, downsampled at its Highest preset.
  *
  * <p>The scene renderer drives it; a view turns it on or off and its post settings shape it:
  *
