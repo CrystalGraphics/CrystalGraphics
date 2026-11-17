@@ -20,7 +20,8 @@ import javax.annotation.Nullable;
  * <ul>
  *   <li>{@link #BEFORE_DOF} draws into the scene with the opaque surfaces; the others into a target of their own, laid
  *       over the scene after their step, unbent by the scene's distortion and ungraded by its colour regions.</li>
- *   <li>With neither depth of field nor motion blur on, the after passes are laid over at one point.</li>
+ *   <li>{@code AfterDOF} is laid over before the temporal step (TSR lays it itself); {@code AfterMotionBlur} after motion
+ *       blur, in its filter, or after the temporal step with motion blur off, never into a history.</li>
  *   <li>A draw whose blend multiplies has no form in a target of its own: it stays in the scene, warned once.</li>
  *   <li>The default is {@code BeforeDOF}, where Unreal's is {@code AfterDOF}: an after pass costs a target and its
  *       composite a frame and sorts over every draw in the scene whatever its depth, so it is asked for, not given.

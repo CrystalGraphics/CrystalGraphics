@@ -41,6 +41,14 @@ import java.util.Objects;
  * CgPostSettings lens = new CgPostSettings().depthOfField(6f, 1.4f);
  * lens.depthOfFieldBladeCount(7).depthOfFieldMinFstop(1.2f).depthOfFieldSensorWidth(24.576f);
  * }</pre>
+ *
+ * <p>Motion blur, for a view whose {@code motionBlur} show flag is on: a whole frame's motion, up to a tenth of the
+ * screen, a 60 fps shutter; or none in this volume's reach.</p>
+ *
+ * <pre>{@code
+ * CgPostSettings rush = new CgPostSettings().motionBlur(1f, 10f).motionBlurTargetFps(60);
+ * CgPostSettings still = new CgPostSettings().motionBlurAmount(0f);
+ * }</pre>
  */
 public final class CgPostSettings {
 
@@ -59,6 +67,16 @@ public final class CgPostSettings {
     /** Unreal's lens defaults: f/4, opening to f/1.2, five blades, a 24.576 mm sensor; no focus, so no blur. */
     public static final float DEFAULT_FSTOP = 4f, DEFAULT_MIN_FSTOP = 1.2f, DEFAULT_SENSOR_WIDTH = 24.576f;
     public static final int DEFAULT_BLADE_COUNT = 5;
+
+    /** Motion blur's override bits ({@link #overridesMotionBlur}): its amount, longest blur, target frame rate, least size. */
+    public static final int MB_AMOUNT = 1, MB_MAX = 1 << 1, MB_TARGET_FPS = 1 << 2, MB_PER_OBJECT_SIZE = 1 << 3;
+    /**
+     * Unreal's motion blur defaults ({@code FPostProcessSettings}): half a frame's motion, at most 5% of the screen's
+     * width, a 30 fps camera's shutter, every object's velocity drawn. A view blurs once its {@code motionBlur} show flag
+     * is on.
+     */
+    public static final float DEFAULT_MB_AMOUNT = 0.5f, DEFAULT_MB_MAX = 5f;
+    public static final int DEFAULT_MB_TARGET_FPS = 30;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -122,6 +140,10 @@ public final class CgPostSettings {
     volatile int cameraOverrides;
     volatile float dofFocalDistance, dofFstop = DEFAULT_FSTOP, dofMinFstop = DEFAULT_MIN_FSTOP, dofSensorWidth = DEFAULT_SENSOR_WIDTH;
     volatile int dofBladeCount = DEFAULT_BLADE_COUNT;
+    /** Motion blur's: its amount (0-1), longest blur (percent of the width), target fps (0, the frame rate), least size. */
+    volatile int motionBlurOverrides;
+    volatile float mbAmount = DEFAULT_MB_AMOUNT, mbMax = DEFAULT_MB_MAX, mbPerObjectSize;
+    volatile int mbTargetFps = DEFAULT_MB_TARGET_FPS;
     /** Its weighted blendables, replaced whole. */
     private volatile Blendable[] blendables = NO_BLENDABLES;
     /** Resolved only: the weight behind the focus so far, which averages it rather than pulling it to the centre. */
@@ -719,6 +741,74 @@ public final class CgPostSettings {
         return dofSensorWidth;
     }
 
+    /** Whether a setter set motion blur's {@code bit} ({@link #MB_AMOUNT} and on). */
+    public boolean overridesMotionBlur(int bit) {
+        return (motionBlurOverrides & bit) != 0;
+    }
+
+    /**
+     * Motion blur of {@code amount} of a frame's motion (Unreal's {@code MotionBlurAmount}, 0 to 1), a blur at most
+     * {@code max} percent of the screen's width long ({@code MotionBlurMax}).
+     */
+    public CgPostSettings motionBlur(float amount, float max) {
+        return motionBlurAmount(amount).motionBlurMax(max);
+    }
+
+    /** How much of a frame's motion blurs, 0 to 1: the shutter's share of the frame. 0, none. */
+    public CgPostSettings motionBlurAmount(float amount) {
+        mbAmount = clamp(amount);
+        motionBlurOverrides |= MB_AMOUNT;
+        return this;
+    }
+
+    /** The longest blur, in percent of the screen's width (0 to 100). 0, none. */
+    public CgPostSettings motionBlurMax(float percent) {
+        mbMax = Math.max(0f, Math.min(100f, percent));
+        motionBlurOverrides |= MB_MAX;
+        return this;
+    }
+
+    /**
+     * The frame rate whose shutter the blur is (Unreal's {@code MotionBlurTargetFPS}, 0 to 120): a game at 120 fps blurs
+     * as a 30 fps camera would. 0 follows the frame rate, each frame its own motion.
+     */
+    public CgPostSettings motionBlurTargetFps(int fps) {
+        mbTargetFps = Math.max(0, Math.min(120, fps));
+        motionBlurOverrides |= MB_TARGET_FPS;
+        return this;
+    }
+
+    /**
+     * The least size, in percent of the screen, of an object whose own motion blurs (Unreal's
+     * {@code MotionBlurPerObjectSize}): one smaller draws no velocity and moves with the camera alone.
+     */
+    public CgPostSettings motionBlurPerObjectSize(float percent) {
+        mbPerObjectSize = Math.max(0f, percent);
+        motionBlurOverrides |= MB_PER_OBJECT_SIZE;
+        return this;
+    }
+
+    /** Whether motion blur blurs at all: Unreal's 0.001 floor on its amount and its longest blur. */
+    public boolean motionBlurOn() {
+        return mbAmount > 0.001f && mbMax > 0.001f;
+    }
+
+    public float motionBlurAmount() {
+        return mbAmount;
+    }
+
+    public float motionBlurMax() {
+        return mbMax;
+    }
+
+    public int motionBlurTargetFps() {
+        return mbTargetFps;
+    }
+
+    public float motionBlurPerObjectSize() {
+        return mbPerObjectSize;
+    }
+
     public float bloom() {
         return bloom;
     }
@@ -986,6 +1076,11 @@ public final class CgPostSettings {
         dofMinFstop = DEFAULT_MIN_FSTOP;
         dofSensorWidth = DEFAULT_SENSOR_WIDTH;
         dofBladeCount = DEFAULT_BLADE_COUNT;
+        motionBlurOverrides = 0;
+        mbAmount = DEFAULT_MB_AMOUNT;
+        mbMax = DEFAULT_MB_MAX;
+        mbPerObjectSize = 0f;
+        mbTargetFps = DEFAULT_MB_TARGET_FPS;
         for (int i = 0; i < drawnCount; i++) drawn[i] = null;
         drawnCount = 0;
     }
@@ -1035,6 +1130,14 @@ public final class CgPostSettings {
             if ((co & DOF_SENSOR_WIDTH) != 0) dofSensorWidth += (from.dofSensorWidth - dofSensorWidth) * weight;
             if ((co & DOF_BLADE_COUNT) != 0 && weight >= 0.5f) dofBladeCount = from.dofBladeCount;
             cameraOverrides |= co;
+        }
+        int mo = from.motionBlurOverrides;
+        if (mo != 0) {
+            if ((mo & MB_AMOUNT) != 0) mbAmount += (from.mbAmount - mbAmount) * weight;
+            if ((mo & MB_MAX) != 0) mbMax += (from.mbMax - mbMax) * weight;
+            if ((mo & MB_PER_OBJECT_SIZE) != 0) mbPerObjectSize += (from.mbPerObjectSize - mbPerObjectSize) * weight;
+            if ((mo & MB_TARGET_FPS) != 0 && weight >= 0.5f) mbTargetFps = from.mbTargetFps;
+            motionBlurOverrides |= mo;
         }
         Blendable[] bs = from.blendables;
         for (Blendable b : bs) {

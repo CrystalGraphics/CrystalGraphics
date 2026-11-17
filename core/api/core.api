@@ -12559,18 +12559,22 @@ com/crystalgraphics/render/look/CgLookIds
 com/crystalgraphics/render/look/CgLookPost
   access public,final
   extends java/lang/Object
+  field public,static,final BLEND Ljava/lang/String;
   field public,static,final MASK Ljava/lang/String;
   method public,static grades (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
+  method public,static grades (Lcom/crystalgraphics/render/post/settings/CgPostSettings;Lcom/crystalgraphics/render/post/CgPostPoint;)Z
   method public,static readsScene (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
   method public,static record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
   method public,static releaseAll ()V
+  method public,static weighted (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/post/CgPostPoint;Lcom/crystalgraphics/render/graph/CgScreenTexture;)V
 com/crystalgraphics/render/look/CgLookWeights
   access public,final
   extends java/lang/Object
   field public,static,final KEY Lcom/crystalgraphics/render/view/CgViewKey;
   field public,static,final RESOLVED Lcom/crystalgraphics/render/view/CgViewKey;
   method public <init> ()V
-  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;Z)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public record (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;ZLcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public solids (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static current (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public,static precache ()V
 com/crystalgraphics/render/mesh/CgMeshStore
@@ -12932,6 +12936,7 @@ com/crystalgraphics/render/post/dof/CgDepthOfField
   field public,static,final SHADERS [Ljava/lang/String;
   method public <init> ()V
   method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public carry (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
 com/crystalgraphics/render/post/fog/CgHeightFogPass
   access public,final
@@ -12971,6 +12976,17 @@ com/crystalgraphics/render/post/look/CgPostLooks
   method public feed (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/post/composite/CgPostComposite;)V
   method public,static drawsImpact (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
   method public,static features (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Ljava/util/EnumSet;
+com/crystalgraphics/render/post/motionblur/CgMotionBlur
+  access public,final
+  extends java/lang/Object
+  field public,static,final SHADER Ljava/lang/String;
+  method public <init> ()V
+  method public apply (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public compose (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgScreenTexture;)Lcom/crystalgraphics/render/graph/CgScreenTexture;
+  method public glow (Lcom/crystalgraphics/render/post/CgPostContext;Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public shows (Lcom/crystalgraphics/render/post/CgPostContext;)Z
+  method public,static precache ()V
+  method public,static wants (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Z
 com/crystalgraphics/render/post/settings/CgImpact
   access public,final,enum
   extends java/lang/Enum
@@ -13073,6 +13089,9 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final DEFAULT_BLADE_COUNT I
   field public,static,final DEFAULT_BLOOM_INTENSITY F
   field public,static,final DEFAULT_FSTOP F
+  field public,static,final DEFAULT_MB_AMOUNT F
+  field public,static,final DEFAULT_MB_MAX F
+  field public,static,final DEFAULT_MB_TARGET_FPS I
   field public,static,final DEFAULT_MIN_FSTOP F
   field public,static,final DEFAULT_SENSOR_WIDTH F
   field public,static,final DISPLAY_GAMMA I
@@ -13098,6 +13117,10 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final FOCUS I
   field public,static,final GAUSSIAN I
   field public,static,final IMPACT I
+  field public,static,final MB_AMOUNT I
+  field public,static,final MB_MAX I
+  field public,static,final MB_PER_OBJECT_SIZE I
+  field public,static,final MB_TARGET_FPS I
   field public,static,final TONEMAP I
   field public,static,final TONE_CURVE I
   field public,static,final VIGNETTE I
@@ -13193,9 +13216,20 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public impactLook ()Lcom/crystalgraphics/render/post/settings/CgImpactFrame;
   method public impactSeed ()I
   method public impactSubject ()I
+  method public motionBlur (FF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public motionBlurAmount ()F
+  method public motionBlurAmount (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public motionBlurMax ()F
+  method public motionBlurMax (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public motionBlurOn ()Z
+  method public motionBlurPerObjectSize ()F
+  method public motionBlurPerObjectSize (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public motionBlurTargetFps ()I
+  method public motionBlurTargetFps (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public overrides (I)Z
   method public overridesCamera (I)Z
   method public overridesLayer (IZ)Z
+  method public overridesMotionBlur (I)Z
   method public reset ()V
   method public subject (I)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public tint (FFF)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
@@ -14540,6 +14574,7 @@ com/crystalgraphics/render/scene/renderer/feature/translucency/CgSeparateTranslu
   extends java/lang/Object
   field public,static,final KEY Lcom/crystalgraphics/render/view/CgViewKey;
   method public <init> ()V
+  method public afterMotionBlur ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public layer (I)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
 com/crystalgraphics/render/scene/sort/CgSortKey
@@ -14870,6 +14905,8 @@ com/crystalgraphics/render/view/CgShowFlags
   method public lights (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public media ()Z
   method public media (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
+  method public motionBlur ()Z
+  method public motionBlur (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public overdraw ()Z
   method public overdraw (Z)Lcom/crystalgraphics/render/view/CgShowFlags;
   method public post ()Z
@@ -14888,6 +14925,8 @@ com/crystalgraphics/render/view/CgView
   method public beginDraw ()V
   method public beginFrame (JLjava/lang/Object;)V
   method public camera ()Lcom/crystalgraphics/camera/CgCamera;
+  method public cameraMotionBlur ()Z
+  method public cameraMotionBlur (Z)Lcom/crystalgraphics/render/view/CgView;
   method public clearOverride (Lcom/crystalgraphics/variable/CgVar;)Lcom/crystalgraphics/render/view/CgView;
   method public clearShown ()Lcom/crystalgraphics/render/view/CgView;
   method public copySettings (Lcom/crystalgraphics/render/view/CgView;)Lcom/crystalgraphics/render/view/CgView;

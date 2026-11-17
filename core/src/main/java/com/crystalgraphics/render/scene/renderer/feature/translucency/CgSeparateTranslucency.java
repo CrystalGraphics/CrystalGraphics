@@ -7,11 +7,12 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.view.CgViewKey;
 
 /**
- * A firing's separate translucency: Unreal's {@code PostDOFTranslucency}. Under the HDR scene a translucent draw whose
- * material says {@code TranslucencyPass Separate} draws here instead of into the scene, and the post chain composites it
- * after its {@code BEFORE_SEPARATE_TRANSLUCENCY} effects ({@code CgTranslucencyComposition}), so a colour region grades
- * the scene behind it and never the effect, as Unreal's {@code PrePostProcessPass} runs before
- * {@code FTranslucencyComposition}.
+ * A firing's separate translucency: Unreal's {@code TPT_TranslucencyAfterDOF} and
+ * {@code TPT_TranslucencyAfterMotionBlur}. Under the HDR scene a translucent draw whose material's {@code TranslucencyPass}
+ * is {@code AfterDOF} draws into {@link #target} instead of the scene, laid over after depth of field
+ * ({@code CgTranslucencyComposition}, or TSR itself), so a colour region grades the scene behind it and never the
+ * effect; one {@code AfterMotionBlur} draws into {@link #afterMotionBlur}, laid over after motion blur (or the temporal
+ * step, with motion blur off), unsmeared.
  *
  * <pre>{@code
  * CgSeparateTranslucency apart = post.view().read(CgSeparateTranslucency.KEY);
@@ -33,13 +34,19 @@ public final class CgSeparateTranslucency {
     /** Where the scene renderer publishes it in its view, a frame under the HDR scene with a separate draw. */
     public static final CgViewKey<CgSeparateTranslucency> KEY = new CgViewKey<>("crystalgraphics:separate_translucency");
 
-    CgGraphTexture target;
+    CgGraphTexture target, afterMotionBlur;
     final CgGraphTexture[] layers = new CgGraphTexture[CgLookChannels.MAX];
 
-    /** Every separate draw's light and coverage; null where none drew. */
+    /** Every {@code AfterDOF} draw's light and coverage; null where none drew. */
     @Nullable
     public CgGraphTexture target() {
         return target;
+    }
+
+    /** Every {@code AfterMotionBlur} draw's light and coverage, at the size the world draws at; null where none drew. */
+    @Nullable
+    public CgGraphTexture afterMotionBlur() {
+        return afterMotionBlur;
     }
 
     /** The separate draws of graded layer {@code k}'s look; null where none drew. */
@@ -49,12 +56,12 @@ public final class CgSeparateTranslucency {
     }
 
     void reset() {
-        target = null;
+        target = afterMotionBlur = null;
         for (int k = 0; k < layers.length; k++) layers[k] = null;
     }
 
     boolean any() {
-        if (target != null) return true;
+        if (target != null || afterMotionBlur != null) return true;
         for (CgGraphTexture l : layers) if (l != null) return true;
         return false;
     }

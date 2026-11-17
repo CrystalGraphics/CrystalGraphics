@@ -62,6 +62,7 @@ public final class CgPostBlock {
         tonemapper(block, s);
         bloomLayers(block, s);
         if (block.get("depth_of_field") instanceof Map<?, ?> dof) depthOfField(dof, s);
+        if (block.get("motion_blur") instanceof Map<?, ?> mb) motionBlur(mb, s);
         for (Region region : Region.values()) {
             if (!(block.get(key(region)) instanceof Map<?, ?> controls)) continue;
             for (Control control : Control.values()) {
@@ -85,6 +86,14 @@ public final class CgPostBlock {
         if (dof.get("min_fstop") instanceof Number n) s.depthOfFieldMinFstop(n.floatValue());
         if (dof.get("blade_count") instanceof Number n) s.depthOfFieldBladeCount(n.intValue());
         if (dof.get("sensor_width") instanceof Number n) s.depthOfFieldSensorWidth(n.floatValue());
+    }
+
+    /** {@code motion_blur}'s keys, each overriding its field alone. */
+    private static void motionBlur(Map<?, ?> mb, CgPostSettings s) {
+        if (mb.get("amount") instanceof Number n) s.motionBlurAmount(n.floatValue());
+        if (mb.get("max") instanceof Number n) s.motionBlurMax(n.floatValue());
+        if (mb.get("target_fps") instanceof Number n) s.motionBlurTargetFps(n.intValue());
+        if (mb.get("per_object_size") instanceof Number n) s.motionBlurPerObjectSize(n.floatValue());
     }
 
     private static void tonemapper(Map<?, ?> block, CgPostSettings s) {
@@ -209,6 +218,12 @@ public final class CgPostBlock {
         if (s.overridesCamera(CgPostSettings.DOF_BLADE_COUNT)) dof.put("blade_count", s.depthOfFieldBladeCount());
         if (s.overridesCamera(CgPostSettings.DOF_SENSOR_WIDTH)) dof.put("sensor_width", (double) s.depthOfFieldSensorWidth());
         if (!dof.isEmpty()) b.put("depth_of_field", dof);
+        Map<String, Object> mb = new LinkedHashMap<>();
+        if (s.overridesMotionBlur(CgPostSettings.MB_AMOUNT)) mb.put("amount", (double) s.motionBlurAmount());
+        if (s.overridesMotionBlur(CgPostSettings.MB_MAX)) mb.put("max", (double) s.motionBlurMax());
+        if (s.overridesMotionBlur(CgPostSettings.MB_TARGET_FPS)) mb.put("target_fps", s.motionBlurTargetFps());
+        if (s.overridesMotionBlur(CgPostSettings.MB_PER_OBJECT_SIZE)) mb.put("per_object_size", (double) s.motionBlurPerObjectSize());
+        if (!mb.isEmpty()) b.put("motion_blur", mb);
         if (s.overrides(CgPostSettings.TONE_CURVE)) b.put("tone_curve", (double) s.toneCurve());
         Map<String, Object> film = new LinkedHashMap<>();
         if (s.overrides(CgPostSettings.FILM_SLOPE)) film.put("slope", (double) s.filmSlope());

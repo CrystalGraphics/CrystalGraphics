@@ -1,0 +1,454 @@
+// Motion blur (CgMotionBlur, R14c), Unreal 5's tiled reconstruction filter after the temporal step: McGuire et al.
+// 2012, "A Reconstruction Filter for Plausible Motion Blur", with Jimenez 2014's tile classification. In order:
+// Flatten (each render pixel's motion from the nearest depth of its diagonal cross, in output pixels, polar, beside its
+// depth; each 16x16 tile's slowest and fastest), Dilate (each tile the fastest within 3 whose swept motion covers it)
+// or, for longer blurs, ScatterClear, Scatter and ScatterResolve, ClearLists, Classify (each 16x16 output tile into one
+// of four lists), Setup (their indirect dispatches), Half (the picture at half size, for long blurs), the four filters
+// (the AfterMotionBlur translucency laid over in the same pass), and Glow (the engine's bloom light along the same tiles).
+// Compose lays the AfterMotionBlur translucency over a picture motion blur did not run on.
+#pragma kernel Flatten 16 16 general
+#pragma kernel Dilate 8 8 image
+#pragma kernel ScatterClear 8 8 image
+#pragma kernel Scatter 8 8 general
+#pragma kernel ScatterResolve 8 8 image
+#pragma kernel ClearLists 4 general
+#pragma kernel Classify 8 8 general
+#pragma kernel Setup 4 general
+#pragma kernel Half 8 8 image
+#pragma kernel GatherHalf 8 8 general
+#pragma kernel GatherFull 16 16 general
+#pragma kernel ScatterHalf 8 8 general
+#pragma kernel ScatterFull 16 16 general
+#pragma kernel Compose 8 8 image
+#pragma kernel Glow 8 8 image
+
+// The resolved look weights blurred with the colour, by the colour's own sample weights (Unreal blurs alpha so)
+#pragma cg_feature CARRY
+
+Properties {
+    _Render      ("The size drawn at, and its inverse", vec4) = (1, 1, 1, 1)
+    _Output      ("The picture's size, and its inverse", vec4) = (1, 1, 1, 1)
+    _Jitter      ("This frame's jitter in render pixels", vec4) = (0, 0, 0, 0)
+    _Depth       ("View depth from device depth: x / (d + y)", vec4) = (0, 0, 0, 0)
+    _ClipToPrev0 ("This frame's unjittered clip to last frame's, column 0", vec4) = (1, 0, 0, 0)
+    _ClipToPrev1 ("Column 1", vec4) = (0, 1, 0, 0)
+    _ClipToPrev2 ("Column 2", vec4) = (0, 0, 1, 0)
+    _ClipToPrev3 ("Column 3", vec4) = (0, 0, 0, 1)
+    _Scale       ("xy clip motion to output pixels (amount, half, time scale), z the longest blur in output pixels, w 1 cancelling the camera's", vec4) = (0, 0, 0, 0)
+    _Tiles       ("xy the tile count, z output pixels to tiles, w the scatter's reach in tiles", vec4) = (1, 1, 0, 0)
+    _Filter      ("x the most samples, y 1 allowing half size, z a list's length, w 1 with AfterMotionBlur translucency", vec4) = (16, 0, 1, 0)
+    _FilterTiles ("xy the filter tile count, z filter tile to flatten tile", vec4) = (1, 1, 1, 0)
+    _Glow        ("xy the glow's size, zw its inverse", vec4) = (1, 1, 1, 1)
+    _SceneDepth  ("The scene's depth", sampler2D) = "black"
+    _Velocity    ("The velocity pass's target; 0 where nothing wrote", sampler2D) = "black"
+    _Ranges      ("Each tile's slowest (xy) and fastest (zw) motion, output pixels", sampler2D) = "black"
+    _Dilated     ("The tile ranges dilated", sampler2D) = "black"
+    _Flat        ("Each render pixel's motion: x length in output pixels, y angle (0-1), z view depth", sampler2D) = "black"
+    _Color       ("The picture", sampler2D) = "black"
+    _Half        ("The picture at half size", sampler2D) = "black"
+    _Translucency ("The AfterMotionBlur translucency: rgb its light, premultiplied, a its cover", sampler2D) = "black"
+    _Carried     ("The resolved look weights", sampler2D) = "black"
+    _GlowIn      ("The engine's bloom light", sampler2D) = "black"
+}
+
+Buffers {
+    LISTS  ("The four lists' filter tiles, x | y << 16, each a list length long", uint, readwrite)
+    COUNTS ("Each list's length", uint, readwrite)
+    ARGS   ("The four filters' indirect dispatches", uint, writeonly)
+}
+
+Images {
+    FLAT     ("Each render pixel's motion and depth", rgba16f, writeonly)
+    RANGES   ("Each tile's slowest and fastest motion", rgba16f, writeonly)
+    DILATED  ("The ranges dilated", rgba16f, writeonly)
+    KEY_MAX  ("The scatter's fastest per tile, a speed-ordered key", r32ui, readwrite)
+    KEY_MIN  ("The scatter's slowest per tile", r32ui, readwrite)
+    OUT      ("What a kernel answers: the blurred picture, the picture at half size (Half), the blurred light (Glow)", rgba16f, writeonly)
+    CARRIED  ("The look weights blurred with it", rgba8, writeonly)
+}
+
+#include "crystalgraphics:shaders/lib/velocity.glsl"
+
+const float PI = 3.14159265;
+const int TILE = 16;
+// Under half a pixel of motion nothing blurs (CONFIG_MINIMAL_PIXEL_VELOCITY)
+const float MIN_PIXELS = 0.5;
+// The soft depth test's slope, per host unit: Unreal's SOFT_Z_EXTENT of 1 cm
+const float DEPTH_SCALE = 100.0;
+// The lists, in Unreal's order: a tile takes the most expensive any tile round it asks for
+const uint GATHER_HALF = 0u, GATHER_FULL = 1u, SCATTER_HALF = 2u, SCATTER_FULL = 3u;
+
+// -- Motion ----------------------------------------------------------------------------------------------------------
+
+float eye_depth(float device) {
+    return _Depth.x / max(device + _Depth.y, 1.0e-12);
+}
+
+vec2 polar(vec2 v) {
+    float l = length(v);
+    return vec2(l, l > 0.0 ? atan(v.y, v.x) : 0.0);
+}
+
+vec2 cartesian(vec2 p) {
+    return vec2(cos(p.y), sin(p.y)) * p.x;
+}
+
+// The slower and the faster of two ranges, each (slowest, fastest) as polar pairs in a vec4
+vec4 reduce_range(vec4 a, vec4 b) {
+    return vec4(a.x < b.x ? a.xy : b.xy, a.z > b.z ? a.zw : b.zw);
+}
+
+// Unreal's interleaved gradient noise (Jimenez 2014), offset per stream
+float ign(vec2 p, float stream) {
+    p += stream * vec2(32.665, 11.815);
+    return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715))));
+}
+
+// -- Flatten ---------------------------------------------------------------------------------------------------------
+
+shared vec4 ranges[TILE * TILE];
+
+void Flatten() {
+    ivec2 last = ivec2(_Render.xy) - 1;
+    ivec2 p = CG_DISPATCH_ID.xy;
+    // Past the edge a thread stands in for the edge pixel, so the tile's range is the pixels' own
+    ivec2 q = min(p, last);
+    // The nearest of the diagonal cross (reversed depth: nearer is greater): an edge moves with what is in front
+    float d0 = texelFetch(_SceneDepth, clamp(q + ivec2(-1, -1), ivec2(0), last), 0).r;
+    float d1 = texelFetch(_SceneDepth, clamp(q + ivec2(1, -1), ivec2(0), last), 0).r;
+    float d2 = texelFetch(_SceneDepth, clamp(q + ivec2(-1, 1), ivec2(0), last), 0).r;
+    float d3 = texelFetch(_SceneDepth, clamp(q + ivec2(1, 1), ivec2(0), last), 0).r;
+    ivec2 offset = ivec2(d0 > d1 ? -1 : 1, -1);
+    if (max(d2, d3) > max(d0, d1)) offset = ivec2(d2 > d3 ? -1 : 1, 1);
+    ivec2 s = clamp(q + offset, ivec2(0), last);
+    float device = texelFetch(_SceneDepth, s, 0).r;
+    vec2 encoded = texelFetch(_Velocity, s, 0).xy;
+
+    vec2 screen = (vec2(q) + 0.5) * _Render.zw * 2.0 - 1.0;
+    vec4 prev = _ClipToPrev0 * screen.x + _ClipToPrev1 * screen.y + _ClipToPrev2 * device + _ClipToPrev3;
+    vec2 camera = screen - prev.xy / prev.w;
+    // A written motion was measured from this frame's jittered position
+    vec2 v = encoded.x > 0.0 ? cg_DecodeVelocity(encoded) - _Jitter.xy * 2.0 * _Render.zw : camera;
+    if (_Scale.w > 0.5) v -= camera;
+    vec2 pol = polar(v * _Scale.xy);
+    pol.x = min(pol.x, _Scale.z);
+
+    if (all(lessThanEqual(p, last))) FLAT_STORE(p, vec4(pol.x, pol.y * (0.5 / PI) + 0.5, eye_depth(device), 0.0));
+
+    int i = CG_LOCAL_INDEX;
+    ranges[i] = vec4(pol, pol);
+    memoryBarrierShared();
+    barrier();
+    for (int n = TILE * TILE / 2; n > 0; n >>= 1) {   // LOOP-BOUND: log2 of the tile's pixels
+        if (i < n) ranges[i] = reduce_range(ranges[i], ranges[i + n]);
+        memoryBarrierShared();
+        barrier();
+    }
+    if (i == 0) {
+        vec4 r = ranges[0];
+        RANGES_STORE(CG_GROUP_ID.xy, vec4(cartesian(r.xy), cartesian(r.zw)));
+    }
+}
+
+// -- Tile dilation ---------------------------------------------------------------------------------------------------
+
+// Whether a tile's motion, swept as a quad from a tile offset away, covers the tile at its centre: half a tile because
+// the shape is a swept tile, half more for conservative coverage, 99% so a still axis does not reach its neighbours
+bool sweeps(vec2 motionTiles, vec2 offset) {
+    float l = length(motionTiles);
+    vec2 dir = l > 0.0 ? motionTiles / l : vec2(1.0, 0.0);
+    float extent = abs(dir.x) + abs(dir.y);
+    vec2 quad = vec2(l, 0.0) + extent * 0.99;
+    vec2 onQuad = vec2(dot(dir, offset), dot(vec2(-dir.y, dir.x), offset));
+    return all(lessThan(abs(onQuad), quad));
+}
+
+vec4 range_polar(vec4 r) {
+    return vec4(polar(r.xy), polar(r.zw));
+}
+
+void Dilate() {
+    ivec2 p = CG_TEXEL.xy;
+    ivec2 n = ivec2(_Tiles.xy);
+    vec4 r = range_polar(texelFetch(_Ranges, p, 0));
+    for (int y = -3; y <= 3; y++) {   // LOOP-BOUND: the gather's reach, 3 tiles
+        for (int x = -3; x <= 3; x++) {   // LOOP-BOUND: the gather's reach, 3 tiles
+            ivec2 o = ivec2(x, y), at = p + o;
+            if (o == ivec2(0) || any(lessThan(at, ivec2(0))) || any(greaterThanEqual(at, n))) continue;
+            vec4 nb = texelFetch(_Ranges, at, 0);
+            if (sweeps(nb.zw * _Tiles.z, vec2(o))) r = reduce_range(r, range_polar(nb));
+        }
+    }
+    DILATED_WRITE(vec4(cartesian(r.xy), cartesian(r.zw)));
+}
+
+// A polar motion as a key whose unsigned order is its speed's: a half float's bits over its direction's
+uint key(vec2 pol) {
+    return (packHalf2x16(vec2(pol.x, 0.0)) << 16u) | uint(clamp(pol.y * (0.5 / PI) + 0.5, 0.0, 1.0) * 65535.0);
+}
+
+vec2 unkey(uint k) {
+    return vec2(unpackHalf2x16(k >> 16u).x, (float(k & 0xFFFFu) / 65535.0 - 0.5) * 2.0 * PI);
+}
+
+void ScatterClear() {
+    KEY_MAX_WRITE(uvec4(0u));
+    KEY_MIN_WRITE(uvec4(0xFFFFFFFFu));
+}
+
+// Unreal's raster scatter, as compute: each tile walks the tiles its swept quad covers, keeping there the fastest and
+// slowest by speed (the depth test of Unreal's quads, depth the speed)
+void Scatter() {
+    ivec2 p = CG_DISPATCH_ID.xy;
+    ivec2 n = ivec2(_Tiles.xy);
+    if (any(greaterThanEqual(p, n))) return;
+    vec4 r = texelFetch(_Ranges, p, 0);
+    vec2 motion = r.zw * _Tiles.z;
+    uint fastest = key(polar(r.zw)), slowest = key(polar(r.xy));
+    float l = length(motion);
+    vec2 dir = l > 0.0 ? motion / l : vec2(1.0, 0.0);
+    int steps = min(int(ceil(l)) + 1, int(_Tiles.w) + 1);
+    for (int k = -steps; k <= steps; k++) {   // LOOP-BOUND: the scatter's reach, _Tiles.w
+        ivec2 c = ivec2(round(vec2(p) + dir * float(k)));
+        for (int j = 0; j < 9; j++) {   // LOOP-BOUND: the 3x3 round the line
+            ivec2 at = c + ivec2(j % 3 - 1, j / 3 - 1);
+            if (any(lessThan(at, ivec2(0))) || any(greaterThanEqual(at, n))) continue;
+            if (at != p && !sweeps(motion, vec2(at - p))) continue;
+            KEY_MAX_MAX(at, fastest);
+            KEY_MIN_MIN(at, slowest);
+        }
+    }
+}
+
+void ScatterResolve() {
+    ivec2 p = CG_TEXEL.xy;
+    DILATED_WRITE(vec4(cartesian(unkey(KEY_MIN_LOAD(p).r)), cartesian(unkey(KEY_MAX_LOAD(p).r))));
+}
+
+// -- Classification --------------------------------------------------------------------------------------------------
+
+void ClearLists() {
+    if (CG_LOCAL_INDEX < 4) COUNTS_STORE(CG_LOCAL_INDEX, 0u);
+}
+
+void Classify() {
+    ivec2 f = CG_DISPATCH_ID.xy;
+    if (any(greaterThanEqual(f, ivec2(_FilterTiles.xy)))) return;
+    ivec2 flatTile = ivec2((vec2(f) + 0.5) * _FilterTiles.z);
+    ivec2 lastTile = ivec2(_Tiles.xy) - 1;
+    float most = _Filter.x;
+    uint list = GATHER_HALF;
+    for (int k = 0; k < 9; k++) {   // LOOP-BOUND: the 3x3 tiles round it
+        vec4 r = texelFetch(_Dilated, clamp(flatTile + ivec2(k % 3 - 1, k / 3 - 1), ivec2(0), lastTile), 0);
+        float slow = dot(r.xy, r.xy), fast = dot(r.zw, r.zw);
+        bool halved = fast > most * most && _Filter.y > 0.5;
+        uint asks = SCATTER_FULL;
+        if (fast < MIN_PIXELS * MIN_PIXELS) asks = GATHER_HALF;
+        else if (slow > 0.4 * fast) asks = halved ? GATHER_HALF : GATHER_FULL;
+        else asks = halved ? SCATTER_HALF : SCATTER_FULL;
+        list = max(list, asks);
+    }
+    uint at = atomicAdd(COUNTS_DATA[list], 1u);
+    LISTS_STORE(int(list) * int(_Filter.z) + int(at), uint(f.x) | (uint(f.y) << 16u));
+}
+
+void Setup() {
+    int c = CG_LOCAL_INDEX;
+    if (c >= 4) return;
+    ARGS_STORE(c * 3, COUNTS(c));
+    ARGS_STORE(c * 3 + 1, 1u);
+    ARGS_STORE(c * 3 + 2, 1u);
+}
+
+void Half() {
+    ivec2 p = CG_TEXEL.xy * 2, last = ivec2(_Output.xy) - 1;
+    vec4 c = texelFetch(_Color, min(p, last), 0) + texelFetch(_Color, min(p + ivec2(1, 0), last), 0)
+            + texelFetch(_Color, min(p + ivec2(0, 1), last), 0) + texelFetch(_Color, min(p + ivec2(1, 1), last), 0);
+    OUT_WRITE(c * 0.25);
+}
+
+// -- The filter ------------------------------------------------------------------------------------------------------
+
+shared uint groupSamples;
+shared uint groupFast;
+
+// The picture at uv, point sampled: its half size where the blur is long (mip >= 0.5, Unreal's point mip)
+vec4 color_at(vec2 uv, float mip) {
+    if (mip >= 0.5) return texelFetch(_Half, clamp(ivec2(uv * _Output.xy * 0.5), ivec2(0), ivec2(_Output.xy * 0.5 - 0.5)), 0);
+    return texelFetch(_Color, clamp(ivec2(uv * _Output.xy), ivec2(0), ivec2(_Output.xy) - 1), 0);
+}
+
+vec4 carried_at(vec2 uv) {
+    return texelFetch(_Carried, clamp(ivec2(uv * _Output.xy), ivec2(0), ivec2(_Output.xy) - 1), 0);
+}
+
+vec3 flat_at(vec2 uv) {
+    return texelFetch(_Flat, clamp(ivec2(uv * _Render.xy), ivec2(0), ivec2(_Render.xy) - 1), 0).xyz;
+}
+
+// How far a sample spreading spread pixels reaches one offset steps along (McGuire's cone)
+float spread_weight(float spread, float offset, float pixelToStep) {
+    return clamp(pixelToStep * spread - max(offset - 1.0, 0.0), 0.0, 1.0);
+}
+
+// The centre's spread where it is in front of the sample, the sample's where it is in front (McGuire's soft depth)
+float centre_or_sample(vec3 centre, vec3 s, float offset, float pixelToStep) {
+    float behind = DEPTH_SCALE * (s.z - centre.z);
+    return clamp(0.5 + behind, 0.0, 1.0) * spread_weight(centre.x, offset, pixelToStep)
+            + clamp(0.5 - behind, 0.0, 1.0) * spread_weight(s.x, offset, pixelToStep);
+}
+
+// The separate translucency over the picture: its light, and what it covers of what is behind (CgSeparateTranslucency)
+vec4 over(vec4 picture, vec4 t) {
+    return vec4(picture.rgb * (1.0 - t.a) + t.rgb, t.a + picture.a * (1.0 - t.a));
+}
+
+void write_pixel(ivec2 p, vec4 blur, vec4 carryBlur, float centreShare) {
+    if (any(greaterThanEqual(p, ivec2(_Output.xy)))) return;
+    vec4 o = texelFetch(_Color, p, 0) * centreShare + blur;
+    if (_Filter.w > 0.5) o = over(o, textureLod(_Translucency, (vec2(p) + 0.5) * _Output.zw, 0.0));
+    OUT_STORE(p, o);
+#ifdef CARRY
+    CARRIED_STORE(p, texelFetch(_Carried, p, 0) * centreShare + carryBlur);
+#endif
+}
+
+void blur_tile(uint list, bool halfSize, bool scatter) {
+    uint entry = LISTS(int(list) * int(_Filter.z) + CG_GROUP_ID.x);
+    ivec2 tile = ivec2(int(entry & 0xFFFFu), int(entry >> 16u));
+    ivec2 pix = halfSize ? tile * TILE + CG_LOCAL_ID.xy * 2 : tile * TILE + CG_LOCAL_ID.xy;
+    vec2 uv = halfSize ? (vec2(pix) + 1.0) * _Output.zw : (vec2(pix) + 0.5) * _Output.zw;
+
+    float r1 = ign(vec2(pix), 0.0), r2 = ign(vec2(pix), 1.0);
+    vec2 tileJitter = (vec2(r1, r2) - 0.5) * 0.5;
+    vec2 velocityPixel = floor(uv * _Render.xy) + 0.5;
+    ivec2 t = clamp(ivec2(floor(velocityPixel / float(TILE) + tileJitter)), ivec2(0), ivec2(_Tiles.xy) - 1);
+    vec4 range = texelFetch(_Dilated, t, 0);
+    float fastest = length(range.zw);
+
+    // Every pixel of the group takes as many samples as its most-moving one asks, and the plain gather only where all can
+    uint asks = uint(clamp(4.0 * ceil(fastest * 0.25), 4.0, _Filter.x));
+    bool fast = dot(range.xy, range.xy) > 0.4 * fastest * fastest;
+    if (CG_LOCAL_INDEX == 0) {
+        groupSamples = 0u;
+        groupFast = 0u;
+    }
+    memoryBarrierShared();
+    barrier();
+    atomicMax(groupSamples, asks);
+    atomicAdd(groupFast, fast ? 1u : 0u);
+    memoryBarrierShared();
+    barrier();
+    uint samples = groupSamples;
+    fast = groupFast == uint(CG_LOCAL_SIZE.x * CG_LOCAL_SIZE.y);
+    float inv = 1.0 / float(samples);
+    float mip = clamp(fastest * inv - 1.0, 0.0, 1.0);
+    vec2 search = range.zw * _Output.zw;
+
+    vec4 blur = vec4(0.0), carryBlur = vec4(0.0);
+    float centreShare = 1.0;
+    if (fastest < MIN_PIXELS) {
+        // nothing moves here
+    } else if (!scatter || fast) {
+        for (uint i = 0u; i < samples; i += 4u) {   // LOOP-BOUND: _Filter.x samples, 16 at most
+            for (uint j = 0u; j < 2u; j++) {   // LOOP-BOUND: two pairs
+                vec2 along = float(i / 2u + j) + 0.5 + vec2(r1 - 0.5, 0.5 - r1);
+                vec2 fraction = along * (2.0 * inv);
+                vec2 a = uv + fraction.x * search, b = uv - fraction.y * search;
+                blur += color_at(a, mip) + color_at(b, mip);
+#ifdef CARRY
+                carryBlur += carried_at(a) + carried_at(b);
+#endif
+            }
+        }
+        blur *= inv;
+        carryBlur *= inv;
+        centreShare = 0.0;
+    } else {
+        uint steps = samples / 2u;
+        float pixelToStep = float(steps) / fastest;
+        vec3 centre = flat_at(uv);
+        float sum = 0.0;
+        for (uint s = 0u; s < steps; s++) {   // LOOP-BOUND: _Filter.x / 2 steps, 8 at most
+            vec2 along = float(s) + 0.5 + vec2(r1 - 0.5, 0.5 - r1);
+            vec2 fraction = along / float(steps);
+            float weighOffset = float(s) + 0.5;
+            vec2 a = uv + fraction.x * search, b = uv - fraction.y * search;
+            vec3 fa = flat_at(a), fb = flat_at(b);
+            float wa = centre_or_sample(centre, fa, weighOffset, pixelToStep);
+            float wb = centre_or_sample(centre, fb, weighOffset, pixelToStep);
+            // A pair's weights mirrored where the farther sample is the slower (McGuire's mirror)
+            bool farther = fa.z > fb.z, slower = fa.x < fb.x;
+            wa = farther && slower ? wb : wa;
+            wb = farther || slower ? wb : wa;
+            blur += wa * color_at(a, mip) + wb * color_at(b, mip);
+#ifdef CARRY
+            carryBlur += wa * carried_at(a) + wb * carried_at(b);
+#endif
+            sum += wa + wb;
+        }
+        float norm = 0.5 / float(steps);
+        blur *= norm;
+        carryBlur *= norm;
+        centreShare = 1.0 - sum * norm;
+    }
+
+    if (halfSize) {
+        for (int k = 0; k < 4; k++) write_pixel(pix + ivec2(k & 1, k >> 1), blur, carryBlur, centreShare);   // LOOP-BOUND: the 2x2
+    } else {
+        write_pixel(pix, blur, carryBlur, centreShare);
+    }
+}
+
+void GatherHalf() {
+    blur_tile(GATHER_HALF, true, false);
+}
+
+void GatherFull() {
+    blur_tile(GATHER_FULL, false, false);
+}
+
+void ScatterHalf() {
+    blur_tile(SCATTER_HALF, true, true);
+}
+
+void ScatterFull() {
+    blur_tile(SCATTER_FULL, false, true);
+}
+
+// -- Without the filter, and the glow ----------------------------------------------------------------------------------
+
+void Compose() {
+    ivec2 p = CG_TEXEL.xy;
+    OUT_WRITE(over(texelFetch(_Color, p, 0), textureLod(_Translucency, (vec2(p) + 0.5) * _Output.zw, 0.0)));
+}
+
+// The bloom light at its own size along its tile's fastest motion, each sample weighed by how far its own motion
+// reaches: a still light beside a moving one keeps its glow
+void Glow() {
+    ivec2 p = CG_TEXEL.xy;
+    vec2 uv = (vec2(p) + 0.5) * _Glow.zw;
+    ivec2 t = clamp(ivec2(uv * _Render.xy / float(TILE)), ivec2(0), ivec2(_Tiles.xy) - 1);
+    vec2 fastest = texelFetch(_Dilated, t, 0).zw;
+    vec4 centre = texelFetch(_GlowIn, p, 0);
+    float l = length(fastest);
+    if (l < MIN_PIXELS) {
+        OUT_WRITE(centre);
+        return;
+    }
+    const float STEPS = 4.0;
+    float pixelToStep = STEPS / l, r = ign(vec2(p), 0.0);
+    vec2 search = fastest * _Output.zw;
+    vec4 blur = vec4(0.0);
+    float sum = 0.0;
+    for (int s = 0; s < 4; s++) {   // LOOP-BOUND: STEPS
+        vec2 fraction = (float(s) + 0.5 + vec2(r - 0.5, 0.5 - r)) / STEPS;
+        vec2 a = uv + fraction.x * search, b = uv - fraction.y * search;
+        float wa = spread_weight(flat_at(a).x, float(s) + 0.5, pixelToStep);
+        float wb = spread_weight(flat_at(b).x, float(s) + 0.5, pixelToStep);
+        blur += wa * textureLod(_GlowIn, a, 0.0) + wb * textureLod(_GlowIn, b, 0.0);
+        sum += wa + wb;
+    }
+    float norm = 0.5 / STEPS;
+    OUT_WRITE(centre * (1.0 - sum * norm) + blur * norm);
+}

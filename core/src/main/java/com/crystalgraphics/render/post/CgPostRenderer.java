@@ -17,6 +17,7 @@ import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.view.CgViewRenderTarget;
 import com.crystalgraphics.render.post.composite.CgCompositeFeature;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
+import com.crystalgraphics.render.post.motionblur.CgMotionBlur;
 import com.crystalgraphics.render.post.look.CgFilmLut;
 import com.crystalgraphics.render.post.look.CgPostLooks;
 import com.crystalgraphics.render.post.settings.CgPostSettings;
@@ -50,7 +51,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>The chain, in order: {@code SURFACES} (when {@link #surfaces} could not run it), {@code TRANSLUCENT}, depth of
  * field, separate translucency composed, temporal anti-aliasing (and, for the engine's bloom, its glow: the light past
- * bloom's threshold per jittered frame, averaged, so {@code SCENE}'s effects do not feed it), {@code SCENE}, bloom taken
+ * bloom's threshold per jittered frame, averaged, so {@code SCENE}'s effects do not feed it), motion blur (the
+ * {@code AfterMotionBlur} translucency laid over in it, or after the temporal step with it off), {@code SCENE}, bloom taken
  * from the scene, {@code HDR}, the composite (tonemapper, grade, looks,
  * encoding into the host's target), {@code DISPLAY}, the crossfade, the debug view; a picture left in another texture
  * is copied into the host's target last. A view drawn below 100% runs it all at the size it drew at, into the target
@@ -106,6 +108,7 @@ public final class CgPostRenderer {
     private static void precacheKernels() {
         CgBloom.precache();
         CgTemporalSuperResolution.precache();
+        CgMotionBlur.precache();
         CgFilmLut.precache();
         CgLookWeights.precache();
     }
@@ -170,6 +173,7 @@ public final class CgPostRenderer {
         // Every engine solid writes, the still ones zero: temporal AA keeps to the texels the engine drew
         CgPostDebug debug = view.post().debug();
         if (temporal || debug != null && debug.showsVelocity()) textures.requestVelocityWithStill();
+        else if (CgMotionBlur.wants(view, settings)) textures.requestVelocity();
         CgUpscaler upscaler = view.post().upscaler(view.antiAliasing());
         float fraction = view.resolutionFraction();
         boolean rebuilds = temporal && upscaler.rebuilds(fraction);
@@ -271,6 +275,15 @@ public final class CgPostRenderer {
                 }
                 ctx.input(picture);
             }
+            if (post.motionBlur.shows(ctx)) {
+                try (CgTrace.Zone mb = CgTrace.zone(CgChannels.WORLD, "post.motionBlur")) {
+                    picture = post.motionBlur.apply(ctx, picture);
+                    glow = post.motionBlur.glow(ctx, glow);
+                }
+            } else {
+                picture = post.motionBlur.compose(ctx, picture);
+            }
+            ctx.input(picture);
             picture = carry(post, CgPostPoint.SCENE, entries, i, picture);
             CgLookPost.weighted(ctx, CgPostPoint.SCENE, picture);
             i = skip(CgPostPoint.SCENE, entries, i);

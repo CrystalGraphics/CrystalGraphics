@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer.feature.translucency;
 
+import com.crystalgraphics.api.material.CgTranslucencyPass;
 import com.crystalgraphics.render.look.CgLookPost;
 import com.crystalgraphics.render.look.CgLookChannels;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -85,7 +86,7 @@ public final class CgLayerPasses {
     private final boolean[] seen = new boolean[CgLookChannels.MAX];
     private final CgGraphTexture[] targets = new CgGraphTexture[CgLookChannels.MAX], apartTargets = new CgGraphTexture[CgLookChannels.MAX];
     @Nullable
-    private CgGraphTexture separateTarget;
+    private CgGraphTexture separateTarget, afterMotionBlurTarget;
     private int outputSlot = -1;
     /** Per row this firing: carried into the output slot's layer by the translucent passes, or a cover drawn there. */
     private boolean[] carried = new boolean[64];
@@ -97,7 +98,9 @@ public final class CgLayerPasses {
     /** Per channel, its layer's form: the rest of its draws, its separate ones, and over what the passes carried. */
     private final SlotForm[] main = new SlotForm[CgLookChannels.MAX], apart = new SlotForm[CgLookChannels.MAX],
             over = new SlotForm[CgLookChannels.MAX];
-    private final SlotForm separateAll = new SlotForm(-1, true, false);
+    /** The separate translucency's two targets: Unreal's {@code AfterDOF} and {@code AfterMotionBlur} passes. */
+    private final SlotForm separateAfterDof = new SlotForm(-1, true, false, SlotForm.AFTER_DOF),
+            separateAfterMotionBlur = new SlotForm(-1, true, false, SlotForm.AFTER_MOTION_BLUR);
     /** A separate row that cannot go apart (its blend multiplies): drawn in the scene as the after-distortion pass draws. */
     private final CgCommandForm inScene = (rows, b, p) -> layered(p) == null && p.pass() != CgRenderPassVariant.EMISSIVE ? p : null;
 
@@ -263,16 +266,27 @@ public final class CgLayerPasses {
             pass.add(stays).end();
         }
         merge = firing.view().flag(CgSceneRenderer.MERGE_EMISSION);
-        CgDrawCommands apartDraws = passes.commands(CgEnginePasses.SEPARATE, rec, separateAll);
-        if (apartDraws.size() == 0) return;
+        CgDrawCommands afterDof = passes.commands(CgEnginePasses.SEPARATE, rec, separateAfterDof);
+        CgDrawCommands afterMotionBlur = passes.commands(CgEnginePasses.SEPARATE, rec, separateAfterMotionBlur);
+        if (afterDof.size() == 0 && afterMotionBlur.size() == 0) return;
         CgView view = firing.view();
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
-        if (separateTarget == null || separateTarget.getWidth() != w || separateTarget.getHeight() != h) {
-            separateTarget = CgGraphTexture.transientTexture("cg_separate_translucency", new CgTextureDesc(w, h, GRADE_FORMAT));
+        if (afterDof.size() > 0) {
+            separateTarget = sized(separateTarget, "cg_separate_translucency", w, h);
+            layerPass(firing, constants, separateTarget, false, GPU_SEPARATE).add(afterDof).end();
+            separate.target = separateTarget;
         }
-        layerPass(firing, constants, separateTarget, false, GPU_SEPARATE).add(apartDraws).end();
-        separate.target = separateTarget;
+        if (afterMotionBlur.size() > 0) {
+            afterMotionBlurTarget = sized(afterMotionBlurTarget, "cg_translucency_after_motion_blur", w, h);
+            layerPass(firing, constants, afterMotionBlurTarget, false, GPU_SEPARATE).add(afterMotionBlur).end();
+            separate.afterMotionBlur = afterMotionBlurTarget;
+        }
         view.publish(CgSeparateTranslucency.KEY, separate);
+    }
+
+    private static CgGraphTexture sized(@Nullable CgGraphTexture t, String name, int w, int h) {
+        if (t != null && t.getWidth() == w && t.getHeight() == h) return t;
+        return CgGraphTexture.transientTexture(name, new CgTextureDesc(w, h, GRADE_FORMAT));
     }
 
     /** One channel's translucent draws of every pass type a layer holds, in key order. */
@@ -304,13 +318,20 @@ public final class CgLayerPasses {
 
     /** A channel's layer: which of its translucent rows, through which forms. */
     private final class SlotForm implements CgCommandForm {
-        final int slot;
+        /** Which apart rows it takes: either pass, or one of the two. */
+        static final int ANY_PASS = 0, AFTER_DOF = 1, AFTER_MOTION_BLUR = 2;
+        final int slot, pass;
         final boolean apartRows, overCarried;
 
         SlotForm(int slot, boolean apartRows, boolean overCarried) {
+            this(slot, apartRows, overCarried, ANY_PASS);
+        }
+
+        SlotForm(int slot, boolean apartRows, boolean overCarried, int pass) {
             this.slot = slot;
             this.apartRows = apartRows;
             this.overCarried = overCarried;
+            this.pass = pass;
         }
 
         @Nullable
@@ -320,6 +341,7 @@ public final class CgLayerPasses {
             if (slot >= 0 && !inSlot(rows, b, slot)) return null;
             boolean separateRow = separate(rows, b);
             if (separateRow != apartRows) return null;
+            if (pass != ANY_PASS && afterMotionBlur(rows, b) != (pass == AFTER_MOTION_BLUR)) return null;
             if (overCarried && carries(rows, b)) return null;
             boolean solid = CgSceneRenderer.queue(rows, b) < CgRenderQueue.TRANSPARENT_THRESHOLD;
             // A graded solid's look is its custom stencil's, read by the look weights: it has no layer
@@ -372,6 +394,10 @@ public final class CgLayerPasses {
 
     private static boolean separate(CgMeshBatches rows, int b) {
         return rows.layer(b) == CgSortLayer.AFTER_DOF || CgMaterialProxy.of(rows.material(b)).translucencyPass().apart();
+    }
+
+    private static boolean afterMotionBlur(CgMeshBatches rows, int b) {
+        return CgMaterialProxy.of(rows.material(b)).translucencyPass() == CgTranslucencyPass.AFTER_MOTION_BLUR;
     }
 
     /** The channel holding look id {@code id}: the one it held last firing while it is free, so its table stays baked. */

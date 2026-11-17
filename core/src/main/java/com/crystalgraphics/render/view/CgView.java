@@ -95,6 +95,7 @@ public final class CgView {
     private final CgViewState state;
     private final CgCamera camera = new CgCamera(this::writeState);
     private boolean jitter, jittering;
+    private boolean cameraMotionBlur = true;
     /** This frame's jitter in clip space, and the matrix moving by it. */
     private float jitterX, jitterY;
     private final Matrix4f jitterMatrix = new Matrix4f();
@@ -518,6 +519,19 @@ public final class CgView {
 
     public boolean jitters() {
         return jitter;
+    }
+
+    /**
+     * Whether the camera's own motion blurs with what moved (Unreal's {@code bCameraMotionBlur}), on by default. Off, a
+     * turn or a step leaves the world sharp and only what moves on its own blurs: a first-person view.
+     */
+    public CgView cameraMotionBlur(boolean on) {
+        cameraMotionBlur = on;
+        return this;
+    }
+
+    public boolean cameraMotionBlur() {
+        return cameraMotionBlur;
     }
 
     /**

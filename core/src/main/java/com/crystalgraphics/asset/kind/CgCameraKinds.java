@@ -89,9 +89,12 @@ public final class CgCameraKinds {
             .property("heal_amount", FLOAT)
             .register();
 
+    /** Unreal's motion blur settings ({@code MotionBlurAmount}, {@code MotionBlurMax}, and on). */
     static final CgType MOTION_BLUR = CgTypes.struct("crystalgraphics:post.motion_blur")
-            .property("amount", FLOAT)
-            .property("max", FLOAT)
+            .property("amount", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("max", FLOAT).flags(CgPropertyFlag.KEYABLE)
+            .property("target_fps", CgValueType.INT)
+            .property("per_object_size", FLOAT)
             .register();
 
     /** Unreal's lens settings ({@code DepthOfFieldFocalDistance}, {@code DepthOfFieldFstop}, and on); 0 focus, no blur. */

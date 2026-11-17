@@ -19,6 +19,7 @@ import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
 import com.crystalgraphics.render.post.upscale.CgSpatialUpscale;
 import com.crystalgraphics.render.post.upscale.CgUpscaler;
 import com.crystalgraphics.render.post.dof.CgDepthOfField;
+import com.crystalgraphics.render.post.motionblur.CgMotionBlur;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -76,6 +77,7 @@ public final class CgPost {
     /** The camera's, blended over every volume: a rig's lens. */
     private final CgPostSettings camera = new CgPostSettings();
     final CgDepthOfField depthOfField = new CgDepthOfField();
+    final CgMotionBlur motionBlur = new CgMotionBlur();
     final CgTemporalAA temporalAA = new CgTemporalAA();
     final CgTemporalSuperResolution tsr = new CgTemporalSuperResolution();
     final CgSpatialUpscale spatialUpscale = new CgSpatialUpscale();

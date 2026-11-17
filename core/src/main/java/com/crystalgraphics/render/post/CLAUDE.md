@@ -20,9 +20,11 @@ CgPostRenderer.record
   look solids                 CgLookWeights.solids: graded solids' shares, bent as the scene was (ctx.distorted)
   depth of field              CgDepthOfField: the lens's blur by distance, into a texture of its own; carry() blurs
                               the solids' shares the same way (Unreal's alpha propagation)
-  translucency                CgTranslucencyComposition: CgSeparateTranslucency over the scene
+  translucency                CgTranslucencyComposition: CgSeparateTranslucency's AfterDOF target over the scene
   look weights                CgLookWeights: each graded look's share of each pixel (render/look)
   temporal AA                 CgTemporalAA: the jittered picture resolved into the view's history (temporalAA show flag)
+  motion blur                 CgMotionBlur (motionBlur show flag): the AfterMotionBlur target laid over in its filter, or
+                              alone (compose) with it off; the resolved look weights and the engine's glow blurred with it
   SCENE                       the linear scene: what bloom sees, it blooms; a look's own materials here, at HDR and
                               at DISPLAY, drawn on a copy laid back by its weight (CgLookPost.weighted)
   bloom                       CgBloom from the chain's picture, into the composite
@@ -53,6 +55,7 @@ Mitchell-Netravali), `sharpen` (RCAS, `lib/rcas.glsl`, shared with TAA's output;
 kept every 31 frames for resurrection), `measure_flickering_luma` (High and up, before translucency:
 `CgUpscaler.beforeTranslucency`), `visualize` (`crystalgraphics.post.debug=tsr.rejection|samples|guide|reprojection|flicker|resurrection`).
 Each has a GPU zone `post.tsr.*`; TAA's are `post.taa.*`. It `composesTranslucency()`: the chain hands it the separate translucency uncomposed (`CgTranslucencyComposition` skips it), and the reject pass lays it in, blurred 3x3 for the rejection so a spark's grain keeps the history under it, sharp in the colour it keeps. `CgGraphicsSettings.ANTI_ALIASING` is Unreal's `sg.AntiAliasingQuality` 0-3: Low `Reject`/`Update`; Medium adds the spatial anti-aliasing (3 steps) and resurrection; High the far samples moved to the nearest corner, the flicker heuristic (`RejectFlicker`, the moire history) and the reprojection field (the dilate pass's boundary and Jacobian); Ultra 8 search steps and the history at 200%, its sample counts divided by 4. Edge search is shared in `tsr.glsl` (spatial AA on luma, the field on depth). A history read by a dispatch before the one writing it this frame samples the history itself: `previous()` there is two frames old. Our velocity holds this frame's jitter, which `tsr_velocity` subtracts. Gate `temporal-upscale`; `upscale-lab` switches it on F5, its quality on F6 |
+| `motionblur` | `CgMotionBlur`: Unreal 5's motion blur after the temporal step, at the picture's size, where the view's `motionBlur` show flag is on (off by default, as `temporalAA`) and the blended settings blur (`motionBlur(amount, max)`, `motionBlurTargetFps`, a post block's `motion_blur`; Unreal's defaults 0.5, 5%, 30 fps). One kernel file, `shaders/post/motionblur/motion_blur.compute`: Flatten (each render pixel's motion from the nearest of its diagonal cross, less the jitter, polar in output pixels beside its view depth; each 16x16 tile's slowest and fastest), Dilate (each tile the fastest within 3 whose swept motion covers it) or ScatterClear/Scatter/ScatterResolve past 3 tiles (atomic max and min on a speed-ordered key), Classify into four lists and Setup their indirect dispatches, Half, then GatherHalf/GatherFull/ScatterHalf/ScatterFull (McGuire's reconstruction, Unreal's samples: 12, 16 at Ultra, Medium gathering long blurs at half size; `CARRY` blurs the look weights by the same weights). The shutter is the target frame time over this frame's on `CgFrameClock`. `view.cameraMotionBlur(false)` cancels the camera's share. Off on a camera cut and at `CgQuality.LOW` |
 | `dof` | `CgDepthOfField`: depth of field from the blended settings' lens (`depthOfField...`, a post block's `depth_of_field`, the camera's focus and f-stop), off with no focus. Half size: setup (scene and signed circle of confusion), 8x8 tiles of the largest near and far radius, dilated, the far and near layers gathered on rings shaped by the aperture's blades, then a full-size recombine (`shaders/post/dof/`). Thin lens on the view's FOV and the settings' sensor; each layer's radius held to 2.5% of the width |
 
 | Package | Holds |
@@ -93,7 +96,8 @@ every point draws onto the host's target and the composite draws in its blend fo
   fragment's output to 0..1 before blending, so noise would lose its negative half and brighten the picture.
 - **Recording allocates nothing**: effect lists are array snapshots, `CgScreenTexture` is kept on its texture, and
   `ctx.screen` and `ctx.texture` reuse theirs.
-- Gates: `post-looks` (every look through a volume, from the pixels), `kit-looks` (two looks per pixel through TSR and
+- Gates: `motion-blur` (a moving bar and a pan blur by a frame's motion under TSR, TAA and none, an AfterMotionBlur card
+  and a cancelled camera stay sharp, a spinner, a graded bar's blur keeps its look), `post-looks` (every look through a volume, from the pixels), `kit-looks` (two looks per pixel through TSR and
   TAA against their tables, an aura, smoke, a masked card, a defocused look's blur), `post-effects` (an effect at each point, one
   answering a texture of its own), `post-transitions` (post materials, steps, a fade, a crossfade), `bloom-occlusion`, `velocity-conformance` (rigid, attached, instanced and skinned motion against the CPU's projection; still objects, frame records and a blended pane's responsive mark), `temporal-aa` (a dithered pane settles, a turned bar's edges resolve, a moved
   bar leaves no ghost), `depth-of-field` (a board in
