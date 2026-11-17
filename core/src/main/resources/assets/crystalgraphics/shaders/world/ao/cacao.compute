@@ -1,0 +1,476 @@
+// Screen-space ambient occlusion, R13c's SSAO (r.AmbientOcclusion.Method 0): AMD's FidelityFX CACAO 1.x, ported.
+//
+// Copyright (c) 2016, Intel Corporation (ASSAO). Modifications Copyright (c) 2021, Advanced Micro Devices, Inc. (CACAO).
+// MIT licence: permission is granted, free of charge, to deal in the Software without restriction, provided this notice
+// is kept; the Software is provided "as is", without warranty of any kind. THIRD-PARTY.md holds the full notice.
+//
+// Its prepare kernels are cacao_prepare.compute: a file binds 8 images at most.
+//
+// Ported from ffx_cacao.hlsl (GPUOpen-Effects/FidelityFX-CACAO). Changed:
+// - its four deinterleaved layers (Texture2DArray) are four textures, a dispatch binding the layer it works on;
+// - its samplers are texel fetches with the address mode they had (point clamp, point mirror) or filtered reads (linear
+//   clamp); a depth tap is its Vulkan build's sampler, linear in a level and the nearest level;
+// - depth mips are a texture and a dispatch a level (DepthMip), the same MipSmartAverage its prepare builds in shared
+//   memory;
+// - view space is the engine's (CgAmbientOcclusion's view_position), depth its linear eye depth;
+// - Q0 and Q1 dispatch a thread a texel, not its sparse layout: the same texels, each once;
+// - a normal is turned to face the eye, as the GTAO port's: the texel rows run the other way from D3D's;
+// - the output takes Unreal's intensity last: 1 - (1 - ao) * intensity.
+#pragma kernel GenerateQ0 8 8 image
+#pragma kernel GenerateQ1 8 8 image
+#pragma kernel GenerateQ2 8 8 image
+#pragma kernel GenerateQ3Base 8 8 image
+#pragma kernel GenerateQ3 8 8 image
+#pragma kernel ImportanceMap 8 8 image
+#pragma kernel ImportanceA 8 8 image
+#pragma kernel ImportanceB 8 8 general
+#pragma kernel ClearLoadCounter 1 general
+#pragma kernel Blur 16 16 general
+#pragma kernel Apply 8 8 image
+#pragma kernel NonSmartApply 8 8 image
+#pragma kernel NonSmartHalfApply 8 8 image
+
+Properties {
+    _Size       ("x, y the full render size; z, w their inverse", vec4) = (1, 1, 1, 1)
+    _SsaoSize   ("x, y the deinterleaved (SSAO) size; z, w their inverse", vec4) = (1, 1, 1, 1)
+    _ImportanceSize ("x, y the importance map's size; z, w their inverse", vec4) = (1, 1, 1, 1)
+    _Effect     ("x radius, y shadow strength, z shadow power, w shadow clamp", vec4) = (1.2, 4.3, 1.5, 0.98)
+    _Effect2    ("x fade-out mul, y fade-out add, z horizon angle threshold, w sampling-radius near-limit reciprocal", vec4) = (0, 1, 0.06, 1)
+    _Effect3    ("x depth-precision offset, y negative reciprocal radius, z load-counter average divisor, w adaptive sample limit", vec4) = (0.9992, -0.833, 0, 0.45)
+    _Effect4    ("x inverse sharpness, y detail AO strength, z the pass (layer, 0-3), w Unreal's intensity", vec4) = (0.02, 0.5, 0, 1)
+    _PassOffset ("xy the pass's full-resolution uv offset; z blur passes", vec4) = (0, 0, 2, 0)
+    _Rot0       ("The pass's sample rotation and scale, sub-pass 0", vec4) = (1, 0, 0, -1)
+    _Rot1       ("Sub-pass 1", vec4) = (1, 0, 0, -1)
+    _Rot2       ("Sub-pass 2", vec4) = (1, 0, 0, -1)
+    _Rot3       ("Sub-pass 3", vec4) = (1, 0, 0, -1)
+    _Rot4       ("Sub-pass 4", vec4) = (1, 0, 0, -1)
+    _Depth      ("The pass's view depth", sampler2D) = "black"
+    _DepthMip1  ("The pass's view depth, level 1", sampler2D) = "black"
+    _DepthMip2  ("Level 2", sampler2D) = "black"
+    _DepthMip3  ("Level 3", sampler2D) = "black"
+    _Normals    ("The pass's view-space normals", sampler2D) = "black"
+    _Base       ("The pass's Q3 base: occlusion and weight", sampler2D) = "black"
+    _Importance ("The importance map", sampler2D) = "black"
+    _Ssao0      ("Layer 0's occlusion and packed edges", sampler2D) = "black"
+    _Ssao1      ("Layer 1's", sampler2D) = "black"
+    _Ssao2      ("Layer 2's", sampler2D) = "black"
+    _Ssao3      ("Layer 3's", sampler2D) = "black"
+}
+
+Images {
+    SSAO    ("A layer's occlusion and packed edges", rg16f, writeonly)
+    IMPORTANCE ("Importance", r16f, writeonly)
+    AO      ("The occlusion the solids read: 1 open", r16f, writeonly)
+}
+
+Buffers {
+    LOAD_COUNTER ("The importance map's summed load (every 9th texel)", uint, readwrite)
+}
+
+const float FFX_PI = 3.14159265;
+const int MAX_TAPS = 32;
+const int ADAPTIVE_TAP_BASE_COUNT = 5;
+const int ADAPTIVE_TAP_FLEXIBLE_COUNT = MAX_TAPS - ADAPTIVE_TAP_BASE_COUNT;
+const int NUM_TAPS[5] = int[5](3, 5, 12, 0, 0);
+const int HALOING_REDUCTION_AT = 1;
+const float HALOING_REDUCTION_AMOUNT = 0.6;
+const int NORMAL_BASED_EDGES_AT = 2;
+const float NORMAL_BASED_EDGES_DOT_THRESHOLD = 0.5;
+const int DETAIL_AO_AT = 1;
+const int DEPTH_MIPS_AT = 2;
+const float DEPTH_MIPS_GLOBAL_OFFSET = -4.3;
+const int DEPTH_BASED_EDGES_AT = 1;
+
+// g_FFX_CACAO_samplePatternMain: xy the offset, z the weight, w log2 of its length
+const vec4 SAMPLE_PATTERN[32] = vec4[32](
+    vec4( 0.78488064,  0.56661671, 1.500000, -0.126083), vec4( 0.26022232, -0.29575172, 1.500000, -1.064030),
+    vec4( 0.10459357,  0.08372527, 1.110000, -2.730563), vec4(-0.68286800,  0.04963045, 1.090000, -0.498827),
+    vec4(-0.13570161, -0.64190155, 1.250000, -0.532765), vec4(-0.26193795, -0.08205118, 0.670000, -1.783245),
+    vec4(-0.61177456,  0.66664219, 0.710000, -0.044234), vec4( 0.43675563,  0.25119025, 0.610000, -1.167283),
+    vec4( 0.07884444,  0.86618668, 0.640000, -0.459002), vec4(-0.12790935, -0.29869005, 0.600000, -1.729424),
+    vec4(-0.04031125,  0.02413622, 0.600000, -4.792042), vec4( 0.16201244, -0.52851415, 0.790000, -1.067055),
+    vec4(-0.70991218,  0.47301072, 0.640000, -0.335236), vec4( 0.03277707, -0.22349690, 0.600000, -1.982384),
+    vec4( 0.68921727,  0.36800742, 0.630000, -0.266718), vec4( 0.29251814,  0.37775412, 0.610000, -1.422520),
+    vec4(-0.12224089,  0.96582592, 0.600000, -0.426142), vec4( 0.11071457, -0.16131058, 0.600000, -2.165947),
+    vec4( 0.46562141, -0.59747696, 0.600000, -0.189760), vec4(-0.51548797,  0.11804193, 0.600000, -1.246800),
+    vec4( 0.89141309, -0.42090443, 0.600000,  0.028192), vec4(-0.32402530, -0.01591529, 0.600000, -1.543018),
+    vec4( 0.60771245,  0.41635221, 0.600000, -0.605411), vec4( 0.02379565, -0.08239821, 0.600000, -3.809046),
+    vec4( 0.48951152, -0.23657045, 0.600000, -1.189011), vec4(-0.17611565, -0.81696892, 0.600000, -0.513724),
+    vec4(-0.33930185, -0.20732205, 0.600000, -1.698047), vec4(-0.91974425,  0.05403209, 0.600000,  0.062246),
+    vec4(-0.15064627, -0.14949332, 0.600000, -1.896062), vec4( 0.53180975, -0.35210401, 0.600000, -0.758838),
+    vec4( 0.41487166,  0.81442589, 0.600000, -0.505648), vec4(-0.24106961, -0.32721516, 0.600000, -1.665244));
+
+#include "crystalgraphics:shaders/lib/ao/cacao.glsl"
+
+// ── Generate ──────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// The pass's layer depth at texel p, mirrored (g_PointMirrorSampler's gather)
+float layer_depth_mirrored(ivec2 p) {
+    return texelFetch(_Depth, mirrored(p, textureSize(_Depth, 0)), 0).r;
+}
+
+// A depth tap (g_ViewspaceDepthTapSampler as its Vulkan build sets it): linear within a level, the nearest level,
+// clamped. A point read takes a coarser level's texel centre for the tap, a depth off the plane that turns with the
+// sample pattern. Below quality 2 no level is made.
+float layer_depth_tap(vec2 uv, float mip) {
+    int level = clamp(int(mip + 0.5), 0, 3);
+    if (level == 0) return textureLod(_Depth, uv, 0.0).r;
+    if (level == 1) return textureLod(_DepthMip1, uv, 0.0).r;
+    if (level == 2) return textureLod(_DepthMip2, uv, 0.0).r;
+    return textureLod(_DepthMip3, uv, 0.0).r;
+}
+
+vec3 normal_at(ivec2 p) {
+    ivec2 size = textureSize(_Normals, 0);
+    return texelFetch(_Normals, clamp(p, ivec2(0), size - 1), 0).xyz;
+}
+
+vec4 rot_scale(uint i) {
+    return i == 0u ? _Rot0 : i == 1u ? _Rot1 : i == 2u ? _Rot2 : i == 3u ? _Rot3 : _Rot4;
+}
+
+// FFX_CACAO_CalculatePixelObscurance
+float pixel_obscurance(vec3 normal, vec3 hitDelta, float falloffCalcMulSq) {
+    float lengthSq = dot(hitDelta, hitDelta);
+    float nDotD = dot(normal, hitDelta) / sqrt(lengthSq);
+    float falloffMult = max(0.0, lengthSq * falloffCalcMulSq + 1.0);
+    return max(0.0, nDotD - _Effect2.z) * falloffMult;
+}
+
+// FFX_CACAO_SSAOTapInner's weighting and sum, one hit
+void add_hit(int quality, vec2 uv, float z, vec3 center, vec3 normal, float falloffCalcMulSq, float weightMod,
+             inout float obscuranceSum, inout float weightSum) {
+    vec3 hitDelta = view_position(uv, z) - center;
+    float obscurance = pixel_obscurance(normal, hitDelta, falloffCalcMulSq);
+    float weight = 1.0;
+    if (quality >= HALOING_REDUCTION_AT) {
+        float reduct = max(0.0, -hitDelta.z);
+        reduct = clamp(reduct * _Effect3.y + 2.0, 0.0, 1.0);
+        weight = HALOING_REDUCTION_AMOUNT * reduct + (1.0 - HALOING_REDUCTION_AMOUNT);
+    }
+    weight *= weightMod;
+    obscuranceSum += obscurance * weight;
+    weightSum += weight;
+}
+
+// FFX_CACAO_SSAOTap: a pattern sample and its mirror (no tilt: CACAO enables it at no shipped quality)
+void tap(int quality, int index, vec4 rs, vec3 center, vec3 normal, vec2 depthUv, float mipOffset, float falloffCalcMulSq,
+         inout float obscuranceSum, inout float weightSum) {
+    vec4 s = SAMPLE_PATTERN[index];
+    vec2 offset = round(vec2(dot(rs.xy, s.xy), dot(rs.zw, s.xy)));
+    float mip = quality < DEPTH_MIPS_AT ? 0.0 : s.w + mipOffset;
+    vec2 uv0 = offset * _SsaoSize.zw + depthUv, uv1 = -offset * _SsaoSize.zw + depthUv;
+    add_hit(quality, uv0, layer_depth_tap(uv0, mip), center, normal, falloffCalcMulSq, s.z, obscuranceSum, weightSum);
+    add_hit(quality, uv1, layer_depth_tap(uv1, mip), center, normal, falloffCalcMulSq, s.z, obscuranceSum, weightSum);
+}
+
+// FFX_CACAO_GenerateSSAOShadowsInternal: x the occlusion (1 open), y packed edges, or for the adaptive base its weight
+vec2 generate(int quality, bool adaptiveBase) {
+    ivec2 p = CG_TEXEL.xy;
+    vec2 svPos = vec2(p);
+    vec2 depthUv = (svPos + 0.5) * _SsaoSize.zw;
+    float pixZ = layer_depth_mirrored(p);
+    float pixLZ = layer_depth_mirrored(p + ivec2(-1, 0)), pixRZ = layer_depth_mirrored(p + ivec2(1, 0));
+    float pixTZ = layer_depth_mirrored(p + ivec2(0, -1)), pixBZ = layer_depth_mirrored(p + ivec2(0, 1));
+    if (pixZ >= CACAO_FAR) return vec2(1.0, adaptiveBase ? 0.0 : pack_edges(vec4(1.0)));
+
+    vec2 screenUv = (svPos + 0.5) * _SsaoSize.zw;
+    vec3 center = view_position(screenUv, pixZ);
+    vec3 normal = normal_at(p);
+    // The view-space step of one deinterleaved texel at the pixel's depth, signed as the projection runs
+    vec2 texelSize = view_position(screenUv + _SsaoSize.zw, pixZ).xy - center.xy;
+
+    // FFX_CACAO_CalculateRadiusParameters
+    float effectRadius = _Effect.x;
+    float tooCloseLimitMod = clamp(length(center) * _Effect2.w, 0.0, 1.0) * 0.8 + 0.2;
+    effectRadius *= tooCloseLimitMod;
+    float lookupRadiusMod = (0.85 * effectRadius) / abs(texelSize.x);
+    float falloffCalcMulSq = -1.0 / (effectRadius * effectRadius);
+
+    uint pseudoRandomIndex = uint(svPos.y * 2.0 + svPos.x) % 5u;
+    vec4 rs = rot_scale(pseudoRandomIndex) * lookupRadiusMod;
+
+    float obscuranceSum = 0.0, weightSum = 0.0;
+    vec4 edges = vec4(1.0);
+    center *= _Effect3.x;
+
+    if (!adaptiveBase && quality >= DEPTH_BASED_EDGES_AT) edges = calculate_edges(pixZ, pixLZ, pixRZ, pixTZ, pixBZ);
+
+    // High-resolution detail from the edge samples, blurred out after
+    if (!adaptiveBase && quality >= DETAIL_AO_AT) {
+        vec3 dirZ = vec3(center.xy / center.z, 1.0);
+        vec3 l = vec3(-texelSize.x, 0.0, 0.0) + dirZ * (pixLZ - center.z);
+        vec3 r = vec3(texelSize.x, 0.0, 0.0) + dirZ * (pixRZ - center.z);
+        vec3 t = vec3(0.0, -texelSize.y, 0.0) + dirZ * (pixTZ - center.z);
+        vec3 b = vec3(0.0, texelSize.y, 0.0) + dirZ * (pixBZ - center.z);
+        float modified = 4.0 * falloffCalcMulSq;
+        vec4 additional = vec4(pixel_obscurance(normal, l, modified), pixel_obscurance(normal, r, modified),
+                pixel_obscurance(normal, t, modified), pixel_obscurance(normal, b, modified));
+        obscuranceSum += _Effect4.y * dot(additional, edges);
+    }
+
+    if (!adaptiveBase && quality >= NORMAL_BASED_EDGES_AT) {
+        vec4 normalEdges = vec4(dot(normal, normal_at(p + ivec2(-1, 0))), dot(normal, normal_at(p + ivec2(1, 0))),
+                dot(normal, normal_at(p + ivec2(0, -1))), dot(normal, normal_at(p + ivec2(0, 1))));
+        edges *= clamp(normalEdges + NORMAL_BASED_EDGES_DOT_THRESHOLD, 0.0, 1.0);
+    }
+
+    float mipOffset = quality < DEPTH_MIPS_AT ? 0.0 : log2(lookupRadiusMod) + DEPTH_MIPS_GLOBAL_OFFSET;
+
+    if (quality != 3 || adaptiveBase) {
+        int taps = adaptiveBase ? ADAPTIVE_TAP_BASE_COUNT : NUM_TAPS[quality];
+        for (int i = 0; i < min(taps, MAX_TAPS); i++) {
+            tap(quality, i, rs, center, normal, depthUv, mipOffset, falloffCalcMulSq, obscuranceSum, weightSum);
+        }
+    } else {
+        // Adaptive: the base's weight and occlusion, then as many more taps as the importance asks
+        vec2 fullResUv = screenUv + _PassOffset.xy;
+        float importance = textureLod(_Importance, fullResUv, 0.0).r;
+        obscuranceSum *= float(ADAPTIVE_TAP_BASE_COUNT) / float(MAX_TAPS) + importance * float(ADAPTIVE_TAP_FLEXIBLE_COUNT) / float(MAX_TAPS);
+        vec2 base = texelFetch(_Base, p, 0).xy;
+        weightSum += base.y * float(ADAPTIVE_TAP_BASE_COUNT * 4);
+        obscuranceSum += base.x * weightSum;
+        float avgTotalImportance = float(LOAD_COUNTER(0)) * _Effect3.z;
+        importance *= clamp(_Effect3.w / avgTotalImportance, 0.0, 1.0);
+        uint additional = uint(float(ADAPTIVE_TAP_FLEXIBLE_COUNT) * importance + 1.5);
+        int to = int(min(uint(MAX_TAPS), additional + uint(ADAPTIVE_TAP_BASE_COUNT)));
+        for (int i = ADAPTIVE_TAP_BASE_COUNT; i < min(to, MAX_TAPS); i++) {
+            tap(quality, i, rs, center, normal, depthUv, mipOffset, falloffCalcMulSq, obscuranceSum, weightSum);
+        }
+    }
+
+    if (adaptiveBase) return vec2(obscuranceSum / weightSum, weightSum / (float(ADAPTIVE_TAP_BASE_COUNT) * 4.0));
+
+    float obscurance = obscuranceSum / weightSum;
+    float fadeOut = clamp(center.z * _Effect2.x + _Effect2.y, 0.0, 1.0);
+    if (quality >= DEPTH_BASED_EDGES_AT) {
+        float edgeFadeout = clamp((1.0 - edges.x - edges.y) * 0.35, 0.0, 1.0) + clamp((1.0 - edges.z - edges.w) * 0.35, 0.0, 1.0);
+        fadeOut *= clamp(1.0 - edgeFadeout, 0.0, 1.0);
+    }
+    obscurance = min(_Effect.y * obscurance, _Effect.w) * fadeOut;
+    float occlusion = pow(clamp(1.0 - obscurance, 0.0, 1.0), _Effect.z);
+    return vec2(occlusion, quality == 0 ? pack_edges(vec4(1.0)) : pack_edges(edges));
+}
+
+void GenerateQ0() {
+    SSAO_WRITE(vec4(generate(0, false), 0.0, 0.0));
+}
+void GenerateQ1() {
+    SSAO_WRITE(vec4(generate(1, false), 0.0, 0.0));
+}
+void GenerateQ2() {
+    SSAO_WRITE(vec4(generate(2, false), 0.0, 0.0));
+}
+void GenerateQ3Base() {
+    SSAO_WRITE(vec4(generate(3, true), 0.0, 0.0));
+}
+void GenerateQ3() {
+    SSAO_WRITE(vec4(generate(3, false), 0.0, 0.0));
+}
+
+// ── Importance ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+float ssao_layer(int layer, ivec2 p) {
+    ivec2 size = textureSize(_Ssao0, 0);
+    p = clamp(p, ivec2(0), size - 1);
+    if (layer == 0) return texelFetch(_Ssao0, p, 0).r;
+    if (layer == 1) return texelFetch(_Ssao1, p, 0).r;
+    if (layer == 2) return texelFetch(_Ssao2, p, 0).r;
+    return texelFetch(_Ssao3, p, 0).r;
+}
+
+// FFX_CACAO_GenerateImportanceMap: how far the occlusion spreads over a 2x2 of each layer's base
+void ImportanceMap() {
+    ivec2 base = CG_TEXEL.xy * 2;
+    float minV = 1.0, maxV = 0.0;
+    for (int i = 0; i < 4; i++) {
+        vec4 v = vec4(ssao_layer(i, base + ivec2(0, 1)), ssao_layer(i, base + ivec2(1, 1)), ssao_layer(i, base + ivec2(1, 0)), ssao_layer(i, base));
+        v = pow(clamp(1.0 - _Effect.y * v, 0.0, 1.0), vec4(_Effect.z));
+        maxV = max(maxV, max(max(v.x, v.y), max(v.z, v.w)));
+        minV = min(minV, min(min(v.x, v.y), min(v.z, v.w)));
+    }
+    IMPORTANCE_WRITE(vec4(pow(clamp((maxV - minV) * 2.0, 0.0, 1.0), 0.8)));
+}
+
+// FFX_CACAO_PostprocessImportanceMapA
+void ImportanceA() {
+    vec2 uv = (vec2(CG_TEXEL.xy) + 0.5) * _ImportanceSize.zw, half_ = 0.5 * _ImportanceSize.zw;
+    float centre = textureLod(_Importance, uv, 0.0).r;
+    vec4 v = vec4(textureLod(_Importance, uv + vec2(-half_.x * 3.0, -half_.y), 0.0).r,
+            textureLod(_Importance, uv + vec2(half_.x, -half_.y * 3.0), 0.0).r,
+            textureLod(_Importance, uv + vec2(half_.x * 3.0, half_.y), 0.0).r,
+            textureLod(_Importance, uv + vec2(-half_.x, half_.y * 3.0), 0.0).r);
+    // c_FFX_CACAO_SmoothenImportance is 1: the average alone
+    IMPORTANCE_WRITE(vec4(dot(v, vec4(0.25))));
+}
+
+// FFX_CACAO_PostprocessImportanceMapB, summing every ninth texel's load into the counter
+void ImportanceB() {
+    ivec2 t = ivec2(gl_GlobalInvocationID.xy);
+    if (t.x >= int(_ImportanceSize.x) || t.y >= int(_ImportanceSize.y)) return;
+    vec2 uv = (vec2(t) + 0.5) * _ImportanceSize.zw, half_ = 0.5 * _ImportanceSize.zw;
+    vec4 v = vec4(textureLod(_Importance, uv + vec2(-half_.x, -half_.y * 3.0), 0.0).r,
+            textureLod(_Importance, uv + vec2(half_.x * 3.0, -half_.y), 0.0).r,
+            textureLod(_Importance, uv + vec2(half_.x, half_.y * 3.0), 0.0).r,
+            textureLod(_Importance, uv + vec2(-half_.x * 3.0, half_.y), 0.0).r);
+    float value = dot(v, vec4(0.25));
+    IMPORTANCE_STORE(t, vec4(value));
+    if ((t.x % 3) + (t.y % 3) == 0) LOAD_COUNTER_ADD(0, uint(clamp(value, 0.0, 1.0) * 255.0 + 0.5));
+}
+
+// FFX_CACAO_ClearLoadCounter: before the importance map sums into it
+void ClearLoadCounter() {
+    LOAD_COUNTER_STORE(0, 0u);
+}
+
+// ── Edge-sensitive blur ───────────────────────────────────────────────────────────────────────────────────────────
+
+// FFX_CACAO_LDSEdgeSensitiveBlur: tiles of 4x3 a thread, two f16 values a word, ping-ponged in shared memory
+const int TILE_WIDTH = 4, TILE_HEIGHT = 3, HALF_TILE_WIDTH = 2, QUARTER_TILE_WIDTH = 1, BLUR_WIDTH = 16, BLUR_HEIGHT = 16;
+const int ARRAY_WIDTH = HALF_TILE_WIDTH * BLUR_WIDTH + 2, ARRAY_HEIGHT = TILE_HEIGHT * BLUR_HEIGHT + 2;
+const int MAX_BLUR_PASSES = 8;
+
+shared uint blurFront[ARRAY_WIDTH][ARRAY_HEIGHT];
+shared uint blurBack[ARRAY_WIDTH][ARRAY_HEIGHT];
+
+
+// FFX_CACAO_CalcBlurredSampleF16_4: four texels a call
+vec4 blurred(vec4 packedEdges, vec4 centre, vec4 left, vec4 right, vec4 top, vec4 bottom) {
+    vec4 eL, eR, eT, eB;
+    for (int k = 0; k < 4; k++) {
+        vec4 e = unpack_edges(packedEdges[k], _Effect4.x);
+        eL[k] = e.x;
+        eR[k] = e.y;
+        eT[k] = e.z;
+        eB[k] = e.w;
+    }
+    vec4 sum = centre * 0.5 + left * eL + right * eR + top * eT + bottom * eB;
+    vec4 weight = vec4(0.5) + eL + eR + eT + eB;
+    return sum / weight;
+}
+
+vec2 blur_input(ivec2 p) {
+    return texelFetch(_Ssao0, mirrored(p, textureSize(_Ssao0, 0)), 0).xy;
+}
+
+vec4 unpack4_front(ivec2 c) {
+    return vec4(unpackHalf2x16(blurFront[c.x][c.y]), unpackHalf2x16(blurFront[c.x + 1][c.y]));
+}
+vec4 unpack4_back(ivec2 c) {
+    return vec4(unpackHalf2x16(blurBack[c.x][c.y]), unpackHalf2x16(blurBack[c.x + 1][c.y]));
+}
+
+void Blur() {
+    int passes = int(_PassOffset.z);
+    ivec2 tid = ivec2(CG_LOCAL_ID.xy), gid = ivec2(CG_GROUP_ID.xy);
+    ivec2 imageCoord = gid * (ivec2(TILE_WIDTH * BLUR_WIDTH, TILE_HEIGHT * BLUR_HEIGHT) - 2 * passes)
+            + ivec2(TILE_WIDTH, TILE_HEIGHT) * tid - passes;
+    ivec2 bufferCoord = ivec2(HALF_TILE_WIDTH, TILE_HEIGHT) * tid + 1;
+
+    vec4 packedEdges[TILE_HEIGHT];
+    for (int y = 0; y < TILE_HEIGHT; y++) {
+        vec2 i0 = blur_input(imageCoord + ivec2(0, y)), i1 = blur_input(imageCoord + ivec2(1, y));
+        vec2 i2 = blur_input(imageCoord + ivec2(2, y)), i3 = blur_input(imageCoord + ivec2(3, y));
+        blurFront[bufferCoord.x][bufferCoord.y + y] = packHalf2x16(vec2(i0.x, i1.x));
+        blurFront[bufferCoord.x + 1][bufferCoord.y + y] = packHalf2x16(vec2(i2.x, i3.x));
+        packedEdges[y] = vec4(i0.y, i1.y, i2.y, i3.y);
+    }
+    barrier();
+
+    for (int i = 0; i < min((passes + 1) / 2, MAX_BLUR_PASSES); i++) {
+        for (int y = 0; y < TILE_HEIGHT; y++) {
+            ivec2 c = bufferCoord + ivec2(0, y);
+            vec4 centre = unpack4_front(c), top = unpack4_front(c + ivec2(0, -1)), bottom = unpack4_front(c + ivec2(0, 1));
+            vec4 left = vec4(unpackHalf2x16(blurFront[c.x - 1][c.y]).y, centre.xyz);
+            vec4 right = vec4(centre.yzw, unpackHalf2x16(blurFront[c.x + 2][c.y]).x);
+            vec4 b = blurred(packedEdges[y], centre, left, right, top, bottom);
+            blurBack[c.x][c.y] = packHalf2x16(b.xy);
+            blurBack[c.x + 1][c.y] = packHalf2x16(b.zw);
+        }
+        barrier();
+        if (2 * i + 1 < passes) {
+            for (int y = 0; y < TILE_HEIGHT; y++) {
+                ivec2 c = bufferCoord + ivec2(0, y);
+                vec4 centre = unpack4_back(c), top = unpack4_back(c + ivec2(0, -1)), bottom = unpack4_back(c + ivec2(0, 1));
+                vec4 left = vec4(unpackHalf2x16(blurBack[c.x - 1][c.y]).y, centre.xyz);
+                vec4 right = vec4(centre.yzw, unpackHalf2x16(blurBack[c.x + 2][c.y]).x);
+                vec4 b = blurred(packedEdges[y], centre, left, right, top, bottom);
+                blurFront[c.x][c.y] = packHalf2x16(b.xy);
+                blurFront[c.x + 1][c.y] = packHalf2x16(b.zw);
+            }
+            barrier();
+        }
+    }
+
+    ivec2 size = ivec2(_SsaoSize.xy);
+    for (int y = 0; y < TILE_HEIGHT; y++) {
+        int outputY = TILE_HEIGHT * tid.y + y;
+        if (passes > outputY || outputY >= TILE_HEIGHT * BLUR_HEIGHT - passes) continue;
+        ivec2 c = bufferCoord + ivec2(0, y);
+        vec4 value = passes % 2 == 0 ? unpack4_front(c) : unpack4_back(c);
+        for (int k = 0; k < 4; k++) {
+            int outputX = TILE_WIDTH * tid.x + k;
+            ivec2 at = imageCoord + ivec2(k, y);
+            if (passes <= outputX && outputX < TILE_WIDTH * BLUR_WIDTH - passes && all(lessThan(at, size)) && all(greaterThanEqual(at, ivec2(0)))) {
+                SSAO_STORE(at, vec4(value[k], packedEdges[y][k], 0.0, 0.0));
+            }
+        }
+    }
+}
+
+// ── Apply ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+vec2 ssao_load(int layer, ivec2 p) {
+    ivec2 size = textureSize(_Ssao0, 0);
+    p = clamp(p, ivec2(0), size - 1);
+    if (layer == 0) return texelFetch(_Ssao0, p, 0).xy;
+    if (layer == 1) return texelFetch(_Ssao1, p, 0).xy;
+    if (layer == 2) return texelFetch(_Ssao2, p, 0).xy;
+    return texelFetch(_Ssao3, p, 0).xy;
+}
+
+float ssao_sample(int layer, vec2 uv) {
+    if (layer == 0) return textureLod(_Ssao0, uv, 0.0).x;
+    if (layer == 1) return textureLod(_Ssao1, uv, 0.0).x;
+    if (layer == 2) return textureLod(_Ssao2, uv, 0.0).x;
+    return textureLod(_Ssao3, uv, 0.0).x;
+}
+
+// The output: the sky open, Unreal's intensity last
+float shaped(float ao, ivec2 px) {
+    if (scene_depth(px, ivec2(_Size.xy)) >= CACAO_FAR) return 1.0;
+    return 1.0 - (1.0 - ao) * _Effect4.w;
+}
+
+// FFX_CACAO_Apply: the four layers back to full resolution, pushed away from edges
+void Apply() {
+    ivec2 pixPos = CG_TEXEL.xy, pixPosHalf = pixPos / 2;
+    vec2 inPos = vec2(pixPos);
+    int mx = pixPos.x % 2, my = pixPos.y % 2;
+    int ic = mx + my * 2, ih = (1 - mx) + my * 2, iv = mx + (1 - my) * 2, id = (1 - mx) + (1 - my) * 2;
+    vec2 centerVal = ssao_load(ic, pixPosHalf);
+    float ao = centerVal.x;
+    vec4 edges = unpack_edges(centerVal.y, _Effect4.x);
+    float fmx = float(mx), fmy = float(my);
+    float fmxe = edges.y - edges.x, fmye = edges.w - edges.z;
+    vec2 uvH = (inPos + vec2(fmx + fmxe - 0.5, 0.5 - fmy)) * 0.5 * _SsaoSize.zw;
+    vec2 uvV = (inPos + vec2(0.5 - fmx, fmy - 0.5 + fmye)) * 0.5 * _SsaoSize.zw;
+    vec2 uvD = (inPos + vec2(fmx - 0.5 + fmxe, fmy - 0.5 + fmye)) * 0.5 * _SsaoSize.zw;
+    vec4 weights = vec4(1.0, (edges.x + edges.y) * 0.5, (edges.z + edges.w) * 0.5, 0.0);
+    weights.w = (weights.y + weights.z) * 0.5;
+    ao = dot(vec4(ao, ssao_sample(ih, uvH), ssao_sample(iv, uvV), ssao_sample(id, uvD)), weights) / dot(weights, vec4(1.0));
+    AO_WRITE(vec4(shaped(ao, pixPos)));
+}
+
+// FFX_CACAO_NonSmartApply: the lowest quality's edge-ignorant average
+void NonSmartApply() {
+    vec2 uv = vec2(CG_TEXEL.xy) * _Size.zw;
+    float avg = (ssao_sample(0, uv) + ssao_sample(1, uv) + ssao_sample(2, uv) + ssao_sample(3, uv)) * 0.25;
+    AO_WRITE(vec4(shaped(avg, CG_TEXEL.xy)));
+}
+
+// FFX_CACAO_NonSmartHalfApply: the lowest quality's two diagonal layers averaged
+void NonSmartHalfApply() {
+    vec2 uv = vec2(CG_TEXEL.xy) * _Size.zw;
+    AO_WRITE(vec4(shaped((ssao_sample(0, uv) + ssao_sample(3, uv)) * 0.5, CG_TEXEL.xy)));
+}

@@ -128,7 +128,7 @@ float fast_acos(float x) {
 // vaGTAO.hlsl's HilbertIndex over a 64-wide tile, and SpatioTemporalNoise's R2 sequence along it.
 uint hilbert(uint x, uint y) {
     uint index = 0u;
-    for (uint level = 32u; level > 0u; level /= 2u) {
+    for (uint level = 32u; level > 0u; level /= 2u) {   // LOOP-BOUND: six halvings of a constant
         uint rx = (x & level) > 0u ? 1u : 0u, ry = (y & level) > 0u ? 1u : 0u;
         index += level * level * ((3u * rx) ^ ry);
         if (ry == 0u) {
@@ -191,7 +191,7 @@ void Gtao() {
     float visibility = clamp((10.0 - screenRadius) / 100.0, 0.0, 1.0) * 0.5;
     float minS = 1.3 / screenRadius;
 
-    for (float slice = 0.0; slice < slices; slice += 1.0) {
+    for (float slice = 0.0; slice < min(slices, 4.0); slice += 1.0) {
         float phi = (slice + local.x) / slices * AO_PI;
         vec2 omega = vec2(cos(phi), sin(phi)) * screenRadius;
         vec3 direction = vec3(cos(phi), sin(phi), 0.0);
@@ -205,7 +205,7 @@ void Gtao() {
         float low0 = cos(nAngle + AO_HALF_PI), low1 = cos(nAngle - AO_HALF_PI);
         float h0cos = low0, h1cos = low1;
 
-        for (float step = 0.0; step < steps; step += 1.0) {
+        for (float step = 0.0; step < min(steps, 8.0); step += 1.0) {
             float stepNoise = fract(local.y + (slice + step * steps) * 0.6180339887498948482);
             float s = pow((step + stepNoise) / steps, _Gtao2.y) + minS;
             vec2 offset = s * omega;

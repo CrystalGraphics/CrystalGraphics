@@ -14347,6 +14347,7 @@ com/crystalgraphics/render/scene/renderer/feature/ao/CgAmbientOcclusion
   extends java/lang/Object
   field public,static,final RESULT Lcom/crystalgraphics/render/view/CgViewKey;
   method public,static defaults (Lcom/crystalgraphics/render/post/settings/CgPostSettings;)V
+  method public,static methodName ()Ljava/lang/String;
   method public,static precache ()V
   method public,static ready ()Z
   method public,static record (Lcom/crystalgraphics/render/stage/CgStageFiring;Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/render/post/settings/CgPostSettings;)Lcom/crystalgraphics/render/graph/CgGraphTexture;

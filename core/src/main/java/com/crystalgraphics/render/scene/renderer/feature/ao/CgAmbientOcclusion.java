@@ -21,7 +21,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 /**
  * Screen-space ambient occlusion: how much of the sky each opaque pixel sees past what is near it, which a
  * {@code DefaultLit} solid takes off its sky light (Unreal's forward {@code IndirectOcclusionTexture}). Unreal's two methods,
- * picked by the player's {@code ambient_occlusion_method}: SSAO, the default, and GTAO, ported from Intel's XeGTAO.
+ * picked by the player's {@code ambient_occlusion_method}: SSAO, the default and the cheapest, and GTAO, ported from
+ * Intel's XeGTAO; and a third, AMD's FidelityFX CACAO ({@link CgCacao}).
  *
  * <p>The scene renderer drives it; a view turns it on or off and its post settings shape it:
  *
@@ -36,7 +37,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
  */
 public final class CgAmbientOcclusion {
 
-    private static final String KERNELS = "crystalgraphics:shaders/world/ambient_occlusion.compute";
+    private static final String KERNELS = "crystalgraphics:shaders/world/ao/ambient_occlusion.compute";
     private static final String[] NAMES = {"ViewDepth", "DepthMip", "Gtao", "Denoise", "Ssao"};
     /** GTAO's view-depth levels (XeGTAO's XE_GTAO_DEPTH_MIP_LEVELS). */
     private static final int LEVELS = 5;
@@ -67,6 +68,7 @@ public final class CgAmbientOcclusion {
     public static void precache() {
         CgCompute c = CgCompute.load(KERNELS);
         for (String k : NAMES) c.kernel(k).precache();
+        CgCacao.precache();
     }
 
     /**
@@ -86,7 +88,8 @@ public final class CgAmbientOcclusion {
     /** Whether its kernels are built; until then a frame draws without it. */
     public static boolean ready() {
         load();
-        return viewDepth.isReady() && depthMip.isReady() && gtao.isReady() && denoise.isReady() && ssao.isReady();
+        return viewDepth.isReady() && depthMip.isReady() && gtao.isReady() && denoise.isReady() && ssao.isReady()
+                && CgCacao.ready();
     }
 
     /**
@@ -100,7 +103,8 @@ public final class CgAmbientOcclusion {
         CgGraphTexture depth = stage.depth();
         // The render size: a host's depth, imported, does not know its own
         int w = Math.max(1, view.width()), h = Math.max(1, view.height());
-        boolean gtaoMethod = Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1;
+        int method = Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get());
+        boolean gtaoMethod = method == 1;
         Targets t = view.state().get(TARGETS).size(recording, w, h, gtaoMethod);
         int level = shaderLevel(s);
         float fadeRadius = Math.max(0.01f, s.ambientOcclusionFadeRadius());
@@ -125,6 +129,8 @@ public final class CgAmbientOcclusion {
             pass.dispatch(denoise, w, h, 1).image("AO", t.ao).texture("_Working", t.working).texture("_Depth0", t.depth[0])
                     .set("_Size", w, h, 1f / w, 1f / h).set("_Gtao2", XE_FINAL_POWER, XE_DISTRIBUTION, XE_MIP_OFFSET, XE_BLUR_BETA)
                     .set("_Output", s.ambientOcclusionIntensity(), s.ambientOcclusionPower(), fadeMul, fadeAdd);
+        } else if (method == 2) {
+            CgCacao.record(pass, view, s, level, t.ao, w, h);
         } else {
             boolean world = s.ambientOcclusionRadiusInWorldSpace();
             // Unreal's radius off world space is a view-space 400 units a screen, a quarter of that per its mip scale:
@@ -137,6 +143,15 @@ public final class CgAmbientOcclusion {
         pass.end();
         view.publish(RESULT, t.ao);
         return t.ao;
+    }
+
+    /** The player's method by name: SSAO, GTAO or CACAO. */
+    public static String methodName() {
+        return switch (Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get())) {
+            case 1 -> "GTAO";
+            case 2 -> "CACAO";
+            default -> "SSAO";
+        };
     }
 
     /**

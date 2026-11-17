@@ -1,6 +1,7 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.settings.CgQuality;
+import com.crystalgraphics.render.scene.renderer.feature.ao.CgAmbientOcclusion;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.render.post.upscale.CgAntiAliasing;
 import com.crystalgraphics.render.scene.CgScene;
@@ -1139,10 +1140,10 @@ public final class CgRenderDemo {
         if (next >= 0) view.screenPercentage(PERCENTAGES[next]);
     }
 
-    /** Ambient occlusion off, SSAO, GTAO, and round; back with shift. */
+    /** Ambient occlusion off, SSAO, GTAO, CACAO, and round; back with shift. */
     private static void stepAmbientOcclusion(boolean shift) {
         int now = !CgGraphicsSettings.AMBIENT_OCCLUSION.get() ? 0 : 1 + Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get());
-        int next = (now + (shift ? 2 : 1)) % 3;
+        int next = (now + (shift ? 3 : 1)) % 4;
         CgGraphicsSettings.AMBIENT_OCCLUSION.set(next != 0);
         if (next != 0) CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.set((float) (next - 1));
     }
@@ -1150,7 +1151,7 @@ public final class CgRenderDemo {
     private static String temporalHud(CgView view) {
         String effects = (CgGraphicsSettings.MOTION_BLUR.get() ? ", motion blur [F11]: on" : ", motion blur [F11]: off")
                 + ", AO [F12]: " + (!CgGraphicsSettings.AMBIENT_OCCLUSION.get() ? "off"
-                : Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1 ? "GTAO" : "SSAO");
+                : CgAmbientOcclusion.methodName());
         if (!CgTemporalAA.enabled(view)) return "Temporal [F7]: off" + effects;
         CgAntiAliasing method = view.antiAliasing();
         String size = view.screenPercentageAuto()

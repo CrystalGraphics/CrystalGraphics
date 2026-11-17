@@ -1,0 +1,97 @@
+// FidelityFX CACAO's prepare (CgCacao): the scene's depth deinterleaved into four half-size layers, their levels, and
+// each layer's normals from depth. Its other kernels are cacao.compute: a file binds 8 images at most.
+//
+// Copyright (c) 2016, Intel Corporation (ASSAO). Modifications Copyright (c) 2021, Advanced Micro Devices, Inc. (CACAO).
+// MIT licence: permission is granted, free of charge, to deal in the Software without restriction, provided this notice
+// is kept; the Software is provided "as is", without warranty of any kind. THIRD-PARTY.md holds the full notice.
+//
+// Ported from ffx_cacao.hlsl's Prepare section; what changed is cacao.compute's list.
+#pragma kernel PrepareDepths 8 8 image
+#pragma kernel PrepareDepthsHalf 8 8 image
+#pragma kernel DepthMip 8 8 image
+#pragma kernel PrepareNormals 8 8 image
+
+Properties {
+    _Size   ("x, y the full render size; z, w their inverse", vec4) = (1, 1, 1, 1)
+    _Effect ("x radius, y shadow strength, z shadow power, w shadow clamp", vec4) = (1.2, 4.3, 1.5, 0.98)
+    _Prev   ("The level above, view depth (DepthMip)", sampler2D) = "black"
+}
+
+Images {
+    DEPTH0  ("View depth, layer 0, a level", r32f, writeonly)
+    DEPTH1  ("Layer 1", r32f, writeonly)
+    DEPTH2  ("Layer 2", r32f, writeonly)
+    DEPTH3  ("Layer 3", r32f, writeonly)
+    NORMAL0 ("View-space normals, layer 0", rgba16f, writeonly)
+    NORMAL1 ("Layer 1", rgba16f, writeonly)
+    NORMAL2 ("Layer 2", rgba16f, writeonly)
+    NORMAL3 ("Layer 3", rgba16f, writeonly)
+}
+
+#include "crystalgraphics:shaders/lib/ao/cacao.glsl"
+
+float depth_at(ivec2 px) {
+    return scene_depth(px, ivec2(_Size.xy));
+}
+
+// FFX_CACAO_PrepareNativeDepths: a half-resolution texel's four full-resolution depths, one a layer
+void PrepareDepths() {
+    ivec2 t = CG_TEXEL.xy, d = 2 * t;
+    DEPTH0_WRITE(vec4(depth_at(d)));
+    DEPTH1_WRITE(vec4(depth_at(d + ivec2(1, 0))));
+    DEPTH2_WRITE(vec4(depth_at(d + ivec2(0, 1))));
+    DEPTH3_WRITE(vec4(depth_at(d + ivec2(1, 1))));
+}
+
+// FFX_CACAO_PrepareNativeDepthsHalf: the lowest quality's two diagonal layers alone
+void PrepareDepthsHalf() {
+    ivec2 d = 2 * CG_TEXEL.xy;
+    DEPTH0_WRITE(vec4(depth_at(d)));
+    DEPTH3_WRITE(vec4(depth_at(d + ivec2(1, 1))));
+}
+
+// FFX_CACAO_MipSmartAverage. The weight's falloff is CACAO's: -1 / r * r, which is -1.
+float mip_smart_average(vec4 depths) {
+    float closest = min(min(depths.x, depths.y), min(depths.z, depths.w));
+    float falloffCalcMulSq = -1.0 / _Effect.x * _Effect.x;
+    vec4 dists = depths - closest;
+    vec4 weights = clamp(dists * dists * falloffCalcMulSq + 1.0, 0.0, 1.0);
+    return dot(weights, depths) / dot(weights, vec4(1.0));
+}
+
+// The next level of a layer's depth: its 2x2 smart average (what FFX_CACAO_PrepareDepthsAndMips does in shared memory)
+void DepthMip() {
+    ivec2 at = CG_TEXEL.xy * 2, last = textureSize(_Prev, 0) - 1;
+    vec4 d = vec4(texelFetch(_Prev, min(at, last), 0).r, texelFetch(_Prev, min(at + ivec2(0, 1), last), 0).r,
+            texelFetch(_Prev, min(at + ivec2(1, 0), last), 0).r, texelFetch(_Prev, min(at + ivec2(1, 1), last), 0).r);
+    DEPTH0_WRITE(vec4(mip_smart_average(d)));
+}
+
+// FFX_CACAO_PrepareNativeNormals: the four layers' normals of a half-resolution texel, from twelve depths about it
+void PrepareNormals() {
+    ivec2 t = CG_TEXEL.xy, d = 2 * t;
+    float d10 = depth_at(d + ivec2(0, -1)), d20 = depth_at(d + ivec2(1, -1));
+    float d01 = depth_at(d + ivec2(-1, 0)), d11 = depth_at(d), d21 = depth_at(d + ivec2(1, 0));
+    float d31 = depth_at(d + ivec2(2, 0));
+    float d02 = depth_at(d + ivec2(-1, 1)), d12 = depth_at(d + ivec2(0, 1)), d22 = depth_at(d + ivec2(1, 1));
+    float d32 = depth_at(d + ivec2(2, 1));
+    float d13 = depth_at(d + ivec2(0, 2)), d23 = depth_at(d + ivec2(1, 2));
+
+    vec2 pixel = _Size.zw, uv = (vec2(d) + 0.5) * pixel;
+    vec3 p10 = view_position(uv + vec2(0.0, -1.0) * pixel, d10), p20 = view_position(uv + vec2(1.0, -1.0) * pixel, d20);
+    vec3 p01 = view_position(uv + vec2(-1.0, 0.0) * pixel, d01), p11 = view_position(uv, d11);
+    vec3 p21 = view_position(uv + vec2(1.0, 0.0) * pixel, d21), p31 = view_position(uv + vec2(2.0, 0.0) * pixel, d31);
+    vec3 p02 = view_position(uv + vec2(-1.0, 1.0) * pixel, d02), p12 = view_position(uv + vec2(0.0, 1.0) * pixel, d12);
+    vec3 p22 = view_position(uv + vec2(1.0, 1.0) * pixel, d22), p32 = view_position(uv + vec2(2.0, 1.0) * pixel, d32);
+    vec3 p13 = view_position(uv + vec2(0.0, 2.0) * pixel, d13), p23 = view_position(uv + vec2(1.0, 2.0) * pixel, d23);
+
+    vec4 e11 = calculate_edges(p11.z, p01.z, p21.z, p10.z, p12.z);
+    vec4 e21 = calculate_edges(p21.z, p11.z, p31.z, p20.z, p22.z);
+    vec4 e12 = calculate_edges(p12.z, p02.z, p22.z, p11.z, p13.z);
+    vec4 e22 = calculate_edges(p22.z, p12.z, p32.z, p21.z, p23.z);
+
+    NORMAL0_WRITE(vec4(calculate_normal(e11, p11, p01, p21, p10, p12), 0.0));
+    NORMAL1_WRITE(vec4(calculate_normal(e21, p21, p11, p31, p20, p22), 0.0));
+    NORMAL2_WRITE(vec4(calculate_normal(e12, p12, p02, p22, p11, p13), 0.0));
+    NORMAL3_WRITE(vec4(calculate_normal(e22, p22, p12, p32, p21, p23), 0.0));
+}
