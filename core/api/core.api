@@ -13082,6 +13082,9 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final AO_FADE_DISTANCE I
   field public,static,final AO_FADE_RADIUS I
   field public,static,final AO_INTENSITY I
+  field public,static,final AO_MIP_BLEND I
+  field public,static,final AO_MIP_SCALE I
+  field public,static,final AO_MIP_THRESHOLD I
   field public,static,final AO_POWER I
   field public,static,final AO_QUALITY I
   field public,static,final AO_RADIUS I
@@ -13102,6 +13105,9 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   field public,static,final DEFAULT_AO_FADE_DISTANCE F
   field public,static,final DEFAULT_AO_FADE_RADIUS F
   field public,static,final DEFAULT_AO_INTENSITY F
+  field public,static,final DEFAULT_AO_MIP_BLEND F
+  field public,static,final DEFAULT_AO_MIP_SCALE F
+  field public,static,final DEFAULT_AO_MIP_THRESHOLD F
   field public,static,final DEFAULT_AO_POWER F
   field public,static,final DEFAULT_AO_QUALITY F
   field public,static,final DEFAULT_AO_RADIUS F
@@ -13155,6 +13161,12 @@ com/crystalgraphics/render/post/settings/CgPostSettings
   method public ambientOcclusionFadeRadius (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public ambientOcclusionIntensity ()F
   method public ambientOcclusionIntensity (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionMipBlend ()F
+  method public ambientOcclusionMipBlend (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionMipScale ()F
+  method public ambientOcclusionMipScale (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
+  method public ambientOcclusionMipThreshold ()F
+  method public ambientOcclusionMipThreshold (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;
   method public ambientOcclusionOn ()Z
   method public ambientOcclusionPower ()F
   method public ambientOcclusionPower (F)Lcom/crystalgraphics/render/post/settings/CgPostSettings;

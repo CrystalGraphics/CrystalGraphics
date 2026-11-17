@@ -1,0 +1,256 @@
+// Screen-space ambient occlusion (CgSSAO, ambient_occlusion_method 0), Unreal's deferred SSAO: up to three sizes.
+// Setup halves the scene's normals and depth (twice for three levels); each smaller size's occlusion feeds the next
+// larger one's, the full size's last. Each pass walks rotated pairs of samples through the furthest depth pyramid,
+// each side keeping its highest horizon. Unreal's centimetres are metres here. Read by the lit solids as indirect
+// occlusion.
+#pragma kernel Setup 8 8 image
+#pragma kernel Step 8 8 general
+#pragma kernel Final 8 8 general
+
+Properties {
+    _Size     ("The render size, and its inverse", vec4) = (1, 1, 1, 1)
+    _OutSize  ("This pass's size, and its inverse", vec4) = (1, 1, 1, 1)
+    _InSize   ("Setup: its input's size (the render size or the half setup's), and its inverse", vec4) = (1, 1, 1, 1)
+    _Ssao     ("x the radius (Unreal's AORadiusInShader), y 1 in world space, z the bias (/1000), w render pixels a pixel here", vec4) = (0.125, 0, 0.003, 1)
+    _Ssao2    ("x the pyramid's step factor, y the share of the smaller size, z steps a sample, w samples (3 or 6)", vec4) = (0.5, 0, 1, 3)
+    _Ssao3    ("x upsample taps (0, 4 or 9), y 1 for the quad blur, z 1 where _Normals is bound, w setup: depth similarity per metre", vec4) = (0, 0, 0, 1)
+    _Random   ("x, y the pattern's offset this frame, in its texels; z the pyramid's last level", vec4) = (0, 0, 1, 0)
+    _Output   ("x intensity, y power, z the fade's multiply, w its add (eye depth, metres)", vec4) = (0.5, 2, 0, 0)
+    _Pyramid  ("The scene's eye depth, level 0, and each level after it the farthest of what it covers", sampler2D) = "black"
+    _Normals  ("The prepass's normals: xyz the world normal * 0.5 + 0.5, w its eye depth, 0 or below where none", sampler2D) = "black"
+    _Setup    ("This size's setup: xyz the view normal * 0.5 + 0.5, w the farthest eye depth", sampler2D) = "black"
+    _UpNormals ("The setup the upsample weighs by, as _Setup", sampler2D) = "black"
+    _Smaller  ("The next smaller size's occlusion", sampler2D) = "white"
+}
+
+Images {
+    SETUP   ("This size's setup: xyz the view normal * 0.5 + 0.5, w the farthest eye depth", rgba16f, writeonly)
+    STEP    ("A smaller size's occlusion, unshaped", r8, writeonly)
+    AO      ("The occlusion the lit solids read: 1 open", r16f, writeonly)
+}
+
+// The sky's depth, which nothing is behind: a half float's range
+const float SSAO_FAR = 65504.0;
+const float PI = 3.14159265;
+
+// ── Inputs ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+float window_depth(ivec2 p) {
+    return texelFetch(cg_DepthBuffer, clamp(p, ivec2(0), ivec2(_Size.xy) - 1), 0).r;
+}
+
+float eye_depth(float window) {
+    return min(cg_LinearEyeDepth(window), SSAO_FAR);
+}
+
+// The view position at uv (0 to 1, bottom left) and eye depth z: x and y as the projection puts them, z away from the eye.
+vec3 depth_position(vec2 uv, float z) {
+    vec2 ndc = uv * 2.0 - 1.0;
+    return vec3((ndc.x + cg_ProjMatrix[2][0]) * z / cg_ProjMatrix[0][0], (ndc.y + cg_ProjMatrix[2][1]) * z / cg_ProjMatrix[1][1], z);
+}
+
+float smaller_delta(float before, float mid, float after) {
+    float a = mid - before, b = after - mid;
+    return abs(a) < abs(b) ? a : b;
+}
+
+// The view normal (GL: +z toward the eye) from depth at render pixel p: its neighbours right and up, each along the
+// smaller window depth step, so a silhouette beside the pixel does not bend it.
+vec3 normal_from_depth(ivec2 p) {
+    vec2 uv = (vec2(p) + 0.5) * _Size.zw;
+    float d = window_depth(p);
+    float dx = smaller_delta(window_depth(p - ivec2(1, 0)), d, window_depth(p + ivec2(1, 0)));
+    float dy = smaller_delta(window_depth(p - ivec2(0, 1)), d, window_depth(p + ivec2(0, 1)));
+    vec3 mid = depth_position(uv, eye_depth(d));
+    vec3 right = depth_position(uv + vec2(_Size.z, 0.0), eye_depth(d + dx)) - mid;
+    vec3 up = depth_position(uv + vec2(0.0, _Size.w), eye_depth(d + dy)) - mid;
+    vec3 n = cross(up, right);
+    return normalize(vec3(n.xy, -n.z));
+}
+
+// The surface's view normal (GL) at render pixel p: the prepass's where it wrote one, else from depth.
+vec3 surface_normal(ivec2 p) {
+    p = clamp(p, ivec2(0), ivec2(_Size.xy) - 1);
+    vec4 written = _Ssao3.z > 0.5 ? texelFetch(_Normals, p, 0) : vec4(0.0);
+    if (written.w > 0.0) return normalize(mat3(cg_ViewMatrix) * (written.xyz * 2.0 - 1.0));
+    return normal_from_depth(p);
+}
+
+ivec2 render_texel(vec2 uv) {
+    return clamp(ivec2(floor(uv * _Size.xy)), ivec2(0), ivec2(_Size.xy) - 1);
+}
+
+// 1 where two depths match, falling to 0 a 1/scale apart.
+float depth_similarity(float a, float b, float scale) {
+    return clamp(1.0 - abs(a - b) * scale, 0.0, 1.0);
+}
+
+// ── Setup ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// Half its input: the four render texels under it (half an input texel about its centre), its depth the farthest and
+// its normal those nearest that depth's average.
+void Setup() {
+    vec2 uv = (vec2(CG_TEXEL.xy) + 0.5) * _OutSize.zw;
+    vec2 last = 1.0 - 0.5 * _Size.zw;
+    vec2 taps[4] = vec2[4](uv + vec2(-0.5, -0.5) * _InSize.zw, min(uv + vec2(0.5, -0.5) * _InSize.zw, last),
+            min(uv + vec2(-0.5, 0.5) * _InSize.zw, last), min(uv + vec2(0.5, 0.5) * _InSize.zw, last));
+    vec4 samples[4];
+    for (int i = 0; i < 4; i++) {
+        ivec2 p = render_texel(taps[i]);
+        samples[i] = vec4(surface_normal(p) * 0.5 + 0.5, eye_depth(window_depth(p)));
+    }
+    float maxZ = max(max(samples[0].w, samples[1].w), max(samples[2].w, samples[3].w));
+    vec4 average = vec4(0.0001);
+    for (int i = 0; i < 4; i++) average += vec4(samples[i].rgb, 1.0) * depth_similarity(samples[i].w, maxZ, _Ssao3.w);
+    SETUP_WRITE(vec4(average.rgb / average.w, maxZ));
+}
+
+// ── Occlusion ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+// Three samples on the unit disc, spiral order and distance; six, near the surface very large, softly fading out
+const vec2 SAMPLES3[3] = vec2[3](vec2(0.0, -1.0) * 0.43, vec2(0.58, 0.814) * 0.7, vec2(-0.58, 0.814));
+const vec2 SAMPLES6[6] = vec2[6](vec2(0.0, 0.2), vec2(0.325, 0.101), vec2(0.272, -0.396), vec2(-0.385, -0.488),
+        vec2(-0.711, 0.274), vec2(0.06, 0.9));
+// The 4 x 4 tile of rotation bases: their order over the tile
+const int REORDER[16] = int[16](0, 11, 7, 3, 10, 4, 15, 12, 6, 8, 1, 14, 13, 2, 9, 5);
+
+// The tile's base at a pattern texel: a rotation over half a turn (each sample is mirrored) and a scale near 1.
+vec2 random_base(ivec2 t) {
+    float w = float(REORDER[(t.x & 3) + (t.y & 3) * 4]);
+    float angle = w / 16.0 * PI;
+    float scale = 1.0 - (sin(198.0 * w * 0.01) * 0.5 + 0.5) * 23.0 * 0.01;
+    return vec2(cos(angle), sin(angle)) * scale;
+}
+
+// The pyramid's eye depth at a screen position (-1 to 1), at its furthest level step: Unreal's level 0 is half the
+// render size, our level 1; the step rounds to the nearest level.
+float pyramid_depth(vec2 screen, float level) {
+    int l = clamp(int(floor(level + 0.5)) + 1, 1, int(_Random.z));
+    ivec2 size = textureSize(_Pyramid, l);
+    ivec2 p = clamp(ivec2(floor((screen * 0.5 + 0.5) * vec2(size))), ivec2(0), size - 1);
+    return min(texelFetch(_Pyramid, p, l).r, SSAO_FAR);
+}
+
+// Each side's openness against the normal, a sample offset either way: x left, y right.
+vec2 wedge(vec2 centre, vec2 offset, vec3 invFovFix, vec3 position, vec3 scaledNormal, float level) {
+    vec2 l = centre + offset, r = centre - offset;
+    float zl = pyramid_depth(l, level), zr = pyramid_depth(r, level);
+    vec3 dl = (vec3(l * zl, zl) - position) * invFovFix;
+    vec3 dr = (vec3(r * zr, zr) - position) * invFovFix;
+    return clamp(vec2(dot(dl, scaledNormal) / dot(dl, dl), dot(dr, scaledNormal) / dot(dr, dr)), 0.0, 1.0);
+}
+
+// The next smaller size's occlusion here: its 4 nearest texels (or 9 about this one), each weighed by how near its
+// depth and how alike its normal.
+float upsampled(vec2 uv, float z, vec3 normal, int taps) {
+    vec2 size = vec2(textureSize(_Smaller, 0)), inverse = 1.0 / size;
+    vec2 lo = 0.5 * inverse, hi = (size - 0.5) * inverse;
+    ivec2 normalsSize = textureSize(_UpNormals, 0);
+    float sum = 0.0001, weights = 0.0001;
+    for (int i = 0; i < taps; i++) {
+        vec2 o = taps == 4 ? vec2(i & 1, i >> 1) - 0.5 : vec2(i % 3, i / 3) - 1.0;
+        vec2 at = clamp(uv + o * inverse, lo, hi);
+        float value = texelFetch(_Smaller, ivec2(floor(at * size)), 0).r;
+        vec4 setup = texelFetch(_UpNormals, clamp(ivec2(floor(at * vec2(normalsSize))), ivec2(0), normalsSize - 1), 0);
+        // Unreal's 0.003 a centimetre
+        float weight = depth_similarity(setup.w, z, 0.3) * clamp(dot(setup.xyz * 2.0 - 1.0, normal), 0.0, 1.0);
+        sum += value * weight;
+        weights += weight;
+    }
+    return sum / weights;
+}
+
+shared vec4 quad[64];
+
+// The occlusion at this thread's pixel of a pass sized _OutSize: from this size's setup at a step, from the scene at
+// the final size, blended with the next smaller size where one ran.
+float occlusion(bool step, out float z, out vec3 viewNormal, out bool shaded) {
+    ivec2 px = ivec2(CG_GROUP_ID.xy) * 8 + ivec2(CG_LOCAL_ID.xy);
+    ivec2 last = ivec2(_OutSize.xy) - 1;
+    ivec2 p = min(px, last);
+    vec2 uv = (vec2(p) + 0.5) * _OutSize.zw;
+    vec3 normal;
+    if (step) {
+        vec4 setup = texelFetch(_Setup, p, 0);
+        z = setup.w;
+        normal = setup.xyz * 2.0 - 1.0;
+    } else {
+        z = eye_depth(window_depth(p));
+        normal = surface_normal(p);
+    }
+    // Unreal's view space: z away from the eye
+    viewNormal = normalize(vec3(normal.xy, -normal.z));
+    shaded = step || z * _Output.z + _Output.w < 1.0;
+    if (!shaded) return 1.0;
+
+    vec2 screen = uv * 2.0 - 1.0;
+    vec3 fovFix = vec3(cg_ProjMatrix[0][0], cg_ProjMatrix[1][1], 1.0), invFovFix = 1.0 / fovFix;
+    vec3 position = vec3(screen * z, z) + _Ssao.z * z * _Ssao.w * (viewNormal * fovFix);
+    float radius = _Ssao.x * mix(z, 1.0, _Ssao.y);
+
+    ivec2 t = ivec2(floor(vec2(px) + 0.5 + _Random.xy));
+    vec2 random = random_base(t) * radius;
+    vec2 fovFixXY = fovFix.xy / position.z;
+    vec4 base = vec4(random, -random.y, random.x) * vec4(fovFixXY, fovFixXY);
+    vec2 centre = position.xy / position.z;
+    // Unreal's 1000 a centimetre in world space
+    vec3 scaledNormal = viewNormal * 0.08 * mix(z, 10.0, _Ssao.y);
+
+    int samples = int(_Ssao2.w), steps = int(_Ssao2.z);
+    vec2 total = vec2(0.0001);
+    for (int i = 0; i < samples; i++) {
+        vec2 offset = samples == 6 ? SAMPLES6[i] : SAMPLES3[i];
+        vec2 local = offset.x * base.xy + offset.y * base.zw;
+        vec2 horizon = vec2(0.0);
+        for (int s = 0; s < steps; s++) {
+            float scale = float(s + 1) / float(steps);
+            float level = log2(_Ssao2.x * scale * (float(i) + 0.5) / float(samples));
+            horizon = max(horizon, wedge(centre, scale * local, invFovFix, position, scaledNormal, level));
+        }
+        // The area open above a horizon falls with its square
+        total += vec2((1.0 - horizon.x) * (1.0 - horizon.x), 1.0);
+        total += vec2((1.0 - horizon.y) * (1.0 - horizon.y), 1.0);
+    }
+    float ao = total.x / total.y;
+    int taps = int(_Ssao3.x);
+    if (taps > 0) ao = mix(ao, upsampled(uv, z, normal, taps), _Ssao2.y);
+    if (!step) {
+        ao = mix(ao, 1.0, clamp(z * _Output.z + _Output.w, 0.0, 1.0));
+        ao = 1.0 - (1.0 - pow(abs(ao), _Output.y)) * _Output.x;
+    }
+    return ao;
+}
+
+// The 2 x 2 quad's blur: this pixel with its horizontal and vertical partners, each by how alike its normal. Every
+// thread reaches the barrier.
+float quad_blur(float ao, float z, vec3 viewNormal) {
+    if (_Ssao3.y < 0.5) return ao;
+    ivec2 local = ivec2(CG_LOCAL_ID.xy);
+    quad[local.y * 8 + local.x] = vec4(ao, z, viewNormal.xy);
+    barrier();
+    vec4 b = quad[local.y * 8 + (local.x ^ 1)], c = quad[(local.y ^ 1) * 8 + local.x];
+    vec2 na = viewNormal.xy;
+    vec3 a3 = vec3(na, sqrt(max(0.0, 1.0 - dot(na, na))));
+    vec3 b3 = vec3(b.zw, sqrt(max(0.0, 1.0 - dot(b.zw, b.zw))));
+    vec3 c3 = vec3(c.zw, sqrt(max(0.0, 1.0 - dot(c.zw, c.zw))));
+    float wb = pow(clamp(dot(a3, b3), 0.0, 1.0), 4.0), wc = pow(clamp(dot(a3, c3), 0.0, 1.0), 4.0);
+    return (ao + wb * b.x + wc * c.x) / (1.0 + wb + wc);
+}
+
+void Step() {
+    float z;
+    vec3 n;
+    bool shaded;
+    float ao = quad_blur(occlusion(true, z, n, shaded), z, n);
+    ivec2 px = ivec2(CG_GROUP_ID.xy) * 8 + ivec2(CG_LOCAL_ID.xy);
+    if (all(lessThan(px, ivec2(_OutSize.xy)))) STEP_STORE(px, vec4(ao));
+}
+
+void Final() {
+    float z;
+    vec3 n;
+    bool shaded;
+    float ao = quad_blur(occlusion(false, z, n, shaded), z, n);
+    ivec2 px = ivec2(CG_GROUP_ID.xy) * 8 + ivec2(CG_LOCAL_ID.xy);
+    if (all(lessThan(px, ivec2(_OutSize.xy)))) AO_STORE(px, vec4(ao));
+}

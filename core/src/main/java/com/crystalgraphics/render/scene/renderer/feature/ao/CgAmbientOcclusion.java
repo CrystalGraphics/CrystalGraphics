@@ -2,8 +2,7 @@ package com.crystalgraphics.render.scene.renderer.feature.ao;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.compute.CgCompute;
-import com.crystalgraphics.compute.CgKernel;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -22,7 +21,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
 /**
  * Screen-space ambient occlusion: how much of the sky each opaque pixel sees past what is near it, which a
  * {@code DefaultLit} solid takes off its sky light (Unreal's forward {@code IndirectOcclusionTexture}). Unreal's two methods,
- * picked by the player's {@code ambient_occlusion_method}: SSAO, and GTAO ({@link CgGTAO}) with its spatial and temporal
+ * picked by the player's {@code ambient_occlusion_method}: SSAO ({@link CgSSAO}) at up to three sizes, and GTAO
+ * ({@link CgGTAO}) with its spatial and temporal
  * filters, the default, at its High level and half size; and a third, AMD's FidelityFX CACAO ({@link CgCACAO}).
  *
  * <p>The scene renderer drives it; a view turns it on or off and its post settings shape it:
@@ -81,7 +81,8 @@ import com.crystalgraphics.trace.CgGpuTrace;
  *   <li><b>CACAO</b> is darker than either exact answer from Medium up: AMD's shadow multiplier and power, a stylised
  *       look. No temporal filter; its Lowest to Medium presets streak under figures standing near the floor.
  *       Downsampled is its quarter-size layers and a bilateral upscale.</li>
- *   <li><b>SSAO</b>, Unreal's forward method, costs 1.1 to 3.0 ms there (Medium to Highest).</li>
+ *   <li><b>SSAO</b>, Unreal's deferred method, costs 0.79 / 1.07 / 1.62 ms there (Medium / High / Highest, at two,
+ *       two and three sizes); its smaller sizes reach wide and soft, and darken a wall behind a figure.</li>
  *   <li>The intensity scales either at the end: {@code 1 - (1 - ao) * intensity}, 0.5 by default (Unreal's).</li>
  * </ul>
  *
@@ -91,20 +92,18 @@ import com.crystalgraphics.trace.CgGpuTrace;
  */
 public final class CgAmbientOcclusion {
 
-    private static final String KERNELS = "crystalgraphics:shaders/world/ao/ambient_occlusion.compute";
     private static final int GPU_AO = CgGpuTrace.name("world.ambientOcclusion");
     /** This frame's occlusion, published for {@code crystalgraphics.post.debug=ao}; absent where none ran. */
     public static final CgViewKey<CgGraphTexture> RESULT = new CgViewKey<>("crystalgraphics:ambient_occlusion");
     private static final CgViewState.Key<Targets> TARGETS = new CgViewState.Key<>("crystalgraphics:ambient_occlusion", Targets::new);
-
-    private static CgKernel ssao;
 
     private CgAmbientOcclusion() {
     }
 
     /** Its kernels for the precache. */
     public static void precache() {
-        CgCompute.load(KERNELS).kernel("Ssao").precache();
+        CgGpuOps.precacheDepthPyramid();
+        CgSSAO.precache();
         CgGTAO.precache();
         CgCACAO.precache();
     }
@@ -119,25 +118,32 @@ public final class CgAmbientOcclusion {
 
     /** Whether {@code view} runs it this frame: its show flag, an intensity and reach, a level, a perspective. */
     public static boolean wants(CgView view, CgPostSettings settings) {
-        return view.showFlags().ambientOcclusion() && settings.ambientOcclusionOn() && levels() > 0
+        return view.showFlags().ambientOcclusion() && settings.ambientOcclusionOn() && enabled()
                 && !view.camera().isOrthographic();
     }
 
-    /** Whether {@code view} runs GTAO on the prepass's normals this frame: they are then written beside its depth. */
+    /**
+     * Whether {@code view} runs SSAO or GTAO on the prepass's normals this frame: they are then written beside its
+     * depth.
+     */
     public static boolean wantsNormals(CgView view, CgPostSettings settings) {
-        return wants(view, settings) && Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get()) == 1
-                && CgGTAO.USE_NORMALS.get();
+        if (!wants(view, settings)) return false;
+        return switch (Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get())) {
+            case 0 -> true;
+            case 1 -> CgGTAO.USE_NORMALS.get();
+            default -> false;
+        };
     }
 
     /** Whether its kernels are built; until then a frame draws without it. */
     public static boolean ready() {
-        load();
-        return ssao.isReady() && CgGTAO.ready() && CgCACAO.ready();
+        return CgSSAO.ready() && CgGTAO.ready() && CgCACAO.ready();
     }
 
     /**
      * This firing's occlusion, once {@code stage}'s depth holds every opaque surface and the solids' velocity is
-     * written, GTAO reading {@code normals} where the prepass wrote them (null: none): the texture the solids bind at
+     * written, SSAO and GTAO reading {@code normals} where the prepass wrote them (null: none): the texture the solids
+     * bind at
      * {@code CgBindingModel.AMBIENT_OCCLUSION}, 1 where open, published as {@link #RESULT} for the rest of the frame;
      * null where its kernels are not built yet.
      */
@@ -153,30 +159,25 @@ public final class CgAmbientOcclusion {
         int level = shaderLevel(s);
         float fadeRadius = Math.max(0.01f, s.ambientOcclusionFadeRadius());
         float fadeMul = 1f / fadeRadius, fadeAdd = -(s.ambientOcclusionFadeDistance() - fadeRadius) / fadeRadius;
-        // SSAO's noise moves each frame only where the temporal step resolves it
-        float noise = view.showFlags().temporalAA() ? view.state().frameIndex() % 64 : 0f;
 
-        CgGraphTexture pyramid = method == 1 ? CgGTAO.pyramid(recording, depth, stage.constants(), view, w, h) : null;
+        // SSAO and GTAO search the furthest depth pyramid (Unreal's HZB), built before the pass that samples it
+        if (method != 2) CgGpuOps.depthPyramid(recording, depth, stage.constants(), t.pyramid);
         CgComputePass pass = recording.compute("world.ambientOcclusion", stage.constants()).readsDepth(depth).timed(GPU_AO);
-        if (pyramid != null) {
-            CgGTAO.record(pass, recording, view, s, level, pyramid, normals, t.ao, w, h, fadeMul, fadeAdd);
-        } else if (method == 2) {
-            CgCACAO.record(pass, view, s, level, t.ao, w, h, view.showFlags().temporalAA() ? view.state().frameIndex() : -1);
-        } else {
-            boolean world = s.ambientOcclusionRadiusInWorldSpace();
-            // Unreal's radius off world space is a view-space 400 units a screen, a quarter of that per its mip scale:
-            // 200, an eighth of the screen's height. Ours is metres, 2 the default
-            float radius = world ? s.ambientOcclusionRadius() : s.ambientOcclusionRadius() / 16f;
-            pass.dispatch(ssao, w, h, 1).image("AO", t.ao).set("_Size", w, h, 1f / w, 1f / h)
-                    .set("_Ssao", radius, world ? 1f : 0f, s.ambientOcclusionBias() / 1000f, level).set("_Noise", noise, 0f, 0f, 0f)
-                    .set("_Output", s.ambientOcclusionIntensity(), s.ambientOcclusionPower(), fadeMul, fadeAdd);
+        switch (method) {
+            case 1 -> CgGTAO.record(pass, recording, view, s, level, t.pyramid, normals, t.ao, w, h, fadeMul, fadeAdd);
+            case 2 -> CgCACAO.record(pass, view, s, level, t.ao, w, h,
+                    view.showFlags().temporalAA() ? view.state().frameIndex() : -1);
+            default -> CgSSAO.record(pass, view, s, level, t.pyramid, t.pyramidLast, normals, t.ao, w, h, fadeMul, fadeAdd);
         }
         pass.end();
         view.publish(RESULT, t.ao);
         return t.ao;
     }
 
-    /** The player's toggle for running the method in use smaller: CACAO's or GTAO's; null for SSAO, which has none. */
+    /**
+     * The player's toggle for running the method in use smaller: CACAO's or GTAO's; null for SSAO, whose smaller sizes
+     * are its levels ({@code ambient_occlusion_levels}).
+     */
     @Nullable
     public static CgSetting.Toggle downsampleSetting() {
         return switch (Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_METHOD.get())) {
@@ -196,13 +197,13 @@ public final class CgAmbientOcclusion {
     }
 
     /**
-     * Unreal's {@code r.AmbientOcclusionLevels} on forward, 0 (off) or 1: the player's {@code ambient_occlusion_levels},
-     * else its Quality tier's ({@code BaseScalability.ini}: Low 0, the rest 1).
+     * Whether any runs, Unreal's {@code r.AmbientOcclusionLevels} above 0: the player's {@code ambient_occlusion_levels},
+     * else its Quality tier's ({@code BaseScalability.ini}: Low off).
      */
-    private static int levels() {
+    private static boolean enabled() {
         int set = Math.round(CgGraphicsSettings.AMBIENT_OCCLUSION_LEVELS.get());
-        if (set >= 0) return Math.min(set, 1);
-        return CgGraphicsSettings.QUALITY.get() == CgQuality.LOW ? 0 : 1;
+        if (set >= 0) return set > 0;
+        return CgGraphicsSettings.QUALITY.get() != CgQuality.LOW;
     }
 
     /** Unreal's shader levels by name, 0 to 4: CACAO's presets of the same rank. */
@@ -215,29 +216,32 @@ public final class CgAmbientOcclusion {
      * {@code ambient_occlusion_max_quality}, else its tier's (Low 0, Medium 60, High and Ultra 100).
      */
     public static int shaderLevel(CgPostSettings s) {
+        float q = quality(s);
+        return (q > 75f ? 1 : 0) + (q > 55f ? 1 : 0) + (q > 25f ? 1 : 0) + (q > 5f ? 1 : 0);
+    }
+
+    /**
+     * The settings' quality under {@code r.AmbientOcclusionMaxQuality}: the player's {@code ambient_occlusion_max_quality},
+     * else its tier's (Low 0, Medium 60, High and Ultra 100).
+     */
+    static float quality(CgPostSettings s) {
         float set = CgGraphicsSettings.AMBIENT_OCCLUSION_MAX_QUALITY.get();
         float max = set >= 0f ? set : switch (CgGraphicsSettings.QUALITY.get()) {
             case LOW -> 0f;
             case MEDIUM -> 60f;
             case HIGH, ULTRA -> 100f;
         };
-        float q = Math.min(max, s.ambientOcclusionQuality());
-        return (q > 75f ? 1 : 0) + (q > 55f ? 1 : 0) + (q > 25f ? 1 : 0) + (q > 5f ? 1 : 0);
-    }
-
-    private static void load() {
-        if (ssao != null) return;
-        ssao = CgCompute.load(KERNELS).kernel("Ssao");
-        ssao.precache();
+        return Math.min(max, s.ambientOcclusionQuality());
     }
 
     /**
-     * A view's occlusion, remade when its size changes. Kept, not transient: what reads it may record in a later firing
-     * than the one it runs in (Unreal's {@code ScreenSpaceAO} lives the frame's length).
+     * A view's occlusion and the depth pyramid SSAO and GTAO search, remade when its size changes. The occlusion is kept,
+     * not transient: what reads it may record in a later firing than the one it runs in (Unreal's {@code ScreenSpaceAO}
+     * lives the frame's length).
      */
     private static final class Targets {
-        CgGraphTexture ao;
-        int w, h;
+        CgGraphTexture ao, pyramid;
+        int w, h, pyramidLast;
 
         Targets size(CgRecording recording, int width, int height) {
             if (ao != null && width == w && height == h) return this;
@@ -245,6 +249,8 @@ public final class CgAmbientOcclusion {
             w = width;
             h = height;
             ao = CgGraphTexture.requested("cg_ambient_occlusion", new CgTextureDesc(w, h, CgFormat.R16_FLOAT));
+            pyramid = CgGraphTexture.transientTexture("cg_ao.pyramid", new CgTextureDesc(w, h, CgGpuOps.PYRAMID_HALF_FORMAT).withMips());
+            pyramidLast = 31 - Integer.numberOfLeadingZeros(Math.max(w, h));
             return this;
         }
     }

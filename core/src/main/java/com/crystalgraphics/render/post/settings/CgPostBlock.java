@@ -100,6 +100,9 @@ public final class CgPostBlock {
         if (ao.get("fade_distance") instanceof Number n) s.ambientOcclusionFadeDistance(n.floatValue());
         if (ao.get("fade_radius") instanceof Number n) s.ambientOcclusionFadeRadius(n.floatValue());
         if (ao.get("temporal_blend_weight") instanceof Number n) s.ambientOcclusionTemporalBlendWeight(n.floatValue());
+        if (ao.get("mip_blend") instanceof Number n) s.ambientOcclusionMipBlend(n.floatValue());
+        if (ao.get("mip_scale") instanceof Number n) s.ambientOcclusionMipScale(n.floatValue());
+        if (ao.get("mip_threshold") instanceof Number n) s.ambientOcclusionMipThreshold(n.floatValue());
     }
 
     /** {@code motion_blur}'s keys, each overriding its field alone. */
@@ -251,6 +254,11 @@ public final class CgPostBlock {
         if (s.overridesAmbientOcclusion(CgPostSettings.AO_FADE_RADIUS)) ao.put("fade_radius", (double) s.ambientOcclusionFadeRadius());
         if (s.overridesAmbientOcclusion(CgPostSettings.AO_TEMPORAL_BLEND_WEIGHT)) {
             ao.put("temporal_blend_weight", (double) s.ambientOcclusionTemporalBlendWeight());
+        }
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_MIP_BLEND)) ao.put("mip_blend", (double) s.ambientOcclusionMipBlend());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_MIP_SCALE)) ao.put("mip_scale", (double) s.ambientOcclusionMipScale());
+        if (s.overridesAmbientOcclusion(CgPostSettings.AO_MIP_THRESHOLD)) {
+            ao.put("mip_threshold", (double) s.ambientOcclusionMipThreshold());
         }
         if (!ao.isEmpty()) b.put("ambient_occlusion", ao);
         if (s.overrides(CgPostSettings.TONE_CURVE)) b.put("tone_curve", (double) s.toneCurve());

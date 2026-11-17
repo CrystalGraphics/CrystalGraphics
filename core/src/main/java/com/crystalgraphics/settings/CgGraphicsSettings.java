@@ -60,7 +60,9 @@ public final class CgGraphicsSettings {
             1f, 0f, 2f, 1f);
 
     public static final CgSetting.Number AMBIENT_OCCLUSION_LEVELS = FILE.number("rendering", "ambient_occlusion_levels",
-            "Ambient occlusion levels", "0 off, 1 on. -1 follows Quality (Low off).", -1f, -1f, 1f, 1f);
+            "Ambient occlusion levels", "0 off; 1 to 3, SSAO's sizes (full, then half, then quarter); GTAO and CACAO run at"
+                    + " any above 0. -1 follows Quality (Low off) and SSAO's levels the post settings' quality.",
+            -1f, -1f, 3f, 1f);
 
     public static final CgSetting.Number AMBIENT_OCCLUSION_MAX_QUALITY = FILE.number("rendering",
             "ambient_occlusion_max_quality", "Ambient occlusion max quality",

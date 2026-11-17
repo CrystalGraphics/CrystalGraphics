@@ -4,10 +4,8 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgKernel;
-import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDispatch;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -79,7 +77,6 @@ final class CgGTAO {
     static void precache() {
         CgCompute c = CgCompute.load(KERNELS);
         for (String name : NAMES) c.kernel(name).precache();
-        CgGpuOps.precacheDepthPyramid();
     }
 
     static boolean ready() {
@@ -89,18 +86,8 @@ final class CgGTAO {
     }
 
     /**
-     * The scene's furthest depth pyramid, built from {@code depth} as it stands: recorded before the pass {@link #record}
-     * dispatches into, which samples it.
-     */
-    static CgGraphTexture pyramid(CgRecording recording, CgGraphTexture depth, CgPassConstants constants, CgView view, int w, int h) {
-        Targets t = view.state().get(TARGETS).size(w, h, aoWidth(w), aoHeight(h));
-        CgGpuOps.depthPyramid(recording, depth, constants, t.pyramid);
-        return t.pyramid;
-    }
-
-    /**
      * Records the search, the filters and the upsample at shader {@code level} (0-4) into {@code ao},
-     * {@code w} by {@code h}, from {@code pyramid} ({@link #pyramid}) and {@code normals}, the prepass's (null: depth's
+     * {@code w} by {@code h}, from the scene's furthest depth {@code pyramid} and {@code normals}, the prepass's (null: depth's
      * alone); {@code fadeMul} and {@code fadeAdd} fade it out over eye depth.
      */
     static void record(CgComputePass pass, CgRecording recording, CgView view, CgPostSettings s, int level,
@@ -177,19 +164,18 @@ final class CgGTAO {
         kernels = k;
     }
 
-    /** A view's pyramid and AO-size textures, remade when its size changes. */
+    /** A view's AO-size textures, remade when its size changes. */
     private static final class Targets {
         @Nullable
-        CgGraphTexture pyramid, horizon, filtered;
+        CgGraphTexture horizon, filtered;
         int w, h, aw, ah;
 
         Targets size(int width, int height, int aoWidth, int aoHeight) {
-            if (pyramid != null && width == w && height == h && aoWidth == aw && aoHeight == ah) return this;
+            if (horizon != null && width == w && height == h && aoWidth == aw && aoHeight == ah) return this;
             w = width;
             h = height;
             aw = aoWidth;
             ah = aoHeight;
-            pyramid = CgGraphTexture.transientTexture("cg_gtao.pyramid", new CgTextureDesc(w, h, CgGpuOps.PYRAMID_HALF_FORMAT).withMips());
             horizon = CgGraphTexture.transientTexture("cg_gtao.horizon", new CgTextureDesc(aw, ah, CgFormat.R8_UNORM));
             filtered = CgGraphTexture.transientTexture("cg_gtao.filtered", new CgTextureDesc(aw, ah, CgFormat.R8_UNORM));
             return this;

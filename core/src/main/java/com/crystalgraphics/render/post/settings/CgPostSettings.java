@@ -79,7 +79,8 @@ public final class CgPostSettings {
     public static final int DEFAULT_MB_TARGET_FPS = 30;
     /** Ambient occlusion's override bits ({@link #overridesAmbientOcclusion}). */
     public static final int AO_INTENSITY = 1, AO_RADIUS = 1 << 1, AO_POWER = 1 << 2, AO_BIAS = 1 << 3, AO_QUALITY = 1 << 4,
-            AO_FADE_DISTANCE = 1 << 5, AO_FADE_RADIUS = 1 << 6, AO_RADIUS_IN_WORLD_SPACE = 1 << 7, AO_TEMPORAL_BLEND_WEIGHT = 1 << 8;
+            AO_FADE_DISTANCE = 1 << 5, AO_FADE_RADIUS = 1 << 6, AO_RADIUS_IN_WORLD_SPACE = 1 << 7, AO_TEMPORAL_BLEND_WEIGHT = 1 << 8,
+            AO_MIP_BLEND = 1 << 9, AO_MIP_SCALE = 1 << 10, AO_MIP_THRESHOLD = 1 << 11;
     /**
      * Unreal's ambient occlusion defaults ({@code FPostProcessSettings}), its centimetres as metres: half strength, a
      * radius of 2 (an eighth of the screen's height, off world space), power 2, bias 3, faded out from 30 m to 80 m.
@@ -88,7 +89,8 @@ public final class CgPostSettings {
      */
     public static final float DEFAULT_AO_INTENSITY = 0.5f, DEFAULT_AO_RADIUS = 2f, DEFAULT_AO_POWER = 2f, DEFAULT_AO_BIAS = 3f,
             DEFAULT_AO_QUALITY = 65f, DEFAULT_AO_FADE_DISTANCE = 80f, DEFAULT_AO_FADE_RADIUS = 50f,
-            DEFAULT_AO_TEMPORAL_BLEND_WEIGHT = 0.1f;
+            DEFAULT_AO_TEMPORAL_BLEND_WEIGHT = 0.1f, DEFAULT_AO_MIP_BLEND = 0.6f, DEFAULT_AO_MIP_SCALE = 1.7f,
+            DEFAULT_AO_MIP_THRESHOLD = 0.01f;
 
     /** Unreal's Gaussian bloom layers, {@code Bloom1} to {@code Bloom6}. */
     public static final int BLOOM_LAYERS = 6;
@@ -159,7 +161,8 @@ public final class CgPostSettings {
     volatile int ambientOcclusionOverrides;
     volatile float aoIntensity = DEFAULT_AO_INTENSITY, aoRadius = DEFAULT_AO_RADIUS, aoPower = DEFAULT_AO_POWER,
             aoBias = DEFAULT_AO_BIAS, aoQuality = DEFAULT_AO_QUALITY, aoFadeDistance = DEFAULT_AO_FADE_DISTANCE,
-            aoFadeRadius = DEFAULT_AO_FADE_RADIUS, aoTemporalBlendWeight = DEFAULT_AO_TEMPORAL_BLEND_WEIGHT;
+            aoFadeRadius = DEFAULT_AO_FADE_RADIUS, aoTemporalBlendWeight = DEFAULT_AO_TEMPORAL_BLEND_WEIGHT,
+            aoMipBlend = DEFAULT_AO_MIP_BLEND, aoMipScale = DEFAULT_AO_MIP_SCALE, aoMipThreshold = DEFAULT_AO_MIP_THRESHOLD;
     volatile boolean aoRadiusInWorldSpace;
     /** Its weighted blendables, replaced whole. */
     private volatile Blendable[] blendables = NO_BLENDABLES;
@@ -905,6 +908,36 @@ public final class CgPostSettings {
         return this;
     }
 
+    /**
+     * SSAO's share of the next smaller level in each larger one, 0 to 1 (Unreal's {@code AmbientOcclusionMipBlend},
+     * 0.6): higher leans on the smaller levels' wide, soft occlusion.
+     */
+    public CgPostSettings ambientOcclusionMipBlend(float blend) {
+        aoMipBlend = Math.max(0f, Math.min(1f, blend));
+        ambientOcclusionOverrides |= AO_MIP_BLEND;
+        return this;
+    }
+
+    /**
+     * How much wider SSAO reaches at each smaller level, 0.5 to 4 (Unreal's {@code AmbientOcclusionMipScale}, 1.7): the
+     * half level's radius is this times the full level's, the quarter's its square.
+     */
+    public CgPostSettings ambientOcclusionMipScale(float scale) {
+        aoMipScale = Math.max(0.5f, Math.min(4f, scale));
+        ambientOcclusionOverrides |= AO_MIP_SCALE;
+        return this;
+    }
+
+    /**
+     * How sharply SSAO's smaller levels keep depth edges apart when they average, 0 to 0.1, per centimetre of depth step
+     * at the full size (Unreal's {@code AmbientOcclusionMipThreshold} and its unit, 0.01): higher keeps them apart.
+     */
+    public CgPostSettings ambientOcclusionMipThreshold(float threshold) {
+        aoMipThreshold = Math.max(0f, Math.min(0.1f, threshold));
+        ambientOcclusionOverrides |= AO_MIP_THRESHOLD;
+        return this;
+    }
+
     /** Whether ambient occlusion darkens at all: Unreal's floors on its intensity and radius. */
     public boolean ambientOcclusionOn() {
         return aoIntensity > 0f && aoRadius >= 0.001f;
@@ -944,6 +977,18 @@ public final class CgPostSettings {
 
     public float ambientOcclusionTemporalBlendWeight() {
         return aoTemporalBlendWeight;
+    }
+
+    public float ambientOcclusionMipBlend() {
+        return aoMipBlend;
+    }
+
+    public float ambientOcclusionMipScale() {
+        return aoMipScale;
+    }
+
+    public float ambientOcclusionMipThreshold() {
+        return aoMipThreshold;
     }
 
     public float bloom() {
@@ -1227,6 +1272,9 @@ public final class CgPostSettings {
         aoFadeDistance = DEFAULT_AO_FADE_DISTANCE;
         aoFadeRadius = DEFAULT_AO_FADE_RADIUS;
         aoTemporalBlendWeight = DEFAULT_AO_TEMPORAL_BLEND_WEIGHT;
+        aoMipBlend = DEFAULT_AO_MIP_BLEND;
+        aoMipScale = DEFAULT_AO_MIP_SCALE;
+        aoMipThreshold = DEFAULT_AO_MIP_THRESHOLD;
         aoRadiusInWorldSpace = false;
         for (int i = 0; i < drawnCount; i++) drawn[i] = null;
         drawnCount = 0;
@@ -1298,6 +1346,9 @@ public final class CgPostSettings {
             if ((ao & AO_TEMPORAL_BLEND_WEIGHT) != 0) {
                 aoTemporalBlendWeight += (from.aoTemporalBlendWeight - aoTemporalBlendWeight) * weight;
             }
+            if ((ao & AO_MIP_BLEND) != 0) aoMipBlend += (from.aoMipBlend - aoMipBlend) * weight;
+            if ((ao & AO_MIP_SCALE) != 0) aoMipScale += (from.aoMipScale - aoMipScale) * weight;
+            if ((ao & AO_MIP_THRESHOLD) != 0) aoMipThreshold += (from.aoMipThreshold - aoMipThreshold) * weight;
             if ((ao & AO_RADIUS_IN_WORLD_SPACE) != 0 && weight >= 0.5f) aoRadiusInWorldSpace = from.aoRadiusInWorldSpace;
             ambientOcclusionOverrides |= ao;
         }
