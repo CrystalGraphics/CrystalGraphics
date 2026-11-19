@@ -1,6 +1,9 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.api.mesh.CgMesh;
+import com.crystalgraphics.api.mesh.CgMeshTopology;
 import com.crystalgraphics.gpu.CgDeferral;
 import com.crystalgraphics.gpu.resource.CgStreamBuffer;
 import com.crystalgraphics.platform.gl.CgCapabilities;
@@ -62,6 +65,9 @@ public final class CgExecutor {
     /** Another target's depth sampled where it is, where it was copied. */
     /** What every QUAD and CURVE instance expands. */
     static final CgMesh UNIT_QUAD = CgMesh.quads(1);
+    /** What an ELEMENT draw pulls its records by: vertices with no data, six a record, a draw's worth. */
+    static final CgMesh ELEMENT_VERTICES = CgMesh.vertices(CgUiElements.VERTICES * CgUiElements.MAX_PER_DRAW,
+            CgMeshTopology.TRIANGLES);
     private static final CgVar.Bool SPLIT = CgVar.bool("crystalgraphics.graph.splits", true, CgVar.DEV,
             "Split a transition whose next access is a read two or more steps on, from its producer's end to its consumer;"
                     + " false records every transition whole before its consumer.");
@@ -519,16 +525,18 @@ public final class CgExecutor {
     private static void placeMeshes(CgFrame frame) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.placeMeshes")) {
             CgMeshStore store = CgMeshStore.get();
-            boolean unitQuad = false;
+            boolean unitQuad = false, elements = false;
             for (int s = 0; s < frame.stepCount; s++) {
                 CgFrame.Raster packed = frame.rasters[s];
                 if (packed == null) continue;
                 unitQuad |= (packed.kinds & CgRasterEncoder.UNIT_KINDS) != 0;
+                elements |= (packed.kinds & 1 << CgInstanceKind.ELEMENT.ordinal()) != 0;
                 for (int b = 0; b < packed.count; b++) {
                     if (packed.mesh[b] != null) store.place(packed.mesh[b]);
                 }
             }
             if (unitQuad) store.place(UNIT_QUAD);
+            if (elements) store.place(ELEMENT_VERTICES);
             store.upload();
         }
     }

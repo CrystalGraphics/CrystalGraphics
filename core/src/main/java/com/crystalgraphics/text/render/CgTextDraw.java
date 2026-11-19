@@ -6,7 +6,7 @@ import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.canvas.CgClipTable;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
 import org.joml.Matrix4f;

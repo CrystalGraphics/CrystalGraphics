@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.graph;
 
+import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.render.draw.CgExecutedBlocks;
 import com.crystalgraphics.render.shader.CgBindless;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -38,7 +39,7 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -71,6 +72,7 @@ final class CgRasterEncoder {
     private static final int KINDS = CgInstanceKind.values().length;
     static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
+    private static final int ELEMENT = CgInstanceKind.ELEMENT.ordinal();
     /** Records written to the frame's table, once each, and ids the passes copied to name them: SR1's two counts. */
     private static final int PRIMITIVES = CgTrace.name("graph.primitives"), PRIMITIVE_IDS = CgTrace.name("graph.primitive-ids");
     private static final int COMMAND_COUNT = CgTrace.name("graph.indirect-commands");
@@ -169,6 +171,8 @@ final class CgRasterEncoder {
                 CgInstanceKind.QUAD.format(), CgQuadBatch.SLOT, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.CURVE.ordinal()] = registry.getOrCreateInternal("CgGraphCurveInstances" + depth,
                 CgInstanceKind.CURVE.format(), CgCurveBatch.SLOT, CgBufferLifetime.FRAME);
+        instanceBuffers[ELEMENT] = registry.getOrCreateInternal("CgGraphUiElements" + depth,
+                CgInstanceKind.ELEMENT.format(), CgUiElements.SLOT, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectIds" + depth,
                 CgInstanceKind.OBJECT.format(), CgBindingModel.OBJECT_IDS, CgBufferLifetime.FRAME);
         primitives = registry.getOrCreateInternal("CgGraphPrimitives" + depth, CgPrimitiveTable.FORMAT,
@@ -226,12 +230,27 @@ final class CgRasterEncoder {
     }
 
     private static CgMesh mesh(CgFrame.Raster packed, int b) {
-        return packed.kind[b] == OBJECT ? packed.mesh[b] : CgExecutor.UNIT_QUAD;
+        int kind = packed.kind[b];
+        return kind == OBJECT ? packed.mesh[b] : kind == ELEMENT ? CgExecutor.ELEMENT_VERTICES : CgExecutor.UNIT_QUAD;
     }
 
     private static boolean join(CgMeshStore store, CgFrame.Raster packed, int k) {
-        return store.join(mesh(packed, k), packed.instances[k], packed.submesh[k], packed.rangeFirst[k],
-                packed.rangeCount[k], packed.first[k]);
+        return store.join(mesh(packed, k), drawnInstances(packed, k), packed.submesh[k], rangeFirst(packed, k),
+                rangeCount(packed, k), packed.first[k]);
+    }
+
+    /** Instances batch {@code b} draws: its records, or for a pulled kind one instance over all of them. */
+    private static int drawnInstances(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == ELEMENT ? 1 : packed.instances[b];
+    }
+
+    private static int rangeFirst(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == ELEMENT ? 0 : packed.rangeFirst[b];
+    }
+
+    /** Its mesh's vertices or indices drawn, -1 for all: a pulled kind's six a record. */
+    private static int rangeCount(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == ELEMENT ? packed.instances[b] * CgUiElements.VERTICES : packed.rangeCount[b];
     }
 
     /** Counts the first reason indirect batch {@code k} does not join {@code b}'s run, by the compiler's joinableIndirect terms. */
@@ -681,8 +700,8 @@ final class CgRasterEncoder {
                 CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
                 continue;
             }
-            store.drawOn(rp, drawCache, mesh, packed.instances[b], packed.first[b], packed.submesh[b], packed.rangeFirst[b],
-                    packed.rangeCount[b]);
+            store.drawOn(rp, drawCache, mesh, drawnInstances(packed, b), packed.first[b], packed.submesh[b],
+                    rangeFirst(packed, b), rangeCount(packed, b));
             CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
         }
     }
@@ -833,7 +852,7 @@ final class CgRasterEncoder {
             execution.transitions.buffer(countId, CgAccess.COMPUTE_READ);
         }
         CgMeshStore store = CgMeshStore.get();
-        boolean drawn = store.range(packed.mesh[b], packed.submesh[b], packed.rangeFirst[b], packed.rangeCount[b], range);
+        boolean drawn = store.range(mesh(packed, b), packed.submesh[b], rangeFirst(packed, b), rangeCount(packed, b), range);
         if (!drawn) Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
         CgIndirect mode = INDIRECT_MODES[packed.countModes[b] & 3];
         int factor = packed.countModes[b] >>> 2;

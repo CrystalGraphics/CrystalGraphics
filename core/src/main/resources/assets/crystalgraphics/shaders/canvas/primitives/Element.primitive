@@ -1,0 +1,125 @@
+// Element: the UI canvas's records (CgUiElements), pulled six vertices each: colour, image, mask, gradient and box
+// shadows, rounded by elliptical radii and bordered per side, in one pipeline. A #domain ui material's surface() runs at
+// CG_SURFACE over the element's own paint (premultiplied); around it the clip, opacity, HDR intensity and the
+// premultiplied write. Its edge is the rounded box's distance, antialiased over a pixel at any rotation or scale.
+Primitive { Queue Transparent }
+EngineBuffers { element clip gradient }
+
+Properties {
+    _MainTex ("Image", sampler2D) = "white"
+}
+
+RenderState {
+    Blend ONE ONE_MINUS_SRC_ALPHA
+    Cull OFF
+    DepthTest LEQUAL
+    DepthWrite OFF
+}
+
+// local: the pixel from the rect's top-left corner, in its node's units; index: the record, carried as a float since
+// a pulled draw's instance id is its draw's.
+struct v2f { vec2 _cg_in_local; float _cg_in_index; };
+
+void vertex(out v2f o) {
+    int n = CG_ELEMENT_INDEX;
+    vec4 r = CG_ELEMENT(n).rect;
+    float node = CG_ELEMENT(n).node;
+    float pad = cg_element_pad(node);
+    uint kind = CG_ELEMENT(n).flags & 15u;
+    // A shadow reaches three sigma past its box
+    if (kind == uint(CG_ELEMENT_SHADOW)) pad += 3.0 * uintBitsToFloat(CG_ELEMENT(n).paint);
+    vec2 p = mix(r.xy - pad, r.zw + pad, cg_element_corner());
+    o._cg_in_local = p - r.xy;
+    o._cg_in_index = float(n);
+    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(cg_spatial_point(node, vec3(p, 0.0)), 1.0);
+}
+
+void fragment(in v2f i, out vec4 fragColor) {
+    int n = int(i._cg_in_index + 0.5);
+    vec4 r = CG_ELEMENT(n).rect;
+    vec2 size = max(r.zw - r.xy, vec2(1e-6));
+    vec2 halfSize = size * 0.5;
+    vec2 p = i._cg_in_local - halfSize;
+    uint flags = CG_ELEMENT(n).flags;
+    uint kind = flags & 15u;
+    // Before any branch: these take derivatives
+    float ramp = max(length(fwidth(i._cg_in_local)) * 0.70710678, 1e-4);
+    float clip = cg_clip_coverage(float(CG_ELEMENT(n).clip));
+    vec2 param = i._cg_in_local / size;
+    vec4 uvRect = CG_ELEMENT(n).uv;
+    vec2 uv = mix(uvRect.xy, uvRect.zw, clamp(param, 0.0, 1.0));
+    vec4 texel = texture(_MainTex, uv);
+    // A grid's cell coordinate and its derivatives: uv holds the cell and line sizes
+    vec2 cell = i._cg_in_local / max(uvRect.xy, vec2(1e-4));
+    vec2 cellDx = dFdx(cell), cellDy = dFdy(cell);
+
+    uvec4 radii = CG_ELEMENT(n).radii;
+    vec2 tl = unpackHalf2x16(radii.x), tr = unpackHalf2x16(radii.y);
+    vec2 br = unpackHalf2x16(radii.z), bl = unpackHalf2x16(radii.w);
+    vec4 rx = vec4(tl.x, tr.x, br.x, bl.x), ry = vec4(tl.y, tr.y, br.y, bl.y);
+    bool rounded = (flags & uint(CG_ELEMENT_ROUNDED)) != 0u;
+    float coverage = sdf_coverage(sdf_rounded_box(p, halfSize, rx, ry), ramp);
+
+    vec4 tint = cg_element_unpack(CG_ELEMENT(n).color);
+    vec4 tintP = vec4(tint.rgb * tint.a, tint.a);
+    vec4 fill;
+    if (kind == uint(CG_ELEMENT_TEXTURE)) {
+        vec4 t = (flags & uint(CG_ELEMENT_PREMULTIPLIED)) != 0u ? texel : vec4(texel.rgb * texel.a, texel.a);
+        fill = t * tintP;
+    } else if (kind == uint(CG_ELEMENT_MASK)) {
+        fill = tintP * texel.a;
+    } else if (kind == uint(CG_ELEMENT_GRADIENT)) {
+        int g = int(CG_ELEMENT(n).paint);
+        fill = cg_gradient(g, param, size) * tint.a;
+        if (cg_gradient_dithered(g)) fill = cg_gradient_dither(fill, gl_FragCoord.xy);
+    } else if (kind == uint(CG_ELEMENT_GRID)) {
+        vec4 second = cg_element_unpack(CG_ELEMENT(n).paint);
+        vec4 secondP = vec4(second.rgb * second.a, second.a);
+        float on = (flags & uint(CG_ELEMENT_CHECKER)) != 0u
+                ? cg_grid_checker(cell, cellDx, cellDy)
+                : cg_grid_lines(cell, uvRect.zw / max(uvRect.xy, vec2(1e-4)), cellDx, cellDy);
+        fill = mix(secondP, tintP, on);
+    } else if (kind == uint(CG_ELEMENT_SHADOW)) {
+        fill = tintP * cg_element_shadow(p, halfSize, rx, ry, uintBitsToFloat(CG_ELEMENT(n).paint), rounded);
+        coverage = 1.0;
+    } else if (kind == uint(CG_ELEMENT_INSET_SHADOW)) {
+        // uv is the hole, in the box's units from its corner: shadow where the blurred hole does not reach
+        vec2 holeHalf = max((uvRect.zw - uvRect.xy) * 0.5, vec2(0.0));
+        vec2 holeCentre = (uvRect.xy + uvRect.zw) * 0.5 - halfSize;
+        float lit = cg_element_shadow(p - holeCentre, holeHalf, rx, ry, uintBitsToFloat(CG_ELEMENT(n).paint), rounded);
+        fill = tintP * (1.0 - lit);
+    } else {
+        fill = tintP;
+    }
+
+    if ((flags & uint(CG_ELEMENT_BORDER)) != 0u) {
+        vec2 widthsTR = unpackHalf2x16(CG_ELEMENT(n).widthsTR), widthsBL = unpackHalf2x16(CG_ELEMENT(n).widthsBL);
+        vec4 w = vec4(widthsBL.y, widthsTR.x, widthsTR.y, widthsBL.x);   // left, top, right, bottom
+        vec2 innerHalf = max(halfSize - vec2(w.x + w.z, w.y + w.w) * 0.5, vec2(0.0));
+        vec2 innerShift = vec2(w.x - w.z, w.y - w.w) * 0.5;
+        vec4 innerRx = max(rx - vec4(w.x, w.z, w.z, w.x), vec4(0.0));
+        vec4 innerRy = max(ry - vec4(w.y, w.y, w.w, w.w), vec4(0.0));
+        float inner = sdf_coverage(sdf_rounded_box(p - innerShift, innerHalf, innerRx, innerRy), ramp);
+        vec4 edge = cg_element_side(CG_ELEMENT(n).borderColor, p, halfSize);
+        fill = mix(vec4(edge.rgb * edge.a, edge.a), fill, inner);
+    }
+
+    CgUiInput _cg_ui;
+    _cg_ui.param = param;
+    _cg_ui.uv = uv;
+    _cg_ui.size = size;
+    _cg_ui.local = i._cg_in_local;
+    _cg_ui.color = tint;
+    _cg_ui.custom0 = vec4(0.0);
+    _cg_ui.custom1 = vec4(0.0);
+    CgUiSurface s;
+    s.color = fill;
+    s.coverage = coverage;
+    s.premultiplied = true;
+    CG_SURFACE(_cg_ui, s);
+    vec2 fadeBoost = unpackHalf2x16(CG_ELEMENT(n).fadeBoost);
+    float node = CG_ELEMENT(n).node;
+    if (s.premultiplied) s.color.rgb *= 1.0 + fadeBoost.y;
+    float _cg_k = s.coverage * clip * (1.0 - fadeBoost.x) * cg_effect_opacity(node);
+    fragColor = cg_UiWrite(s, _cg_k);
+}

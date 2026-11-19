@@ -32,7 +32,13 @@ public enum CgInstanceKind {
      * ({@code cg_env.glsl}'s {@code CgObjectData}) is the table's; an instance carries its id, and beside it its
      * material's arena slot ({@link CgMaterialArena}), which the frame builder writes.
      */
-    OBJECT(objectIdFormat(), 2);
+    OBJECT(objectIdFormat(), 2),
+
+    /**
+     * The UI canvas's element record, drawn by vertex pulling: a draw of n records is one instance over 6n vertices,
+     * its first instance where they start ({@code CgUiElements}).
+     */
+    ELEMENT(elementFormat());
 
     /** The GLSL buffer the object records are read from, declared by {@code cg_env.glsl}: the table, or a draw's own. */
     public static final String OBJECT_BLOCK_NAME = "CgObjectDataBuffer";
@@ -105,6 +111,21 @@ public enum CgInstanceKind {
                 // another 16 -- add a third when a feature needs it, not before.
                 .vec4("custom0")
                 .vec4("custom1")
+                .build();
+    }
+
+    /** Whether a draw of this kind pulls its records by vertex: one instance, six vertices a record. */
+    public boolean pulled() {
+        return this == ELEMENT;
+    }
+
+    /** {@code CgUiElements}' record: see its field offsets, which must agree. */
+    private static CgBufferLayout elementFormat() {
+        return CgBufferLayout
+                .builder("UiElement", CgBufferLayout.MemoryLayout.STD430)
+                .vec4("rect").vec4("uv").uvec4("radii").uvec4("borderColor")
+                .uint("widthsTR").uint("widthsBL").uint("color").uint("flags")
+                .float_("node").uint("clip").uint("fadeBoost").uint("paint")
                 .build();
     }
 

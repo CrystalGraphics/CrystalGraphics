@@ -1,12 +1,13 @@
 package com.crystalgraphics.gpu.resource;
 
+import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.render.canvas.CgCurveBatch;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
 import com.crystalgraphics.text.render.CgTextMaterials;
 
@@ -65,6 +66,8 @@ public final class CgEngineBufferRegistry {
         // A quad or curve is positioned through its spatial node, so either brings the palette with it.
         register("quad", CgQuadBatch::instanceBuffer, CgQuadBatch.MACRO_NAME,
                 "crystalgraphics:shaders/canvas/primitives/quad.glsl", "palette");
+        register("element", CgUiElements::buffer, CgUiElements.MACRO_NAME,
+                "crystalgraphics:shaders/canvas/primitives/element.glsl", "palette");
         register("curve", CgCurveBatch::instanceBuffer, CgCurveBatch.MACRO_NAME,
                 "crystalgraphics:shaders/canvas/primitives/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,

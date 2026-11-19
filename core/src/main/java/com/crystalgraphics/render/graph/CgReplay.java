@@ -7,7 +7,7 @@ import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;

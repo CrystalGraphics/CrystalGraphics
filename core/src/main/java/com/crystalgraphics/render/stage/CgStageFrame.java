@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.stage;
 
+import java.util.function.Supplier;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
@@ -273,7 +274,7 @@ public final class CgStageFrame {
      * @return the step, to time or follow: valid until the firing executes
      */
     public CgPass.Include include(CgFrame frame) {
-        canvas.endPass();
+        endPasses();
         return recording.include(frame);
     }
 
@@ -284,11 +285,12 @@ public final class CgStageFrame {
      * @param keepRequested skip every pass writing a requested texture, leaving it as the last execution did
      */
     public CgPass.Include includeAgain(CgFrame frame, boolean keepRequested) {
-        canvas.endPass();
+        endPasses();
         return recording.includeAgain(frame, keepRequested);
     }
 
     private CgCanvas canvasIn(boolean scaledPixels) {
+        if (drawer != null) drawer.endPass();   // what the UI canvas drew lands first, in paint order
         if (scaledPixels != guiPixels) {
             guiPixels = scaledPixels;
             if (canvas.recording()) canvas.constants(canvasCamera());   // lands what was drawn under the other camera
@@ -312,6 +314,33 @@ public final class CgStageFrame {
         canvas.origin(camera.x(), camera.y(), camera.z());
     }
 
+    /**
+     * Something else drawing into this frame's turns beside {@link #canvas()}: the UI canvas
+     * ({@code CgCanvas.on(frame)}). Its pass ends where this frame's own canvas's does, so the two keep paint order.
+     * Engine.
+     */
+    public interface Drawer {
+        /** Lands what is drawn: something else draws next. */
+        void endPass();
+
+        /** The turn is over: land everything and record nowhere. */
+        void endTurn();
+    }
+
+    @Nullable private Drawer drawer;
+
+    /** The drawer this frame carries, made by {@code make} at the first ask. Engine. */
+    public <T extends Drawer> T drawer(Class<T> type, Supplier<T> make) {
+        if (drawer == null) drawer = make.get();
+        return type.cast(drawer);
+    }
+
+    /** Lands what both canvases drew: something recorded outside them comes next. */
+    private void endPasses() {
+        canvas.endPass();
+        if (drawer != null) drawer.endPass();
+    }
+
     /** A renderer's turn starts: what it draws on the canvas records into this firing, in window pixels. */
     void turnBegins(CgRenderStage stage) {
         this.stage = stage;
@@ -322,5 +351,6 @@ public final class CgStageFrame {
     /** A renderer's turn ends: what it drew on the canvas lands, in a pass of its own. */
     void turnEnds() {
         canvas.stop();
+        if (drawer != null) drawer.endTurn();
     }
 }

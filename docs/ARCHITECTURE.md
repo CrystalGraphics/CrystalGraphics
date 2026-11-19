@@ -82,6 +82,7 @@ The build view (Java levels, toolchains, what a consumer build includes) is `doc
 | [`docs/WIDGETS.md`](WIDGETS.md) | A HUD element as an asset: widget trees laid out by Slate's rules, retainer boxes, widget animations, widgets over points in the world, the UI scale |
 | **[`docs/CANVAS.md`](CANVAS.md)** | **Drawing anything flat**: quads, curves and text on a HUD, the screen or in the world, through a stage's canvas or one of your own; materials, order and batching, recording a frame |
 | **[`docs/PAINT.md`](PAINT.md)** | **What paints**: gradients, brushes and sprite sheets, grids, vector paths and strokes, filters, shadows and glass looks, as values shared by the canvas and the world |
+| **[`docs/UI_CANVAS.md`](UI_CANVAS.md)** | **The UI canvas**: `CgCanvas.on(frame)`, items and their state, how its element records batch and draw | Drawing 2D UI on a stage or into a texture |
 | **[`docs/RENDER_STATE.md`](RENDER_STATE.md)** | **Who owns GPU state**: pipelines on Vulkan, the GL device's emulated PSOs and state filter (and why GL 4.6 still needs one), the host hand-over at a section's edge, foreign GL inside a frame |
 | **[`docs/MINECRAFT_RENDERING_CONVENTIONS.md`](MINECRAFT_RENDERING_CONVENTIONS.md)** | **Before drawing into Minecraft's frame, and with every new Minecraft version**: how each version changed that frame (26.2's reversed depth, float depth, blend and sampler state left behind) and what the engine does about each |
 

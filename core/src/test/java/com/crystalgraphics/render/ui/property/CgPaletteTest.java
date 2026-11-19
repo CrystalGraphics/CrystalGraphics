@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.property;
+package com.crystalgraphics.render.ui.property;
 
 import org.junit.Test;
 

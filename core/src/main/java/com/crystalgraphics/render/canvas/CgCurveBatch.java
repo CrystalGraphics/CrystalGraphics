@@ -12,7 +12,7 @@ import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.api.buffer.CgGpuType;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 

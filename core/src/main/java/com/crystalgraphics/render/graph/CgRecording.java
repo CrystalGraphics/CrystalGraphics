@@ -14,8 +14,8 @@ import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
-import com.crystalgraphics.render.property.CgEffectTree;
-import com.crystalgraphics.render.property.CgSpatialTree;
+import com.crystalgraphics.render.ui.property.CgEffectTree;
+import com.crystalgraphics.render.ui.property.CgSpatialTree;
 import com.crystalgraphics.util.CgBoxedInts;
 
 import javax.annotation.Nullable;

@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.property;
+package com.crystalgraphics.render.ui.property;
 
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;

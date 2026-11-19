@@ -13,7 +13,7 @@ import com.crystalgraphics.gpu.resource.CgShaderBufferRegistry;
 import com.crystalgraphics.gpu.staging.CgBufferWriter;
 import com.crystalgraphics.gpu.staging.CgStagingBuffer;
 import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.render.property.CgPalette;
+import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import org.joml.Matrix4f;

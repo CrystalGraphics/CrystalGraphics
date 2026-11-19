@@ -34,7 +34,7 @@ final class UiDomain {
         if (primitive == null) {
             throw t.error(kindSetting == null ? file.domainToken() : kindSetting.valueToken(), "'Primitive " + kind
                     + "' has no file: " + CgShaderTemplates.location(kind, "canvas/primitives", "primitive")
-                    + " (the engine's: Quad, Curve, Text)");
+                    + " (the engine's: Element, Quad, Curve, Text)");
         }
         CgShaderSyntax.Block state = file.block("RenderState");
         if (state != null) {
