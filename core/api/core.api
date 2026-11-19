@@ -2495,6 +2495,8 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public endTurn ()V
   method public fill (FFFFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public fill (FFFFLcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public fill (Lcom/crystalgraphics/api/vector/CgVectorPath;I)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public fill (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public image (Lcom/crystalgraphics/api/paint/brush/CgBrush;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public image (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public intensity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2508,6 +2510,8 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public save ()Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public scale ()F
   method public scale (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;I)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public text (Lcom/crystalgraphics/api/text/CgText;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public text (Lcom/crystalgraphics/api/text/CgText;FFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public textGamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2596,6 +2600,7 @@ com/crystalgraphics/api/canvas/CgPaintChunk$Refusal
   field public,static,final OUTER_CLIP Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final OUTER_NODE Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final PASS Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
+  field public,static,final STALE_PATHS Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final STALE_TEXT Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public,static values ()[Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
@@ -15484,6 +15489,7 @@ com/crystalgraphics/render/ui/element/CgUiElements
   field public,static,final FLAGS I
   field public,static,final FLAG_BORDER I
   field public,static,final FLAG_CHECKER I
+  field public,static,final FLAG_COVERAGE I
   field public,static,final FLAG_PREMULTIPLIED I
   field public,static,final FLAG_ROUNDED I
   field public,static,final FLOATS I
@@ -15506,9 +15512,108 @@ com/crystalgraphics/render/ui/element/CgUiElements
   method public,static kind ([FI)I
   method public,static nodes ([FIFI)V
   method public,static opacity ([FIFF)V
+  method public,static paintFrame ([FIFFFFFFFF)V
   method public,static radii ([FIFFFFFFFF)V
   method public,static rect ([FIFFFF)V
   method public,static uv ([FIFFFF)V
+com/crystalgraphics/render/ui/path/CgPathCache
+  access public,final
+  extends java/lang/Object
+  field public,static,final FORMAT Lcom/crystalgraphics/platform/rhi/format/CgFormat;
+  field public,static,final MAX_PX I
+  field public,static,final PAD I
+  field public,static,final SHARED Lcom/crystalgraphics/render/ui/path/CgPathCache;
+  field public,static,final SIZE I
+  method public abandon (Ljava/lang/Object;)V
+  method public claim (Lcom/crystalgraphics/render/ui/path/CgPathCache$Key;IILjava/lang/Object;)Lcom/crystalgraphics/render/ui/path/CgPathCache$Entry;
+  method public claims ()I
+  method public destroy ()V
+  method public find (Lcom/crystalgraphics/render/ui/path/CgPathCache$Key;)Lcom/crystalgraphics/render/ui/path/CgPathCache$Entry;
+  method public ready (Lcom/crystalgraphics/render/ui/path/CgPathCache$Entry;)V
+  method public ready (Lcom/crystalgraphics/render/ui/path/CgPathCache$Generation;)V
+  method public resets ()I
+com/crystalgraphics/render/ui/path/CgPathCache$Entry
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public generation ()Lcom/crystalgraphics/render/ui/path/CgPathCache$Generation;
+  method public height ()I
+  method public origin (FF)V
+  method public originX ()F
+  method public originY ()F
+  method public owner ()Ljava/lang/Object;
+  method public ready ()Z
+  method public takeBuild ()Z
+  method public takeClear ()Z
+  method public takeRelease ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public width ()I
+  method public x ()I
+  method public y ()I
+com/crystalgraphics/render/ui/path/CgPathCache$Generation
+  access public,final
+  extends java/lang/Object
+  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+com/crystalgraphics/render/ui/path/CgPathCache$Key
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;FF)V
+  method public path ()Lcom/crystalgraphics/api/vector/CgVectorPath;
+  method public scaleX ()F
+  method public scaleY ()F
+  method public stroke ()Lcom/crystalgraphics/api/vector/CgStroke;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/ui/path/CgPathCells
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public fill (Ljava/util/List;ZFF)I
+  method public records ()[F
+com/crystalgraphics/render/ui/path/CgPathDash
+  access public,final
+  extends java/lang/Object
+  method public,static apply (Ljava/util/List;Lcom/crystalgraphics/api/vector/CgStroke;)Ljava/util/List;
+com/crystalgraphics/render/ui/path/CgPathFlattener
+  access public,final
+  extends java/lang/Object
+  field public,static,final TOLERANCE F
+  method public,static flatten (Lcom/crystalgraphics/api/vector/CgVectorPath;FFFFFF)Ljava/util/List;
+  method public,static transform (Ljava/util/List;FFFFFF)Ljava/util/List;
+com/crystalgraphics/render/ui/path/CgPathFlattener$Contour
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/util/List;Z)V
+  method public closed ()Z
+  method public points ()Ljava/util/List;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/ui/path/CgPathStroker
+  access public,final
+  extends java/lang/Object
+  method public,static outline (Ljava/util/List;Lcom/crystalgraphics/api/vector/CgStroke;F)Ljava/util/List;
+com/crystalgraphics/render/ui/path/CgPathTriangulator
+  access public,final
+  extends java/lang/Object
+  field public,static,final BOTTOM I
+  field public,static,final LEFT I
+  field public,static,final RIGHT I
+  field public,static,final TOP I
+  method public,static fill (Ljava/util/List;Z)[F
+  method public,static fill (Ljava/util/List;ZFF)Lcom/crystalgraphics/render/ui/path/CgPathTriangulator$Fill;
+  method public,static fill (Ljava/util/List;ZFF[F)Lcom/crystalgraphics/render/ui/path/CgPathTriangulator$Fill;
+com/crystalgraphics/render/ui/path/CgPathTriangulator$Fill
+  access public,final,record
+  extends java/lang/Record
+  method public <init> ([F[I[I)V
+  method public cells ()[F
+  method public edges ()[I
+  method public slice ()[I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/render/ui/property/CgEffectTree
   access public,final
   extends java/lang/Object
