@@ -110,6 +110,43 @@ Every path draws as exact-area coverage: its cells summed into a raster, then on
   its own raster until that build has executed (the publication rule, `CgPathCache`).
 - A brush or a grid fills a path through a mask layer, and a path clip is one too (`c.layer().mask(path)`, UI8).
 
+## SVG
+
+A `CgSvg` is a parsed document: immutable, shared, safe on any thread. It draws as a brush, so it goes anywhere a
+brush does; `canvas.svg(...)` is the short form.
+
+```java
+static final CgSvg SAVE = CgSvg.of("mymod:ui/icons/save.svg");            // loaded once, shared; null if unreadable
+
+canvas.svg(SAVE, x, y, 16, 16);                                            // its own colours, fitted and centred
+canvas.image(CgBrush.svg(SAVE).color(theme.text()), x, y, 16, 16);         // currentColor bound at draw
+canvas.image(CgBrush.svg(SAVE).color(text).tint(0x80FFFFFF), x, y, 16, 16); // and everything at half alpha
+canvas.image(CgBrush.svg(OUTLINE).color(accent).flat(1.5f), x, y, 24, 24);  // a silhouette, its strokes 1.5 units
+canvas.image(CgBrush.svg(BAR).fit(CgFit.FILL), x, y, 200, 8);              // stretched, not fitted
+canvas.box(x, y, 32, 32).fill(CgBrush.svg(SAVE)).border(1, 0xFF808080).draw();  // in a box, its border over it
+```
+
+A sprite sheet's entries are its symbols, each in its own `viewBox`:
+
+```java
+CgSvg arrow = CgSvg.of("mymod:ui/icons/sheet.svg#arrow");                 // or of(sheet).symbol("arrow")
+```
+
+It is always sharp. Up to `CgPathCache.MAX_PX` device pixels, axis-aligned, each draw op's exact-area coverage is
+rasterised once, at the size shown, into the atlas paths share (a fill in its own colours premultiplied, everything
+else white and tinted at draw), and drawn 1:1 on the pixel grid. Larger or turned, it is rasterised for its frame.
+
+- **Pixel snapping decides the grid.** Snapped (the default), an icon lands on whole pixels. Unsnapped
+  (`pixelSnap(false)`, an icon mid-animation), it draws between pixels from its exact raster, or from a ladder of
+  sixteen raster sizes per doubling, filtered, so a moving icon looks as it does at rest.
+- **The file's curves are flattened for the size drawn** (`svg.tier(devicePx)`): finer as the icon grows.
+- **A `<style>` block or a `class=` fails the load**, naming the file: export with presentation attributes
+  (Illustrator's "Presentation Attributes", SVGO's `inlineStyles`).
+- **Not drawn**: text, `clipPath`, masks, dashes, filters. A drop shadow is parsed and skipped with a log line, once
+  per file, until SVG filters draw as layer filters.
+- `CgSvg.revalidate()` on a resource reload drops only the documents whose file changed; `CgSvg.generation()` tells a
+  holder its document may be stale. `CgSvg.preload(paths)` parses on the job pool ahead of the first frame.
+
 ## Frames recorded off the render thread
 
 A document or a heavy HUD records on its own thread and is shown on the render thread: `CgCanvasRecorder` paints into

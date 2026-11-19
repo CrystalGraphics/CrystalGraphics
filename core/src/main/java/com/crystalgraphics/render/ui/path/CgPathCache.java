@@ -7,8 +7,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import javax.annotation.Nullable;
 
-import com.crystalgraphics.api.vector.CgStroke;
-import com.crystalgraphics.api.vector.CgVectorPath;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.graph.CgExecutor;
@@ -16,8 +14,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 
 /**
  * The path cache: coverage rasters of small paths in one atlas the process shares, so an icon drawn every frame by any
- * canvas on any thread is rasterised once. A cell is a path's exact-area coverage at one scale, white with its area
- * in alpha, tinted or painted at draw; it is placed 1:1 on the pixel grid.
+ * canvas on any thread is rasterised once. A cell is a path's or an SVG op's exact-area coverage at one scale, white
+ * with its area in alpha (an SVG fill in its own colours: premultiplied), tinted or painted at draw; it is placed 1:1 on the pixel grid.
  *
  * <p><b>The publication rule</b>, a guarantee for canvases recording on several threads: a cell is drawn only by the
  * canvas that claimed it until its build has executed, when a callback recorded after the build opens it to every
@@ -32,7 +30,7 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  * // claimed with needsBuild(): record the clear (clears()), the build, then a callback calling ready(cell)
  * }</pre>
  *
- * <p>Ported from CrystalGUI's {@code SvgAtlas}, keyed by path in place of document.</p>
+ * <p>Ported from CrystalGUI's {@code SvgAtlas}.</p>
  */
 public final class CgPathCache {
 
@@ -48,8 +46,11 @@ public final class CgPathCache {
     /** Coverage sums in alpha: a half float keeps the exact areas. */
     public static final CgFormat FORMAT = CgFormat.RGBA16_FLOAT;
 
-    /** A raster's identity: the path, its stroke (null for a fill) and the device scale it is drawn at. */
-    public record Key(CgVectorPath path, @Nullable CgStroke stroke, float scaleX, float scaleY) {
+    /**
+     * A raster's identity: what is drawn (a path, an SVG op), how (a path's stroke, null for a fill) and the device
+     * scale it is rasterised at. {@code shape} and {@code style} compare by {@code equals}.
+     */
+    public record Key(Object shape, @Nullable Object style, float scaleX, float scaleY) {
     }
 
     /** One texture of cells, and whether its clear has executed. */

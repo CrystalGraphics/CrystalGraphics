@@ -197,7 +197,7 @@ public final class CgPathTriangulator {
      */
     public record Fill(float[] cells, int[] slice, int[] edges) {
 
-        int count() {
+        public int count() {
             return slice.length;
         }
     }

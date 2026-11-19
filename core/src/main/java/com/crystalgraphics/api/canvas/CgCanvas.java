@@ -3,6 +3,9 @@ package com.crystalgraphics.api.canvas;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 import javax.annotation.Nullable;
 
@@ -12,6 +15,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.paint.CgPaint;
 import com.crystalgraphics.api.paint.brush.CgBrush;
+import com.crystalgraphics.api.paint.brush.CgFit;
 import com.crystalgraphics.api.paint.brush.CgTiling;
 import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.paint.gradient.CgGradient;
@@ -25,6 +29,7 @@ import com.crystalgraphics.api.vector.CgFillRule;
 import com.crystalgraphics.api.vector.CgStroke;
 import com.crystalgraphics.api.vector.CgStrokeJoin;
 import com.crystalgraphics.api.vector.CgVectorPath;
+import com.crystalgraphics.api.vector.svg.CgSvg;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
@@ -43,6 +48,8 @@ import com.crystalgraphics.render.ui.path.CgPathCells;
 import com.crystalgraphics.render.ui.path.CgPathFlattener;
 import com.crystalgraphics.render.ui.path.CgPathStroker;
 import com.crystalgraphics.render.ui.property.CgPalette;
+import com.crystalgraphics.render.ui.svg.CgSvgCells;
+import com.crystalgraphics.render.ui.svg.CgSvgOps;
 import com.crystalgraphics.text.render.CgTextBatch;
 import com.crystalgraphics.text.render.CgTextGamma;
 import org.joml.Matrix4f;
@@ -60,6 +67,7 @@ import org.joml.Matrix4fc;
  * canvas.box(8, 56, 200, 40).fill(CgGradient.linear(90).stop(0, 0xFF3060FF).stop(1, 0xFF60C0FF))
  *       .radius(8).border(1, 0x40FFFFFF).shadow(CgShadow.of(0, 4, 12, 0x80000000)).draw();
  * canvas.image(CgBrush.sprite(sheet, "button"), 8, 104, 120, 24);    // a nine-slice from a sprite sheet
+ * canvas.svg(CgSvg.of("mymod:ui/icons/save.svg"), 8, 136, 16, 16);  // an icon, sharp at any size
  * }</pre>
  *
  * <pre>{@code
@@ -87,6 +95,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node. */
     private static final int SAVED = 18;
 
+    private static final Logger LOGGER = Logger.getLogger(CgCanvas.class.getName());
+
     private final CgUiRecorder recorder = new CgUiRecorder();
     private final float[] record = new float[CgUiElements.FLOATS];
     private final CgCanvasBox box = new CgCanvasBox(this);
@@ -103,6 +113,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** Records a path's coverage raster: its own pass, before the element that paints it. */
     private final CgUiRecorder coverage = new CgUiRecorder();
     private final CgPathCells cells = new CgPathCells();
+    private final CgSvgCells svgCells = new CgSvgCells();
     private final CgCamera atlasCamera = new CgCamera().screenLens(CgPathCache.SIZE, CgPathCache.SIZE);
     private final CgCamera rasterCamera = new CgCamera();
     private final float[] bounds = new float[4];
@@ -535,7 +546,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         return box(x, y, w, h).fill(texture).draw();
     }
 
-    /** A brush over a rect: its region, nine-slice, tiling, sampler and tint. */
+    /** A brush over a rect: its region, nine-slice, tiling, sampler and tint; an SVG brush's document fitted to it. */
     public CgCanvas image(CgBrush brush, float x, float y, float w, float h) {
         return box(x, y, w, h).fill(brush).draw();
     }
@@ -751,6 +762,18 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** A claimed cell's raster, recorded into this recording, opened to every canvas once it has executed. */
     private void build(CgPathCache.Entry cell, CgVectorPath path, @Nullable CgStroke stroke, int cornerX, int cornerY) {
+        CgGraphTexture atlas = atlasFor(cell);
+        cell.origin(-cornerX, -cornerY);
+        raster(atlas, false, atlasCamera, path, stroke, a, 0f, 0f, d, cell.x() - cornerX, cell.y() - cornerY,
+                cell.x(), cell.y(), cell.x() + cell.width(), cell.y() + cell.height());
+        recording.callback("cg.path.ready", null, () -> CgPathCache.SHARED.ready(cell), atlas);
+    }
+
+    /**
+     * A claimed cell's atlas, its generation's release and clear recorded first when this canvas owes them: the clear
+     * opens the generation to every canvas once it has executed.
+     */
+    private CgGraphTexture atlasFor(CgPathCache.Entry cell) {
         CgGraphTexture atlas = cell.texture();
         CgGraphTexture released = cell.takeRelease();
         if (released != null) recording.release(released);
@@ -760,10 +783,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             CgPathCache.Generation generation = cell.generation();
             recording.callback("cg.path.atlas-ready", null, () -> CgPathCache.SHARED.ready(generation), atlas);
         }
-        cell.origin(-cornerX, -cornerY);
-        raster(atlas, false, atlasCamera, path, stroke, a, 0f, 0f, d, cell.x() - cornerX, cell.y() - cornerY,
-                cell.x(), cell.y(), cell.x() + cell.width(), cell.y() + cell.height());
-        recording.callback("cg.path.ready", null, () -> CgPathCache.SHARED.ready(cell), atlas);
+        return atlas;
     }
 
     /**
@@ -827,6 +847,211 @@ public final class CgCanvas implements CgStageFrame.Drawer {
                 (ly - path.minY()) / bh, bw, bh);
     }
 
+    // ── SVG ────────────────────────────────────────────────────────────
+
+    /** {@code svg} fitted into the rect and centred, in its own colours: {@code image(CgBrush.svg(svg), x, y, w, h)}. */
+    public CgCanvas svg(CgSvg svg, float x, float y, float w, float h) {
+        return image(CgBrush.svg(svg), x, y, w, h);
+    }
+
+    /** Below this many raster pixels across, an icon's raster is built at this and drawn minified: two texels are no icon. */
+    private static final float MIN_RASTER_PX = 8f;
+    /** Raster scales per doubling, off the pixel grid: a raster is drawn at most a sixteenth of a doubling smaller. */
+    private static final float LADDER_STEPS = 16f;
+
+    /** Documents whose drop shadow was skipped, logged once each. Threads: any (concurrent). */
+    private static final Set<CgSvg> SHADOWS_LOGGED = ConcurrentHashMap.newKeySet();
+
+    /** An SVG op's raster identity in the path cache: the tier's op, coloured or white, a stroke's raster half-width. */
+    private record SvgOp(CgSvg tier, int op, boolean coloured, float halfWidth) {
+    }
+
+    /**
+     * An SVG brush over a rect: each op's exact-area coverage, from the path cache's atlas when the icon is at most
+     * {@link CgPathCache#MAX_PX} device pixels and axis-aligned, else rasterised for this frame; then an element per op
+     * in document order, tinted. Snapped, an icon is drawn 1:1 on the pixel grid; unsnapped (animated) between pixels,
+     * from its exact raster or the ladder's next rung, filtered.
+     */
+    private void svg(CgBrush brush, float x, float y, float w, float h, int tint) {
+        CgSvg doc = brush.svg();
+        float dw = doc.width(), dh = doc.height();
+        if (doc.isEmpty() || !(dw > 0f && dh > 0f && w > 0f && h > 0f) || opacity <= 0f) return;
+        float sx = w / dw, sy = h / dh, ox = x, oy = y;
+        if (brush.fit() == CgFit.CONTAIN) {
+            sx = sy = Math.min(sx, sy);
+            ox = x + (w - dw * sx) * 0.5f;
+            oy = y + (h - dh * sy) * 0.5f;
+        }
+        // The document's units to device pixels
+        float da = a * sx, db = b * sx, dc = c * sy, dd = d * sy;
+        float dtx = a * ox + c * oy + tx, dty = b * ox + d * oy + ty;
+        float devicePx = Math.max(dw * (float) Math.hypot(da, db), dh * (float) Math.hypot(dc, dd));
+        boolean cached = db == 0f && dc == 0f && da > 0f && dd > 0f && devicePx <= CgPathCache.MAX_PX;
+        if (cached && snap) {
+            dtx = Math.round(dtx);
+            dty = Math.round(dty);
+        }
+        // A flat brush's stroke width is the canvas's units: device pixels by the transform's scale
+        float override = brush.flat() && brush.strokeWidth() > 0f ? brush.strokeWidth() * 0.5f * linearScale() : 0f;
+        float reach = override * CgSvgOps.Op.CAP_REACH;
+        affineBounds(doc.minX(), doc.minY(), doc.maxX(), doc.maxY(), da, db, dc, dd, dtx, dty);
+        if (clipNode == base && (bounds[2] + reach <= clipX0 || bounds[3] + reach <= clipY0 || bounds[0] - reach >= clipX1
+                || bounds[1] - reach >= clipY1)) {
+            return;
+        }
+        CgSvg tier = doc.tier(devicePx);
+        if (!brush.flat() && tier.hasShadow() && SHADOWS_LOGGED.add(doc)) {
+            LOGGER.info(doc + " has a drop shadow, which the canvas does not draw yet (SVG filters draw as layer filters)");
+        }
+        List<CgSvgOps.Op> ops = tier.ops();
+        for (int i = 0; i < ops.size(); i++) {
+            svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+        }
+    }
+
+    /** One op: its coverage, cached or this frame's, then the element painting through it. */
+    private void svgOp(CgSvg tier, int index, CgSvgOps.Op op, CgBrush brush, int tint, boolean cached, float override,
+                       float da, float db, float dc, float dd, float dtx, float dty) {
+        boolean coloured = op.coloured() && !brush.flat();
+        float halfWidth = op.fill() ? 0f : override;
+        float[] ob = op.bounds();
+        CgGraphTexture texture = null;
+        float u0 = 0f, v0 = 1f, u1 = 1f, v1 = 0f, ex0 = 0f, ey0 = 0f, ex1 = 0f, ey1 = 0f;
+        if (cached) {
+            // The raster's scale: the draw's, floored to MIN_RASTER_PX across, off the grid the ladder's rung at or above
+            float rx = da, ry = dd;
+            float span = Math.max(tier.width() * rx, tier.height() * ry);
+            if (span < MIN_RASTER_PX) {
+                rx *= MIN_RASTER_PX / span;
+                ry *= MIN_RASTER_PX / span;
+            }
+            boolean onPixel = dtx == Math.round(dtx) && dty == Math.round(dty) && rx == da && ry == dd;
+            CgPathCache.Entry cell = null;
+            int cornerX = 0, cornerY = 0, w = 0, h = 0;
+            for (int attempt = 0; attempt < 2 && cell == null; attempt++) {
+                if (attempt == 1) {
+                    if (onPixel) break;
+                    float k = rung(Math.max(rx, ry)) / Math.max(rx, ry);
+                    rx *= k;
+                    ry *= k;
+                }
+                float rasterHalf = halfWidth * rx / da;
+                int grow = (int) Math.ceil(rasterHalf * CgSvgOps.Op.CAP_REACH);
+                cornerX = (int) Math.floor(ob[0] * rx) - CgPathCache.PAD - grow;
+                cornerY = (int) Math.floor(ob[1] * ry) - CgPathCache.PAD - grow;
+                w = (int) Math.ceil(ob[2] * rx) + CgPathCache.PAD + grow - cornerX;
+                h = (int) Math.ceil(ob[3] * ry) + CgPathCache.PAD + grow - cornerY;
+                CgPathCache.Key key = new CgPathCache.Key(new SvgOp(tier, index, coloured, rasterHalf), null, rx, ry);
+                cell = CgPathCache.SHARED.find(key);
+                // The exact raster is built only on the grid; between pixels a missing one is the rung's
+                if (cell == null && (onPixel || attempt == 1)) cell = CgPathCache.SHARED.claim(key, w, h, this);
+                if (cell != null && !cell.ready() && cell.owner() != this) cell = null;
+                if (cell != null && cell.takeBuild()) {
+                    CgGraphTexture atlas = atlasFor(cell);
+                    cell.origin(-cornerX, -cornerY);
+                    rasterSvg(atlas, false, atlasCamera, op, coloured, rasterHalf, rx, 0f, 0f, ry,
+                            cell.x() - cornerX, cell.y() - cornerY, cell.x(), cell.y(), cell.x() + cell.width(),
+                            cell.y() + cell.height());
+                    CgPathCache.Entry built = cell;
+                    recording.callback("cg.path.ready", null, () -> CgPathCache.SHARED.ready(built), atlas);
+                }
+            }
+            if (cell != null) {
+                texture = cell.texture();
+                float kx = da / rx, ky = dd / ry;
+                ex0 = dtx + cornerX * kx;
+                ey0 = dty + cornerY * ky;
+                ex1 = ex0 + w * kx;
+                ey1 = ey0 + h * ky;
+                u0 = cell.x() / (float) CgPathCache.SIZE;
+                u1 = (cell.x() + w) / (float) CgPathCache.SIZE;
+                // A render target's row 0 is its bottom
+                v0 = 1f - cell.y() / (float) CgPathCache.SIZE;
+                v1 = 1f - (cell.y() + h) / (float) CgPathCache.SIZE;
+                pathDraws++;
+            }
+        }
+        if (texture == null) {
+            // This frame's raster, in device pixels: larger, turned, or another canvas's cell not built yet
+            affineBounds(ob[0], ob[1], ob[2], ob[3], da, db, dc, dd, dtx, dty);
+            int grow = (int) Math.ceil(halfWidth * CgSvgOps.Op.CAP_REACH);
+            int cornerX = (int) Math.floor(bounds[0]) - CgPathCache.PAD - grow;
+            int cornerY = (int) Math.floor(bounds[1]) - CgPathCache.PAD - grow;
+            int w = (int) Math.ceil(bounds[2]) + CgPathCache.PAD + grow - cornerX;
+            int h = (int) Math.ceil(bounds[3]) + CgPathCache.PAD + grow - cornerY;
+            ex0 = cornerX;
+            ey0 = cornerY;
+            ex1 = cornerX + w;
+            ey1 = cornerY + h;
+            if (clipNode == base && (ex1 <= clipX0 || ey1 <= clipY0 || ex0 >= clipX1 || ey0 >= clipY1)) return;
+            texture = CgGraphTexture.transientTexture("canvas_svg", CgTextureDesc.of(w, h, CgPathCache.FORMAT));
+            rasterSvg(texture, true, rasterCamera.screenLens(w, h), op, coloured, halfWidth, da, db, dc, dd,
+                    dtx - cornerX, dty - cornerY, 0f, 0f, w, h);
+            u0 = 0f;
+            u1 = 1f;
+            v0 = 1f;
+            v1 = 0f;
+        } else if (clipNode == base && (ex1 <= clipX0 || ey1 <= clipY0 || ex0 >= clipX1 || ey0 >= clipY1)) {
+            return;
+        }
+
+        pass();
+        clear();
+        if (coloured) {
+            // Its own colours, premultiplied in the raster: the tint multiplies them
+            CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, tint, 0f);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, true);
+        } else {
+            int argb = brush.flat() || op.currentColor() ? brush.color() : op.argb();
+            CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, mul(argb, tint), 0f);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_COVERAGE, true);
+        }
+        CgUiElements.uv(record, 0, u0, v0, u1, v1);
+        CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
+        finish(base, 1f);
+        element(elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+    }
+
+    /** Records op {@code op}'s coverage into {@code texture} under the affine, landing the canvas's pass first. */
+    private void rasterSvg(CgGraphTexture texture, boolean clear, CgCamera lens, CgSvgOps.Op op, boolean coloured,
+                           float halfWidth, float ra, float rb, float rc, float rd, float rtx, float rty,
+                           float x0, float y0, float x1, float y1) {
+        recorder.end();
+        int n = svgCells.op(op, coloured, halfWidth, ra, rb, rc, rd, rtx, rty);
+        coverage.begin(recording, texture, clear ? CgLoad.CLEAR : CgLoad.load(), lens);
+        if (n > 0) {
+            coverage.draw(CgInstanceKind.CURVE, coloured ? CgCanvasPrimitives.colourCoverage() : CgCanvasPrimitives.coverage(),
+                    null, null, null, 0, svgCells.records(), 0, n, x0, y0, x1, y1);
+        } else if (clear) {
+            coverage.openPass();
+        }
+        coverage.end();
+    }
+
+    /** The rung of the raster ladder at or above {@code exact}: an icon growing through a hundred scales builds a dozen rasters. */
+    private static float rung(float exact) {
+        return (float) Math.pow(2.0, Math.ceil(Math.log(exact) / Math.log(2.0) * LADDER_STEPS) / LADDER_STEPS);
+    }
+
+    /** The device bounds of a local rect under the affine given, into {@link #bounds}. */
+    private void affineBounds(float x0, float y0, float x1, float y1, float ra, float rb, float rc, float rd,
+                              float rtx, float rty) {
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            float x = (i & 1) == 0 ? x0 : x1, y = (i & 2) == 0 ? y0 : y1;
+            float px = ra * x + rc * y + rtx, py = rb * x + rd * y + rty;
+            minX = Math.min(minX, px);
+            minY = Math.min(minY, py);
+            maxX = Math.max(maxX, px);
+            maxY = Math.max(maxY, py);
+        }
+        bounds[0] = minX;
+        bounds[1] = minY;
+        bounds[2] = maxX;
+        bounds[3] = maxY;
+    }
+
     // ── Drawing a box ──────────────────────────────────────────────────
 
     void draw(CgCanvasBox box) {
@@ -837,7 +1062,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         CgMaterialInterface material = box.material != null ? box.material : elementMaterial();
         if (box.shadow != null && !box.shadow.inside()) shadow(box, material);
         CgPaint paint = box.paint;
-        if (paint instanceof CgBrush brush && (brush.nineSlice() != null || brush.tiling() != CgTiling.STRETCH)) {
+        if (paint instanceof CgBrush brush && brush.svg() != null) {
+            svg(brush, box.x, box.y, w, h, mul(brush.tint(), box.argb));
+            borderOver(box, material);
+        } else if (paint instanceof CgBrush brush && (brush.nineSlice() != null || brush.tiling() != CgTiling.STRETCH)) {
             brushTiles(box, brush, material);
         } else {
             element(box, material, box.x, box.y, w, h);
@@ -892,7 +1120,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         CgCanvasTiles.of(brush, box.x, box.y, box.w, box.h, MAX_TILES, tiles);
         tiles.brush = null;
         tiles.material = null;
-        // A border, radii or the box's own colour over the slices: one more element, transparent but its border
+        borderOver(box, material);
+    }
+
+    /** A box's border over what its brush drew: one more element, transparent but its border. */
+    private void borderOver(CgCanvasBox box, CgMaterialInterface material) {
         if (box.borderTop + box.borderRight + box.borderBottom + box.borderLeft > 0f) {
             clear();
             CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, 0, 0f);
