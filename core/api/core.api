@@ -3607,6 +3607,249 @@ com/crystalgraphics/api/mesh/geckolib/CgGeckoModel
   method public skeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/geckolib/CgGeckoModel;
   method public,static read (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/geckolib/CgGeckoModel;
+com/crystalgraphics/api/paint/CgPaint
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,static color (I)Lcom/crystalgraphics/api/paint/CgPaint$Solid;
+  method public,static color (IF)Lcom/crystalgraphics/api/paint/CgPaint$Solid;
+com/crystalgraphics/api/paint/CgPaint$Solid
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/api/paint/CgPaint
+  method public <init> (IF)V
+  method public argb ()I
+  method public intensity ()F
+  method public isClear ()Z
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/paint/brush/CgBrush
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/paint/CgPaint
+  method public edges ()Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  method public edges (Lcom/crystalgraphics/api/paint/brush/CgTiling;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public equals (Ljava/lang/Object;)Z
+  method public hasRegion ()Z
+  method public hashCode ()I
+  method public nineSlice ()Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
+  method public nineSlice (Lcom/crystalgraphics/api/paint/brush/CgNineSlice;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public premultiplied ()Z
+  method public premultiplied (Z)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public region (IIII)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public regionHeight ()I
+  method public regionWidth ()I
+  method public regionX ()I
+  method public regionY ()I
+  method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
+  method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public tiling ()Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  method public tiling (Lcom/crystalgraphics/api/paint/brush/CgTiling;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public tint ()I
+  method public tint (I)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public toString ()Ljava/lang/String;
+  method public,static sprite (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public,static texture (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+com/crystalgraphics/api/paint/brush/CgNineSlice
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (IIIIZF)V
+  method public bottom ()I
+  method public fill ()Z
+  method public hollow ()Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
+  method public left ()I
+  method public right ()I
+  method public scale ()F
+  method public scaled (F)Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
+  method public top ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (IIII)Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
+  method public,static uniform (I)Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
+com/crystalgraphics/api/paint/brush/CgSpriteSheet
+  access public,final
+  extends java/lang/Object
+  method public brush (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public id ()Ljava/lang/String;
+  method public names ()Ljava/util/Set;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgSpriteSheet;
+com/crystalgraphics/api/paint/brush/CgTiling
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final REPEAT Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  field public,static,final REPEAT_X Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  field public,static,final REPEAT_Y Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  field public,static,final ROUND Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  field public,static,final SPACE Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  field public,static,final STRETCH Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgTiling;
+  method public,static values ()[Lcom/crystalgraphics/api/paint/brush/CgTiling;
+com/crystalgraphics/api/paint/effect/CgBackdropFilter
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final ACRYLIC Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final CLEAR Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final DEFAULT Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final FROSTED Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final LIQUID Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final MICA Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final PRISM Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public <init> (FFIFFFFFFFFFFFF)V
+  method public bezel ()F
+  method public blur ()F
+  method public blur (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public chromatic ()F
+  method public chromatic (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public color (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public glow ()F
+  method public highlight (FFFFF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public ior ()F
+  method public lens (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public lensReach ()F
+  method public light (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public lightX ()F
+  method public lightY ()F
+  method public luminosity ()F
+  method public noise ()F
+  method public noise (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public rim ()F
+  method public rimAmbient ()F
+  method public rimWidth ()F
+  method public saturation ()F
+  method public scaled (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public specular ()F
+  method public tint ()I
+  method public tint (I)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/paint/effect/CgFilter
+  access public,final
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public isNone ()Z
+  method public ops ()Ljava/util/List;
+  method public reach ()F
+  method public then (Lcom/crystalgraphics/api/paint/effect/CgFilter;)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public toString ()Ljava/lang/String;
+  method public,static blur (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static blur (FF)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static brightness (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static contrast (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static dropShadow (FFFI)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static grayscale (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static hueRotate (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static invert (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialInterface;Ljava/lang/String;)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static matrix ([F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static opacity (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static saturate (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static sepia (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+com/crystalgraphics/api/paint/effect/CgFilter$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLUR Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  field public,static,final COLOR_MATRIX Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  field public,static,final DROP_SHADOW Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  field public,static,final MATERIAL Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  method public,static values ()[Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+com/crystalgraphics/api/paint/effect/CgFilter$Op
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;[FLcom/crystalgraphics/api/material/CgMaterialInterface;Ljava/lang/String;)V
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public kind ()Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialInterface;
+  method public textureParameter ()Ljava/lang/String;
+  method public values ()[F
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/paint/effect/CgShadow
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (FFFFIZ)V
+  method public argb ()I
+  method public blur ()F
+  method public dx ()F
+  method public dy ()F
+  method public inset ()Lcom/crystalgraphics/api/paint/effect/CgShadow;
+  method public inside ()Z
+  method public sigma ()F
+  method public spread ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (FFFFI)Lcom/crystalgraphics/api/paint/effect/CgShadow;
+  method public,static of (FFFI)Lcom/crystalgraphics/api/paint/effect/CgShadow;
+com/crystalgraphics/api/paint/gradient/CgGradient
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/paint/CgPaint
+  method public color (I)I
+  method public colorAt (F)I
+  method public dither (Z)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public dithered ()Z
+  method public equals (Ljava/lang/Object;)Z
+  method public geometry (I)F
+  method public hashCode ()I
+  method public isComplete ()Z
+  method public position (I)F
+  method public reflect ()Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public repeat ()Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public shape ()Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  method public spread ()Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+  method public spread (Lcom/crystalgraphics/api/paint/gradient/CgSpread;)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public stop (FI)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public stopCount ()I
+  method public stops ([F[I)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public toString ()Ljava/lang/String;
+  method public,static between (FFFF)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public,static conic (FFF)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public,static linear (F)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public,static radial (FFFF)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+com/crystalgraphics/api/paint/gradient/CgGradient$Shape
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final CONIC Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  field public,static,final LINEAR Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  field public,static,final RADIAL Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  field public,static,final TWO_POINT Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+  method public,static values ()[Lcom/crystalgraphics/api/paint/gradient/CgGradient$Shape;
+com/crystalgraphics/api/paint/gradient/CgSpread
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final PAD Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+  field public,static,final REFLECT Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+  field public,static,final REPEAT Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+  method public,static values ()[Lcom/crystalgraphics/api/paint/gradient/CgSpread;
+com/crystalgraphics/api/paint/pattern/CgGrid
+  access public,final,record
+  extends java/lang/Record
+  implements com/crystalgraphics/api/paint/CgPaint
+  method public <init> (IIZFFFF)V
+  method public cell (F)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
+  method public cell (FF)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
+  method public cellHeight ()F
+  method public cellWidth ()F
+  method public checker ()Z
+  method public lineColor ()I
+  method public lineHeight ()F
+  method public lineWidth ()F
+  method public secondColor ()I
+  method public width (F)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
+  method public width (FF)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static checker (II)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
+  method public,static lines (I)Lcom/crystalgraphics/api/paint/pattern/CgGrid;
 com/crystalgraphics/api/shader/CgPreprocessorException
   access public,final
   extends java/lang/RuntimeException
@@ -4082,6 +4325,131 @@ com/crystalgraphics/api/texture/CgTextures
   method public,static volume (Ljava/lang/String;II)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static volume (Ljava/lang/String;Lcom/crystalgraphics/gpu/resource/CgTextureDesc;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
   method public,static volume ([Ljava/lang/String;)Lcom/crystalgraphics/gpu/resource/CgTexture3D;
+com/crystalgraphics/api/vector/CgCornerRadii
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final NONE Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public <init> (FFFFFFFF)V
+  method public bottomLeftX ()F
+  method public bottomLeftY ()F
+  method public bottomRightX ()F
+  method public bottomRightY ()F
+  method public fitted (FF)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public isNone ()Z
+  method public isUniformCircle ()Z
+  method public scaled (F)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public topLeftX ()F
+  method public topLeftY ()F
+  method public topRightX ()F
+  method public topRightY ()F
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static elliptical (FF)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public,static of (F)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public,static of (FFFF)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+com/crystalgraphics/api/vector/CgFillRule
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final EVEN_ODD Lcom/crystalgraphics/api/vector/CgFillRule;
+  field public,static,final NON_ZERO Lcom/crystalgraphics/api/vector/CgFillRule;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/vector/CgFillRule;
+  method public,static values ()[Lcom/crystalgraphics/api/vector/CgFillRule;
+com/crystalgraphics/api/vector/CgStroke
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (FLcom/crystalgraphics/api/vector/CgStrokeCap;Lcom/crystalgraphics/api/vector/CgStrokeJoin;F[FFFF)V
+  method public cap ()Lcom/crystalgraphics/api/vector/CgStrokeCap;
+  method public cap (Lcom/crystalgraphics/api/vector/CgStrokeCap;)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public dash ([F)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public dashOffset ()F
+  method public dashOffset (F)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public dashes ()[F
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public isDashed ()Z
+  method public isUntrimmed ()Z
+  method public join ()Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+  method public join (Lcom/crystalgraphics/api/vector/CgStrokeJoin;)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public miterLimit ()F
+  method public miterLimit (F)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public toString ()Ljava/lang/String;
+  method public trim (FF)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public trimEnd ()F
+  method public trimStart ()F
+  method public width ()F
+  method public width (F)Lcom/crystalgraphics/api/vector/CgStroke;
+  method public,static of (F)Lcom/crystalgraphics/api/vector/CgStroke;
+com/crystalgraphics/api/vector/CgStrokeCap
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BUTT Lcom/crystalgraphics/api/vector/CgStrokeCap;
+  field public,static,final ROUND Lcom/crystalgraphics/api/vector/CgStrokeCap;
+  field public,static,final SQUARE Lcom/crystalgraphics/api/vector/CgStrokeCap;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/vector/CgStrokeCap;
+  method public,static values ()[Lcom/crystalgraphics/api/vector/CgStrokeCap;
+com/crystalgraphics/api/vector/CgStrokeJoin
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BEVEL Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+  field public,static,final MITER Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+  field public,static,final ROUND Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+  method public,static values ()[Lcom/crystalgraphics/api/vector/CgStrokeJoin;
+com/crystalgraphics/api/vector/CgVectorPath
+  access public,final
+  extends java/lang/Object
+  field public,static,final EMPTY Lcom/crystalgraphics/api/vector/CgVectorPath;
+  method public equals (Ljava/lang/Object;)Z
+  method public fillRule ()Lcom/crystalgraphics/api/vector/CgFillRule;
+  method public fillRule (Lcom/crystalgraphics/api/vector/CgFillRule;)Lcom/crystalgraphics/api/vector/CgVectorPath;
+  method public forEach (Lcom/crystalgraphics/api/vector/CgVectorPath$Visitor;)V
+  method public hashCode ()I
+  method public isEmpty ()Z
+  method public maxX ()F
+  method public maxY ()F
+  method public minX ()F
+  method public minY ()F
+  method public toString ()Ljava/lang/String;
+  method public transformed (FFFF)Lcom/crystalgraphics/api/vector/CgVectorPath;
+  method public verb (I)Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  method public verbCount ()I
+  method public,static builder ()Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+com/crystalgraphics/api/vector/CgVectorPath$Builder
+  access public,final
+  extends java/lang/Object
+  method public add (Lcom/crystalgraphics/api/vector/CgVectorPath;)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public addCircle (FFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public addOval (FFFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public addRect (FFFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public addRoundRect (FFFFLcom/crystalgraphics/api/vector/CgCornerRadii;)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public arcTo (FFFZZFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public build ()Lcom/crystalgraphics/api/vector/CgVectorPath;
+  method public close ()Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public cubicTo (FFFFFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public fillRule (Lcom/crystalgraphics/api/vector/CgFillRule;)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public lineTo (FF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public moveTo (FF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+  method public quadTo (FFFF)Lcom/crystalgraphics/api/vector/CgVectorPath$Builder;
+com/crystalgraphics/api/vector/CgVectorPath$Verb
+  access public,final,enum
+  extends java/lang/Enum
+  field public,final points I
+  field public,static,final CLOSE Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  field public,static,final CUBIC Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  field public,static,final LINE Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  field public,static,final MOVE Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  field public,static,final QUAD Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+  method public,static values ()[Lcom/crystalgraphics/api/vector/CgVectorPath$Verb;
+com/crystalgraphics/api/vector/CgVectorPath$Visitor
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract close ()V
+  method public,abstract cubicTo (FFFFFF)V
+  method public,abstract lineTo (FF)V
+  method public,abstract moveTo (FF)V
+  method public,abstract quadTo (FFFF)V
 com/crystalgraphics/api/vertex/CgAttribType
   access public,final,enum
   extends java/lang/Enum
@@ -12318,6 +12686,7 @@ com/crystalgraphics/render/graph/CgRecording
   method public fetch (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gpu/resource/CgReadback$Sink;)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJI)V
+  method public gradients ()Lcom/crystalgraphics/render/paint/CgGradientTable;
   method public include (Lcom/crystalgraphics/render/graph/CgFrame;)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public includeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public isSealed ()Z
@@ -12734,6 +13103,19 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
   method public,static covers (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Z
   method public,static depthPipeline (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static register ()V
+com/crystalgraphics/render/paint/CgGradientTable
+  access public,final
+  extends java/lang/Object
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final SLOT Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  method public <init> ()V
+  method public add (Lcom/crystalgraphics/api/paint/gradient/CgGradient;)I
+  method public copyFrom (Lcom/crystalgraphics/render/paint/CgGradientTable;)V
+  method public prepare ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public read (I[F)V
+  method public reset ()V
+  method public words ()I
+  method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/render/post/CgOutline
   access public,final
   extends java/lang/Object
