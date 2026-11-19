@@ -2488,6 +2488,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public clip (FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public clip (FFFFLcom/crystalgraphics/api/vector/CgCornerRadii;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public concat (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public degradedDraws ()J
   method public end ()V
   method public endChunk (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public endPass ()V
@@ -2507,6 +2508,9 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public save ()Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public scale ()F
   method public scale (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public text (Lcom/crystalgraphics/api/text/CgText;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public text (Lcom/crystalgraphics/api/text/CgText;FFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public textGamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public translate (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public,static elementMaterial ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static on (Lcom/crystalgraphics/render/stage/CgStageFrame;)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2585,11 +2589,14 @@ com/crystalgraphics/api/canvas/CgPaintChunk$Refusal
   access public,final,enum
   extends java/lang/Enum
   field public,static,final CLIP_DEPTH Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
+  field public,static,final DEGRADED Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final FRAME_TEXTURE Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
+  field public,static,final KIND Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final NONE Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final OUTER_CLIP Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final OUTER_NODE Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   field public,static,final PASS Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
+  field public,static,final STALE_TEXT Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public,static values ()[Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
 com/crystalgraphics/api/font/CgDefaultFont
@@ -4321,6 +4328,35 @@ com/crystalgraphics/api/text/CgStyledText
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
   method public,static plain (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgStyledText;
+com/crystalgraphics/api/text/CgText
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/text/CgShapedParagraph;Lcom/crystalgraphics/api/text/CgTextLayout;Lcom/crystalgraphics/api/font/CgFont;Lcom/crystalgraphics/api/font/CgFontFamily;ILcom/crystalgraphics/text/style/CgTextStyle;FFZ)V
+  method public contained ()Z
+  method public contained (Z)Lcom/crystalgraphics/api/text/CgText;
+  method public family ()Lcom/crystalgraphics/api/font/CgFontFamily;
+  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/api/text/CgText;
+  method public font ()Lcom/crystalgraphics/api/font/CgFont;
+  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/api/text/CgText;
+  method public layout ()Lcom/crystalgraphics/api/text/CgTextLayout;
+  method public maxHeight ()F
+  method public maxHeight (F)Lcom/crystalgraphics/api/text/CgText;
+  method public maxWidth ()F
+  method public maxWidth (F)Lcom/crystalgraphics/api/text/CgText;
+  method public measure ()Lcom/crystalgraphics/api/text/CgTextLayout;
+  method public paragraph ()Lcom/crystalgraphics/api/text/CgShapedParagraph;
+  method public size ()I
+  method public size (I)Lcom/crystalgraphics/api/text/CgText;
+  method public style ()Lcom/crystalgraphics/text/style/CgTextStyle;
+  method public style (Lcom/crystalgraphics/text/style/CgTextStyle;)Lcom/crystalgraphics/api/text/CgText;
+  method public text ()Ljava/lang/String;
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgText;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/api/text/CgText;
+  method public,static of (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/api/text/CgText;
+  method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/api/text/CgText;
 com/crystalgraphics/api/text/CgTextAlign
   access public,final,enum
   extends java/lang/Enum
@@ -11643,6 +11679,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   access public,final
   extends java/lang/Object
   field public,static,final MAX_SCISSORS I
+  implements com/crystalgraphics/text/render/CgTextBatch$Target
   method public <init> ()V
   method public abandon ()V
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
@@ -11682,6 +11719,7 @@ com/crystalgraphics/render/canvas/CgCanvas
   method public text ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public text (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
   method public textDegradedDraws ()J
+  method public textQuads (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)V
   method public triangle (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public view (IFF)V
   method public view (Lcom/crystalgraphics/render/view/CgView;II)Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;
@@ -15419,7 +15457,7 @@ com/crystalgraphics/render/ui/CgUiRecorder
   method public abandon ()V
   method public add (Lcom/crystalgraphics/render/draw/CgDrawChunk;)V
   method public begin (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgLoad;Lcom/crystalgraphics/camera/CgCamera;)V
-  method public element (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;I[FIIFFFF)V
+  method public draw (Lcom/crystalgraphics/render/draw/CgInstanceKind;Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgSampler;I[FIIFFFF)V
   method public end ()V
   method public land ()V
   method public openPass ()V
@@ -15494,6 +15532,7 @@ com/crystalgraphics/render/ui/property/CgPalette
   method public scissorOf (I[FI[I)V
   method public spatial ()Lcom/crystalgraphics/render/ui/property/CgSpatialTree;
   method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public,static effectOf (F)I
   method public,static pack (II)F
   method public,static spatialOf (F)I
 com/crystalgraphics/render/ui/property/CgSpatialTree
@@ -19064,16 +19103,25 @@ com/crystalgraphics/text/render/CgGlyphPlacementCache$Key
 com/crystalgraphics/text/render/CgTextBatch
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvas;)V
+  method public <init> (Lcom/crystalgraphics/text/render/CgTextBatch$Target;)V
   method public camera (Lorg/joml/Matrix4fc;Lorg/joml/Matrix4fc;FF)Lcom/crystalgraphics/text/render/CgTextBatch;
   method public capture (Lcom/crystalgraphics/text/render/CgTextDraw;Lcom/crystalgraphics/text/render/CgTextCapture;)Z
   method public degradedDraws ()J
   method public draw ()Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public draw (Lcom/crystalgraphics/api/text/CgText;FFILorg/joml/Matrix4f;IILcom/crystalgraphics/text/render/CgTextGamma;)Z
   method public draw (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
   method public retained ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public,static blendsLinearly (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Z
   method public,static drawCaptured (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;Z)V
   method public,static drawCapturedDepth (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;)V
+  method public,static measure (Lcom/crystalgraphics/api/text/CgText;)Lcom/crystalgraphics/api/text/CgTextLayout;
+com/crystalgraphics/text/render/CgTextBatch$Target
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract camera ()Lcom/crystalgraphics/camera/CgCamera;
+  method public,abstract target ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public,abstract textQuads (Lcom/crystalgraphics/api/material/CgMaterialInterface;Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/api/texture/CgTexture;[FIII)V
+  method public,abstract visible (Lorg/joml/Matrix4fc;FFFF)Z
 com/crystalgraphics/text/render/CgTextCapture
   access public,final
   extends java/lang/Object
@@ -19103,7 +19151,6 @@ com/crystalgraphics/text/render/CgTextDraw
   method public measureSize (Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
   method public node (II)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public paragraph (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public pose (Lcom/crystalgraphics/api/PoseStack;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public pose (Lorg/joml/Matrix4f;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public reset ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public sameAs (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
