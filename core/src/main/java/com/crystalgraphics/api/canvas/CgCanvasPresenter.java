@@ -46,7 +46,7 @@ public final class CgCanvasPresenter {
         CgCanvasFrame last = shown;
         shown = frame;
         // The last executed in an earlier firing: the buffers it holds are free
-        if (last != null) last.builder.recycle(last.frame);
+        if (last != null) last.recycle();
         stage.include(frame.frame).timed(GPU_UI);
         composite(stage, frame);
     }
@@ -85,7 +85,7 @@ public final class CgCanvasPresenter {
     public void release() {
         CgCanvasFrame last = shown;
         shown = null;
-        if (last != null) last.builder.recycle(last.frame);
+        if (last != null) last.recycle();
     }
 
     private static boolean fits(CgStageFrame stage, @Nullable CgCanvasFrame frame) {

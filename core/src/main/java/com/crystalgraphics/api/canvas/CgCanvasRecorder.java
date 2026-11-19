@@ -1,6 +1,7 @@
 package com.crystalgraphics.api.canvas;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import com.crystalgraphics.camera.CgCamera;
@@ -58,6 +59,9 @@ public final class CgCanvasRecorder {
     private final CgCamera camera = new CgCamera();
     private final CgCanvas canvas = new CgCanvas();
     private final List<CgGraphTexture> pendingReleases = new ArrayList<>();
+    /** Values of presented frames, cleared for the next seals: two in flight need two. */
+    private CgPropertyValues[] spareValues = new CgPropertyValues[2];
+    private int spareCount;
     private CgGraphTexture picture;
     private long frameId;
     private boolean active;
@@ -93,15 +97,32 @@ public final class CgCanvasRecorder {
         if (!active) throw new IllegalStateException("seal() without begin()");
         canvas.end();
         try {
-            CgPropertyValues values = new CgPropertyValues();
+            CgPropertyValues values = takeValues();
             graph.add(recording.seal(), values);
             CgFrame frame = builder.build(graph);
-            return new CgCanvasFrame(frame, builder, picture, values, frameId, width, height);
+            return new CgCanvasFrame(frame, this, picture, values, frameId, width, height);
         } finally {
             graph.clear();
             recording.reset();
             active = false;
         }
+    }
+
+    /** A presented frame's buffers and values back, for the next seal. Any thread. */
+    void recycle(CgFrame frame, CgPropertyValues values) {
+        builder.recycle(frame);
+        values.clear();
+        synchronized (this) {
+            if (spareCount == spareValues.length) spareValues = Arrays.copyOf(spareValues, spareCount * 2);
+            spareValues[spareCount++] = values;
+        }
+    }
+
+    private synchronized CgPropertyValues takeValues() {
+        if (spareCount == 0) return new CgPropertyValues();
+        CgPropertyValues values = spareValues[--spareCount];
+        spareValues[spareCount] = null;
+        return values;
     }
 
     /** Drops the frame being recorded, so the next {@link #begin} starts clean. A no-op with none open. */

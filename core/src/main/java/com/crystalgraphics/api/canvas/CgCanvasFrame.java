@@ -1,7 +1,6 @@
 package com.crystalgraphics.api.canvas;
 
 import com.crystalgraphics.render.graph.CgFrame;
-import com.crystalgraphics.render.graph.CgFrameBuilder;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgPropertyValues;
 
@@ -22,7 +21,7 @@ import com.crystalgraphics.render.graph.CgPropertyValues;
  *
  * <pre>{@code
  * frame.values().translate(scroller, 0f, -scrolled);
- * presenter.redraw(stage, true);
+ * presenter.redraw(stage);
  * }</pre>
  *
  * <ul>
@@ -33,16 +32,16 @@ import com.crystalgraphics.render.graph.CgPropertyValues;
 public final class CgCanvasFrame {
 
     final CgFrame frame;
-    final CgFrameBuilder builder;
+    private final CgCanvasRecorder recorder;
     private final CgGraphTexture picture;
     private final CgPropertyValues values;
     private final long frameId;
     private final int width, height;
 
-    CgCanvasFrame(CgFrame frame, CgFrameBuilder builder, CgGraphTexture picture, CgPropertyValues values, long frameId,
-                  int width, int height) {
+    CgCanvasFrame(CgFrame frame, CgCanvasRecorder recorder, CgGraphTexture picture, CgPropertyValues values,
+                  long frameId, int width, int height) {
         this.frame = frame;
-        this.builder = builder;
+        this.recorder = recorder;
         this.picture = picture;
         this.values = values;
         this.frameId = frameId;
@@ -68,6 +67,11 @@ public final class CgCanvasFrame {
     /** The batches it draws: what a frame costs in draw calls. */
     public int batches() {
         return frame.batches();
+    }
+
+    /** Hands its buffers and values back to its recorder once it has executed for the last time. */
+    void recycle() {
+        recorder.recycle(frame, values);
     }
 
     /** Its size in pixels. */
