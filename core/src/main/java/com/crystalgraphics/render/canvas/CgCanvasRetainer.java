@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.compute.ops.CgGpuOps;
@@ -27,8 +28,8 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  * <pre>{@code
  * CgCanvasRetainer retained = new CgCanvasRetainer("mymod.hud");   // once, kept
  * // Its two looks, asked for in a load task so they are built before the first frame
- * CgMaterialInterface image = CgCanvasMaterials.SCREEN.image(CgBlendMode.PREMULTIPLIED);   // what it holds
- * CgMaterialInterface silhouette = CgCanvasMaterials.SCREEN.mask(CgBlendMode.ADDITIVE);    // its shape, added in a colour
+ * CgMaterialInterface image = CgEngineMaterials.IMAGE.screen(CgBlendMode.PREMULTIPLIED);   // what it holds
+ * CgMaterialInterface silhouette = CgEngineMaterials.MASK.screen(CgBlendMode.ADDITIVE);    // its shape, added in a colour
  *
  * // Each frame, at a stage, before anything on frame.canvas() reads it: paint, in units, at texels a unit
  * CgCanvas paint = retained.paint(frame.recording(), 400, 100, scale);

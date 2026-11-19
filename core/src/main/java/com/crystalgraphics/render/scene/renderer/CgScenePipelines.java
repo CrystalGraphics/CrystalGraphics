@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.scene.renderer;
 
+import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -7,7 +9,6 @@ import com.crystalgraphics.api.material.CgRenderQueue;
 import com.crystalgraphics.compute.CgKernel;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.material.CgMaterialProxy;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPipelineForm;
@@ -76,7 +77,8 @@ public final class CgScenePipelines {
         // The renderer's own programs no material brings in: text in every form and the canvas's default materials
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             CgTextMaterials.precache(list);
-            CgCanvasMaterials.precache(list);
+            CgEngineMaterials.precache(list);
+            CgCanvasPrimitives.precache(list);
             list.addPass(CgSceneMedia.LIGHT_SHADER);
         });
         // What the first light, smoke or haze dispatches; their files parsed on a worker first

@@ -1,5 +1,7 @@
 package com.crystalgraphics.lifecycle;
 
+import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
@@ -30,7 +32,6 @@ import com.crystalgraphics.render.scene.prefab.CgPrefabAssets;
 import com.crystalgraphics.vfx.system.CgVfxSystemAssets;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.post.CgPostRenderer;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.render.view.CgView;
@@ -579,7 +580,8 @@ public final class CgGraphicsLifecycle {
         // Step 6a: text's and the canvas's material instances; the material registry frees them, so the caches only
         // forget them.
         CgTextMaterials.releaseAll();
-        CgCanvasMaterials.releaseAll();
+        CgEngineMaterials.releaseAll();
+        CgCanvasPrimitives.releaseAll();
         
         // Step 6b: Font/glyph atlas textures + background generation executor, then reset
         //   the shared registry back to a freshly-constructed, immediately reusable state

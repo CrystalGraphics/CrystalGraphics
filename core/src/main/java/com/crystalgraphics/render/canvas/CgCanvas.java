@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -138,14 +139,14 @@ public final class CgCanvas {
     /**
      * A quad showing {@code view}'s picture, drawn now at {@code width} x {@code height} pixels
      * ({@link CgView#renderPicture}), its rows the right way up: place it and submit it. On the screen's image
-     * material; a picture in the world is {@code quad(CgCanvasMaterials.WORLD.image()).texture(0, view.renderPicture(...))}.
+     * material; a picture in the world is {@code quad(CgEngineMaterials.IMAGE.world()).texture(0, view.renderPicture(...))}.
      *
      * <pre>{@code
      * frame.canvas().view(minimap, 256, 256).at(16, 16).size(256, 256).submit();
      * }</pre>
      */
     public CgQuadBatch.Quad view(CgView view, int width, int height) {
-        return quads.quad(CgCanvasMaterials.SCREEN.image()).texture(0, view.renderPicture(width, height, 0xFF000000))
+        return quads.quad(CgEngineMaterials.IMAGE.screen()).texture(0, view.renderPicture(width, height, 0xFF000000))
                 .uv(0f, 1f, 1f, 0f);
     }
 
@@ -611,7 +612,7 @@ public final class CgCanvas {
     }
 
     /**
-     * The recording's shapes, which a {@code CgCanvasMaterials.box()} quad names with {@code custom2}: an armed stage
+     * The recording's shapes, which a {@code CgCanvasPrimitives.box()} quad names with {@code custom2}: an armed stage
      * canvas opens. Throws on a canvas recording nothing, which has no table to name.
      */
     public CgShapeTable shapes() {

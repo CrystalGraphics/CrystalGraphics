@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
@@ -14,7 +16,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * and any camera bends it right.
  *
  * <pre>{@code
- * CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);           // once: it owns its material
+ * CgCanvasGlass pane = new CgCanvasGlass(CgPlacement.SCREEN);           // once: it owns its material
  * CgCanvasBackdrop backdrop = new CgCanvasBackdrop("mymod.glass");            // once: it owns the textures
  *
  * CgQuadBatch.Quad quad = canvas.quad(pane.material()).at(x, y).size(w, h);   // built, not yet submitted
@@ -27,7 +29,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * pane.lens(0f, 1f).specular(0f).noise(0f).apply();                 // those layers compile out
  * }</pre>
  *
- * <p>In the world it is {@link CgCanvasMaterials#WORLD}'s, depth-tested, its lengths in blocks:
+ * <p>In the world it is {@link CgPlacement#WORLD}'s, depth-tested, its lengths in blocks:
  * {@code LIQUID.scaled(1 / 32f)} is the look with a block 32 of its pixels. {@link CgCanvasBackdrop} has the example.</p>
  *
  * <ul>
@@ -134,8 +136,8 @@ public final class CgCanvasGlass {
     private float noise = DEFAULT.noise();
     private float lightX = -0.7071f, lightY = -0.7071f;
 
-    public CgCanvasGlass(CgCanvasMaterials materials) {
-        this.instances = new CgMaterialInstances(materials.glass());
+    public CgCanvasGlass(CgPlacement placement) {
+        this.instances = new CgMaterialInstances(CgEngineMaterials.BACKDROP.material(placement));
         this.current = instances.of(instances.material());
     }
 

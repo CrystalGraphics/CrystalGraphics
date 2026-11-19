@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
@@ -12,7 +14,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * cell is under one. Set it up, then draw a quad over the box.
  *
  * <pre>{@code
- * CgCanvasGrid ruling = new CgCanvasGrid(CgCanvasMaterials.SCREEN);   // once: it owns its material
+ * CgCanvasGrid ruling = new CgCanvasGrid(CgPlacement.SCREEN);   // once: it owns its material
  *
  * ruling.size(w, h).cell(16f, 16f).line(1f).color(0x30FFFFFF).apply();
  * canvas.quad(ruling.material()).at(x, y).size(w, h).submit();
@@ -43,8 +45,8 @@ public final class CgCanvasGrid {
     private boolean checker;
     private final float[] radii = new float[8];
 
-    public CgCanvasGrid(CgCanvasMaterials materials) {
-        this.instances = new CgMaterialInstances(materials.grid());
+    public CgCanvasGrid(CgPlacement placement) {
+        this.instances = new CgMaterialInstances(CgEngineMaterials.GRID.material(placement));
         this.current = instances.of(instances.material());
     }
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
 import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,7 +15,6 @@ import org.joml.Vector2f;
 import com.crystalgraphics.frame.CgTickFunction;
 import com.crystalgraphics.frame.CgTickGroup;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -211,7 +211,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
             this.frame = null;
         }
         if (painter == null) {
-            painter = new CgCanvasWidgetPainter(id, CgCanvasMaterials.SCREEN).retaining(retainedWidth, retainedHeight, margin);
+            painter = new CgCanvasWidgetPainter(id, CgPlacement.SCREEN).retaining(retainedWidth, retainedHeight, margin);
         }
         float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
         painter.begin(frame.canvas(), frame.recording(), scale * retainedScale);

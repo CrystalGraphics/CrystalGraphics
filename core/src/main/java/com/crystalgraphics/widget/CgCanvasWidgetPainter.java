@@ -1,5 +1,7 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.material.CgMaterialProxy;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,7 +25,6 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
 import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.canvas.CgCanvasRetainer;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -34,7 +35,7 @@ import com.crystalgraphics.text.style.CgTextStyle;
  * HUD, kept.
  *
  * <pre>{@code
- * static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgCanvasMaterials.SCREEN)
+ * static final CgCanvasWidgetPainter PAINTER = new CgCanvasWidgetPainter("mymod.hud", CgPlacement.SCREEN)
  *         .retaining(1024f, 1024f, 8f);                            // a retained image of 1024 x 1024 units
  *
  * PAINTER.prepare(POP.loaded());                                   // a tree loaded as an asset is precached already
@@ -64,7 +65,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     }
 
     private final String name;
-    private final CgCanvasMaterials materials;
+    private final CgPlacement placement;
     /** The retained image's pages, made as a frame first needs each, kept. */
     private final List<CgCanvasRetainer> pages = new ArrayList<>();
     /** Measures text: a canvas of its own, recording nothing, as a draw is measured under its canvas's camera. */
@@ -102,12 +103,12 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
     private float shelfHigh;
 
     /**
-     * A painter drawing under {@code materials}: {@code SCREEN} for a HUD, {@code WORLD} for a canvas in the world;
+     * A painter drawing at {@code placement}: {@code SCREEN} for a HUD, {@code WORLD} for a canvas in the world;
      * {@code name} names its retained image in a trace.
      */
-    public CgCanvasWidgetPainter(String name, CgCanvasMaterials materials) {
+    public CgCanvasWidgetPainter(String name, CgPlacement placement) {
         this.name = Objects.requireNonNull(name, "name");
-        this.materials = Objects.requireNonNull(materials, "materials");
+        this.placement = Objects.requireNonNull(placement, "placement");
     }
 
     /**
@@ -196,7 +197,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
               .custom0(parameters.x(), parameters.y(), parameters.z(), parameters.w()).submit();
             return;
         }
-        var quad = on.quad(materials.image()).at(0f, 0f).size(width, height).pose(at)
+        var quad = on.quad(CgEngineMaterials.IMAGE.material(placement)).at(0f, 0f).size(width, height).pose(at)
                      .color(CgLinearColour.argb(r, g, b, a));
         if (brush.texture() != null) quad.texture(0, texture(brush.texture()));
         quad.submit();
@@ -291,7 +292,7 @@ public final class CgCanvasWidgetPainter implements CgWidgetPainter {
         CgCanvasRetainer retainer = pages.get(pageOf[region]);
         if (effect == null) {
             // SRetainerWidget: one premultiplied box; the colour is straight, the material premultiplies it.
-            retainer.quad(canvas, materials.image(CgBlendMode.PREMULTIPLIED), 0, x, y, w, h, reduce).at(-pad, -pad)
+            retainer.quad(canvas, CgEngineMaterials.IMAGE.material(placement, CgBlendMode.PREMULTIPLIED), 0, x, y, w, h, reduce).at(-pad, -pad)
                     .pose(pose).color(CgLinearColour.argb(r, g, b, a)).submit();
             return;
         }

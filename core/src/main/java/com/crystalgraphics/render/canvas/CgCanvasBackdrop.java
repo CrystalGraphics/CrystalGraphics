@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -21,7 +22,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  *
  * <pre>{@code
  * CgCanvasBackdrop backdrop = new CgCanvasBackdrop("mymod.glass");                    // once, kept
- * CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.WORLD);                    // once, kept
+ * CgCanvasGlass pane = new CgCanvasGlass(CgPlacement.WORLD);                    // once, kept
  * CgCanvasGlass.Look look = CgCanvasGlass.LIQUID.scaled(1 / 32f);                     // a block is 32 of its pixels
  *
  * // At a stage, after what the pane covers is drawn:
@@ -32,7 +33,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * quad.submit();
  * }</pre>
  *
- * <p>On the screen it is the same with {@link CgCanvasMaterials#SCREEN} and a look in pixels.</p>
+ * <p>On the screen it is the same with {@link CgPlacement#SCREEN} and a look in pixels.</p>
  *
  * <ul>
  *   <li>Capture after what should show through is drawn, and submit the pane straight after: each capture ends the

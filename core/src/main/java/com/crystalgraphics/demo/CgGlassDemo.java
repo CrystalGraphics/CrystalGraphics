@@ -1,11 +1,11 @@
 package com.crystalgraphics.demo;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
 import com.crystalgraphics.render.scene.CgScene;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgCanvasBackdrop;
 import com.crystalgraphics.render.canvas.CgCanvasGlass;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -53,7 +53,7 @@ public final class CgGlassDemo {
     public CgGlassDemo(CgFont font) {
         this.font = font;
         for (int i = 0; i < LOOKS.length; i++) {
-            panes[i] = new CgCanvasGlass(CgCanvasMaterials.WORLD);
+            panes[i] = new CgCanvasGlass(CgPlacement.WORLD);
             looks[i] = LOOKS[i].scaled(UNITS_PER_PIXEL);
         }
         // After the world renderer's draws and before the post chain: the glass sees the world and lands in the scene.

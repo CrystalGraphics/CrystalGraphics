@@ -85,7 +85,7 @@ Under `crystalgraphics:shaders/`, one folder per owner: a pass, its kernels and 
 | `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; the scene data any material reads, `globals.glsl` (parameter collections) and `rows.glsl` (per-draw values) | Never include |
 | `world/` | The world renderer's passes; `world/lights/` lighting and shadows, `world/media/` fog volumes | The engine's |
 | `post/` | The post chain's materials, its bloom and film kernels and the composite's includes | The engine's |
-| `canvas/` | The canvas's materials (`CgCanvasMaterials`); `canvas/primitives/` what draws a ui material (`Primitive Quad`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `shape`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
+| `canvas/` | The canvas's materials (`CgEngineMaterials`, `CgCanvasPrimitives`); `canvas/primitives/` what draws a ui material (`Primitive Quad`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `shape`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
 | `compute/` | `compute/ops/`, the GPU ops' kernels (`CgGpuOps`), and the self test | The engine's |
 | `noise/` | The baked noise volumes (`CgNoiseVolumes`) | The engine's |
 | `collision/`, `loading/` | The collision debug lines; the loading screen's logo | The engine's |

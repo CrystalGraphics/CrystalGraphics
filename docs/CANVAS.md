@@ -17,7 +17,7 @@ for code that uses it.
 public static final CgTexture2D DIGITS = CgTextures.of("mymod:textures/hud/digits.png");
 
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
-        frame.canvas().quad(CgCanvasMaterials.SCREEN.image()).texture(0, DIGITS)
+        frame.canvas().quad(CgEngineMaterials.IMAGE.screen()).texture(0, DIGITS)
              .at(x, y).size(w, h).uv(u0, v0, u1, v1).color(0xFFFFD040).submit());
 ```
 
@@ -43,12 +43,12 @@ renderer that draws nothing this frame records nothing, and it is closed for you
 
 ```java
 CgCanvas canvas = frame.canvas();
-CgMaterial image = CgCanvasMaterials.SCREEN.image();
+CgMaterial image = CgEngineMaterials.IMAGE.screen();
 
 canvas.quad(image).at(x, y).size(w, h).color(argb).submit();                          // a coloured box
 canvas.quad(image).texture(0, icon).at(x, y).size(32, 32).submit();                  // an image
 canvas.quad(image).texture(0, atlas).uv(u0, v0, u1, v1).at(x, y).size(w, h).submit(); // a sprite from a sheet
-canvas.quad(CgCanvasMaterials.SCREEN.imageArray(CgBlendMode.ALPHA)).texture(0, sheet)
+canvas.quad(CgEngineMaterials.IMAGE_ARRAY.screen(CgBlendMode.ALPHA)).texture(0, sheet)
         .atlasLayer(3).at(x, y).size(w, h).submit();                                  // a layer of a 2D array
 canvas.quad(image).at(-8, -8).size(16, 16).pose(rotation).submit();                   // rotated about its pose's origin
 canvas.quad(image).texture(0, icon).at(x, y).size(32, 32).opacity(0.5f).submit();    // half faded
@@ -75,7 +75,7 @@ own, which needs `.material(m)` before each `submit()`.
 
 ### Default materials
 
-`CgCanvasMaterials` ships what a HUD, a marker or a whole UI needs, so most consumers write no shader: Unreal's
+`CgEngineMaterials` ships what a HUD, a marker or a whole UI needs, so most consumers write no shader: Unreal's
 simple element shader, one look per kind of item, varied by blend mode.
 
 | | `SCREEN` (over what is there: GUI stages, immediate canvases) and `WORLD` (depth-tested, world stages) |
@@ -88,9 +88,9 @@ simple element shader, one look per kind of item, varied by blend mode.
 | `coverage()`, `strokeCoverage()`, `colourCoverage()` | screen only: vector shapes rastered into a texture as exact coverage (below) |
 
 ```java
-canvas.quad(CgCanvasMaterials.SCREEN.maskArray(CgBlendMode.ADDITIVE)).texture(0, digits).atlasLayer(d)
+canvas.quad(CgEngineMaterials.MASK_ARRAY.screen(CgBlendMode.ADDITIVE)).texture(0, digits).atlasLayer(d)
         .at(x, y).size(w, h).color(0xFFFFE080).submit();                  // a glow in the shape of a digit
-frame.canvas().quad(CgCanvasMaterials.WORLD.image()).world(x, y, z).pose(facing)
+frame.canvas().quad(CgEngineMaterials.IMAGE.world()).world(x, y, z).pose(facing)
         .at(-0.5f, -0.5f).size(1f, 1f).texture(0, icon).submit();          // a marker in the world, behind walls
 ```
 
@@ -113,13 +113,13 @@ CrystalGUI draws every `background` and `border` in CSS. Each corner has its own
 border width, and every edge is antialiased, rotated or not.
 
 Drawing one takes two steps: describe the shape in the canvas's **shape table**, which answers an index, then draw a
-quad under `CgCanvasMaterials.SCREEN.box()` that names that index with `custom2`. The shape says what the box looks
+quad under `CgCanvasPrimitives.box()` that names that index with `custom2`. The shape says what the box looks
 like; the quad says where it goes. Every box, whatever its shape, is the same pipeline, so a screen of boxes is a few
 draws: they part only where their textures differ.
 
 ```java
 CgCanvas canvas = frame.canvas();
-CgMaterial box = CgCanvasMaterials.SCREEN.box();
+CgMaterial box = CgCanvasPrimitives.box();
 
 // A flat rounded rect with a 1-pixel border: a health bar's frame
 int frameShape = canvas.shapes().begin(CgShapeTable.FLAT, 120, 12)
@@ -192,7 +192,7 @@ by a `CgCanvasGradient`, which owns its material: set it up for the box, then dr
 `material()`.
 
 ```java
-CgCanvasGradient wash = new CgCanvasGradient(CgCanvasMaterials.SCREEN);   // once, kept: it owns its material
+CgCanvasGradient wash = new CgCanvasGradient(CgPlacement.SCREEN);   // once, kept: it owns its material
 
 // Each frame: dark at the top, gone at the bottom
 wash.size(w, h)                    // the box, in the units the quad is drawn in
@@ -250,7 +250,7 @@ is drawn a pixel wide and faded rather than flickering, and cells smaller than a
 rather than moiré (Ben Golus's "Pristine Grid").
 
 ```java
-CgCanvasGrid ruling = new CgCanvasGrid(CgCanvasMaterials.SCREEN);   // once, kept
+CgCanvasGrid ruling = new CgCanvasGrid(CgPlacement.SCREEN);   // once, kept
 
 ruling.size(w, h)                      // the box
       .cell(16f, 16f)                  // the spacing, each axis on its own
@@ -283,7 +283,7 @@ where each pixel is, so a pane under any pose and any camera bends what is behin
 owns its material; a `CgCanvasBackdrop` captures and blurs what is behind it and owns those textures.
 
 ```java
-CgCanvasGlass pane = new CgCanvasGlass(CgCanvasMaterials.SCREEN);    // once, kept
+CgCanvasGlass pane = new CgCanvasGlass(CgPlacement.SCREEN);    // once, kept
 CgCanvasBackdrop backdrop = new CgCanvasBackdrop("mymod.glass");      // once, kept
 
 // Each frame, after what the pane covers is drawn:
@@ -295,7 +295,7 @@ pane.look(look).size(w, h).radii(16f)
 quad.submit();
 ```
 
-**In the world** it is the same at a world stage, with `CgCanvasMaterials.WORLD` (depth-tested) and a look scaled to
+**In the world** it is the same at a world stage, with `CgPlacement.WORLD` (depth-tested) and a look scaled to
 blocks: a look's lengths are pixels, and `scaled(f)` makes a block `1 / f` of them.
 
 ```java
@@ -355,10 +355,10 @@ Skia's path atlas. Three screen materials, by how the pieces combine:
 
 ```java
 // Into a texture cleared to transparent, on a canvas recording into it:
-canvas.cell(CgCanvasMaterials.SCREEN.coverage()).points(...).submit();          // each cell of the fill
-canvas.curve(CgCanvasMaterials.SCREEN.strokeCoverage()).line(...).submit();   // each segment of the outline
+canvas.cell(CgCanvasPrimitives.coverage()).points(...).submit();          // each cell of the fill
+canvas.curve(CgCanvasPrimitives.strokeCoverage()).line(...).submit();   // each segment of the outline
 // Then drawn anywhere, tinted:
-frame.canvas().quad(CgCanvasMaterials.SCREEN.image()).texture(0, icon).at(x, y).size(w, h).color(tint).submit();
+frame.canvas().quad(CgEngineMaterials.IMAGE.screen()).texture(0, icon).at(x, y).size(w, h).color(tint).submit();
 ```
 
 - A summed raster runs past 1 where cells overlap: a float format (RGBA16F) keeps it, and the box clamps it.
@@ -373,7 +373,7 @@ covers at any ratio (`SHADERS.md` § *Ops*). Shrink into a texture of its own, t
 CgComputePass pass = recording.compute("thumbnail");
 CgGpuOps.shrink(pass, window, 0, 0, window.getWidth(), window.getHeight(), thumbnail, 0, 0, 192, 108);
 pass.end();
-canvas.quad(CgCanvasMaterials.SCREEN.image()).texture(0, thumbnail).at(x, y).size(192, 108).submit();
+canvas.quad(CgEngineMaterials.IMAGE.screen()).texture(0, thumbnail).at(x, y).size(192, 108).submit();
 ```
 
 ### A material of your own
@@ -393,7 +393,7 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
 ```
 
 ```java
-CgMaterial mine = CgMaterial.load("mymod:shaders/ui/mine.shader", CgCanvasMaterials.SCREEN.image().state());
+CgMaterial mine = CgMaterial.load("mymod:shaders/ui/mine.shader", CgEngineMaterials.IMAGE.screen().state());
 canvas.quad(mine).texture(0, page).at(x, y).size(w, h).submit();
 ```
 
@@ -429,7 +429,7 @@ canvas.cell(FILL).points(x0, y0, x1, y1, x2, y2, x3, y3)
 - **Gradients** on triangles and cells: `gradient(start, end, originX, originY, dirX, dirY)`, per pixel.
 - **Cells** are for tessellated fills: mark the edges on the shape's outline `softEdges`, leave the cuts between
   cells hard, and neighbours meet with no seam. A lone shape wants `triangle`.
-- The material is a ui material on `Primitive Curve`. `CgCanvasMaterials.SCREEN.curve()` and `WORLD.curve()` are the
+- The material is a ui material on `Primitive Curve`. `CgCanvasPrimitives.curve(CgPlacement.SCREEN)` and `curve(CgPlacement.WORLD)` are the
   shipped ones.
 
 ---
@@ -556,8 +556,8 @@ additive mask, its silhouette glows in a colour. A damage number that fades out 
 ```java
 static final CgCanvasRetainer RETAINED = new CgCanvasRetainer("mymod.hud");   // once, kept
 // in a load task, so they are built before the first frame
-image = CgCanvasMaterials.SCREEN.image(CgBlendMode.PREMULTIPLIED);
-glow = CgCanvasMaterials.SCREEN.mask(CgBlendMode.ADDITIVE);
+image = CgEngineMaterials.IMAGE.screen(CgBlendMode.PREMULTIPLIED);
+glow = CgEngineMaterials.MASK.screen(CgBlendMode.ADDITIVE);
 
 CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
     // 1. Paint, before the canvas's first item: 300 by 200 units, at the largest scale it is drawn at

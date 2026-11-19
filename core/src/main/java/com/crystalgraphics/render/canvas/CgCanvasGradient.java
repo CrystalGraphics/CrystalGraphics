@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialValues;
 
@@ -14,7 +16,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  * gradient line.
  *
  * <pre>{@code
- * CgCanvasGradient wash = new CgCanvasGradient(CgCanvasMaterials.SCREEN);    // once: it owns its material
+ * CgCanvasGradient wash = new CgCanvasGradient(CgPlacement.SCREEN);    // once: it owns its material
  *
  * wash.size(w, h).angle(90f).clearStops().stop(0f, 0x003574F0).stop(1f, 0x803574F0);
  * for (int i = 0, n = wash.windows(); i < n; i++) {
@@ -40,7 +42,7 @@ import com.crystalgraphics.api.material.CgMaterialInstances;
  *       round radii. It needs no radii to work on a square box.</li>
  *   <li>{@link #window} writes the material's values; a quad captures them as it is submitted, so set and submit each
  *       window in turn. One instance per drawer: its material is its own and holds the last window written.</li>
- *   <li>Premultiplied out: a {@link CgCanvasMaterials#SCREEN} gradient draws over the screen, a {@code WORLD} one is
+ *   <li>Premultiplied out: a {@link CgPlacement#SCREEN} gradient draws over the screen, a {@code WORLD} one is
  *       tested against the scene's depth.</li>
  * </ul>
  */
@@ -73,8 +75,8 @@ public final class CgCanvasGradient {
     private final float[] windowPositions = new float[STOPS_PER_DRAW];
     private final float[] axis = new float[2];
 
-    public CgCanvasGradient(CgCanvasMaterials materials) {
-        this.instances = new CgMaterialInstances(materials.gradient());
+    public CgCanvasGradient(CgPlacement placement) {
+        this.instances = new CgMaterialInstances(CgEngineMaterials.GRADIENT.material(placement));
         this.current = instances.of(instances.material());
     }
 

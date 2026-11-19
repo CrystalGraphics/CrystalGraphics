@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
@@ -294,7 +295,7 @@ public final class CgQuadBatch {
          * canvas.quad(box).custom2(shape).at(x, y).size(w, h).opacity(0.5f).submit();   // border and fill at half
          * }</pre>
          *
-         * A material that does not read {@code CG_QUAD_OPACITY} ignores it; every material {@link CgCanvasMaterials}
+         * A material that does not read {@code CG_QUAD_OPACITY} ignores it; every material {@link CgEngineMaterials}
          * ships reads it but the coverage rasters.
          */
         public Quad opacity(float opacity) {

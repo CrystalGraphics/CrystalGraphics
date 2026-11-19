@@ -1,5 +1,6 @@
 package com.crystalgraphics.audio;
 
+import com.crystalgraphics.api.material.engine.CgPlacement;
 import java.util.Map;
 import java.util.Objects;
 
@@ -19,7 +20,6 @@ import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.canvas.CgCanvasMaterials;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.sequence.CgSequencePlayer;
@@ -74,7 +74,7 @@ final class CgSubtitleOverlay {
     private final CgAudioEngine engine;
     private final CgRenderStage.Registration registration;
     private final CgCanvasWidgetPainter painter =
-            new CgCanvasWidgetPainter("crystalgraphics.subtitles", CgCanvasMaterials.SCREEN).retaining(2048f, 512f, 16f);
+            new CgCanvasWidgetPainter("crystalgraphics.subtitles", CgPlacement.SCREEN).retaining(2048f, 512f, 16f);
     private final Matrix4f placement = new Matrix4f();
     /** The plain look's layout, kept while its text and width hold. */
     @Nullable
