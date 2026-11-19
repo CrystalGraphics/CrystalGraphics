@@ -1,0 +1,117 @@
+package com.crystalgraphics.api.paint;
+
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
+
+import org.junit.Test;
+
+import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
+import com.crystalgraphics.api.paint.effect.CgFilter;
+import com.crystalgraphics.api.paint.gradient.CgGradient;
+import com.crystalgraphics.api.paint.gradient.CgSpread;
+import com.crystalgraphics.api.paint.pattern.CgGrid;
+import com.crystalgraphics.render.canvas.CgCanvasGlass;
+
+/** The paint values' rules: what they keep, what they refuse, what they compute. */
+public class CgPaintValuesTest {
+
+    @Test
+    public void gradientStopsAscendAndClamp() {
+        CgGradient g = CgGradient.linear(90f).stop(0.5f, 0xFF000000).stop(0.2f, 0xFFFFFFFF).stop(2f, 0xFF808080);
+        assertEquals(0.5f, g.position(0), 0f);
+        assertEquals("a stop below the one before is raised to it", 0.5f, g.position(1), 0f);
+        assertEquals("positions clamp to 1", 1f, g.position(2), 0f);
+    }
+
+    @Test
+    public void gradientMixesPremultiplied() {
+        CgGradient fade = CgGradient.linear(90f).stop(0f, 0xFFFF0000).stop(1f, 0x000000FF);
+        int mid = fade.colorAt(0.5f);
+        assertEquals("half alpha", 128, mid >>> 24, 1);
+        assertEquals("premultiplied: the clear end adds no blue, so red holds", 255, (mid >>> 16) & 0xFF, 1);
+        assertEquals(0, mid & 0xFF);
+    }
+
+    @Test
+    public void gradientHardStopAndSpread() {
+        CgGradient stripes = CgGradient.linear(0f).repeat()
+                .stop(0f, 0xFFFFFFFF).stop(0.25f, 0xFFFFFFFF).stop(0.25f, 0xFF000000).stop(0.5f, 0xFF000000);
+        assertEquals(0xFFFFFFFF, stripes.colorAt(0.1f));
+        assertEquals(0xFF000000, stripes.colorAt(0.3f));
+        assertEquals("repeats past its last stop", 0xFFFFFFFF, stripes.colorAt(0.6f));
+        CgGradient mirror = CgGradient.linear(0f).reflect().stop(0f, 0xFF000000).stop(1f, 0xFFFFFFFF);
+        assertEquals("reflect folds back", mirror.colorAt(0.25f), mirror.colorAt(1.75f));
+        assertEquals(CgSpread.PAD, CgGradient.linear(0f).spread());
+    }
+
+    @Test
+    public void gradientIsAValue() {
+        CgGradient a = CgGradient.radial(0.5f, 0.5f, 0.5f, 0.5f).stop(0f, 1).stop(1f, 2);
+        CgGradient b = CgGradient.radial(0.5f, 0.5f, 0.5f, 0.5f).stop(0f, 1).stop(1f, 2);
+        assertEquals(a, b);
+        assertEquals(a.hashCode(), b.hashCode());
+        assertNotEquals(a, a.repeat());
+        assertNotEquals(a, a.dither(false));
+        assertThrows(IllegalArgumentException.class, () -> CgGradient.radial(0f, 0f, 0f, 1f));
+        assertThrows(IllegalArgumentException.class, () -> CgGradient.between(1f, 1f, 1f, 1f));
+        assertThrows(IllegalStateException.class, () -> CgGradient.linear(0f).stop(0f, 1).colorAt(0f));
+    }
+
+    @Test
+    public void filterChainsFoldColourMatrices() {
+        CgFilter chain = CgFilter.saturate(0.5f).then(CgFilter.brightness(0.8f)).then(CgFilter.blur(2f))
+                .then(CgFilter.opacity(0.5f));
+        assertEquals(3, chain.ops().size());
+        assertEquals(CgFilter.Kind.COLOR_MATRIX, chain.ops().get(0).kind());
+        assertEquals(CgFilter.Kind.BLUR, chain.ops().get(1).kind());
+        float[] identity = {1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0};
+        assertArrayEquals(identity, CgFilter.saturate(1f).ops().get(0).values(), 1e-6f);
+        assertArrayEquals(identity, CgFilter.hueRotate(0f).ops().get(0).values(), 1e-3f);
+        assertArrayEquals(identity, CgFilter.brightness(2f).then(CgFilter.brightness(0.5f)).ops().get(0).values(), 1e-6f);
+        assertEquals("three sigma", 6f, CgFilter.blur(2f).reach(), 1e-6f);
+        assertTrue(CgFilter.NONE.then(CgFilter.NONE).isNone());
+        assertSame(chain, chain.then(CgFilter.NONE));
+    }
+
+    @Test
+    public void backdropPresetsAreTodaysGlassLooks() {
+        check(CgBackdropFilter.DEFAULT, CgCanvasGlass.DEFAULT);
+        check(CgBackdropFilter.CLEAR, CgCanvasGlass.CLEAR);
+        check(CgBackdropFilter.FROSTED, CgCanvasGlass.FROSTED);
+        check(CgBackdropFilter.LIQUID, CgCanvasGlass.LIQUID);
+        check(CgBackdropFilter.ACRYLIC, CgCanvasGlass.ACRYLIC);
+        check(CgBackdropFilter.MICA, CgCanvasGlass.MICA);
+        check(CgBackdropFilter.PRISM, CgCanvasGlass.PRISM);
+        CgBackdropFilter world = CgBackdropFilter.LIQUID.scaled(1 / 32f);
+        assertEquals(CgCanvasGlass.LIQUID.scaled(1 / 32f).bezel(), world.bezel(), 0f);
+        assertEquals("the blur stays the target's pixels", CgBackdropFilter.LIQUID.blur(), world.blur(), 0f);
+    }
+
+    private static void check(CgBackdropFilter f, CgCanvasGlass.Look look) {
+        assertEquals(look.blur(), f.blur(), 0f);
+        assertEquals(look.saturation(), f.saturation(), 0f);
+        assertEquals(look.tint(), f.tint());
+        assertEquals(look.luminosity(), f.luminosity(), 0f);
+        assertEquals(look.bezel(), f.bezel(), 0f);
+        assertEquals(look.ior(), f.ior(), 0f);
+        assertEquals(look.chromatic(), f.chromatic(), 0f);
+        assertEquals(look.specular(), f.specular(), 0f);
+        assertEquals(look.glow(), f.glow(), 0f);
+        assertEquals(look.rim(), f.rim(), 0f);
+        assertEquals(look.rimWidth(), f.rimWidth(), 0f);
+        assertEquals(look.rimAmbient(), f.rimAmbient(), 0f);
+        assertEquals(look.noise(), f.noise(), 0f);
+    }
+
+    @Test
+    public void gridAndSolidRefuseNonsense() {
+        assertThrows(IllegalArgumentException.class, () -> CgGrid.lines(0).cell(0f));
+        assertThrows(IllegalArgumentException.class, () -> CgPaint.color(0, -1f));
+        assertTrue(CgPaint.color(0x00FFFFFF).isClear());
+        assertEquals(CgGrid.checker(1, 2).cell(4f), CgGrid.checker(1, 2).cell(4f, 4f));
+    }
+}

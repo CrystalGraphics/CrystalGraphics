@@ -2,6 +2,7 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.api.material.CgParameterCollection;
 import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.render.canvas.CgCurveBatch;
@@ -115,6 +116,9 @@ public final class CgEngineBufferRegistry {
         // tokens before it keep their bindings. Its env file is the text layer, which reads quad's and clip's slots.
         register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/canvas/primitives/text.glsl",
                 "quad", "clip");
+        // A recording's gradients (CgGradient), read by index; after text so earlier tokens keep their bindings.
+        register("gradient", CgGradientTable::buffer, CgGradientTable.MACRO_NAME,
+                "crystalgraphics:shaders/paint/gradient_table.glsl");
     }
 
     private CgEngineBufferRegistry() {}

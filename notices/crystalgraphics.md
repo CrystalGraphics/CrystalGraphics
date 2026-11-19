@@ -34,7 +34,8 @@ JOML is **not** in this jar. It ships in `crystalgraphics-joml-<version>.jar`, w
 | **GeckoLib** models, animations and easings | `com/crystalgraphics/api/mesh/geckolib/`, `com/crystalgraphics/asset/curve/CgRichCurve` | MIT — © 2026 GeckoLib | Ported source, modified. Licence below |
 | **NVIDIA Flow** grid fluid | `com/crystalgraphics/vfx/fluid/`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.compute`, `assets/crystalgraphics/shaders/vfx/fluid/fluid.shader` | BSD-3-Clause — © 2014-2025 NVIDIA CORPORATION & AFFILIATES | Ported source, modified. Licence below |
 | **bcdec** BC7 decoder | `com/crystalgraphics/util/io/CgBc7` | MIT (of MIT or the Unlicense) — © 2022 Sergii Kudlai | Ported source, modified. Licence below |
-| **Inigo Quilez** filtered checkerboard | `assets/crystalgraphics/shaders/canvas/grid.shader` (`CHECKER`) | MIT — © 2017 Inigo Quilez | Ported source. Licence below |
+| **Inigo Quilez** filtered checkerboard | `assets/crystalgraphics/shaders/paint/grid.glsl` (`cg_grid_checker`) | MIT — © 2017 Inigo Quilez | Ported source. Licence below |
+| **Pristine grid** (Brandon Jones's WebGPU port of Ben Golus's technique) | `assets/crystalgraphics/shaders/paint/grid.glsl` (`cg_grid_lines`) | MIT — © 2023 Brandon Jones | Ported source. Licence below |
 | **Mantaflow** wavelet noise, inflow and UV grids | `com/crystalgraphics/noise/CgNoiseVolumes`, `assets/crystalgraphics/shaders/noise/bake.compute`, `assets/crystalgraphics/shaders/lib/vfx/wavelet.glsl`, `com/crystalgraphics/vfx/fluid/` | Apache 2.0 — © 2011 Tobias Pfaff, Nils Thuerey | Ported source, modified. Licence text: `META-INF/LICENSE` |
 
 ## FreeType
@@ -456,7 +457,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## Inigo Quilez
 
-The canvas grid's checkerboard (`canvas/grid.shader`, `CHECKER`) ports the box-filtered checker of his "Filtering
+The grid's checkerboard (`paint/grid.glsl`, `cg_grid_checker`) ports the box-filtered checker of his "Filtering
 procedurals" article and its Shadertoy reference, `XlcSz2`.
 
 ```
@@ -472,6 +473,36 @@ PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BU
 MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
 HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## Pristine grid
+
+The grid's lines (`paint/grid.glsl`, `cg_grid_lines`) port Brandon Jones's WebGPU implementation
+(github.com/toji/pristine-grid-webgpu) of Ben Golus's "The Best Darn Grid Shader (Yet)", which the CC0 Godot port
+also follows.
+
+```
+MIT License
+
+Copyright (c) 2023 Brandon Jones
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```
 
 ## FAST spatiotemporal noise (BSD-3-Clause)

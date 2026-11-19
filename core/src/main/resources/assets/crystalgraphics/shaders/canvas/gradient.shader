@@ -10,8 +10,8 @@
 // - Dithered by half a level, or an 8-bit target bands a shallow ramp (Skia dithers by default).
 // - WITH_MASK clips to elliptical corner radii with the box's SDF; _Border paints only the band inside that edge.
 #domain ui
-#include "crystalgraphics:shaders/lib/noise.glsl"
 #include "crystalgraphics:shaders/lib/sdf.glsl"
+#include "crystalgraphics:shaders/paint/gradient.glsl"
 Material { Primitive Quad }
 
 Properties {
@@ -54,16 +54,13 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     // Clamped, so the rotated pad holds the end colours.
     vec2 uv = i.uv;
 #if defined(RADIAL)
-    float t = length((uv * _BoxSize - _Centre) / _Radii);
+    float t = cg_gradient_radial_t(uv * _BoxSize, _Centre, _Radii);
 #elif defined(CONIC)
-    // CSS's conic-gradient: the turn about _Centre, 0 up and clockwise on the Y-down box, from _Start.
-    vec2 d = uv * _BoxSize - _Centre;
-    float t = fract(atan(d.x, -d.y) / 6.28318530718 - _Start);
+    float t = cg_gradient_conic_t(uv * _BoxSize, _Centre, _Start);
 #else
-    float t = 0.5 + dot(uv - 0.5, _Axis);
+    float t = cg_gradient_linear_t(uv, _Axis);
 #endif
-    // Each interval mixes toward its end stop by a clamped fraction; the end colours pad either side. Two stops at
-    // one position are a hard stop: max() keeps the division finite.
+    // Each interval mixes toward its end stop; the end colours pad either side.
     vec4 stops[8] = vec4[8](_Color0, _Color1, _Color2, _Color3, _Color4, _Color5, _Color6, _Color7);
     float positions[8] = float[8](_Positions0.x, _Positions0.y, _Positions0.z, _Positions0.w,
                                   _Positions1.x, _Positions1.y, _Positions1.z, _Positions1.w);
@@ -71,8 +68,7 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     vec4 c = stops[0];
     for (int k = 1; k < 8; k++) {
         if (k >= count) break;
-        float f = clamp((t - positions[k - 1]) / max(positions[k] - positions[k - 1], 1e-5), 0.0, 1.0);
-        c = mix(c, stops[k], f);
+        c = cg_gradient_step(c, stops[k], t, positions[k - 1], positions[k]);
     }
     // A straight tint over a premultiplied colour.
     c *= vec4(i.color.rgb * i.color.a, i.color.a);
@@ -95,6 +91,6 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     s.coverage *= shape;
 #endif
     // The dither, inside the colour so the shape scales it: dither outside a rounded corner would stipple it back in.
-    s.color = c + vec4((hash12(gl_FragCoord.xy) - 0.5) / 255.0);
+    s.color = cg_gradient_dither(c, gl_FragCoord.xy);
     s.premultiplied = true;
 }

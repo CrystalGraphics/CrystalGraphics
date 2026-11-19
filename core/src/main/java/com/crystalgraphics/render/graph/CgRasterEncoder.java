@@ -356,6 +356,7 @@ final class CgRasterEncoder {
             packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
                 state(packed.clips.prepare());
+                state(packed.gradients.prepare());
                 state(packed.shapes.prepare());
                 state(packed.palette.prepare());
             }

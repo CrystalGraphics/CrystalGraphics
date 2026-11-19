@@ -172,6 +172,7 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Play one character's clips on another: rigs, retargeters, baking | **[`docs/animation/guides/retargeting.md`](docs/animation/guides/retargeting.md)** | `animation/CLAUDE.md` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |
 | Draw 2D quads, curves or text, in the world or on the screen, below widgets | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
+| Make a colour, gradient, image brush, grid, vector shape, stroke, filter or glass look to paint with | **[`docs/PAINT.md`](docs/PAINT.md)** | `api/paint`, `api/vector` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |

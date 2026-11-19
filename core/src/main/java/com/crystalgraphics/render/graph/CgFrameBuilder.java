@@ -677,6 +677,7 @@ public final class CgFrameBuilder {
     private void packTail(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
         CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_TABLES);
         packed.clips = frame.clipsOf(pass.recording.clips());
+        packed.gradients = frame.gradientsOf(pass.recording.gradients());
         packed.shapes = frame.shapesOf(pass.recording.shapes());
         packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
         part.close();

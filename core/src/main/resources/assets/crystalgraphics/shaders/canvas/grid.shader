@@ -12,6 +12,7 @@
 // procedurals", his MIT shadertoy "Filtering - checker"), which averages to their mean as a cell shrinks under a pixel.
 #domain ui
 #include "crystalgraphics:shaders/lib/sdf.glsl"
+#include "crystalgraphics:shaders/paint/grid.glsl"
 Material { Primitive Quad }
 
 Properties {
@@ -43,35 +44,10 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     vec2 ddxUv = dFdx(uv);
     vec2 ddyUv = dFdy(uv);
 #ifdef CHECKER
-    // The checker's square wave, box-filtered over the pixel's footprint: 0 on _Color's cells, 1 on _Color2's.
-    vec2 w = abs(ddxUv) + abs(ddyUv) + 0.001;
-    vec2 k = 2.0 * (abs(fract((uv - 0.5 * w) * 0.5) - 0.5) - abs(fract((uv + 0.5 * w) * 0.5) - 0.5)) / w;
-    vec4 c = mix(_Color, _Color2, 0.5 - 0.5 * k.x * k.y);
+    vec4 c = mix(_Color, _Color2, cg_grid_checker(uv, ddxUv, ddyUv));
     float coverage = 1.0;
 #else
-    vec2 uvDeriv = vec2(length(vec2(ddxUv.x, ddyUv.x)), length(vec2(ddxUv.y, ddyUv.y)));
-
-    bvec2 invertLine = bvec2(lineWidth.x > 0.5, lineWidth.y > 0.5);
-    vec2 targetWidth = vec2(
-            invertLine.x ? 1.0 - lineWidth.x : lineWidth.x,
-            invertLine.y ? 1.0 - lineWidth.y : lineWidth.y);
-
-    vec2 drawWidth = clamp(targetWidth, uvDeriv, vec2(0.5));
-    // 1.5 pixels of ramp either side.
-    vec2 lineAA = uvDeriv * 1.5;
-
-    vec2 gridUv = abs(fract(uv) * 2.0 - 1.0);
-    gridUv.x = invertLine.x ? gridUv.x : 1.0 - gridUv.x;
-    gridUv.y = invertLine.y ? gridUv.y : 1.0 - gridUv.y;
-
-    vec2 grid = smoothstep(drawWidth + lineAA, drawWidth - lineAA, gridUv);
-    grid *= clamp(targetWidth / drawWidth, vec2(0.0), vec2(1.0));
-    grid = mix(grid, targetWidth, clamp(uvDeriv * 2.0 - 1.0, vec2(0.0), vec2(1.0)));
-    grid.x = invertLine.x ? 1.0 - grid.x : grid.x;
-    grid.y = invertLine.y ? 1.0 - grid.y : grid.y;
-
-    // The union of both axes, not darker where they cross.
-    float coverage = mix(grid.x, 1.0, grid.y);
+    float coverage = cg_grid_lines(uv, lineWidth, ddxUv, ddyUv);
     vec4 c = _Color;
 #endif
     // A straight tint over a premultiplied colour.

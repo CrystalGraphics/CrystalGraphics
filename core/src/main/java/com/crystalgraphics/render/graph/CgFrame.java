@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.property.CgPalette;
 import com.crystalgraphics.render.property.CgPropertyValues;
@@ -126,6 +127,9 @@ public final class CgFrame {
     boolean wholePasses;
     /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
     private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
+    private final IdentityHashMap<CgGradientTable, CgGradientTable> gradients = new IdentityHashMap<>();
+    private final List<CgGradientTable> gradientPool = new ArrayList<>();
+    private int gradientsUsed;
     private final List<CgClipTable> clipPool = new ArrayList<>();
     private int clipsUsed;
     private final IdentityHashMap<CgShapeTable, CgShapeTable> shapes = new IdentityHashMap<>();
@@ -215,6 +219,8 @@ public final class CgFrame {
         executions = 0;
         clips.clear();
         clipsUsed = 0;
+        gradients.clear();
+        gradientsUsed = 0;
         shapes.clear();
         shapesUsed = 0;
         palettes.clear();
@@ -237,6 +243,17 @@ public final class CgFrame {
         tables[tableCount] = table;
         tableBases[tableCount++] = base;
         return base;
+    }
+
+    /** This frame's copy of {@code table}, made on first ask in a build. */
+    CgGradientTable gradientsOf(CgGradientTable table) {
+        CgGradientTable copy = gradients.get(table);
+        if (copy != null) return copy;
+        if (gradientsUsed == gradientPool.size()) gradientPool.add(new CgGradientTable());
+        copy = gradientPool.get(gradientsUsed++);
+        copy.copyFrom(table);
+        gradients.put(table, copy);
+        return copy;
     }
 
     /** This frame's copy of {@code table}, made on first ask in a build. */
@@ -510,6 +527,8 @@ public final class CgFrame {
         /** The frame's copy of its recording's clip table. */
         CgClipTable clips;
         CgShapeTable shapes;
+        /** The frame's copy of its recording's gradients. */
+        CgGradientTable gradients;
         /** The frame's palette of its recording's property trees. */
         CgPalette palette;
 

@@ -5,6 +5,7 @@ import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferRecords;
 import com.crystalgraphics.gpu.resource.CgReadback;
 import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
@@ -72,6 +73,7 @@ public final class CgRecording {
     private static final int EVENT_INTS = 4;
 
     private final CgClipTable clips = new CgClipTable();
+    private final CgGradientTable gradients = new CgGradientTable();
     private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
@@ -154,6 +156,11 @@ public final class CgRecording {
     /** What {@link #scratch} made, kept across {@link #reset()}, and how many of them this use has taken. */
     private final List<CgGraphResource> scratch = new ArrayList<>();
     private int scratchUsed;
+
+    /** The gradients its draws name, by index. */
+    public CgGradientTable gradients() {
+        return gradients;
+    }
 
     /** The rounded clips its chunks name, by index. */
     public CgClipTable clips() {
@@ -828,6 +835,7 @@ public final class CgRecording {
         chunks.recycle();
         primitives.reset();
         clips.reset();
+        gradients.reset();
         shapes.reset();
         spatial.reset();
         effects.reset();

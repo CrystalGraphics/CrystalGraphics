@@ -7,7 +7,7 @@
 // not from the SDF distance, which gives a bevel rather than a lens. Drawn under ALPHA (CgCanvasMaterials); the backdrop
 // is a copy of the target, already in its encoding.
 #domain ui
-#include "crystalgraphics:shaders/lib/sdf.glsl"
+#include "crystalgraphics:shaders/paint/glass.glsl"
 #include "crystalgraphics:shaders/lib/noise.glsl"
 #include "crystalgraphics:shaders/lib/color.glsl"
 Material { Primitive Quad  ColorSpace Target }
@@ -46,34 +46,6 @@ Keywords {
     WITH_CHROMATIC ("Splits the refraction by colour", switched)
     WITH_SPECULAR ("A rim and glow along the light", switched)
     WITH_NOISE ("Grain", switched)
-}
-
-// W3C's non-separable luminosity blend (Lum, ClipColor, SetLum): the backdrop keeps its hue and takes the tint's
-// brightness, what acrylic and Mica are mostly made of. Free of fragment-only
-// builtins: helpers reach both stages.
-float cg_lum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
-vec3 cg_clipColor(vec3 c) {
-    float l = cg_lum(c);
-    float n = min(c.r, min(c.g, c.b));
-    float x = max(c.r, max(c.g, c.b));
-    if (n < 0.0) c = l + (c - l) * l / max(l - n, 1e-5);
-    if (x > 1.0) c = l + (c - l) * (1.0 - l) / max(x - l, 1e-5);
-    return c;
-}
-vec3 cg_setLum(vec3 c, float l) { return cg_clipColor(c + vec3(l - cg_lum(c))); }
-
-// The glass's height across the bezel, x = 0 at the edge and 1 where it goes flat: Apple's convex squircle.
-float cg_glassHeight(float x) {
-    float t = 1.0 - clamp(x, 0.0, 1.0);
-    return pow(max(0.0, 1.0 - t * t * t * t), 0.25);
-}
-
-// The SDF's outward normal by central difference over e, about a pixel: no derivative builtins here, which once
-// reached a vertex stage.
-vec2 cg_sdfGradient(vec2 p, vec2 halfSize, vec4 rx, vec4 ry, float e) {
-    float dx = sdf_rounded_box(p + vec2(e, 0.0), halfSize, rx, ry) - sdf_rounded_box(p - vec2(e, 0.0), halfSize, rx, ry);
-    float dy = sdf_rounded_box(p + vec2(0.0, e), halfSize, rx, ry) - sdf_rounded_box(p - vec2(0.0, e), halfSize, rx, ry);
-    return normalize(vec2(dx, dy) + vec2(1e-6, 0.0));
 }
 
 // The backdrop's colour at a point in its texels: what shows, its alpha unread (a target's alpha is whatever its
