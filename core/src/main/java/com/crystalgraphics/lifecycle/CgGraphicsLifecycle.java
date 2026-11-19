@@ -1,6 +1,7 @@
 package com.crystalgraphics.lifecycle;
 
 import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
+import com.crystalgraphics.render.ui.path.CgPathCache;
 import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
@@ -581,6 +582,7 @@ public final class CgGraphicsLifecycle {
         // forget them.
         CgTextMaterials.releaseAll();
         CgEngineMaterials.releaseAll();
+        CgPathCache.SHARED.destroy();
         CgCanvasPrimitives.releaseAll();
         
         // Step 6b: Font/glyph atlas textures + background generation executor, then reset

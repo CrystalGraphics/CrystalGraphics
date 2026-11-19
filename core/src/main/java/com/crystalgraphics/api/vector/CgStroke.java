@@ -11,8 +11,8 @@ import java.util.Objects;
  * static final CgStroke PEN = CgStroke.of(2f).cap(CgStrokeCap.ROUND).join(CgStrokeJoin.ROUND);
  * static final CgStroke DASHED = CgStroke.of(1f).dash(4f, 2f);
  *
- * canvas.vector(tick).stroke(PEN, 0xFF40C060).submit();
- * canvas.vector(tick).stroke(PEN.trim(0f, progress), 0xFF40C060).submit();    // drawn on as progress goes 0 to 1
+ * canvas.stroke(tick, PEN, 0xFF40C060);
+ * canvas.stroke(tick, PEN.trim(0f, progress), 0xFF40C060);    // drawn on as progress goes 0 to 1
  * }</pre>
  *
  * <ul>

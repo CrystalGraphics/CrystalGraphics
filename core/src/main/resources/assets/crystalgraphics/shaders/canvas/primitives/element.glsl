@@ -20,6 +20,8 @@
 #define CG_ELEMENT_BORDER 32
 #define CG_ELEMENT_PREMULTIPLIED 64
 #define CG_ELEMENT_CHECKER 128
+// A path's element: coverage is its raster's alpha at uv, and its paint frame stands in the radii (CgUiElements.paintFrame)
+#define CG_ELEMENT_COVERAGE 256
 
 #ifdef CG_VERTEX_STAGE
 // The element this vertex belongs to, and its corner of the rect, (0,0) (1,0) (1,1) (0,0) (1,1) (0,1).

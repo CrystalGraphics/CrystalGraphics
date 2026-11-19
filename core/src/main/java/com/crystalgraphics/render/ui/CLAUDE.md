@@ -7,6 +7,7 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
 |---|---|
 | `CgUiRecorder` | The canvas's records into a recording's `LOOKBACK` raster passes: elements and a text item's glyph quads, one draw per run of kind, material, state and texture, one chunk per spatial node; its tape is what a `CgPaintChunk` captures |
 | `element/CgUiElements` | The 96-byte element record (`CgInstanceKind.ELEMENT`): its field offsets, fill kinds, flags and writers |
+| `path/` | A path's geometry and its cache: flattening (Wang's formula), the trapezoid triangulator, the stroker and dasher, the cell records, and the shared coverage atlas with its publication rule (`CgPathCache`) |
 | `property/` | The property trees a recording carries: spatial nodes, effect nodes, the palette a frame executes them as. Their values per frame, `CgPropertyValues`, are the graph's (`render/graph`) |
 
 ## Rules
@@ -20,6 +21,10 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
 - **Text lands as glyph quads** (`CgInstanceKind.QUAD`, `CgQuadRecord`) beside elements, through `CgTextBatch.Target`:
   the batch bakes the canvas's transform into each quad, so text takes no spatial node of its own. A chunk keeps both
   kinds; an element's clip is an int's bits, a glyph quad's the int as a float.
+- **A path element carries its paint frame in the radii's place** (`CgUiElements.paintFrame`, `FLAG_COVERAGE`): its
+  coverage is the texture's alpha at `uv`, so a path takes no corners, no border, and no paint that needs `uv` itself.
+- **A path cell is drawn only by its claimer until its build has executed** (`CgPathCache`); anything else that meets
+  it pending rasterises its own. Never draw from a cell you did not see ready or claim.
 - **A chunk names only what it made**, besides the clip and node it began under: replay renumbers those alone, so an
   outer clip or node, a one-frame texture or a new pass refuses the capture (`CgPaintChunk.Refusal`).
 - **Hot paths allocate nothing**: a canvas reuses its record, its box builder and its tile sink.

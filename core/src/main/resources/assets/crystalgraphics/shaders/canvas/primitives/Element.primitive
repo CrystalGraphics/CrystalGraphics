@@ -49,6 +49,15 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec4 uvRect = CG_ELEMENT(n).uv;
     vec2 uv = mix(uvRect.xy, uvRect.zw, clamp(param, 0.0, 1.0));
     vec4 texel = texture(_MainTex, uv);
+    // A path: its paint maps over the path's own box by the frame the radii hold, after uv took the raster's region
+    bool covered = (flags & uint(CG_ELEMENT_COVERAGE)) != 0u;
+    vec2 paintParam = param, paintSize = size;
+    if (covered) {
+        uvec4 frame = CG_ELEMENT(n).radii;
+        paintParam = unpackHalf2x16(frame.x) * i._cg_in_local.x + unpackHalf2x16(frame.y) * i._cg_in_local.y
+                + unpackHalf2x16(frame.z);
+        paintSize = unpackHalf2x16(frame.w);
+    }
     // A grid's cell coordinate and its derivatives: uv holds the cell and line sizes
     vec2 cell = i._cg_in_local / max(uvRect.xy, vec2(1e-4));
     vec2 cellDx = dFdx(cell), cellDy = dFdy(cell);
@@ -57,8 +66,9 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec2 tl = unpackHalf2x16(radii.x), tr = unpackHalf2x16(radii.y);
     vec2 br = unpackHalf2x16(radii.z), bl = unpackHalf2x16(radii.w);
     vec4 rx = vec4(tl.x, tr.x, br.x, bl.x), ry = vec4(tl.y, tr.y, br.y, bl.y);
+    if (covered) rx = ry = vec4(0.0);
     bool rounded = (flags & uint(CG_ELEMENT_ROUNDED)) != 0u;
-    float coverage = sdf_coverage(sdf_rounded_box(p, halfSize, rx, ry), ramp);
+    float coverage = covered ? 1.0 : sdf_coverage(sdf_rounded_box(p, halfSize, rx, ry), ramp);
 
     vec4 tint = cg_element_unpack(CG_ELEMENT(n).color);
     vec4 tintP = vec4(tint.rgb * tint.a, tint.a);
@@ -70,7 +80,7 @@ void fragment(in v2f i, out vec4 fragColor) {
         fill = tintP * texel.a;
     } else if (kind == uint(CG_ELEMENT_GRADIENT)) {
         int g = int(CG_ELEMENT(n).paint);
-        fill = cg_gradient(g, param, size) * tint.a;
+        fill = cg_gradient(g, paintParam, paintSize) * tint.a;
         if (cg_gradient_dithered(g)) fill = cg_gradient_dither(fill, gl_FragCoord.xy);
     } else if (kind == uint(CG_ELEMENT_GRID)) {
         vec4 second = cg_element_unpack(CG_ELEMENT(n).paint);
@@ -91,6 +101,8 @@ void fragment(in v2f i, out vec4 fragColor) {
     } else {
         fill = tintP;
     }
+
+    if (covered) fill *= min(texel.a, 1.0);
 
     if ((flags & uint(CG_ELEMENT_BORDER)) != 0u) {
         vec2 widthsTR = unpackHalf2x16(CG_ELEMENT(n).widthsTR), widthsBL = unpackHalf2x16(CG_ELEMENT(n).widthsBL);

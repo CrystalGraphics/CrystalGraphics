@@ -9,6 +9,7 @@ import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.ui.path.CgPathCache;
 import com.crystalgraphics.text.cache.CgFontRegistry;
 import com.crystalgraphics.text.render.CgTextGamma;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
@@ -61,6 +62,8 @@ public final class CgPaintChunk {
         DEGRADED,
         /** Replayed after the glyph atlases evicted or the canvas's text gamma changed: its glyph quads are stale. */
         STALE_TEXT,
+        /** Replayed after the path atlas filled and was placed again: its paths' cells are gone. */
+        STALE_PATHS,
         /** A draw of a kind a chunk does not keep. */
         KIND
     }
@@ -91,6 +94,8 @@ public final class CgPaintChunk {
     /** For a chunk holding text: the gamma it drew under and the atlases' eviction generation then; else null. */
     @Nullable private CgTextGamma textGamma;
     private long evictions;
+    /** For a chunk drawing cached paths: the path atlas's resets then; else -1. */
+    private int pathResets = -1;
 
     /** Whether a stretch is kept. */
     public boolean kept() {
@@ -129,6 +134,7 @@ public final class CgPaintChunk {
         clipCount = 0;
         nodeCount = 0;
         textGamma = null;
+        pathResets = -1;
     }
 
     /**
@@ -136,8 +142,8 @@ public final class CgPaintChunk {
      * {@code baseNode}, the tables then holding {@code clipsBefore} entries and {@code nodesBefore} nodes.
      */
     Refusal capture(CgCanvas canvas, int count, CgRecording recording, int clipsBefore, int nodesBefore, int baseClip,
-                    int baseNode, boolean onePass, boolean degraded, @Nullable CgTextGamma textGamma, float bx0, float by0,
-                    float bx1, float by1) {
+                    int baseNode, boolean onePass, boolean degraded, @Nullable CgTextGamma textGamma, boolean paths,
+                    float bx0, float by0, float bx1, float by1) {
         clear();
         refusal = degraded ? Refusal.DEGRADED
                 : keep(canvas, count, recording, clipsBefore, nodesBefore, baseClip, baseNode, onePass);
@@ -149,6 +155,7 @@ public final class CgPaintChunk {
         this.baseNode = baseNode;
         this.textGamma = textGamma;
         if (textGamma != null) evictions = CgFontRegistry.get().getAtlasEvictionGeneration();
+        pathResets = paths ? CgPathCache.SHARED.resets() : -1;
         x0 = bx0;
         y0 = by0;
         x1 = bx1;
@@ -224,6 +231,11 @@ public final class CgPaintChunk {
         if (textGamma != null && (!textGamma.equals(gamma) || CgFontRegistry.get().getAtlasEvictionGeneration() != evictions)) {
             clear();
             refusal = Refusal.STALE_TEXT;
+            return false;
+        }
+        if (pathResets >= 0 && CgPathCache.SHARED.resets() != pathResets) {
+            clear();
+            refusal = Refusal.STALE_PATHS;
             return false;
         }
         boolean same = clip == baseClip && node == baseNode;

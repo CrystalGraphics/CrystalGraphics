@@ -44,6 +44,8 @@ public final class CgUiElements {
             FILL_INSET_SHADOW = 5, FILL_GRID = 6;
     /** Flags above the kind. */
     public static final int FLAG_ROUNDED = 16, FLAG_BORDER = 32, FLAG_PREMULTIPLIED = 64, FLAG_CHECKER = 128;
+    /** A path's element: its coverage is the texture's alpha at {@code uv}, its paint mapped by {@link #paintFrame}. */
+    public static final int FLAG_COVERAGE = 256;
 
     /** Float offsets of the record's fields: std430, as {@link CgInstanceKind#ELEMENT}'s format lays them out. */
     public static final int RECT = 0, UV = 4, RADII = 8, BORDER_COLOR = 12, WIDTHS_TR = 16, WIDTHS_BL = 17, COLOR = 18,
@@ -111,6 +113,21 @@ public final class CgUiElements {
         r[at + RADII + 2] = Float.intBitsToFloat(half2(brx, bry));
         r[at + RADII + 3] = Float.intBitsToFloat(half2(blx, bly));
         flag(r, at, FLAG_ROUNDED, tlx > 0 || tly > 0 || trx > 0 || try_ > 0 || brx > 0 || bry > 0 || blx > 0 || bly > 0);
+    }
+
+    /**
+     * A path element's paint frame, in the radii's place: the paint's 0 to 1 coordinate is
+     * {@code (m00, m10) * x + (m01, m11) * y + (tx, ty)} of a pixel {@code (x, y)} from the element's corner, over a box
+     * {@code width x height} (what a gradient's angle and extents are taken against). Sets {@link #FLAG_COVERAGE}.
+     */
+    public static void paintFrame(float[] r, int at, float m00, float m10, float m01, float m11, float tx, float ty,
+                                  float width, float height) {
+        r[at + RADII] = Float.intBitsToFloat(half2(m00, m10));
+        r[at + RADII + 1] = Float.intBitsToFloat(half2(m01, m11));
+        r[at + RADII + 2] = Float.intBitsToFloat(half2(tx, ty));
+        r[at + RADII + 3] = Float.intBitsToFloat(half2(width, height));
+        flag(r, at, FLAG_ROUNDED, false);
+        flag(r, at, FLAG_COVERAGE, true);
     }
 
     /** A border, widths and colours per side: top, right, bottom, left. */

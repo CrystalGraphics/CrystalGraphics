@@ -19,8 +19,8 @@ import java.util.Objects;
  * static final CgVectorPath WAVE = CgVectorPath.builder()
  *         .moveTo(0, 8).cubicTo(4, 0, 12, 16, 16, 8).build();
  *
- * canvas.vector(BADGE).fill(0xFF3070F0).submit();
- * canvas.vector(TICK).stroke(CgStroke.of(2f).cap(CgStrokeCap.ROUND), 0xFFFFFFFF).submit();
+ * canvas.fill(BADGE, 0xFF3070F0);
+ * canvas.stroke(TICK, CgStroke.of(2f).cap(CgStrokeCap.ROUND), 0xFFFFFFFF);
  * }</pre>
  *
  * <ul>
@@ -172,8 +172,13 @@ public final class CgVectorPath {
 
     @Override
     public int hashCode() {
-        return 31 * (31 * fillRule.hashCode() + Arrays.hashCode(verbs)) + Arrays.hashCode(points);
+        // Kept: a path is a cache key looked up every frame it draws
+        int h = hash;
+        if (h == 0) hash = h = 31 * (31 * fillRule.hashCode() + Arrays.hashCode(verbs)) + Arrays.hashCode(points);
+        return h;
     }
+
+    private int hash;
 
     @Override
     public String toString() {

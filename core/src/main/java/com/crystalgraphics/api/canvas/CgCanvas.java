@@ -1,42 +1,52 @@
 package com.crystalgraphics.api.canvas;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 
 import javax.annotation.Nullable;
-
-import org.joml.Matrix4f;
-import com.crystalgraphics.api.state.CgRenderState;
-import com.crystalgraphics.api.text.CgText;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
-import com.crystalgraphics.render.draw.CgInstanceKind;
-import com.crystalgraphics.text.render.CgTextBatch;
-import com.crystalgraphics.text.render.CgTextGamma;
-import org.joml.Matrix4fc;
 
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.paint.CgPaint;
-import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.brush.CgTiling;
+import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.paint.gradient.CgGradient;
 import com.crystalgraphics.api.paint.pattern.CgGrid;
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vector.CgCornerRadii;
+import com.crystalgraphics.api.vector.CgFillRule;
+import com.crystalgraphics.api.vector.CgStroke;
+import com.crystalgraphics.api.vector.CgStrokeJoin;
+import com.crystalgraphics.api.vector.CgVectorPath;
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
 import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.ui.CgUiRecorder;
 import com.crystalgraphics.render.ui.element.CgUiElements;
+import com.crystalgraphics.render.ui.path.CgPathCache;
+import com.crystalgraphics.render.ui.path.CgPathCells;
+import com.crystalgraphics.render.ui.path.CgPathFlattener;
+import com.crystalgraphics.render.ui.path.CgPathStroker;
+import com.crystalgraphics.render.ui.property.CgPalette;
+import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextGamma;
+import org.joml.Matrix4f;
+import org.joml.Matrix4fc;
 
 /**
  * A 2D canvas for screens, HUDs and textures: rectangles filled by any paint, rounded, bordered and shadowed; images
@@ -75,7 +85,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private static final String ELEMENT_SHADER = "crystalgraphics:shaders/canvas/element.shader";
     private static final int MAX_TILES = 4096;
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node. */
-    private static final int SAVED = 17;
+    private static final int SAVED = 18;
 
     private final CgUiRecorder recorder = new CgUiRecorder();
     private final float[] record = new float[CgUiElements.FLOATS];
@@ -88,6 +98,14 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private CgTextGamma textGamma = CgTextGamma.initial();
     /** Text items drawn so far: a chunk holding one keeps the glyph epoch it was taken in. */
     private long textDraws;
+    /** Draws from the path atlas so far: a chunk holding one keeps the atlas's resets it was taken at. */
+    private long pathDraws;
+    /** Records a path's coverage raster: its own pass, before the element that paints it. */
+    private final CgUiRecorder coverage = new CgUiRecorder();
+    private final CgPathCells cells = new CgPathCells();
+    private final CgCamera atlasCamera = new CgCamera().screenLens(CgPathCache.SIZE, CgPathCache.SIZE);
+    private final CgCamera rasterCamera = new CgCamera();
+    private final float[] bounds = new float[4];
     private final float[] noRadii = new float[4], clipRx = new float[4], clipRy = new float[4];
 
     @Nullable private CgRecording recording;
@@ -116,7 +134,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     // A paint chunk being taken: what the tables held at its start, and the union of what it drew
     private boolean chunking;
     private int chunkClips, chunkNodes, chunkClip, chunkNode;
-    private long chunkTextDraws, chunkDegraded;
+    private long chunkTextDraws, chunkDegraded, chunkPathDraws;
     private long chunkPasses;
     private float chunkX0, chunkY0, chunkX1, chunkY1;
 
@@ -173,6 +191,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         d = scale;
         b = c = tx = ty = 0f;
         opacity = intensity = 1f;
+        snap = true;
         resetClip();
         node = 0;
         nodeStale = false;
@@ -191,6 +210,9 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** Drops what is drawn and not landed, and records nowhere: its recording is being discarded. */
     public void abandon() {
         recorder.abandon();
+        coverage.abandon();
+        // Cells this canvas claimed will never be built: others must not wait on them
+        CgPathCache.SHARED.abandon(this);
         recording = null;
         target = null;
         frame = null;
@@ -229,7 +251,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     // ── State ──────────────────────────────────────────────────────────
 
-    /** Pushes the transform, opacity, intensity and clip; {@link #restore} pops them. */
+    /** Pushes the transform, opacity, intensity, clip and pixel snapping; {@link #restore} pops them. */
     public CgCanvas save() {
         if ((depth + 1) * SAVED > stack.length) stack = Arrays.copyOf(stack, stack.length * 2);
         int o = depth++ * SAVED;
@@ -250,6 +272,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         stack[o + 14] = Float.intBitsToFloat(clipNode);
         stack[o + 15] = Float.intBitsToFloat(base);
         stack[o + 16] = Float.intBitsToFloat(clipBase);
+        stack[o + 17] = snap ? 1f : 0f;
         return this;
     }
 
@@ -279,6 +302,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         if (savedBase != base) nodeStale = true;
         base = savedBase;
         clipBase = Float.floatToRawIntBits(stack[o + 16]);
+        snap = stack[o + 17] != 0f;
         return this;
     }
 
@@ -452,6 +476,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         chunkX0 = chunkY0 = Float.MAX_VALUE;
         chunkX1 = chunkY1 = -Float.MAX_VALUE;
         chunkTextDraws = textDraws;
+        chunkPathDraws = pathDraws;
         chunkDegraded = degradedDraws();
         return this;
     }
@@ -466,7 +491,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         int count = recorder.untape();
         return into.capture(this, count, recording, chunkClips, chunkNodes, chunkClip, chunkNode,
                 recorder.passes() == chunkPasses, degradedDraws() != chunkDegraded,
-                textDraws != chunkTextDraws ? textGamma : null, chunkX0, chunkY0, chunkX1, chunkY1);
+                textDraws != chunkTextDraws ? textGamma : null, pathDraws != chunkPathDraws, chunkX0, chunkY0, chunkX1,
+                chunkY1);
     }
 
     /**
@@ -607,6 +633,198 @@ public final class CgCanvas implements CgStageFrame.Drawer {
                     x0, y0, x1, y1);
             grow(spatial, x0, y0, x1, y1);
         }
+    }
+
+    // ── Paths ──────────────────────────────────────────────────────────
+
+    /** {@code path} filled in one colour, by its fill rule. */
+    public CgCanvas fill(CgVectorPath path, int argb) {
+        return fill(path, CgPaint.color(argb));
+    }
+
+    /**
+     * {@code path} filled by its fill rule in {@code paint}: a colour or a gradient, the gradient laid over the path's
+     * own bounds. Exact-area coverage, at any transform.
+     */
+    public CgCanvas fill(CgVectorPath path, CgPaint paint) {
+        path(path, null, paint);
+        return this;
+    }
+
+    /** {@code path} outlined by {@code stroke} in one colour. */
+    public CgCanvas stroke(CgVectorPath path, CgStroke stroke, int argb) {
+        return stroke(path, stroke, CgPaint.color(argb));
+    }
+
+    /**
+     * {@code path} outlined by {@code stroke} in {@code paint}. Stroked in the path's units, so a non-uniform scale
+     * shapes the pen; thinner than a device pixel, it draws a pixel wide and fades instead.
+     */
+    public CgCanvas stroke(CgVectorPath path, CgStroke stroke, CgPaint paint) {
+        path(path, Objects.requireNonNull(stroke, "stroke"), paint);
+        return this;
+    }
+
+    /**
+     * A path's draw: its coverage rasterised (into the shared atlas when it is small, axis-aligned and on the pixel
+     * grid, else into a texture for this frame), then one element painting through it.
+     */
+    private void path(CgVectorPath path, @Nullable CgStroke stroke, CgPaint paint) {
+        if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
+        if (!(paint instanceof CgPaint.Solid) && !(paint instanceof CgGradient)) {
+            throw new IllegalArgumentException("a path takes a colour or a gradient: " + paint
+                    + " fills it through a mask layer (c.layer().mask(path))");
+        }
+        if (path.isEmpty() || opacity <= 0f) return;
+        float scale = (float) Math.sqrt(Math.max(a * a + b * b, c * c + d * d));
+        if (!(scale > 0f)) return;
+        float fade = 1f;
+        if (stroke != null && stroke.width() * scale < 1f) {
+            // A hairline: a device pixel wide, faded by how much thinner it is
+            fade = stroke.width() * scale;
+            stroke = stroke.width(1f / scale);
+        }
+        // The ink's local bounds: a stroke reaches past the path by its half-width, a miter or a square cap further
+        float reach = stroke == null ? 0f : stroke.width() * 0.5f
+                * Math.max(1.4142135f, stroke.join() == CgStrokeJoin.MITER ? stroke.miterLimit() : 1f);
+        float lx0 = path.minX() - reach, ly0 = path.minY() - reach, lx1 = path.maxX() + reach, ly1 = path.maxY() + reach;
+        boolean cached = b == 0f && c == 0f && a > 0f && d > 0f && snap
+                && (lx1 - lx0) * a <= CgPathCache.MAX_PX && (ly1 - ly0) * d <= CgPathCache.MAX_PX;
+        // A cached path sits on the pixel grid: its translation snapped, its raster built without it
+        float rtx = cached ? 0f : tx, rty = cached ? 0f : ty;
+        float placeX = cached ? Math.round(tx) : 0f, placeY = cached ? Math.round(ty) : 0f;
+        deviceBounds(lx0, ly0, lx1, ly1, rtx, rty);
+        int cornerX = (int) Math.floor(bounds[0]) - CgPathCache.PAD, cornerY = (int) Math.floor(bounds[1]) - CgPathCache.PAD;
+        int w = (int) Math.ceil(bounds[2]) + CgPathCache.PAD - cornerX, h = (int) Math.ceil(bounds[3]) + CgPathCache.PAD - cornerY;
+        float ex0 = placeX + cornerX, ey0 = placeY + cornerY, ex1 = ex0 + w, ey1 = ey0 + h;
+        if (clipNode == base && (ex1 <= clipX0 || ey1 <= clipY0 || ex0 >= clipX1 || ey0 >= clipY1)) return;
+
+        CgGraphTexture texture;
+        float u0, v0, u1, v1;
+        CgPathCache.Entry cell = cached ? cell(path, stroke, w, h) : null;
+        if (cell != null) {
+            texture = cell.texture();
+            if (cell.takeBuild()) build(cell, path, stroke, cornerX, cornerY);
+            u0 = cell.x() / (float) CgPathCache.SIZE;
+            u1 = (cell.x() + w) / (float) CgPathCache.SIZE;
+            // A render target's row 0 is its bottom
+            v0 = 1f - cell.y() / (float) CgPathCache.SIZE;
+            v1 = 1f - (cell.y() + h) / (float) CgPathCache.SIZE;
+            pathDraws++;
+        } else {
+            texture = CgGraphTexture.transientTexture("canvas_path", CgTextureDesc.of(w, h, CgPathCache.FORMAT));
+            raster(texture, true, rasterCamera.screenLens(w, h), path, stroke, a, b, c, d, rtx - cornerX, rty - cornerY,
+                    0f, 0f, w, h);
+            u0 = 0f;
+            u1 = 1f;
+            v0 = 1f;
+            v1 = 0f;
+        }
+
+        pass();
+        clear();
+        int tint = (Math.round(255f * fade) << 24) | 0x00FFFFFF;
+        float gain = 1f;
+        if (paint instanceof CgPaint.Solid solid) {
+            CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, mul(solid.argb(), tint), 0f);
+            gain = solid.intensity();
+        } else {
+            CgUiElements.fill(record, 0, CgUiElements.FILL_GRADIENT, tint, recording.gradients().add((CgGradient) paint));
+        }
+        CgUiElements.uv(record, 0, u0, v0, u1, v1);
+        paintFrame(path, ex0, ey0, cached);
+        CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
+        finish(base, gain);
+        element(elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+    }
+
+    /** The cell for a cached path: claimed, built or pending; null when this canvas rasterises it for its frame. */
+    @Nullable
+    private CgPathCache.Entry cell(CgVectorPath path, @Nullable CgStroke stroke, int w, int h) {
+        CgPathCache.Key key = new CgPathCache.Key(path, stroke, a, d);
+        CgPathCache.Entry cell = CgPathCache.SHARED.find(key);
+        if (cell == null) cell = CgPathCache.SHARED.claim(key, w, h, this);
+        // Another canvas's cell, not built yet: drawing it would read a build that may not have executed
+        if (cell == null || !cell.ready() && cell.owner() != this) return null;
+        return cell;
+    }
+
+    /** A claimed cell's raster, recorded into this recording, opened to every canvas once it has executed. */
+    private void build(CgPathCache.Entry cell, CgVectorPath path, @Nullable CgStroke stroke, int cornerX, int cornerY) {
+        CgGraphTexture atlas = cell.texture();
+        CgGraphTexture released = cell.takeRelease();
+        if (released != null) recording.release(released);
+        if (cell.takeClear()) {
+            recorder.end();
+            recording.raster("path-atlas-clear").color(atlas, CgLoad.CLEAR).camera(atlasCamera).end();
+            CgPathCache.Generation generation = cell.generation();
+            recording.callback("cg.path.atlas-ready", null, () -> CgPathCache.SHARED.ready(generation), atlas);
+        }
+        cell.origin(-cornerX, -cornerY);
+        raster(atlas, false, atlasCamera, path, stroke, a, 0f, 0f, d, cell.x() - cornerX, cell.y() - cornerY,
+                cell.x(), cell.y(), cell.x() + cell.width(), cell.y() + cell.height());
+        recording.callback("cg.path.ready", null, () -> CgPathCache.SHARED.ready(cell), atlas);
+    }
+
+    /**
+     * Records {@code path}'s exact-area coverage into {@code texture} under the affine, landing the canvas's pass first:
+     * the raster executes before the element that reads it, and the canvas's earlier items before both.
+     */
+    private void raster(CgGraphTexture texture, boolean clear, CgCamera lens, CgVectorPath path, @Nullable CgStroke stroke,
+                        float ra, float rb, float rc, float rd, float rtx, float rty, float x0, float y0, float x1, float y1) {
+        recorder.end();
+        List<CgPathFlattener.Contour> local = CgPathFlattener.flatten(path, ra, rb, rc, rd, rtx, rty);
+        boolean evenOdd = false;
+        if (stroke != null) {
+            float scale = (float) Math.sqrt(Math.max(ra * ra + rb * rb, rc * rc + rd * rd));
+            local = CgPathStroker.outline(local, stroke, CgPathFlattener.TOLERANCE / scale);
+        } else {
+            evenOdd = path.fillRule() == CgFillRule.EVEN_ODD;
+        }
+        List<CgPathFlattener.Contour> device = CgPathFlattener.transform(local, ra, rb, rc, rd, rtx, rty);
+        int n = cells.fill(device, evenOdd, 0f, 0f);
+        coverage.begin(recording, texture, clear ? CgLoad.CLEAR : CgLoad.load(), lens);
+        if (n > 0) {
+            coverage.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.coverage(), null, null, null, 0, cells.records(), 0, n,
+                    x0, y0, x1, y1);
+        } else if (clear) {
+            coverage.openPass();
+        }
+        coverage.end();
+    }
+
+    /** The device bounds of a local rect under the transform's linear part and the translation given, into {@link #bounds}. */
+    private void deviceBounds(float x0, float y0, float x1, float y1, float ttx, float tty) {
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        for (int i = 0; i < 4; i++) {
+            float x = (i & 1) == 0 ? x0 : x1, y = (i & 2) == 0 ? y0 : y1;
+            float dx = a * x + c * y + ttx, dy = b * x + d * y + tty;
+            minX = Math.min(minX, dx);
+            minY = Math.min(minY, dy);
+            maxX = Math.max(maxX, dx);
+            maxY = Math.max(maxY, dy);
+        }
+        bounds[0] = minX;
+        bounds[1] = minY;
+        bounds[2] = maxX;
+        bounds[3] = maxY;
+    }
+
+    /**
+     * The element's paint frame: from a pixel's offset from its corner {@code (ex0, ey0)} to the path's own box, 0 to
+     * 1, through the transform's inverse. A cached path's translation is its snapped place.
+     */
+    private void paintFrame(CgVectorPath path, float ex0, float ey0, boolean cached) {
+        float det = a * d - b * c;
+        float ia = d / det, ib = -b / det, ic = -c / det, id = a / det;
+        float ttx = cached ? Math.round(tx) : tx, tty = cached ? Math.round(ty) : ty;
+        float bw = Math.max(path.maxX() - path.minX(), 1e-6f), bh = Math.max(path.maxY() - path.minY(), 1e-6f);
+        // local = inverse * (corner + e - t); unit = (local - min) / size
+        float ox = ex0 - ttx, oy = ey0 - tty;
+        float lx = ia * ox + ic * oy, ly = ib * ox + id * oy;
+        CgUiElements.paintFrame(record, 0, ia / bw, ib / bh, ic / bw, id / bh, (lx - path.minX()) / bw,
+                (ly - path.minY()) / bh, bw, bh);
     }
 
     // ── Drawing a box ──────────────────────────────────────────────────

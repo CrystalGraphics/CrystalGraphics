@@ -83,6 +83,33 @@ canvas.restore();
 - `canvas.textGamma(...)` sets the coverage correction; a kept chunk with text replays only under the gamma and the
   atlases it was taken under (`STALE_TEXT`).
 
+## Paths
+
+A `CgVectorPath` is the shape, a `CgStroke` how its outline is drawn; both are values. The canvas fills or strokes
+one in a colour or a gradient, the gradient laid over the path's own bounds.
+
+```java
+static final CgVectorPath TICK = CgVectorPath.builder().moveTo(2, 8).lineTo(6, 12).lineTo(14, 4).build();
+static final CgStroke PEN = CgStroke.of(2f).cap(CgStrokeCap.ROUND).join(CgStrokeJoin.ROUND);
+
+canvas.fill(BADGE, 0xFF3070F0);
+canvas.fill(BADGE, CgGradient.linear(90).stop(0, 0xFF2050FF).stop(1, 0xFFFF4020));
+canvas.stroke(TICK, PEN, 0xFF40C060);
+canvas.stroke(RING, PEN.dash(0f, 6f), 0xFFFFFFFF);              // dots: zero-length dashes, round caps
+canvas.stroke(RING, PEN.trim(0f, progress), 0xFF40C060);        // drawn on as progress goes 0 to 1
+```
+
+Every path draws as exact-area coverage: its cells summed into a raster, then one element painting through it.
+
+- **Small, axis-aligned and on the pixel grid** (the default: pixel snapping on, at most `CgPathCache.MAX_PX` device
+  pixels), it is rasterised once into an atlas every canvas shares, and drawn from it every frame after.
+- **Rotated, skewed, large or unsnapped**, it is rasterised for its frame, as exactly; its pass costs a pass split.
+- **Strokes** are outlined in the path's own units, so a non-uniform scale shapes the pen; thinner than a device
+  pixel, a stroke draws a pixel wide and fades.
+- **Two canvases on two threads** may draw one path: whichever claims it first builds the cell, and the other draws
+  its own raster until that build has executed (the publication rule, `CgPathCache`).
+- A brush or a grid fills a path through a mask layer, and a path clip is one too (`c.layer().mask(path)`, UI8).
+
 ## Frames recorded off the render thread
 
 A document or a heavy HUD records on its own thread and is shown on the render thread: `CgCanvasRecorder` paints into
