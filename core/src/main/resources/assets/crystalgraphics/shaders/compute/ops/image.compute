@@ -17,6 +17,7 @@
 #pragma kernel ShrinkRgba16f 8 8 general
 #pragma kernel ShrinkR16f 8 8 general
 #pragma kernel ShrinkR32f 8 8 general
+#pragma kernel ColorMatrixRgba16f 8 8 general
 #pragma cg_feature MIN
 #pragma cg_feature MAX
 #pragma cg_feature VERTICAL
@@ -31,7 +32,12 @@ Properties {
     _Mirror ("Blur taps past the region fold back in", int) = 0
     _Scale  ("Source texels a reduced texel averages, each axis", int) = 1
     _Level  ("The level a blur samples", int) = 0
-    _Src    ("The source of a blur, a reduce or a shrink", sampler2D) = "black"
+    _MatrixR ("A colour matrix's red row: R G B A weights", vec4) = (1, 0, 0, 0)
+    _MatrixG ("Its green row", vec4) = (0, 1, 0, 0)
+    _MatrixB ("Its blue row", vec4) = (0, 0, 1, 0)
+    _MatrixA ("Its alpha row", vec4) = (0, 0, 0, 1)
+    _MatrixOffset ("Its offsets, added after the rows", vec4) = (0, 0, 0, 0)
+    _Src    ("The source of a blur, a reduce, a shrink or a colour matrix", sampler2D) = "black"
 }
 
 Images {
@@ -311,4 +317,15 @@ void ShrinkR16f() {
 void ShrinkR32f() {
     if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
     DST_R32F_STORE(CG_TEXEL.xy + ivec2(_Region.xy), shrinkAt(CG_TEXEL.xy));
+}
+
+// A premultiplied texel through a 4x5 colour matrix on straight RGBA, clamped, premultiplied again: CSS's filter
+// functions folded into one (CgFilter). Region texels, each to the same place.
+void ColorMatrixRgba16f() {
+    if (!CG_IN_RANGE) return;   // general, for STORE where the region lands: no barriers
+    ivec2 t = CG_TEXEL.xy + ivec2(_Region.xy);
+    vec4 p = texelFetch(_Src, t, 0);
+    vec4 s = vec4(p.a > 0.0 ? p.rgb / p.a : vec3(0.0), p.a);
+    vec4 o = clamp(vec4(dot(_MatrixR, s), dot(_MatrixG, s), dot(_MatrixB, s), dot(_MatrixA, s)) + _MatrixOffset, 0.0, 1.0);
+    DST_RGBA16F_STORE(t, vec4(o.rgb * o.a, o.a));
 }

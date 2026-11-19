@@ -1,6 +1,8 @@
 package com.crystalgraphics.api.canvas;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -11,12 +13,16 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.paint.CgPaint;
 import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.brush.CgFit;
 import com.crystalgraphics.api.paint.brush.CgTiling;
+import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
+import com.crystalgraphics.api.paint.effect.CgFilter;
 import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.paint.gradient.CgGradient;
 import com.crystalgraphics.api.paint.pattern.CgGrid;
@@ -31,17 +37,24 @@ import com.crystalgraphics.api.vector.CgStrokeJoin;
 import com.crystalgraphics.api.vector.CgVectorPath;
 import com.crystalgraphics.api.vector.svg.CgSvg;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
+import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
+import com.crystalgraphics.render.canvas.CgCanvasGlass;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRecording;
+import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.ui.CgUiRecorder;
+import com.crystalgraphics.render.view.CgView;
+import com.crystalgraphics.render.ui.backdrop.CgBackdrop;
 import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.render.ui.path.CgPathCache;
 import com.crystalgraphics.render.ui.path.CgPathCells;
@@ -50,6 +63,7 @@ import com.crystalgraphics.render.ui.path.CgPathStroker;
 import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.ui.svg.CgSvgCells;
 import com.crystalgraphics.render.ui.svg.CgSvgOps;
+import com.crystalgraphics.render.ui.svg.CgSvgScene;
 import com.crystalgraphics.text.render.CgTextBatch;
 import com.crystalgraphics.text.render.CgTextGamma;
 import org.joml.Matrix4f;
@@ -68,6 +82,7 @@ import org.joml.Matrix4fc;
  *       .radius(8).border(1, 0x40FFFFFF).shadow(CgShadow.of(0, 4, 12, 0x80000000)).draw();
  * canvas.image(CgBrush.sprite(sheet, "button"), 8, 104, 120, 24);    // a nine-slice from a sprite sheet
  * canvas.svg(CgSvg.of("mymod:ui/icons/save.svg"), 8, 136, 16, 16);  // an icon, sharp at any size
+ * try (CgCanvasLayer l = canvas.layer().opacity(0.5f)) { ... }        // a group faded as one picture
  * }</pre>
  *
  * <pre>{@code
@@ -114,6 +129,17 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private final CgUiRecorder coverage = new CgUiRecorder();
     private final CgPathCells cells = new CgPathCells();
     private final CgSvgCells svgCells = new CgSvgCells();
+    // Layers: the open ones, innermost last, kept for reuse; the filter passes' recorder and lens; a mask path's material
+    private CgCanvasLayer[] layerStack = new CgCanvasLayer[4];
+    private int layers;
+    private final CgUiRecorder filters = new CgUiRecorder();
+    private final CgCamera filterLens = new CgCamera();
+    private final float[] filterRecord = new float[CgUiElements.FLOATS];
+    @Nullable private CgMaterialInterface pathMaterial;
+    private float maskX0, maskY0, maskX1, maskY1;
+    /** Material filters' instances this turn, reused turn to turn: one a layer, since each holds its picture. */
+    private final List<CgMaterialInstance> filterInstances = new ArrayList<>();
+    private int filterInstancesUsed;
     private final CgCamera atlasCamera = new CgCamera().screenLens(CgPathCache.SIZE, CgPathCache.SIZE);
     private final CgCamera rasterCamera = new CgCamera();
     private final float[] bounds = new float[4];
@@ -152,16 +178,45 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private float[] stack = new float[SAVED * 16];
     private int depth;
 
-    @Nullable private static CgMaterial element;
+    @Nullable private static CgMaterial element, elementAdditive, elementMask;
 
     /** The material every item draws with unless it names its own: the element primitive's paint, premultiplied. */
     public static synchronized CgMaterial elementMaterial() {
-        if (element == null) {
-            element = CgMaterial.load(ELEMENT_SHADER,
-                    CgMaterialState.builder().blend(CgBlendMode.PREMULTIPLIED).twoSided().disableDepthTest().build());
-            element.precache();
-        }
+        if (element == null) element = elementUnder(CgBlendMode.PREMULTIPLIED);
         return element;
+    }
+
+    /** The element primitive added on: a glow layer's composite. */
+    private static synchronized CgMaterial elementAdditive() {
+        if (elementAdditive == null) elementAdditive = elementUnder(CgBlendMode.ADDITIVE);
+        return elementAdditive;
+    }
+
+    /** The element primitive as a mask: what is under it kept by its alpha. */
+    private static synchronized CgMaterial elementMask() {
+        if (elementMask == null) elementMask = elementUnder(CgBlendMode.MASK);
+        return elementMask;
+    }
+
+    /**
+     * What this canvas draws ahead of its first frame: the element under each blend it composites with, and its layers'
+     * blur and colour-matrix kernels. {@code CgCanvasPrimitives.precache} calls it.
+     */
+    public static void precache(CgPipelineList list) {
+        list.addPass(elementMaterial(), CgInstanceKind.ELEMENT);
+        list.addPass(elementAdditive(), CgInstanceKind.ELEMENT);
+        list.addPass(elementMask(), CgInstanceKind.ELEMENT);
+        list.kernels(() -> {
+            CgGpuOps.precacheBlur(CgFormat.RGBA16_FLOAT);
+            CgGpuOps.precacheColorMatrix();
+        });
+    }
+
+    private static CgMaterial elementUnder(CgBlendMode blend) {
+        CgMaterial m = CgMaterial.load(ELEMENT_SHADER,
+                CgMaterialState.builder().blend(blend).twoSided().disableDepthTest().build());
+        m.precache();
+        return m;
     }
 
     /**
@@ -206,11 +261,21 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         resetClip();
         node = 0;
         nodeStale = false;
+        dropLayers();
+        filterInstancesUsed = 0;
+        panesUsed = 0;
         return this;
     }
 
     /** Lands everything drawn and records nowhere until the next {@link #begin}. */
     public void end() {
+        if (layers > 0) {
+            // Not thrown: a turn ends in a finally, and an exception thrown inside the layer is the one to see
+            LOGGER.warning("a canvas ended with " + layers + " layer(s) open: their drawing is dropped (close every"
+                    + " layer; try-with-resources does)");
+            dropLayers();
+            recorder.abandon();
+        }
         recorder.end();
         recording = null;
         target = null;
@@ -220,8 +285,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** Drops what is drawn and not landed, and records nowhere: its recording is being discarded. */
     public void abandon() {
+        dropLayers();
         recorder.abandon();
         coverage.abandon();
+        filters.abandon();
         // Cells this canvas claimed will never be built: others must not wait on them
         CgPathCache.SHARED.abandon(this);
         recording = null;
@@ -245,6 +312,15 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** A pass open on the target: after the stage frame's own canvas lands what it drew. */
     private void pass() {
         if (recorder.recording()) return;
+        if (layers > 0) {
+            CgCanvasLayer top = layerStack[layers - 1];
+            if (!top.opened) place(top);
+            recorder.begin(recording, top.texture, top.load, top.lens);
+            recorder.view(top.outerBase, top.ownerX + top.x0, top.ownerY + top.y0);
+            recorder.layered(true);
+            top.load = CgLoad.load();
+            return;
+        }
         if (frame != null) frame.canvas().endPass();
         recorder.begin(recording, target, load, camera);
         load = CgLoad.load();
@@ -290,6 +366,14 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** Pops what the matching {@link #save} pushed. */
     public CgCanvas restore() {
         if (depth == 0) throw new IllegalStateException("restore() without a save()");
+        while (layers > 0 && layerStack[layers - 1].clips && depth == layerStack[layers - 1].saveDepth && !closingLayer) {
+            closeLayer(layerStack[layers - 1]);
+        }
+        if (depth == 0) throw new IllegalStateException("restore() without a save()");
+        if (layers > 0 && depth == layerStack[layers - 1].saveDepth && layerStack[layers - 1].live
+                && !closingLayer) {
+            throw new IllegalStateException("restore() past an open layer's opening: close the layer first");
+        }
         int o = --depth * SAVED;
         boolean moved = a != stack[o] || b != stack[o + 1] || c != stack[o + 2] || d != stack[o + 3]
                 || tx != stack[o + 4] || ty != stack[o + 5];
@@ -437,6 +521,27 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     /**
+     * Clips later items to {@code path}'s inside, antialiased at any transform, until the {@link #restore} that pops the
+     * level it is made at: a mask layer over the path's bounds, so call it inside a {@link #save}.
+     *
+     * <pre>{@code
+     * canvas.save().clip(CgVectorPath.builder().addCircle(32, 32, 32).build());
+     * canvas.image(avatar, 0, 0, 64, 64);
+     * canvas.restore();                                  // the clip's layer composites here
+     * }</pre>
+     *
+     * @throws IllegalStateException outside a {@code save()}: nothing would close it
+     */
+    public CgCanvas clip(CgVectorPath path) {
+        Objects.requireNonNull(path, "path");
+        if (depth == 0) throw new IllegalStateException("clip(path) closes at a restore(): call it inside a save()");
+        CgCanvasLayer l = openLayer(path.minX(), path.minY(), path.maxX() - path.minX(), path.maxY() - path.minY());
+        l.mask(path);
+        l.clips = true;
+        return this;
+    }
+
+    /**
      * Opens a movable spatial node at the transform now and answers its id: what later items are positioned in until
      * the matching {@link #restore}. A sealed frame moves it by its values, with nothing recorded again
      * ({@code frame.values().translate(node, dx, dy)}); batching treats what is inside apart from what is outside.
@@ -468,6 +573,306 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clipX0 = clipY0 = -Float.MAX_VALUE;
         clipX1 = clipY1 = Float.MAX_VALUE;
         return n;
+    }
+
+    // ── Layers ─────────────────────────────────────────────────────────
+
+    /**
+     * Opens a layer over the live clip: what is drawn until it closes lands in a picture of its own, composited as one.
+     * Set it up (opacity, filter, mask) before drawing in it. @see CgCanvasLayer
+     */
+    public CgCanvasLayer layer() {
+        return openLayer(Float.NaN, 0f, 0f, 0f);
+    }
+
+    /** As {@link #layer()}, its picture bounded by a rect in the units now, grown by its filter's reach. */
+    public CgCanvasLayer layer(float x, float y, float w, float h) {
+        if (!(w >= 0f && h >= 0f)) throw new IllegalArgumentException("a layer of " + w + " x " + h);
+        return openLayer(x, y, w, h);
+    }
+
+    private boolean closingLayer;
+
+    private CgCanvasLayer openLayer(float x, float y, float w, float h) {
+        if (recording == null) throw new IllegalStateException("a layer on a canvas that records nowhere: begin() first");
+        recorder.end();
+        if (layers == layerStack.length) layerStack = Arrays.copyOf(layerStack, layers * 2);
+        CgCanvasLayer l = layerStack[layers];
+        if (l == null) layerStack[layers] = l = new CgCanvasLayer(this);
+        l.reset();
+        if (!Float.isNaN(x)) {
+            affineBounds(x, y, x + w, y + h, a, b, c, d, tx, ty);
+            l.boundX0 = bounds[0];
+            l.boundY0 = bounds[1];
+            l.boundX1 = bounds[2];
+            l.boundY1 = bounds[3];
+        }
+        l.clipX0 = clipX0;
+        l.clipY0 = clipY0;
+        l.clipX1 = clipX1;
+        l.clipY1 = clipY1;
+        l.scale = linearScale();
+        l.outerBase = base;
+        owner(l);
+        save();
+        l.saveDepth = depth;
+        // Its items under a node of their own: clips made inside evaluate through the palette, which the pass's view
+        // origin moves to the picture's corner. The clip outside applies when it composites.
+        l.node = recording.spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, false);
+        base = l.node;
+        nodeStale = true;
+        clip = 0;
+        clipBase = 0;
+        clipIsRect = true;
+        clipNode = base;
+        opacity = 1f;
+        intensity = 1f;
+        layers++;
+        return l;
+    }
+
+    /** Where the outer base sits in the root as recorded: a layer's picture is placed there. */
+    private void owner(CgCanvasLayer l) {
+        float ox = 0f, oy = 0f;
+        for (int n = l.outerBase; n != 0; n = recording.spatial().parent(n)) {
+            float la = recording.spatial().local(n, 0), lb = recording.spatial().local(n, 1);
+            float lc = recording.spatial().local(n, 2), ld = recording.spatial().local(n, 3);
+            if (la != 1f || lb != 0f || lc != 0f || ld != 1f) {
+                throw new IllegalStateException("a layer inside a turned or scaled movable node: open the layer outside it,"
+                        + " or make the node by translation (movable() under an axis-aligned transform)");
+            }
+            ox += recording.spatial().local(n, 4);
+            oy += recording.spatial().local(n, 5);
+        }
+        l.ownerX = ox;
+        l.ownerY = oy;
+    }
+
+    /** A layer's picture placed at its first draw: its bounds or the clip, grown by the filter's reach, cut to the target. */
+    private void place(CgCanvasLayer l) {
+        float reach = l.filter.reach() * l.scale;
+        float x0, y0, x1, y1;
+        if (Float.isNaN(l.boundX0)) {
+            x0 = l.clipX0;
+            y0 = l.clipY0;
+            x1 = l.clipX1;
+            y1 = l.clipY1;
+        } else {
+            x0 = Math.max(l.boundX0 - reach, l.clipX0 - reach);
+            y0 = Math.max(l.boundY0 - reach, l.clipY0 - reach);
+            x1 = Math.min(l.boundX1 + reach, l.clipX1 + reach);
+            y1 = Math.min(l.boundY1 + reach, l.clipY1 + reach);
+        }
+        // The target, in the outer base's space
+        x0 = Math.max(x0, -l.ownerX);
+        y0 = Math.max(y0, -l.ownerY);
+        x1 = Math.min(x1, camera.width() - l.ownerX);
+        y1 = Math.min(y1, camera.height() - l.ownerY);
+        int ix0 = (int) Math.floor(x0), iy0 = (int) Math.floor(y0);
+        int w = Math.max(1, (int) Math.ceil(x1) - ix0), h = Math.max(1, (int) Math.ceil(y1) - iy0);
+        if (blurs(l.filter)) {
+            // A blur works at a half or a quarter: the picture a whole number of its texels
+            w = (w + 3) & ~3;
+            h = (h + 3) & ~3;
+        }
+        l.x0 = ix0;
+        l.y0 = iy0;
+        l.w = w;
+        l.h = h;
+        l.texture = CgGraphTexture.transientTexture("canvas_layer", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
+        l.lens.screenLens(w, h);
+        l.load = CgLoad.CLEAR;
+        l.opened = true;
+    }
+
+    private static boolean blurs(CgFilter filter) {
+        for (CgFilter.Op op : filter.ops()) {
+            if (op.kind() == CgFilter.Kind.BLUR || op.kind() == CgFilter.Kind.DROP_SHADOW) return true;
+        }
+        return false;
+    }
+
+    /** Masks, filters and composites {@code l}, restoring what its opening saved. */
+    void closeLayer(CgCanvasLayer l) {
+        if (!l.live) return;
+        if (layers == 0 || layerStack[layers - 1] != l) {
+            throw new IllegalStateException("layers close in the reverse of their opening");
+        }
+        while (depth > l.saveDepth) restore();
+        if (l.opened && (l.maskPath != null || l.maskPaint != null)) mask(l);
+        recorder.end();
+        layers--;
+        l.live = false;
+        closingLayer = true;
+        try {
+            restore();
+        } finally {
+            closingLayer = false;
+        }
+        if (!l.opened || l.opacity <= 0f || opacity <= 0f) return;
+        CgGraphTexture picture = filtered(l);
+        composite(l, picture);
+    }
+
+    /** The mask drawn into the layer, keeping what it covers: a path's coverage, or a paint over the picture. */
+    private void mask(CgCanvasLayer l) {
+        if (l.maskPath != null) {
+            pathMaterial = elementMask();
+            try {
+                if (l.maskStroke != null) {
+                    stroke(l.maskPath, l.maskStroke, 0xFFFFFFFF);
+                } else {
+                    fill(l.maskPath, 0xFFFFFFFF);
+                }
+            } finally {
+                pathMaterial = null;
+            }
+            // Outside the path's bounds nothing was masked: the composite stops there
+            float r = l.maskStroke == null ? 0f : l.maskStroke.width() * 0.5f
+                    * Math.max(1.4142135f, l.maskStroke.join() == CgStrokeJoin.MITER ? l.maskStroke.miterLimit() : 1f);
+            affineBounds(l.maskPath.minX() - r, l.maskPath.minY() - r, l.maskPath.maxX() + r, l.maskPath.maxY() + r,
+                    a, b, c, d, tx, ty);
+            maskX0 = bounds[0] - 1f;
+            maskY0 = bounds[1] - 1f;
+            maskX1 = bounds[2] + 1f;
+            maskY1 = bounds[3] + 1f;
+        } else {
+            save();
+            a = d = 1f;
+            b = c = tx = ty = 0f;
+            nodeStale = true;
+            box(l.x0, l.y0, l.w, l.h).fill(l.maskPaint).material(elementMask()).draw();
+            restore();
+            maskX0 = -Float.MAX_VALUE;
+            maskY0 = -Float.MAX_VALUE;
+            maskX1 = Float.MAX_VALUE;
+            maskY1 = Float.MAX_VALUE;
+        }
+    }
+
+    /** The picture through the layer's filter chain, each step on the last one's result. */
+    private CgGraphTexture filtered(CgCanvasLayer l) {
+        CgGraphTexture picture = l.texture;
+        for (CgFilter.Op op : l.filter.ops()) {
+            // Lengths are the canvas's units: device pixels by the transform, then the picture's texels
+            float k = l.scale * picture.getWidth() / (float) l.w;
+            float[] v = op.values();
+            switch (op.kind()) {
+                case BLUR -> picture = blurred(picture, v[0] * k, v[1] * k);
+                case COLOR_MATRIX -> {
+                    int pw = picture.getWidth(), ph = picture.getHeight();
+                    CgGraphTexture out = layerTexture(pw, ph);
+                    CgComputePass pass = recording.compute("canvas.layer.matrix");
+                    CgGpuOps.colorMatrix(pass, picture, 0, 0, pw, ph, out, v);
+                    pass.end();
+                    picture = out;
+                }
+                case DROP_SHADOW -> {
+                    CgGraphTexture shadow = blurred(picture, v[2] * k, v[3] * k);
+                    picture = composed(picture, shadow, v[0] * k, v[1] * k, Float.floatToRawIntBits(v[4]), null);
+                }
+                case MATERIAL -> picture = composed(picture, null, 0f, 0f, 0, op);
+            }
+        }
+        return picture;
+    }
+
+    /** {@code picture} blurred by sigmas in its texels, at a half or a quarter where the blur is wide. */
+    private CgGraphTexture blurred(CgGraphTexture picture, float sigmaX, float sigmaY) {
+        if (Math.max(sigmaX, sigmaY) < 0.25f) return picture;
+        int pw = picture.getWidth(), ph = picture.getHeight();
+        int scale = CgGpuOps.blurScale(Math.max(sigmaX, sigmaY));
+        CgGraphTexture out = layerTexture((pw + scale - 1) / scale, (ph + scale - 1) / scale);
+        CgComputePass pass = recording.compute("canvas.layer.blur");
+        CgGpuOps.blurScaled(pass, picture, 0, 0, pw, ph, out, Math.max(0f, sigmaX), Math.max(0f, sigmaY), CgGpuOps.Edge.CLAMP);
+        pass.end();
+        return out;
+    }
+
+    /**
+     * A new picture the size of {@code picture}: a shadow's alpha under it, offset and tinted; or the picture through a
+     * material filter.
+     */
+    private CgGraphTexture composed(CgGraphTexture picture, @Nullable CgGraphTexture shadow, float dx, float dy,
+                                    int shadowArgb, @Nullable CgFilter.Op through) {
+        int pw = picture.getWidth(), ph = picture.getHeight();
+        CgGraphTexture out = layerTexture(pw, ph);
+        filters.begin(recording, out, CgLoad.CLEAR, filterLens.screenLens(pw, ph));
+        if (shadow != null) {
+            filterElement(CgUiElements.FILL_MASK, shadowArgb, false, dx, dy, pw, ph);
+            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, shadow, null, 0, filterRecord, 0, 1,
+                    dx, dy, dx + pw, dy + ph);
+        }
+        filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, 0f, 0f, pw, ph);
+        CgMaterialInterface material = elementMaterial();
+        if (through != null) {
+            CgMaterialInstance instance = filterInstance(through.material());
+            instance.sampler(through.textureParameter(), 0, picture);
+            material = instance;
+        }
+        filters.draw(CgInstanceKind.ELEMENT, material, null, picture, null, 0, filterRecord, 0, 1, 0f, 0f, pw, ph);
+        filters.end();
+        return out;
+    }
+
+    private void filterElement(int fill, int argb, boolean premultiplied, float x, float y, int w, int h) {
+        Arrays.fill(filterRecord, 0f);
+        CgUiElements.fill(filterRecord, 0, fill, argb, 0f);
+        CgUiElements.flag(filterRecord, 0, CgUiElements.FLAG_PREMULTIPLIED, premultiplied);
+        // A render target's row 0 is its bottom
+        CgUiElements.uv(filterRecord, 0, 0f, 1f, 1f, 0f);
+        CgUiElements.rect(filterRecord, 0, x, y, x + w, y + h);
+        CgUiElements.nodes(filterRecord, 0, CgPalette.pack(0, 0), 0);
+        CgUiElements.opacity(filterRecord, 0, 1f, 1f);
+    }
+
+    /** A material filter's instance for this turn: the caller's own, or one of the canvas's over a material. */
+    private CgMaterialInstance filterInstance(CgMaterialInterface material) {
+        if (material instanceof CgMaterialInstance own) return own;
+        CgMaterial asset = material.material();
+        for (int i = filterInstancesUsed; i < filterInstances.size(); i++) {
+            if (filterInstances.get(i).material() == asset) {
+                Collections.swap(filterInstances, i, filterInstancesUsed);
+                return filterInstances.get(filterInstancesUsed++);
+            }
+        }
+        CgMaterialInstance made = asset.instance();
+        filterInstances.add(filterInstancesUsed, made);
+        filterInstancesUsed++;
+        return made;
+    }
+
+    private CgGraphTexture layerTexture(int w, int h) {
+        return CgGraphTexture.transientTexture("canvas_layer", CgTextureDesc.of(w, h, CgFormat.RGBA16_FLOAT));
+    }
+
+    /** The picture drawn as one element at the layer's region, under the clip and opacity outside it. */
+    private void composite(CgCanvasLayer l, CgGraphTexture picture) {
+        float ex0 = l.x0, ey0 = l.y0, ex1 = l.x0 + l.w, ey1 = l.y0 + l.h;
+        if (l.maskPath != null) {
+            ex0 = Math.max(ex0, maskX0);
+            ey0 = Math.max(ey0, maskY0);
+            ex1 = Math.min(ex1, maskX1);
+            ey1 = Math.min(ey1, maskY1);
+        }
+        if (ex1 <= ex0 || ey1 <= ey0) return;
+        if (clipNode == base && (ex1 <= clipX0 || ey1 <= clipY0 || ex0 >= clipX1 || ey0 >= clipY1)) return;
+        pass();
+        clear();
+        CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, (Math.round(255f * l.opacity) << 24) | 0x00FFFFFF, 0f);
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, true);
+        // A render target's row 0 is its bottom
+        CgUiElements.uv(record, 0, (ex0 - l.x0) / l.w, 1f - (ey0 - l.y0) / l.h, (ex1 - l.x0) / l.w, 1f - (ey1 - l.y0) / l.h);
+        CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
+        finish(base, 1f);
+        element(l.blend == CgBlendMode.ADDITIVE ? elementAdditive() : elementMaterial(), picture, null, base, record, 0, 1,
+                ex0, ey0, ex1, ey1);
+    }
+
+    /** Forgets open layers: a canvas begun again or abandoned with them open. */
+    private void dropLayers() {
+        for (int i = 0; i < layers; i++) layerStack[i].live = false;
+        layers = 0;
     }
 
     // ── Paint chunks ───────────────────────────────────────────────────
@@ -549,6 +954,45 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** A brush over a rect: its region, nine-slice, tiling, sampler and tint; an SVG brush's document fitted to it. */
     public CgCanvas image(CgBrush brush, float x, float y, float w, float h) {
         return box(x, y, w, h).fill(brush).draw();
+    }
+
+    /**
+     * {@code view}'s picture over a rect: its scene drawn now through its camera, at the rect's size in device pixels
+     * ({@link CgView#renderPicture}), then placed as an image. An editor's viewport, a preview, a minimap.
+     *
+     * <pre>{@code
+     * CgView lab = CgView.of(labScene);                  // once, kept: it holds the view's histories
+     * labScene.tick(dt);
+     * lab.camera().set(x, y, z, rotation, projection);
+     * canvas.view(lab, 20, 40, 320, 200);
+     * canvas.box(20, 40, 320, 200).radius(8).border(1, 0x40FFFFFF).draw();   // a frame over it
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its picture is kept on the view and remade only on a new size: a rect that animates its size remakes it.</li>
+     *   <li>Square corners; for rounded ones, draw it in a layer masked by a path.</li>
+     * </ul>
+     */
+    public CgCanvas view(CgView view, float x, float y, float w, float h) {
+        int pw = Math.max(1, Math.round(w * (float) Math.hypot(a, b)));
+        int ph = Math.max(1, Math.round(h * (float) Math.hypot(c, d)));
+        return box(x, y, w, h).fill(view.renderPicture(pw, ph, 0xFF000000)).region(0f, 1f, 1f, 0f).draw();
+    }
+
+    /**
+     * A photograph of what this canvas's target holds so far, read back without waiting ({@link CgPhotograph}). False
+     * when three are already on their way.
+     *
+     * <pre>{@code
+     * canvas.photograph(320, (w, h, rgb) -> thumbnail = rgb);   // the sink runs frames later, on the render thread
+     * }</pre>
+     */
+    public boolean photograph(int maxWidth, CgPhotograph.Sink sink) {
+        if (target == null) throw new IllegalStateException("photograph() outside a turn");
+        recorder.end();
+        if (frame != null) frame.canvas().endPass();
+        return CgPhotograph.take(recording, target, Math.max(1, Math.round(camera.width())),
+                Math.max(1, Math.round(camera.height())), maxWidth, sink);
     }
 
     // ── Text ───────────────────────────────────────────────────────────
@@ -683,8 +1127,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private void path(CgVectorPath path, @Nullable CgStroke stroke, CgPaint paint) {
         if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
         if (!(paint instanceof CgPaint.Solid) && !(paint instanceof CgGradient)) {
-            throw new IllegalArgumentException("a path takes a colour or a gradient: " + paint
-                    + " fills it through a mask layer (c.layer().mask(path))");
+            paintThrough(path, stroke, paint);
+            return;
         }
         if (path.isEmpty() || opacity <= 0f) return;
         float scale = (float) Math.sqrt(Math.max(a * a + b * b, c * c + d * d));
@@ -746,7 +1190,20 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         paintFrame(path, ex0, ey0, cached);
         CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
         finish(base, gain);
-        element(elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+        element(pathMaterial != null ? pathMaterial : elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1,
+                ey1);
+    }
+
+    /** A brush or grid on a path: the paint over the path's bounds, in a layer masked by its fill or its stroke. */
+    private void paintThrough(CgVectorPath path, @Nullable CgStroke stroke, CgPaint paint) {
+        float reach = stroke == null ? 0f : stroke.width() * 0.5f
+                * Math.max(1.4142135f, stroke.join() == CgStrokeJoin.MITER ? stroke.miterLimit() : 1f);
+        float x = path.minX() - reach, y = path.minY() - reach;
+        float w = path.maxX() - path.minX() + 2f * reach, h = path.maxY() - path.minY() + 2f * reach;
+        try (CgCanvasLayer l = layer(x, y, w, h).mask(path)) {
+            l.maskStroke = stroke;
+            box(x, y, w, h).fill(paint).draw();
+        }
     }
 
     /** The cell for a cached path: claimed, built or pending; null when this canvas rasterises it for its frame. */
@@ -900,13 +1357,55 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             return;
         }
         CgSvg tier = doc.tier(devicePx);
-        if (!brush.flat() && tier.hasShadow() && SHADOWS_LOGGED.add(doc)) {
-            LOGGER.info(doc + " has a drop shadow, which the canvas does not draw yet (SVG filters draw as layer filters)");
+        boolean shadows = !brush.flat() && tier.hasShadow();
+        boolean layered = shadows && layerable();
+        if (shadows && !layered && SHADOWS_LOGGED.add(doc)) {
+            LOGGER.info(doc + " has a drop shadow, not drawn inside a turned or scaled movable node (a layer's picture"
+                    + " cannot turn with it)");
         }
         List<CgSvgOps.Op> ops = tier.ops();
-        for (int i = 0; i < ops.size(); i++) {
-            svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+        for (int i = 0; i < ops.size(); ) {
+            // A filtered element's ops share one shadow instance: the shadow is of their union, under them
+            CgSvgScene.DropShadow shadow = layered ? ops.get(i).shadow() : null;
+            int end = i + 1;
+            while (end < ops.size() && (layered ? ops.get(end).shadow() : null) == shadow) end++;
+            if (shadow == null) {
+                for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+                continue;
+            }
+            try (CgCanvasLayer l = layer(ox + doc.minX() * sx, oy + doc.minY() * sy, (doc.maxX() - doc.minX()) * sx,
+                    (doc.maxY() - doc.minY()) * sy).filter(svgShadow(shadow, sx, sy))) {
+                for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+            }
         }
+    }
+
+    /** The last SVG shadow's filter, kept: an icon with one draws it every frame. */
+    @Nullable private CgSvgScene.DropShadow lastShadow;
+    private float lastShadowSx, lastShadowSy;
+    @Nullable private CgFilter lastShadowFilter;
+
+    /** {@code shadow}, in document units, as a filter in the canvas's: the document's scale applied. */
+    private CgFilter svgShadow(CgSvgScene.DropShadow shadow, float sx, float sy) {
+        if (shadow != lastShadow || sx != lastShadowSx || sy != lastShadowSy) {
+            lastShadow = shadow;
+            lastShadowSx = sx;
+            lastShadowSy = sy;
+            lastShadowFilter = CgFilter.dropShadow(shadow.dx() * sx, shadow.dy() * sy, shadow.sigmaX() * sx,
+                    shadow.sigmaY() * sy, shadow.argb());
+        }
+        return lastShadowFilter;
+    }
+
+    /** Whether a layer may open here: no turned or scaled movable node above the current one ({@link #owner}). */
+    private boolean layerable() {
+        for (int n = base; n != 0; n = recording.spatial().parent(n)) {
+            if (recording.spatial().local(n, 0) != 1f || recording.spatial().local(n, 1) != 0f
+                    || recording.spatial().local(n, 2) != 0f || recording.spatial().local(n, 3) != 1f) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** One op: its coverage, cached or this frame's, then the element painting through it. */
@@ -1052,12 +1551,133 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         bounds[3] = maxY;
     }
 
+    // ── Backdrop ───────────────────────────────────────────────────────
+
+    /** The canvas's panes this turn, reused turn to turn: one each, since each holds its backdrop's values. */
+    private final List<CgCanvasGlass> panes = new ArrayList<>();
+    private int panesUsed;
+    @Nullable private CgBackdrop backdrop;
+    private final float[] quadRecord = new float[CgQuadRecord.FLOATS];
+    /** The quad record's fade, 1 - opacity, as the old canvas's quads write it. */
+    private static final int QUAD_FADE = CgInstanceKind.QUAD.format().getField("fade").getFloatOffset();
+
+    /**
+     * {@code box}'s pane: what is drawn under it captured (the target, then each open layer over it), blurred, and drawn
+     * through the glass material as one quad, its corners the box's. The old canvas's pane, value for value.
+     */
+    private void pane(CgCanvasBox box) {
+        CgBackdropFilter f = box.backdrop;
+        CgCanvasGlass glass = pane();
+        CgCornerRadii fit = box.radii == null ? null : box.radii.fitted(box.w, box.h);
+        glass.look(f).size(box.w, box.h);
+        if (fit == null) {
+            glass.radii(0f);
+        } else {
+            glass.radii(fit.topLeftX(), fit.topLeftY(), fit.topRightX(), fit.topRightY(), fit.bottomRightX(),
+                    fit.bottomRightY(), fit.bottomLeftX(), fit.bottomLeftY());
+        }
+        // The quad in the root's device pixels, bottom-left as the capture counts them
+        float ox = a * box.x + c * box.y + tx, oy = b * box.x + d * box.y + ty;
+        float rx = a * box.w, ry = b * box.w, ux = c * box.h, uy = d * box.h;
+        // A layer's node is its outer base's, untransformed: the base's recorded place is the root's offset either way
+        float shiftX = 0f, shiftY = 0f;
+        if (base != 0) {
+            float[] o = recordedOrigin(base);
+            shiftX = o[0];
+            shiftY = o[1];
+        }
+        float px0 = ox + Math.min(0f, rx) + Math.min(0f, ux) + shiftX, px1 = ox + Math.max(0f, rx) + Math.max(0f, ux) + shiftX;
+        float py0 = oy + Math.min(0f, ry) + Math.min(0f, uy) + shiftY, py1 = oy + Math.max(0f, ry) + Math.max(0f, uy) + shiftY;
+        int w = Math.max(1, Math.round(camera.width())), h = Math.max(1, Math.round(camera.height()));
+        float local = Math.max(1e-6f, Math.max(box.w, box.h));
+        float pixels = Math.max(px1 - px0, py1 - py0);
+        float pad = f.blur() + glass.reach() * pixels / local + 4f;
+        int cx0 = Math.max(0, (int) Math.floor(px0 - pad)), cx1 = Math.min(w, (int) Math.ceil(px1 + pad));
+        int cy0 = Math.max(0, (int) Math.floor(h - py1 - pad)), cy1 = Math.min(h, (int) Math.ceil(h - py0 + pad));
+        if (cx1 <= cx0 || cy1 <= cy0) return;
+        recorder.end();
+        if (frame != null) frame.canvas().endPass();
+        if (backdrop == null) backdrop = new CgBackdrop("canvas.backdrop");
+        CgGraphTexture capture = backdrop.capture(recording, target, w, h, CgBackdrop.formatOf(target), cx0, cy0, cx1, cy1);
+        if (layers > 0) layersOver(capture, w, h);
+        backdrop.blur(recording, f.blur());
+        // Into the innermost layer: where its picture's (0, 0) is in the capture's bottom-left texels
+        float offsetX = 0f, offsetY = 0f;
+        if (layers > 0) {
+            CgCanvasLayer top = layerStack[layers - 1];
+            if (!top.opened) place(top);
+            offsetX = top.ownerX + top.x0;
+            offsetY = h - (top.ownerY + top.y0 + top.h);
+        }
+        glass.backdrop(backdrop, offsetX, offsetY, backdrop.x0(), backdrop.y0(), backdrop.x1(), backdrop.y1()).apply();
+        pass();
+        Arrays.fill(quadRecord, 0f);
+        quadRecord[CgQuadRecord.ORIGIN] = ox;
+        quadRecord[CgQuadRecord.ORIGIN + 1] = oy;
+        quadRecord[CgQuadRecord.RIGHT] = rx;
+        quadRecord[CgQuadRecord.RIGHT + 1] = ry;
+        quadRecord[CgQuadRecord.UP] = ux;
+        quadRecord[CgQuadRecord.UP + 1] = uy;
+        quadRecord[CgQuadRecord.UV1] = 1f;
+        quadRecord[CgQuadRecord.UV1 + 1] = 1f;
+        for (int k = 0; k < 4; k++) quadRecord[CgQuadRecord.COLOR + k] = 1f;
+        quadRecord[QUAD_FADE] = 1f - opacity;
+        quadRecord[CgQuadRecord.CLIP] = clip;
+        quadRecord[CgQuadRecord.NODE] = CgPalette.pack(base, 0);
+        float bx0 = ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f, bx1 = ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f;
+        float by0 = oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f, by1 = oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f;
+        recorder.draw(CgInstanceKind.QUAD, glass.material(), null, null, null, base, quadRecord, 0, 1, bx0, by0, bx1, by1);
+        grow(base, bx0, by0, bx1, by1);
+    }
+
+    /** Each open layer's picture so far over the capture, outermost first: what a pane in the innermost sees behind it. */
+    private void layersOver(CgGraphTexture capture, int w, int h) {
+        filters.begin(recording, capture, CgLoad.load(), filterLens.screenLens(capture.getWidth(), capture.getHeight()));
+        for (int i = 0; i < layers; i++) {
+            CgCanvasLayer l = layerStack[i];
+            if (!l.opened) continue;
+            float x = l.ownerX + l.x0, y = capture.getHeight() - h + l.ownerY + l.y0;
+            filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, x, y, l.w, l.h);
+            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, l.texture, null, 0, filterRecord, 0, 1,
+                    x, y, x + l.w, y + l.h);
+        }
+        filters.end();
+    }
+
+    /** A pane's glass for this turn. */
+    private CgCanvasGlass pane() {
+        if (panesUsed == panes.size()) panes.add(new CgCanvasGlass(CgPlacement.SCREEN));
+        return panes.get(panesUsed++);
+    }
+
+    /** A node's recorded translation in the root. */
+    private float[] recordedOrigin(int n) {
+        float ox = 0f, oy = 0f;
+        for (; n != 0; n = recording.spatial().parent(n)) {
+            ox += recording.spatial().local(n, 4);
+            oy += recording.spatial().local(n, 5);
+        }
+        originScratch[0] = ox;
+        originScratch[1] = oy;
+        return originScratch;
+    }
+
+    private final float[] originScratch = new float[2];
+
     // ── Drawing a box ──────────────────────────────────────────────────
 
     void draw(CgCanvasBox box) {
         if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
         float w = box.w, h = box.h;
         if (!(w > 0f && h > 0f) || opacity <= 0f) return;
+        if (box.backdrop != null) {
+            pane(box);
+            // Over the glass, the box's own paint only where it was given one
+            if (!box.filled && box.shadow == null
+                    && box.borderTop + box.borderRight + box.borderBottom + box.borderLeft <= 0f) {
+                return;
+            }
+        }
         pass();
         CgMaterialInterface material = box.material != null ? box.material : elementMaterial();
         if (box.shadow != null && !box.shadow.inside()) shadow(box, material);
@@ -1107,7 +1727,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, box.premultiplied);
             CgUiElements.uv(record, 0, box.u0, box.v0, box.u1, box.v1);
         } else {
-            CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, argb, 0f);
+            CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, box.filled ? argb : 0, 0f);
         }
         emit(box, material, texture, sampler, x, y, w, h, 1f, !(paint instanceof CgGrid));
     }

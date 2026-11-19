@@ -9,6 +9,7 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
 | `element/CgUiElements` | The 96-byte element record (`CgInstanceKind.ELEMENT`): its field offsets, fill kinds, flags and writers |
 | `path/` | A path's geometry and its cache: flattening (Wang's formula), the trapezoid triangulator, the stroker and dasher, the cell records, and the shared coverage atlas with its publication rule (`CgPathCache`) |
 | `svg/` | `api.vector.svg.CgSvg`'s inside, ported from CrystalGUI: the scanner, resolver, paths, transforms, styles, colours and gradients that make a scene; the tessellator and `CgSvgOps` that make its draw ops; `CgSvgCells`, an op's coverage as cell records |
+| `backdrop/CgBackdrop` | What is behind a pane: the target's pixels under it copied, blurred on the 1/2/4 ladder. The canvas's `backdropFilter` and the old canvas's glass (`CgCanvasBackdrop`, a subclass) both draw over it |
 | `property/` | The property trees a recording carries: spatial nodes, effect nodes, the palette a frame executes them as. Their values per frame, `CgPropertyValues`, are the graph's (`render/graph`) |
 
 ## Rules
@@ -31,4 +32,9 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
   under its colour. The tessellation is the reference: change `svg/` and score `steps/UI7/truth.py` before and after.
 - **A chunk names only what it made**, besides the clip and node it began under: replay renumbers those alone, so an
   outer clip or node, a one-frame texture or a new pass refuses the capture (`CgPaintChunk.Refusal`).
+- **A layer's draws blend by their blend's layer form** (`CgUiRecorder.layered`, `CgBlendState.layered`): a straight-
+  alpha draw into a picture composited later must leave its coverage in alpha, not its square. A blend that only scales
+  what is there (`MASK`) is its own form; one with none (a multiply) is refused inside a layer.
+- **A layer's pass draws at its picture's origin** (`CgUiRecorder.view`, the pass's view origin) under a fresh identity
+  node; the outer clip and nodes apply once, at its composite.
 - **Hot paths allocate nothing**: a canvas reuses its record, its box builder and its tile sink.

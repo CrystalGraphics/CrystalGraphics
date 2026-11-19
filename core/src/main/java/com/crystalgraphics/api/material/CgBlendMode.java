@@ -39,7 +39,12 @@ public enum CgBlendMode {
      * {@code Blend ONE ONE} with {@code BlendEquation REV_SUB}: what is behind, less the colour. No Unreal mode; CC2's
      * kits author it. Fogged and decoded as {@link #ADDITIVE} is.
      */
-    SUBTRACT(blend(GLC.GL_ONE, GLC.GL_ONE, GLC.GL_FUNC_REVERSE_SUBTRACT));
+    SUBTRACT(blend(GLC.GL_ONE, GLC.GL_ONE, GLC.GL_FUNC_REVERSE_SUBTRACT)),
+    /**
+     * {@code Blend ZERO SRC_ALPHA}: what is behind, kept where the source covers it. Porter-Duff's destination-in; a
+     * canvas layer's mask. No Unreal mode.
+     */
+    MASK(blend(GLC.GL_ZERO, GLC.GL_SRC_ALPHA, GLC.GL_FUNC_ADD));
 
     private final CgBlendState state;
 

@@ -392,6 +392,7 @@ public final class CgMaterialDefinitions {
         BLEND_MODES.put(CgBlendMode.ADDITIVE, "Additive");
         BLEND_MODES.put(CgBlendMode.MODULATE, "Modulate");
         BLEND_MODES.put(CgBlendMode.SUBTRACT, "Subtract");
+        BLEND_MODES.put(CgBlendMode.MASK, "Mask");
         SHADING.put(CgShadingModels.UNLIT, "Unlit");
         SHADING.put(CgShadingModels.LIT, "WorldLit");
         SHADING.put(CgShadingModels.SUBSURFACE, "Subsurface");

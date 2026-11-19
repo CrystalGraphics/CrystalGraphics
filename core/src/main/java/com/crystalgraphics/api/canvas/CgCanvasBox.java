@@ -1,9 +1,12 @@
 package com.crystalgraphics.api.canvas;
 
+import java.util.Objects;
+
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.paint.CgPaint;
+import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
 import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vector.CgCornerRadii;
@@ -40,6 +43,9 @@ public final class CgCanvasBox {
     int borderTopColor, borderRightColor, borderBottomColor, borderLeftColor;
     @Nullable CgShadow shadow;
     @Nullable CgMaterialInterface material;
+    @Nullable CgBackdropFilter backdrop;
+    /** Whether a fill was given: unset, a box is transparent. */
+    boolean filled;
 
     CgCanvasBox(CgCanvas canvas) {
         this.canvas = canvas;
@@ -61,11 +67,14 @@ public final class CgCanvasBox {
         borderTop = borderRight = borderBottom = borderLeft = 0f;
         shadow = null;
         material = null;
+        backdrop = null;
+        filled = false;
         return this;
     }
 
     /** Filled in one colour. */
     public CgCanvasBox fill(int argb) {
+        this.filled = true;
         this.argb = argb;
         this.paint = null;
         this.texture = null;
@@ -74,6 +83,7 @@ public final class CgCanvasBox {
 
     /** Filled by any paint: a colour, a gradient, a grid or a brush. */
     public CgCanvasBox fill(CgPaint paint) {
+        this.filled = true;
         this.paint = paint;
         this.texture = null;
         return this;
@@ -81,6 +91,7 @@ public final class CgCanvasBox {
 
     /** Filled by a texture, stretched, times the box's colour ({@link #tint}). */
     public CgCanvasBox fill(CgTexture texture) {
+        this.filled = true;
         this.texture = texture;
         this.paint = null;
         this.mask = false;
@@ -89,6 +100,7 @@ public final class CgCanvasBox {
 
     /** Filled by the box's colour where {@code texture} is opaque: a silhouette in any colour. */
     public CgCanvasBox mask(CgTexture texture, int argb) {
+        this.filled = true;
         this.texture = texture;
         this.paint = null;
         this.mask = true;
@@ -161,6 +173,25 @@ public final class CgCanvasBox {
      * Drawn by a {@code #domain ui} material of {@code Primitive Element}: its {@code surface()} runs over the box's
      * paint, which it may keep or replace.
      */
+    /**
+     * Glass behind the box: what is already drawn under it, captured, blurred, saturated, tinted and lit through
+     * {@code filter} (CSS's {@code backdrop-filter}), its corners the box's. The box's own fill and border draw over it.
+     *
+     * <pre>{@code
+     * canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.ACRYLIC).draw();
+     * canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.LIQUID).fill(0x10FFFFFF).draw();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Each pane captures what is behind it when it draws, so a second pane over the first shows it.</li>
+     *   <li>A pane breaks the canvas's pass: draw panes after what they cover, and few of them.</li>
+     * </ul>
+     */
+    public CgCanvasBox backdropFilter(CgBackdropFilter filter) {
+        this.backdrop = Objects.requireNonNull(filter, "filter");
+        return this;
+    }
+
     public CgCanvasBox material(CgMaterialInterface material) {
         this.material = material;
         return this;

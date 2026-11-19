@@ -4,8 +4,8 @@
 (`docs/PAINT.md`), rounded, bordered and shadowed; images, nine-slices and tiles; under a transform, opacity and clip
 stack. Items land in a recording as batched element draws, in paint order.
 
-It replaces the old `render.canvas.CgCanvas` (`CANVAS.md`) step by step through P4.1; text, vector paths, layers and
-the widget stack arrive in later steps, and until then those still draw on the old canvas.
+It replaces the old `render.canvas.CgCanvas` (`CANVAS.md`) step by step through P4.1; the widget stack arrives in
+later steps, and until then it still draws on the old canvas.
 
 ## Getting one
 
@@ -108,7 +108,7 @@ Every path draws as exact-area coverage: its cells summed into a raster, then on
   pixel, a stroke draws a pixel wide and fades.
 - **Two canvases on two threads** may draw one path: whichever claims it first builds the cell, and the other draws
   its own raster until that build has executed (the publication rule, `CgPathCache`).
-- A brush or a grid fills a path through a mask layer, and a path clip is one too (`c.layer().mask(path)`, UI8).
+- A brush or a grid fills a path through a mask layer, and a path clip is one too (`clip(path)`, below).
 
 ## SVG
 
@@ -142,10 +142,72 @@ else white and tinted at draw), and drawn 1:1 on the pixel grid. Larger or turne
 - **The file's curves are flattened for the size drawn** (`svg.tier(devicePx)`): finer as the icon grows.
 - **A `<style>` block or a `class=` fails the load**, naming the file: export with presentation attributes
   (Illustrator's "Presentation Attributes", SVGO's `inlineStyles`).
-- **Not drawn**: text, `clipPath`, masks, dashes, filters. A drop shadow is parsed and skipped with a log line, once
-  per file, until SVG filters draw as layer filters.
+- **A drop shadow** (`feDropShadow`, or the classic blur-offset-flood-merge chain) draws as a layer's
+  `CgFilter.dropShadow` under the element it filters; inside a turned or scaled movable node it is skipped, logged once
+  per file. Any other filter is not drawn.
+- **Not drawn**: text, `clipPath`, masks, dashes.
 - `CgSvg.revalidate()` on a resource reload drops only the documents whose file changed; `CgSvg.generation()` tells a
   holder its document may be stale. `CgSvg.preload(paths)` parses on the job pool ahead of the first frame.
+
+## Layers
+
+A layer draws what is inside it into a picture of its own, then lays that picture over what is under it: with an
+opacity, through a filter, cut by a mask, or blended additively. Skia's `saveLayer`, CSS's `opacity`, `filter` and
+`mask-image`.
+
+```java
+try (CgCanvasLayer l = canvas.layer().opacity(0.5f)) {         // a group faded as one: overlaps do not show through
+    canvas.fill(x, y, 80, 80, 0xFF4060FF);
+    canvas.fill(x + 40, y + 40, 80, 80, 0xFFFF6040);
+}
+try (CgCanvasLayer l = canvas.layer().filter(CgFilter.blur(6f))) { ... }                    // blurred as one
+try (CgCanvasLayer l = canvas.layer().filter(CgFilter.dropShadow(0, 4, 8, 0x80000000))) { ... }  // a shadow of the group
+try (CgCanvasLayer l = canvas.layer().filter(CgFilter.grayscale(1f))) { ... }               // any colour matrix
+try (CgCanvasLayer l = canvas.layer().mask(roundedPath)) { ... }                            // cut to a path
+try (CgCanvasLayer l = canvas.layer().mask(CgGradient.linear(90).stop(0, 0xFFFFFFFF).stop(1, 0))) { ... }  // faded out
+try (CgCanvasLayer l = canvas.layer(x, y, w, h).blend(CgBlendMode.ADDITIVE)) { ... }        // a glow, bounded
+
+canvas.save();
+canvas.clip(starPath);                                         // a path clip: a mask layer, closed by restore()
+canvas.image(photo, x, y, 200, 200);
+canvas.restore();
+```
+
+- **Set a layer up before its first draw**: its opacity, filter, mask and blend are read when it opens.
+- **Close every layer** (try-with-resources does). A turn that ends with one open drops its drawing and logs it.
+- **A layer's picture is the size of what it can reach**: its bounds or the clip, grown by what its filter spreads,
+  cut to the target. `layer(x, y, w, h)` bounds it; a layer under no clip is the whole target.
+- **Each layer is a pass and a texture**: keep them for what needs one. Opacity on a single item is cheaper on the
+  item.
+- **A layer inside a turned or scaled `movable` node is refused**: its picture's axes would not be its node's.
+- A multiply-blended draw cannot land in a layer (its blend has no layer form); draw it outside.
+
+## Glass
+
+`box(...).backdropFilter(f)` is CSS's `backdrop-filter`: what is already drawn under the box, captured, blurred,
+saturated, tinted and lit, inside the box's corners.
+
+```java
+canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.ACRYLIC).draw();
+canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.LIQUID).fill(0x10FFFFFF).border(1, 0x30FFFFFF).draw();
+```
+
+- **Draw a pane after what it covers.** Each pane captures when it draws, so a second pane over the first shows it.
+- In a layer, a pane sees the target with every open layer over it, as it will be composited.
+- Each pane breaks the canvas's pass and copies what is behind it: a handful a frame, not hundreds.
+- The presets are `CgBackdropFilter`'s; `CgBackdrop` is the capture and blur alone, for a drawer composing its own.
+
+## Views and photographs
+
+```java
+CgView lab = CgView.of(labScene);                         // once, kept: it holds the view's histories
+canvas.view(lab, 20, 40, 320, 200);                       // its scene drawn now, at the rect's device size
+canvas.photograph(320, (w, h, rgb) -> thumbnail = rgb);   // what the canvas drew so far, read back frames later
+```
+
+- A view's picture is kept on the view and remade only on a new size.
+- A photograph never waits: its sink runs on the render thread about three frames later, rows top first, RGB. At most
+  three are on their way (`CgPhotograph`); a fourth returns `false`.
 
 ## Frames recorded off the render thread
 

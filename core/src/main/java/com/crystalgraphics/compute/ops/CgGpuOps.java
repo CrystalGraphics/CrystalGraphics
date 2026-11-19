@@ -982,6 +982,48 @@ public final class CgGpuOps {
         dispatchShrink(pass, f, source, x, y, w, h, target, tx, ty, tw, th);
     }
 
+    /**
+     * The region {@code (x, y, w, h)} of {@code source}, premultiplied RGBA16F, through a 4x5 colour matrix on straight
+     * RGBA (row-major: each output channel R, G, B, A weights plus an offset, in 0..1), into the same place in
+     * {@code target}: {@code CgFilter}'s colour functions, folded.
+     *
+     * <pre>{@code
+     * CgGpuOps.colorMatrix(pass, picture, 0, 0, w, h, graded, CgFilter.saturate(0.3f).ops().get(0).values());
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Both textures RGBA16F, the region inside both; {@code source} and {@code target} distinct.</li>
+     * </ul>
+     */
+    public static void colorMatrix(CgComputePass pass, CgGraphTexture source, int x, int y, int w, int h,
+                                   CgGraphTexture target, float[] matrix4x5) {
+        if (imageType(source) != 1 || imageType(target) != 1) {
+            throw new IllegalArgumentException("a colour matrix runs on RGBA16F: " + source + ", " + target);
+        }
+        if (matrix4x5.length != 20) throw new IllegalArgumentException("a colour matrix is 20 values");
+        requireRegion(source, x, y, w, h);
+        requireRegion(target, x, y, w, h);
+        float[] m = matrix4x5;
+        pass.dispatch(colorMatrixKernel(), w, h, 1).texture("_Src", source).image(TARGETS[1], target)
+                .set("_Region", x, y, x + w, y + h)
+                .set("_MatrixR", m[0], m[1], m[2], m[3]).set("_MatrixG", m[5], m[6], m[7], m[8])
+                .set("_MatrixB", m[10], m[11], m[12], m[13]).set("_MatrixA", m[15], m[16], m[17], m[18])
+                .set("_MatrixOffset", m[4], m[9], m[14], m[19]);
+    }
+
+    /** {@link #precacheSort}, for {@link #colorMatrix}. */
+    public static void precacheColorMatrix() {
+        precache(colorMatrixKernel());
+    }
+
+    private static volatile CgKernel colorMatrix;
+
+    private static CgKernel colorMatrixKernel() {
+        CgKernel k = colorMatrix;
+        if (k == null) colorMatrix = k = Files.image().kernel("ColorMatrixRgba16f");
+        return k;
+    }
+
     private static void dispatchShrink(CgComputePass pass, int f, CgGraphTexture source, float x, float y, float w,
                                        float h, CgGraphTexture target, int tx, int ty, int tw, int th) {
         pass.dispatch(shrinkKernel(f), tw, th, 1).texture("_Src", source).image(TARGETS[f], target)

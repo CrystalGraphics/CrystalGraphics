@@ -1,5 +1,13 @@
 package com.crystalgraphics.render.ui;
 
+import com.crystalgraphics.platform.gl.driver.GLC;
+
+import com.crystalgraphics.api.state.CgBlendState;
+
+import java.util.Map;
+
+import java.util.IdentityHashMap;
+
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -64,6 +72,11 @@ public final class CgUiRecorder {
     @Nullable private CgRenderState state;
     @Nullable private CgTexture texture;
     @Nullable private CgSampler sampler;
+    private int viewOwner;
+    private float viewX, viewY;
+    private boolean layered;
+    /** Each pipeline's layer form, made once. Threads: the recorder's own. */
+    private final Map<CgPipeline, CgPipeline> layerForms = new IdentityHashMap<>();
 
     /** Passes opened since made: a paint chunk spanning two is not kept. */
     private long passes;
@@ -79,6 +92,28 @@ public final class CgUiRecorder {
         this.target = Objects.requireNonNull(target, "target");
         this.load = Objects.requireNonNull(load, "load");
         this.camera = Objects.requireNonNull(camera, "camera");
+        viewOwner = 0;
+        viewX = viewY = 0f;
+        layered = false;
+    }
+
+    /**
+     * Whether its target is a layer's picture, composited later: every draw then blends by its blend's layer form
+     * ({@link CgBlendState#layered}), so a straight-alpha draw leaves its coverage in alpha rather than its square.
+     * Premultiplied draws are unchanged.
+     */
+    public void layered(boolean layered) {
+        this.layered = layered;
+    }
+
+    /**
+     * Places the target {@link #begin} named at {@code (x, y)} of the recording's root space, moving with node
+     * {@code owner}: a layer's texture, its (0, 0) at the region's corner ({@code CgRasterPass.view}).
+     */
+    public void view(int owner, float x, float y) {
+        viewOwner = owner;
+        viewX = x;
+        viewY = y;
     }
 
     /** Whether it records anywhere. */
@@ -199,8 +234,27 @@ public final class CgUiRecorder {
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
         pipeline = proxy.pipeline(kind);
         if (pipeline != null && state != null) pipeline = pipeline.withState(state);
+        if (pipeline != null && layered) pipeline = layerForm(pipeline);
         CgMaterialBindings drawn = proxy.bindings();
         binding = texture != null ? drawn.with(0, texture, sampler) : drawn;
+    }
+
+    /** {@code pipeline} under its blend's layer form; a blend with none (a multiply) cannot land in a layer. */
+    private CgPipeline layerForm(CgPipeline pipeline) {
+        CgPipeline form = layerForms.get(pipeline);
+        if (form != null) return form;
+        CgRenderState state = pipeline.state();
+        CgBlendState blend = state.getBlend() == null ? CgBlendState.DISABLED : state.getBlend();
+        // A blend that only scales what is there (a mask) scales the layer's alpha with its colour: it is its own form
+        CgBlendState inLayer = blend.enabled() && blend.srcRgb() == GLC.GL_ZERO && blend.srcAlpha() == GLC.GL_ZERO
+                ? blend : blend.layered();
+        if (inLayer == null) {
+            throw new IllegalStateException("a draw blended " + blend + " in a layer: a layer composites what is drawn into"
+                    + " it over what is under, and that blend has no form for it (draw it outside the layer)");
+        }
+        form = inLayer.equals(blend) ? pipeline : pipeline.withState(state.withBlend(inLayer));
+        layerForms.put(pipeline, form);
+        return form;
     }
 
     private void sealChunk() {
@@ -217,6 +271,7 @@ public final class CgUiRecorder {
     public void openPass() {
         if (pass != null) return;
         pass = recording.raster("ui").color(target, load).camera(camera).order(CgOrder.LOOKBACK);
+        if (viewOwner != 0 || viewX != 0f || viewY != 0f) pass.view(viewOwner, viewX, viewY);
         load = CgLoad.load();
         passes++;
         CgTrace.add(CgChannels.GL, PASSES, 1);

@@ -8,6 +8,8 @@ import com.crystalgraphics.api.material.CgMaterialValues;
 
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInstances;
+import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
+import com.crystalgraphics.render.ui.backdrop.CgBackdrop;
 
 /**
  * A pane of glass over what is behind it: a blurred and a sharp copy of the backdrop, refracted through a lens at the
@@ -167,7 +169,7 @@ public final class CgCanvasGlass {
     }
 
     /** What is behind it, as {@code backdrop} last captured: drawn into the target it captured. */
-    public CgCanvasGlass backdrop(CgCanvasBackdrop backdrop) {
+    public CgCanvasGlass backdrop(CgBackdrop backdrop) {
         return backdrop(backdrop, 0f, 0f, backdrop.x0(), backdrop.y0(), backdrop.x1(), backdrop.y1());
     }
 
@@ -175,7 +177,7 @@ public final class CgCanvasGlass {
      * What is behind it, drawn into another target than the one captured: where the bound target's pixel (0, 0) is in
      * the backdrop's texels, and the rect of them it may sample, bottom-left. CrystalGUI's glass in a layer.
      */
-    public CgCanvasGlass backdrop(CgCanvasBackdrop backdrop, float offsetX, float offsetY, int x0, int y0, int x1,
+    public CgCanvasGlass backdrop(CgBackdrop backdrop, float offsetX, float offsetY, int x0, int y0, int x1,
                                   int y1) {
         this.blurred = backdrop.blurred();
         this.sharp = backdrop.sharp();
@@ -198,6 +200,14 @@ public final class CgCanvasGlass {
         return tint(look.tint()).saturation(look.saturation()).luminosity(look.luminosity())
                 .lens(look.bezel(), look.ior()).chromatic(look.chromatic()).specular(look.specular())
                 .highlight(look.glow(), look.rim(), look.rimWidth(), look.rimAmbient()).noise(look.noise());
+    }
+
+    /** Every value of {@code filter} but its blur, which is the backdrop's maker's: the canvas's {@code backdropFilter}. */
+    public CgCanvasGlass look(CgBackdropFilter filter) {
+        return tint(filter.tint()).saturation(filter.saturation()).luminosity(filter.luminosity())
+                .lens(filter.bezel(), filter.ior()).chromatic(filter.chromatic()).specular(filter.specular())
+                .highlight(filter.glow(), filter.rim(), filter.rimWidth(), filter.rimAmbient()).noise(filter.noise())
+                .light(filter.lightX(), filter.lightY());
     }
 
     /** Straight ARGB laid over the backdrop, by its alpha. */

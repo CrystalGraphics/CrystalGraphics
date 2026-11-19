@@ -1,5 +1,7 @@
 package com.crystalgraphics.api.paint;
 
+import java.util.Arrays;
+
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
@@ -73,6 +75,9 @@ public class CgPaintValuesTest {
         assertArrayEquals(identity, CgFilter.hueRotate(0f).ops().get(0).values(), 1e-3f);
         assertArrayEquals(identity, CgFilter.brightness(2f).then(CgFilter.brightness(0.5f)).ops().get(0).values(), 1e-6f);
         assertEquals("three sigma", 6f, CgFilter.blur(2f).reach(), 1e-6f);
+        // CSS's shadow blur is two sigma; SVG's stdDeviation is sigma, per axis
+        assertArrayEquals(new float[]{3, 4, 2, 2}, Arrays.copyOf(CgFilter.dropShadow(3, 4, 4, 0).ops().get(0).values(), 4), 1e-6f);
+        assertEquals("three sigma past the offset", 3f * 3f + 4f, CgFilter.dropShadow(-4, 1, 1f, 3f, 0).reach(), 1e-6f);
         assertTrue(CgFilter.NONE.then(CgFilter.NONE).isNone());
         assertSame(chain, chain.then(CgFilter.NONE));
     }

@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.canvas;
 
+import com.crystalgraphics.api.canvas.CgCanvas;
+
 import java.util.Arrays;
 
 import com.crystalgraphics.api.material.CgBlendMode;
@@ -105,6 +107,7 @@ public final class CgCanvasPrimitives {
                 list.addPass(glass, CgInstanceKind.QUAD);
             }
         }
+        CgCanvas.precache(list);
     }
 
     /** Forgets every material made, at a context's teardown: the material registry frees them. */

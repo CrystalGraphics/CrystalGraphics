@@ -88,7 +88,15 @@ public final class CgFilter {
     /** CSS's {@code drop-shadow(dx dy blur colour)}: the picture's shape, offset, blurred and coloured, under it. */
     public static CgFilter dropShadow(float dx, float dy, float blur, int argb) {
         nonNegative(blur, "blur");
-        return of(new Op(Kind.DROP_SHADOW, new float[]{dx, dy, blur, Float.intBitsToFloat(argb)}, null, null));
+        // CSS's blur radius is two sigma
+        return dropShadow(dx, dy, blur * 0.5f, blur * 0.5f, argb);
+    }
+
+    /** A drop shadow blurred by a sigma per axis, as SVG's {@code feDropShadow stdDeviation} gives it. */
+    public static CgFilter dropShadow(float dx, float dy, float sigmaX, float sigmaY, int argb) {
+        nonNegative(sigmaX, "sigmaX");
+        nonNegative(sigmaY, "sigmaY");
+        return of(new Op(Kind.DROP_SHADOW, new float[]{dx, dy, sigmaX, sigmaY, Float.intBitsToFloat(argb)}, null, null));
     }
 
     /** CSS's {@code opacity(amount)}: 0 clear, 1 unchanged. */
@@ -163,6 +171,11 @@ public final class CgFilter {
     /**
      * The picture drawn through {@code material}, a UI-domain material whose sampler {@code textureParameter} takes
      * it: a silhouette, a dissolve, a distortion of your own.
+     *
+     * <ul>
+     *   <li>The canvas draws an instance of it per layer, so one filter serves any number of layers in a frame; set its
+     *       other values on {@code material} itself.</li>
+     * </ul>
      */
     public static CgFilter material(CgMaterialInterface material, String textureParameter) {
         return of(new Op(Kind.MATERIAL, new float[0], Objects.requireNonNull(material, "material"),
@@ -202,7 +215,8 @@ public final class CgFilter {
         for (Op op : ops) {
             if (op.kind == Kind.BLUR) reach += 3f * Math.max(op.values[0], op.values[1]);
             if (op.kind == Kind.DROP_SHADOW) {
-                reach = Math.max(reach, 1.5f * op.values[2] + Math.max(Math.abs(op.values[0]), Math.abs(op.values[1])));
+                reach = Math.max(reach, 3f * Math.max(op.values[2], op.values[3])
+                        + Math.max(Math.abs(op.values[0]), Math.abs(op.values[1])));
             }
         }
         return reach;
