@@ -93,6 +93,11 @@ public final class CgPalette {
         return (int) node % CgSpatialTree.MAX_NODES;
     }
 
+    /** The effect node of a record's {@code node} field: the inverse of {@link #pack}'s second half. */
+    public static int effectOf(float node) {
+        return (int) node / CgSpatialTree.MAX_NODES;
+    }
+
     /** Makes this the palette of a recording with these trees, changed by {@code values} (null for none). */
     public void copyFrom(CgSpatialTree spatial, CgEffectTree effects, @Nullable CgPropertyValues values) {
         this.spatial.copyFrom(spatial);

@@ -7,7 +7,10 @@ import javax.annotation.Nullable;
 import com.crystalgraphics.api.paint.gradient.CgGradient;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.text.cache.CgFontRegistry;
+import com.crystalgraphics.text.render.CgTextGamma;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -53,11 +56,16 @@ public final class CgPaintChunk {
         /** A draw binds a texture that lives one frame. */
         FRAME_TEXTURE,
         /** A clip copied in at replay would nest past {@link CgClipTable#MAX_DEPTH}. */
-        CLIP_DEPTH
+        CLIP_DEPTH,
+        /** A text item drew a glyph or shadow below its tier, still generating: kept, it would stay that way. */
+        DEGRADED,
+        /** Replayed after the glyph atlases evicted or the canvas's text gamma changed: its glyph quads are stale. */
+        STALE_TEXT,
+        /** A draw of a kind a chunk does not keep. */
+        KIND
     }
 
-    private static final int FLOATS = CgUiElements.FLOATS;
-    private static final CgInstanceKind ELEMENT = CgInstanceKind.ELEMENT;
+    private static final CgInstanceKind ELEMENT = CgInstanceKind.ELEMENT, QUAD = CgInstanceKind.QUAD;
 
     private CgDrawChunk[] chunks = new CgDrawChunk[2];
     private int chunkCount;
@@ -80,6 +88,9 @@ public final class CgPaintChunk {
     private int gradientCount;
 
     private float x0, y0, x1, y1;
+    /** For a chunk holding text: the gamma it drew under and the atlases' eviction generation then; else null. */
+    @Nullable private CgTextGamma textGamma;
+    private long evictions;
 
     /** Whether a stretch is kept. */
     public boolean kept() {
@@ -117,6 +128,7 @@ public final class CgPaintChunk {
         gradientCount = 0;
         clipCount = 0;
         nodeCount = 0;
+        textGamma = null;
     }
 
     /**
@@ -124,15 +136,19 @@ public final class CgPaintChunk {
      * {@code baseNode}, the tables then holding {@code clipsBefore} entries and {@code nodesBefore} nodes.
      */
     Refusal capture(CgCanvas canvas, int count, CgRecording recording, int clipsBefore, int nodesBefore, int baseClip,
-                    int baseNode, boolean onePass, float bx0, float by0, float bx1, float by1) {
+                    int baseNode, boolean onePass, boolean degraded, @Nullable CgTextGamma textGamma, float bx0, float by0,
+                    float bx1, float by1) {
         clear();
-        refusal = keep(canvas, count, recording, clipsBefore, nodesBefore, baseClip, baseNode, onePass);
+        refusal = degraded ? Refusal.DEGRADED
+                : keep(canvas, count, recording, clipsBefore, nodesBefore, baseClip, baseNode, onePass);
         if (refusal != Refusal.NONE) {
             clear();
             return refusal;
         }
         this.baseClip = baseClip;
         this.baseNode = baseNode;
+        this.textGamma = textGamma;
+        if (textGamma != null) evictions = CgFontRegistry.get().getAtlasEvictionGeneration();
         x0 = bx0;
         y0 = by0;
         x1 = bx1;
@@ -174,19 +190,21 @@ public final class CgPaintChunk {
             int spatial = chunk.spatial();
             if (spatial != baseNode && spatial < nodesBefore) return Refusal.OUTER_NODE;
             for (int d = 0; d < chunk.draws(); d++) {
-                if (chunk.kind(d) != ELEMENT) return Refusal.OUTER_NODE;
+                CgInstanceKind kind = chunk.kind(d);
+                if (kind != ELEMENT && kind != QUAD) return Refusal.KIND;
                 CgMaterialBindings bindings = chunk.binding(d);
                 for (int t = 0; t < bindings.textures(); t++) {
                     if (!CgGraphTexture.outlivesFrame(bindings.texture(t))) return Refusal.FRAME_TEXTURE;
                 }
-                float[] data = chunk.data(ELEMENT);
+                float[] data = chunk.data(kind);
+                int stride = floats(kind), clipAt = clipField(kind), nodeAt = nodeField(kind);
                 for (int r = chunk.first(d), end = r + chunk.instances(d); r < end; r++) {
-                    int o = r * FLOATS;
-                    int clip = Float.floatToRawIntBits(data[o + CgUiElements.CLIP]);
+                    int o = r * stride;
+                    int clip = clipOf(kind, data[o + clipAt]);
                     if (clip != baseClip && clip < clipsBefore) return Refusal.OUTER_CLIP;
-                    int node = CgPalette.spatialOf(data[o + CgUiElements.NODE]);
+                    int node = CgPalette.spatialOf(data[o + nodeAt]);
                     if (node != baseNode && node < nodesBefore) return Refusal.OUTER_NODE;
-                    if (CgUiElements.kind(data, o) == CgUiElements.FILL_GRADIENT) {
+                    if (kind == ELEMENT && CgUiElements.kind(data, o) == CgUiElements.FILL_GRADIENT) {
                         keepGradient(gradientTable, Float.floatToRawIntBits(data[o + CgUiElements.PAINT]));
                     }
                 }
@@ -201,8 +219,13 @@ public final class CgPaintChunk {
      * Adds what is kept to {@code canvas}'s recording under the clip and node current there, renumbered. False, with
      * nothing added, when nothing is kept or a clip would nest too deep.
      */
-    boolean replay(CgCanvas canvas, CgRecording recording, int clip, int node) {
+    boolean replay(CgCanvas canvas, CgRecording recording, int clip, int node, CgTextGamma gamma) {
         if (!kept) return false;
+        if (textGamma != null && (!textGamma.equals(gamma) || CgFontRegistry.get().getAtlasEvictionGeneration() != evictions)) {
+            clear();
+            refusal = Refusal.STALE_TEXT;
+            return false;
+        }
         boolean same = clip == baseClip && node == baseNode;
         CgSpatialTree tree = recording.spatial();
         for (int k = 0; k < nodeCount; k++) {
@@ -251,12 +274,16 @@ public final class CgPaintChunk {
                 if (a.instances(d) != b.instances(d)) {
                     return "chunk " + i + " draw " + d + ": " + a.instances(d) + " records against " + b.instances(d);
                 }
-                float[] da = a.data(ELEMENT), db = b.data(ELEMENT);
+                CgInstanceKind kind = a.kind(d);
+                if (kind != b.kind(d)) return "chunk " + i + " draw " + d + ": " + kind + " against " + b.kind(d);
+                float[] da = a.data(kind), db = b.data(kind);
+                int stride = floats(kind), clipAt = clipField(kind), nodeAt = nodeField(kind);
                 for (int r = 0; r < a.instances(d); r++) {
-                    int oa = (a.first(d) + r) * FLOATS, ob = (b.first(d) + r) * FLOATS;
-                    for (int f = 0; f < FLOATS; f++) {
-                        if (f == CgUiElements.CLIP || f == CgUiElements.NODE) continue;
-                        if (f == CgUiElements.PAINT && CgUiElements.kind(da, oa) == CgUiElements.FILL_GRADIENT) {
+                    int oa = (a.first(d) + r) * stride, ob = (b.first(d) + r) * stride;
+                    for (int f = 0; f < stride; f++) {
+                        if (f == clipAt || f == nodeAt) continue;
+                        if (kind == ELEMENT && f == CgUiElements.PAINT
+                                && CgUiElements.kind(da, oa) == CgUiElements.FILL_GRADIENT) {
                             if (!gradientOf(da[oa + f]).equals(other.gradientOf(db[ob + f]))) {
                                 return "chunk " + i + " draw " + d + " record " + r + ": another gradient";
                             }
@@ -267,8 +294,7 @@ public final class CgPaintChunk {
                                     + " against " + db[ob + f];
                         }
                     }
-                    if (clipPlace(Float.floatToRawIntBits(da[oa + CgUiElements.CLIP]))
-                            != other.clipPlace(Float.floatToRawIntBits(db[ob + CgUiElements.CLIP]))) {
+                    if (clipPlace(clipOf(kind, da[oa + clipAt])) != other.clipPlace(clipOf(kind, db[ob + clipAt]))) {
                         return "chunk " + i + " draw " + d + " record " + r + ": another clip";
                     }
                 }
@@ -279,24 +305,46 @@ public final class CgPaintChunk {
 
     /** A chunk's copy with its records' clips, nodes and gradients renumbered into the replay's. */
     private CgDrawChunk renumbered(CgDrawChunk chunk, int clip, int node) {
-        float[] data = chunk.data(ELEMENT).clone();
+        float[][] instances = new float[CgInstanceKind.values().length][];
         for (int d = 0; d < chunk.draws(); d++) {
+            CgInstanceKind kind = chunk.kind(d);
+            float[] data = instances[kind.ordinal()];
+            if (data == null) data = instances[kind.ordinal()] = chunk.data(kind).clone();
+            int stride = floats(kind), clipAt = clipField(kind), nodeAt = nodeField(kind);
             for (int r = chunk.first(d), end = r + chunk.instances(d); r < end; r++) {
-                int o = r * FLOATS;
-                int c = Float.floatToRawIntBits(data[o + CgUiElements.CLIP]);
-                int place = clipPlace(c);
-                data[o + CgUiElements.CLIP] = Float.intBitsToFloat(place < 0 ? clip : newClips[place]);
-                int n = CgPalette.spatialOf(data[o + CgUiElements.NODE]);
-                data[o + CgUiElements.NODE] = CgPalette.pack(renumberNode(n, node), 0);
-                if (CgUiElements.kind(data, o) == CgUiElements.FILL_GRADIENT) {
+                int o = r * stride;
+                int place = clipPlace(clipOf(kind, data[o + clipAt]));
+                data[o + clipAt] = clipValue(kind, place < 0 ? clip : newClips[place]);
+                int n = CgPalette.spatialOf(data[o + nodeAt]);
+                data[o + nodeAt] = CgPalette.pack(renumberNode(n, node), CgPalette.effectOf(data[o + nodeAt]));
+                if (kind == ELEMENT && CgUiElements.kind(data, o) == CgUiElements.FILL_GRADIENT) {
                     int g = gradientPlace(Float.floatToRawIntBits(data[o + CgUiElements.PAINT]));
                     data[o + CgUiElements.PAINT] = Float.intBitsToFloat(newGradients[g]);
                 }
             }
         }
-        float[][] instances = new float[CgInstanceKind.values().length][];
-        instances[ELEMENT.ordinal()] = data;
         return chunk.with(renumberNode(chunk.spatial(), node), instances);
+    }
+
+    // A record's layout by kind: an element's clip is an int's bits, a glyph quad's the int as a float
+    private static int floats(CgInstanceKind kind) {
+        return kind == ELEMENT ? CgUiElements.FLOATS : CgQuadRecord.FLOATS;
+    }
+
+    private static int clipField(CgInstanceKind kind) {
+        return kind == ELEMENT ? CgUiElements.CLIP : CgQuadRecord.CLIP;
+    }
+
+    private static int nodeField(CgInstanceKind kind) {
+        return kind == ELEMENT ? CgUiElements.NODE : CgQuadRecord.NODE;
+    }
+
+    private static int clipOf(CgInstanceKind kind, float field) {
+        return kind == ELEMENT ? Float.floatToRawIntBits(field) : (int) field;
+    }
+
+    private static float clipValue(CgInstanceKind kind, int entry) {
+        return kind == ELEMENT ? Float.intBitsToFloat(entry) : entry;
     }
 
     private int renumberNode(int n, int node) {

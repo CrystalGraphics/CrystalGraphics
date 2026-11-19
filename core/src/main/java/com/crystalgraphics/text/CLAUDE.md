@@ -15,7 +15,8 @@ Use this file as the first stop when you need to orient yourself across the inte
 - `text/atlas` — atlas storage and page allocation
 - `text/atlas/packing` — rectangle packing algorithms used by atlas pages
 - `text/msdf` — distance-field generation logic and config
-- `text/render` — draw-time: a canvas's text items, their quads, shadows and materials
+- `text/render` — draw-time: a canvas's text items, their quads, shadows and materials. `CgTextBatch` draws onto a
+  `CgTextBatch.Target` (both canvases are one) and takes `api.text.CgText` values; `CgText.measure` shares its layout
 - `text/shadow` — text-shadow cells: the Skia mask blur (`CgMaskBlurFilter`, `CgGaussFilter`), the cell key and
   recipe (`CgShadowCell`) and the coverage it is built from (`CgShadowCoverage`). **Names no FreeType and no
   msdfgen**: the glyph workers answer `CgShadowCell.GlyphSource`

@@ -13,9 +13,9 @@ import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.text.CgTextDecorationRect;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.canvas.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -44,10 +44,11 @@ import java.util.List;
 import java.util.Map;
 import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 
 /**
- * A canvas's text: what {@link CgCanvas#text()} draws through. Resolves a draw's glyphs from the font registry's
+ * A canvas's text: what a canvas's text items draw through. Resolves a draw's glyphs from the font registry's
  * atlases (bitmap, MSDF or MTSDF, by size on screen), plans its shadows, and hands its quads to the canvas in its
  * style's order: each layer, bottom first, the under-lines before the first fill or outline and line-through after the
  * last fill. Neighbouring quads of one atlas, tier and layer material, within a draw or across draws, are one canvas
@@ -98,8 +99,26 @@ public final class CgTextBatch {
             R_CUSTOM0 = CgQuadRecord.CUSTOM0, R_CUSTOM1 = CgQuadRecord.CUSTOM1,
             R_CUSTOM2 = CgQuadRecord.CUSTOM2, R_CLIP = CgQuadRecord.CLIP, R_NODE = CgQuadRecord.NODE;
 
+    /** What a canvas's text batch draws onto: its camera, what it can see, its target, and its quads' destination. */
+    public interface Target {
+
+        /** What the canvas is seen through: picks screen or world text, and the raster size. */
+        CgCamera camera();
+
+        /** Whether the rect in {@code pose}'s space can reach the target: false skips the draw before any glyph. */
+        boolean visible(@Nullable Matrix4fc pose, float x0, float y0, float x1, float y1);
+
+        /** The texture drawn into: a float one blends text linearly. Null for a host's own target. */
+        @Nullable
+        CgGraphTexture target();
+
+        /** Takes {@code count} glyph quads from record {@code from} of {@code records}, in paint order. */
+        void textQuads(CgMaterialInterface material, @Nullable CgRenderState state, @Nullable CgTexture texture,
+                       float[] records, int from, int count, int spatial);
+    }
+
     @Nullable
-    private final CgCanvas canvas;
+    private final Target canvas;
     private final CgFontRegistry registry = CgFontRegistry.get();
     private final CgTextDraw scratch;
     private final CgResolvedGlyphs resolvedGlyphs = new CgResolvedGlyphs(registry);
@@ -153,7 +172,7 @@ public final class CgTextBatch {
     private CgTextCapture capturing;
     private final Map<CgTextLayout, Replay> replays = new IdentityHashMap<>();
 
-    public CgTextBatch(@Nullable CgCanvas canvas) {
+    public CgTextBatch(@Nullable Target canvas) {
         this.canvas = canvas;
         this.scratch = new CgTextDraw(this, null);
     }
@@ -176,6 +195,31 @@ public final class CgTextBatch {
         drawInternal(draw, poseOf(draw));
         return degradedDraws == before;
     }
+
+    /**
+     * Draws {@code text} with its origin at ({@code x}, {@code y}) in {@code pose}'s space: a canvas's text item. Its
+     * constraints are in those units, so a scaled pose wraps it where {@link CgText#measure} does.
+     *
+     * @param spatial the spatial node {@code pose} is in
+     * @return whether everything drew as asked; false while a glyph or shadow is still generating
+     */
+    public boolean draw(CgText text, float x, float y, int argb, Matrix4f pose, int clip, int spatial, CgTextGamma gamma) {
+        // A draw's constraints are screen pixels; the value's are the pose's units
+        float scale = CgTextRaster.maxScale(pose);
+        CgTextDraw draw = scratch.reset().of(text).at(x, y).color(argb).pose(pose).clip(clip).node(spatial, 0).gamma(gamma);
+        draw.constraints(text.maxWidth() * scale, text.maxHeight() * scale);
+        return draw(draw);
+    }
+
+    /** {@code text}'s layout at its own size: where a canvas lays it out under an unscaled pose. Any thread. */
+    public static CgTextLayout measure(CgText text) {
+        CgTextDraw draw = MEASURING.get().reset().of(text).constraints(text.maxWidth(), text.maxHeight());
+        draw.validate("measure");
+        return layoutOf(draw, fonts(draw), 1f);
+    }
+
+    /** A thread's draw for {@link #measure}: filled and read, never submitted. */
+    private static final ThreadLocal<CgTextDraw> MEASURING = ThreadLocal.withInitial(CgTextDraw::detached);
 
     /** How many draws resolved a glyph or shadow below what they asked for. Rises only. */
     public long degradedDraws() {
@@ -342,8 +386,11 @@ public final class CgTextBatch {
                                 boolean moving) {
     }
 
-    /** Font, raster tier and layout for {@code draw}, wrapped for the pose; {@link #useCamera} first. */
-    private ResolvedDraw resolveDraw(CgTextDraw draw) {
+    /** A draw's fonts, sized: a family, or one font as a family, and the key its raster history goes by. */
+    private record Fonts(@Nullable CgFontFamily family, @Nullable CgFont font, CgFontKey key) {
+    }
+
+    private static Fonts fonts(CgTextDraw draw) {
         CgFontFamily resolvedFamily = null;
         CgFont resolvedFont = null;
         CgFontKey fontKey;
@@ -369,26 +416,33 @@ public final class CgTextBatch {
             }
             fontKey = bakedKeys[0];
         }
+        return new Fonts(resolvedFamily, resolvedFont, fontKey);
+    }
 
-        int basePx = fontKey.getTargetPx();
-
-        CgTextLayout layout;
-        if (draw.layout != null) {
-            layout = draw.layout;
-        } else {
-            // Constraints are screen pixels: divided by the pose's own scale, not effective/base px, which is clamped
-            // at CgTextRaster.MAX_PX. Never for world text, which must not reflow with the camera.
-            float scale = world ? 1f : CgTextRaster.maxScale(viewPose);
-            float maxWidth = scaleConstraint(draw.maxWidth, scale), maxHeight = scaleConstraint(draw.maxHeight, scale);
-            // Slate's LetterSpacing: thousandths of an em, at the text's own size.
-            float spacing = draw.style.letterSpacing() * basePx / 1000f;
-            if (draw.paragraph != null) layout = draw.paragraph.layout(maxWidth, maxHeight);
-            else if (resolvedFamily != null && draw.family != null) {
-                layout = layout(draw.transformedText(), resolvedFamily, maxWidth, maxHeight, spacing);
-            } else {
-                layout = layout(draw.transformedText(), resolvedFont, maxWidth, maxHeight, spacing);
-            }
+    /**
+     * {@code draw}'s layout: its own, or wrapped at its constraints over {@code scale}, the screen pixels a unit of its
+     * pose is. Drawing and measuring share it, so a measure never drifts from a draw.
+     */
+    private static CgTextLayout layoutOf(CgTextDraw draw, Fonts fonts, float scale) {
+        if (draw.layout != null) return draw.layout;
+        float maxWidth = scaleConstraint(draw.maxWidth, scale), maxHeight = scaleConstraint(draw.maxHeight, scale);
+        // Slate's LetterSpacing: thousandths of an em, at the text's own size.
+        float spacing = draw.style.letterSpacing() * fonts.key().getTargetPx() / 1000f;
+        if (draw.paragraph != null) return draw.paragraph.layout(maxWidth, maxHeight);
+        if (fonts.family() != null && draw.family != null) {
+            return layout(draw.transformedText(), fonts.family(), maxWidth, maxHeight, spacing);
         }
+        return layout(draw.transformedText(), fonts.font(), maxWidth, maxHeight, spacing);
+    }
+
+    /** Font, raster tier and layout for {@code draw}, wrapped for the pose; {@link #useCamera} first. */
+    private ResolvedDraw resolveDraw(CgTextDraw draw) {
+        Fonts fonts = fonts(draw);
+        CgFontKey fontKey = fonts.key();
+        int basePx = fontKey.getTargetPx();
+        // Constraints are screen pixels: divided by the pose's own scale, not effective/base px, which is clamped at
+        // CgTextRaster.MAX_PX. Never for world text, which must not reflow with the camera.
+        CgTextLayout layout = layoutOf(draw, fonts, world ? 1f : CgTextRaster.maxScale(viewPose));
 
         int effectiveTargetPx;
         boolean sizeWantsMsdf;
@@ -525,7 +579,7 @@ public final class CgTextBatch {
             } else {
                 material = CgTextMaterials.of(df, !world, draw.gamma, additive, linear);
             }
-            canvas.quads(material, state, CgGlyphAtlas.texture(atlasId), src, from, count, draw.spatialNode);
+            canvas.textQuads(material, state, CgGlyphAtlas.texture(atlasId), src, from, count, draw.spatialNode);
         }
     }
 

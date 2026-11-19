@@ -87,7 +87,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  *   <li>One thread at a time; it holds no GPU object and may live on any thread.</li>
  * </ul>
  */
-public final class CgCanvas {
+public final class CgCanvas implements CgTextBatch.Target {
 
     /** How deep a scissor chain goes. */
     public static final int MAX_SCISSORS = 16;
@@ -164,6 +164,12 @@ public final class CgCanvas {
                           int from, int count, int spatial) {
         quads.records(material, state, texture, src, from, count, spatial);
         return this;
+    }
+
+    @Override
+    public void textQuads(CgMaterialInterface material, @Nullable CgRenderState state, @Nullable CgTexture texture,
+                          float[] records, int from, int count, int spatial) {
+        quads(material, state, texture, records, from, count, spatial);
     }
 
     /**

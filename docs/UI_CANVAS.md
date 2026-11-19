@@ -56,6 +56,33 @@ canvas.image(icon, -16, -16, 32, 32);
 canvas.restore();
 ```
 
+## Text
+
+A `CgText` is the value: what it says, its font, size, style and where it wraps. Make it once, share it, measure it on
+any thread; the canvas draws it at a point.
+
+```java
+static final CgText TITLE = CgText.of("Spawn").font(font).size(24).style(HEADING);
+
+canvas.text(TITLE, 20, 40);                              // as its style paints it
+canvas.text(TITLE.text("Respawn"), 20, 40, 0xFFFFD040);  // another string, every layer tinted
+float wide = TITLE.measure().totalWidth();               // the document's thread
+```
+
+Under the canvas's transform it rotates, scales and fades with everything else, its glyphs rasterised at their size on
+the target (size times scale), and `maxWidth` wraps in the canvas's units, where `measure()` says.
+
+```java
+canvas.save().translate(x, y).rotate(-12).scale(1.4f, 1.4f);
+canvas.text(CgText.of(body).family(ui).size(14).maxWidth(320), 0, 0);
+canvas.restore();
+```
+
+- A glyph still generating draws a lower tier for a frame or two and counts in `canvas.degradedDraws()`; a chunk that
+  drew one refuses itself (`DEGRADED`), so nothing keeps the blur.
+- `canvas.textGamma(...)` sets the coverage correction; a kept chunk with text replays only under the gamma and the
+  atlases it was taken under (`STALE_TEXT`).
+
 ## Frames recorded off the render thread
 
 A document or a heavy HUD records on its own thread and is shown on the render thread: `CgCanvasRecorder` paints into
@@ -126,6 +153,7 @@ the new frame. `kept.differs(fresh)` is the check mode: a fresh paint taken into
   paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it.
 - **A render target's picture** composites with `box(...).fill(picture).premultiplied().region(0, 1, 1, 0)`: it is
   premultiplied already, and its row 0 is its bottom.
+- **Intensity does not reach text**: a glyph's colour is a byte per channel. Opacity does.
 - **A redraw re-executes the whole frame** under its values; what the recording culled stays culled, so record what
   the `CgCullRect` holds.
 - **One thread draws a canvas at a time**; separate canvases record concurrently.

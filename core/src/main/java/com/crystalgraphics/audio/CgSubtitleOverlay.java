@@ -19,7 +19,8 @@ import com.crystalgraphics.api.text.CgTextAlign;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.frame.CgWorld;
-import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.render.stage.CgRenderStage;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.sequence.CgSequencePlayer;
@@ -78,7 +79,7 @@ final class CgSubtitleOverlay {
     private final Matrix4f placement = new Matrix4f();
     /** The plain look's layout, kept while its text and width hold. */
     @Nullable
-    private CgTextLayout plainLayout;
+    private CgText plainLine;
     @Nullable
     private String plainText;
     private float plainWidth;
@@ -216,16 +217,15 @@ final class CgSubtitleOverlay {
         }
         int width = frame.width(), height = frame.height();
         float region = Math.round(width * (1f - 2f * SAFE_SIDE));
-        if (plainLayout == null || region != plainWidth || !text.equals(plainText)) {
-            plainLayout = CgTextLayout.of(text, canvasFont).maxWidth(region).align(CgTextAlign.CENTER)
+        if (plainLine == null || region != plainWidth || !text.equals(plainText)) {
+            CgTextLayout layout = CgTextLayout.of(text, canvasFont).maxWidth(region).align(CgTextAlign.CENTER)
                     .lineHeightOverride(canvasFont.getMetrics().getLineHeight() * LINE_SPACING).build();
+            plainLine = CgText.of(layout).font(canvasFont).style(CANVAS_LOOK).contained(false);
             plainText = text;
             plainWidth = region;
         }
         float bottom = height * REGION_BOTTOM - CHAR_HEIGHT;
-        CgCanvas canvas = frame.canvas();
-        canvas.text().style(CANVAS_LOOK).layout(plainLayout).font(canvasFont).contained(false)
-                .at(width * SAFE_SIDE, bottom - plainLayout.totalHeight()).submit();
+        CgCanvas.on(frame).text(plainLine, width * SAFE_SIDE, bottom - plainLine.layout().totalHeight());
         drawn++;
     }
 

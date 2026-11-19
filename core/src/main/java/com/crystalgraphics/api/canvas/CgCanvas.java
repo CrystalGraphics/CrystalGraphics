@@ -6,6 +6,13 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import org.joml.Matrix4f;
+import com.crystalgraphics.api.state.CgRenderState;
+import com.crystalgraphics.api.text.CgText;
+import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.text.render.CgTextBatch;
+import com.crystalgraphics.text.render.CgTextGamma;
+import org.joml.Matrix4fc;
 
 import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -74,6 +81,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private final float[] record = new float[CgUiElements.FLOATS];
     private final CgCanvasBox box = new CgCanvasBox(this);
     private final Matrix4f pose = new Matrix4f();
+    /** The transform as text's pose: its glyph quads bake it, rotation included. */
+    private final Matrix4f textPose = new Matrix4f();
+    @Nullable private CgTextBatch text;
+    private final TextTarget textTarget = new TextTarget();
+    private CgTextGamma textGamma = CgTextGamma.initial();
+    /** Text items drawn so far: a chunk holding one keeps the glyph epoch it was taken in. */
+    private long textDraws;
     private final float[] noRadii = new float[4], clipRx = new float[4], clipRy = new float[4];
 
     @Nullable private CgRecording recording;
@@ -102,6 +116,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     // A paint chunk being taken: what the tables held at its start, and the union of what it drew
     private boolean chunking;
     private int chunkClips, chunkNodes, chunkClip, chunkNode;
+    private long chunkTextDraws, chunkDegraded;
     private long chunkPasses;
     private float chunkX0, chunkY0, chunkX1, chunkY1;
 
@@ -436,6 +451,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         chunkNode = spatial();
         chunkX0 = chunkY0 = Float.MAX_VALUE;
         chunkX1 = chunkY1 = -Float.MAX_VALUE;
+        chunkTextDraws = textDraws;
+        chunkDegraded = degradedDraws();
         return this;
     }
 
@@ -448,7 +465,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         chunking = false;
         int count = recorder.untape();
         return into.capture(this, count, recording, chunkClips, chunkNodes, chunkClip, chunkNode,
-                recorder.passes() == chunkPasses, chunkX0, chunkY0, chunkX1, chunkY1);
+                recorder.passes() == chunkPasses, degradedDraws() != chunkDegraded,
+                textDraws != chunkTextDraws ? textGamma : null, chunkX0, chunkY0, chunkX1, chunkY1);
     }
 
     /**
@@ -458,7 +476,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     public boolean replay(CgPaintChunk chunk) {
         if (recording == null) throw new IllegalStateException("replaying on a canvas that records nowhere");
         pass();
-        return chunk.replay(this, recording, clip, spatial());
+        return chunk.replay(this, recording, clip, spatial(), textGamma);
     }
 
     CgDrawChunk taped(int i) {
@@ -494,6 +512,101 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** A brush over a rect: its region, nine-slice, tiling, sampler and tint. */
     public CgCanvas image(CgBrush brush, float x, float y, float w, float h) {
         return box(x, y, w, h).fill(brush).draw();
+    }
+
+    // ── Text ───────────────────────────────────────────────────────────
+
+    /** {@code text} with its layout's origin at ({@code x}, {@code y}): as its style paints it, white by default. */
+    public CgCanvas text(CgText text, float x, float y) {
+        return text(text, x, y, 0xFFFFFFFF);
+    }
+
+    /**
+     * {@code text} at ({@code x}, {@code y}), every layer of its style tinted by {@code argb}. Its glyphs rasterise at
+     * their size on the target, under the transform and scale now; while one is still generating it draws a lower
+     * tier and counts in {@link #degradedDraws}.
+     */
+    public CgCanvas text(CgText text, float x, float y, int argb) {
+        if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
+        if (opacity <= 0f) return this;
+        pass();
+        int tint = opacity >= 1f ? argb : (argb & 0x00FFFFFF) | Math.round((argb >>> 24) * opacity) << 24;
+        textPose.set(a, b, 0f, 0f, c, d, 0f, 0f, 0f, 0f, 1f, 0f, tx, ty, 0f, 1f);
+        textBatch().draw(text, x, y, tint, textPose, clip, base, textGamma);
+        textDraws++;
+        return this;
+    }
+
+    /** The coverage correction later text is drawn with; {@link CgTextGamma#initial()} at first. Not saved. */
+    public CgCanvas textGamma(CgTextGamma gamma) {
+        this.textGamma = Objects.requireNonNull(gamma, "gamma");
+        return this;
+    }
+
+    /**
+     * Text items that drew a glyph or shadow below the tier they asked for, still generating. Rises only: a caller
+     * keeping what it drew (a surface, a chunk) paints again while it moves.
+     */
+    public long degradedDraws() {
+        return text == null ? 0 : text.degradedDraws();
+    }
+
+    private CgTextBatch textBatch() {
+        CgTextBatch t = text;
+        if (t == null) text = t = new CgTextBatch(textTarget);
+        return t;
+    }
+
+    /** The canvas as its text batch sees it; glyph quads land as the canvas's own records do. */
+    private final class TextTarget implements CgTextBatch.Target {
+
+        @Override
+        public CgCamera camera() {
+            return camera;
+        }
+
+        @Override
+        public boolean visible(@Nullable Matrix4fc at, float x0, float y0, float x1, float y1) {
+            // Asked at the base node alone: the rect's device bounds against the clip and the target
+            if (at == null || base != 0) return true;
+            float ax = at.m00(), bx = at.m01(), cx = at.m10(), dx = at.m11(), ox = at.m30(), oy = at.m31();
+            float minX = Math.min(Math.min(ax * x0 + cx * y0, ax * x1 + cx * y0), Math.min(ax * x0 + cx * y1, ax * x1 + cx * y1)) + ox;
+            float maxX = Math.max(Math.max(ax * x0 + cx * y0, ax * x1 + cx * y0), Math.max(ax * x0 + cx * y1, ax * x1 + cx * y1)) + ox;
+            float minY = Math.min(Math.min(bx * x0 + dx * y0, bx * x1 + dx * y0), Math.min(bx * x0 + dx * y1, bx * x1 + dx * y1)) + oy;
+            float maxY = Math.max(Math.max(bx * x0 + dx * y0, bx * x1 + dx * y0), Math.max(bx * x0 + dx * y1, bx * x1 + dx * y1)) + oy;
+            float left = clipNode == base ? Math.max(0f, clipX0) : 0f, top = clipNode == base ? Math.max(0f, clipY0) : 0f;
+            float right = Math.min(camera.width(), clipNode == base ? clipX1 : Float.MAX_VALUE);
+            float bottom = Math.min(camera.height(), clipNode == base ? clipY1 : Float.MAX_VALUE);
+            return maxX > left && maxY > top && minX < right && minY < bottom;
+        }
+
+        @Nullable
+        @Override
+        public CgGraphTexture target() {
+            return target;
+        }
+
+        @Override
+        public void textQuads(CgMaterialInterface material, @Nullable CgRenderState state, @Nullable CgTexture texture,
+                              float[] records, int from, int count, int spatial) {
+            if (count <= 0) return;
+            int stride = CgQuadRecord.FLOATS;
+            float x0 = Float.POSITIVE_INFINITY, y0 = Float.POSITIVE_INFINITY;
+            float x1 = Float.NEGATIVE_INFINITY, y1 = Float.NEGATIVE_INFINITY;
+            for (int o = from * stride, end = (from + count) * stride; o < end; o += stride) {
+                float ox = records[o + CgQuadRecord.ORIGIN], oy = records[o + CgQuadRecord.ORIGIN + 1];
+                float rx = records[o + CgQuadRecord.RIGHT], ry = records[o + CgQuadRecord.RIGHT + 1];
+                float ux = records[o + CgQuadRecord.UP], uy = records[o + CgQuadRecord.UP + 1];
+                // A pixel past the corners, as the quad primitive's coverage reaches
+                x0 = Math.min(x0, ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f);
+                y0 = Math.min(y0, oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f);
+                x1 = Math.max(x1, ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f);
+                y1 = Math.max(y1, oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f);
+            }
+            recorder.draw(CgInstanceKind.QUAD, material, state, texture, null, spatial, records, from * stride, count,
+                    x0, y0, x1, y1);
+            grow(spatial, x0, y0, x1, y1);
+        }
     }
 
     // ── Drawing a box ──────────────────────────────────────────────────
@@ -641,7 +754,12 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     private void element(CgMaterialInterface material, @Nullable CgTexture texture, @Nullable CgSampler sampler, int at,
                          float[] records, int from, int count, float x0, float y0, float x1, float y1) {
-        recorder.element(material, texture, sampler, at, records, from, count, x0, y0, x1, y1);
+        recorder.draw(CgInstanceKind.ELEMENT, material, null, texture, sampler, at, records, from, count, x0, y0, x1, y1);
+        grow(at, x0, y0, x1, y1);
+    }
+
+    /** A chunk being taken grows by what is drawn in its node. */
+    private void grow(int at, float x0, float y0, float x1, float y1) {
         if (chunking && at == chunkNode) {
             chunkX0 = Math.min(chunkX0, x0);
             chunkY0 = Math.min(chunkY0, y0);

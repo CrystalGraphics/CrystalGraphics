@@ -1,9 +1,9 @@
 package com.crystalgraphics.text.render;
 
-import com.crystalgraphics.api.PoseStack;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgShapedParagraph;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.ui.property.CgPalette;
@@ -66,8 +66,6 @@ public final class CgTextDraw {
     float x, y;
     int rgba = 0xFFFFFFFF;
     @Nullable
-    PoseStack poseStack;
-    @Nullable
     Matrix4f poseMatrix;
     CgTextStyle style = CgTextStyle.PLAIN;
     /** Per glyph of the layout, its scope; null when no layer is scoped. Held, not copied. */
@@ -112,7 +110,6 @@ public final class CgTextDraw {
         targetPx = -1;
         x = y = 0f;
         rgba = 0xFFFFFFFF;
-        poseStack = null;
         poseMatrix = null;
         style = CgTextStyle.PLAIN;
         glyphScopes = null;
@@ -219,17 +216,9 @@ public final class CgTextDraw {
         return this;
     }
 
-    /** The pose its quads are placed by: the stack's top, read at submit. */
-    public CgTextDraw pose(@Nullable PoseStack pose) {
-        this.poseStack = pose;
-        this.poseMatrix = null;
-        return this;
-    }
-
     /** The pose its quads are placed by, read at submit. */
     public CgTextDraw pose(@Nullable Matrix4f pose) {
         this.poseMatrix = pose;
-        this.poseStack = null;
         return this;
     }
 
@@ -385,8 +374,22 @@ public final class CgTextDraw {
     /** The pose matrix it is placed by now, or null for identity. */
     @Nullable
     Matrix4f poseNow() {
-        if (poseMatrix != null) return poseMatrix;
-        return poseStack != null ? poseStack.last().pose() : null;
+        return poseMatrix;
+    }
+
+    /** Takes what {@code value} says to draw: its text, fonts, size, style, constraints and containment. */
+    CgTextDraw of(CgText value) {
+        layout = value.layout();
+        paragraph = value.paragraph();
+        text = value.text();
+        font = value.font();
+        family = value.family();
+        targetPx = value.size();
+        style = value.style();
+        maxWidth = value.maxWidth();
+        maxHeight = value.maxHeight();
+        contained = value.contained();
+        return this;
     }
 
     /** The style's size in whole pixels: the size its own font is drawn at. */

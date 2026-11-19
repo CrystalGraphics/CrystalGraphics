@@ -6,6 +6,7 @@ import java.util.Objects;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgMaterialInterface;
+import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.camera.CgCamera;
@@ -24,14 +25,15 @@ import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 
 /**
- * The UI canvas's rendering policy: element records into a recording's raster passes, as chunks the frame's batcher
- * joins. One draw per run of records under one material and texture, one chunk per spatial node; the pass orders
+ * The UI canvas's rendering policy: its records (elements, glyph quads) into a recording's raster passes, as chunks
+ * the frame's batcher joins. One draw per run of one kind, material, state and texture, one chunk per spatial node;
+ * the pass orders
  * {@link CgOrder#LOOKBACK}, so a later draw joins an earlier batch of its key where it overlaps nothing between
  * (Skia's bounds-checked batching, {@code CgBatcher}).
  *
  * <pre>{@code
  * recorder.begin(recording, target, CgLoad.CLEAR, CgCamera.screen(w, h));
- * recorder.element(material, texture, sampler, spatial, records, 0, 1, x0, y0, x1, y1);
+ * recorder.draw(CgInstanceKind.ELEMENT, material, null, texture, sampler, spatial, records, 0, 1, x0, y0, x1, y1);
  * recorder.end();
  * }</pre>
  *
@@ -58,6 +60,8 @@ public final class CgUiRecorder {
     @Nullable private CgMaterialBindings binding;
     @Nullable private CgMaterialInterface material;
     private long materialChanges;
+    @Nullable private CgInstanceKind kind;
+    @Nullable private CgRenderState state;
     @Nullable private CgTexture texture;
     @Nullable private CgSampler sampler;
 
@@ -89,20 +93,22 @@ public final class CgUiRecorder {
     }
 
     /**
-     * Appends {@code count} element records from float {@code at} of {@code records}, drawn under {@code material} with
-     * {@code texture} at unit 0 (null for the material's own), positioned in spatial node {@code spatial}, inside the
-     * rect given in that node's space.
+     * Appends {@code count} records of {@code kind} from float {@code at} of {@code records}, drawn under
+     * {@code material} (its render state replaced by {@code state} where one is given) with {@code texture} at unit 0
+     * (null for the material's own), positioned in spatial node {@code spatial}, inside the rect given in that node's
+     * space. Elements and a text item's glyph quads, in paint order.
      */
-    public void element(CgMaterialInterface material, @Nullable CgTexture texture, @Nullable CgSampler sampler,
-                        int spatial, float[] records, int at, int count, float x0, float y0, float x1, float y1) {
-        if (recording == null) throw new IllegalStateException("an element with nowhere to record it: begin() first");
+    public void draw(CgInstanceKind kind, CgMaterialInterface material, @Nullable CgRenderState state,
+                     @Nullable CgTexture texture, @Nullable CgSampler sampler, int spatial, float[] records, int at,
+                     int count, float x0, float y0, float x1, float y1) {
+        if (recording == null) throw new IllegalStateException("drawing with nowhere to record it: begin() first");
         if (spatial != this.spatial) {
             sealChunk();
             this.spatial = spatial;
         }
-        if (!drawOpen || material != this.material || material.changes() != materialChanges || texture != this.texture
-                || sampler != this.sampler) {
-            capture(material, texture, sampler);
+        if (!drawOpen || kind != this.kind || material != this.material || material.changes() != materialChanges
+                || state != this.state || texture != this.texture || sampler != this.sampler) {
+            capture(kind, material, state, texture, sampler);
         }
         if (pipeline == null) return;
         if (!chunkOpen) {
@@ -181,14 +187,18 @@ public final class CgUiRecorder {
         material = null;
     }
 
-    private void capture(CgMaterialInterface material, @Nullable CgTexture texture, @Nullable CgSampler sampler) {
+    private void capture(CgInstanceKind kind, CgMaterialInterface material, @Nullable CgRenderState state,
+                         @Nullable CgTexture texture, @Nullable CgSampler sampler) {
         drawOpen = false;
+        this.kind = kind;
         this.material = material;
         this.materialChanges = material.changes();
+        this.state = state;
         this.texture = texture;
         this.sampler = sampler;
         CgMaterialProxy proxy = CgMaterialProxy.of(material);
-        pipeline = proxy.pipeline(CgInstanceKind.ELEMENT);
+        pipeline = proxy.pipeline(kind);
+        if (pipeline != null && state != null) pipeline = pipeline.withState(state);
         CgMaterialBindings drawn = proxy.bindings();
         binding = texture != null ? drawn.with(0, texture, sampler) : drawn;
     }
