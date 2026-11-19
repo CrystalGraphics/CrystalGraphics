@@ -61,6 +61,11 @@ public final class CgGradientTable {
     private int[] indices = new int[32];
     private int live;
 
+    /** Each gradient in the order added, and its first word: what {@link #gradient} answers by. */
+    private CgGradient[] added = new CgGradient[16];
+    private int[] addedAt = new int[16];
+    private int addedCount;
+
     /** The table's buffer: the {@code gradient} engine buffer. */
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
@@ -82,8 +87,21 @@ public final class CgGradientTable {
         keys[slot] = gradient;
         indices[slot] = index;
         if (++live * 2 > keys.length) grow();
+        if (addedCount == added.length) {
+            added = Arrays.copyOf(added, addedCount * 2);
+            addedAt = Arrays.copyOf(addedAt, addedCount * 2);
+        }
+        added[addedCount] = gradient;
+        addedAt[addedCount++] = index;
         version++;
         return index;
+    }
+
+    /** The gradient whose index is {@code word}: what a kept paint chunk adds to another recording. */
+    public CgGradient gradient(int word) {
+        int at = Arrays.binarySearch(addedAt, 0, addedCount, word);
+        if (at < 0) throw new IllegalArgumentException("no gradient at word " + word);
+        return added[at];
     }
 
     /** How many words it holds. */
@@ -94,6 +112,8 @@ public final class CgGradientTable {
     /** Empties it for the next recording; its storage is kept. */
     public void reset() {
         wordCount = 0;
+        Arrays.fill(added, 0, addedCount, null);
+        addedCount = 0;
         if (live > 0) {
             Arrays.fill(keys, null);
             live = 0;
@@ -106,6 +126,14 @@ public final class CgGradientTable {
         if (words.length < other.wordCount * 4) words = new float[other.words.length];
         System.arraycopy(other.words, 0, words, 0, other.wordCount * 4);
         wordCount = other.wordCount;
+        if (added.length < other.addedCount) {
+            added = new CgGradient[other.added.length];
+            addedAt = new int[other.added.length];
+        }
+        Arrays.fill(added, 0, addedCount, null);
+        System.arraycopy(other.added, 0, added, 0, other.addedCount);
+        System.arraycopy(other.addedAt, 0, addedAt, 0, other.addedCount);
+        addedCount = other.addedCount;
         if (keys.length < other.keys.length) {
             keys = new Object[other.keys.length];
             indices = new int[other.indices.length];

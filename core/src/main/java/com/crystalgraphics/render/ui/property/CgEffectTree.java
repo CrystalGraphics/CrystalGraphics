@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.graph.CgPropertyValues;
 import java.util.Arrays;
 
 /**

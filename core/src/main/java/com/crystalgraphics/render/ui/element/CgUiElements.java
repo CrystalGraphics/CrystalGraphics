@@ -92,6 +92,11 @@ public final class CgUiElements {
         r[at + PAINT] = kind == FILL_GRADIENT ? Float.intBitsToFloat((int) paint) : paint;
     }
 
+    /** The fill kind of the record at {@code at}: one of {@code FILL_*}. */
+    public static int kind(float[] r, int at) {
+        return Float.floatToRawIntBits(r[at + FLAGS]) & 15;
+    }
+
     /** Sets or clears flag bits. */
     public static void flag(float[] r, int at, int flag, boolean on) {
         int flags = Float.floatToRawIntBits(r[at + FLAGS]);

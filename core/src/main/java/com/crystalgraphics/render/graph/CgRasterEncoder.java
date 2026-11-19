@@ -235,8 +235,13 @@ final class CgRasterEncoder {
     }
 
     private static boolean join(CgMeshStore store, CgFrame.Raster packed, int k) {
-        return store.join(mesh(packed, k), drawnInstances(packed, k), packed.submesh[k], rangeFirst(packed, k),
+        return store.join(mesh(packed, k), drawnInstances(packed, k), submesh(packed, k), rangeFirst(packed, k),
                 rangeCount(packed, k), packed.first[k]);
+    }
+
+    /** The submesh batch {@code b} draws: a pulled kind's one, so its range applies; -1, every one, draws the whole mesh. */
+    private static int submesh(CgFrame.Raster packed, int b) {
+        return packed.kind[b] == ELEMENT ? 0 : packed.submesh[b];
     }
 
     /** Instances batch {@code b} draws: its records, or for a pulled kind one instance over all of them. */
@@ -268,6 +273,8 @@ final class CgRasterEncoder {
      * one record every instance reads, an INSTANCES draw of the frame's.
      */
     private static int firstInstance(CgFrame.Raster packed, int b) {
+        // A pulled kind's first instance is its first record, never a shared one
+        if (packed.kind[b] == ELEMENT) return packed.first[b];
         boolean shared = packed.objects[b] == null && !packed.ownIds[b]
                 && (packed.countModes[b] & 3) == CgIndirect.INSTANCES.ordinal();
         return shared ? packed.first[b] | CgMeshStore.SHARED_RECORD : packed.first[b];
@@ -700,7 +707,7 @@ final class CgRasterEncoder {
                 CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
                 continue;
             }
-            store.drawOn(rp, drawCache, mesh, drawnInstances(packed, b), packed.first[b], packed.submesh[b],
+            store.drawOn(rp, drawCache, mesh, drawnInstances(packed, b), packed.first[b], submesh(packed, b),
                     rangeFirst(packed, b), rangeCount(packed, b));
             CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
         }
@@ -852,7 +859,7 @@ final class CgRasterEncoder {
             execution.transitions.buffer(countId, CgAccess.COMPUTE_READ);
         }
         CgMeshStore store = CgMeshStore.get();
-        boolean drawn = store.range(mesh(packed, b), packed.submesh[b], rangeFirst(packed, b), rangeCount(packed, b), range);
+        boolean drawn = store.range(mesh(packed, b), submesh(packed, b), rangeFirst(packed, b), rangeCount(packed, b), range);
         if (!drawn) Arrays.fill(range, 0);   // a mesh with nothing to draw: a command of nothing
         CgIndirect mode = INDIRECT_MODES[packed.countModes[b] & 3];
         int factor = packed.countModes[b] >>> 2;
@@ -864,7 +871,7 @@ final class CgRasterEncoder {
             }
             return n;
         }
-        commands.write(slot, countId, packed.countOffsets[b], mode, factor, range, packed.instances[b],
+        commands.write(slot, countId, packed.countOffsets[b], mode, factor, range, drawnInstances(packed, b),
                 packed.objects[b] != null || packed.ownIds[b] ? packed.instances[b] : -1, firstInstance(packed, b));
         return 1;
     }

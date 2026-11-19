@@ -1,6 +1,5 @@
 package com.crystalgraphics.render.graph;
 
-import com.crystalgraphics.render.ui.property.CgPropertyValues;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;

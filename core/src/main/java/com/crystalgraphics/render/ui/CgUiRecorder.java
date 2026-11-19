@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui;
 
+import java.util.Arrays;
 import java.util.Objects;
 
 import javax.annotation.Nullable;
@@ -10,6 +11,7 @@ import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
+import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgOrder;
@@ -58,6 +60,13 @@ public final class CgUiRecorder {
     private long materialChanges;
     @Nullable private CgTexture texture;
     @Nullable private CgSampler sampler;
+
+    /** Passes opened since made: a paint chunk spanning two is not kept. */
+    private long passes;
+    /** The chunks landed since {@link #tape} began: what a paint chunk keeps. */
+    private CgDrawChunk[] tape = new CgDrawChunk[8];
+    private int taped;
+    private boolean taping;
 
     /** Records later elements into {@code target} in {@code recording}, seen through {@code camera}. */
     public void begin(CgRecording recording, CgGraphTexture target, CgLoad load, CgCamera camera) {
@@ -110,6 +119,45 @@ public final class CgUiRecorder {
         CgTrace.add(CgChannels.GL, ELEMENTS, count);
     }
 
+    /** Lands what is drawn so far as its own chunk: the next element starts a new one. */
+    public void land() {
+        sealChunk();
+    }
+
+    /** Passes opened since this recorder was made. */
+    public long passes() {
+        return passes;
+    }
+
+    /** Starts keeping every chunk landed from now, forgetting what was kept. */
+    public void tape() {
+        land();
+        Arrays.fill(tape, 0, taped, null);
+        taped = 0;
+        taping = true;
+    }
+
+    /** Stops keeping chunks; answers how many were kept, read by {@link #taped(int)}. */
+    public int untape() {
+        land();
+        taping = false;
+        return taped;
+    }
+
+    /** The {@code i}th chunk kept since {@link #tape}. */
+    public CgDrawChunk taped(int i) {
+        return tape[i];
+    }
+
+    /** Adds a sealed chunk to the open pass, opening one if none is: a paint chunk's replay. */
+    public void add(CgDrawChunk sealed) {
+        if (recording == null) throw new IllegalStateException("a chunk with nowhere to record it: begin() first");
+        sealChunk();
+        openPass();
+        pass.add(sealed);
+        keep(sealed);
+    }
+
     /** Lands what is drawn and ends the open pass; later elements need {@link #begin}. */
     public void end() {
         sealChunk();
@@ -149,11 +197,24 @@ public final class CgUiRecorder {
         drawOpen = false;
         if (!chunkOpen) return;
         chunkOpen = false;
-        if (pass == null) {
-            pass = recording.raster("ui").color(target, load).camera(camera).order(CgOrder.LOOKBACK);
-            load = CgLoad.load();
-            CgTrace.add(CgChannels.GL, PASSES, 1);
-        }
-        pass.add(chunk.end());
+        openPass();
+        CgDrawChunk sealed = chunk.end();
+        pass.add(sealed);
+        keep(sealed);
+    }
+
+    /** Opens a pass on the target now, if none is open: what a paint chunk starts inside. */
+    public void openPass() {
+        if (pass != null) return;
+        pass = recording.raster("ui").color(target, load).camera(camera).order(CgOrder.LOOKBACK);
+        load = CgLoad.load();
+        passes++;
+        CgTrace.add(CgChannels.GL, PASSES, 1);
+    }
+
+    private void keep(CgDrawChunk sealed) {
+        if (!taping) return;
+        if (taped == tape.length) tape = Arrays.copyOf(tape, taped * 2);
+        tape[taped++] = sealed;
     }
 }

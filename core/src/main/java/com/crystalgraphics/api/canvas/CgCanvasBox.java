@@ -33,7 +33,8 @@ public final class CgCanvasBox {
     int argb;
     @Nullable CgPaint paint;
     @Nullable CgTexture texture;
-    boolean mask;
+    boolean mask, premultiplied;
+    float u0, v0, u1 = 1f, v1 = 1f;
     @Nullable CgCornerRadii radii;
     float borderTop, borderRight, borderBottom, borderLeft;
     int borderTopColor, borderRightColor, borderBottomColor, borderLeftColor;
@@ -53,6 +54,9 @@ public final class CgCanvasBox {
         paint = null;
         texture = null;
         mask = false;
+        premultiplied = false;
+        u0 = v0 = 0f;
+        u1 = v1 = 1f;
         radii = null;
         borderTop = borderRight = borderBottom = borderLeft = 0f;
         shadow = null;
@@ -89,6 +93,24 @@ public final class CgCanvasBox {
         this.paint = null;
         this.mask = true;
         this.argb = argb;
+        return this;
+    }
+
+    /**
+     * The part of a {@link #fill(CgTexture) texture} drawn, in uv: past 0..1 it repeats under a repeating sampler; v1 < v0
+     * flips it, as a render target whose row 0 is its bottom wants.
+     */
+    public CgCanvasBox region(float u0, float v0, float u1, float v1) {
+        this.u0 = u0;
+        this.v0 = v0;
+        this.u1 = u1;
+        this.v1 = v1;
+        return this;
+    }
+
+    /** The {@link #fill(CgTexture) texture} is premultiplied already: a render target's picture. */
+    public CgCanvasBox premultiplied() {
+        this.premultiplied = true;
         return this;
     }
 

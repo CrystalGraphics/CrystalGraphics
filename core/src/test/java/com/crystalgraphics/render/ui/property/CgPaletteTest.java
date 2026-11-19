@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.graph.CgPropertyValues;
 import org.junit.Test;
 
 import static org.junit.Assert.assertArrayEquals;

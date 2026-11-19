@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.graph.CgPropertyValues;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -85,6 +86,11 @@ public final class CgPalette {
     /** A record's {@code node} field: both of its nodes in one float, exact for every node a tree allows. */
     public static float pack(int spatial, int effect) {
         return spatial + effect * (float) CgSpatialTree.MAX_NODES;
+    }
+
+    /** The spatial node of a record's {@code node} field: the inverse of {@link #pack}'s first half. */
+    public static int spatialOf(float node) {
+        return (int) node % CgSpatialTree.MAX_NODES;
     }
 
     /** Makes this the palette of a recording with these trees, changed by {@code values} (null for none). */

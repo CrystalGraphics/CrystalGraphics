@@ -56,6 +56,63 @@ canvas.image(icon, -16, -16, 32, 32);
 canvas.restore();
 ```
 
+## Frames recorded off the render thread
+
+A document or a heavy HUD records on its own thread and is shown on the render thread: `CgCanvasRecorder` paints into
+a picture of its own and seals a `CgCanvasFrame` (ordered, batched and packed off the render thread);
+`CgCanvasPresenter` executes it in a stage's firing and composites the picture.
+
+```java
+CgCanvasRecorder recorder = new CgCanvasRecorder();          // one per document
+CgCanvasPresenter presenter = new CgCanvasPresenter();
+
+// the document's thread
+CgCanvas canvas = recorder.begin(w, h);
+paintDocument(canvas);
+CgCanvasFrame frame = recorder.seal();
+
+// the render thread, at a SCREEN or HUD stage
+CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, stage -> {
+    if (next != null) presenter.present(stage, next);       // executed, composited, kept
+    else presenter.presentAgain(stage);                      // the kept picture, nothing executed
+});
+```
+
+**Moving what was recorded without recording it again**: open a movable node, and move it through the frame's values.
+
+```java
+// recording
+canvas.save();
+int list = canvas.translate(x, y).movable();                 // a scroll, a window, a dragged card
+paintRows(canvas);
+canvas.restore();
+
+// any later host frame, render thread
+presenter.presented().values().translate(list, 0, -scrolled);
+presenter.redraw(stage);                                     // executed again, nothing recorded or batched
+```
+
+How much of a scroller to record so a scroll by values shows rows, and when to record again, is Blink's rule:
+
+```java
+CgCullRect.forScroller(scrollX, scrollY, viewW, viewH, contentW, contentH, scale, cull);   // record what cull holds
+if (CgCullRect.changedEnough(cull, next, contentW, contentH, scale)) recordAgain();
+```
+
+## Paint chunks: keeping drawing that comes out the same
+
+```java
+CgPaintChunk kept = new CgPaintChunk();                      // held with the thing it keeps
+
+if (unchanged && canvas.replay(kept)) return;                // added to this frame, drawing nothing
+canvas.beginChunk();
+paintIt(canvas);
+CgPaintChunk.Refusal why = canvas.endChunk(kept);            // NONE, or why not: PASS, OUTER_CLIP, FRAME_TEXTURE...
+```
+
+The caller's key says when it would come out the same; the chunk renumbers the clips, nodes and gradients it made into
+the new frame. `kept.differs(fresh)` is the check mode: a fresh paint taken into a second chunk must match.
+
 ## What to know
 
 - **Paint order holds.** A later item draws over an earlier one it overlaps; items that overlap nothing between them
@@ -67,6 +124,10 @@ canvas.restore();
 - **Colours are `0xAARRGGBB`, straight alpha.** Gradients interpolate premultiplied.
 - **A material of your own** is a `#domain ui` material of `Primitive Element`: its `surface()` runs over the item's
   paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it.
+- **A render target's picture** composites with `box(...).fill(picture).premultiplied().region(0, 1, 1, 0)`: it is
+  premultiplied already, and its row 0 is its bottom.
+- **A redraw re-executes the whole frame** under its values; what the recording culled stays culled, so record what
+  the `CgCullRect` holds.
 - **One thread draws a canvas at a time**; separate canvases record concurrently.
 
 ## Inside

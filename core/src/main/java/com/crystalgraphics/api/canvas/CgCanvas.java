@@ -21,6 +21,7 @@ import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.api.vector.CgCornerRadii;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
@@ -67,7 +68,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private static final String ELEMENT_SHADER = "crystalgraphics:shaders/canvas/element.shader";
     private static final int MAX_TILES = 4096;
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node. */
-    private static final int SAVED = 15;
+    private static final int SAVED = 17;
 
     private final CgUiRecorder recorder = new CgUiRecorder();
     private final float[] record = new float[CgUiElements.FLOATS];
@@ -95,6 +96,14 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     // The spatial node of the transform now, made at the first item that needs one after it changed
     private int node;
     private boolean nodeStale;
+    // The movable node items bake into ({@link #movable}), 0 for the target, and the clip it was opened under
+    private int base, clipBase;
+
+    // A paint chunk being taken: what the tables held at its start, and the union of what it drew
+    private boolean chunking;
+    private int chunkClips, chunkNodes, chunkClip, chunkNode;
+    private long chunkPasses;
+    private float chunkX0, chunkY0, chunkX1, chunkY1;
 
     private float[] stack = new float[SAVED * 16];
     private int depth;
@@ -164,6 +173,16 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         depth = 0;
     }
 
+    /** Drops what is drawn and not landed, and records nowhere: its recording is being discarded. */
+    public void abandon() {
+        recorder.abandon();
+        recording = null;
+        target = null;
+        frame = null;
+        chunking = false;
+        depth = 0;
+    }
+
     /** Lands what is drawn; a later item opens a new pass after whatever is recorded between. */
     @Override
     public void endPass() {
@@ -214,6 +233,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         stack[o + 12] = clipY1;
         stack[o + 13] = clipIsRect ? 1f : 0f;
         stack[o + 14] = Float.intBitsToFloat(clipNode);
+        stack[o + 15] = Float.intBitsToFloat(base);
+        stack[o + 16] = Float.intBitsToFloat(clipBase);
         return this;
     }
 
@@ -239,6 +260,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clipY1 = stack[o + 12];
         clipIsRect = stack[o + 13] != 0f;
         clipNode = Float.floatToRawIntBits(stack[o + 14]);
+        int savedBase = Float.floatToRawIntBits(stack[o + 15]);
+        if (savedBase != base) nodeStale = true;
+        base = savedBase;
+        clipBase = Float.floatToRawIntBits(stack[o + 16]);
         return this;
     }
 
@@ -308,7 +333,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** Clips later items to a rounded rect, intersected with the clip now. */
     public CgCanvas clip(float x, float y, float w, float h, @Nullable CgCornerRadii radii) {
         boolean rounded = radii != null && !radii.isNone();
-        if (!rounded && axisAligned() && clipNode == 0 && clipIsRect) {
+        if (!rounded && axisAligned() && clipNode == base && clipIsRect) {
             // Square clips at node 0 intersect on the CPU rather than nest: deep scroll panes cost no depth
             float x0 = Math.max(clipX0, deviceX(x)), y0 = Math.max(clipY0, deviceY(y));
             float x1 = Math.min(clipX1, deviceX(x + w)), y1 = Math.min(clipY1, deviceY(y + h));
@@ -317,20 +342,20 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             clipX1 = Math.max(x0, x1);
             clipY1 = Math.max(y0, y1);
             pose.identity();
-            int entry = recording.clips().add(0, 0, pose, targetHeight, clipX0, clipY0, clipX1, clipY1, noRadii,
+            int entry = recording.clips().add(clipBase, base, pose, targetHeight, clipX0, clipY0, clipX1, clipY1, noRadii,
                     noRadii, null);
             if (entry > 0) clip = entry;
             return this;
         }
         int at = spatial();
         float x0 = x, y0 = y, x1 = x + w, y1 = y + h;
-        if (at == 0) {
+        if (at == base) {
             x0 = deviceX(x);
             y0 = deviceY(y);
             x1 = deviceX(x + w);
             y1 = deviceY(y + h);
         }
-        float k = at == 0 ? Math.abs(a) : 1f, kv = at == 0 ? Math.abs(d) : 1f;
+        float k = at == base ? Math.abs(a) : 1f, kv = at == base ? Math.abs(d) : 1f;
         if (rounded) {
             CgCornerRadii fit = radii.fitted(w, h);
             clipRx[0] = fit.topLeftX() * k;
@@ -352,13 +377,96 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clip = entry;
         clipIsRect = false;
         clipNode = at;
-        if (at == 0) {
+        if (at == base) {
             clipX0 = Math.max(clipX0, x0);
             clipY0 = Math.max(clipY0, y0);
             clipX1 = Math.min(clipX1, x1);
             clipY1 = Math.min(clipY1, y1);
         }
         return this;
+    }
+
+    /**
+     * Opens a movable spatial node at the transform now and answers its id: what later items are positioned in until
+     * the matching {@link #restore}. A sealed frame moves it by its values, with nothing recorded again
+     * ({@code frame.values().translate(node, dx, dy)}); batching treats what is inside apart from what is outside.
+     *
+     * <pre>{@code
+     * canvas.save();
+     * int scroller = canvas.translate(0, -scrollY).movable();   // a scroll the compositor moves
+     * paintRows(canvas);
+     * canvas.restore();
+     * }</pre>
+     */
+    public int movable() {
+        if (recording == null) throw new IllegalStateException("a movable node on a canvas that records nowhere");
+        int n;
+        if (axisAligned()) {
+            // The scale stays baked into the items, so their edges snap; the node carries the translation
+            n = recording.spatial().add(base, tx, ty, true);
+            tx = ty = 0f;
+        } else {
+            n = recording.spatial().add(base, a, b, c, d, tx, ty, true);
+            a = d = 1f;
+            b = c = tx = ty = 0f;
+        }
+        base = n;
+        nodeStale = true;
+        clipBase = clip;
+        clipIsRect = true;
+        clipNode = n;
+        clipX0 = clipY0 = -Float.MAX_VALUE;
+        clipX1 = clipY1 = Float.MAX_VALUE;
+        return n;
+    }
+
+    // ── Paint chunks ───────────────────────────────────────────────────
+
+    /** Starts taking what is drawn from now as a paint chunk, ended by {@link #endChunk}. Chunks do not nest. */
+    public CgCanvas beginChunk() {
+        if (chunking) throw new IllegalStateException("beginChunk() inside a chunk");
+        pass();
+        recorder.tape();
+        recorder.openPass();
+        chunking = true;
+        chunkPasses = recorder.passes();
+        chunkClips = recording.clips().count();
+        chunkNodes = recording.spatial().count();
+        chunkClip = clip;
+        chunkNode = spatial();
+        chunkX0 = chunkY0 = Float.MAX_VALUE;
+        chunkX1 = chunkY1 = -Float.MAX_VALUE;
+        return this;
+    }
+
+    /**
+     * Ends the chunk {@link #beginChunk} began and keeps what it drew in {@code into}, answering
+     * {@link CgPaintChunk.Refusal#NONE}, or why it kept nothing.
+     */
+    public CgPaintChunk.Refusal endChunk(CgPaintChunk into) {
+        if (!chunking) throw new IllegalStateException("endChunk() without beginChunk()");
+        chunking = false;
+        int count = recorder.untape();
+        return into.capture(this, count, recording, chunkClips, chunkNodes, chunkClip, chunkNode,
+                recorder.passes() == chunkPasses, chunkX0, chunkY0, chunkX1, chunkY1);
+    }
+
+    /**
+     * Adds what {@code chunk} kept, drawing nothing: at the state it was taken in, as the caller's key promises. False,
+     * with nothing added, when nothing is kept or its clips would nest too deep: then draw it.
+     */
+    public boolean replay(CgPaintChunk chunk) {
+        if (recording == null) throw new IllegalStateException("replaying on a canvas that records nowhere");
+        pass();
+        return chunk.replay(this, recording, clip, spatial());
+    }
+
+    CgDrawChunk taped(int i) {
+        return recorder.taped(i);
+    }
+
+    void addChunk(CgDrawChunk sealed) {
+        recorder.add(sealed);
     }
 
     // ── Items ──────────────────────────────────────────────────────────
@@ -437,6 +545,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         } else if (box.texture != null) {
             texture = box.texture;
             CgUiElements.fill(record, 0, box.mask ? CgUiElements.FILL_MASK : CgUiElements.FILL_TEXTURE, argb, 0f);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, box.premultiplied);
+            CgUiElements.uv(record, 0, box.u0, box.v0, box.u1, box.v1);
         } else {
             CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, argb, 0f);
         }
@@ -475,7 +585,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             float[] r = rect(at, x, y, w, h, true);
             if (r == null) return;
             finish(at, 1f);
-            recorder.element(material, brush.texture(), brush.sampler(), at, record, 0, 1, r[0], r[1], r[2], r[3]);
+            element(material, brush.texture(), brush.sampler(), at, record, 0, 1, r[0], r[1], r[2], r[3]);
         }
     }
 
@@ -487,7 +597,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         boolean inside = s.inside();
         int at = spatial();
         // A blur is in the record's units: device pixels where the transform is baked
-        float sigma = s.sigma() * (at == 0 ? linearScale() : 1f);
+        float sigma = s.sigma() * (at == base ? linearScale() : 1f);
         float x = box.x, y = box.y, w = box.w, h = box.h;
         if (inside) {
             // The hole is the box less its border and spread, offset; in the box's units from its corner
@@ -510,7 +620,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         if (r == null) return;
         radii(box, at, grow);
         finish(at, 1f);
-        recorder.element(material, null, null, at, record, 0, 1, r[0] - reach, r[1] - reach, r[2] + reach, r[3] + reach);
+        element(material, null, null, at, record, 0, 1, r[0] - reach, r[1] - reach, r[2] + reach, r[3] + reach);
     }
 
     private void emit(CgCanvasBox box, CgMaterialInterface material, @Nullable CgTexture texture,
@@ -526,7 +636,18 @@ public final class CgCanvas implements CgStageFrame.Drawer {
                     box.borderLeftColor);
         }
         finish(at, gain);
-        recorder.element(material, texture, sampler, at, record, 0, 1, r[0], r[1], r[2], r[3]);
+        element(material, texture, sampler, at, record, 0, 1, r[0], r[1], r[2], r[3]);
+    }
+
+    private void element(CgMaterialInterface material, @Nullable CgTexture texture, @Nullable CgSampler sampler, int at,
+                         float[] records, int from, int count, float x0, float y0, float x1, float y1) {
+        recorder.element(material, texture, sampler, at, records, from, count, x0, y0, x1, y1);
+        if (chunking && at == chunkNode) {
+            chunkX0 = Math.min(chunkX0, x0);
+            chunkY0 = Math.min(chunkY0, y0);
+            chunkX1 = Math.max(chunkX1, x1);
+            chunkY1 = Math.max(chunkY1, y1);
+        }
     }
 
     private final float[] rect = new float[4];
@@ -544,7 +665,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     @Nullable
     private float[] rect(int at, float x, float y, float w, float h, boolean snapIt, float reach) {
         float x0 = x, y0 = y, x1 = x + w, y1 = y + h;
-        if (at == 0) {
+        if (at == base) {
             x0 = deviceX(x);
             y0 = deviceY(y);
             x1 = deviceX(x + w);
@@ -556,7 +677,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
                 y1 = Math.round(y1);
                 if (x1 <= x0 || y1 <= y0) return null;
             }
-            if (clipNode == 0 && (x1 + reach <= clipX0 || y1 + reach <= clipY0 || x0 - reach >= clipX1
+            if (clipNode == base && (x1 + reach <= clipX0 || y1 + reach <= clipY0 || x0 - reach >= clipX1
                     || y0 - reach >= clipY1)) {
                 return null;
             }
@@ -606,13 +727,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     /**
-     * The spatial node items are positioned in: 0 when the transform is axis-aligned (baked into their rects), else a
-     * node with the transform, made once per change.
+     * The spatial node items are positioned in: the base node when the transform is axis-aligned (baked into their
+     * rects), else a node under it with the transform, made once per change.
      */
     private int spatial() {
-        if (axisAligned()) return 0;
+        if (axisAligned()) return base;
         if (nodeStale || node == 0) {
-            node = recording.spatial().add(0, a, b, c, d, tx, ty, false);
+            node = recording.spatial().add(base, a, b, c, d, tx, ty, false);
             nodeStale = false;
         }
         return node;
@@ -628,11 +749,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** Logical to record units along x, y: the scale where baked, 1 under a node. */
     private float kx(int at) {
-        return at == 0 ? a : 1f;
+        return at == base ? a : 1f;
     }
 
     private float ky(int at) {
-        return at == 0 ? d : 1f;
+        return at == base ? d : 1f;
     }
 
     /** The transform's mean linear scale: what a blur's sigma scales by. */
@@ -642,6 +763,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     private void resetClip() {
         clip = 0;
+        clipBase = 0;
+        base = 0;
         clipIsRect = true;
         clipNode = 0;
         clipX0 = clipY0 = -Float.MAX_VALUE;

@@ -5,7 +5,6 @@ import com.crystalgraphics.render.canvas.CgClipTable;
 import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.render.ui.property.CgPalette;
-import com.crystalgraphics.render.ui.property.CgPropertyValues;
 import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDrawChunk;

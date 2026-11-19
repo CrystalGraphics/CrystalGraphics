@@ -291,6 +291,15 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
 
     /** The graph texture binding {@code texture} samples: itself, or a level, attachment, stencil or depth view's; null for any other. */
     @Nullable
+    /**
+     * Whether {@code texture} outlives the frame that binds it: not a texture the graph makes for one execution.
+     * What a kept stretch of drawing may bind.
+     */
+    public static boolean outlivesFrame(CgTexture texture) {
+        CgGraphTexture graph = sampled(texture);
+        return graph == null || graph.kind() == Kind.REQUESTED || graph.kind() == Kind.EXTERNAL && !graph.isCurrent();
+    }
+
     static CgGraphTexture sampled(@Nullable CgTexture texture) {
         if (texture instanceof CgGraphTexture graph) return graph;
         if (texture instanceof Level view) return view.texture;

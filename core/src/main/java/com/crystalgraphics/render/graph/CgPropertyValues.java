@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.ui.property;
+package com.crystalgraphics.render.graph;
 
 import java.util.Arrays;
 
@@ -24,6 +24,9 @@ import java.util.Arrays;
  * </ul>
  */
 public final class CgPropertyValues {
+
+    /** Nodes a recording's tree may have: a record packs its spatial and effect nodes into one float. */
+    public static final int MAX_NODES = 4096;
 
     private static final byte NONE = 0, TRANSLATE = 1, TRANSFORM = 2;
 
@@ -74,7 +77,7 @@ public final class CgPropertyValues {
      * {@code node}'s affine in its parent's space: {@code recorded} (a b c d tx ty at {@code at}) as these values
      * change it, written to {@code out} at {@code o}.
      */
-    void apply(int node, float[] recorded, int at, float[] out, int o) {
+    public void apply(int node, float[] recorded, int at, float[] out, int o) {
         byte mode = node < spatialModes.length ? spatialModes[node] : NONE;
         if (mode == TRANSFORM) {
             System.arraycopy(spatial, node * 6, out, o, 6);
@@ -88,7 +91,7 @@ public final class CgPropertyValues {
     }
 
     /** Effect node {@code node}'s opacity: {@code recorded} unless replaced. */
-    float opacityOf(int node, float recorded) {
+    public float opacityOf(int node, float recorded) {
         return node < hasOpacity.length && hasOpacity[node] ? opacities[node] : recorded;
     }
 
@@ -107,9 +110,9 @@ public final class CgPropertyValues {
     }
 
     private void ensure(int node) {
-        if (node <= 0 || node >= CgSpatialTree.MAX_NODES) {
+        if (node <= 0 || node >= MAX_NODES) {
             throw new IllegalArgumentException("node " + node + ": the root never moves, and a recording has at most "
-                    + CgSpatialTree.MAX_NODES);
+                    + MAX_NODES);
         }
         if (node < spatialModes.length) return;
         int n = Math.max(Math.max(node + 1, 16), spatialModes.length * 2);

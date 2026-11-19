@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.graph.CgPropertyValues;
+
 import org.joml.Matrix4fc;
 
 import java.util.Arrays;
@@ -28,7 +30,7 @@ import java.util.Arrays;
 public final class CgSpatialTree {
 
     /** Nodes a recording may have: a record packs its spatial and effect nodes into one float. */
-    public static final int MAX_NODES = 4096;
+    public static final int MAX_NODES = CgPropertyValues.MAX_NODES;
 
     private int count = 1;
     private int[] parents = new int[16];
