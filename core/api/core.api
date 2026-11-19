@@ -3304,6 +3304,40 @@ com/crystalgraphics/api/material/CgVertexFactory$Factory
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/material/engine/CgEngineMaterial
+  access public,final
+  extends java/lang/Object
+  method public blend ()Lcom/crystalgraphics/api/material/CgBlendMode;
+  method public blendable ()Z
+  method public material (Lcom/crystalgraphics/api/material/engine/CgPlacement;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public material (Lcom/crystalgraphics/api/material/engine/CgPlacement;Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public name ()Ljava/lang/String;
+  method public screen ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public screen (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public shader ()Ljava/lang/String;
+  method public toString ()Ljava/lang/String;
+  method public world ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public world (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
+com/crystalgraphics/api/material/engine/CgEngineMaterials
+  access public,final
+  extends java/lang/Object
+  field public,static,final BACKDROP Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final COLOR Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final GRADIENT Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final GRID Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final IMAGE Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final IMAGE_ARRAY Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final MASK Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  field public,static,final MASK_ARRAY Lcom/crystalgraphics/api/material/engine/CgEngineMaterial;
+  method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
+  method public,static releaseAll ()V
+com/crystalgraphics/api/material/engine/CgPlacement
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final SCREEN Lcom/crystalgraphics/api/material/engine/CgPlacement;
+  field public,static,final WORLD Lcom/crystalgraphics/api/material/engine/CgPlacement;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/material/engine/CgPlacement;
+  method public,static values ()[Lcom/crystalgraphics/api/material/engine/CgPlacement;
 com/crystalgraphics/api/mesh/CgCookedMesh
   access public,final
   extends java/lang/Object
@@ -11568,7 +11602,7 @@ com/crystalgraphics/render/canvas/CgCanvasGlass
   field public,static,final LIQUID Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
   field public,static,final MICA Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
   field public,static,final PRISM Lcom/crystalgraphics/render/canvas/CgCanvasGlass$Look;
-  method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public <init> (Lcom/crystalgraphics/api/material/engine/CgPlacement;)V
   method public apply ()Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public apply (Lcom/crystalgraphics/render/canvas/CgQuadBatch$Quad;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
   method public backdrop (Lcom/crystalgraphics/render/canvas/CgCanvasBackdrop;)Lcom/crystalgraphics/render/canvas/CgCanvasGlass;
@@ -11616,7 +11650,7 @@ com/crystalgraphics/render/canvas/CgCanvasGradient
   access public,final
   extends java/lang/Object
   field public,static,final STOPS_PER_DRAW I
-  method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public <init> (Lcom/crystalgraphics/api/material/engine/CgPlacement;)V
   method public angle (F)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public border (F)Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
   method public clearStops ()Lcom/crystalgraphics/render/canvas/CgCanvasGradient;
@@ -11632,7 +11666,7 @@ com/crystalgraphics/render/canvas/CgCanvasGradient
 com/crystalgraphics/render/canvas/CgCanvasGrid
   access public,final
   extends java/lang/Object
-  method public <init> (Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public <init> (Lcom/crystalgraphics/api/material/engine/CgPlacement;)V
   method public apply ()Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public cell (FF)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
   method public checker (II)Lcom/crystalgraphics/render/canvas/CgCanvasGrid;
@@ -11662,33 +11696,16 @@ com/crystalgraphics/render/canvas/CgCanvasLabels$Label
   method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public height (F)Lcom/crystalgraphics/render/canvas/CgCanvasLabels$Label;
   method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/canvas/CgCanvasLabels$Label;
-com/crystalgraphics/render/canvas/CgCanvasMaterials
+com/crystalgraphics/render/canvas/CgCanvasPrimitives
   access public,final
   extends java/lang/Object
-  field public,static,final BOX_SHADER Ljava/lang/String;
-  field public,static,final COLOUR_COVERAGE_SHADER Ljava/lang/String;
-  field public,static,final COVERAGE_SHADER Ljava/lang/String;
-  field public,static,final CURVE_SHADER Ljava/lang/String;
-  field public,static,final GLASS_SHADER Ljava/lang/String;
-  field public,static,final GRADIENT_SHADER Ljava/lang/String;
-  field public,static,final GRID_SHADER Ljava/lang/String;
-  field public,static,final IMAGE_ARRAY_SHADER Ljava/lang/String;
-  field public,static,final IMAGE_SHADER Ljava/lang/String;
-  field public,static,final SCREEN Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;
-  field public,static,final STROKE_COVERAGE_SHADER Ljava/lang/String;
-  field public,static,final WORLD Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;
-  method public box ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public colourCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public coverage ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public curve ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public image ()Lcom/crystalgraphics/api/material/CgMaterial;
-  method public image (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public imageArray (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public mask (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public maskArray (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
-  method public strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static box ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static colourCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static coverage ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static curve (Lcom/crystalgraphics/api/material/engine/CgPlacement;)Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
   method public,static releaseAll ()V
+  method public,static strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
 com/crystalgraphics/render/canvas/CgCanvasRetainer
   access public,final
   extends java/lang/Object
@@ -24759,7 +24776,7 @@ com/crystalgraphics/widget/CgCanvasWidgetPainter
   access public,final
   extends java/lang/Object
   implements com/crystalgraphics/widget/CgWidgetPainter
-  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/render/canvas/CgCanvasMaterials;)V
+  method public <init> (Ljava/lang/String;Lcom/crystalgraphics/api/material/engine/CgPlacement;)V
   method public begin (Lcom/crystalgraphics/render/canvas/CgCanvas;Lcom/crystalgraphics/render/graph/CgRecording;F)Lcom/crystalgraphics/widget/CgCanvasWidgetPainter;
   method public beginRetained (FFFFF)I
   method public endRetained ()V
