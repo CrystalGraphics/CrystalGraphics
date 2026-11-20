@@ -1,13 +1,12 @@
 package com.crystalgraphics.widget;
 
-import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.canvas.CgCanvas;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
 import javax.annotation.Nullable;
 
-import org.joml.Matrix4f;
 
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.render.stage.CgRenderStage;
@@ -57,35 +56,23 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
     private final String id;
     @Nullable
     private final String kit;
-    private final float retainedScale;
-    private final float retainedWidth;
-    private final float retainedHeight;
-    private final float margin;
     @Nullable
     private final CgWorld fixedWorld;
     @Nullable
     private final CgRenderStage.Registration drawing;
-    /** Made at its first draw: a server or a headless test never makes one. */
-    @Nullable
-    private CgCanvasWidgetPainter painter;
     /** Bottom first: ascending z-order, equal ones in the order added. */
     private final List<CgUserWidget> widgets = new ArrayList<>();
     private final List<Integer> orders = new ArrayList<>();
-    private final Matrix4f placement = new Matrix4f();
     private int epoch = Integer.MIN_VALUE;
 
     private CgScreenWidgetLayer(Builder b, boolean onHud) {
         this.id = b.id;
         this.kit = b.kit;
-        this.retainedScale = b.retainedScale;
-        this.retainedWidth = b.width;
-        this.retainedHeight = b.height;
-        this.margin = b.margin;
         this.fixedWorld = b.world;
         this.drawing = onHud ? CgRenderStage.HUD.register(b.order, this::draw) : null;
     }
 
-    /** A layer named {@code id} ({@code "<mod>:<name>"}), which names its retained image in a trace. */
+    /** A layer named {@code id} ({@code "<mod>:<name>"}). */
     public static Builder builder(String id) {
         return new Builder(id);
     }
@@ -157,41 +144,31 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
     private void draw(CgStageFrame frame) {
         level(CgWorldQueries.client().levelEpoch());
         if (widgets.isEmpty()) return;
-        if (painter == null) {
-            painter = new CgCanvasWidgetPainter(id, CgPlacement.SCREEN).retaining(retainedWidth, retainedHeight, margin);
-        }
         float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
-        painter.begin(frame.canvas(), frame.recording(), scale * retainedScale);
-        paint(painter, frame.width() / scale, frame.height() / scale, scale);
+        paint(CgCanvas.on(frame), frame.width() / scale, frame.height() / scale, scale);
     }
 
     /**
-     * Lays every widget out at {@code width} x {@code height} widget units, retains every one, then paints them bottom
-     * first, {@code scale} canvas pixels a widget unit.
+     * Lays every widget out at {@code width} x {@code height} widget units and paints them bottom first onto
+     * {@code canvas}, {@code scale} canvas pixels a widget unit.
      */
-    void paint(CgWidgetPainter painter, float width, float height, float scale) {
-        try (CgTrace.Zone ignored = CgTrace.zone(TRACE, "widget.screen.retain")) {
+    void paint(CgCanvas canvas, float width, float height, float scale) {
+        try (CgTrace.Zone ignored = CgTrace.zone(TRACE, "widget.screen.paint")) {
+            canvas.save().scale(scale, scale);
             for (int i = 0; i < widgets.size(); i++) {
                 CgUserWidget w = widgets.get(i);
                 w.allot(width, height);
-                w.retain(painter);
+                w.paint(canvas);
             }
-        }
-        placement.scaling(scale);
-        try (CgTrace.Zone ignored = CgTrace.zone(TRACE, "widget.screen.paint")) {
-            for (int i = 0; i < widgets.size(); i++) widgets.get(i).paint(painter, placement);
+            canvas.restore();
         }
     }
 
-    /** What a layer is: its kit, its retained image, where it draws. */
+    /** What a layer is: its kit and where it draws. */
     public static final class Builder {
         private final String id;
         @Nullable
         private String kit;
-        private float width = 1024f;
-        private float height = 512f;
-        private float margin = 8f;
-        private float retainedScale = 1f;
         private int order = CgRenderStage.VIEWPORT_WIDGETS;
         @Nullable
         private CgWorld world;
@@ -203,20 +180,6 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
         /** The kit whose {@code ui.yaml} scales it ({@link CgUiScale}); Unreal's default curve without one. */
         public Builder kit(@Nullable String namespace) {
             this.kit = namespace;
-            return this;
-        }
-
-        /** Its retainer boxes' image: {@code width} x {@code height} widget units, {@code margin} round each region. */
-        public Builder retaining(float width, float height, float margin) {
-            this.width = width;
-            this.height = height;
-            this.margin = margin;
-            return this;
-        }
-
-        /** The most its animations scale a retainer box: retained at that, so it is never magnified. 1 unless set. */
-        public Builder retainedScale(float scale) {
-            this.retainedScale = scale;
             return this;
         }
 

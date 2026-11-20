@@ -9,10 +9,23 @@ import java.util.Objects;
 
 import javax.annotation.Nullable;
 
-import org.joml.Matrix4f;
 import org.joml.Vector2f;
-import org.joml.Vector4f;
 
+import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.api.canvas.CgPaintChunk;
+import com.crystalgraphics.api.paint.brush.CgBrush;
+import com.crystalgraphics.api.vector.svg.CgSvg;
+import com.crystalgraphics.api.canvas.CgCanvasLayer;
+import com.crystalgraphics.api.material.CgMaterial;
+import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.material.CgMaterialProperty;
+import com.crystalgraphics.api.font.CgFont;
+import com.crystalgraphics.api.text.CgTextAlign;
+import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.paint.effect.CgFilter;
+import com.crystalgraphics.api.text.CgText;
+import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.i18n.CgKitStrings;
 import com.crystalgraphics.sequence.CgSequencePlayer;
@@ -25,7 +38,7 @@ import com.crystalgraphics.text.style.CgTextStyle;
 /**
  * One live use of a {@link CgWidgetTree}: UMG's {@code UUserWidget}. It holds what changes per use (a text block's
  * text, a widget's visibility or brush, what a sequence writes), lays the tree out by Slate's rules when one of those
- * changes, and paints its leaves through a {@link CgWidgetPainter}. It is a sequence target: a widget animation binds
+ * changes, and paints its leaves onto a {@link CgCanvas}. It is a sequence target: a widget animation binds
  * the instance as its role and finds each part by name, as UMG's {@code FindRuntimeObject} does in the widget tree.
  *
  * <pre>{@code
@@ -37,8 +50,9 @@ import com.crystalgraphics.text.style.CgTextStyle;
  * // each frame: the screen in UI units, as AddToViewport sizes it; every retainer box retained before any paints
  * float scale = CgUiScale.of(kit).scale(screenWidth, screenHeight);
  * pop.allot(screenWidth / scale, screenHeight / scale);
- * pop.retain(painter);
- * pop.paint(painter, placement.scaling(scale));
+ * canvas.save().translate(x, y).scale(scale, scale);
+ * pop.paint(canvas);
+ * canvas.restore();
  * }</pre>
  *
  * <pre>{@code
@@ -84,7 +98,17 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final String[] text;
     private final CgTextStyle[] style;
     private final String[] shown;
-    private final Object[] laid;
+    /** A text block's text as laid out at its last layout, and its x in its box per justification. */
+    private final CgText[] laid;
+    private final float[] laidInset;
+    /** Per widget: its brush's material instance, the widget's own (UMG's dynamic material instance). */
+    private final CgMaterialInstance[] materials;
+    private final CgMaterialDefinition[] materialOf;
+    private final boolean[] takesParameters;
+    /** Per retainer box: the filter it was last drawn through, and what made it. */
+    private final CgFilter[] filters;
+    private final float[] filterKey;
+
     private final CgWidgetBrush[] brush;
     private final Part[] parts;
     private final CgUserWidget[] nested;
@@ -92,14 +116,36 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final float[] desired;
     private final float[] position;
     private final float[] size;
-    private final Matrix4f[] poses;
-    private final Matrix4f origin = new Matrix4f();
-    private final int[] region;
     private final Vector2f measured = new Vector2f();
-    private final Vector4f parameters = new Vector4f();
     private float allottedWidth = Float.NaN;
     private float allottedHeight = Float.NaN;
     private boolean dirty = true;
+    /** Per widget, itself at n: a change has moved it (render transform) or faded it, so it draws in a node of its own. */
+    private final boolean[] moves;
+    private final boolean[] fades;
+    /** Per border: its content colour's alpha has changed, so its content draws in an effect node. */
+    private final boolean[] contentFades;
+    /** Per widget, itself at n: its nodes as last recorded, as the chunk numbered them. */
+    private final int[] nodeOf;
+    private final int[] effectOf;
+    private final int[] contentEffectOf;
+    /** Per widget: it or something under it draws in a node, so a replay's pose walk enters it. */
+    private final boolean[] posed;
+    /** Its paint, kept to replay while {@link #revision} and the scale baked under its root node hold. */
+    private final CgPaintChunk kept = new CgPaintChunk();
+    /** Bumped by every change a replay cannot show: layout, text, a brush, visibility, a colour, material parameters. */
+    private long revision;
+    private long keptRevision = -1;
+    /** Refused chunks in a row at {@link #refusedAt}, and the repaint before which it takes none again. */
+    private int refusals;
+    private long refusedAt = -1;
+    private long retryAt;
+    private float keptScaleX;
+    private float keptScaleY;
+    /** No retainer box anywhere in it: a layer opens a pass, which a chunk refuses. */
+    private final boolean chunkable;
+    private long repaints;
+    private final float[] affine = new float[6];
     /** Its animations, one entry each however often played. @see #playAnimation */
     private final List<Animation> animations = new ArrayList<>(2);
     @Nullable
@@ -113,7 +159,13 @@ public final class CgUserWidget implements CgSequenceTarget {
         text = new String[n];
         style = new CgTextStyle[n];
         shown = new String[n];
-        laid = new Object[n];
+        laid = new CgText[n];
+        laidInset = new float[n];
+        materials = new CgMaterialInstance[n];
+        materialOf = new CgMaterialDefinition[n];
+        takesParameters = new boolean[n];
+        filters = new CgFilter[n];
+        filterKey = new float[n * 5];
         brush = new CgWidgetBrush[n];
         parts = new Part[n];
         nested = new CgUserWidget[n];
@@ -136,10 +188,18 @@ public final class CgUserWidget implements CgSequenceTarget {
         desired = new float[n * 2];
         position = new float[n * 2];
         size = new float[n * 2];
-        poses = new Matrix4f[n + 1];
-        for (int i = 0; i <= n; i++) poses[i] = new Matrix4f();
-        region = new int[n];
-        Arrays.fill(region, -1);
+        moves = new boolean[n + 1];
+        fades = new boolean[n + 1];
+        contentFades = new boolean[n];
+        nodeOf = new int[n + 1];
+        effectOf = new int[n + 1];
+        contentEffectOf = new int[n];
+        posed = new boolean[n];
+        boolean plain = true;
+        for (int i = 0; i < n; i++) {
+            if (tree.widget(i).kind == CgWidget.Kind.RETAINER_BOX || nested[i] != null && !nested[i].chunkable) plain = false;
+        }
+        chunkable = plain;
     }
 
     /** Widget {@code i}'s designer values into its state; {@code w} null for an untransformed, white whole. */
@@ -326,6 +386,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         for (CgUserWidget w : nested) if (w != null) w.reset();
         allottedWidth = allottedHeight = Float.NaN;
         dirty = true;
+        revision++;
     }
 
     /** Lays it out at {@code width} x {@code height} widget units rather than its root's desired size. */
@@ -380,25 +441,22 @@ public final class CgUserWidget implements CgSequenceTarget {
      * }</pre>
      */
     public CgUserWidget colourAndOpacity(String name, CgLinearColour colour) {
-        putColour(tree.index(name) * SLOTS * 4 + COLOUR * 4, Objects.requireNonNull(colour, "colour"));
+        Objects.requireNonNull(colour, "colour");
+        set4(require(name), COLOUR, colour.r(), colour.g(), colour.b(), colour.a());
         return this;
     }
 
     /**
-     * Widget {@code name}'s material parameters: four values its brush's UI material reads as {@code CG_QUAD_CUSTOM0},
-     * per instance, as a dynamic material instance's parameters are in UMG. Zero until set; an animation keys them as
-     * {@code material_parameters} and starts from these. Never relays out.
+     * Widget {@code name}'s material parameters: four values its brush's UI material reads as its {@code vec4}
+     * property {@code _Parameters}, on an instance this widget owns, as a dynamic material instance's are in UMG. Zero
+     * until set; an animation keys them as {@code material_parameters} and starts from these. Never relays out.
      *
      * <pre>{@code
-     * counter.materialParameters("Streak", 0.5f, 1.2f, 0f, 0f);   // its shader: float energy = CG_QUAD_CUSTOM0.x;
+     * counter.materialParameters("Streak", 0.5f, 1.2f, 0f, 0f);   // its shader: float energy = _Parameters.x;
      * }</pre>
      */
     public CgUserWidget materialParameters(String name, float x, float y, float z, float w) {
-        int at = require(name) * SLOTS * 4 + MATERIAL_PARAMETERS * 4;
-        state[at] = x;
-        state[at + 1] = y;
-        state[at + 2] = z;
-        state[at + 3] = w;
+        set4(require(name), MATERIAL_PARAMETERS, x, y, z, w);
         return this;
     }
 
@@ -417,15 +475,13 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (tree.widget(i).kind != CgWidget.Kind.RETAINER_BOX) {
             throw new IllegalArgumentException(name + " is no retainer box: only one blurs what it holds");
         }
-        state[i * SLOTS * 4 + BLUR * 4] = sigma;
+        set4(i, BLUR, sigma, 0f, 0f, 0f);
         return this;
     }
 
     /** Widget {@code index}'s render translation, in units: UMG's {@code SetRenderTranslation}. Never relays out. */
     public CgUserWidget translation(int index, float x, float y) {
-        int at = index * SLOTS * 4 + TRANSLATION * 4;
-        state[at] = x;
-        state[at + 1] = y;
+        set4(index, TRANSLATION, x, y, 0f, 0f);
         return this;
     }
 
@@ -488,6 +544,17 @@ public final class CgUserWidget implements CgSequenceTarget {
         return out;
     }
 
+    /** Widget {@code index}'s material parameters as a sequence leaves them, into {@code out}: x, y, z, w. */
+    public float[] materialParameters(int index, float[] out) {
+        System.arraycopy(state, index * SLOTS * 4 + MATERIAL_PARAMETERS * 4, out, 0, 4);
+        return out;
+    }
+
+    /** The filter retainer box {@code name} was last drawn through: its blur or effect, then its tint. Null before. */
+    CgFilter retainerFilter(String name) {
+        return filters[require(name)];
+    }
+
     /** Widget {@code index}'s box in its parent after the last layout, into {@code out}: x, y, width, height. */
     public float[] box(int index, float[] out) {
         out[0] = position[index * 2];
@@ -498,51 +565,289 @@ public final class CgUserWidget implements CgSequenceTarget {
     }
 
     /**
-     * Lays it out if anything it reads changed, measuring text through {@code painter}; its size into {@code out}:
-     * the allotted, else its root's desired.
+     * Lays it out if anything it reads changed, measuring its text; its size into {@code out}: the allotted, else its
+     * root's desired.
      */
-    public Vector2f layout(CgWidgetPainter painter, Vector2f out) {
-        layoutIfDirty(painter);
+    public Vector2f layout(Vector2f out) {
+        layoutIfDirty();
         return out.set(rootWidth(), rootHeight());
     }
 
     /**
-     * Paints each visible retainer box's content into a region of {@code painter}'s retained image, at full opacity,
-     * as {@code SRetainerWidget} paints into its render target. Every instance a frame draws retains before any
-     * paints: the retained image is drawn before anything that reads it.
+     * Paints it onto {@code canvas} with its box at the canvas's origin now, in widget units: lays out if needed, then
+     * each visible leaf in tree and z order. The canvas's transform places and scales it.
+     *
+     * <pre>{@code
+     * canvas.save().translate(x, y).scale(scale, scale);
+     * widget.paint(canvas);
+     * canvas.restore();
+     * }</pre>
      */
-    public void retain(CgWidgetPainter painter) {
-        layoutIfDirty(painter);
-        if (n > 0) retain(painter, 0);
+    public void paint(CgCanvas canvas) {
+        layoutIfDirty();
+        long key = deepRevision();
+        canvas.transform(affine);
+        // What stays baked under its root node: an axis-aligned scale (CgCanvas.movable)
+        boolean aligned = affine[1] == 0f && affine[2] == 0f && affine[0] > 0f && affine[3] > 0f;
+        float sx = aligned ? affine[0] : 1f, sy = aligned ? affine[3] : 1f;
+        if (key == keptRevision && sx == keptScaleX && sy == keptScaleY && canvas.replay(kept)) {
+            canvas.save();
+            poseAt(canvas, kept);
+            canvas.restore();
+            return;
+        }
+        repaints++;
+        if (key != refusedAt) refusals = 0;
+        if (!chunkable || refusals > 0 && repaints < retryAt || canvas.chunking()) {
+            paintAt(canvas, 1f, 1f, 1f, 1f);
+            return;
+        }
+        canvas.beginChunk();
+        paintAt(canvas, 1f, 1f, 1f, 1f);
+        CgPaintChunk.Refusal why = canvas.endChunk(kept);
+        keptRevision = why == CgPaintChunk.Refusal.NONE ? key : -1;
+        keptScaleX = sx;
+        keptScaleY = sy;
+        // What a widget refuses is transient: glyphs generating, an SVG's cells rasterised at their first use. Tried
+        // again at once, then less often, up to every 64th paint
+        if (why == CgPaintChunk.Refusal.NONE) {
+            refusals = 0;
+        } else {
+            refusedAt = key;
+            retryAt = repaints + (1L << Math.min(refusals++, 6));
+        }
     }
 
-    private void retain(CgWidgetPainter painter, int i) {
-        if (!visibility[i].draws()) return;
+    /** How often it has been painted rather than replayed: an animation that only moves and fades it adds none. */
+    public long repaints() {
+        return repaints;
+    }
+
+    /** Paints it with its box at the canvas's origin, under a parent's tint (linear). */
+    private void paintAt(CgCanvas c, float r, float g, float b, float a) {
+        layoutIfDirty();
+        int self = n * SLOTS * 4;
+        c.save();
+        // Its root is a node, so a replay places it wherever it is drawn
+        renderAffine(self, selfPivotX * rootWidth(), selfPivotY * rootHeight());
+        nodeOf[n] = c.movable(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        // SObjectWidget is a compound widget: the user widget's colour and opacity tints its content.
+        float own = state[self + RENDER_OPACITY * 4] * state[self + COLOUR * 4 + 3];
+        if (fades[n]) effectOf[n] = c.fader(own);
+        else a *= own;
+        int k = self + COLOUR * 4;
+        if (n > 0) paint(c, 0, r * state[k], g * state[k + 1], b * state[k + 2], a);
+        c.restore();
+    }
+
+    /** Paints widget {@code i} and what it holds; whether any of it draws in a node. */
+    private boolean paint(CgCanvas c, int i, float r, float g, float b, float a) {
+        if (!visibility[i].draws()) return posed[i] = false;
         CgWidget w = tree.widget(i);
+        int at = i * SLOTS * 4;
+        float width = size[i * 2], height = size[i * 2 + 1];
+        c.save();
+        c.translate(position[i * 2], position[i * 2 + 1]);
         if (w.kind == CgWidget.Kind.USER_WIDGET) {
-            nested[i].retain(painter);
-            return;
+            nested[i].paintAt(c, r, g, b, a);
+            c.restore();
+            return posed[i] = true;
         }
-        if (w.kind == CgWidget.Kind.RETAINER_BOX) {
-            float reach = 0f;
-            for (int c : tree.children(i)) reach = Math.max(reach, reach(c, 1f));
-            float blur = state[i * SLOTS * 4 + BLUR * 4];
-            CgWidget.BlurAxis axis = w.blurAxis;
-            region[i] = painter.beginRetained(size[i * 2], size[i * 2 + 1], reach,
-                    axis == CgWidget.BlurAxis.VERTICAL ? 0f : blur, axis == CgWidget.BlurAxis.HORIZONTAL ? 0f : blur);
-            try {
-                for (int c : tree.children(i)) {
-                    if (contains(c, CgWidget.Kind.RETAINER_BOX)) {
-                        throw new IllegalStateException(w.name + ": a retainer box inside another is not drawn");
-                    }
-                    paint(painter, c, origin.identity(), 1f, 1f, 1f, 1f);
+        boolean identity = renderAffine(at, w.pivotX * width, w.pivotY * height);
+        if (moves[i]) nodeOf[i] = c.movable(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        else if (!identity) c.concat(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        // SWidget::Paint: its render opacity into what it paints itself and its children with; a leaf's colour too
+        int k = at + COLOUR * 4;
+        float own = state[at + RENDER_OPACITY * 4] * (leaf(w) ? state[k + 3] : 1f);
+        if (fades[i]) effectOf[i] = c.fader(own);
+        else a *= own;
+        boolean nodes = moves[i] || fades[i];
+        switch (w.kind) {
+            case IMAGE -> {
+                CgWidgetBrush br = brush[i];
+                if (br.draws()) {
+                    // SImage: style tint x colour and opacity x brush tint.
+                    CgLinearColour t = br.tint();
+                    image(c, i, br, width, height, r * state[k] * t.r(), g * state[k + 1] * t.g(),
+                            b * state[k + 2] * t.b(), a * t.a());
                 }
-            } finally {
-                painter.endRetained();
             }
+            case TEXT_BLOCK -> text(c, i, w, width, r * state[k], g * state[k + 1], b * state[k + 2], a);
+            case BORDER -> {
+                CgWidgetBrush br = brush[i];
+                if (br.draws()) {
+                    // SBorder: brush tint x style tint x brush colour.
+                    CgLinearColour t = br.tint(), bc = w.brushColour;
+                    image(c, i, br, width, height, r * t.r() * bc.r(), g * t.g() * bc.g(), b * t.b() * bc.b(),
+                            a * t.a() * bc.a());
+                }
+                // SCompoundWidget: its content colour into its content's style.
+                int cc = at + CONTENT_COLOUR * 4;
+                if (contentFades[i]) {
+                    c.save();
+                    contentEffectOf[i] = c.fader(state[cc + 3]);
+                    paintChildren(c, i, r * state[cc], g * state[cc + 1], b * state[cc + 2], a);
+                    c.restore();
+                    nodes = true;
+                } else {
+                    nodes |= paintChildren(c, i, r * state[cc], g * state[cc + 1], b * state[cc + 2], a * state[cc + 3]);
+                }
+            }
+            case SCALE_BOX -> {
+                // FGeometry::MakeChild's layout scale: everything inside is laid out and drawn in its scaled space.
+                c.scale(w.userScale, w.userScale);
+                nodes |= paintChildren(c, i, r, g, b, a);
+            }
+            case RETAINER_BOX -> retainer(c, i, w, at, width, height, r, g, b, a);
+            default -> nodes |= paintChildren(c, i, r, g, b, a);
+        }
+        c.restore();
+        return posed[i] = nodes;
+    }
+
+    private boolean paintChildren(CgCanvas c, int i, float r, float g, float b, float a) {
+        boolean nodes = false;
+        for (int ch : tree.paintOrder(i)) nodes |= paint(c, ch, r, g, b, a);
+        return nodes;
+    }
+
+    /** Whether it draws itself in its colour: an image or a text block. */
+    private static boolean leaf(CgWidget w) {
+        return w.kind == CgWidget.Kind.IMAGE || w.kind == CgWidget.Kind.TEXT_BLOCK;
+    }
+
+    /** A replay's pose walk from its root: its nodes' values from its state now, nothing drawn. */
+    private void poseAt(CgCanvas c, CgPaintChunk chunk) {
+        int self = n * SLOTS * 4;
+        c.save();
+        renderAffine(self, selfPivotX * rootWidth(), selfPivotY * rootHeight());
+        c.moved(chunk.node(nodeOf[n]), affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        if (fades[n]) {
+            c.nodeOpacity(chunk.effect(effectOf[n]), state[self + RENDER_OPACITY * 4] * state[self + COLOUR * 4 + 3]);
+        }
+        if (n > 0) pose(c, chunk, 0);
+        c.restore();
+    }
+
+    /** Widget {@code i}'s part of the pose walk, as {@link #paint(CgCanvas, int, float, float, float, float)} placed it. */
+    private void pose(CgCanvas c, CgPaintChunk chunk, int i) {
+        if (!posed[i]) return;
+        CgWidget w = tree.widget(i);
+        int at = i * SLOTS * 4;
+        c.save();
+        c.translate(position[i * 2], position[i * 2 + 1]);
+        if (w.kind == CgWidget.Kind.USER_WIDGET) {
+            nested[i].poseAt(c, chunk);
+            c.restore();
             return;
         }
-        for (int c : tree.children(i)) retain(painter, c);
+        boolean identity = renderAffine(at, w.pivotX * size[i * 2], w.pivotY * size[i * 2 + 1]);
+        if (moves[i]) c.moved(chunk.node(nodeOf[i]), affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        else if (!identity) c.concat(affine[0], affine[1], affine[2], affine[3], affine[4], affine[5]);
+        if (fades[i]) {
+            c.nodeOpacity(chunk.effect(effectOf[i]),
+                    state[at + RENDER_OPACITY * 4] * (leaf(w) ? state[at + COLOUR * 4 + 3] : 1f));
+        }
+        if (w.kind == CgWidget.Kind.SCALE_BOX) c.scale(w.userScale, w.userScale);
+        if (w.kind == CgWidget.Kind.BORDER && contentFades[i]) {
+            c.nodeOpacity(chunk.effect(contentEffectOf[i]), state[at + CONTENT_COLOUR * 4 + 3]);
+        }
+        for (int ch : tree.paintOrder(i)) pose(c, chunk, ch);
+        c.restore();
+    }
+
+    /**
+     * A brush over (0, 0) to ({@code width}, {@code height}), tinted in linear: Slate encodes the colour once
+     * ({@code PackVertexColor}); a UI material reads it linear, as Slate's material shaders do.
+     */
+    private void image(CgCanvas c, int i, CgWidgetBrush br, float width, float height, float r, float g, float b,
+                       float a) {
+        if (a <= 0f) return;
+        if (br.material() != null) {
+            c.box(0f, 0f, width, height).material(material(i, br.material())).fill(linear(r, g, b, a)).draw();
+            return;
+        }
+        int argb = CgLinearColour.argb(r, g, b, a);
+        if (br.svg() != null) {
+            // Rasterised at the size it lands on the target, its currentColor the tint
+            CgSvg doc = CgSvg.of(br.svg());
+            if (doc != null) c.box(0f, 0f, width, height).fill(CgBrush.svg(doc)).tint(argb).draw();
+            return;
+        }
+        if (br.texture() != null) {
+            // Shared by its path: loaded at its first draw, kept
+            c.box(0f, 0f, width, height).fill(CgTextures.of(br.texture())).tint(argb).draw();
+            return;
+        }
+        // A brush with no texture or material: a box of its tint, as Slate's
+        c.fill(0f, 0f, width, height, argb);
+    }
+
+    /** A text block's text in a box {@code width} units wide, justified, tinted. */
+    private void text(CgCanvas c, int i, CgWidget w, float width, float r, float g, float b, float a) {
+        CgText t = laid[i];
+        if (a <= 0f || t == null || shown[i].isEmpty()) return;
+        float x = 0f;
+        if (t.layout() != null) {
+            // The layout justifies its lines across the wrap width; place the widest line's box in the widget's
+            float f = switch (w.justification) {
+                case CENTRE -> 0.5f;
+                case RIGHT -> 1f;
+                case LEFT -> 0f;
+            };
+            float total = t.layout().totalWidth();
+            x = (width - total) * f - laidInset[i] * f;
+        }
+        c.text(t, x, 0f, CgLinearColour.argb(r, g, b, a));
+    }
+
+    /**
+     * SRetainerWidget: its content drawn into a picture of its own at full opacity, blurred or drawn through its effect
+     * material, then laid over at the tint everything above it gives.
+     */
+    private void retainer(CgCanvas c, int i, CgWidget w, int at, float width, float height, float r, float g, float b,
+                          float a) {
+        if (a <= 0f) return;
+        float reach = 0f;
+        for (int ch : tree.children(i)) reach = Math.max(reach, reach(ch, 1f));
+        try (CgCanvasLayer layer = c.layer(-reach, -reach, width + 2f * reach, height + 2f * reach)
+                .opacity(a).filter(filter(i, w, at, r, g, b))) {
+            for (int ch : tree.children(i)) {
+                if (contains(ch, CgWidget.Kind.RETAINER_BOX)) {
+                    throw new IllegalStateException(w.name + ": a retainer box inside another is not drawn");
+                }
+                paint(c, ch, 1f, 1f, 1f, 1f);
+            }
+        }
+    }
+
+    /** A retainer box's filter: its effect material or its blur, then its tint's colour; kept while they hold. */
+    private CgFilter filter(int i, CgWidget w, int at, float r, float g, float b) {
+        float blur = state[at + BLUR * 4];
+        int o = i * 5;
+        CgFilter f = filters[i];
+        if (f != null && filterKey[o] == blur && filterKey[o + 1] == r && filterKey[o + 2] == g && filterKey[o + 3] == b) {
+            return f;
+        }
+        if (w.effect != null) {
+            f = CgFilter.material(CgMaterial.of(w.effect), w.textureParameter);
+        } else {
+            CgWidget.BlurAxis axis = w.blurAxis;
+            float sx = axis == CgWidget.BlurAxis.VERTICAL ? 0f : blur, sy = axis == CgWidget.BlurAxis.HORIZONTAL ? 0f : blur;
+            f = blur > 0f ? CgFilter.blur(sx, sy) : CgFilter.NONE;
+        }
+        if (r != 1f || g != 1f || b != 1f) {
+            // The tint's colour, encoded as the composite's vertex colour was: a premultiplied picture's rgb scaled
+            int argb = CgLinearColour.argb(r, g, b, 1f);
+            float sr = (argb >>> 16 & 0xFF) / 255f, sg = (argb >>> 8 & 0xFF) / 255f, sb = (argb & 0xFF) / 255f;
+            f = f.then(CgFilter.matrix(new float[]{sr, 0, 0, 0, 0, 0, sg, 0, 0, 0, 0, 0, sb, 0, 0, 0, 0, 0, 1, 0}));
+        }
+        filters[i] = f;
+        filterKey[o] = blur;
+        filterKey[o + 1] = r;
+        filterKey[o + 2] = g;
+        filterKey[o + 3] = b;
+        return f;
     }
 
     /** How far widget {@code i}'s text draws past its boxes, its styles' reach under {@code scale}: a scale box's. */
@@ -561,94 +866,57 @@ public final class CgUserWidget implements CgSequenceTarget {
     }
 
     /**
-     * Paints it: lays out if needed, then each visible leaf in tree and z order, under {@code placement} (widget units
-     * of its box to canvas pixels). {@link #retain} first where it holds a retainer box.
+     * Slate's render transform about the pivot ({@code px}, {@code py}) into {@link #affine}, as
+     * {@link CgCanvas#concat} takes it; whether it is the identity. {@code Geometry.h}'s order.
      */
-    public void paint(CgWidgetPainter painter, Matrix4f placement) {
-        paintAt(painter, placement, 1f, 1f, 1f, 1f);
-    }
-
-    /** Paints it with its box at {@code pose}'s origin, under a parent's tint (linear). */
-    private void paintAt(CgWidgetPainter painter, Matrix4f pose, float r, float g, float b, float a) {
-        layoutIfDirty(painter);
-        int self = n * SLOTS * 4;
-        Matrix4f own = poses[n].set(pose);
-        renderTransform(own, self, selfPivotX * rootWidth(), selfPivotY * rootHeight());
-        // SObjectWidget is a compound widget: the user widget's colour and opacity tints its content.
-        a *= state[self + RENDER_OPACITY * 4];
-        int c = self + COLOUR * 4;
-        if (n > 0) paint(painter, 0, own, r * state[c], g * state[c + 1], b * state[c + 2], a * state[c + 3]);
-    }
-
-    private void paint(CgWidgetPainter painter, int i, Matrix4f parentPose, float r, float g, float b, float a) {
-        if (!visibility[i].draws()) return;
-        CgWidget w = tree.widget(i);
-        int at = i * SLOTS * 4;
-        float width = size[i * 2], height = size[i * 2 + 1];
-        Matrix4f pose = poses[i].set(parentPose).translate(position[i * 2], position[i * 2 + 1], 0f);
-        if (w.kind == CgWidget.Kind.USER_WIDGET) {
-            nested[i].paintAt(painter, pose, r, g, b, a);
-            return;
-        }
-        renderTransform(pose, at, w.pivotX * width, w.pivotY * height);
-        // SWidget::Paint: its render opacity into the style it paints itself and its children with.
-        a *= state[at + RENDER_OPACITY * 4];
-        int c = at + COLOUR * 4;
-        switch (w.kind) {
-            case IMAGE -> {
-                CgWidgetBrush br = brush[i];
-                if (br.draws()) {
-                    // SImage: style tint x colour and opacity x brush tint.
-                    CgLinearColour t = br.tint();
-                    painter.image(br, pose, width, height, r * state[c] * t.r(), g * state[c + 1] * t.g(),
-                            b * state[c + 2] * t.b(), a * state[c + 3] * t.a(), parameters(at));
-                }
-            }
-            case TEXT_BLOCK -> painter.text(style[i], shown[i], laid[i], w.justification, pose, width,
-                    r * state[c], g * state[c + 1], b * state[c + 2], a * state[c + 3]);
-            case BORDER -> {
-                CgWidgetBrush br = brush[i];
-                if (br.draws()) {
-                    // SBorder: brush tint x style tint x brush colour.
-                    CgLinearColour t = br.tint(), bc = w.brushColour;
-                    painter.image(br, pose, width, height, r * t.r() * bc.r(), g * t.g() * bc.g(), b * t.b() * bc.b(),
-                            a * t.a() * bc.a(), parameters(at));
-                }
-                // SCompoundWidget: its content colour into its content's style.
-                int cc = at + CONTENT_COLOUR * 4;
-                paintChildren(painter, i, pose, r * state[cc], g * state[cc + 1], b * state[cc + 2], a * state[cc + 3]);
-            }
-            case SCALE_BOX -> {
-                // FGeometry::MakeChild's layout scale: everything inside is laid out and drawn in its scaled space.
-                pose.scale(w.userScale, w.userScale, 1f);
-                paintChildren(painter, i, pose, r, g, b, a);
-            }
-            case RETAINER_BOX -> {
-                // SRetainerWidget: the retained image as one quad, tinted by everything above it.
-                if (region[i] < 0) throw new IllegalStateException(w.name + ": retain(painter) before paint");
-                painter.retained(region[i], w.effect, w.textureParameter, pose, width, height, r, g, b, a);
-                region[i] = -1;
-            }
-            default -> paintChildren(painter, i, pose, r, g, b, a);
-        }
-    }
-
-    private void paintChildren(CgWidgetPainter painter, int i, Matrix4f pose, float r, float g, float b, float a) {
-        for (int c : tree.paintOrder(i)) paint(painter, c, pose, r, g, b, a);
-    }
-
-    /** Slate's render transform about the pivot ({@code px}, {@code py}), appended to {@code pose}: {@code Geometry.h}'s order. */
-    private void renderTransform(Matrix4f pose, int at, float px, float py) {
+    private boolean renderAffine(int at, float px, float py) {
         float sx = state[at + SCALE * 4], sy = state[at + SCALE * 4 + 1];
         float kx = shear(state[at + SHEAR * 4]), ky = shear(state[at + SHEAR * 4 + 1]);
         float angle = state[at + ANGLE * 4];
         float tx = state[at + TRANSLATION * 4], ty = state[at + TRANSLATION * 4 + 1];
-        if (tx == 0f && ty == 0f && sx == 1f && sy == 1f && kx == 0f && ky == 0f && angle == 0f) return;
         // FWidgetTransform::ToSlateRenderTransform: scale, then shear, then rotation, then translation.
-        pose.translate(px + tx, py + ty, 0f);
-        if (angle != 0f) pose.rotateZ((float) Math.toRadians(angle));
-        if (kx != 0f || ky != 0f) pose.mul(1f, ky, 0f, 0f, kx, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f);
-        pose.scale(sx, sy, 1f).translate(-px, -py, 0f);
+        double rad = Math.toRadians(angle);
+        float cos = angle == 0f ? 1f : (float) Math.cos(rad), sin = angle == 0f ? 0f : (float) Math.sin(rad);
+        float ka = sx, kb = ky * sx, kc = kx * sy, kd = sy;
+        float la = cos * ka - sin * kb, lb = sin * ka + cos * kb;
+        float lc = cos * kc - sin * kd, ld = sin * kc + cos * kd;
+        affine[0] = la;
+        affine[1] = lb;
+        affine[2] = lc;
+        affine[3] = ld;
+        affine[4] = px + tx - (la * px + lc * py);
+        affine[5] = py + ty - (lb * px + ld * py);
+        return tx == 0f && ty == 0f && sx == 1f && sy == 1f && kx == 0f && ky == 0f && angle == 0f;
+    }
+
+    /** Widget {@code i}'s brush material as its own instance, its {@code _Parameters} this frame's. */
+    private CgMaterialInstance material(int i, CgMaterialDefinition definition) {
+        CgMaterialInstance m = materials[i];
+        if (m == null || materialOf[i] != definition) {
+            m = materials[i] = CgMaterial.of(definition).instance();
+            materialOf[i] = definition;
+            takesParameters[i] = false;
+            for (CgMaterialProperty p : m.material().properties()) {
+                if (p.getName().equals(PARAMETERS)) takesParameters[i] = true;
+            }
+        }
+        if (takesParameters[i]) {
+            int at = i * SLOTS * 4 + MATERIAL_PARAMETERS * 4;
+            m.vec4(PARAMETERS, state[at], state[at + 1], state[at + 2], state[at + 3]);
+        }
+        return m;
+    }
+
+    /** What a brush's UI material reads a widget's {@code material_parameters} as. */
+    public static final String PARAMETERS = "_Parameters";
+
+    /** Linear channels packed as they are, unencoded: what a UI material reads. */
+    private static int linear(float r, float g, float b, float a) {
+        return byteOf(a) << 24 | byteOf(r) << 16 | byteOf(g) << 8 | byteOf(b);
+    }
+
+    private static int byteOf(float value) {
+        return Math.round(Math.max(0f, Math.min(1f, value)) * 255f);
     }
 
     // ---- layout: Slate's desired sizes bottom up, then each panel arranging its children ----
@@ -659,20 +927,21 @@ public final class CgUserWidget implements CgSequenceTarget {
         return false;
     }
 
-    private void layoutIfDirty(CgWidgetPainter painter) {
+    private void layoutIfDirty() {
         if (!needsLayout()) return;
-        desireAll(painter);
+        desireAll();
         if (n > 0) {
             position[0] = position[1] = 0f;
             size[0] = Float.isNaN(allottedWidth) ? desired[0] : allottedWidth;
             size[1] = Float.isNaN(allottedHeight) ? desired[1] : allottedHeight;
         }
-        for (int i = 0; i < n; i++) arrange(i, painter);
+        for (int i = 0; i < n; i++) arrange(i);
         dirty = false;
+        revision++;
     }
 
-    private void desireAll(CgWidgetPainter painter) {
-        for (int i = n - 1; i >= 0; i--) desire(i, painter);
+    private void desireAll() {
+        for (int i = n - 1; i >= 0; i--) desire(i);
     }
 
     private float rootWidth() {
@@ -683,7 +952,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         return n == 0 ? 0f : size[1];
     }
 
-    private void desire(int i, CgWidgetPainter painter) {
+    private void desire(int i) {
         CgWidget w = tree.widget(i);
         float dx = 0f, dy = 0f;
         if (visibility[i] != CgWidget.Visibility.COLLAPSED) {
@@ -694,13 +963,13 @@ public final class CgUserWidget implements CgSequenceTarget {
                 }
                 case TEXT_BLOCK -> {
                     shown[i] = resolve(text[i]);
-                    laid[i] = painter.layout(style[i], shown[i], w.wrap, w.justification, measured);
+                    lay(i, w);
                     dx = measured.x;
                     dy = measured.y;
                 }
                 case USER_WIDGET -> {
                     CgUserWidget inner = nested[i];
-                    inner.desireAll(painter);
+                    inner.desireAll();
                     if (inner.n > 0) {
                         dx = inner.desired[0];
                         dy = inner.desired[1];
@@ -757,7 +1026,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         return s != null ? s : text;
     }
 
-    private void arrange(int i, CgWidgetPainter painter) {
+    private void arrange(int i) {
         CgWidget w = tree.widget(i);
         float width = size[i * 2], height = size[i * 2 + 1];
         switch (w.kind) {
@@ -797,7 +1066,7 @@ public final class CgUserWidget implements CgSequenceTarget {
                     size[c * 2 + 1] = tree.vertical[c] == CgWidgetSlot.Align.FILL ? height / s : desired[c * 2 + 1];
                 }
             }
-            case USER_WIDGET -> nested[i].allot(width, height).layoutIfDirty(painter);
+            case USER_WIDGET -> nested[i].allot(width, height).layoutIfDirty();
             default -> {
             }
         }
@@ -903,10 +1172,69 @@ public final class CgUserWidget implements CgSequenceTarget {
     }
 
     private void write(int widget, int slot, float[] values, int mask) {
-        int at = (widget * SLOTS + slot) * 4;
+        int at = (widget * SLOTS + slot) * 4, diff = 0;
         for (int k = 0; k < 4; k++) {
-            if ((mask & 1 << k) != 0) state[at + k] = values[k];
+            if ((mask & 1 << k) != 0 && state[at + k] != values[k]) {
+                state[at + k] = values[k];
+                diff |= 1 << k;
+            }
         }
+        if (diff != 0) changed(widget, slot, diff);
+    }
+
+    private void set4(int widget, int slot, float x, float y, float z, float w) {
+        int at = (widget * SLOTS + slot) * 4;
+        int diff = put(at, x) | put(at + 1, y) << 1 | put(at + 2, z) << 2 | put(at + 3, w) << 3;
+        if (diff != 0) changed(widget, slot, diff);
+    }
+
+    /** Stores {@code value} at {@code at}: 1 if it changed. */
+    private int put(int at, float value) {
+        if (state[at] == value) return 0;
+        state[at] = value;
+        return 1;
+    }
+
+    /**
+     * What a change to {@code components} of widget {@code w}'s {@code slot} needs: the first move or fade puts it in a
+     * node, painted once; a node's later changes are its value at replay. Anything else is a repaint.
+     */
+    private void changed(int w, int slot, int components) {
+        switch (slot) {
+            case TRANSLATION, SCALE, SHEAR, ANGLE -> {
+                if (!moves[w]) {
+                    moves[w] = true;
+                    revision++;
+                }
+            }
+            case RENDER_OPACITY -> fade(w);
+            case COLOUR -> {
+                if ((components & 8) != 0) fade(w);
+                if ((components & 7) != 0) revision++;
+            }
+            case CONTENT_COLOUR -> {
+                if ((components & 8) != 0 && w < n && !contentFades[w]) {
+                    contentFades[w] = true;
+                    revision++;
+                }
+                if ((components & 7) != 0) revision++;
+            }
+            default -> revision++;
+        }
+    }
+
+    private void fade(int w) {
+        if (!fades[w]) {
+            fades[w] = true;
+            revision++;
+        }
+    }
+
+    /** Its revision and its nested widgets': any change under it raises the sum. */
+    private long deepRevision() {
+        long r = revision;
+        for (CgUserWidget w : nested) if (w != null) r += w.deepRevision();
+        return r;
     }
 
     /** One widget as a sequence sees it. */
@@ -939,10 +1267,32 @@ public final class CgUserWidget implements CgSequenceTarget {
         return i;
     }
 
-    /** The material parameters at widget state {@code at}, in a vector reused for each draw. */
-    private Vector4f parameters(int at) {
-        int p = at + MATERIAL_PARAMETERS * 4;
-        return parameters.set(state[p], state[p + 1], state[p + 2], state[p + 3]);
+    /**
+     * Lays text block {@code i} out in its style, its size into {@code measured}: one line at its own width, or STextBlock's
+     * lines justified across the wrap width, the box the widest line's.
+     */
+    private void lay(int i, CgWidget w) {
+        CgTextStyle st = style[i];
+        if (w.wrap <= 0f && w.justification == CgWidget.Justification.LEFT) {
+            CgText t = CgText.of(shown[i]).style(st);
+            CgTextLayout l = t.measure();
+            laid[i] = t;
+            laidInset[i] = 0f;
+            measured.set(l.totalWidth(), l.totalHeight());
+            return;
+        }
+        CgFont font = st.font(Math.max(1, Math.round(st.px())));
+        CgTextAlign align = switch (w.justification) {
+            case CENTRE -> CgTextAlign.CENTER;
+            case RIGHT -> CgTextAlign.RIGHT;
+            case LEFT -> CgTextAlign.LEFT;
+        };
+        CgTextLayout.Request request = CgTextLayout.of(shown[i], font).align(align);
+        if (w.wrap > 0f) request.maxWidth(w.wrap);
+        CgTextLayout layout = request.build();
+        laid[i] = CgText.of(layout).style(st).contained(false);
+        laidInset[i] = w.wrap > 0f ? w.wrap - layout.totalWidth() : 0f;
+        measured.set(layout.totalWidth(), layout.totalHeight());
     }
 
     private void putColour(int at, CgLinearColour c) {

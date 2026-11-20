@@ -397,10 +397,10 @@ CgMaterial mine = CgMaterial.load("mymod:shaders/ui/mine.shader", CgEngineMateri
 canvas.quad(mine).texture(0, page).at(x, y).size(w, h).submit();
 ```
 
-`crystalgraphics:shaders/canvas/image.shader` is the default image's, its blend left to the material state, and
-`crystalgraphics:shaders/reference/ui.shader` the reference. What `surface()` reads: `i.uv`, `i.param` (0..1 across the
-element), `i.color`, `i.local` and `i.size`, and a quad's own record (`CG_QUAD_CUSTOM0`, `CG_QUAD_CUSTOM1`, a
-`material_parameters`' four numbers).
+`crystalgraphics:shaders/canvas/image.shader` is the default image's, its blend left to the material state. What
+`surface()` reads on a quad: `i.uv`, `i.param` (0..1 across the element), `i.color`, `i.local` and `i.size`, and the
+quad's own record (`CG_QUAD_CUSTOM0`, `CG_QUAD_CUSTOM1`). The reference ui material,
+`crystalgraphics:shaders/reference/ui.shader`, is the new canvas's (`Primitive Element`, [`UI_CANVAS.md`](UI_CANVAS.md)).
 
 - Precache it like any other material ([`PRECACHE.md`](PRECACHE.md)), or its first frame waits for the compile.
 
@@ -545,45 +545,8 @@ float height = fps.measure().totalHeight();                        // without dr
   ([`ENGINE_API.md`](ENGINE_API.md)); its javadoc has the example for labels of your own.
 - Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
 - **A draw's colour fades each layer on its own**: half faded, an outlined, shadowed word shows its outline through
-  its fill. To fade it as one picture, retain it (below).
-
-### Retained: fading, tinting or glowing as one picture
-
-`CgCanvasRetainer` is UMG's Retainer Box: items painted into a texture of its own, cleared transparent, then drawn
-from it as images. Drawn under the premultiplied image, a region fades and tints as one flat picture; drawn under the
-additive mask, its silhouette glows in a colour. A damage number that fades out is the use.
-
-```java
-static final CgCanvasRetainer RETAINED = new CgCanvasRetainer("mymod.hud");   // once, kept
-// in a load task, so they are built before the first frame
-image = CgEngineMaterials.IMAGE.screen(CgBlendMode.PREMULTIPLIED);
-glow = CgEngineMaterials.MASK.screen(CgBlendMode.ADDITIVE);
-
-CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    // 1. Paint, before the canvas's first item: 300 by 200 units, at the largest scale it is drawn at
-    CgCanvas paint = RETAINED.paint(frame.recording(), 300, 200, scale);
-    paint.text().style(DAMAGE).text(damage).at(10, 10).submit();      // a region per thing: this one at (0, 0)
-    paint.text().style(TITLE).text("Critical!").at(10, 110).submit(); // and this one at (0, 100)
-    RETAINED.end();
-
-    // 2. Draw regions of it, each as one quad: placed, posed and coloured as any quad
-    CgCanvas canvas = frame.canvas();
-    RETAINED.quad(canvas, image, 0, 0, 300, 100).at(x, y).pose(pose).color(0x80FFFFFF).submit();   // half faded
-    RETAINED.quad(canvas, glow, 0, 0, 300, 100).at(x, y).pose(pose).color(0x60FFE080).submit();    // its glow
-});
-```
-
-- **Paint every frame it is drawn**, before the first item on `frame.canvas()`. A texture's first draw in the frame
-  that samples it has come out empty on NVIDIA, and painting each frame follows a window's resize.
-- **Several things share one**: a region each, all painted in one pass, then one quad per region.
-- **`scale` is texels a unit**: the largest a region is drawn at, so it is never magnified.
-- **Blurred, as CSS's `filter: blur()`**: after `end()`, `blur(recording, x, y, w, h, sigma)` blurs a region by a
-  sigma in units (`CgGpuOps.blurScaled`, a compute pass) and returns the reduction to draw it with:
-  `RETAINED.quad(canvas, image, 0, 0, 0, 300, 100, reduce)`. Paint the region three sigma larger than what it holds,
-  or the blur is cut at its edge.
-- **What it holds is premultiplied**: the `PREMULTIPLIED` image, never `ALPHA`, which darkens its edges. The quad's
-  colour is straight; the material premultiplies it.
-- It grows to fit and never shrinks. `release(recording)` when done with it, `delete()` at a context's teardown.
+  its fill. To fade it as one picture, draw it in a layer of the new canvas (`api.canvas.CgCanvas.layer()`,
+  [`UI_CANVAS.md`](UI_CANVAS.md)).
 
 ---
 

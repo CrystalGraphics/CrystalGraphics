@@ -170,7 +170,7 @@ public final class CgLoadingScreen {
 
     static {
         // The screen's own look, built at the graphics start with the engine's passes, before its first frame draws
-        CgPipelinePrecache.register("crystalgraphics:loading", pipelines -> pipelines.addPass(CgLogoLoadingView.FX, CgInstanceKind.QUAD));
+        CgPipelinePrecache.register("crystalgraphics:loading", pipelines -> pipelines.addPass(CgLogoLoadingView.FX, CgInstanceKind.ELEMENT));
     }
 
     /** Adds {@code process}: while it is loading the screen shows, raised again if it had hidden. Any thread. */

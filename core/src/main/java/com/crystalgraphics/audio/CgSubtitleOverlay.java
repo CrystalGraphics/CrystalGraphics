@@ -1,6 +1,5 @@
 package com.crystalgraphics.audio;
 
-import com.crystalgraphics.api.material.engine.CgPlacement;
 import java.util.Map;
 import java.util.Objects;
 
@@ -8,7 +7,6 @@ import javax.annotation.Nullable;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.joml.Matrix4f;
 
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.font.CgFontStyle;
@@ -29,7 +27,6 @@ import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.settings.CgGraphicsSettings;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
-import com.crystalgraphics.widget.CgCanvasWidgetPainter;
 import com.crystalgraphics.widget.CgUiScale;
 import com.crystalgraphics.widget.CgUserWidget;
 import com.crystalgraphics.widget.CgWidget;
@@ -74,9 +71,6 @@ final class CgSubtitleOverlay {
 
     private final CgAudioEngine engine;
     private final CgRenderStage.Registration registration;
-    private final CgCanvasWidgetPainter painter =
-            new CgCanvasWidgetPainter("crystalgraphics.subtitles", CgPlacement.SCREEN).retaining(2048f, 512f, 16f);
-    private final Matrix4f placement = new Matrix4f();
     /** The plain look's layout, kept while its text and width hold. */
     @Nullable
     private CgText plainLine;
@@ -157,9 +151,10 @@ final class CgSubtitleOverlay {
         if (phase == Phase.HIDDEN || widget == null) return;
         float scale = CgUiScale.of(widgetStyle.namespace()).scale(frame.width(), frame.height());
         widget.allot(frame.width() / scale, frame.height() / scale);
-        painter.begin(frame.canvas(), frame.recording(), scale);
-        widget.retain(painter);
-        widget.paint(painter, placement.scaling(scale));
+        CgCanvas canvas = CgCanvas.on(frame);
+        canvas.save().scale(scale, scale);
+        widget.paint(canvas);
+        canvas.restore();
         drawn++;
     }
 
@@ -171,7 +166,6 @@ final class CgSubtitleOverlay {
         if (widgetStyle != style || widget == null || widget.tree() != tree) {
             widget = tree.newInstance();
             widgetStyle = style;
-            painter.prepare(tree);
         }
         widget.reset();
         widget.text(style.line(), line.text());

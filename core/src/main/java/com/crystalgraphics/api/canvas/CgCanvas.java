@@ -53,6 +53,7 @@ import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -112,7 +113,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private static final String ELEMENT_SHADER = "crystalgraphics:shaders/canvas/element.shader";
     private static final int MAX_TILES = 4096;
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node. */
-    private static final int SAVED = 18;
+    private static final int SAVED = 19;
 
     private static final Logger LOGGER = Logger.getLogger(CgCanvas.class.getName());
 
@@ -154,12 +155,18 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private CgLoad load;
     private CgCamera camera;
     @Nullable private CgStageFrame frame;
+    /** What {@link #beginNow} records into, and whether {@link #end} executes it. */
+    @Nullable private CgRecording nowRecording;
+    private final CgCamera nowCamera = new CgCamera();
+    private boolean executeAtEnd;
     private float targetHeight;
     private float scale = 1f;
     private boolean snap = true;
 
     // The transform from logical units to the target's pixels: x' = a x + c y + tx, y' = b x + d y + ty
     private float a = 1f, b, c, d = 1f, tx, ty;
+    /** The effect node items are drawn in: 0, full opacity, unless a {@link #fader} is open. */
+    private int effect;
     private float opacity = 1f, intensity = 1f;
     // The clip: its entry, and for culling and intersecting, its device rect where it is one at node 0
     private int clip;
@@ -174,7 +181,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     // A paint chunk being taken: what the tables held at its start, and the union of what it drew
     private boolean chunking;
-    private int chunkClips, chunkNodes, chunkClip, chunkNode;
+    private int chunkClips, chunkNodes, chunkClip, chunkNode, chunkEffects, chunkEffect;
     private long chunkTextDraws, chunkDegraded, chunkPathDraws;
     private long chunkPasses;
     private float chunkX0, chunkY0, chunkX1, chunkY1;
@@ -266,6 +273,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         resetClip();
         node = 0;
         nodeStale = false;
+        effect = 0;
         dropLayers();
         filterInstancesUsed = 0;
         panesUsed = 0;
@@ -273,7 +281,32 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         return this;
     }
 
-    /** Lands everything drawn and records nowhere until the next {@link #begin}. */
+    /**
+     * Records later items over the current target ({@code CgExecutor.into}), in its pixels, and draws them at
+     * {@link #end}: a canvas outside any stage, as a loading screen or a host's own overlay draws. Render thread, inside
+     * a frame and a current target.
+     *
+     * <pre>{@code
+     * CgCanvas canvas = new CgCanvas();                  // held, reused each frame
+     * canvas.beginNow(width, height);
+     * canvas.fill(0, 0, width, height, 0x80000000);
+     * canvas.end();                                      // drawn here
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Inside a stage's turn, draw on {@link #on} instead: it lands in paint order with the rest of the frame.</li>
+     * </ul>
+     */
+    public CgCanvas beginNow(int width, int height) {
+        end();
+        if (nowRecording == null) nowRecording = new CgRecording();
+        nowRecording.reset();
+        begin(nowRecording, CgGraphTexture.current(), CgLoad.load(), nowCamera.screenLens(width, height), 1f);
+        executeAtEnd = true;
+        return this;
+    }
+
+    /** Lands everything drawn and records nowhere until the next {@link #begin}; after {@link #beginNow}, draws it. */
     public void end() {
         if (layers > 0) {
             // Not thrown: a turn ends in a finally, and an exception thrown inside the layer is the one to see
@@ -283,10 +316,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             recorder.abandon();
         }
         recorder.end();
+        CgRecording drawn = executeAtEnd ? recording : null;
+        executeAtEnd = false;
         recording = null;
         target = null;
         frame = null;
         depth = 0;
+        if (drawn != null) CgRenderer.executeNow(drawn);
     }
 
     /** Drops what is drawn and not landed, and records nowhere: its recording is being discarded. */
@@ -301,6 +337,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         target = null;
         frame = null;
         chunking = false;
+        executeAtEnd = false;
         depth = 0;
     }
 
@@ -366,6 +403,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         stack[o + 15] = Float.intBitsToFloat(base);
         stack[o + 16] = Float.intBitsToFloat(clipBase);
         stack[o + 17] = snap ? 1f : 0f;
+        stack[o + 18] = Float.intBitsToFloat(effect);
         return this;
     }
 
@@ -404,6 +442,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         base = savedBase;
         clipBase = Float.floatToRawIntBits(stack[o + 16]);
         snap = stack[o + 17] != 0f;
+        effect = Float.floatToRawIntBits(stack[o + 18]);
         return this;
     }
 
@@ -560,17 +599,31 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      * }</pre>
      */
     public int movable() {
+        return movable(1f, 0f, 0f, 1f, 0f, 0f);
+    }
+
+    /**
+     * As {@link #movable()}, the node carrying the transform now followed by the affine
+     * {@code x' = m00 x + m01 y + m02, y' = m10 x + m11 y + m12}: an animated transform a replay sets again with
+     * {@link #moved}, nothing drawn.
+     *
+     * <pre>{@code
+     * canvas.save();
+     * int spin = canvas.movable(cos, sin, -sin, cos, 0, 0);    // recorded once, in a chunk
+     * paintBadge(canvas);
+     * canvas.restore();
+     * // a later frame: canvas.replay(kept); canvas.save(); canvas.moved(kept.node(spin), cos2, sin2, -sin2, cos2, 0, 0); ...
+     * }</pre>
+     *
+     * <ul>
+     *   <li>An axis-aligned scale now stays baked into what is drawn inside, so text is rasterised at it; the node
+     *       carries the rest. A replay must begin under the same scale.</li>
+     * </ul>
+     */
+    public int movable(float m00, float m10, float m01, float m11, float m02, float m12) {
         if (recording == null) throw new IllegalStateException("a movable node on a canvas that records nowhere");
-        int n;
-        if (axisAligned()) {
-            // The scale stays baked into the items, so their edges snap; the node carries the translation
-            n = recording.spatial().add(base, tx, ty, true);
-            tx = ty = 0f;
-        } else {
-            n = recording.spatial().add(base, a, b, c, d, tx, ty, true);
-            a = d = 1f;
-            b = c = tx = ty = 0f;
-        }
+        int n = recording.spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, true);
+        enterNode(n, m00, m10, m01, m11, m02, m12);
         base = n;
         nodeStale = true;
         clipBase = clip;
@@ -633,6 +686,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clipNode = base;
         opacity = 1f;
         intensity = 1f;
+        effect = 0;
         layers++;
         return l;
     }
@@ -1156,6 +1210,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         chunkPasses = recorder.passes();
         chunkClips = recording.clips().count();
         chunkNodes = recording.spatial().count();
+        chunkEffects = recording.effects().count();
+        chunkEffect = effect;
         chunkClip = clip;
         chunkNode = spatial();
         chunkX0 = chunkY0 = Float.MAX_VALUE;
@@ -1174,7 +1230,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         if (!chunking) throw new IllegalStateException("endChunk() without beginChunk()");
         chunking = false;
         int count = recorder.untape();
-        return into.capture(this, count, recording, chunkClips, chunkNodes, chunkClip, chunkNode,
+        return into.capture(this, count, recording, chunkClips, chunkNodes, chunkEffects, chunkClip, chunkNode, chunkEffect,
                 recorder.passes() == chunkPasses, degradedDraws() != chunkDegraded,
                 textDraws != chunkTextDraws ? textGamma : null, pathDraws != chunkPathDraws, chunkX0, chunkY0, chunkX1,
                 chunkY1);
@@ -1187,7 +1243,112 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     public boolean replay(CgPaintChunk chunk) {
         if (recording == null) throw new IllegalStateException("replaying on a canvas that records nowhere");
         pass();
-        return chunk.replay(this, recording, clip, spatial(), textGamma);
+        return chunk.replay(this, recording, clip, spatial(), effect, textGamma);
+    }
+
+    /**
+     * Opens an effect node, an opacity group drawn at {@code opacity} times the one around it, and answers its id: what
+     * later items are drawn in until the matching {@link #restore}. Every item multiplies its own opacity by it, as
+     * Slate's render opacity does; a sealed frame or a replayed chunk changes it with nothing drawn again
+     * ({@link #nodeOpacity}, {@code frame.values().opacity(node, f)}). The effect twin of {@link #movable}.
+     *
+     * <pre>{@code
+     * canvas.save();
+     * int fade = canvas.fader(0.5f);
+     * paintCard(canvas);
+     * canvas.restore();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Per item, not as a group: overlapping items show through each other. For a group faded as one picture,
+     *       {@code layer().opacity(f)}.</li>
+     * </ul>
+     */
+    public int fader(float opacity) {
+        if (recording == null) throw new IllegalStateException("an effect node on a canvas that records nowhere");
+        effect = recording.effects().add(effect, Math.max(0f, Math.min(1f, opacity)));
+        return effect;
+    }
+
+    /**
+     * Sets a replayed chunk's movable node as {@link #movable(float, float, float, float, float, float)} opened it,
+     * here: the transform now followed by the affine; later transforms are inside it, as they were. Records nothing: a
+     * replay's pose walk, between {@link #save} and {@link #restore}.
+     *
+     * <pre>{@code
+     * if (canvas.replay(kept)) {
+     *     canvas.save();
+     *     canvas.moved(kept.node(spin), cos, sin, -sin, cos, 0, 0);
+     *     canvas.restore();
+     * }
+     * }</pre>
+     */
+    public CgCanvas moved(int node, float m00, float m10, float m01, float m11, float m02, float m12) {
+        if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
+        if (!recording.spatial().movable(node)) {
+            throw new IllegalArgumentException("spatial node " + node + " is not movable: open it with movable()");
+        }
+        enterNode(node, m00, m10, m01, m11, m02, m12);
+        return this;
+    }
+
+    /**
+     * Node {@code n}'s affine: the transform now, then {@code m}; the transform becomes what stays baked inside it. An
+     * axis-aligned scale stays, so its items' edges snap and its text rasterises at it; anything else is the node's.
+     */
+    private void enterNode(int n, float m00, float m10, float m01, float m11, float m02, float m12) {
+        float na = a * m00 + c * m10, nb = b * m00 + d * m10;
+        float nc = a * m01 + c * m11, nd = b * m01 + d * m11;
+        float ntx = a * m02 + c * m12 + tx, nty = b * m02 + d * m12 + ty;
+        if (axisAligned()) {
+            recording.spatial().set(n, na / a, nb / a, nc / d, nd / d, ntx, nty);
+            b = c = tx = ty = 0f;
+        } else {
+            recording.spatial().set(n, na, nb, nc, nd, ntx, nty);
+            a = d = 1f;
+            b = c = tx = ty = 0f;
+        }
+        nodeStale = true;
+    }
+
+    /** The transform now into {@code out}: {@code x' = out[0] x + out[2] y + out[4], y' = out[1] x + out[3] y + out[5]}. */
+    public float[] transform(float[] out) {
+        out[0] = a;
+        out[1] = b;
+        out[2] = c;
+        out[3] = d;
+        out[4] = tx;
+        out[5] = ty;
+        return out;
+    }
+
+    /** Whether a chunk is being taken: {@link #beginChunk} and {@link #endChunk} do not nest. */
+    public boolean chunking() {
+        return chunking;
+    }
+
+    /**
+     * Sets movable node {@code node}'s affine in its parent's space for this frame: a node made by {@link #movable}, or
+     * one a replayed chunk made ({@link CgPaintChunk#node}).
+     *
+     * <pre>{@code
+     * if (canvas.replay(kept)) canvas.nodeTransform(kept.node(window), 1, 0, 0, 1, x, y);   // moved, nothing drawn
+     * }</pre>
+     */
+    public CgCanvas nodeTransform(int node, float a, float b, float c, float d, float tx, float ty) {
+        if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
+        if (!recording.spatial().movable(node)) {
+            throw new IllegalArgumentException("spatial node " + node + " is not movable: open it with movable()");
+        }
+        recording.spatial().set(node, a, b, c, d, tx, ty);
+        return this;
+    }
+
+    /** Sets effect node {@code node}'s opacity for this frame: one {@link #fader} made, or a replayed chunk's. */
+    public CgCanvas nodeOpacity(int node, float opacity) {
+        if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
+        recording.effects().set(node, Math.max(0f, Math.min(1f, opacity)));
+        return this;
     }
 
     CgDrawChunk taped(int i) {
@@ -1282,7 +1443,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         pass();
         int tint = opacity >= 1f ? argb : (argb & 0x00FFFFFF) | Math.round((argb >>> 24) * opacity) << 24;
         textPose.set(a, b, 0f, 0f, c, d, 0f, 0f, 0f, 0f, 1f, 0f, tx, ty, 0f, 1f);
-        textBatch().draw(text, x, y, tint, textPose, clip, base, textGamma);
+        textBatch().draw(text, x, y, tint, textPose, clip, base, effect, textGamma);
         textDraws++;
         return this;
     }
@@ -1892,7 +2053,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         for (int k = 0; k < 4; k++) quadRecord[CgQuadRecord.COLOR + k] = 1f;
         quadRecord[QUAD_FADE] = 1f - opacity;
         quadRecord[CgQuadRecord.CLIP] = clip;
-        quadRecord[CgQuadRecord.NODE] = CgPalette.pack(base, 0);
+        quadRecord[CgQuadRecord.NODE] = CgPalette.pack(base, effect);
         float bx0 = ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f, bx1 = ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f;
         float by0 = oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f, by1 = oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f;
         recorder.draw(CgInstanceKind.QUAD, glass.material(), null, null, null, base, quadRecord, 0, 1, bx0, by0, bx1, by1);
@@ -2173,7 +2334,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     private void finish(int at, float gain) {
-        CgUiElements.nodes(record, 0, CgPalette.pack(at, 0), clip);
+        CgUiElements.nodes(record, 0, CgPalette.pack(at, effect), clip);
         CgUiElements.opacity(record, 0, opacity, intensity * gain);
     }
 

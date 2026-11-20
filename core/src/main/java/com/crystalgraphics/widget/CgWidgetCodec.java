@@ -210,9 +210,10 @@ public final class CgWidgetCodec {
         CgLinearColour tint = m.get("tint") != null ? colour(m.get("tint")) : CgLinearColour.WHITE;
         boolean draws = !"none".equals(m.get("draw_as"));
         String texture = m.get("texture") instanceof String t ? t : null;
+        String svg = m.get("svg") instanceof String v ? v : null;
         CgMaterialDefinition material = m.get("material") instanceof String mat
                 ? uiMaterial(mat, at + ".material", deps) : null;
-        return new CgWidgetBrush(texture, material, size[0], size[1], tint, draws);
+        return new CgWidgetBrush(texture, svg, material, size[0], size[1], tint, draws);
     }
 
     /** {@code id}, compiled, a UI-domain material: any other fails, naming the widget's field. */
@@ -340,6 +341,7 @@ public final class CgWidgetCodec {
     private static Map<String, Object> brush(CgWidgetBrush b) {
         Map<String, Object> m = new LinkedHashMap<>();
         if (b.texture() != null) m.put("texture", b.texture());
+        if (b.svg() != null) m.put("svg", b.svg());
         if (b.material() != null) m.put("material", b.material().id());
         if (b.width() != 32f || b.height() != 32f) m.put("image_size", list(b.width(), b.height()));
         if (!b.tint().equals(CgLinearColour.WHITE)) m.put("tint", colour(b.tint()));

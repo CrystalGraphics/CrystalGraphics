@@ -95,9 +95,10 @@ public record CgSvgScene(List<Node> nodes, float width, float height) {
      * @param fill     null when the element does not fill
      * @param stroke   null when the element does not stroke
      * @param shadow   the drop shadow of the filtered element this node is part of; null when there is none
+     * @param id       the element's {@code id}; null when it has none
      */
     public record Node(List<CgSvgPath.Polyline> contours, @Nullable Fill fill, @Nullable Stroke stroke,
-                       @Nullable DropShadow shadow) {
+                       @Nullable DropShadow shadow, @Nullable String id) {
     }
 
     /**

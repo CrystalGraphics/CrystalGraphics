@@ -216,9 +216,10 @@ public final class CgLookKinds {
     private static final CgValueType WIDGET_NAME = CgValueType.string("^[A-Za-z0-9_]+$");
     private static final CgValueType PAIR = CgValueType.VEC2;
 
-    /** {@code FSlateBrush}: a texture or a material, its image size, tint and draw type. */
+    /** {@code FSlateBrush}: a texture, an SVG or a material, its image size, tint and draw type. */
     static final CgType WIDGET_BRUSH = CgTypes.struct("crystalgraphics:widget.brush")
             .property("texture", CgValueType.binaryRef("textures"))
+            .property("svg", CgValueType.binaryRef("svg"))
             .property("material", hard("material"))
             .property("image_size", PAIR).forms(CgValueForm.CONSTANT)
             .property("tint", VEC4).forms(CgValueForm.CONSTANT)

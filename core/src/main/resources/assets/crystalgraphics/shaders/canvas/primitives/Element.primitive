@@ -9,10 +9,11 @@ Properties {
     _MainTex ("Image", sampler2D) = "white"
 }
 
+// Drawn in paint order, never depth-tested: a material of yours on a box draws as the canvas's own element does
 RenderState {
     Blend ONE ONE_MINUS_SRC_ALPHA
     Cull OFF
-    DepthTest LEQUAL
+    DepthTest ALWAYS
     DepthWrite OFF
 }
 

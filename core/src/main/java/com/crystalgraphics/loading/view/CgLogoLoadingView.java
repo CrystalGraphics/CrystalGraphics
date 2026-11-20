@@ -18,10 +18,10 @@ import com.crystalgraphics.job.reply.CgReply;
 import com.crystalgraphics.loading.task.CgLoadTask;
 import com.crystalgraphics.loading.task.CgLoadTracker;
 import com.crystalgraphics.variable.CgVar;
-import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.canvas.CgQuadBatch;
+import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.gpu.resource.CgTexture2D;
-import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.gpu.resource.CgTextureSettings;
@@ -47,7 +47,8 @@ public final class CgLogoLoadingView implements CgLoadingView {
     public static final String LOCKUP = "crystalgraphics:textures/gui/lockup.png";
     /** Its shader, which the screen precaches with the engine's passes. */
     public static final String FX ="crystalgraphics:shaders/loading/logo.shader";
-    /** {@code loading/logo.shader}'s modes. */
+    /** {@code loading/logo.shader}'s per-part values, and its parts. */
+    private static final String PARAMETERS = "_Parameters";
     private static final int BACKDROP = 0, GLOW = 1, IMAGE = 2, BAR = 3;
     /** The icon's height against the lockup image's, and each side's padding against its width. */
     private static final float ICON_SHARE = 64f / 92f, SIDE_PAD = 14f / 486.8f;
@@ -58,9 +59,10 @@ public final class CgLogoLoadingView implements CgLoadingView {
 
     private final String lockupPath;
     private final long started = System.nanoTime();
-    /** Drawn at once, at the end of each draw: the loading screen draws outside any stage. */
-    private final CgCamera screen = new CgCamera();
-    private final CgCanvas canvas = new CgCanvas().camera(screen);
+    /** Drawn at the end of each draw: the loading screen draws outside any stage. */
+    private final CgCanvas canvas = new CgCanvas();
+    /** A part each, its {@code _Parameters} its own: logo.shader's backdrop, glow, image and bar. */
+    @Nullable private CgMaterialInstance[] parts;
     @Nullable private CgTexture2D lockup;
     private float seconds, aspect;
 
@@ -79,7 +81,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
         if (width <= 0 || height <= 0) return;
         seconds = (System.nanoTime() - started) / 1e9f;
         aspect = width / (float) height;
-        screen.screenLens(width, height);
+        canvas.beginNow(width, height);
 
         // Staged, each part on its own eased window. In: the backdrop over the host's screen, then the lockup settling from 3% larger, then the bar rising into place. Out, the reverse:
         // the bar first, the lockup lifting away 6% larger as a game's splash leaves for its menu, the backdrop last
@@ -104,23 +106,22 @@ public final class CgLogoLoadingView implements CgLoadingView {
         // The lockup, its visible width the logo's, its image padded around that
         float w = baseW * grow, h = w * texture.getHeight() / texture.getWidth();
         float glow = w * 1.3f, breath = 0.30f + 0.06f * (float) Math.sin(seconds * 1.6);
-        CgMaterial fx = CgMaterial.load(FX);
-        quad(fx, null, 0f, 0f, width, height, argb(alpha, 0xFFFFFFFF), 0f, BACKDROP);
-        quad(fx, null, cx - glow / 2f, cy - glow / 2f, glow, glow, argb(shown * breath, HALO), 0f, GLOW);
+        part(null, 0f, 0f, width, height, argb(alpha, 0xFFFFFFFF), 0f, BACKDROP);
+        part(null, cx - glow / 2f, cy - glow / 2f, glow, glow, argb(shown * breath, HALO), 0f, GLOW);
         // Pixel-snapped only at rest: snapping its corner while its size moves jumps its edges a pixel back and forth
         boolean still = grow == 1f && lift == 0f;
         float x = cx - w / 2f, y = cy - h / 2f;
-        quad(fx, texture, still ? Math.round(x) : x, still ? Math.round(y) : y, w, h, argb(shown, 0xFFFFFFFF), 1f, IMAGE);
+        part(texture, still ? Math.round(x) : x, still ? Math.round(y) : y, w, h, argb(shown, 0xFFFFFFFF), 1f, IMAGE);
 
         // The bar spans the lockup a third of the icon below it, so the two read as one block
         float barWidth = Math.round(logoWidth), barX = Math.round(cx - barWidth / 2f);
         // Below the lockup's settled place, not its lift, and rising a bar's height into it as it comes in
         float barY = Math.round(cy - lift + icon / 2f + gap + barHeight * (1f - barIn));
-        // The quad is 4 bars tall and 3 wider, the shader's room around the pill
-        quad(fx, null, barX - 1.5f * barHeight, barY - 1.5f * barHeight, barWidth + 3f * barHeight, 4f * barHeight,
+        // The box is 4 bars tall and 3 wider, the shader's room around the pill
+        part(null, barX - 1.5f * barHeight, barY - 1.5f * barHeight, barWidth + 3f * barHeight, 4f * barHeight,
                 argb(barShown, 0xFFFFFFFF), Math.min(1f, Math.max(0f, progress)), BAR);
-        canvas.flush();
         if (SHOW_TASKS.get()) tasks(barX, barY + 2.5f * barHeight, barWidth, barHeight, barShown);
+        canvas.end();
     }
 
     private static final CgVar.Bool SHOW_TASKS = CgVar.bool("crystalgraphics.loading.showTasks", false,
@@ -140,7 +141,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     private int fontPx;
     private boolean noFont;
     @Nullable private String lines;
-    @Nullable private CgTextLayout layout;
+    @Nullable private CgText text;
 
     /** The running load tasks, a line each under the bar: several lines are tasks loading in parallel. */
     private void tasks(float x, float y, float width, float barHeight, float alpha) {
@@ -151,14 +152,14 @@ public final class CgLogoLoadingView implements CgLoadingView {
             font = defaultFont(px);
             if (font == null) return;
             fontPx = px;
-            layout = null;
+            text = null;
         }
-        if (layout == null || !now.equals(lines)) {
+        if (text == null || !now.equals(lines)) {
             lines = now;
-            layout = CgTextLayout.of(now, font).maxWidth(width).align(CgTextAlign.CENTER).build();
+            CgTextLayout layout = CgTextLayout.of(now, font).maxWidth(width).align(CgTextAlign.CENTER).build();
+            text = CgText.of(layout).style(TASK_LOOK).contained(false);
         }
-        canvas.text().style(TASK_LOOK).layout(layout).font(font).at(x, y).color(argb(alpha, 0xFFFFFFFF)).submit();
-        canvas.flush();
+        canvas.text(text, x, y, argb(alpha, 0xFFFFFFFF));
     }
 
     /** {@code owner  task  42%}, a line per running task. */
@@ -213,7 +214,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     @Override
     public void warm(int width, int height) {
         loadLockup();
-        ready = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.QUAD).precache() && lockupLoad.isDone();
+        ready = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.ELEMENT).precache() && lockupLoad.isDone();
         if (SHOW_TASKS.get()) lookUpFace();
     }
 
@@ -222,7 +223,7 @@ public final class CgLogoLoadingView implements CgLoadingView {
     public boolean ready() {
         if (ready) return true;
         loadLockup();
-        boolean fx = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.QUAD).precache();
+        boolean fx = CgMaterialProxy.of(CgMaterial.load(FX)).pipeline(CgInstanceKind.ELEMENT).precache();
         return ready = fx && lockupLoad.isDone();
     }
 
@@ -237,14 +238,17 @@ public final class CgLogoLoadingView implements CgLoadingView {
         return lockup;
     }
     /**
-     * A quad of {@code loading/logo.shader} in {@code mode}, {@code param} its per-mode value (the sweep, the fill),
-     * {@code texture} at unit 0 where it samples one.
+     * A box of {@code loading/logo.shader} as {@code mode}, {@code param} its per-part value (the sweep, the fill),
+     * {@code texture} its image where it shows one.
      */
-    private void quad(CgMaterial fx, @Nullable CgTexture2D texture, float x, float y, float w, float h, int argb, float param,
-                      int mode) {
-        CgQuadBatch.Quad quad = canvas.quad(fx);
-        if (texture != null) quad.texture(0, texture);
-        quad.at(x, y).size(w, h).uv(0f, 0f, 1f, 1f).color(argb).custom0(seconds, aspect, param, mode).submit();
+    private void part(@Nullable CgTexture2D texture, float x, float y, float w, float h, int argb, float param, int mode) {
+        if (parts == null) {
+            CgMaterial fx = CgMaterial.load(FX);
+            parts = new CgMaterialInstance[]{fx.instance(), fx.instance(), fx.instance(), fx.instance()};
+        }
+        CgMaterialInstance m = parts[mode].vec4(PARAMETERS, seconds, aspect, param, mode);
+        if (texture != null) canvas.box(x, y, w, h).fill(texture).tint(argb).material(m).draw();
+        else canvas.box(x, y, w, h).fill(argb).material(m).draw();
     }
 
     private static float smooth(float x) {

@@ -4,19 +4,17 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
-import java.util.ArrayList;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 
-import org.joml.Matrix4f;
 import org.joml.Vector2f;
-import org.joml.Vector3f;
-import org.joml.Vector4f;
-import org.joml.Vector4fc;
 import org.junit.Test;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.paint.effect.CgFilter;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -29,18 +27,20 @@ import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.widget.CgWidgetSlot.Align;
 
-/** A widget tree laid out by Slate's rules, painted with UMG's tints, animated by name. */
+/** A widget tree laid out by Slate's rules, painted onto a canvas with UMG's tints, animated by name. */
 public class CgUserWidgetTest {
 
     private static final String BANNER = "kk:textures/hud/damage_number/base_critical";
     private static final String WORD = "kk:textures/hud/damage_number/lang_critical";
+    private static final String DIGIT = "kk:textures/hud/damage_number/digit";
+    private static final String FONT = Paths.get("src/test/resources/fonts/IBMPlexSans-Regular.ttf").toAbsolutePath().toString();
 
     /** Kakarot's Battle_Dmg, its critical branch and its nine digits, at the values its widget tree holds. */
     private static CgWidgetTree battleDmg() {
         CgWidget.Builder digits = CgWidget.horizontalBox("Number_Center");
         for (int i = 0; i < 9; i++) {
             digits.child(CgWidget.image("Ins_Dmg00_0" + i)
-                    .brush(CgWidgetBrush.texture("kk:textures/hud/damage_number/digit", 64f, 60f))
+                    .brush(CgWidgetBrush.texture(DIGIT, 64f, 60f))
                     .slot(CgWidgetSlot.builder().padding(-13f, 0f, -13f, 0f).vertical(Align.CENTRE).build()));
         }
         CgWidgetSlot centred = CgWidgetSlot.builder().anchors(0.5f, 0.5f).alignment(0.5f, 0.5f)
@@ -72,77 +72,18 @@ public class CgUserWidgetTest {
         return pop;
     }
 
-    /** Records each draw: its kind, its box's centre on the canvas and its colour. */
-    private static final class Recorder implements CgWidgetPainter {
-        final List<String> draws = new ArrayList<>();
-        final List<Vector3f> centres = new ArrayList<>();
-        final List<Integer> colours = new ArrayList<>();
-        final List<Vector4f> parameters = new ArrayList<>();
-
-        @Override
-        public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
-                             Vector2f out) {
-            out.set(10f * text.length(), 20f);
-            return null;
-        }
-
-        @Override
-        public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a, Vector4fc parameters) {
-            draws.add(brush.texture());
-            centres.add(pose.transformPosition(new Vector3f(width / 2f, height / 2f, 0f)));
-            colours.add(CgLinearColour.argb(r, g, b, a));
-            this.parameters.add(new Vector4f(parameters));
-        }
-
-        @Override
-        public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, float width, float r, float g, float b, float a) {
-            draws.add(text);
-            centres.add(pose.transformPosition(new Vector3f()));
-            colours.add(CgLinearColour.argb(r, g, b, a));
-        }
-
-        int regions;
-        int open = -1;
-        final List<Float> blurs = new ArrayList<>();
-        final List<Float> blursY = new ArrayList<>();
-        final List<Float> reaches = new ArrayList<>();
-
-        @Override
-        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
-            draws.add("region " + regions);
-            blurs.add(blurX);
-            blursY.add(blurY);
-            reaches.add(reach);
-            centres.add(new Vector3f(width, height, 0f));
-            colours.add(0);
-            return open = regions++;
-        }
-
-        @Override
-        public void endRetained() {
-            open = -1;
-        }
-
-        @Override
-        public void retained(int region, CgMaterialDefinition effect, String textureParameter, Matrix4f pose,
-                             float width, float height, float r, float g, float b, float a) {
-            draws.add("retained " + region);
-            centres.add(pose.transformPosition(new Vector3f(width / 2f, height / 2f, 0f)));
-            colours.add(CgLinearColour.argb(r, g, b, a));
-        }
-
-        Vector3f centreOf(String texture) {
-            return centres.get(draws.indexOf(texture));
-        }
+    /** The one draw of {@code texture}. */
+    private static Painted.Draw only(List<Painted.Draw> draws, String texture) {
+        List<Painted.Draw> found = Painted.with(draws, texture);
+        assertEquals(texture + " drawn once", 1, found.size());
+        return found.get(0);
     }
 
     /** Nine 64-unit cells overlapping 13 a side advance 38 each; the border pads (4, 2), UMG's default. */
     @Test
     public void digitsAdvance38AndTheBorderPadsByDefault() {
         CgUserWidget pop = fourDigits(battleDmg());
-        Vector2f size = pop.layout(new Recorder(), new Vector2f());
+        Vector2f size = pop.layout(new Vector2f());
         assertEquals("4 x 38 + 2 x 4", 160f, size.x, 1e-4f);
         assertEquals("60 + 2 x 2", 64f, size.y, 1e-4f);
         float[] box = pop.box(pop.tree().index("Ins_Dmg00_01"), new float[4]);
@@ -158,18 +99,16 @@ public class CgUserWidgetTest {
     public void theCriticalLandsWhereSlatePutsIt() {
         CgUserWidget pop = fourDigits(battleDmg());
         for (String name : new String[]{"Img_Base_Critical", "Ins_Lang_Critical"}) {
-            pop.part(CgSequenceBinding.Part.NODE, name)
-               .set(5, new float[]{1f, 1f, 1f, 1f}, 0b1000);
+            pop.part(CgSequenceBinding.Part.NODE, name).set(5, new float[]{1f, 1f, 1f, 1f}, 0b1000);
         }
-        Recorder r = new Recorder();
-        pop.paint(r, new Matrix4f());
+        List<Painted.Draw> draws = Painted.of(pop::paint);
         float right = 160f, middle = 32f;
-        Vector3f banner = r.centreOf(BANNER);
-        assertEquals(48f, banner.x - right, 1e-3f);
-        assertEquals(50f, banner.y - middle, 1e-3f);
-        Vector3f word = r.centreOf(WORD);
-        assertEquals(52f, word.x - right, 1e-3f);
-        assertEquals(37f, word.y - middle, 1e-3f);
+        Painted.Draw banner = only(draws, BANNER);
+        assertEquals(48f, banner.cx() - right, 1e-2f);
+        assertEquals(50f, banner.cy() - middle, 1e-2f);
+        Painted.Draw word = only(draws, WORD);
+        assertEquals(52f, word.cx() - right, 1e-2f);
+        assertEquals(37f, word.cy() - middle, 1e-2f);
     }
 
     /** A collapsed widget takes no space; a hidden one keeps it and draws nothing. */
@@ -177,13 +116,10 @@ public class CgUserWidgetTest {
     public void collapsedTakesNoSpaceHiddenKeepsIt() {
         CgUserWidget pop = fourDigits(battleDmg());
         pop.visibility("Ins_Dmg00_03", CgWidget.Visibility.HIDDEN);
-        assertEquals("hidden still counts", 160f, pop.layout(new Recorder(), new Vector2f()).x, 1e-4f);
-        Recorder r = new Recorder();
-        pop.paint(r, new Matrix4f());
-        assertEquals("three digits drawn; the banner and word are transparent and still listed", 3,
-                r.draws.stream().filter(d -> d.endsWith("digit")).count());
+        assertEquals("hidden still counts", 160f, pop.layout(new Vector2f()).x, 1e-4f);
+        assertEquals("three digits drawn", 3, Painted.with(Painted.of(pop::paint), DIGIT).size());
         pop.visibility("Ins_Dmg00_03", CgWidget.Visibility.COLLAPSED);
-        assertEquals(3 * 38f + 8f, pop.layout(new Recorder(), new Vector2f()).x, 1e-4f);
+        assertEquals(3 * 38f + 8f, pop.layout(new Vector2f()).x, 1e-4f);
     }
 
     /**
@@ -197,9 +133,7 @@ public class CgUserWidgetTest {
                         .contentColour(new CgLinearColour(0.5f, 0.1f, 0f, 0.5f))
                         .child(CgWidget.image("Cell")))
                 .build());
-        Recorder r = new Recorder();
-        tree.newInstance().paint(r, new Matrix4f());
-        int argb = r.colours.get(0);
+        int argb = Painted.of(tree.newInstance()::paint).get(0).argb();
         assertEquals("0.5 x 0.5 alpha", 0x40, argb >>> 24, 1);
         assertEquals("linear 0.5 is sRGB 188", 188, argb >>> 16 & 0xFF, 1);
         assertEquals("linear 0.1 is sRGB 89", 89, argb >>> 8 & 0xFF, 1);
@@ -209,10 +143,13 @@ public class CgUserWidgetTest {
     /** A border with no background set draws Slate's white box; NONE draws nothing. */
     @Test
     public void aBorderDrawsAWhiteBoxUnlessToldNot() {
-        Recorder r = new Recorder();
-        CgWidgetTree.of(CgWidget.border("B").build()).newInstance().paint(r, new Matrix4f());
-        assertEquals(1, r.draws.size());
-        assertEquals("no texture: a box of its colour", null, r.draws.get(0));
+        List<Painted.Draw> draws = Painted.of(CgWidgetTree.of(CgWidget.border("B").build()).newInstance()
+                .allot(40f, 20f)::paint);
+        assertEquals(1, draws.size());
+        assertNull("no texture: a box of its colour", draws.get(0).texture());
+        assertEquals(0xFFFFFFFF, draws.get(0).argb());
+        assertEquals(0, Painted.of(CgWidgetTree.of(CgWidget.border("B").brush(CgWidgetBrush.NONE).build())
+                .newInstance().allot(40f, 20f)::paint).size());
     }
 
     /** Fill children share what auto children leave, by coefficient. */
@@ -224,7 +161,7 @@ public class CgUserWidgetTest {
                 .child(CgWidget.image("C").slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 3f).build()))
                 .build());
         CgUserWidget row = tree.newInstance().allot(200f, 10f);
-        row.layout(new Recorder(), new Vector2f());
+        row.layout(new Vector2f());
         float[] box = new float[4];
         assertEquals(40f, row.box(tree.index("B"), box)[0], 1e-4f);
         assertEquals("a quarter of 160", 40f, box[2], 1e-4f);
@@ -243,24 +180,23 @@ public class CgUserWidgetTest {
                 .child(CgWidget.image("C").brush(CgWidgetBrush.texture("c", 10f, 10f)))
                 .build());
         CgUserWidget row = tree.newInstance();
-        assertEquals("40 + 40 x 0.5 + 10", 70f, row.layout(new Recorder(), new Vector2f()).x, 1e-4f);
-        Recorder r = new Recorder();
-        row.paint(r, new Matrix4f());
-        assertEquals("B's centre: 40 on, plus its half-scaled middle", 50f, r.centreOf("b").x, 1e-4f);
-        assertEquals(5f, r.centreOf("b").y, 1e-4f);
-        assertEquals("C after the scaled size", 65f, r.centreOf("c").x, 1e-4f);
+        assertEquals("40 + 40 x 0.5 + 10", 70f, row.layout(new Vector2f()).x, 1e-4f);
+        List<Painted.Draw> draws = Painted.of(row::paint);
+        assertEquals("B's centre: 40 on, plus its half-scaled middle", 50f, only(draws, "b").cx(), 1e-4f);
+        assertEquals(5f, only(draws, "b").cy(), 1e-4f);
+        assertEquals("drawn at half its size", 20f, only(draws, "b").width(), 1e-4f);
+        assertEquals("C after the scaled size", 65f, only(draws, "c").cx(), 1e-4f);
     }
 
-    /** A text block measures its text; changing the text relays out. */
+    /** A text block measures its text with its style; changing the text relays out. */
     @Test
     public void textRelaysOut() {
-        CgTextStyle style = CgTextStyle.builder("t").font("mymod:fonts/x.ttf").build();
+        CgTextStyle style = CgTextStyle.builder("t").font(FONT).size(20f).build();
         CgWidgetTree tree = CgWidgetTree.of(CgWidget.text("Num").style(style).text("12").build());
         CgUserWidget w = tree.newInstance();
-        Recorder r = new Recorder();
-        assertEquals(20f, w.layout(r, new Vector2f()).x, 1e-4f);
+        assertEquals(CgText.of("12").style(style).measure().totalWidth(), w.layout(new Vector2f()).x, 1e-3f);
         w.text("Num", "1,250");
-        assertEquals(50f, w.layout(r, new Vector2f()).x, 1e-4f);
+        assertEquals(CgText.of("1,250").style(style).measure().totalWidth(), w.layout(new Vector2f()).x, 1e-3f);
     }
 
     /** Over a second the banner turns from -6.5 to 0 degrees and fades in; its scale is never keyed. */
@@ -296,11 +232,84 @@ public class CgUserWidgetTest {
         assertEquals(-3.25f, pop.transform(banner, new float[7])[6], 1e-4f);
         assertEquals("half faded in", 0.5f, pop.colour(banner).a(), 1e-4f);
         assertEquals("unkeyed: the designer's", 1.5f, pop.transform(banner, new float[7])[2], 0f);
+        Painted.Draw drawn = only(Painted.of(pop::paint), BANNER);
+        assertEquals("faded in its node, its colour whole", 0xFF, drawn.argb() >>> 24);
+        assertEquals("drawn at half its alpha", 0.5f, drawn.opacity(), 1e-4f);
         world.close();
     }
 
+    /** A tree whose one image a test moves and fades: centred 40 x 20 at (100, 60) under a canvas scale of 2. */
+    private static CgUserWidget card() {
+        return CgWidgetTree.of(CgWidget.canvas("Root")
+                .child(CgWidget.image("Img").brush(CgWidgetBrush.texture("a", 40f, 20f))
+                        .slot(CgWidgetSlot.builder().anchors(0f, 0f, 0f, 0f).offsets(80f, 50f, 40f, 20f).build()))
+                .build()).newInstance();
+    }
+
+    private static List<Painted.Draw> placed(CgUserWidget w) {
+        return Painted.of(c -> {
+            c.save().translate(30f, 10f).scale(2f, 2f);
+            w.paint(c);
+            c.restore();
+        });
+    }
+
+    /**
+     * Once a widget has moved and faded, later moves and fades replay its kept drawing and write only its nodes'
+     * values: no repaint, and each draw lands where a fresh paint of the same state lands.
+     */
     @Test
-    public void materialParametersReachTheBrush() {
+    public void aMoveAndAFadeReplayWithoutRepainting() {
+        CgUserWidget w = card();
+        int img = w.tree().index("Img");
+        placed(w);
+        w.translation(img, 5f, 0f);
+        w.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, 0.2f));
+        placed(w);
+        long repaints = w.repaints();
+        float[][] frames = {{30f, -4f, 0.6f, 12f}, {-8f, 9f, 0.05f, -30f}};
+        for (float[] f : frames) {
+            w.translation(img, f[0], f[1]);
+            w.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, f[2]));
+            w.part(CgSequenceBinding.Part.NODE, "Img").set(w.slot("angle"), new float[]{f[3], 0f, 0f, 0f}, 1);
+            Painted.Draw replayed = only(placed(w), "a");
+            assertEquals("replayed, not repainted", repaints, w.repaints());
+
+            CgUserWidget fresh = card();
+            fresh.translation(img, f[0], f[1]);
+            fresh.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, f[2]));
+            fresh.part(CgSequenceBinding.Part.NODE, "Img").set(w.slot("angle"), new float[]{f[3], 0f, 0f, 0f}, 1);
+            Painted.Draw painted = only(placed(fresh), "a");
+            assertEquals(painted.cx(), replayed.cx(), 1e-3f);
+            assertEquals(painted.cy(), replayed.cy(), 1e-3f);
+            assertEquals("faded by its node", f[2], replayed.opacity() * (replayed.argb() >>> 24) / 255f, 2e-3f);
+        }
+        assertEquals("its last translation: (100 - 8) x 2 + 30", 214f, only(placed(w), "a").cx(), 1e-3f);
+    }
+
+    /** Its colour is drawn into its records: a change repaints. So do a layout and the canvas scale it is baked at. */
+    @Test
+    public void aColourOrScaleChangeRepaints() {
+        CgUserWidget w = card();
+        placed(w);
+        placed(w);
+        long repaints = w.repaints();
+        assertEquals("unchanged: replayed", 1L, repaints);
+        w.colourAndOpacity("Img", new CgLinearColour(1f, 0.5f, 1f, 1f));
+        placed(w);
+        assertEquals(repaints + 1, w.repaints());
+        Painted.of(w::paint);
+        assertEquals("another scale under it", repaints + 2, w.repaints());
+        Painted.of(c -> {
+            c.save().translate(500f, 20f);
+            w.paint(c);
+            c.restore();
+        });
+        assertEquals("moved as a whole: its root node", repaints + 2, w.repaints());
+    }
+
+    @Test
+    public void materialParametersAreKeyed() {
         CgWidgetTree tree = battleDmg();
         CgUserWidget pop = fourDigits(tree);
         pop.materialParameters("Img_Base_Critical", 0f, 2f, 0f, 0f);
@@ -319,11 +328,9 @@ public class CgUserWidgetTest {
                 """), Map.of("number", pop));
         sequencer.evaluate(0f);
         sequencer.evaluate(0.5f);
-        Recorder painter = new Recorder();
-        pop.paint(painter, new Matrix4f());
-        Vector4f drawn = painter.parameters.get(painter.draws.indexOf(BANNER));
-        assertEquals("keyed: half way", 0.5f, drawn.x, 1e-4f);
-        assertEquals("unkeyed: as set", 2f, drawn.y, 0f);
+        float[] p = pop.materialParameters(tree.index("Img_Base_Critical"), new float[4]);
+        assertEquals("keyed: half way", 0.5f, p[0], 1e-4f);
+        assertEquals("unkeyed: as set", 2f, p[1], 0f);
         world.close();
     }
 
@@ -355,43 +362,41 @@ public class CgUserWidgetTest {
         CgWidgetTree row = CgWidgetTree.of(CgWidget.horizontalBox("Row")
                 .child(CgWidget.userWidget("A", digit)).child(CgWidget.userWidget("B", digit)).build());
         CgUserWidget w = row.newInstance();
-        assertEquals(60f, w.layout(new Recorder(), new Vector2f()).x, 1e-4f);
+        assertEquals(60f, w.layout(new Vector2f()).x, 1e-4f);
         CgSequenceTarget b = w.part(CgSequenceBinding.Part.NODE, "B");
         assertSame(w.nested("B"), b);
         assertNull("its insides are its own", b.part(CgSequenceBinding.Part.NODE, "Nope"));
         b.set(b.slot("translation"), new float[]{0f, 5f, 0f, 0f}, 0b11);
-        Recorder r = new Recorder();
-        w.paint(r, new Matrix4f());
-        assertEquals("A's cell centre", 15f, r.centres.get(0).x, 1e-4f);
-        assertEquals("B sits after A, moved down 5", 45f, r.centres.get(1).x, 1e-4f);
-        assertEquals(25f, r.centres.get(1).y, 1e-4f);
+        List<Painted.Draw> draws = Painted.of(w::paint);
+        assertEquals("A's cell centre", 15f, draws.get(0).cx(), 1e-4f);
+        assertEquals("B sits after A, moved down 5", 45f, draws.get(1).cx(), 1e-4f);
+        assertEquals(25f, draws.get(1).cy(), 1e-4f);
     }
 
-    /** A retainer box's blur axis picks which sigma its painter is given: none across for a vertical blur. */
+    /** A retainer box's blur axis picks which sigma its layer blurs by: none across for a vertical blur. */
     @Test
     public void aRetainerBoxBlursAlongItsAxis() {
-        CgWidgetTree tree = CgWidgetTree.of(CgWidget.retainerBox("Ret").blur(3f).blurAxis(CgWidget.BlurAxis.VERTICAL)
-                .child(CgWidget.image("Cell")).build());
-        Recorder r = new Recorder();
-        tree.newInstance().retain(r);
-        assertEquals("across", 0f, r.blurs.get(0), 0f);
-        assertEquals("down", 3f, r.blursY.get(0), 0f);
+        CgUserWidget w = CgWidgetTree.of(CgWidget.retainerBox("Ret").blur(3f).blurAxis(CgWidget.BlurAxis.VERTICAL)
+                .child(CgWidget.image("Cell")).build()).newInstance();
+        Painted.of(w::paint);
+        float[] sigmas = w.retainerFilter("Ret").ops().get(0).values();
+        assertEquals("across", 0f, sigmas[0], 0f);
+        assertEquals("down", 3f, sigmas[1], 0f);
     }
 
     /**
-     * A retainer box asks its painter to blur what it holds by its blur, the designer's, set from Java or keyed by a
-     * sequence as {@code blur}, as CSS's filter: blur(); only a retainer box blurs.
+     * A retainer box blurs what it holds by its blur, the designer's, set from Java or keyed by a sequence as
+     * {@code blur}, as CSS's filter: blur(); only a retainer box blurs.
      */
     @Test
     public void aRetainerBoxBlursWhatItHolds() {
         CgWidgetTree tree = CgWidgetTree.of(CgWidget.retainerBox("Ret").blur(2f).child(CgWidget.image("Cell")).build());
         CgUserWidget w = tree.newInstance();
-        Recorder r = new Recorder();
-        w.retain(r);
-        assertEquals("the designer's", 2f, r.blurs.get(0), 0f);
+        Painted.of(w::paint);
+        assertEquals("the designer's", 2f, blurOf(w), 0f);
         w.blur("Ret", 5f);
-        w.retain(r);
-        assertEquals("set from Java", 5f, r.blurs.get(1), 0f);
+        Painted.of(w::paint);
+        assertEquals("set from Java", 5f, blurOf(w), 0f);
 
         CgWorld world = new CgWorld();
         CgSequencer sequencer = world.add(new CgSequencer());
@@ -408,8 +413,8 @@ public class CgUserWidgetTest {
                 """), Map.of("number", w));
         sequencer.evaluate(0f);
         sequencer.evaluate(0.5f);
-        w.retain(r);
-        assertEquals("keyed: half way", 4f, r.blurs.get(2), 1e-4f);
+        Painted.of(w::paint);
+        assertEquals("keyed: half way", 4f, blurOf(w), 1e-4f);
         world.close();
 
         assertThrows(IllegalArgumentException.class, () -> CgWidget.image("Img").blur(1f).build());
@@ -417,13 +422,19 @@ public class CgUserWidgetTest {
                 .child(CgWidget.image("Img")).build()).newInstance().blur("Img", 1f));
     }
 
+    private static float blurOf(CgUserWidget w) {
+        CgFilter.Op op = w.retainerFilter("Ret").ops().get(0);
+        assertEquals(CgFilter.Kind.BLUR, op.kind());
+        return op.values()[0];
+    }
+
     /**
-     * A retainer box pads its image by how far its text draws past its box: the widest outline, the shadows' offset,
+     * A retainer box's picture reaches as far as its text draws past its box: the widest outline, the shadows' offset,
      * spread and three of their blur, the slant over the size, under any scale box between.
      */
     @Test
-    public void aRetainerBoxPadsByItsTextsReach() {
-        CgTextStyle style = CgTextStyle.builder("s").font("mymod:fonts/x.ttf").size(100f).skew(0.1f)
+    public void aRetainerBoxReachesAsFarAsItsText() {
+        CgTextStyle style = CgTextStyle.builder("s").font(FONT).size(100f).skew(0.1f)
                 .layer(CgTextLayer.shadow("drop").offset(4f, 12f).blur(2f).outlined(true))
                 .layer(CgTextLayer.outline("outline").width(10f))
                 .layer(CgTextLayer.fill("fill")).build();
@@ -431,23 +442,28 @@ public class CgUserWidgetTest {
         CgUserWidget w = CgWidgetTree.of(CgWidget.retainerBox("Ret")
                 .child(CgWidget.scaleBox("Small", 0.5f).child(CgWidget.text("Num").style(style).text("7"))).build())
                 .newInstance();
-        Recorder r = new Recorder();
-        w.retain(r);
-        assertEquals("halved by the scale box", 19f, r.reaches.get(0), 1e-4f);
+        Vector2f size = w.layout(new Vector2f());
+        // Away from the target's edge, which would cut the picture
+        Painted.Draw picture = only(Painted.of(c -> {
+            c.save().translate(200f, 200f);
+            w.paint(c);
+            c.restore();
+        }), "layer");
+        assertTrue("halved by the scale box: 19 a side past " + size.x + ", got " + picture.width(),
+                picture.width() >= size.x + 2f * 19f - 1f);
     }
 
-    /** A retainer box paints from what was retained this frame: painting it unretained fails. */
+    /** A retainer box inside another is not drawn: its picture would need a second picture's. */
     @Test
-    public void aRetainerBoxPaintsOnlyRetained() {
-        assertThrows(IllegalStateException.class, () -> {
-            CgUserWidget w = CgWidgetTree.of(CgWidget.retainerBox("Ret").child(CgWidget.image("Cell")).build()).newInstance();
-            w.paint(new Recorder(), new Matrix4f());
-        });
+    public void aRetainerBoxInsideAnotherFails() {
+        CgUserWidget w = CgWidgetTree.of(CgWidget.retainerBox("Outer")
+                .child(CgWidget.retainerBox("Inner").child(CgWidget.image("Cell"))).build()).newInstance();
+        assertThrows(IllegalStateException.class, () -> Painted.of(w::paint));
     }
 
     /**
-     * A retainer box's content is painted at full opacity into its region, then drawn as one quad under everything
-     * above it: a fade above it fades one image, never its layers apart.
+     * A retainer box's content is drawn at full opacity into a picture of its own, then laid over under everything
+     * above it: a fade above it fades one picture, never its layers apart.
      */
     @Test
     public void aRetainerBoxFadesItsContentAsOneImage() {
@@ -458,14 +474,16 @@ public class CgUserWidgetTest {
                                 .colour(new CgLinearColour(1f, 1f, 1f, 0.8f))))
                 .build());
         CgUserWidget w = tree.newInstance();
-        Recorder r = new Recorder();
-        w.retain(r);
-        assertEquals(List.of("region 0", "c"), r.draws);
-        assertEquals("its own colour only: nothing above it", 0xCC, r.colours.get(1) >>> 24, 1);
-        assertEquals("at the region's origin", 20f, r.centres.get(1).x, 1e-4f);
-        w.paint(r, new Matrix4f().translation(100f, 0f, 0f));
-        assertEquals("retained 0", r.draws.get(2));
-        assertEquals("the fade above it, on the one quad", 0x80, r.colours.get(2) >>> 24, 1);
-        assertEquals(120f, r.centres.get(2).x, 1e-4f);
+        List<Painted.Draw> draws = Painted.of(c -> {
+            c.save().translate(100f, 0f);
+            w.paint(c);
+            c.restore();
+        });
+        Painted.Draw cell = only(draws, "c"), picture = only(draws, "layer");
+        assertTrue("its content in its picture", cell.inLayer());
+        assertEquals("its own colour only: nothing above it", 0xCC, cell.argb() >>> 24, 1);
+        assertEquals(120f, cell.cx(), 1e-4f);
+        assertEquals("the fade above it, on the one picture", 0x80, picture.argb() >>> 24, 1);
+        assertEquals(120f, picture.cx(), 1e-4f);
     }
 }

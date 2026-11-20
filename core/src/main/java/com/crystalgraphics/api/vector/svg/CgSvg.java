@@ -87,6 +87,8 @@ public final class CgSvg {
     private static final int[] TIER_STEPS = {8, 10, 12, REFERENCE_STEPS};
 
     private final CgSvgScene scene;
+    /** {@link #shapes()}, made at the first ask: immutable, so a race makes it twice, the same. */
+    @Nullable private volatile List<CgSvgShape> shapes;
     @Nullable
     private volatile List<CgSvgOps.Op> ops;
     private final List<CgSvgPath.Polyline> outline;
@@ -358,6 +360,23 @@ public final class CgSvg {
     }
 
     /** Every contour, in document order, transformed into the document's units. */
+    /** Its drawn parts in paint order, each its own path: to animate or restyle one. */
+    public List<CgSvgShape> shapes() {
+        List<CgSvgShape> s = shapes;
+        if (s == null) shapes = s = CgSvgShapes.of(scene);
+        return s;
+    }
+
+    /**
+     * The first part whose element has {@code id}.
+     *
+     * @throws IllegalArgumentException where none has
+     */
+    public CgSvgShape shape(String id) {
+        for (CgSvgShape s : shapes()) if (id.equals(s.id())) return s;
+        throw new IllegalArgumentException("no shape with id " + id + " in " + this);
+    }
+
     public List<CgSvgPath.Polyline> outline() {
         return outline;
     }

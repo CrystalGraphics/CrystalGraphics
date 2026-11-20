@@ -201,12 +201,14 @@ public final class CgTextBatch {
      * constraints are in those units, so a scaled pose wraps it where {@link CgText#measure} does.
      *
      * @param spatial the spatial node {@code pose} is in
+     * @param effect  the effect node (opacity group) it is drawn in
      * @return whether everything drew as asked; false while a glyph or shadow is still generating
      */
-    public boolean draw(CgText text, float x, float y, int argb, Matrix4f pose, int clip, int spatial, CgTextGamma gamma) {
+    public boolean draw(CgText text, float x, float y, int argb, Matrix4f pose, int clip, int spatial, int effect,
+                        CgTextGamma gamma) {
         // A draw's constraints are screen pixels; the value's are the pose's units
         float scale = CgTextRaster.maxScale(pose);
-        CgTextDraw draw = scratch.reset().of(text).at(x, y).color(argb).pose(pose).clip(clip).node(spatial, 0).gamma(gamma);
+        CgTextDraw draw = scratch.reset().of(text).at(x, y).color(argb).pose(pose).clip(clip).node(spatial, effect).gamma(gamma);
         draw.constraints(text.maxWidth() * scale, text.maxHeight() * scale);
         return draw(draw);
     }

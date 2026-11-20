@@ -799,12 +799,13 @@ the element's record ─▶ primitive's vertex ─▶ primitive fills CgUiInput 
 ```
 
 ```glsl
-Material { Primitive Text }          // Quad (default) | Curve | Text | mymod:Ring
+Material { Primitive Element }       // Element | Quad (default) | Curve | Text | mymod:Ring
 ```
 
 | `Primitive` | Drawn with | Before `surface()` | After it |
 |---|---|---|---|
-| `Quad` (default) | `canvas.quad(material)`: boxes, images, bars | `uv`, `param`, `size`, `color`, the custom values; `coverage` the quad's antialiased edge; `cg_UiTexture(tex, i)` | clip, opacity, the blend's write |
+| `Element` | the canvas's `box(...).material(m)` (`api.canvas.CgCanvas`): boxes, images, a widget's brush, a layer's material filter | `uv`, `param`, `local`, `size`, `color` the box's tint; `s.color` its paint (colour, image, gradient, border), **premultiplied** | clip, its effect node's opacity, HDR intensity, the blend's write; never depth-tested |
+| `Quad` (default) | the old canvas's `canvas.quad(material)`: boxes, images, bars | `uv`, `param`, `size`, `color`, the custom values; `coverage` the quad's antialiased edge; `cg_UiTexture(tex, i)` | clip, opacity, the blend's write |
 | `Curve` | `canvas.curve(...)`, `triangle`, `cell`: lines, Bézier strokes, fills | `color` along the stroke, `uv.x` = `t` along it, `local` the point; `coverage` the stroke's | drops what is invisible, then clip, opacity, the blend's write |
 | `Text` | a text style's layer (`CgTextMaterials`) | `color` the paint, its gradient applied | the glyph's coverage (bitmap or MSDF), its gamma, premultiply |
 

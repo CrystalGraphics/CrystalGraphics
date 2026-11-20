@@ -26,6 +26,15 @@ canvas.box(0, 0, w, h).fill(CgGradient.linear(90).stop(0, a).stop(1, b)).draw();
 canvas.end();
 ```
 
+Outside any stage, over the current target (`CgExecutor.into`), drawn at `end()`: a loading screen, a host's own
+overlay:
+
+```java
+canvas.beginNow(width, height);                  // the target's pixels; render thread, inside a frame
+canvas.fill(0, 0, width, height, 0x80000000);
+canvas.end();                                    // executed here
+```
+
 ## Items
 
 ```java
@@ -303,6 +312,35 @@ CgPaintChunk.Refusal why = canvas.endChunk(kept);            // NONE, or why not
 The caller's key says when it would come out the same; the chunk renumbers the clips, nodes and gradients it made into
 the new frame. `kept.differs(fresh)` is the check mode: a fresh paint taken into a second chunk must match.
 
+**What moves or fades without being drawn again** goes in a node of its own, opened inside the chunk. A replay then
+writes the node's value alone, as a browser's compositor animates a transform or an opacity:
+
+```java
+canvas.beginChunk();
+canvas.save();
+int spin = canvas.movable(cos, sin, -sin, cos, 0, 0);       // this transform, then what is drawn inside
+int fade = canvas.fader(0.5f);                              // what is drawn inside, at half its opacity
+paintBadge(canvas);
+canvas.restore();
+canvas.endChunk(kept);
+
+// a later frame
+if (canvas.replay(kept)) {
+    canvas.save();
+    canvas.moved(kept.node(spin), cos2, sin2, -sin2, cos2, 0, 0);   // as movable() opened it, here
+    canvas.nodeOpacity(kept.effect(fade), 0.8f);
+    canvas.restore();
+}
+```
+
+- `movable` keeps an axis-aligned scale baked into what is drawn inside, so text rasterises at it: replay under the
+  same scale (`transform(out)` reads it), or paint again.
+- A fader multiplies each item's opacity, not the group's: overlapping items show through each other, as Slate's
+  render opacity does. For one picture, `layer().opacity(f)`.
+- A chunk refused because something built on first use (glyphs, an SVG's cells) is worth taking again a frame later;
+  one that opened a pass (a layer, an SVG with a filter) will be refused every time.
+- The widget stack keeps every widget this way (`WIDGETS.md`).
+
 ## What to know
 
 - **Paint order holds.** A later item draws over an earlier one it overlaps; items that overlap nothing between them
@@ -313,7 +351,9 @@ the new frame. `kept.differs(fresh)` is the check mode: a fresh paint taken into
 - **A box reuses one builder**: describe and draw it in one statement.
 - **Colours are `0xAARRGGBB`, straight alpha.** Gradients interpolate premultiplied.
 - **A material of your own** is a `#domain ui` material of `Primitive Element`: its `surface()` runs over the item's
-  paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it.
+  paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it. A value per box is a property on an
+  instance per box (`m.instance().vec4("_Parameters", ...)`), as the widget stack's material parameters are. Declare
+  the primitive: a ui material's default is the old canvas's `Quad`, which this canvas does not draw.
 - **A render target's picture** composites with `box(...).fill(picture).premultiplied().region(0, 1, 1, 0)`: it is
   premultiplied already, and its row 0 is its bottom.
 - **Intensity does not reach text**: a glyph's colour is a byte per channel. Opacity does.

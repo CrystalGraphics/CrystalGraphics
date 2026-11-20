@@ -41,6 +41,12 @@ public final class CgEffectTree {
         return n;
     }
 
+    /** Sets group {@code node}'s opacity: its value this frame. */
+    public void set(int node, float opacity) {
+        if (node <= 0 || node >= count) throw new IllegalArgumentException("no effect node " + node);
+        opacities[node] = opacity;
+    }
+
     public int count() {
         return count;
     }

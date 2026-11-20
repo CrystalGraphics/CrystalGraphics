@@ -70,6 +70,18 @@ public final class CgSpatialTree {
         return n;
     }
 
+    /** Sets {@code node}'s affine in its parent's space: a movable node's value this frame. */
+    public void set(int node, float a, float b, float c, float d, float tx, float ty) {
+        if (node <= 0 || node >= count) throw new IllegalArgumentException("no spatial node " + node);
+        int o = node * 6;
+        locals[o] = a;
+        locals[o + 1] = b;
+        locals[o + 2] = c;
+        locals[o + 3] = d;
+        locals[o + 4] = tx;
+        locals[o + 5] = ty;
+    }
+
     public int count() {
         return count;
     }

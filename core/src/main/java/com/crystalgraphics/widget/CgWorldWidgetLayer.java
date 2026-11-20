@@ -1,6 +1,6 @@
 package com.crystalgraphics.widget;
 
-import com.crystalgraphics.api.material.engine.CgPlacement;
+import com.crystalgraphics.api.canvas.CgCanvas;
 import com.crystalgraphics.render.view.CgView;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,7 +9,6 @@ import java.util.Objects;
 
 import javax.annotation.Nullable;
 
-import org.joml.Matrix4f;
 import org.joml.Vector2f;
 
 import com.crystalgraphics.frame.CgTickFunction;
@@ -31,8 +30,6 @@ import com.crystalgraphics.world.CgWorldQueries;
  * // once, client side: Kakarot's damage numbers, eight at once, sixteen more waiting
  * static final CgWorldWidgetLayer NUMBERS = CgWorldWidgetLayer.builder("mymod:damage_numbers")
  *         .kit("kk")                        // its ui.yaml scales it, as the game's DPI curve does
- *         .retaining(1024f, 1024f, 20f)     // its retainer boxes' image, in widget units
- *         .retainedScale(1.5f)              // its sequences scale it up to 1.5: retained at that, never magnified
  *         .most(8, 16)
  *         .build();
  *
@@ -68,15 +65,8 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
     private final String id;
     @Nullable
     private final String kit;
-    private final float retainedScale;
     private final int mostLive;
     private final int mostWaiting;
-    private final float retainedWidth;
-    private final float retainedHeight;
-    private final float margin;
-    /** Made at its first draw: a server or a headless test never makes one. */
-    @Nullable
-    private CgCanvasWidgetPainter painter;
     @Nullable
     private CgStageFrame frame;
     private final Projector onHud = (x, y, z, out) -> frame.project(x, y, z, out);
@@ -96,22 +86,17 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
     private final double[] point = new double[3];
     private final Vector2f projected = new Vector2f();
     private final Vector2f measured = new Vector2f();
-    private final Matrix4f placement = new Matrix4f();
 
     private CgWorldWidgetLayer(Builder b, boolean onHud) {
         this.id = b.id;
         this.kit = b.kit;
-        this.retainedScale = b.retainedScale;
         this.mostLive = b.mostLive;
         this.mostWaiting = b.mostWaiting;
         this.fixedWorld = b.world;
-        this.retainedWidth = b.width;
-        this.retainedHeight = b.height;
-        this.margin = b.margin;
         this.drawing = onHud ? CgRenderStage.HUD.register(b.order, this::draw) : null;
     }
 
-    /** A layer named {@code id} ({@code "<mod>:<name>"}), which names its tick and its retained image in a trace. */
+    /** A layer named {@code id} ({@code "<mod>:<name>"}), which names its tick in a trace. */
     public static Builder builder(String id) {
         return new Builder(id);
     }
@@ -210,12 +195,8 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
         } finally {
             this.frame = null;
         }
-        if (painter == null) {
-            painter = new CgCanvasWidgetPainter(id, CgPlacement.SCREEN).retaining(retainedWidth, retainedHeight, margin);
-        }
         float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
-        painter.begin(frame.canvas(), frame.recording(), scale * retainedScale);
-        paint(painter, scale);
+        paint(CgCanvas.on(frame), scale);
     }
 
     /**
@@ -251,36 +232,30 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
     }
 
     /**
-     * Lays out, retains, then paints what {@link #gather} placed through {@code painter}, {@code scale} canvas pixels
-     * a widget unit: each box's pivot on its point.
+     * Lays out and paints what {@link #gather} placed onto {@code canvas}, {@code scale} canvas pixels a widget unit:
+     * each box's pivot on its point.
      */
-    void paint(CgWidgetPainter painter, float scale) {
+    void paint(CgCanvas canvas, float scale) {
         for (int i = 0; i < drawnCount; i++) {
             CgWidgetComponent c = drawn[i];
             if (c.drawWidth > 0f && c.drawHeight > 0f) c.widget.allot(c.drawWidth, c.drawHeight);
-            c.widget.layout(painter, measured);
+            c.widget.layout(measured);
             c.width = measured.x;
             c.height = measured.y;
-            c.widget.retain(painter);
-        }
-        for (int i = 0; i < drawnCount; i++) {
-            CgWidgetComponent c = drawn[i];
-            c.widget.paint(painter, placement.scaling(scale).translate(c.screenX / scale - c.width * c.pivotX,
-                    c.screenY / scale - c.height * c.pivotY, 0f));
+            canvas.save().scale(scale, scale).translate(c.screenX / scale - c.width * c.pivotX,
+                    c.screenY / scale - c.height * c.pivotY);
+            c.widget.paint(canvas);
+            canvas.restore();
             drawn[i] = null;
         }
         drawnCount = 0;
     }
 
-    /** What a layer is: its kit, its retained image, its caps, where it draws. */
+    /** What a layer is: its kit, its caps, where it draws. */
     public static final class Builder {
         private final String id;
         @Nullable
         private String kit;
-        private float width = 512f;
-        private float height = 512f;
-        private float margin = 8f;
-        private float retainedScale = 1f;
         private int mostLive = Integer.MAX_VALUE;
         private int mostWaiting = Integer.MAX_VALUE;
         private int order = CgRenderStage.WORLD_WIDGETS;
@@ -294,20 +269,6 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
         /** The kit whose {@code ui.yaml} scales it ({@link CgUiScale}); Unreal's default curve without one. */
         public Builder kit(@Nullable String namespace) {
             this.kit = namespace;
-            return this;
-        }
-
-        /** Its retainer boxes' image: {@code width} x {@code height} widget units, {@code margin} round each region. */
-        public Builder retaining(float width, float height, float margin) {
-            this.width = width;
-            this.height = height;
-            this.margin = margin;
-            return this;
-        }
-
-        /** The most its sequences scale a retainer box: retained at that, so it is never magnified. 1 unless set. */
-        public Builder retainedScale(float scale) {
-            this.retainedScale = scale;
             return this;
         }
 

@@ -1,39 +1,20 @@
 // =============================================================================
 // CrystalShader -- loading/logo.shader
-// The loading screen's look, one quad material for every part (CgLogoLoadingView). Each quad says what it is in
-// custom0: x the screen's seconds, y the screen's aspect, w the mode:
+// The loading screen's look, one ui material for every part (CgLogoLoadingView), each part a box drawn through its own
+// instance. _Parameters: x the screen's seconds, y the screen's aspect, z the part's value, w the part:
 //   0 the backdrop: under the ocean looking up at the surface, with shafts of light, specks, and grain
-//   1 a soft glow: a gaussian over the quad, in the quad's colour
-//   2 an image (the lockup) with a light sweeping across it every few seconds, z its strength (0 for none)
+//   1 a soft glow: a gaussian over the box, in the box's colour
+//   2 an image (the lockup, the box's own) with a light sweeping across it every few seconds, z its strength
 //   3 the load bar: Minecraft's white outline and fill, made smooth, z how full
 // =============================================================================
-#domain global
+#domain ui
 #include "crystalgraphics:shaders/lib/noise.glsl"
-Material { ColorSpace sRGB  Media On }
-EngineBuffers { quad }
-
-RenderState {
-    Blend SRC_ALPHA ONE_MINUS_SRC_ALPHA, ONE ONE_MINUS_SRC_ALPHA
-    Cull OFF
-    DepthTest ALWAYS
-    DepthWrite OFF
-}
+Material { Primitive Element }
 
 Properties {
-    _MainTex ("Image", sampler2D) = "white"
+    _Parameters ("Seconds, aspect, the part's value, the part", vec4) = (0.0, 0.0, 0.0, 0.0)
 }
 
-struct v2f {
-    vec2 uv;
-    vec4 color;
-    vec4 params;
-};
-
-
-
-
-
-// Helpers before vertex(): a pass keeps what it declares ahead of its entry points
 // A soft blob of `col` at c, radius r, mixed in by w
 vec3 blob(vec3 dst, vec2 p, vec2 c, float r, vec3 col, float w) {
     vec2 d = p - c;
@@ -149,7 +130,7 @@ float roundBox(vec2 q, vec2 e, float r) {
 
 // Minecraft's load bar made smooth: a white outline, a gap, then a solid white fill to `fill` (0 to 1), over a
 // dark track. b pixels tall, centred in a quad 4b tall and 3b wider than it.
-// `size` is the quad in pixels, 1 / fwidth(uv), taken by the fragment: a helper here reaches the vertex stage too
+// `size` is the box in pixels, 1 / fwidth(uv)
 vec4 bar(vec2 uv, vec2 size, float fill, float alpha) {
     vec2 p = uv * size, c = size * 0.5;
     float b = size.y * 0.25, r = b * 0.22, line = max(1.5, b * 0.12);
@@ -173,29 +154,24 @@ float sweep(vec2 uv, float t) {
     return phase < 1.3 ? exp(-pow((across - (phase * 1.6 - 0.3)) / 0.07, 2.0)) : 0.0;
 }
 
-
-
-void vertex(out v2f o) {
-    gl_Position = cg_ProjMatrix * vec4(CG_QUAD_WORLD_POS, 1.0);
-    o.uv     = CG_QUAD_UV;
-    o.color  = CG_QUAD_COLOR;
-    o.params = CG_QUAD_CUSTOM0;
-}
-
-void fragment(in v2f i, out vec4 fragColor) {
-    int mode = int(i.params.w + 0.5);
-    float t = i.params.x, aspect = i.params.y;
+void surface(in CgUiInput i, inout CgUiSurface s) {
+    int mode = int(_Parameters.w + 0.5);
+    float t = _Parameters.x, aspect = _Parameters.y;
+    // Before any branch: it takes derivatives
+    vec2 size = 1.0 / max(fwidth(i.uv), vec2(1.0e-6));
     if (mode == 0) {
-        fragColor = vec4(backdrop(i.uv, t, aspect) + grain(gl_FragCoord.xy, t, 0.010), i.color.a);
+        s.color = vec4(backdrop(i.uv, t, aspect) + grain(gl_FragCoord.xy, t, 0.010), i.color.a);
+        s.premultiplied = false;
     } else if (mode == 1) {
-        // Round, and at zero before the quad's edge, or the edge shows as a square
+        // Round, and at zero before the box's edge, or the edge shows as a square
         float r = length(i.uv * 2.0 - 1.0);
-        fragColor = vec4(i.color.rgb, i.color.a * exp(-r * r * 3.0) * (1.0 - smoothstep(0.55, 1.0, r)));
+        s.color = vec4(i.color.rgb, i.color.a * exp(-r * r * 3.0) * (1.0 - smoothstep(0.55, 1.0, r)));
+        s.premultiplied = false;
     } else if (mode == 2) {
-        vec4 image = texture(_MainTex, i.uv) * i.color;
-        image.rgb += vec3(0.55 * sweep(i.uv, t) * i.params.z);
-        fragColor = image;
+        // The box's image, premultiplied, the light added where it is
+        s.color.rgb += vec3(0.55 * sweep(i.uv, t) * _Parameters.z) * s.color.a;
     } else {
-        fragColor = bar(i.uv, 1.0 / max(fwidth(i.uv), vec2(1.0e-6)), i.params.z, i.color.a);
+        s.color = bar(i.uv, size, _Parameters.z, i.color.a);
+        s.premultiplied = false;
     }
 }

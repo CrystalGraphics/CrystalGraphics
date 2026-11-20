@@ -16,7 +16,7 @@ It comes in layers. Take the first that does what you need:
 |---|---|---|
 | **`CgWorldWidgetLayer`** | a widget over a point in the world, following it: a damage number, a name plate, a marker | [7](#7-over-a-point-in-the-world-a-world-widget-layer) |
 | **`CgScreenWidgetLayer`** | a widget on the screen: a HUD panel, a combo counter | [8](#8-on-the-screen-a-screen-widget-layer) |
-| **`CgUserWidget`** with a `CgCanvasWidgetPainter` | an instance you place and paint yourself | [8](#8-on-the-screen-a-screen-widget-layer) |
+| **`CgUserWidget`** painted onto a `CgCanvas` | an instance you place and paint yourself | [8](#8-on-the-screen-a-screen-widget-layer) |
 
 ---
 
@@ -102,7 +102,7 @@ static final CgWidgetTree POP = CgWidgetTree.of("mymod:hud/pop", CgWidget.canvas
 | `horizontal_box` | `UHorizontalBox` | `children` in a row, left to right | its children's widths and paddings added |
 | `border` | `UBorder` | `content`, one widget, padded; a `background` brush, its `brush_colour`; `content_colour_and_opacity` tints everything inside | its content's and its padding |
 | `scale_box` | `UScaleBox`, stretch `UserSpecified` | `content`, one widget, laid out and drawn at `user_specified_scale`; `stretch: user_specified` is required, the room-fitting stretches are not drawn | its content's and its padding, times the scale |
-| `retainer_box` | `URetainerBox` | `content`, one widget filling it, painted into an image of its own and drawn as one quad; `effect`, a UI material that draws that image ([5](#5-fading-as-one-image-the-retainer-box)) | its content's |
+| `retainer_box` | `URetainerBox` | `content`, one widget filling it, painted into a layer of its own and composited as one picture; `effect`, a UI material that draws that image ([5](#5-fading-as-one-image-the-retainer-box)) | its content's |
 | `image` | `UImage` | a `brush`; `colour_and_opacity` | its brush's `image_size` |
 | `text_block` | `UTextBlock` | `text`, a string id or the literal text; its `style`; `colour_and_opacity`; `justification`; `wrap` | its text's, in its style |
 | `user_widget` | a nested `UUserWidget` | `widget`, another widget asset; `colour_and_opacity` | its tree's |
@@ -144,9 +144,13 @@ Label: { kind: text_block, style: mymod:hud/counter, text: mymod:text/combo.hits
 
 ### Brushes and colours
 
-- **A brush** is a `texture` or a `material` (of the UI domain: its shader opens `#domain ui`), its `image_size`
-  (`[32, 32]` by default), `tint` and `draw_as: image | none`. With neither texture nor material it still draws, a box
-  of its tint, as Slate's does: a border's background is that until set, so `background: { draw_as: none }` hides it.
+- **A brush** is a `texture`, an `svg` or a `material` (of the UI domain: its shader opens `#domain ui` and draws on
+  `Primitive Element`), its `image_size` (`[32, 32]` by default), `tint` and `draw_as: image | none`. With none of them
+  it still draws, a box of its tint, as Slate's does: a border's background is that until set, so
+  `background: { draw_as: none }` hides it.
+- **An `svg` brush** is fitted into the widget keeping its aspect, centred, and drawn sharp at the size it lands on
+  the screen; its `currentColor` is the tint. `brush: { svg: mymod:ui/icons/sword.svg, image_size: [24, 24] }`, or
+  `CgWidgetBrush.svg(path, 24f, 24f)`.
 - **Colours are linear**, `[r, g, b, a]`, as Unreal's `FLinearColor`: they multiply down the tree in linear and are
   encoded to sRGB where drawn. In Java, `CgLinearColour.argb(0xFFFFC040)` decodes a colour picked by eye.
 - **A string id** (`<ns>:text/<id>`) is read in the player's language when the tree lays out: a game kit's own table,
@@ -176,8 +180,8 @@ The parent is a hard reference: it must load for the child to.
 ## 5. Fading as one image: the retainer box
 
 Text in a style is layers: an outline under a fill, a shadow under both. Faded, each layer fades on its own, so the
-outline shows through the half-faded fill. A retainer box paints what it holds into an image first, then draws that
-image as one quad, so a fade above it fades one picture, as UMG's Retainer Box does:
+outline shows through the half-faded fill. A retainer box paints what it holds into a layer of its own first, then
+composites that picture once, so a fade above it fades one picture, as UMG's Retainer Box does:
 
 ```yaml
 widgets:
@@ -190,45 +194,47 @@ widgets:
   Glow: { kind: retainer_box, content: GlowText, effect: mymod:hud/silhouette }   # the same text's shape, added
 ```
 
-An `effect` is a material asset of the UI domain whose shader samples the retained image at its `texture_parameter`
-(`Texture` unless set):
+An `effect` is a material asset of the UI domain, on `Primitive Element` as a brush's is, whose shader samples the box's picture at its `texture_parameter`
+(`Texture` unless set): the layer composites through it (`CgFilter.material`).
 
 ```glsl
-// assets/mymod/shaders/hud/silhouette.shader: the image's shape in the quad's colour (its material's state additive)
+// assets/mymod/shaders/hud/silhouette.shader: the picture's shape in the box's colour (its material's state additive)
 #domain ui
-Properties { Texture ("The retained image", sampler2D) = "white" }
+Material { Primitive Element }
+Properties { Texture ("The box's picture", sampler2D) = "white" }
 void surface(in CgUiInput i, inout CgUiSurface s) { s.color.a *= texture(Texture, i.uv).a; }
 ```
 
-The engine's canvas `image.shader` under `MASK` is that shader already: a material of it, `state: { BlendMode: Additive }`,
-needs no file of its own, the retainer naming `texture_parameter: _MainTex`.
-
 - A retainer box has no colour of its own: what fades it is above it, a border's content colour or a render opacity.
-- Its image is padded by how far its text draws past its box (`CgTextStyle.reach()`: the widest outline, the shadows'
+- Its picture is padded by how far its text draws past its box (`CgTextStyle.reach()`: the widest outline, the shadows'
   offset, spread and three of their blur, the slant), so a heavy outline or a wide glow is never cut at its edge.
 - A UI material takes its tint in linear, as Slate's material shaders read the vertex colour.
-- **Its parameters per instance** are four numbers its shader reads as `CG_QUAD_CUSTOM0`: an image's or a border's
-  `material_parameters`, zero until `materialParameters(name, x, y, z, w)` sets them or an animation keys them. UMG
-  animates a brush's parameters on a dynamic material instance; here they ride the quad, so instances still batch.
+- **Its parameters per instance** are four numbers its brush's UI material reads as its `vec4` property
+  `_Parameters` (`CgUserWidget.PARAMETERS`): an image's or a border's `material_parameters`, zero until
+  `materialParameters(name, x, y, z, w)` sets them or an animation keys them. Each widget draws through an instance
+  of the material of its own, as UMG animates a brush's parameters on a dynamic material instance; a material that
+  declares no `_Parameters` is drawn as it is.
+
+  ```glsl
+  Properties { _Parameters ("A widget's material parameters", vec4) = (0.0, 0.0, 0.0, 0.0) }
+  void surface(in CgUiInput i, inout CgUiSurface s) { s.color.rgb *= 1.0 + _Parameters.x; }
+  ```
 
   ```yaml
-  # an animation growing a streak's energy, its shader reading CG_QUAD_CUSTOM0.x
+  # an animation growing a streak's energy, its shader reading _Parameters.x
   - { id: energy, kind: property, binding: { role: counter, node: Streak }, property: material_parameters,
       sections: [ { id: grows, range: [0, 24000], value: { x: { keys: [[0, 0.4, quad_out], [24000, 0.6, linear]] } } } ] }
   ```
-- Every instance a frame draws retains before any paints: the retained image is drawn before anything on the canvas
-  reads it. A layer does this for you; by hand, `retain` every instance, then `paint` every instance.
-- The retained image is pages sized in widget units (`retaining(width, height, margin)`), `margin` round each region
-  besides its text's reach and its blur. A frame that fills a page opens another, kept for later frames, as a glyph
-  atlas does; only a single box larger than a page fails, naming the size to give.
+- A widget holding a retainer box is painted every frame: its layer is a pass of its own, which a widget's kept
+  drawing cannot hold ([Painting it](#painting-it-what-is-drawn-again)).
+- A retainer box inside another is not drawn: it fails at paint, naming it.
 
 ---
 
 ### Blurring what it holds
 
-A retainer box's `blur` blurs what it holds by a Gaussian of that sigma, in units, as CSS's `filter: blur()`: the
-retained image's region is blurred on the GPU (`CgGpuOps.blurScaled`, Skia's scale-then-blur) before the box draws
-it, its effect included. A count that lands blurred and sharpens, a word dissolving away:
+A retainer box's `blur` blurs what it holds by a Gaussian of that sigma, in units, as CSS's `filter: blur()`: its
+layer is blurred on the GPU as it composites (`CgFilter.blur`, Skia's scale-then-blur), its effect included. A count that lands blurred and sharpens, a word dissolving away:
 
 ```yaml
 Number: { kind: retainer_box, content: NumberText, blur: 0 }     # sharp as designed; an animation keys it
@@ -314,7 +320,7 @@ pop.playAnimationTo(RAMP.loaded(), from, 0.8, (float) Math.max(1, (0.8 - from) /
 | `render_opacity` | x | `UWidget::RenderOpacity`, multiplied into everything under it |
 | `colour_and_opacity` | r, g, b, a, linear | an image's, a text block's or a user widget's `ColorAndOpacity` |
 | `content_colour_and_opacity` | r, g, b, a, linear | a border's `ContentColorAndOpacity` |
-| `material_parameters` | x, y, z, w | its brush's UI material's parameters, read as `CG_QUAD_CUSTOM0`: a widget material track on a dynamic material instance |
+| `material_parameters` | x, y, z, w | its brush's UI material's parameters, read as its `_Parameters`: a widget material track on a dynamic material instance |
 | `blur` | x | a retainer box's blur, a Gaussian sigma in units, as CSS's `filter: blur()` |
 
 - **The role binds the instance**, and `node: <name>` finds a widget in its tree, as `FindRuntimeObject` does. A
@@ -339,8 +345,6 @@ It skips one behind the camera, and one whose attachment is gone stays where it 
 ```java
 static final CgWorldWidgetLayer NUMBERS = CgWorldWidgetLayer.builder("mymod:damage_numbers")
         .kit("mymod")                       // its ui.yaml scales it (§ 8)
-        .retaining(1024f, 1024f, 20f)       // its retainer boxes' image, in widget units
-        .retainedScale(1.5f)                // its animations scale it up to 1.5: retained at that, never magnified
         .most(8, 16)                        // eight at once, sixteen more waiting, the newest started first
         .build();
 
@@ -409,14 +413,36 @@ banner.playAnimation(OUT.loaded());
 
 | Call | Unreal | Does |
 |---|---|---|
-| `builder(id)...build()` | the game viewport | a layer on `HUD` at `VIEWPORT_WIDGETS`; `kit(ns)` its UI scale, `retaining(...)` and `retainedScale(s)` its retainer boxes' image, `order(n)`, `world(w)` |
+| `builder(id)...build()` | the game viewport | a layer on `HUD` at `VIEWPORT_WIDGETS`; `kit(ns)` its UI scale, `order(n)`, `world(w)` |
 | `add(widget, zOrder)` | `AddToViewport(ZOrder)` | on the screen over lower z-orders, over equal ones already there; added again, it moves |
 | `remove(widget)` | `RemoveFromParent` | off the screen, its animations left as they are |
 | `contains(widget)` | `IsInViewport` | whether it is on it |
 
 - **A level change takes every widget off**, as Unreal's `OnLevelRemovedFromWorld`: add it again in the new one.
-- **Every widget is retained before any paints**, so a retainer box anywhere on the layer works.
 - **The widget is yours**, never pooled: keep it, set it up, add and remove it as often as it shows.
+
+### Painting it: what is drawn again
+
+A widget of your own paints onto any canvas, its box at the canvas's origin; the canvas's transform places and scales
+it:
+
+```java
+CgCanvas canvas = CgCanvas.on(frame);           // a HUD stage's turn
+canvas.save().translate(x, y).scale(scale, scale);
+counter.paint(canvas);
+canvas.restore();
+```
+
+Its drawing is kept and replayed, as a browser keeps a box's paint: a frame where nothing it shows changed draws it
+from what was kept, and an animation that only **moves** it (translation, scale, shear, angle) or **fades** it (render
+opacity, a colour's alpha, a border's content alpha) changes a value of the frame rather than drawing it again. Its
+first move or fade paints it once more, into a node of its own.
+
+- **Drawn again** after a change it cannot replay: text, a style, a brush, visibility, a layout, a colour's
+  red/green/blue, material parameters, a blur, the scale it is painted at.
+- **Drawn every frame**: a widget holding a retainer box, or an SVG with a filter (a drop shadow): each is a layer,
+  a pass of its own. It costs what painting costs, and one attempt to keep it every 64th frame.
+- `repaints()` counts the paints that were not replays: a widget an animation only moves and fades adds none.
 
 ---
 
@@ -425,7 +451,8 @@ banner.playAnimation(OUT.loaded());
 - **A widget asset is READY with its UI materials built and its text styles' faces read** (`CgWidgetPreparer`,
   `CgTextStylePreparer`), so no first draw compiles a shader or reads a font. A kit loads whole behind the loading
   screen unless its `preload.yaml` says `all: false` ([`LOADING.md`](LOADING.md)): nothing of your own to load.
-- **A tree built in Java** is no asset: `painter.prepare(tree)` in a load task builds its UI materials.
+- **A tree built in Java** is no asset: precache its brushes' UI materials in a load task
+  (`CgMaterial.of(definition).precache()`), or their first draw builds them.
 
 ---
 
@@ -435,8 +462,8 @@ banner.playAnimation(OUT.loaded());
 - **A pooled instance comes back reset**; one you pool yourself needs `reset()` before its next use.
 - **Find the widget sequencer by `CgSequencer.widgets(world)`**, never `world.subsystem(CgSequencer.class)`, which
   returns whichever sequencer was added first. A dedicated server's world takes none: adding one throws.
-- **Retain before painting**, across every instance of a frame: a retained region opened after a draw onto the canvas
-  fails.
+- **A colour animated in red, green or blue paints it every frame**; one animated in alpha alone does not. Fade with
+  the alpha or the render opacity.
 - **Paint allocates nothing**; laying out allocates only where a wrapped or justified text block lays its text out
   again. Layout runs on change alone: text, visibility, a brush, an allotted size.
 
@@ -447,10 +474,9 @@ banner.playAnimation(OUT.loaded());
 | Package / type | Role |
 |---|---|
 | `widget.CgWidgetTree`, `CgWidget`, `CgWidgetSlot`, `CgWidgetBrush`, `CgLinearColour` | the tree as designed, its builders |
-| `widget.CgUserWidget` | an instance: live state, Slate's layout, retain and paint, a sequence target, its own animations |
+| `widget.CgUserWidget` | an instance: live state, Slate's layout, painting onto the canvas (kept and replayed), a sequence target, its own animations |
 | `widget.CgScreenWidgetLayer` | widgets on the screen, by z-order |
 | `widget.CgWorldWidgetLayer`, `CgWidgetComponent`, `CgUserWidgetPool` | widgets over points in the world, and the pool |
-| `widget.CgWidgetPainter`, `CgCanvasWidgetPainter` | where leaves go: the canvas, retained images, UI materials |
 | `widget.CgUiScale` | a kit's `ui.yaml`, Unreal's DPI curve |
 | `widget.CgWidgetCodec`, `CgWidgetPreparer`; `text.style.CgTextStylePreparer` | the asset's compiler; what makes it READY |
 | `sequence.CgSequencer` (`widgets(world)`) | the widget sequencer |

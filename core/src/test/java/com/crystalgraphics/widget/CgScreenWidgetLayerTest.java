@@ -9,12 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.joml.Matrix4f;
-import org.joml.Vector2f;
-import org.joml.Vector4fc;
 import org.junit.Test;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -22,7 +18,6 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
-import com.crystalgraphics.text.style.CgTextStyle;
 
 /** Screen widgets by z-order, off at a level change; a widget's own animations: one player each, heard at each end. */
 public class CgScreenWidgetLayerTest {
@@ -57,51 +52,15 @@ public class CgScreenWidgetLayerTest {
                 CgAssetData.of(id, CgSequenceKinds.SEQUENCE, (Map<?, ?>) CgAssetYaml.read(yaml), null));
     }
 
-    /** Each image's width, in paint order. */
-    private static final class Widths implements CgWidgetPainter {
-        final List<Float> widths = new ArrayList<>();
-
-        @Override
-        public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
-                             Vector2f out) {
-            out.set(0f, 0f);
-            return null;
-        }
-
-        @Override
-        public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a, Vector4fc parameters) {
-            widths.add(width);
-        }
-
-        @Override
-        public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, float width, float r, float g, float b, float a) {
-        }
-
-        @Override
-        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
-            return 0;
-        }
-
-        @Override
-        public void endRetained() {
-        }
-
-        @Override
-        public void retained(int region, CgMaterialDefinition effect, String textureParameter, Matrix4f pose,
-                             float width, float height, float r, float g, float b, float a) {
-        }
-    }
-
     private static CgScreenWidgetLayer layer(CgWorld world) {
         return CgScreenWidgetLayer.builder("mymod:hud").world(world).detached();
     }
 
+    /** Each image's width, in paint order: a painted widget is known by its width. */
     private static List<Float> painted(CgScreenWidgetLayer layer) {
-        Widths widths = new Widths();
-        layer.paint(widths, 1920f, 1080f, 1f);
-        return widths.widths;
+        List<Float> widths = new ArrayList<>();
+        for (Painted.Draw d : Painted.of(c -> layer.paint(c, 1920f, 1080f, 1f))) widths.add(d.width());
+        return widths;
     }
 
     @Test

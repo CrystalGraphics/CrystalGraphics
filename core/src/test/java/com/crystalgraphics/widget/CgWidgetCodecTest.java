@@ -5,14 +5,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import java.nio.file.Paths;
 import java.util.Map;
 
-import org.joml.Matrix4f;
 import org.joml.Vector2f;
-import org.joml.Vector4fc;
 import org.junit.Test;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
+import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
 import com.crystalgraphics.asset.kind.CgLookKinds;
@@ -29,7 +28,8 @@ public class CgWidgetCodecTest {
         CgAssetKinds.register();
     }
 
-    private static final CgTextStyle GOLD = CgTextStyle.builder("kk:text_styles/hud/gold").font("kk:fonts/x.ttf").build();
+    private static final String FONT = Paths.get("src/test/resources/fonts/IBMPlexSans-Regular.ttf").toAbsolutePath().toString();
+    private static final CgTextStyle GOLD = CgTextStyle.builder("kk:text_styles/hud/gold").font(FONT).size(24f).build();
 
     /** Kakarot's damage pop as its importer writes it: the digits material instances, the critical a texture. */
     private static final String BATTLE_DMG = """
@@ -84,40 +84,6 @@ public class CgWidgetCodecTest {
     private static final CgAssetCompiler.Dependencies DEPS = (kind, id) -> kind == CgLookKinds.TEXT_STYLE
             && id.equals(GOLD.id()) ? GOLD : null;
 
-    /** 10 units a character, 20 high. */
-    private static final class Measure implements CgWidgetPainter {
-        @Override
-        public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
-                             Vector2f out) {
-            out.set(10f * text.length(), 20f);
-            return null;
-        }
-
-        @Override
-        public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a, Vector4fc parameters) {
-        }
-
-        @Override
-        public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, float width, float r, float g, float b, float a) {
-        }
-
-        @Override
-        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
-            return 0;
-        }
-
-        @Override
-        public void endRetained() {
-        }
-
-        @Override
-        public void retained(int region, CgMaterialDefinition effect, String textureParameter, Matrix4f pose,
-                             float width, float height, float r, float g, float b, float a) {
-        }
-    }
-
     @Test
     public void theImportersFileValidates() {
         CgValidation v = CgAssetData.validate("battle_dmg.yaml", CgLookKinds.WIDGET,
@@ -143,11 +109,12 @@ public class CgWidgetCodecTest {
         assertEquals(CgWidget.Kind.TEXT_BLOCK, number.kind());
         assertEquals("1,250", number.text());
         CgUserWidget w = pop.newInstance();
-        Vector2f size = w.layout(new Measure(), new Vector2f());
-        assertEquals("50 of text and the border's (4, 2)", 58f, size.x, 1e-4f);
-        assertEquals("the critical's 60-unit slot is taller than the text's 24", 60f, size.y, 1e-4f);
+        Vector2f size = w.layout(new Vector2f());
+        float text = CgText.of("1,250").style(GOLD).measure().totalWidth();
+        assertEquals("its text and the border's (4, 2)", text + 8f, size.x, 1e-3f);
+        assertEquals("the critical's 60-unit slot is taller than the text", 60f, size.y, 1e-4f);
         float[] banner = w.box(pop.index("Img_Base_Critical"), new float[4]);
-        assertEquals("anchored to the number's right edge: 58 + 115 - 224", -51f, banner[0], 1e-4f);
+        assertEquals("anchored to the number's right edge: its width + 115 - 224", text + 8f + 115f - 224f, banner[0], 1e-3f);
     }
 
     @Test
@@ -168,6 +135,7 @@ public class CgWidgetCodecTest {
                                         .tint(new CgLinearColour(1f, 0.5f, 0.25f, 1f)))
                                 .colour(new CgLinearColour(1f, 1f, 1f, 0f))
                                 .slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 2f).build()))
+                        .child(CgWidget.image("Icon").brush(CgWidgetBrush.svg("mymod:ui/icons/sword.svg", 24f, 24f)))
                         .child(CgWidget.userWidget("Digit", digit))
                         .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS")))
                         .child(CgWidget.retainerBox("Soft").blur(2.5f).child(CgWidget.text("Ghost").style(GOLD).text("9"))))

@@ -9,13 +9,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import org.joml.Matrix4f;
 import org.joml.Vector2f;
-import org.joml.Vector3f;
-import org.joml.Vector4fc;
 import org.junit.Test;
 
-import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -23,7 +19,6 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequencer;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
-import com.crystalgraphics.text.style.CgTextStyle;
 import com.crystalgraphics.widget.CgWidgetComponent.State;
 import com.crystalgraphics.world.CgAttachment;
 
@@ -74,43 +69,6 @@ public class CgWorldWidgetLayerTest {
         if (z <= 0) return false;
         out.set((float) (500 + 10 * x), (float) (300 + 10 * y));
         return true;
-    }
-
-    /** Each image's centre on the canvas, in paint order. */
-    private static final class Centres implements CgWidgetPainter {
-        final List<Vector3f> centres = new ArrayList<>();
-
-        @Override
-        public Object layout(CgTextStyle style, String text, float wrap, CgWidget.Justification justification,
-                             Vector2f out) {
-            out.set(0f, 0f);
-            return null;
-        }
-
-        @Override
-        public void image(CgWidgetBrush brush, Matrix4f pose, float width, float height, float r, float g, float b,
-                          float a, Vector4fc parameters) {
-            centres.add(pose.transformPosition(new Vector3f(width / 2f, height / 2f, 0f)));
-        }
-
-        @Override
-        public void text(CgTextStyle style, String text, Object laidOut, CgWidget.Justification justification,
-                         Matrix4f pose, float width, float r, float g, float b, float a) {
-        }
-
-        @Override
-        public int beginRetained(float width, float height, float reach, float blurX, float blurY) {
-            return 0;
-        }
-
-        @Override
-        public void endRetained() {
-        }
-
-        @Override
-        public void retained(int region, CgMaterialDefinition effect, String textureParameter, Matrix4f pose,
-                             float width, float height, float r, float g, float b, float a) {
-        }
     }
 
     private static CgWorldWidgetLayer layer(CgWorld world, int live, int waiting) {
@@ -186,12 +144,13 @@ public class CgWorldWidgetLayerTest {
         layer.tick(0);
 
         assertEquals(2, layer.gather(CgWorldWidgetLayerTest::project, 0, 0, 0));
-        Centres painter = new Centres();
-        layer.paint(painter, 2f);
+        List<Painted.Draw> draws = Painted.of(c -> layer.paint(c, 2f));
         // Far, pivot (0.5, 0.5): its centre on its point (510, 300). Near, pivot (0, 0): its corner on (520, 300), so
         // its centre half its box on, 2 px a unit.
-        assertEquals(new Vector3f(510f, 300f, 0f), painter.centres.get(0));
-        assertEquals(new Vector3f(520f + 100f, 300f + 40f, 0f), painter.centres.get(1));
+        assertEquals(510f, draws.get(0).cx(), 1e-3f);
+        assertEquals(300f, draws.get(0).cy(), 1e-3f);
+        assertEquals(520f + 100f, draws.get(1).cx(), 1e-3f);
+        assertEquals(300f + 40f, draws.get(1).cy(), 1e-3f);
     }
 
     @Test
@@ -210,12 +169,12 @@ public class CgWorldWidgetLayerTest {
         }).drawSize(100f, 40f);
         layer.tick(0);
         assertEquals(1, layer.gather(CgWorldWidgetLayerTest::project, 0, 0, 0));
-        layer.paint(new Centres(), 1f);
+        Painted.of(c -> layer.paint(c, 1f));
         gone[0] = true;
-        Centres painter = new Centres();
         assertEquals("gone, it stays where it was last seen", 1, layer.gather(CgWorldWidgetLayerTest::project, 0, 0, 0));
-        layer.paint(painter, 1f);
-        assertEquals(new Vector3f(530f, 300f, 0f), painter.centres.get(0));
+        Painted.Draw draw = Painted.of(c -> layer.paint(c, 1f)).get(0);
+        assertEquals(530f, draw.cx(), 1e-3f);
+        assertEquals(300f, draw.cy(), 1e-3f);
     }
 
     @Test

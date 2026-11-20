@@ -464,18 +464,19 @@ public final class CgSvgResolver {
             }
         }
 
+        String id = tag.get("id").isEmpty() ? null : tag.get("id");
         float halfWidth = style.strokeHalfWidth() * transform.lengthScale();
         CgSvgScene.Stroke stroke = null;
         if (style.strokes() && strokeGradient == null) {
             stroke = new CgSvgScene.Stroke(new CgSvgScene.Solid(style.strokeArgb(), style.stroke().currentColor()),
                     halfWidth, style.cap());
         }
-        if (fill != null || stroke != null) nodes.add(new CgSvgScene.Node(contours, fill, stroke, shadow));
+        if (fill != null || stroke != null) nodes.add(new CgSvgScene.Node(contours, fill, stroke, shadow, id));
         if (strokeGradient != null) {
             // Painted as a fill of its own outline, after the element's fill: SVG's order for one element.
             List<CgSvgPath.Polyline> outline = CgSvgStroker.outline(contours, halfWidth, style.cap(), steps);
             if (!outline.isEmpty()) {
-                nodes.add(new CgSvgScene.Node(outline, new CgSvgScene.Fill(strokeGradient, false), null, shadow));
+                nodes.add(new CgSvgScene.Node(outline, new CgSvgScene.Fill(strokeGradient, false), null, shadow, id));
             }
         }
     }
