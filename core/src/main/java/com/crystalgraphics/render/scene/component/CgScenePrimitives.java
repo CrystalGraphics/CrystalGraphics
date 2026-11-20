@@ -1,7 +1,6 @@
 package com.crystalgraphics.render.scene.component;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
-import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -78,9 +77,9 @@ public final class CgScenePrimitives {
     private final Vector4f clip = new Vector4f();
     /** Its spawned scene captures, and the ring frame they last ran in. */
     final List<CgSceneCaptureComponent> captures = new ArrayList<>();
-    /** Its spawned labels' labels, by slot, null a free one: the scene's label cache holds this list. */
-    private final List<CgCanvasLabels.Label> labels = new ArrayList<>();
-    private final List<CgCanvasLabels.Label> labelView = Collections.unmodifiableList(labels);
+    /** Its spawned text components, by slot, null a free one: what its text renderer reads. */
+    private final List<CgTextComponent> texts = new ArrayList<>();
+    private final List<CgTextComponent> textView = Collections.unmodifiableList(texts);
     /** Its spawned quads with a picture, and the canvas they are painted through. */
     final List<CgQuadComponent> pictures = new ArrayList<>();
     private final CgCanvas pictureCanvas = new CgCanvas();
@@ -263,31 +262,31 @@ public final class CgScenePrimitives {
         for (int i = 0; i < pictures.size(); i++) pictures.get(i).updatePicture(pictureCanvas);
     }
 
-    /** A label component's text, {@code text} in its default font. */
-    public CgLabelComponent label(String text) {
-        return new CgLabelComponent(this, text);
+    /** A text component reading {@code text}, in its default font. */
+    public CgTextComponent text(String text) {
+        return new CgTextComponent(this, text);
     }
 
-    /** Its spawned labels' labels by slot, a free slot null: what the scene's label cache draws ahead of its own. */
-    public List<CgCanvasLabels.Label> heldLabels() {
-        return labelView;
+    /** Its spawned text components by slot, a free slot null: what its text renderer draws ahead of the frame's. */
+    public List<CgTextComponent> texts() {
+        return textView;
     }
 
-    /** {@code label} in the first free slot; the slot. */
-    int holdLabel(CgCanvasLabels.Label label) {
-        int free = labels.indexOf(null);
+    /** {@code text} in the first free slot; the slot. */
+    int holdText(CgTextComponent text) {
+        int free = texts.indexOf(null);
         if (free >= 0) {
-            labels.set(free, label);
+            texts.set(free, text);
             return free;
         }
-        labels.add(label);
-        return labels.size() - 1;
+        texts.add(text);
+        return texts.size() - 1;
     }
 
     /** Slot {@code slot} freed; the trailing free slots dropped. */
-    void dropLabel(int slot) {
-        labels.set(slot, null);
-        while (!labels.isEmpty() && labels.get(labels.size() - 1) == null) labels.remove(labels.size() - 1);
+    void dropText(int slot) {
+        texts.set(slot, null);
+        while (!texts.isEmpty() && texts.get(texts.size() - 1) == null) texts.remove(texts.size() - 1);
     }
 
     public void drawOnce(CgMesh mesh, CgMaterialInterface material, double x, double y, double z) {

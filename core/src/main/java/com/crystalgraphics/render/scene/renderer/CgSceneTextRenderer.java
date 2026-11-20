@@ -1,9 +1,7 @@
-package com.crystalgraphics.render.scene.component;
+package com.crystalgraphics.render.scene.renderer;
 
 import com.crystalgraphics.render.ui.element.CgQuadRecord;
 
-import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -15,14 +13,17 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.camera.CgCamera;
+import com.crystalgraphics.render.scene.component.CgTextComponent;
 import com.crystalgraphics.text.atlas.CgGlyphAtlas;
 import com.crystalgraphics.text.render.CgTextBatch;
 import com.crystalgraphics.text.render.CgTextCapture;
 import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
+import org.joml.Matrix4dc;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
+import org.joml.Quaternionf;
 import org.joml.Quaternionfc;
 import org.joml.Vector3f;
 
@@ -34,46 +35,41 @@ import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
- * Labels in the world kept on the GPU across frames: text at a point, facing the camera or turned as a sign, each
- * placed by a matrix of its own. Thousands of labels whose words rarely change while where they stand changes every
- * frame: a label's glyphs are captured once into buffers shared by every label and drawn from there by
- * {@code text.shader}'s {@code WORLD_LABEL} variant, and a frame that changed nothing but their places writes one
- * matrix a label. 10,000 outlined, shadowed labels draw in 3 draws at about 230 ns a label.
+ * Text in the world kept on the GPU across frames, Unreal's {@code FTextRenderSceneProxy}: the render data of a scene's
+ * {@link CgTextComponent}s and of the frame's {@link CgFrameText}s. Thousands of texts whose words rarely change while
+ * where they stand changes every frame: each one's glyphs are captured once into buffers shared by all of them and drawn
+ * from there by {@code text.shader}'s {@code WORLD_LABEL} variant, and a frame that changed nothing but their places
+ * writes one matrix a text. 10,000 outlined, shadowed texts draw in 3 draws at about 230 ns each.
  *
- * <p>A scene's own is {@code scene.renderer().labels()}, drawn into each view's translucent callback, depth-tested as
- * a name tag: its spawned {@code CgLabelComponent}s are held on it, and {@code scene.labelOnce(...)} queues on it.</p>
+ * <p>A scene's own is {@code scene.renderer().texts()}, drawn into each view's translucent callback, depth-tested as a
+ * name tag: it reads the scene's spawned text components, and {@code scene.textOnce(...)} queues on it.</p>
  *
- * <pre>{@code
- * CgCanvasLabels labels = CgScene.client().renderer().labels();
- * labels.text().at(x, y + 2, z).height(0.5f).font(font).style(LABEL).text("Spawn").submit();   // each frame
- * labels.text().at(x, y, z).rotation(facingSouth).anchor(0f, 0f).family(family).targetPx(48).text(sign).submit();
- * }</pre>
- *
- * <p>Labels of your own, drawn into raster passes on a target under a host view:</p>
+ * <p>Text of your own, drawn into raster passes on a target under a host view:</p>
  *
  * <pre>{@code
- * CgCanvasLabels tags = new CgCanvasLabels("mymod.tags");      // once, kept
- * tags.clear();                                                // each frame, then queue them with text()
- * tags.prepare(frame.recording(), view, width, height);        // captures what changed, places, uploads
- * tags.drawDepth(depthPass);                                   // a nearer label's text hides a farther one's
+ * CgSceneTextRenderer tags = new CgSceneTextRenderer("mymod.tags");     // once, kept
+ * tags.clear();                                                          // each frame, then queue them
+ * tags.text().at(x, y + 2, z).height(0.5f).font(font).style(LABEL).text("Spawn").submit();
+ * tags.prepare(frame.recording(), view, width, height);                 // captures what changed, places, uploads
+ * tags.drawDepth(depthPass);                                            // a nearer text hides a farther one
  * tags.draw(colourPass, target);
  * }</pre>
  *
  * <ul>
- *   <li>{@code height} is a line's height in blocks: the draw's {@code basePx()} maps to it.</li>
+ *   <li>A text's {@code height} is a line's height in blocks: its draw's {@code basePx()} maps to it.</li>
  *   <li>Its draw takes colour and gradient fills, outlines, lines and shadows; an additive or material layer throws,
  *       since every record draws under one material.</li>
- *   <li>The {@code i}th label queued is the same label frame to frame: one queued in another order is captured
- *       again. Held labels ({@link #held(List)}) come first, each in a slot of its own, so their order never moves.</li>
- *   <li>A label is unlit and unfogged.</li>
- *   <li>A label gone for a frame keeps its records, hidden, for {@value #KEEP_HIDDEN} frames: one back with the same
+ *   <li>Held components ({@link #held(List)}) come first, each in a slot of its own, so their order never moves; then
+ *       the frame's texts, the {@code i}th the same text frame to frame.</li>
+ *   <li>Unlit and unfogged.</li>
+ *   <li>A text gone for a frame keeps its records, hidden, for {@value #KEEP_HIDDEN} frames: one back with the same
  *       draw costs no capture.</li>
  *   <li>Into a float target (the HDR scene) its fills take the linear-blend correction in place of the draw's gamma
  *       ({@link CgTextBatch#blendsLinearly}), read from the canvas drawn into.</li>
  *   <li>{@link #release} at a context's teardown; nothing else frees it.</li>
  * </ul>
  */
-public final class CgCanvasLabels {
+public final class CgSceneTextRenderer {
 
     private static final int RECORD = CgQuadRecord.FLOATS;
     private static final int NODE = CgQuadRecord.NODE;
@@ -85,17 +81,15 @@ public final class CgCanvasLabels {
     /** A batch is compacted once this many records, and half of it, are holes. */
     private static final int COMPACT_AFTER = 4096;
     private static final Matrix4f NO_VIEW = new Matrix4f();
-    /** Where a label's point sits on it: the middle of the block, its top or its bottom. */
-    private static final float CENTRE = 0.5f;
-
     private final String name;
-    private final List<Label> labels = new ArrayList<>();
+    private final List<CgFrameText> frame = new ArrayList<>();
     private int count;
-    /** Labels kept across frames, by slot, null a free one: drawn ahead of the frame's own. */
-    private List<Label> held = List.of();
+    /** Spawned components by slot, null a free one: drawn ahead of the frame's own. */
+    private List<CgTextComponent> held = List.of();
     private final Consumer<CgTextDraw> queue = this::submitted;
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
+    private final Quaternionf turn = new Quaternionf();
     /** Captures the labels' glyphs, under the camera's projection: a label's tier is fixed, its pose its own. */
     private final CgTextBatch capturer = new CgTextBatch(null);
     private final List<Kept> kept = new ArrayList<>();
@@ -111,40 +105,36 @@ public final class CgCanvasLabels {
     private int captured;
 
     /** @param name what its buffers are called in a trace */
-    public CgCanvasLabels(String name) {
+    public CgSceneTextRenderer(String name) {
         this.name = name;
     }
 
     /**
-     * The next label this frame: place it, then {@code font(...)}, {@code family(...)} or {@code draw()} gives its
+     * The next text this frame: place it, then {@code font(...)}, {@code family(...)} or {@code draw()} gives its
      * {@link CgTextDraw}, whose {@code submit()} queues it. Render thread.
      */
-    public Label text() {
-        if (count == labels.size()) labels.add(new Label(CgTextDraw.queued(queue)));
-        return labels.get(count).reset();
-    }
-
-    /** A label an owner keeps and places itself, held in {@link #held(List)}'s list: its draw is never submitted. */
-    public static Label held() {
-        return new Label(CgTextDraw.detached());
+    public CgFrameText text() {
+        if (count == frame.size()) frame.add(new CgFrameText(CgTextDraw.queued(queue)));
+        return frame.get(count).reset();
     }
 
     /**
-     * {@code held}, read each frame ahead of the frame's own labels, slot {@code i} label {@code i}: a null slot draws
-     * nothing. Its owner keeps the slots where they are, so a held label is captured once, not each time another goes.
+     * The spawned components, read each frame ahead of the frame's texts, slot {@code i} text {@code i}: a null slot
+     * draws nothing. Its owner keeps the slots where they are, so a component is captured once, not each time another
+     * goes.
      */
-    public void held(List<Label> held) {
+    public void held(List<CgTextComponent> held) {
         this.held = Objects.requireNonNull(held, "held");
     }
 
-    /** A label's draw submitted: kept if it is the one {@link #text} handed out, else ignored. */
+    /** A text's draw submitted: kept if it is the one {@link #text} handed out, else ignored. */
     private void submitted(CgTextDraw draw) {
-        if (count < labels.size() && labels.get(count).draw == draw) count++;
+        if (count < frame.size() && frame.get(count).draw() == draw) count++;
     }
 
-    /** Drops the frame's labels: the next frame queues its own. Their records stay, hidden, for a label that returns. */
+    /** Drops the frame's texts: the next frame queues its own. Their records stay, hidden, for a text that returns. */
     public void clear() {
-        for (int i = 0; i < count; i++) labels.get(i).draw.reset();
+        for (int i = 0; i < count; i++) frame.get(i).draw().reset();
         count = 0;
     }
 
@@ -158,35 +148,45 @@ public final class CgCanvasLabels {
             evictions = CgGlyphAtlas.evictions();
             captured = 0;
             int first = held.size();
-            for (int i = 0; i < first + count; i++) {
-                Label label = i < first ? held.get(i) : labels.get(i - first);
-                if (label == null || !label.shown) {
-                    // A free slot, or a held label hidden: its records stay, drawn nowhere, for when it shows again
+            for (int i = 0; i < first; i++) {
+                CgTextComponent c = held.get(i);
+                if (c == null || !c.visible()) {
+                    // A free slot, or a component hidden: its records stay, drawn nowhere, for when it shows again
                     if (i >= keptCount) capture(i, null);
                     pose(i, null);
                     continue;
                 }
-                CgTextLayout layout = capture(i, label.draw);
-                int px = label.draw.basePx();
-                pose(i, layout == null || px <= 0 ? null : placement(label, view, layout, px));
+                Matrix4dc w = c.worldTransform();
+                CgTextLayout layout = capture(i, c.draw());
+                int px = c.draw().basePx();
+                pose(i, layout == null || px <= 0 ? null : placement(view, layout, px, w.m30(), w.m31(), w.m32(),
+                        c.height(), c.anchorX(), c.anchorY(), c.turned() ? w.getNormalizedRotation(turn) : null));
+            }
+            for (int i = 0; i < count; i++) {
+                CgFrameText t = frame.get(i);
+                CgTextLayout layout = capture(first + i, t.draw());
+                int px = t.draw().basePx();
+                pose(first + i, layout == null || px <= 0 ? null : placement(view, layout, px, t.x, t.y, t.z, t.height,
+                        t.anchorX, t.anchorY, t.rotation));
             }
             upload(first + count, recording);
         }
     }
 
-    /** Label to view space: its offset from the eye, turned or facing the eye, its size and anchor. */
-    private Matrix4f placement(Label label, CgCamera view, CgTextLayout layout, int px) {
-        float scale = label.height / px;
-        float dx = (float) (label.x - view.x()), dy = (float) (label.y - view.y()), dz = (float) (label.z - view.z());
-        if (label.rotation != null) {
-            place.set(view.view()).translate(dx, dy, dz).rotate(label.rotation);
+    /** A text to view space: its offset from the eye, turned or facing the eye, its size and anchor. */
+    private Matrix4f placement(CgCamera view, CgTextLayout layout, int px, double x, double y, double z, float height,
+                               float anchorX, float anchorY, @Nullable Quaternionfc rotation) {
+        float scale = height / px;
+        float dx = (float) (x - view.x()), dy = (float) (y - view.y()), dz = (float) (z - view.z());
+        if (rotation != null) {
+            place.set(view.view()).translate(dx, dy, dz).rotate(rotation);
         } else {
             // A billboard undoes the view's turn, which leaves the eye-space point, the size and the anchor.
             view.view().transformPosition(eye.set(dx, dy, dz));
             place.translation(eye);
         }
         return place.scale(scale, -scale, scale)
-                .translate(-layout.totalWidth() * label.anchorX, -layout.totalHeight() * (1f - label.anchorY), 0f);
+                .translate(-layout.totalWidth() * anchorX, -layout.totalHeight() * (1f - anchorY), 0f);
     }
 
     /**
@@ -258,7 +258,7 @@ public final class CgCanvasLabels {
         if (count > matrixCapacity) {
             matrixCapacity = Math.max(count, 64) * 2;
             if (matrixBuffer != null) recording.release(matrixBuffer);
-            matrixBuffer = CgGraphBuffer.persistent(name + ".labels",
+            matrixBuffer = CgGraphBuffer.persistent(name + ".matrices",
                     CgBufferDesc.elements(matrixCapacity, OBJECT * Float.BYTES, CgBufferUsage.STORAGE, CgBufferUsage.COPY));
         }
         if (count > 0) recording.update(matrixBuffer, 0, matrices, 0, count * OBJECT);
@@ -303,7 +303,7 @@ public final class CgCanvasLabels {
     /** Drops every label and its buffers: at context teardown, which frees their storage. */
     public void release() {
         clear();
-        labels.clear();
+        frame.clear();
         kept.clear();
         keptCount = 0;
         batches.clear();
@@ -494,83 +494,6 @@ public final class CgCanvasLabels {
             }
             dirtyFrom = Integer.MAX_VALUE;
             dirtyTo = 0;
-        }
-    }
-
-    /**
-     * One label's place in the world: a point, a height, which point of the text stands there, and a turn. How it
-     * draws is its {@link CgTextDraw}, from {@link #font}, {@link #family} or {@link #draw()}, submitted to
-     * queue it. Build it from {@link #text}, or {@code CgScene.label}.
-     */
-    public static final class Label {
-        private final CgTextDraw draw;
-        double x, y, z;
-        float height = 0.25f, anchorX = CENTRE, anchorY = CENTRE;
-        Quaternionfc rotation;
-        boolean shown = true;
-
-        Label(CgTextDraw draw) {
-            this.draw = draw;
-        }
-
-        private Label reset() {
-            draw.reset();
-            x = y = z = 0.0;
-            height = 0.25f;
-            anchorX = anchorY = CENTRE;
-            rotation = null;
-            return this;
-        }
-
-        /** Where its anchor stands, absolute, in doubles. The origin unless set. */
-        public Label at(double x, double y, double z) {
-            this.x = x;
-            this.y = y;
-            this.z = z;
-            return this;
-        }
-
-        /** How tall a line of it stands, in blocks: its draw's {@code basePx()} maps to this. 0.25 unless set. */
-        public Label height(float blocks) {
-            this.height = blocks;
-            return this;
-        }
-
-        /**
-         * Which point of the text its position names: {@code x} 0 its left edge to 1 its right, {@code y} 0 its bottom
-         * to 1 its top. The middle unless set.
-         */
-        public Label anchor(float x, float y) {
-            this.anchorX = x;
-            this.anchorY = y;
-            return this;
-        }
-
-        /** Drawn or not, its capture kept either way: a held label's; a frame's label shows by being queued. */
-        public Label shown(boolean shown) {
-            this.shown = shown;
-            return this;
-        }
-
-        /** Turned by {@code rotation} in the world instead of facing the camera; the text reads along +x, up +y. */
-        public Label rotation(Quaternionfc rotation) {
-            this.rotation = rotation;
-            return this;
-        }
-
-        /** Its draw, in {@code font}: every field a {@link CgTextDraw} has. Its {@code submit()} queues it. */
-        public CgTextDraw font(CgFont font) {
-            return draw.font(font);
-        }
-
-        /** Its draw, in {@code family}, falling back across its faces; size it with {@code targetPx}. */
-        public CgTextDraw family(CgFontFamily family) {
-            return draw.family(family);
-        }
-
-        /** Its draw as it stands: for a layout, whose fonts are its own. */
-        public CgTextDraw draw() {
-            return draw;
         }
     }
 }

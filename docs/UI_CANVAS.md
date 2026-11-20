@@ -163,7 +163,7 @@ canvas.restore();
   atlases it was taken under (`STALE_TEXT`).
 - `canvas.textDraw()` is every knob of the text renderer with nothing made per draw: a cached layout, a pixel size, a
   layer's scope. Build and submit in one expression; its colour is taken as given, not faded by the canvas.
-- Text that stays in the world is a label component (`scene.label(...)`, `scene.labelOnce(...)`): its glyphs captured
+- Text in the world is a `CgTextComponent` (`scene.text(...)`) or, for a frame, `scene.textOnce(...)`: its glyphs captured
   once and every label drawn from them (`ENGINE_API.md`). Styles, fonts and layout: [`font/README.md`](font/README.md).
 
 ## Paths

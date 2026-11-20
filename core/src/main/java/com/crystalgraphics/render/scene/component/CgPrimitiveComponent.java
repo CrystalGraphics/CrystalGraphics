@@ -347,6 +347,10 @@ public abstract class CgPrimitiveComponent<T extends CgPrimitiveComponent<T>> im
 
     // -- Visibility -------------------------------------------------------
 
+    public boolean visible() {
+        return visible;
+    }
+
     public T visible(boolean visible) {
         requireLive();
         this.visible = visible;

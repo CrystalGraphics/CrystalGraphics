@@ -71,7 +71,7 @@ public final class CgGlassDemo {
             } else if (moved) {
                 panes[i].at(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]).rotation(turn);
             }
-            scene.labelOnce(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
+            scene.textOnce(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
                     .font(font).style(CgDemoStyles.LABEL).submit();
         }
         in = scene;

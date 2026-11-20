@@ -14,7 +14,7 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 
 import com.crystalgraphics.render.scene.component.CgDecalComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
-import com.crystalgraphics.render.scene.component.CgLabelComponent;
+import com.crystalgraphics.render.scene.component.CgTextComponent;
 import com.crystalgraphics.render.scene.component.CgQuadComponent;
 import com.crystalgraphics.render.scene.component.CgHazeComponent;
 import com.crystalgraphics.render.scene.component.CgPostVolume;
@@ -41,7 +41,8 @@ import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
 
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.scene.component.CgCanvasLabels;
+import com.crystalgraphics.render.scene.renderer.CgFrameText;
+import com.crystalgraphics.render.scene.renderer.CgSceneTextRenderer;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;
@@ -69,7 +70,7 @@ import javax.annotation.Nullable;
  * CgDynamicComponent trail = scene.dynamic(new Trail()).spawn();
  * CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();   // projected onto the ground
  * scene.drawOnce(marker, debugMaterial, x, y, z);    // this frame only: Unreal's debug draw
- * scene.labelOnce("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();   // this frame's name tag
+ * scene.textOnce("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();   // this frame's name tag
  * }</pre>
  *
  * <ul>
@@ -174,52 +175,52 @@ public final class CgScene {
      * only when what it reads changes.
      *
      * <pre>{@code
-     * CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
+     * CgTextComponent tag = scene.text("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
      * tag.text("Spawn (3)");
      * }</pre>
      */
-    public CgLabelComponent label(String text) {
-        return primitives.label(text);
+    public CgTextComponent text(String text) {
+        return primitives.text(text);
     }
 
     /**
-     * A label this frame: {@code text} at a point, facing the camera unless turned, depth-tested and drawn after the
-     * translucent draws, as a name tag. Place it on the label, then {@code font(...)} or {@code family(...)} gives its
-     * text draw; {@code submit()} that. Render thread.
+     * Text this frame: {@code text} at a point, facing the camera unless turned, depth-tested and drawn after the
+     * translucent draws, as a name tag. Place it, then {@code font(...)} or {@code family(...)} gives its text draw;
+     * {@code submit()} that. Render thread.
      *
      * <pre>{@code
-     * scene.labelOnce("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040).style(DAMAGE).submit();
-     * scene.labelOnce(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
+     * scene.textOnce("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040).style(DAMAGE).submit();
+     * scene.textOnce(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
      * }</pre>
      *
      * <ul>
      *   <li>{@code height} is a line's height in blocks; its raster tier follows how tall it stands on screen.</li>
-     *   <li>It lives one frame: submit it each frame it shows. Text that stays is a {@link #label(String)}.</li>
+     *   <li>It lives one frame: submit it each frame it shows. Text that stays is a {@link #text(String)}.</li>
      * </ul>
      */
-    public CgCanvasLabels.Label labelOnce(String text) {
-        CgCanvasLabels.Label label = renderer.labels().text();
-        label.draw().text(text);
-        return label;
+    public CgFrameText textOnce(String text) {
+        CgFrameText once = renderer.texts().text();
+        once.draw().text(text);
+        return once;
     }
 
-    /** As {@link #labelOnce(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
-    public CgCanvasLabels.Label labelOnce(CgShapedParagraph paragraph) {
-        CgCanvasLabels.Label label = renderer.labels().text();
-        label.draw().paragraph(paragraph);
-        return label;
+    /** As {@link #textOnce(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
+    public CgFrameText textOnce(CgShapedParagraph paragraph) {
+        CgFrameText once = renderer.texts().text();
+        once.draw().paragraph(paragraph);
+        return once;
     }
 
-    /** As {@link #labelOnce(String)}, of a finished layout: its fonts are its own. */
-    public CgCanvasLabels.Label labelOnce(CgTextLayout layout) {
-        CgCanvasLabels.Label label = renderer.labels().text();
-        label.draw().layout(layout);
-        return label;
+    /** As {@link #textOnce(String)}, of a finished layout: its fonts are its own. */
+    public CgFrameText textOnce(CgTextLayout layout) {
+        CgFrameText once = renderer.texts().text();
+        once.draw().layout(layout);
+        return once;
     }
 
-    /** This frame's labels: for a caller queuing many, or reading what is queued. */
-    public CgCanvasLabels labels() {
-        return renderer.labels();
+    /** Its text in the world: for a caller queuing many, or reading what is queued. */
+    public CgSceneTextRenderer texts() {
+        return renderer.texts();
     }
 
     /** Its records on the GPU. */

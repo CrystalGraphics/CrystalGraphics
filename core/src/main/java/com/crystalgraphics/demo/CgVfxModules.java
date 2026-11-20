@@ -2660,7 +2660,7 @@ public final class CgVfxModules {
         @Override
         public void label(float x, float y, float z, float height, String text, int color) {
             if (font == null) return;
-            scene.labelOnce(text).at(currentX + x, currentY + y, currentZ + z).height(height).font(font).color(color)
+            scene.textOnce(text).at(currentX + x, currentY + y, currentZ + z).height(height).font(font).color(color)
                     .style(CgDemoStyles.LABEL).submit();
         }
     };
@@ -2697,10 +2697,10 @@ public final class CgVfxModules {
                 // Its name over it, and what it shows under that.
                 int split = s.name().indexOf(": ");
                 String title = split < 0 ? s.name() : s.name().substring(0, split);
-                scene.labelOnce(title).at(currentX, currentY + 10.2, currentZ).height(1.1f).font(font)
+                scene.textOnce(title).at(currentX, currentY + 10.2, currentZ).height(1.1f).font(font)
                         .style(CgDemoStyles.LABEL).submit();
                 if (split >= 0) {
-                    scene.labelOnce(s.name().substring(split + 2)).at(currentX, currentY + 9.1, currentZ).height(0.6f)
+                    scene.textOnce(s.name().substring(split + 2)).at(currentX, currentY + 9.1, currentZ).height(0.6f)
                             .font(font).color(0xFFB8D8FF).style(CgDemoStyles.LABEL).submit();
                 }
             }

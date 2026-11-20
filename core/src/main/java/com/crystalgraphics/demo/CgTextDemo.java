@@ -1,7 +1,7 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.scene.CgScene;
-import com.crystalgraphics.render.scene.component.CgCanvasLabels;
+import com.crystalgraphics.render.scene.renderer.CgFrameText;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -256,7 +256,7 @@ public final class CgTextDemo {
             }
         }
         for (int i = 0; i < STATIONS; i++) {
-            scene.labelOnce(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
+            scene.textOnce(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
                     .font(labelFont).style(CgDemoStyles.LABEL).submit();
         }
         // A hit landing four times a second, climbing from single digits to the trillions, three random hits to each
@@ -276,7 +276,7 @@ public final class CgTextDemo {
         CgTextStyle style = i == CRITICAL_STATION ? critical() : i == 1 && neonOut() ? NEON_OFF : styles[i];
         if (style == null) return;
         float height = BLOCKS_PER_PX * PX * (i == 0 ? 1f + 0.12f * punch(seconds) : 1f);
-        CgCanvasLabels.Label label = scene.labelOnce(words[i]).at(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]).height(height)
+        CgFrameText label = scene.textOnce(words[i]).at(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]).height(height)
                 .rotation(facing);
         CgTextDraw draw = style.font() == null ? label.font(font) : label.draw();
         draw.style(style).contained(false).submit();

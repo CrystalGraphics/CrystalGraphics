@@ -165,12 +165,12 @@ scene.quad(2f, 1f, signMaterial).at(x, y, z).rotation(facing).spawn();          
 scene.quad(0.6f, 0.6f, null).fill(CgBrush.svg(icon)).facing(CgQuadComponent.Facing.CAMERA).at(x, y, z).spawn();
 scene.quad(2f, 1f, null).radii(0.2f).backdropFilter(CgBackdropFilter.FROSTED.scaled(1 / 32f)).at(x, y, z).spawn();
 scene.quad(2f, 1.2f, null).widget(board, 500f, 300f).at(x, y, z).spawn();             // a CgUserWidget
-CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
+CgTextComponent tag = scene.text("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
 tag.text("Spawn (3)");                                                                   // captured again next frame
 
 // This frame only, Unreal's debug draw: rows added before the frame's views draw
 scene.once().mesh(marker, debugMaterial).at(x, y, z).customData(0, r, g, b, a).add();
-scene.labelOnce("12").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();   // a CgTextStyle
+scene.textOnce("12").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();   // a CgTextStyle
 CgDebugDraw.box(minX, minY, minZ, maxX, maxY, maxZ, 0xFF40FF60, 2f);                   // any thread, two seconds
 ```
 
@@ -179,7 +179,7 @@ first view, at the height it stands on screen rounded up to a power of two, and 
 shows changes; a widget's `changes()` includes the moves and fades its replays pose. Glass reads the scene behind it
 from a colour copy with its mip chain (`CG_SCENE_COLOR_BLURRED` in any surface material): a pane re-copies where
 something drew within its reach since the last copy, so the panes behind it, drawn first in the back-to-front pass,
-show through it. A label component's glyphs are kept on the GPU, a matrix a frame while only it moves.
+show through it. A text component's glyphs are kept on the GPU, a matrix a frame while only it moves.
 
 `CgDebugDraw` is Unreal's `DrawDebugLine` family: `line`, `point`, `box`, `sphere`, `arrow`, `text`, each for one
 frame, a duration, or `FOREVER` until `clear()`; `foreground()` draws over everything. Text needs a font given once,
@@ -1071,7 +1071,7 @@ mine.end();
 ```
 
 - Paints are values (`PAINT.md`): colours, gradients, brushes and sprite sheets, grids, glass looks.
-- A world stage has no canvas: what stands in the world is a scene component (`scene.quad(...)`, `scene.label(...)`).
+- A world stage has no canvas: what stands in the world is a scene component (`scene.quad(...)`, `scene.text(...)`).
 - The whole guide, for consumers: **[`UI_CANVAS.md`](UI_CANVAS.md)**. Package guides: `api/canvas`, `render/ui/CLAUDE.md`.
 
 ### Font/Text System

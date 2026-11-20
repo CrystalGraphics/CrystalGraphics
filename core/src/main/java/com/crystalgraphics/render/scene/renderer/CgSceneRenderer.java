@@ -19,7 +19,6 @@ import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.platform.world.CgWorldBegin;
-import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -82,11 +81,11 @@ import java.util.WeakHashMap;
  * <p><b>Opaque</b>: the client world's frame (once a frame); {@code PREPARE}; a keyed subject's glow; our opaque scene in;
  * the instance cull; the depth prepass (normals beside it where asked); the solids' velocity; ambient occlusion; the
  * base pass; our opaque scene out; {@code OPAQUE}.</p>
- * <p><b>Translucent</b>: the HDR scene in; the labels' depth; custom data; custom depth; the blends' velocity and
+ * <p><b>Translucent</b>: the HDR scene in; the world text's depth; custom data; custom depth; the blends' velocity and
  * responsive marks; normals published; lights;
  * media; the scene glows; decals; {@code SURFACES}; graded layers prepared; the instance cull; the translucent prepass;
  * late solids; half size; volumes; distortion's bends; the translucent pass; distortion's final apply; after distortion;
- * separate translucency; graded layers; the subject; overdraw; labels; {@code TRANSLUCENT}; post; {@code OVERLAY}.</p>
+ * separate translucency; graded layers; the subject; overdraw; world text; {@code TRANSLUCENT}; post; {@code OVERLAY}.</p>
  *
  * <ul>
  *   <li>What it reads is flags ({@link #HALF_RESOLUTION} and the rest), each overridable per view
@@ -163,9 +162,9 @@ public final class CgSceneRenderer {
     private final CgLayerPasses layers = new CgLayerPasses(this);
     private final CgDistortion distortion = new CgDistortion(this);
     private final CgOverdraw overdraw = new CgOverdraw();
-    private final CgCanvasLabels labels = new CgCanvasLabels("scene.labels");
-    private long frame = Long.MIN_VALUE, labelsFrame = Long.MIN_VALUE;
-    private boolean labelDepthDrawn;
+    private final CgSceneTextRenderer texts = new CgSceneTextRenderer("scene.text");
+    private long frame = Long.MIN_VALUE, textsFrame = Long.MIN_VALUE;
+    private boolean textDepthDrawn;
 
     /** This firing's media and the transmittance the passes bind; null with nothing in the air. */
     @Nullable
@@ -231,7 +230,7 @@ public final class CgSceneRenderer {
     /** Engine side: the scene's. */
     public CgSceneRenderer(CgScene scene) {
         this.scene = scene;
-        labels.held(scene.primitives().heldLabels());
+        texts.held(scene.primitives().texts());
         media.add(new CgSceneMedia.Injector() {
             @Override
             public boolean inject(CgComputePass pass, CgSceneMedia m) {
@@ -286,16 +285,16 @@ public final class CgSceneRenderer {
     }
 
     /**
-     * The scene's labels, drawn into every view's translucent callback: its spawned label components, then what
-     * {@code CgScene.labelOnce} queues this frame.
+     * The scene's text in the world, drawn into every view's translucent callback: its spawned text components, then
+     * what {@code CgScene.textOnce} queues this frame.
      */
-    public CgCanvasLabels labels() {
+    public CgSceneTextRenderer texts() {
         long now = CgFrameRing.frame();
-        if (now != labelsFrame) {
-            labels.clear();
-            labelsFrame = now;
+        if (now != textsFrame) {
+            texts.clear();
+            textsFrame = now;
         }
-        return labels;
+        return texts;
     }
 
     /** Engine side, at context teardown: every scene's renderer drops what it holds of the context. */
@@ -309,7 +308,7 @@ public final class CgSceneRenderer {
         colour.release();
         half.release();
         distortion.release();
-        labels.release();
+        texts.release();
         customDataStates.clear();
         depthIn = null;
         customDataTarget = customDataDepth = customDepthTarget = null;
@@ -456,9 +455,9 @@ public final class CgSceneRenderer {
         merge = view.flag(MERGE_EMISSION) && CgScenePipelines.mergeApplied();
         CgPassConstants constants = firing.constants().sceneGlow(view.flag(SCENE_EMISSION));
 
-        // Before any glow: a label's text then hides the glows behind it, as it hides their colour
-        boolean showLabels = view.showFlags().labels() && scene.renderer() == this;
-        if (showLabels) recordLabelDepth(firing);
+        // Before any glow: world text then hides the glows behind it, as it hides their colour
+        boolean showTexts = view.showFlags().labels() && scene.renderer() == this;
+        if (showTexts) recordTextDepth(firing);
         if (linear && view.flag(GRADE_DRAWS) && layers.looksReadScene(rows)) textures.requestCustomData();
         if (textures.customDataRequested()) recordCustomData(firing, passes);
         recordCustomDepth(firing, passes);
@@ -504,7 +503,7 @@ public final class CgSceneRenderer {
         if (layered) layers.record(firing, passes, constants);
         if (textures.subjectRequested()) glows.recordSubject(firing, passes, textures.subjectKey());
         if (view.showFlags().overdraw() && rows.size() > 0) overdraw.record(firing, passes);
-        if (showLabels) recordLabels(firing);
+        if (showTexts) recordTexts(firing);
     }
 
     /** Late solids, half size, volumes, the bends, the translucent pass with its applies, after distortion, separate. */
@@ -807,38 +806,38 @@ public final class CgSceneRenderer {
         view.textures().customDepth(target);
     }
 
-    // ── Labels ────────────────────────────────────────────────────────────────────────────────────
+    // ── Text in the world ────────────────────────────────────────────────────────────────────────────────────
 
-    /** Places the frame's labels and draws their text into the depth, before any glow and translucent draw. */
-    private void recordLabelDepth(CgStageFiring firing) {
-        labelDepthDrawn = false;
-        CgCanvasLabels l = labels();
+    /** Places the frame's text in the world and draws it into the depth, before any glow and translucent draw. */
+    private void recordTextDepth(CgStageFiring firing) {
+        textDepthDrawn = false;
+        CgSceneTextRenderer l = texts();
         if (!l.any()) return;
         l.prepare(firing.recording(), firing.view().camera(), firing.view().width(), firing.view().height());
-        labelPass(firing, true);
-        labelDepthDrawn = true;
+        textPass(firing, true);
+        textDepthDrawn = true;
     }
 
-    /** The frame's labels' colour, after every translucent draw. */
-    private void recordLabels(CgStageFiring firing) {
-        CgCanvasLabels l = labels();
+    /** The frame's text in the world, in colour, after every translucent draw. */
+    private void recordTexts(CgStageFiring firing) {
+        CgSceneTextRenderer l = texts();
         if (!l.any()) return;
-        if (!labelDepthDrawn) {
+        if (!textDepthDrawn) {
             l.prepare(firing.recording(), firing.view().camera(), firing.view().width(), firing.view().height());
-            labelPass(firing, true);
+            textPass(firing, true);
         }
-        labelDepthDrawn = false;
-        labelPass(firing, false);
+        textDepthDrawn = false;
+        textPass(firing, false);
     }
 
-    private void labelPass(CgStageFiring firing, boolean depth) {
+    private void textPass(CgStageFiring firing, boolean depth) {
         CgGraphTexture target = firing.target();
-        CgRasterPass pass = firing.recording().raster("scene.labels").color(target, CgLoad.load())
+        CgRasterPass pass = firing.recording().raster("scene.text").color(target, CgLoad.load())
                 .constants(firing.constants()).order(CgOrder.LOOKBACK);
-        // The host's own target carries its depth: labels test and write it there
+        // The host's own target carries its depth: the text tests and writes it there
         if (target.kind() == CgGraphTexture.Kind.EXTERNAL) pass.depth(target, CgLoad.load(), CgDepthAccess.WRITE);
-        if (depth) labels.drawDepth(pass);
-        else labels.draw(pass, target);
+        if (depth) texts.drawDepth(pass);
+        else texts.draw(pass, target);
         pass.end();
     }
 

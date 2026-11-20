@@ -13987,11 +13987,6 @@ com/crystalgraphics/render/scene/CgScene
   method public haze ()Lcom/crystalgraphics/render/scene/component/CgHazeComponent;
   method public heightFog ()Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
   method public instanced (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgInstancedMeshComponent;
-  method public label (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public labelOnce (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public labelOnce (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public labelOnce (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public labels ()Lcom/crystalgraphics/render/scene/component/CgCanvasLabels;
   method public lights ()Lcom/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights;
   method public media ()Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
@@ -14008,6 +14003,11 @@ com/crystalgraphics/render/scene/CgScene
   method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public spawn (Lcom/crystalgraphics/render/scene/prefab/CgPrefab;)Lcom/crystalgraphics/render/scene/prefab/CgPrefabInstance;
   method public spotLight ()Lcom/crystalgraphics/render/scene/component/CgSpotLight;
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public textOnce (Lcom/crystalgraphics/api/text/CgShapedParagraph;)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public textOnce (Lcom/crystalgraphics/api/text/CgTextLayout;)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public textOnce (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public texts ()Lcom/crystalgraphics/render/scene/renderer/CgSceneTextRenderer;
   method public tick (D)V
   method public tubeLight ()Lcom/crystalgraphics/render/scene/component/CgTubeLight;
   method public update ()V
@@ -14164,30 +14164,6 @@ com/crystalgraphics/render/scene/component/CgBoneHide
   field public,static,final NONE Lcom/crystalgraphics/render/scene/component/CgBoneHide;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgBoneHide;
   method public,static values ()[Lcom/crystalgraphics/render/scene/component/CgBoneHide;
-com/crystalgraphics/render/scene/component/CgCanvasLabels
-  access public,final
-  extends java/lang/Object
-  method public <init> (Ljava/lang/String;)V
-  method public any ()Z
-  method public clear ()V
-  method public draw (Lcom/crystalgraphics/render/graph/CgRasterPass;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
-  method public drawDepth (Lcom/crystalgraphics/render/graph/CgRasterPass;)V
-  method public held (Ljava/util/List;)V
-  method public prepare (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;II)V
-  method public release ()V
-  method public text ()Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public,static held ()Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-com/crystalgraphics/render/scene/component/CgCanvasLabels$Label
-  access public,final
-  extends java/lang/Object
-  method public anchor (FF)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public at (DDD)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public draw ()Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public height (F)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
-  method public shown (Z)Lcom/crystalgraphics/render/scene/component/CgCanvasLabels$Label;
 com/crystalgraphics/render/scene/component/CgColourRegion
   access public,final
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
@@ -14326,19 +14302,6 @@ com/crystalgraphics/render/scene/component/CgInstancedMeshComponent
   method public move (IDDD)V
   method public remove (I)V
   method public transform (ILorg/joml/Matrix4d;)V
-com/crystalgraphics/render/scene/component/CgLabelComponent
-  access public,final
-  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
-  method public anchor (FF)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public draw ()Lcom/crystalgraphics/text/render/CgTextDraw;
-  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public height ()F
-  method public height (F)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public toString ()Ljava/lang/String;
-  method public turned ()Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
-  method public visible (Z)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
 com/crystalgraphics/render/scene/component/CgLightComponent
   access public,abstract
   extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
@@ -14474,6 +14437,7 @@ com/crystalgraphics/render/scene/component/CgPrimitiveComponent
   method public subject ()I
   method public subject (I)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public transform (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
+  method public visible ()Z
   method public visible (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
   method public worldBounds ()Lcom/crystalgraphics/shape/bounds/CgAABBc;
   method public writesVelocity (Z)Lcom/crystalgraphics/render/scene/component/CgPrimitiveComponent;
@@ -14556,11 +14520,9 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public gather (Lcom/crystalgraphics/render/view/CgView;Lcom/crystalgraphics/camera/CgCamera;Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;)V
   method public haze ()Lcom/crystalgraphics/render/scene/component/CgHazeComponent;
   method public heightFog ()Lcom/crystalgraphics/render/scene/component/CgHeightFogComponent;
-  method public heldLabels ()Ljava/util/List;
   method public holdsHaze ()Z
   method public injectHaze (Lcom/crystalgraphics/render/graph/CgComputePass;Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;)Z
   method public instanced (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgInstancedMeshComponent;
-  method public label (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgLabelComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMesh;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public mesh (Lcom/crystalgraphics/api/mesh/CgMeshLods;Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/scene/component/CgMeshComponent;
   method public once ()Lcom/crystalgraphics/render/scene/component/CgMeshCollector;
@@ -14575,6 +14537,8 @@ com/crystalgraphics/render/scene/component/CgScenePrimitives
   method public skeletal (Lcom/crystalgraphics/api/mesh/CgSkeletalMesh;)Lcom/crystalgraphics/render/scene/component/CgSkeletalMeshComponent;
   method public spotLight ()Lcom/crystalgraphics/render/scene/component/CgSpotLight;
   method public tested ()I
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public texts ()Ljava/util/List;
   method public tubeLight ()Lcom/crystalgraphics/render/scene/component/CgTubeLight;
   method public update ()V
   method public updateCaptures ()V
@@ -14631,6 +14595,21 @@ com/crystalgraphics/render/scene/component/CgSpotLight
   method public inner ()F
   method public outer ()F
   method public toString ()Ljava/lang/String;
+com/crystalgraphics/render/scene/component/CgTextComponent
+  access public,final
+  extends com/crystalgraphics/render/scene/component/CgPrimitiveComponent
+  method public anchor (FF)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public anchorX ()F
+  method public anchorY ()F
+  method public draw ()Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public height ()F
+  method public height (F)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public text (Ljava/lang/String;)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
+  method public toString ()Ljava/lang/String;
+  method public turned ()Z
+  method public turned (Z)Lcom/crystalgraphics/render/scene/component/CgTextComponent;
 com/crystalgraphics/render/scene/component/CgTubeLight
   access public,final
   extends com/crystalgraphics/render/scene/component/CgLightComponent
@@ -14882,6 +14861,16 @@ com/crystalgraphics/render/scene/prefab/CgPrefabPostPreparer
   implements com/crystalgraphics/asset/load/CgAssetPreparer
   method public <init> ()V
   method public plan (Ljava/lang/Object;Lcom/crystalgraphics/asset/load/CgAssetPreparer$Plan;)V
+com/crystalgraphics/render/scene/renderer/CgFrameText
+  access public,final
+  extends java/lang/Object
+  method public anchor (FF)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public at (DDD)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public draw ()Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public family (Lcom/crystalgraphics/api/font/CgFontFamily;)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public font (Lcom/crystalgraphics/api/font/CgFont;)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public height (F)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
+  method public rotation (Lorg/joml/Quaternionfc;)Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
 com/crystalgraphics/render/scene/renderer/CgScenePipelines
   access public,final
   extends java/lang/Object
@@ -14902,12 +14891,12 @@ com/crystalgraphics/render/scene/renderer/CgSceneRenderer
   field public,static,final SCENE_EMISSION Lcom/crystalgraphics/variable/CgVar$Num;
   field public,static,final SKIP_UNREADY Lcom/crystalgraphics/variable/CgVar$Bool;
   method public <init> (Lcom/crystalgraphics/render/scene/CgScene;)V
-  method public labels ()Lcom/crystalgraphics/render/scene/component/CgCanvasLabels;
   method public lights ()Lcom/crystalgraphics/render/scene/renderer/feature/light/CgSceneLights;
   method public media ()Lcom/crystalgraphics/render/scene/renderer/feature/media/CgSceneMedia;
   method public mediated (Lcom/crystalgraphics/render/graph/CgRasterPass;)V
   method public opaque (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public scene ()Lcom/crystalgraphics/render/scene/CgScene;
+  method public texts ()Lcom/crystalgraphics/render/scene/renderer/CgSceneTextRenderer;
   method public translucent (Lcom/crystalgraphics/render/stage/CgStageFiring;)V
   method public,static emission (Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;I)F
   method public,static emits (Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;I)Z
@@ -14915,6 +14904,18 @@ com/crystalgraphics/render/scene/renderer/CgSceneRenderer
   method public,static install ()V
   method public,static queue (Lcom/crystalgraphics/render/scene/batch/CgMeshBatches;I)I
   method public,static releaseAll ()V
+com/crystalgraphics/render/scene/renderer/CgSceneTextRenderer
+  access public,final
+  extends java/lang/Object
+  method public <init> (Ljava/lang/String;)V
+  method public any ()Z
+  method public clear ()V
+  method public draw (Lcom/crystalgraphics/render/graph/CgRasterPass;Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
+  method public drawDepth (Lcom/crystalgraphics/render/graph/CgRasterPass;)V
+  method public held (Ljava/util/List;)V
+  method public prepare (Lcom/crystalgraphics/render/graph/CgRecording;Lcom/crystalgraphics/camera/CgCamera;II)V
+  method public release ()V
+  method public text ()Lcom/crystalgraphics/render/scene/renderer/CgFrameText;
 com/crystalgraphics/render/scene/renderer/feature/ao/CgAmbientOcclusion
   access public,final
   extends java/lang/Object

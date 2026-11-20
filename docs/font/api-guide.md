@@ -98,7 +98,7 @@ CgTextLayout.of(new CgStyledText(plain, spans), group).shape();   // CgStyleSpan
 
 Text draws on a `CgCanvas` (`../UI_CANVAS.md` § *Text*): a GUI stage's `frame.canvas()`, or one you begin into a
 texture. `canvas.text(CgText, x, y)` is the everyday form; `canvas.textDraw()` is the request below, every knob of it.
-It is placed by the canvas's transform and rastered at the target's device pixels. In the world, text is a label
+It is placed by the canvas's transform and rastered at the target's device pixels. In the world, text is a text
 component (§ 4). Nothing to create, size or delete.
 
 ### The three forms
@@ -197,17 +197,17 @@ must to keep order.
 
 ## 4. World-space text
 
-Text in the world is a label component of the scene: its glyphs captured once and kept on the GPU, every label
+Text in the world is a text component of the scene: its glyphs captured once and kept on the GPU, every text
 drawn from them, depth-tested and billboarded or turned. Glyphs are distance fields, their tier picked from their size
 on screen; the line breaks never change with distance.
 
 ```java
-CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();   // until removed
+CgTextComponent tag = scene.text("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();   // until removed
 tag.text("Spawn (3)");                                                                         // captured again
-scene.labelOnce(damage).font(font).height(0.3f).at(x, y, z);                                   // this frame only
+scene.textOnce(damage).at(x, y, z).height(0.3f).font(font).submit();                          // this frame only
 ```
 
-- A label's look is a `CgTextStyle` like any draw's; its height is in blocks.
+- Its look is a `CgTextStyle` like any draw's; its height is in blocks.
 - More: [`../ENGINE_API.md`](../ENGINE_API.md) § *The scene and its views*.
 
 ---

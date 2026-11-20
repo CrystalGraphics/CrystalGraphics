@@ -358,7 +358,7 @@ public final class CgDebugDraw {
         int keptText = 0;
         for (int i = 0; i < textCount; i++) {
             int at = 3 * i;
-            CgScene.client().labelOnce(texts[i]).at(textAt[at], textAt[at + 1], textAt[at + 2]).height(textHeights[i])
+            CgScene.client().textOnce(texts[i]).at(textAt[at], textAt[at + 1], textAt[at + 2]).height(textHeights[i])
                     .font(font).color(textColours[i]).submit();
             if (textUntil[i] > now) {
                 if (keptText != i) {
