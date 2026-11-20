@@ -87,7 +87,12 @@ public final class CgCanvasRecorder {
             if (picture != null) recording.release(picture);
             picture = requestTexture("canvas_picture", this.width, this.height, PICTURE_FORMAT);
         }
-        canvas.begin(recording, picture, CgLoad.CLEAR, camera.screenLens(this.width, this.height), scale);
+        CgCamera lens = camera.screenLens(this.width, this.height);
+        // A clear of its own, so a pass of the caller's into the picture before the canvas's first draw survives
+        recording.raster("canvas_picture_clear").color(picture, CgLoad.CLEAR).camera(lens).end();
+        canvas.begin(recording, picture, CgLoad.load(), lens, scale);
+        // Glass sees the host's frame the picture is composited over, as the frame began, then the picture
+        canvas.behind(CgGraphTexture.current());
         active = true;
         return canvas;
     }
@@ -137,6 +142,12 @@ public final class CgCanvasRecorder {
     public CgRecording recording() {
         if (!active) throw new IllegalStateException("no frame is open");
         return recording;
+    }
+
+    /** The open frame's picture: for passes of the caller's own into it, between canvas items. */
+    public CgGraphTexture picture() {
+        if (!active) throw new IllegalStateException("no frame is open");
+        return picture;
     }
 
     /** Frames begun so far: what keys a frame's node ids. */

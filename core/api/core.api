@@ -2490,12 +2490,15 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public clip (FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public clip (FFFFLcom/crystalgraphics/api/vector/CgCornerRadii;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public clip (Lcom/crystalgraphics/api/vector/CgVectorPath;)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public clipBounds ([F)[F
   method public concat (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public currentOpacity ()F
   method public degradedDraws ()J
   method public end ()V
   method public endChunk (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public endPass ()V
   method public endTurn ()V
+  method public enter (I)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public fader (F)I
   method public fill (FFFFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public fill (FFFFLcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2515,6 +2518,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public opacity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public photograph (ILcom/crystalgraphics/api/canvas/CgPhotograph$Sink;)Z
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
   method public replay (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Z
@@ -2523,15 +2527,20 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public save ()Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public scale ()F
   method public scale (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public setTransform (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public spline ()Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
   method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;I)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public svg (Lcom/crystalgraphics/api/vector/svg/CgSvg;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public text (Lcom/crystalgraphics/api/text/CgText;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public text (Lcom/crystalgraphics/api/text/CgText;FFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public textDraw ()Lcom/crystalgraphics/text/render/CgTextDraw;
   method public textGamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public thumbnail (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public thumbnail (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public transform ([F)[F
   method public translate (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public triangle (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
   method public view (Lcom/crystalgraphics/render/view/CgView;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public,static elementMaterial ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static on (Lcom/crystalgraphics/render/stage/CgStageFrame;)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2579,6 +2588,7 @@ com/crystalgraphics/api/canvas/CgCanvasPresenter
   extends java/lang/Object
   method public <init> ()V
   method public composites (Z)Lcom/crystalgraphics/api/canvas/CgCanvasPresenter;
+  method public onExecuted (Ljava/lang/Runnable;)Lcom/crystalgraphics/api/canvas/CgCanvasPresenter;
   method public present (Lcom/crystalgraphics/render/stage/CgStageFrame;Lcom/crystalgraphics/api/canvas/CgCanvasFrame;)V
   method public presentAgain (Lcom/crystalgraphics/render/stage/CgStageFrame;)Z
   method public presented ()Lcom/crystalgraphics/api/canvas/CgCanvasFrame;
@@ -2593,11 +2603,46 @@ com/crystalgraphics/api/canvas/CgCanvasRecorder
   method public begin (II)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public begin (IIF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public frameId ()J
+  method public picture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public recording ()Lcom/crystalgraphics/render/graph/CgRecording;
   method public release ()V
   method public releaseTexture (Lcom/crystalgraphics/render/graph/CgGraphTexture;)V
   method public requestTexture (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public seal ()Lcom/crystalgraphics/api/canvas/CgCanvasFrame;
+com/crystalgraphics/api/canvas/CgCanvasSpline
+  access public,final
+  extends java/lang/Object
+  method public arrowAtEnd ()Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public cap (Lcom/crystalgraphics/api/vector/CgStrokeCap;)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public cap (Lcom/crystalgraphics/api/vector/CgStrokeCap;Lcom/crystalgraphics/api/vector/CgStrokeCap;)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public color (I)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public colors (II)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public cubic (FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public draw ()Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public feather (F)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public from (FF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public line (FFFF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public to (FF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public via (FF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public width (F)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+  method public width (FF)Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
+com/crystalgraphics/api/canvas/CgCanvasTriangle
+  access public,final
+  extends java/lang/Object
+  method public antialias (Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
+  method public color (I)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
+  method public cornerRadius (F)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
+  method public draw ()Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public feather (F)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
+  method public ramp (IFFIFF)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
+com/crystalgraphics/api/canvas/CgCanvasTriangle$Edge
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final ALL Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;
+  field public,static,final P1_P2 Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;
+  field public,static,final P2_P0 Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;
+  method public,static values ()[Lcom/crystalgraphics/api/canvas/CgCanvasTriangle$Edge;
 com/crystalgraphics/api/canvas/CgCullRect
   access public,final
   extends java/lang/Object
@@ -2625,6 +2670,7 @@ com/crystalgraphics/api/canvas/CgKeptLayer$Placement
   implements com/crystalgraphics/api/canvas/CgKeptLayer$Tenant
   method public <init> ()V
   method public place (Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;FFFF)V
+  method public place (Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;FFFFZ)V
   method public vacate (Lcom/crystalgraphics/api/canvas/CgKeptLayer;IJ)V
 com/crystalgraphics/api/canvas/CgKeptLayer$Tenant
   access public,abstract,interface
@@ -2640,6 +2686,8 @@ com/crystalgraphics/api/canvas/CgKeptLayer$Walk
   method public draws ()Z
   method public layer ()Lcom/crystalgraphics/api/canvas/CgKeptLayer;
   method public opacity (F)Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;
+  method public x ()I
+  method public y ()I
 com/crystalgraphics/api/canvas/CgPaintChunk
   access public,final
   extends java/lang/Object
@@ -4623,6 +4671,7 @@ com/crystalgraphics/api/vector/CgCornerRadii
   method public bottomRightX ()F
   method public bottomRightY ()F
   method public fitted (FF)Lcom/crystalgraphics/api/vector/CgCornerRadii;
+  method public inset (FFFF)Lcom/crystalgraphics/api/vector/CgCornerRadii;
   method public isNone ()Z
   method public isUniformCircle ()Z
   method public scaled (F)Lcom/crystalgraphics/api/vector/CgCornerRadii;
@@ -12122,6 +12171,27 @@ com/crystalgraphics/render/canvas/CgCurveBatch$Triangle
   method public silhouetteEdge (I)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public state (Lcom/crystalgraphics/api/state/CgRenderState;)Lcom/crystalgraphics/render/canvas/CgCurveBatch$Triangle;
   method public submit ()Lcom/crystalgraphics/render/canvas/CgCanvas;
+com/crystalgraphics/render/canvas/CgCurveRecords
+  access public,final
+  extends java/lang/Object
+  field public,static,final ANTIALIAS F
+  field public,static,final CAP_ARROW I
+  field public,static,final CAP_BUTT I
+  field public,static,final CAP_ROUND I
+  field public,static,final CAP_SQUARE I
+  field public,static,final CLIP I
+  field public,static,final EDGE_ALL I
+  field public,static,final EDGE_P1_P2 I
+  field public,static,final EDGE_P2_P0 I
+  field public,static,final FLOATS I
+  field public,static,final MAX_PIECES I
+  field public,static,final NODE I
+  method public,static flags (IIZZ)I
+  method public,static lerp (IIF)I
+  method public,static splitCubic (FFFFFFFF[FF)I
+  method public,static triangleFlags (ZI)I
+  method public,static write ([FIFFFFFFFFIIFIIFF)V
+  method public,static writeTriangle ([FIFFFFFFIIFFIFFFFIFF)V
 com/crystalgraphics/render/canvas/CgQuadBatch
   access public,final
   extends java/lang/Object
@@ -15751,6 +15821,10 @@ com/crystalgraphics/render/ui/element/CgUiElements
   field public,static,final FLAG_BORDER I
   field public,static,final FLAG_CHECKER I
   field public,static,final FLAG_COVERAGE I
+  field public,static,final FLAG_HARD_BOTTOM I
+  field public,static,final FLAG_HARD_LEFT I
+  field public,static,final FLAG_HARD_RIGHT I
+  field public,static,final FLAG_HARD_TOP I
   field public,static,final FLAG_PREMULTIPLIED I
   field public,static,final FLAG_ROUNDED I
   field public,static,final FLOATS I

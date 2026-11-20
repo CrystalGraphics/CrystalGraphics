@@ -15,7 +15,7 @@ package com.crystalgraphics.api.paint.brush;
  *   <li>{@code fill} false leaves the middle empty: a frame around content drawn separately.</li>
  *   <li>{@code scale} draws the slices that many times their source size (CSS's {@code border-image-width}), so a
  *       pixel-art frame can be shown at 2x; the middle tiles at the same scale.</li>
- *   <li>Drawn as one quad: the nine regions are remapped per pixel, so no seams show between them.</li>
+ *   <li>No seam shows between the regions: they meet on hard edges, so a pixel on one is drawn once.</li>
  * </ul>
  *
  * @param left   pixels from the region's left edge

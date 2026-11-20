@@ -53,6 +53,21 @@ public record CgCornerRadii(float topLeftX, float topLeftY, float topRightX, flo
     }
 
     /** Whether every corner is square. */
+    /**
+     * The radii of the curve inside a border of these widths: each corner less the border beside it, never below 0
+     * (CSS Backgrounds 3, the inner border radius). What a box's padding edge is rounded by.
+     *
+     * <pre>{@code
+     * CgCornerRadii inner = CgCornerRadii.of(8f).inset(2f, 2f, 4f, 2f);   // top, right, bottom, left
+     * }</pre>
+     */
+    public CgCornerRadii inset(float top, float right, float bottom, float left) {
+        return new CgCornerRadii(Math.max(0f, topLeftX - left), Math.max(0f, topLeftY - top),
+                Math.max(0f, topRightX - right), Math.max(0f, topRightY - top),
+                Math.max(0f, bottomRightX - right), Math.max(0f, bottomRightY - bottom),
+                Math.max(0f, bottomLeftX - left), Math.max(0f, bottomLeftY - bottom));
+    }
+
     public boolean isNone() {
         return (topLeftX == 0f || topLeftY == 0f) && (topRightX == 0f || topRightY == 0f)
                 && (bottomRightX == 0f || bottomRightY == 0f) && (bottomLeftX == 0f || bottomLeftY == 0f);

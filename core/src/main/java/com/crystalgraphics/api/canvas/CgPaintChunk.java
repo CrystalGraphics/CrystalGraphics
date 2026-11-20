@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.canvas;
 
+import com.crystalgraphics.render.canvas.CgCurveRecords;
 import java.util.Arrays;
 
 import javax.annotation.Nullable;
@@ -69,7 +70,8 @@ public final class CgPaintChunk {
         KIND
     }
 
-    private static final CgInstanceKind ELEMENT = CgInstanceKind.ELEMENT, QUAD = CgInstanceKind.QUAD;
+    private static final CgInstanceKind ELEMENT = CgInstanceKind.ELEMENT, QUAD = CgInstanceKind.QUAD,
+            CURVE = CgInstanceKind.CURVE;
 
     private CgDrawChunk[] chunks = new CgDrawChunk[2];
     private int chunkCount;
@@ -223,7 +225,7 @@ public final class CgPaintChunk {
             if (spatial != baseNode && spatial < nodesBefore) return Refusal.OUTER_NODE;
             for (int d = 0; d < chunk.draws(); d++) {
                 CgInstanceKind kind = chunk.kind(d);
-                if (kind != ELEMENT && kind != QUAD) return Refusal.KIND;
+                if (kind != ELEMENT && kind != QUAD && kind != CURVE) return Refusal.KIND;
                 CgMaterialBindings bindings = chunk.binding(d);
                 for (int t = 0; t < bindings.textures(); t++) {
                     if (!CgGraphTexture.outlivesFrame(bindings.texture(t))) return Refusal.FRAME_TEXTURE;
@@ -317,7 +319,9 @@ public final class CgPaintChunk {
             if (a.draws() != b.draws()) return "chunk " + i + ": " + a.draws() + " draws against " + b.draws();
             for (int d = 0; d < a.draws(); d++) {
                 if (a.pipeline(d) != b.pipeline(d)) return "chunk " + i + " draw " + d + ": another pipeline";
-                if (a.binding(d) != b.binding(d)) return "chunk " + i + " draw " + d + ": other bindings";
+                if (!a.binding(d).sameAs(b.binding(d))) {
+                    return "chunk " + i + " draw " + d + ": " + bindingDifference(a.binding(d), b.binding(d));
+                }
                 if (a.instances(d) != b.instances(d)) {
                     return "chunk " + i + " draw " + d + ": " + a.instances(d) + " records against " + b.instances(d);
                 }
@@ -350,6 +354,19 @@ public final class CgPaintChunk {
         return null;
     }
 
+    /** What of two bindings differs, for {@link #differs}: the first texture, block or buffer that is another. */
+    private static String bindingDifference(CgMaterialBindings a, CgMaterialBindings b) {
+        if (a.textures() != b.textures()) return a.textures() + " textures against " + b.textures();
+        for (int t = 0; t < a.textures(); t++) {
+            if (a.texture(t) != b.texture(t)) return "texture " + t + ": " + a.texture(t) + " against " + b.texture(t);
+        }
+        if (a.blocks() != b.blocks()) return a.blocks() + " blocks against " + b.blocks();
+        for (int k = 0; k < a.blocks(); k++) {
+            if (a.block(k) != b.block(k)) return "block " + k + ": " + a.block(k) + " against " + b.block(k);
+        }
+        return "samplers, buffers or storage";
+    }
+
     /** A chunk's copy with its records' clips, nodes and gradients renumbered into the replay's. */
     private CgDrawChunk renumbered(CgDrawChunk chunk, int clip, int node, int effect) {
         float[][] instances = new float[CgInstanceKind.values().length][];
@@ -375,15 +392,15 @@ public final class CgPaintChunk {
 
     // A record's layout by kind: an element's clip is an int's bits, a glyph quad's the int as a float
     private static int floats(CgInstanceKind kind) {
-        return kind == ELEMENT ? CgUiElements.FLOATS : CgQuadRecord.FLOATS;
+        return kind == ELEMENT ? CgUiElements.FLOATS : kind == CURVE ? CgCurveRecords.FLOATS : CgQuadRecord.FLOATS;
     }
 
     private static int clipField(CgInstanceKind kind) {
-        return kind == ELEMENT ? CgUiElements.CLIP : CgQuadRecord.CLIP;
+        return kind == ELEMENT ? CgUiElements.CLIP : kind == CURVE ? CgCurveRecords.CLIP : CgQuadRecord.CLIP;
     }
 
     private static int nodeField(CgInstanceKind kind) {
-        return kind == ELEMENT ? CgUiElements.NODE : CgQuadRecord.NODE;
+        return kind == ELEMENT ? CgUiElements.NODE : kind == CURVE ? CgCurveRecords.NODE : CgQuadRecord.NODE;
     }
 
     private static int clipOf(CgInstanceKind kind, float field) {

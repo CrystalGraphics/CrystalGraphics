@@ -29,7 +29,9 @@ void vertex(out v2f o) {
     uint kind = CG_ELEMENT(n).flags & 15u;
     // A shadow reaches three sigma past its box
     if (kind == uint(CG_ELEMENT_SHADOW)) pad += 3.0 * uintBitsToFloat(CG_ELEMENT(n).paint);
-    vec2 p = mix(r.xy - pad, r.zw + pad, cg_element_corner());
+    // A hard side is the rect's own edge: the rasterizer shares it with the piece beside it
+    vec4 hard = cg_element_hard(CG_ELEMENT(n).flags);
+    vec2 p = mix(r.xy - pad * (1.0 - hard.xy), r.zw + pad * (1.0 - hard.zw), cg_element_corner());
     o._cg_in_local = p - r.xy;
     o._cg_in_index = float(n);
     gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(cg_spatial_point(node, vec3(p, 0.0)), 1.0);
@@ -69,7 +71,11 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec4 rx = vec4(tl.x, tr.x, br.x, bl.x), ry = vec4(tl.y, tr.y, br.y, bl.y);
     if (covered) rx = ry = vec4(0.0);
     bool rounded = (flags & uint(CG_ELEMENT_ROUNDED)) != 0u;
-    float coverage = covered ? 1.0 : sdf_coverage(sdf_rounded_box(p, halfSize, rx, ry), ramp);
+    // Hard sides are pushed out past the ramp, so only the outer edges fade
+    vec4 hard = cg_element_hard(flags) * 4.0 * ramp;
+    vec2 hardShift = (hard.zw - hard.xy) * 0.5;
+    float coverage = covered ? 1.0
+            : sdf_coverage(sdf_rounded_box(p - hardShift, halfSize + (hard.xy + hard.zw) * 0.5, rx, ry), ramp);
 
     vec4 tint = cg_element_unpack(CG_ELEMENT(n).color);
     vec4 tintP = vec4(tint.rgb * tint.a, tint.a);

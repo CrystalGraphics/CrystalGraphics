@@ -1,5 +1,9 @@
 package com.crystalgraphics.api.canvas;
 
+import com.crystalgraphics.trace.CgTrace;
+import com.crystalgraphics.trace.CgFrameImages;
+import com.crystalgraphics.render.graph.CgGraphTexture;
+import com.crystalgraphics.render.graph.CgPass;
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.render.stage.CgStageFrame;
@@ -31,6 +35,7 @@ public final class CgCanvasPresenter {
 
     @Nullable private CgCanvasFrame shown;
     private boolean composites = true;
+    @Nullable private Runnable executed;
 
     /**
      * Whether a frame's picture is drawn onto the stage's target. Off, the frame still executes in place and its
@@ -41,14 +46,33 @@ public final class CgCanvasPresenter {
         return this;
     }
 
-    /** Executes {@code frame} here in {@code stage}'s firing, composites it, and keeps it in place of the last. */
+    /** Runs on the render thread once each frame it presents or redraws has executed: a trace's frame end. */
+    public CgCanvasPresenter onExecuted(@Nullable Runnable executed) {
+        this.executed = executed;
+        return this;
+    }
+
+    /**
+     * Executes {@code frame} here in {@code stage}'s firing, composites it, and keeps it in place of the last. When the
+     * trace's frame images are due, its picture is photographed for them.
+     */
     public void present(CgStageFrame stage, CgCanvasFrame frame) {
         CgCanvasFrame last = shown;
         shown = frame;
         // The last executed in an earlier firing: the buffers it holds are free
         if (last != null) last.recycle();
-        stage.include(frame.frame).timed(GPU_UI);
+        CgPass.Include step = stage.include(frame.frame).timed(GPU_UI);
+        if (executed != null) step.then(executed);
+        photograph(stage, frame.picture());
         composite(stage, frame);
+    }
+
+    /** The trace's photograph of {@code picture} ({@link CgFrameImages}), when its frame is due; it lands frames later. */
+    private static void photograph(CgStageFrame stage, CgGraphTexture picture) {
+        long index = CgTrace.currentFrameIndex();
+        if (!CgFrameImages.isDue(index)) return;
+        CgPhotograph.take(stage.recording(), picture, picture.getWidth(), picture.getHeight(), CgFrameImages.width(),
+                (w, h, rgb) -> CgFrameImages.put(index, w, h, rgb));
     }
 
     /**
@@ -62,7 +86,8 @@ public final class CgCanvasPresenter {
         CgCanvasFrame frame = shown;
         if (!fits(stage, frame)) return false;
         // Every pass again: the frame's picture is a requested texture, which keeping requested ones would skip
-        stage.includeAgain(frame.frame, false).timed(GPU_UI);
+        CgPass.Include step = stage.includeAgain(frame.frame, false).timed(GPU_UI);
+        if (executed != null) step.then(executed);
         composite(stage, frame);
         return true;
     }

@@ -1,5 +1,8 @@
 package com.crystalgraphics.api.canvas;
 
+import com.crystalgraphics.render.ui.property.CgSpatialTree;
+import com.crystalgraphics.text.render.CgTextDraw;
+import com.crystalgraphics.render.canvas.CgCurveRecords;
 import com.crystalgraphics.render.graph.CgRasterPass;
 
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -112,8 +115,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     private static final String ELEMENT_SHADER = "crystalgraphics:shaders/canvas/element.shader";
     private static final int MAX_TILES = 4096;
-    /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node. */
-    private static final int SAVED = 19;
+    /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node, cull rect. */
+    private static final int SAVED = 23;
 
     private static final Logger LOGGER = Logger.getLogger(CgCanvas.class.getName());
 
@@ -173,6 +176,12 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private boolean clipIsRect = true;
     private float clipX0 = -Float.MAX_VALUE, clipY0 = -Float.MAX_VALUE, clipX1 = Float.MAX_VALUE, clipY1 = Float.MAX_VALUE;
     private int clipNode;
+    /**
+     * What can show, conservatively, in the base node's device units: the clips' bounds, carried into a translation
+     * node and cut to a kept picture inside its walk. Apart from the clip rect, which a clip entry made inside a scroll
+     * node must not take: the node moves with the viewport's rect left behind. @see #clipBounds
+     */
+    private float cullX0, cullY0, cullX1, cullY1;
     // The spatial node of the transform now, made at the first item that needs one after it changed
     private int node;
     private boolean nodeStale;
@@ -259,6 +268,14 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      */
     public CgCanvas begin(CgRecording recording, CgGraphTexture target, CgLoad load, CgCamera camera, float scale) {
         end();
+        behind = null;
+        captured = false;
+        lastX0 = wantX0;
+        lastY0 = wantY0;
+        lastX1 = wantX1;
+        lastY1 = wantY1;
+        wantX0 = wantY0 = Integer.MAX_VALUE;
+        wantX1 = wantY1 = Integer.MIN_VALUE;
         this.recording = Objects.requireNonNull(recording, "recording");
         this.target = Objects.requireNonNull(target, "target");
         this.load = Objects.requireNonNull(load, "load");
@@ -271,6 +288,9 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         opacity = intensity = 1f;
         snap = true;
         resetClip();
+        cullX0 = cullY0 = 0f;
+        cullX1 = camera.width();
+        cullY1 = camera.height();
         node = 0;
         nodeStale = false;
         effect = 0;
@@ -404,6 +424,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         stack[o + 16] = Float.intBitsToFloat(clipBase);
         stack[o + 17] = snap ? 1f : 0f;
         stack[o + 18] = Float.intBitsToFloat(effect);
+        stack[o + 19] = cullX0;
+        stack[o + 20] = cullY0;
+        stack[o + 21] = cullX1;
+        stack[o + 22] = cullY1;
         return this;
     }
 
@@ -443,6 +467,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clipBase = Float.floatToRawIntBits(stack[o + 16]);
         snap = stack[o + 17] != 0f;
         effect = Float.floatToRawIntBits(stack[o + 18]);
+        cullX0 = stack[o + 19];
+        cullY0 = stack[o + 20];
+        cullX1 = stack[o + 21];
+        cullY1 = stack[o + 22];
         return this;
     }
 
@@ -486,6 +514,33 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         return this;
     }
 
+    /**
+     * Replaces the transform with {@code x' = m00 x + m01 y + m02, y' = m10 x + m11 y + m12}, in the space of the node
+     * drawn in (the canvas's own, or the innermost {@link #movable}'s): Canvas 2D's {@code setTransform}. For a caller
+     * that computes each item's whole transform, as a box tree does from its boxes' {@code localToWorld}.
+     *
+     * <pre>{@code
+     * canvas.save().setTransform(base.m00(), base.m01(), base.m10(), base.m11(), base.m30(), base.m31());
+     * paintBox(canvas);
+     * canvas.restore();
+     * }</pre>
+     */
+    public CgCanvas setTransform(float m00, float m10, float m01, float m11, float m02, float m12) {
+        if (a != m00 || b != m10 || c != m01 || d != m11 || tx != m02 || ty != m12) nodeStale = true;
+        a = m00;
+        b = m10;
+        c = m01;
+        d = m11;
+        tx = m02;
+        ty = m12;
+        return this;
+    }
+
+    /** The opacity later items are drawn at: the product of every {@link #opacity(float)} in force. */
+    public float currentOpacity() {
+        return opacity;
+    }
+
     /** Multiplies later items' opacity by {@code f}, 0..1. */
     public CgCanvas opacity(float f) {
         opacity *= Math.max(0f, Math.min(1f, f));
@@ -509,7 +564,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         return clip(x, y, w, h, null);
     }
 
-    /** Clips later items to a rounded rect, intersected with the clip now. */
+    /**
+     * Clips later items to a rounded rect, intersected with the clip now. Clips nested past what a draw carries
+     * ({@link CgClipTable#MAX_DEPTH} beyond their square intersections) become a mask layer over the shape, closed by
+     * the {@link #restore} that pops the level: inside a {@code save()}, as every clip should be.
+     */
     public CgCanvas clip(float x, float y, float w, float h, @Nullable CgCornerRadii radii) {
         boolean rounded = radii != null && !radii.isNone();
         if (!rounded && axisAligned() && clipNode == base && clipIsRect) {
@@ -520,6 +579,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             clipY0 = y0;
             clipX1 = Math.max(x0, x1);
             clipY1 = Math.max(y0, y1);
+            cull(clipX0, clipY0, clipX1, clipY1);
             pose.identity();
             int entry = recording.clips().add(clipBase, base, pose, targetHeight, clipX0, clipY0, clipX1, clipY1, noRadii,
                     noRadii, null);
@@ -550,8 +610,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         int entry = recording.clips().add(clip, at, pose, targetHeight, x0, y0, x1, y1, rounded ? clipRx : noRadii,
                 rounded ? clipRy : noRadii, null);
         if (entry < 0) {
-            throw new IllegalStateException("clips nest at most " + CgClipTable.MAX_DEPTH
-                    + " deep past their square intersections");
+            // Deeper than a draw carries: a mask layer over the shape, which composites under the clips outside
+            if (depth == 0) {
+                throw new IllegalStateException("clips nest at most " + CgClipTable.MAX_DEPTH
+                        + " deep past their square intersections outside a save()");
+            }
+            CgVectorPath.Builder shape = CgVectorPath.builder();
+            return clip((rounded ? shape.addRoundRect(x, y, w, h, radii) : shape.addRect(x, y, w, h)).build());
         }
         clip = entry;
         clipIsRect = false;
@@ -561,8 +626,41 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             clipY0 = Math.max(clipY0, y0);
             clipX1 = Math.min(clipX1, x1);
             clipY1 = Math.min(clipY1, y1);
+            cull(x0, y0, x1, y1);
         }
         return this;
+    }
+
+    /** Cuts the cull rect to {@code (x0, y0)-(x1, y1)} in the base node's device units. */
+    private void cull(float x0, float y0, float x1, float y1) {
+        cullX0 = Math.max(cullX0, x0);
+        cullY0 = Math.max(cullY0, y0);
+        cullX1 = Math.max(cullX0, Math.min(cullX1, x1));
+        cullY1 = Math.max(cullY0, Math.min(cullY1, y1));
+    }
+
+    /**
+     * What can show of what is drawn now, conservatively, into {@code out} as {@code x0, y0, x1, y1}: the clips' and
+     * the target's bounds in the device units of the node drawn in (the canvas's own, or the innermost
+     * {@link #movable}'s). Skia's {@code getDeviceClipBounds}: what a caller culls a subtree against before drawing it.
+     *
+     * <pre>{@code
+     * float[] can = canvas.clipBounds(new float[4]);
+     * if (inkX1 <= can[0] || inkY1 <= can[1] || inkX0 >= can[2] || inkY0 >= can[3]) return;   // nothing would show
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Inside a {@link #kept} walk, the walk's picture: a held picture keeps what is off the target.</li>
+     *   <li>Under a scroll node, the bounds as recorded: drawing culled by them is missing if the node later moves
+     *       without a new recording.</li>
+     * </ul>
+     */
+    public float[] clipBounds(float[] out) {
+        out[0] = cullX0;
+        out[1] = cullY0;
+        out[2] = cullX1;
+        out[3] = cullY1;
+        return out;
     }
 
     /**
@@ -631,7 +729,59 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         clipNode = n;
         clipX0 = clipY0 = -Float.MAX_VALUE;
         clipX1 = clipY1 = Float.MAX_VALUE;
+        cullInto(n);
         return n;
+    }
+
+    /**
+     * Draws later items in {@code node} again, a node {@link #movable} opened this frame under the node drawn in now,
+     * until the matching {@link #restore}: one scroll's content split by children that hold still, as a table's
+     * header between its rows. The transform is left as it is: set it in the node's space.
+     *
+     * <pre>{@code
+     * canvas.save();
+     * int content = canvas.translate(0, -scrollY).movable();
+     * paintRows(canvas, 0, 20);
+     * canvas.restore();
+     * paintHeader(canvas);                         // holds still
+     * canvas.save();
+     * canvas.enter(content);
+     * paintRows(canvas, 20, 40);                   // scrolls with the first rows
+     * canvas.restore();
+     * }</pre>
+     *
+     * @throws IllegalArgumentException for a node that is not movable, or was opened under another
+     */
+    public CgCanvas enter(int node) {
+        if (recording == null) throw new IllegalStateException("entering a node on a canvas that records nowhere");
+        CgSpatialTree tree = recording.spatial();
+        if (node <= 0 || node >= tree.count() || !tree.movable(node) || tree.parent(node) != base) {
+            throw new IllegalArgumentException("spatial node " + node + " is not a movable node opened under node " + base);
+        }
+        base = node;
+        nodeStale = true;
+        clipBase = clip;
+        clipIsRect = true;
+        clipNode = node;
+        clipX0 = clipY0 = -Float.MAX_VALUE;
+        clipX1 = clipY1 = Float.MAX_VALUE;
+        cullInto(node);
+        return this;
+    }
+
+    /** The cull rect carried into node {@code n}'s space: through a translation, else the whole plane. */
+    private void cullInto(int n) {
+        CgSpatialTree tree = recording.spatial();
+        if (tree.local(n, 0) == 1f && tree.local(n, 1) == 0f && tree.local(n, 2) == 0f && tree.local(n, 3) == 1f) {
+            float dx = tree.local(n, 4), dy = tree.local(n, 5);
+            cullX0 -= dx;
+            cullY0 -= dy;
+            cullX1 -= dx;
+            cullY1 -= dy;
+        } else {
+            cullX0 = cullY0 = -Float.MAX_VALUE;
+            cullX1 = cullY1 = Float.MAX_VALUE;
+        }
     }
 
     // ── Layers ─────────────────────────────────────────────────────────
@@ -655,6 +805,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private CgCanvasLayer openLayer(float x, float y, float w, float h) {
         if (recording == null) throw new IllegalStateException("a layer on a canvas that records nowhere: begin() first");
         recorder.end();
+        layerOpens++;
         if (layers == layerStack.length) layerStack = Arrays.copyOf(layerStack, layers * 2);
         CgCanvasLayer l = layerStack[layers];
         if (l == null) layerStack[layers] = l = new CgCanvasLayer(this);
@@ -675,6 +826,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         owner(l);
         save();
         l.saveDepth = depth;
+        if (!Float.isNaN(x)) cull(l.boundX0, l.boundY0, l.boundX1, l.boundY1);
         // Its items under a node of their own: clips made inside evaluate through the palette, which the pass's view
         // origin moves to the picture's corner. The clip outside applies when it composites.
         l.node = recording.spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, false);
@@ -710,6 +862,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** A layer's picture placed at its first draw: its bounds or the clip, grown by the filter's reach, cut to the target. */
     private void place(CgCanvasLayer l) {
+        if (l.cell != null) {
+            l.texture = CgGraphTexture.transientTexture("canvas_layer", CgTextureDesc.of(l.w, l.h, CgFormat.RGBA16_FLOAT));
+            l.lens.screenLens(l.w, l.h);
+            l.load = CgLoad.CLEAR;
+            l.opened = true;
+            return;
+        }
         float reach = l.filter.reach() * l.scale;
         float x0, y0, x1, y1;
         if (Float.isNaN(l.boundX0)) {
@@ -771,6 +930,15 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         }
         if (l.kept != null) {
             finishKept(l);
+            return;
+        }
+        if (l.cell != null) {
+            CgPathCache.Entry cell = l.cell;
+            if (l.opened) {
+                recording.copy(filtered(l), 0, 0, l.w, l.h, cell.texture(), cell.x(), CgPathCache.SIZE - cell.y() - l.h,
+                        l.w, l.h, false);
+            }
+            recording.callback("cg.path.ready", null, () -> CgPathCache.SHARED.ready(cell), cell.texture());
             return;
         }
         if (!l.opened || l.opacity <= 0f || opacity <= 0f) return;
@@ -969,10 +1137,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         CgKeptLayer.Walk walk = kept.walk;
         if (walk.live) throw new IllegalStateException("a kept layer walked inside its own walk");
         affineBounds(x, y, x + w, y + h, a, b, c, d, tx, ty);
-        // Whole device pixels: a move by translation composites the same picture
-        int x0 = Math.round(bounds[0]), y0 = Math.round(bounds[1]);
-        int pw = Math.max(1, (int) Math.ceil(bounds[2] - bounds[0] - 1e-3f));
-        int ph = Math.max(1, (int) Math.ceil(bounds[3] - bounds[1] - 1e-3f));
+        // Whole device pixels covering the rect, a hair inside it (a transform taken out and put back is not exact): a
+        // move by translation composites the same picture, and a half-covered edge pixel stays in it
+        int x0 = (int) Math.floor(bounds[0] + 1e-3f), y0 = (int) Math.floor(bounds[1] + 1e-3f);
+        int pw = Math.max(1, (int) Math.ceil(bounds[2] - 1e-3f) - x0);
+        int ph = Math.max(1, (int) Math.ceil(bounds[3] - 1e-3f) - y0);
         if (pw > KEPT_MAX_SIDE || ph > KEPT_MAX_SIDE) {
             throw new IllegalArgumentException("a kept layer " + pw + " x " + ph + " device pixels: at most "
                     + KEPT_MAX_SIDE + " a side");
@@ -1023,6 +1192,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         l.load = CgLoad.CLEAR;
         l.opened = true;
         l.passMark = recording.passCount();
+        cullX0 = x0;
+        cullY0 = y0;
+        cullX1 = x0 + pw;
+        cullY1 = y0 + ph;
         // Its clear lands even when nothing is drawn: what vacated is cleared
         pass();
         recorder.openPass();
@@ -1034,10 +1207,25 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     /** A rect in the units now as {@code walk}'s texels, top-down, into a scratch array. */
     float[] keptRect(CgKeptLayer.Walk walk, float x, float y, float w, float h) {
         affineBounds(x, y, x + w, y + h, a, b, c, d, tx, ty);
-        keptScratch[0] = bounds[0] - walk.x0;
-        keptScratch[1] = bounds[1] - walk.y0;
-        keptScratch[2] = bounds[2] - walk.x0;
-        keptScratch[3] = bounds[3] - walk.y0;
+        // Drawn under a node inside the walk (a scroll), that node's offset from the walk's: translations, as recorded
+        float ox = 0f, oy = 0f;
+        for (int i = layers - 1; i >= 0; i--) {
+            CgCanvasLayer l = layerStack[i];
+            if (l.kept != walk) continue;
+            if (base != l.node) {
+                float[] o = recordedOrigin(base);
+                ox = o[0];
+                oy = o[1];
+                o = recordedOrigin(l.node);
+                ox -= o[0];
+                oy -= o[1];
+            }
+            break;
+        }
+        keptScratch[0] = bounds[0] + ox - walk.x0;
+        keptScratch[1] = bounds[1] + oy - walk.y0;
+        keptScratch[2] = bounds[2] + ox - walk.x0;
+        keptScratch[3] = bounds[3] + oy - walk.y0;
         return keptScratch;
     }
 
@@ -1119,10 +1307,22 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      * }</pre>
      */
     public CgCanvas picture(CgKeptLayer kept, float x, float y, float w, float h) {
-        if (!kept.hasPicture()) return this;
+        return picture(kept, 0f, 0f, kept.pictureWidth, kept.pictureHeight, x, y, w, h);
+    }
+
+    /**
+     * Part of {@code kept}'s picture, {@code (sx, sy, sw, sh)} in its device pixels from its top-left, over a rect in the
+     * units now: Canvas 2D's nine-argument {@code drawImage}. A window's border box without the shadow its picture holds.
+     *
+     * <pre>{@code
+     * canvas.picture(WINDOW, 12, 12, 640, 400, x, y, 320, 200);
+     * }</pre>
+     */
+    public CgCanvas picture(CgKeptLayer kept, float sx, float sy, float sw, float sh, float x, float y, float w, float h) {
+        if (!kept.hasPicture() || !(sw > 0f && sh > 0f)) return this;
         float tw = kept.texture.getWidth(), th = kept.texture.getHeight();
         return box(x, y, w, h).fill(kept.texture).premultiplied()
-                .region(0f, 1f, kept.pictureWidth / tw, 1f - kept.pictureHeight / th).draw();
+                .region(sx / tw, 1f - sy / th, (sx + sw) / tw, 1f - (sy + sh) / th).draw();
     }
 
     /**
@@ -1140,10 +1340,17 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      * </ul>
      */
     public CgCanvas thumbnail(CgKeptLayer kept, float x, float y, float w, float h) {
-        if (!kept.hasPicture()) return this;
+        return thumbnail(kept, 0f, 0f, kept.pictureWidth, kept.pictureHeight, x, y, w, h);
+    }
+
+    /** As {@link #thumbnail(CgKeptLayer, float, float, float, float)}, of part of the picture as {@link #picture} takes it. */
+    public CgCanvas thumbnail(CgKeptLayer kept, float sx, float sy, float sw, float sh, float x, float y, float w,
+                              float h) {
+        if (!kept.hasPicture() || !(sw > 0f && sh > 0f)) return this;
         int dw = Math.round(w * (float) Math.hypot(a, b)), dh = Math.round(h * (float) Math.hypot(c, d));
-        int pw = kept.pictureWidth, ph = kept.pictureHeight;
-        if (dw < 1 || dh < 1 || pw < dw || ph < dh || pw < dw * 1.5f && ph < dh * 1.5f) return picture(kept, x, y, w, h);
+        if (dw < 1 || dh < 1 || sw < dw || sh < dh || sw < dw * 1.5f && sh < dh * 1.5f) {
+            return picture(kept, sx, sy, sw, sh, x, y, w, h);
+        }
         if (kept.thumbnail == null || kept.thumbnailWidth != dw || kept.thumbnailHeight != dh) {
             if (kept.thumbnail != null) recording.release(kept.thumbnail);
             kept.thumbnail = CgGraphTexture.requested("canvas_kept_thumbnail", CgTextureDesc.of(dw, dh, CgFormat.RGBA16_FLOAT));
@@ -1151,14 +1358,19 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             kept.thumbnailHeight = dh;
             kept.thumbnailDrawn = -1L;
         }
-        kept.thumbnailStale = kept.thumbnailDrawn != kept.drawCount;
+        kept.thumbnailStale = kept.thumbnailDrawn != kept.drawCount || kept.thumbnailX != sx || kept.thumbnailY != sy
+                || kept.thumbnailW != sw || kept.thumbnailH != sh;
         long now = System.nanoTime();
         if (kept.thumbnailStale && (kept.thumbnailDrawn == -1L || now - kept.thumbnailAt >= THUMBNAIL_REFRESH_NANOS)) {
             recorder.end();
             CgComputePass pass = recording.compute("canvas.kept.thumbnail");
-            CgGpuOps.shrink(pass, kept.texture, 0f, kept.texture.getHeight() - ph, pw, ph, kept.thumbnail, 0, 0, dw, dh);
+            CgGpuOps.shrink(pass, kept.texture, sx, kept.texture.getHeight() - sy - sh, sw, sh, kept.thumbnail, 0, 0, dw, dh);
             pass.end();
             kept.thumbnailDrawn = kept.drawCount;
+            kept.thumbnailX = sx;
+            kept.thumbnailY = sy;
+            kept.thumbnailW = sw;
+            kept.thumbnailH = sh;
             kept.thumbnailAt = now;
             kept.thumbnailStale = false;
         }
@@ -1357,6 +1569,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     void addChunk(CgDrawChunk sealed) {
         recorder.add(sealed);
+        if (captured) {
+            for (int d = 0; d < sealed.draws(); d++) {
+                painted(sealed.spatial(), sealed.x0(d), sealed.y0(d), sealed.x1(d), sealed.y1(d));
+            }
+        }
     }
 
     // ── Items ──────────────────────────────────────────────────────────
@@ -1446,6 +1663,28 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         textBatch().draw(text, x, y, tint, textPose, clip, base, effect, textGamma);
         textDraws++;
         return this;
+    }
+
+    /**
+     * Text drawn as a {@link CgTextDraw}, the canvas's one, under the transform, clip and gamma now: every knob of the
+     * text renderer (a layer's scope, a pixel size, a paragraph) with nothing made per draw. Build and submit in one
+     * expression; {@link #text(CgText, float, float, int)} is the everyday form.
+     *
+     * <pre>{@code
+     * canvas.textDraw().layout(cached).family(ui).at(x, y).color(argb).submit();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Its colour is taken as given: the canvas's opacity is not folded in, as {@code text} folds it.</li>
+     *   <li>Never set its pose, clip or node: each replaces the canvas's.</li>
+     * </ul>
+     */
+    public CgTextDraw textDraw() {
+        if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
+        pass();
+        textPose.set(a, b, 0f, 0f, c, d, 0f, 0f, 0f, 0f, 1f, 0f, tx, ty, 0f, 1f);
+        textDraws++;
+        return textBatch().draw().pose(textPose).clip(clip).node(base, effect).gamma(textGamma);
     }
 
     /** The coverage correction later text is drawn with; {@link CgTextGamma#initial()} at first. Not saved. */
@@ -1803,11 +2042,79 @@ public final class CgCanvas implements CgStageFrame.Drawer {
                 for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
                 continue;
             }
-            try (CgCanvasLayer l = layer(ox + doc.minX() * sx, oy + doc.minY() * sy, (doc.maxX() - doc.minX()) * sx,
-                    (doc.maxY() - doc.minY()) * sy).filter(svgShadow(shadow, sx, sy))) {
-                for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+            CgFilter filter = svgShadow(shadow, sx, sy);
+            float gx = ox + doc.minX() * sx, gy = oy + doc.minY() * sy;
+            float gw = (doc.maxX() - doc.minX()) * sx, gh = (doc.maxY() - doc.minY()) * sy;
+            if (!(cached && snap)) {
+                try (CgCanvasLayer l = layer(gx, gy, gw, gh).filter(filter)) {
+                    for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+                }
+                continue;
             }
+            // On the pixel grid the group's filtered picture is the same at every whole-pixel position: filtered once
+            // into a cell of the path cache, then drawn from the atlas every icon shares
+            float r = filter.reach() * linearScale();
+            int px0 = (int) Math.floor(dtx + doc.minX() * da - r), py0 = (int) Math.floor(dty + doc.minY() * dd - r);
+            int pw = ((int) Math.ceil(dtx + doc.maxX() * da + r) - px0 + 3) & ~3;
+            int ph = ((int) Math.ceil(dty + doc.maxY() * dd + r) - py0 + 3) & ~3;
+            CgPathCache.Entry cell = null;
+            if (pw <= SHADOW_CELL_MAX && ph <= SHADOW_CELL_MAX) {
+                CgPathCache.Key key = new CgPathCache.Key(new SvgShadowGroup(tier, i, tint, brush.flat(), override), null,
+                        da, dd);
+                cell = CgPathCache.SHARED.find(key);
+                if (cell == null) cell = CgPathCache.SHARED.claim(key, pw, ph, this);
+                if (cell != null && !cell.ready() && cell.owner() != this) cell = null;
+            }
+            if (cell == null) {
+                try (CgCanvasLayer l = layer(gx, gy, gw, gh).filter(filter)) {
+                    for (; i < end; i++) svgOp(tier, i, ops.get(i), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+                }
+                continue;
+            }
+            if (cell.takeBuild()) {
+                atlasFor(cell);
+                try (CgCanvasLayer l = layer(gx, gy, gw, gh).filter(filter)) {
+                    l.cell = cell;
+                    l.x0 = px0;
+                    l.y0 = py0;
+                    l.w = pw;
+                    l.h = ph;
+                    // Unclipped: the cell serves the icon wherever it is drawn
+                    clipX0 = clipY0 = -Float.MAX_VALUE;
+                    clipX1 = clipY1 = Float.MAX_VALUE;
+                    for (int op = i; op < end; op++) {
+                        svgOp(tier, op, ops.get(op), brush, tint, cached, override, da, db, dc, dd, dtx, dty);
+                    }
+                }
+            }
+            shadowCell(cell, px0, py0);
+            i = end;
         }
+    }
+
+    /** A shadowed group's cell past this many device pixels a side is not cached: it is filtered each frame. */
+    private static final int SHADOW_CELL_MAX = 256;
+
+    /** A shadowed group's cell: the group's ops from {@code first} with their shadow, at a tint and a stroke override. */
+    private record SvgShadowGroup(CgSvg tier, int first, int tint, boolean flat, float override) {
+    }
+
+    /** A shadowed group's filtered picture, from its cell, its corner at {@code (x0, y0)} in the base's units. */
+    private void shadowCell(CgPathCache.Entry cell, int x0, int y0) {
+        int w = cell.width(), h = cell.height();
+        float ex0 = x0, ey0 = y0, ex1 = x0 + w, ey1 = y0 + h;
+        if (clipNode == base && (ex1 <= clipX0 || ey1 <= clipY0 || ex0 >= clipX1 || ey0 >= clipY1)) return;
+        pass();
+        clear();
+        CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, 0f);
+        CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, true);
+        // A render target's row 0 is its bottom
+        CgUiElements.uv(record, 0, cell.x() / (float) CgPathCache.SIZE, 1f - cell.y() / (float) CgPathCache.SIZE,
+                (cell.x() + w) / (float) CgPathCache.SIZE, 1f - (cell.y() + h) / (float) CgPathCache.SIZE);
+        CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
+        finish(base, 1f);
+        element(elementMaterial(), cell.texture(), null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+        pathDraws++;
     }
 
     /** The last SVG shadow's filter, kept: an icon with one draws it every frame. */
@@ -1987,6 +2294,20 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private final List<CgCanvasGlass> panes = new ArrayList<>();
     private int panesUsed;
     @Nullable private CgBackdrop backdrop;
+    /**
+     * What the target is composited over when it is shown, for glass to capture under it: the host's frame under a
+     * recorder's picture. Null where the target is what is behind, as a stage's own target is.
+     */
+    @Nullable private CgGraphTexture behind;
+    /**
+     * The retake rule: one capture serves every pane after it while nothing is painted over what a pane samples and no
+     * layer opened, so a settled UI captures once a turn. What was painted since it, in the root's device pixels,
+     * top-down; the layers opened when it was taken; the panes' union this turn and last, which seeds the next capture.
+     */
+    private boolean captured;
+    private float paintedX0, paintedY0, paintedX1, paintedY1;
+    private int layerOpens, capturedOpens;
+    private int wantX0, wantY0, wantX1, wantY1, lastX0, lastY0, lastX1, lastY1;
     private final float[] quadRecord = new float[CgQuadRecord.FLOATS];
     /** The quad record's fade, 1 - opacity, as the old canvas's quads write it. */
     private static final int QUAD_FADE = CgInstanceKind.QUAD.format().getField("fade").getFloatOffset();
@@ -2028,8 +2349,32 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         recorder.end();
         if (frame != null) frame.canvas().endPass();
         if (backdrop == null) backdrop = new CgBackdrop("canvas.backdrop");
-        CgGraphTexture capture = backdrop.capture(recording, target, w, h, CgBackdrop.formatOf(target), cx0, cy0, cx1, cy1);
-        if (layers > 0) layersOver(capture, w, h);
+        // Top-down, as what was painted is counted
+        int ty0 = h - cy1, ty1 = h - cy0;
+        boolean holds = captured && capturedOpens == layerOpens && cx0 >= backdrop.x0() && cy0 >= backdrop.y0()
+                && cx1 <= backdrop.x1() && cy1 <= backdrop.y1()
+                && !(paintedX1 > cx0 && paintedX0 < cx1 && paintedY1 > ty0 && paintedY0 < ty1);
+        if (!holds) {
+            // Taken over last turn's panes as well, so the panes after this one find it whole
+            int kx0 = cx0, ky0 = ty0, kx1 = cx1, ky1 = ty1;
+            if (!captured && lastX1 > lastX0) {
+                kx0 = Math.max(0, Math.min(kx0, lastX0));
+                ky0 = Math.max(0, Math.min(ky0, lastY0));
+                kx1 = Math.min(w, Math.max(kx1, lastX1));
+                ky1 = Math.min(h, Math.max(ky1, lastY1));
+            }
+            CgGraphTexture capture = backdrop.capture(recording, behind != null ? behind : target, w, h,
+                    CgBackdrop.formatOf(target), kx0, h - ky1, kx1, h - ky0);
+            if (behind != null || layers > 0) layersOver(capture, w, h);
+            captured = true;
+            capturedOpens = layerOpens;
+            paintedX0 = paintedY0 = Float.MAX_VALUE;
+            paintedX1 = paintedY1 = -Float.MAX_VALUE;
+        }
+        wantX0 = Math.min(wantX0, cx0);
+        wantY0 = Math.min(wantY0, ty0);
+        wantX1 = Math.max(wantX1, cx1);
+        wantY1 = Math.max(wantY1, ty1);
         backdrop.blur(recording, f.blur());
         // Into the innermost layer: where its picture's (0, 0) is in the capture's bottom-left texels
         float offsetX = 0f, offsetY = 0f;
@@ -2060,9 +2405,18 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         grow(base, bx0, by0, bx1, by1);
     }
 
-    /** Each open layer's picture so far over the capture, outermost first: what a pane in the innermost sees behind it. */
+    /**
+     * What is drawn so far over the capture: the target where the capture is of what lies behind it, then each open
+     * layer's picture, outermost first. What a pane in the innermost sees behind it.
+     */
     private void layersOver(CgGraphTexture capture, int w, int h) {
         filters.begin(recording, capture, CgLoad.load(), filterLens.screenLens(capture.getWidth(), capture.getHeight()));
+        if (behind != null) {
+            float y = capture.getHeight() - h;
+            filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, 0f, y, w, h);
+            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, target, null, 0, filterRecord, 0, 1,
+                    0f, y, w, y + h);
+        }
         for (int i = 0; i < layers; i++) {
             CgCanvasLayer l = layerStack[i];
             if (!l.opened) continue;
@@ -2093,6 +2447,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     private final float[] originScratch = new float[2];
+
+    /** Sets {@link #behind} for this begin: a recorder's picture over the host's frame. */
+    void behind(@Nullable CgGraphTexture host) {
+        behind = host;
+    }
 
     // ── Drawing a box ──────────────────────────────────────────────────
 
@@ -2169,14 +2528,29 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         emit(box, material, texture, sampler, x, y, w, h, 1f, !(paint instanceof CgGrid));
     }
 
-    /** A brush's nine-slice or tiles, as one element a piece. */
+    /**
+     * A brush's nine-slice or tiles, as one element a piece, laid over the whole box and shown inside its border and
+     * corners, as an element's own fill is: a transparent border shows what is behind the box.
+     */
     private void brushTiles(CgCanvasBox box, CgBrush brush, CgMaterialInterface material) {
+        float bt = box.borderTop, br = box.borderRight, bb = box.borderBottom, bl = box.borderLeft;
+        boolean rounded = box.radii != null && !box.radii.isNone();
+        boolean clipped = rounded || bt + br + bb + bl > 0f;
+        if (clipped) {
+            save();
+            clip(box.x + bl, box.y + bt, box.w - bl - br, box.h - bt - bb, rounded ? box.radii.inset(bt, br, bb, bl) : null);
+        }
         tiles.brush = brush;
         tiles.argb = mul(brush.tint(), box.argb);
         tiles.material = material;
+        tiles.x0 = box.x;
+        tiles.y0 = box.y;
+        tiles.x1 = box.x + box.w;
+        tiles.y1 = box.y + box.h;
         CgCanvasTiles.of(brush, box.x, box.y, box.w, box.h, MAX_TILES, tiles);
         tiles.brush = null;
         tiles.material = null;
+        if (clipped) restore();
         borderOver(box, material);
     }
 
@@ -2189,11 +2563,16 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         }
     }
 
-    /** Where a brush's pieces go: one element each. Reused, so laying tiles allocates nothing. */
+    /**
+     * Where a brush's pieces go: one element each, hard on every side inside the box, so pieces meeting inside a pixel
+     * cover it once. Reused, so laying tiles allocates nothing.
+     */
     private final class Tiles implements CgCanvasTiles.Sink {
         @Nullable CgBrush brush;
         @Nullable CgMaterialInterface material;
         int argb;
+        /** The box the pieces fill: a piece's side on it fades, every other side is hard. */
+        float x0, y0, x1, y1;
 
         @Override
         public void piece(float x, float y, float w, float h, float u0, float v0, float u1, float v1) {
@@ -2201,6 +2580,11 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, argb, 0f);
             CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, brush.premultiplied());
             CgUiElements.uv(record, 0, u0, v0, u1, v1);
+            float e = 1e-3f;
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_LEFT, x > x0 + e);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_TOP, y > y0 + e);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_RIGHT, x + w < x1 - e);
+            CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_BOTTOM, y + h < y1 - e);
             int at = spatial();
             float[] r = rect(at, x, y, w, h, true);
             if (r == null) return;
@@ -2231,6 +2615,143 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             emitShadow(box, material, at, x + s.dx() - s.spread(), y + s.dy() - s.spread(), w + 2 * s.spread(),
                     h + 2 * s.spread(), s.spread(), 3f * sigma);
         }
+    }
+
+    // ── Splines ─────────────────────────────────────────────────────────
+
+    private final CgCanvasSpline spline = new CgCanvasSpline(this);
+    private final float[] splineRecord = new float[CgCurveRecords.FLOATS];
+    private final float[] splinePieces = new float[CgCurveRecords.MAX_PIECES * 9];
+
+    /**
+     * A line or Bezier curve to stroke: build it and {@link CgCanvasSpline#draw()} in one expression.
+     *
+     * <pre>{@code
+     * canvas.spline().cubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1).width(3f).colors(from, to).draw();
+     * }</pre>
+     */
+    public CgCanvasSpline spline() {
+        return spline.reset();
+    }
+
+    void draw(CgCanvasSpline s) {
+        if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
+        if (!s.set) throw new IllegalStateException("a spline with no geometry: line(), to() or cubic() first");
+        if (opacity <= 0f) return;
+        pass();
+        int at = spatial();
+        // Baked into device pixels at the base node, as an element's rect is; local in a node of its own otherwise
+        float k = at == base ? linearScale() : 1f;
+        float feather = s.feather < 0f ? CgCurveRecords.ANTIALIAS : s.feather * k;
+        int capStart = s.capStart.ordinal(), capEnd = s.arrow ? CgCurveRecords.CAP_ARROW : s.capEnd.ordinal();
+        float node = CgPalette.pack(at, effect), fade = 1f - opacity;
+        float hs = s.widthStart * 0.5f * k, he = s.widthEnd * 0.5f * k;
+        if (!s.cubic) {
+            splinePiece(at, s.x0, s.y0, s.cx, s.cy, s.x1, s.y1, hs, he, s.argbStart, s.argbEnd, feather,
+                    CgCurveRecords.flags(capStart, capEnd, false, false), node, fade);
+            return;
+        }
+        int n = CgCurveRecords.splitCubic(s.x0, s.y0, s.c1x, s.c1y, s.c2x, s.c2y, s.x1, s.y1, splinePieces, k);
+        for (int i = 0; i < n; i++) {
+            int o = i * 9;
+            float t0 = i / (float) n, t1 = (i + 1) / (float) n;
+            // The caller's caps at the cubic's own ends; joints between pieces cut hard
+            int flags = CgCurveRecords.flags(i == 0 ? capStart : CgCurveRecords.CAP_BUTT,
+                    i == n - 1 ? capEnd : CgCurveRecords.CAP_BUTT, i > 0, i < n - 1);
+            splinePiece(at, splinePieces[o], splinePieces[o + 1], splinePieces[o + 3], splinePieces[o + 4],
+                    splinePieces[o + 6], splinePieces[o + 7], hs + (he - hs) * t0, hs + (he - hs) * t1,
+                    CgCurveRecords.lerp(s.argbStart, s.argbEnd, t0), CgCurveRecords.lerp(s.argbStart, s.argbEnd, t1),
+                    feather, flags, node, fade);
+        }
+    }
+
+    private final CgCanvasTriangle triangle = new CgCanvasTriangle(this);
+
+    /**
+     * A filled triangle: build it and {@link CgCanvasTriangle#draw()} in one expression.
+     *
+     * <pre>{@code
+     * canvas.triangle(x0, y0, x1, y1, x2, y2).color(argb).draw();
+     * }</pre>
+     */
+    public CgCanvasTriangle triangle(float x0, float y0, float x1, float y1, float x2, float y2) {
+        return triangle.reset(x0, y0, x1, y1, x2, y2);
+    }
+
+    void draw(CgCanvasTriangle t) {
+        if (recording == null) throw new IllegalStateException("drawing on a canvas that records nowhere: begin() first");
+        if (opacity <= 0f) return;
+        pass();
+        int at = spatial();
+        boolean baked = at == base;
+        float k = baked ? linearScale() : 1f;
+        float feather = t.feather < 0f ? CgCurveRecords.ANTIALIAS : t.feather * k;
+        float ax = t.x0, ay = t.y0, bx = t.x1, by = t.y1, cx = t.x2, cy = t.y2;
+        // The ramp as t = dot(p - origin, direction), 0 at its start and 1 at its end
+        float ox = t.rampX0, oy = t.rampY0, dx = t.rampX1 - t.rampX0, dy = t.rampY1 - t.rampY0;
+        float len2 = dx * dx + dy * dy;
+        if (len2 > 0f) {
+            dx /= len2;
+            dy /= len2;
+        }
+        if (baked) {
+            float x = ax, y = ay;
+            ax = a * x + c * y + tx;
+            ay = b * x + d * y + ty;
+            x = bx;
+            y = by;
+            bx = a * x + c * y + tx;
+            by = b * x + d * y + ty;
+            x = cx;
+            y = cy;
+            cx = a * x + c * y + tx;
+            cy = b * x + d * y + ty;
+            x = ox;
+            y = oy;
+            ox = a * x + c * y + tx;
+            oy = b * x + d * y + ty;
+            // Axis-aligned here: a direction scales by the inverse, so t holds at each moved point
+            dx /= a;
+            dy /= d;
+        }
+        int edge = t.edge == CgCanvasTriangle.Edge.P1_P2 ? CgCurveRecords.EDGE_P1_P2
+                : t.edge == CgCanvasTriangle.Edge.P2_P0 ? CgCurveRecords.EDGE_P2_P0 : CgCurveRecords.EDGE_ALL;
+        float radius = t.cornerRadius * k;
+        CgCurveRecords.writeTriangle(splineRecord, 0, ax, ay, bx, by, cx, cy, t.argbStart, t.argbEnd, radius, feather,
+                CgCurveRecords.triangleFlags(t.ramps, edge), ox, oy, dx, dy, clip, CgPalette.pack(at, effect),
+                1f - opacity);
+        float reach = Math.max(radius, 0f) + feather + 1f;
+        float x0 = Math.min(ax, Math.min(bx, cx)) - reach, y0 = Math.min(ay, Math.min(by, cy)) - reach;
+        float x1 = Math.max(ax, Math.max(bx, cx)) + reach, y1 = Math.max(ay, Math.max(by, cy)) + reach;
+        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(CgPlacement.SCREEN), null, null, null, at,
+                splineRecord, 0, 1, x0, y0, x1, y1);
+        grow(at, x0, y0, x1, y1);
+    }
+
+    private void splinePiece(int at, float ax, float ay, float bx, float by, float cx, float cy, float halfStart,
+                             float halfEnd, int argbStart, int argbEnd, float feather, int flags, float node, float fade) {
+        if (at == base) {
+            float x = ax, y = ay;
+            ax = a * x + c * y + tx;
+            ay = b * x + d * y + ty;
+            x = bx;
+            y = by;
+            bx = a * x + c * y + tx;
+            by = b * x + d * y + ty;
+            x = cx;
+            y = cy;
+            cx = a * x + c * y + tx;
+            cy = b * x + d * y + ty;
+        }
+        CgCurveRecords.write(splineRecord, 0, ax, ay, bx, by, cx, cy, halfStart, halfEnd, argbStart, argbEnd, feather,
+                flags, clip, node, fade);
+        // A square cap reaches a half-width past the end along the tangent and across it
+        float reach = Math.max(halfStart, halfEnd) * 1.5f + feather + 1f;
+        float x0 = Math.min(ax, Math.min(bx, cx)) - reach, y0 = Math.min(ay, Math.min(by, cy)) - reach;
+        float x1 = Math.max(ax, Math.max(bx, cx)) + reach, y1 = Math.max(ay, Math.max(by, cy)) + reach;
+        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(CgPlacement.SCREEN), null, null, null, at,
+                splineRecord, 0, 1, x0, y0, x1, y1);
+        grow(at, x0, y0, x1, y1);
     }
 
     /** A shadow's element; its ink reaches {@code reach} past its rect, in the record's units. */
@@ -2267,6 +2788,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** A chunk being taken grows by what is drawn in its node. */
     private void grow(int at, float x0, float y0, float x1, float y1) {
+        if (captured) painted(at, x0, y0, x1, y1);
         if (chunking && at == chunkNode) {
             chunkX0 = Math.min(chunkX0, x0);
             chunkY0 = Math.min(chunkY0, y0);
@@ -2276,6 +2798,25 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     private final float[] rect = new float[4];
+
+    /** Counts a draw in node {@code at}'s space as painted over the capture: carried to the root, or everything. */
+    private void painted(int at, float x0, float y0, float x1, float y1) {
+        CgSpatialTree tree = recording.spatial();
+        float ox = 0f, oy = 0f;
+        for (int n = at; n != 0; n = tree.parent(n)) {
+            if (tree.local(n, 0) != 1f || tree.local(n, 1) != 0f || tree.local(n, 2) != 0f || tree.local(n, 3) != 1f) {
+                paintedX0 = paintedY0 = -Float.MAX_VALUE;
+                paintedX1 = paintedY1 = Float.MAX_VALUE;
+                return;
+            }
+            ox += tree.local(n, 4);
+            oy += tree.local(n, 5);
+        }
+        paintedX0 = Math.min(paintedX0, x0 + ox);
+        paintedY0 = Math.min(paintedY0, y0 + oy);
+        paintedX1 = Math.max(paintedX1, x1 + ox);
+        paintedY1 = Math.max(paintedY1, y1 + oy);
+    }
 
     /**
      * The rect in node {@code at}'s space into the record: device pixels at node 0, snapped when asked; null when it is

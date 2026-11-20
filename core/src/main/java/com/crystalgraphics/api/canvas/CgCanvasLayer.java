@@ -12,6 +12,7 @@ import com.crystalgraphics.api.vector.CgVectorPath;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.ui.path.CgPathCache;
 
 /**
  * A group drawn into a picture of its own, then composited as one: faded as a whole, filtered, masked. CSS's
@@ -74,6 +75,8 @@ public final class CgCanvasLayer implements AutoCloseable {
     final CgCamera lens = new CgCamera();
     /** The kept layer's walk it draws, or null for a layer of the frame. */
     @Nullable CgKeptLayer.Walk kept;
+    /** The path-cache cell its filtered picture is copied into, or null for a layer composited where it is. */
+    @Nullable CgPathCache.Entry cell;
     /** The recording's pass count at its opening: its passes are those after. */
     int passMark;
 
@@ -95,6 +98,7 @@ public final class CgCanvasLayer implements AutoCloseable {
         texture = null;
         load = CgLoad.CLEAR;
         kept = null;
+        cell = null;
     }
 
     /** Fades the picture as a whole by {@code f}, 0..1: what CSS's {@code opacity} on a group is. */

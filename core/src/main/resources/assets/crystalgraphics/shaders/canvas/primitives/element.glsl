@@ -22,6 +22,17 @@
 #define CG_ELEMENT_CHECKER 128
 // A path's element: coverage is its raster's alpha at uv, and its paint frame stands in the radii (CgUiElements.paintFrame)
 #define CG_ELEMENT_COVERAGE 256
+// Sides that meet another piece of the same brush: no ramp, no pad (CgUiElements.FLAG_HARD_*)
+#define CG_ELEMENT_HARD_LEFT 512
+#define CG_ELEMENT_HARD_TOP 1024
+#define CG_ELEMENT_HARD_RIGHT 2048
+#define CG_ELEMENT_HARD_BOTTOM 4096
+
+// Per side, left, top, right, bottom: 1 where the side is hard.
+vec4 cg_element_hard(uint flags) {
+    return vec4((flags & uint(CG_ELEMENT_HARD_LEFT)) != 0u ? 1.0 : 0.0, (flags & uint(CG_ELEMENT_HARD_TOP)) != 0u ? 1.0 : 0.0,
+            (flags & uint(CG_ELEMENT_HARD_RIGHT)) != 0u ? 1.0 : 0.0, (flags & uint(CG_ELEMENT_HARD_BOTTOM)) != 0u ? 1.0 : 0.0);
+}
 
 #ifdef CG_VERTEX_STAGE
 // The element this vertex belongs to, and its corner of the rect, (0,0) (1,0) (1,1) (0,0) (1,1) (0,1).

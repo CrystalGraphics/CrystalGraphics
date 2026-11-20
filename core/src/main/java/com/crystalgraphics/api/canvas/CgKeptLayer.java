@@ -66,8 +66,27 @@ public final class CgKeptLayer {
 
         /** Places it in {@code walk}'s layer over a rect in the canvas's units now: that place and its last are damaged. */
         public void place(Walk walk, float x, float y, float w, float h) {
+            place(walk, x, y, w, h, true);
+        }
+
+        /**
+         * As {@link #place(Walk, float, float, float, float)}; with {@code changed} false, a piece drawn as last walk
+         * (a kept chunk replayed) and where it was damages nothing, and is only kept from vacating.
+         *
+         * <pre>{@code
+         * PANEL.place(walk, x, y, w, h, !canvas.replay(panelChunk));
+         * }</pre>
+         */
+        public void place(Walk walk, float x, float y, float w, float h, boolean changed) {
+            if (!walk.draws) return;
             float[] r = walk.canvas.keptRect(walk, x, y, w, h);
-            place(walk.layer(), r[0], r[1], r[2], r[3], walk.layer().walkFrame);
+            CgKeptLayer layer = walk.layer();
+            if (!changed && in == layer && x0 == r[0] && y0 == r[1] && x1 == r[2] && y1 == r[3]) {
+                frame = layer.walkFrame;
+                layer.visit(this, 0);
+                return;
+            }
+            place(layer, r[0], r[1], r[2], r[3], layer.walkFrame);
         }
 
         /** As {@link #place(Walk, float, float, float, float)}, in {@code parent}'s texels, top-down. */
@@ -101,6 +120,16 @@ public final class CgKeptLayer {
         int x0, y0;
         float opacity = 1f;
         long revision;
+
+        /** Where its picture's top-left lands, in the device pixels of the node it was opened under. */
+        public int x() {
+            return x0;
+        }
+
+        /** @see #x() */
+        public int y() {
+            return y0;
+        }
 
         /** Whether this walk draws: false when the picture is held, and whatever is drawn is not recorded. */
         public boolean draws() {
@@ -161,6 +190,8 @@ public final class CgKeptLayer {
     @Nullable CgGraphTexture thumbnail;
     int thumbnailWidth, thumbnailHeight;
     long drawCount, thumbnailDrawn = -1L, thumbnailAt;
+    /** The part of the picture the thumbnail was filtered from. */
+    float thumbnailX, thumbnailY, thumbnailW, thumbnailH;
     boolean thumbnailStale;
 
     /**

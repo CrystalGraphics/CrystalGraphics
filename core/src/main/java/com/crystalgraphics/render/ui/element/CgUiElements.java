@@ -46,6 +46,11 @@ public final class CgUiElements {
     public static final int FLAG_ROUNDED = 16, FLAG_BORDER = 32, FLAG_PREMULTIPLIED = 64, FLAG_CHECKER = 128;
     /** A path's element: its coverage is the texture's alpha at {@code uv}, its paint mapped by {@link #paintFrame}. */
     public static final int FLAG_COVERAGE = 256;
+    /**
+     * Sides with no edge ramp and no pad, where the element meets another of the same brush: the rasterizer gives a
+     * pixel on the shared edge to one of the two, so a seam inside a pixel is covered once. Left, top, right, bottom.
+     */
+    public static final int FLAG_HARD_LEFT = 512, FLAG_HARD_TOP = 1024, FLAG_HARD_RIGHT = 2048, FLAG_HARD_BOTTOM = 4096;
 
     /** Float offsets of the record's fields: std430, as {@link CgInstanceKind#ELEMENT}'s format lays them out. */
     public static final int RECT = 0, UV = 4, RADII = 8, BORDER_COLOR = 12, WIDTHS_TR = 16, WIDTHS_BL = 17, COLOR = 18,

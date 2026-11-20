@@ -65,6 +65,19 @@ canvas.image(icon, -16, -16, 32, 32);
 canvas.restore();
 ```
 
+Reading it back, for a caller deciding in pixels:
+
+```java
+float[] m = canvas.transform(new float[6]);                  // a b c d tx ty: canvas units to the target's pixels
+float[] clip = canvas.clipBounds(new float[4]);              // what can still be drawn, in the target's pixels
+float alpha = canvas.currentOpacity();                       // the opacity every draw now takes
+canvas.setTransform(1, 0, 0, 1, 0, 0);                       // the target's pixels, under a save
+```
+
+- `clipBounds` is the cull rect: the clip, a layer's bounds, a kept walk's picture. Draw nothing wholly outside it.
+- Under a scroll node it is the bounds as recorded: what it culled is missing if the node later moves without a new
+  recording.
+
 ## Text
 
 A `CgText` is the value: what it says, its font, size, style and where it wraps. Make it once, share it, measure it on
@@ -151,9 +164,10 @@ else white and tinted at draw), and drawn 1:1 on the pixel grid. Larger or turne
 - **The file's curves are flattened for the size drawn** (`svg.tier(devicePx)`): finer as the icon grows.
 - **A `<style>` block or a `class=` fails the load**, naming the file: export with presentation attributes
   (Illustrator's "Presentation Attributes", SVGO's `inlineStyles`).
-- **A drop shadow** (`feDropShadow`, or the classic blur-offset-flood-merge chain) draws as a layer's
-  `CgFilter.dropShadow` under the element it filters; inside a turned or scaled movable node it is skipped, logged once
-  per file. Any other filter is not drawn.
+- **A drop shadow** (`feDropShadow`, or the classic blur-offset-flood-merge chain) draws under the element it filters.
+  On the pixel grid the filtered group is built once into a cell of the path atlas and drawn from it like any icon;
+  between pixels, or past 256 px a side, it is a layer's `CgFilter.dropShadow` every frame. Inside a turned or scaled
+  movable node it is skipped, logged once per file. Any other filter is not drawn.
 - **Not drawn**: text, `clipPath`, masks, dashes.
 - `CgSvg.revalidate()` on a resource reload drops only the documents whose file changed; `CgSvg.generation()` tells a
   holder its document may be stale. `CgSvg.preload(paths)` parses on the job pool ahead of the first frame.
@@ -208,6 +222,7 @@ try (CgKeptLayer.Walk walk = canvas.kept(WINDOW, x, y, w, h, revision)) {  // co
 }
 canvas.picture(WINDOW, tx, ty, 320, 200);     // its picture elsewhere: a preview
 canvas.thumbnail(WINDOW, tx, ty, 160, 100);   // filtered down, kept, filtered again about every 100 ms
+canvas.picture(WINDOW, 0, 0, 640, 32, tx, ty, 320, 16);   // a source rect of it, in the walk's units: its title bar
 ```
 
 ```java
@@ -238,9 +253,12 @@ canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.ACRYLIC).d
 canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.LIQUID).fill(0x10FFFFFF).border(1, 0x30FFFFFF).draw();
 ```
 
-- **Draw a pane after what it covers.** Each pane captures when it draws, so a second pane over the first shows it.
-- In a layer, a pane sees the target with every open layer over it, as it will be composited.
-- Each pane breaks the canvas's pass and copies what is behind it: a handful a frame, not hundreds.
+- **Draw a pane after what it covers.** A second pane over the first shows it.
+- **One capture serves every pane after it** while no layer has opened and nothing was drawn over what a pane
+  samples; a draw there retakes it at the next pane. A settled UI captures once a frame, seeded with the panes' union
+  last frame.
+- In a layer, a pane sees the target with every open layer over it, as it will be composited. A recorder's canvas
+  captures over the host's frame (`CgGraphTexture.current()`), which its picture is shown over.
 - The presets are `CgBackdropFilter`'s; `CgBackdrop` is the capture and blur alone, for a drawer composing its own.
 - In the world a pane is a quad: `scene.quad(w, h, null).radii(r).backdropFilter(f.scaled(1 / 32f))`, the look the
   same, its lens and rim in blocks. It sees the scene and the panes behind it, never those in front.
@@ -312,7 +330,9 @@ CgPaintChunk.Refusal why = canvas.endChunk(kept);            // NONE, or why not
 ```
 
 The caller's key says when it would come out the same; the chunk renumbers the clips, nodes and gradients it made into
-the new frame. `kept.differs(fresh)` is the check mode: a fresh paint taken into a second chunk must match.
+the new frame. Quads, boxes, strokes, triangles and text are all kept. `kept.differs(fresh)` is the check mode: a
+fresh paint taken into a second chunk must match, and the answer names the first draw that does not (its pipeline,
+or which texture or block it binds).
 
 **What moves or fades without being drawn again** goes in a node of its own, opened inside the chunk. A replay then
 writes the node's value alone, as a browser's compositor animates a transform or an opacity:
@@ -342,6 +362,8 @@ if (canvas.replay(kept)) {
 - A chunk refused because something built on first use (glyphs, an SVG's cells) is worth taking again a frame later;
   one that opened a pass (a layer, an SVG with a filter) will be refused every time.
 - The widget stack keeps every widget this way (`WIDGETS.md`).
+- **Scroll-exempt content** (a sticky header, a frozen column) leaves the scroll node and comes back to it with
+  `enter(node)`, rather than opening a second one: a node is entered only under the base it was opened from.
 
 ## What to know
 
