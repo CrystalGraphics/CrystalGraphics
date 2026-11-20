@@ -48,6 +48,9 @@ public record CgBackdropFilter(float blur, float saturation, int tint, float lum
     /** Acrylic's {@code FallbackColor}. */
     private static final int FALLBACK = 0xFF2B2D30;
 
+    /** No filter, CSS's {@code backdrop-filter: none}: a box given it captures nothing and draws no pane. */
+    public static final CgBackdropFilter NONE = new CgBackdropFilter(0f, 1f, 0, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 0f, 0f, 0f,
+            LIGHT, LIGHT, 0);
     /** A pane over a blur, a lens at its edge, lit and grained: what a pane is when nothing says otherwise. */
     public static final CgBackdropFilter DEFAULT = of(12f, 1.35f, 0x662B2D30, 0f, 8f, 1.5f, 0.20f, 1f, 0.10f, 0.25f,
             3f, 0.5f, 0.04f);

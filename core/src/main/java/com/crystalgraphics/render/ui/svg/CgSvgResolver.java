@@ -26,8 +26,8 @@ import java.util.Set;
  * <p>usvg also resolves clip paths, masks, filters, patterns, text and nested {@code svg} viewports. Of
  * those only one filter is resolved, the drop shadow ({@link #shadowOf}); a filter that is anything else is
  * ignored, and the rest are not implemented. None is needed to draw an icon — the shipped set of 51
- * IntelliJ icons and the Feather chrome set use exactly the subset below. The gaps are recorded in
- * {@code ICONS.md} rather than left to be discovered.</p>
+ * IntelliJ icons and the Feather chrome set use exactly the subset below; what is missing is listed here
+ * rather than left to be discovered.</p>
  */
 public final class CgSvgResolver {
 

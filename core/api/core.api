@@ -3978,6 +3978,8 @@ com/crystalgraphics/api/paint/brush/CgSpriteSheet
   method public brush (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public id ()Ljava/lang/String;
   method public names ()Ljava/util/Set;
+  method public,static generation ()I
+  method public,static invalidateCache ()V
   method public,static of (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgSpriteSheet;
 com/crystalgraphics/api/paint/brush/CgTiling
   access public,final,enum
@@ -3999,6 +4001,7 @@ com/crystalgraphics/api/paint/effect/CgBackdropFilter
   field public,static,final FROSTED Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final LIQUID Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final MICA Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  field public,static,final NONE Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final PRISM Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public <init> (FFIFFFFFFFFFFFFI)V
   method public bezel ()F

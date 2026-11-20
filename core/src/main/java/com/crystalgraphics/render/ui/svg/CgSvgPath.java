@@ -15,7 +15,7 @@ import java.util.List;
  * <h3>Flattened, not kept as curves</h3>
  *
  * <p>This produces points. Keeping the curves would matter for a distance-field bake, where segment type
- * is the input msdfgen wants — see {@code ICONS.md}. For getting a shape on screen through
+ * is the input msdfgen wants. For getting a shape on screen through
  * {@code ctx.curve()}, which strokes straight segments, points are the useful form and flattening here
  * means the consumer needs no curve maths at all.</p>
  *

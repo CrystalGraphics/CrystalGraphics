@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc;
 
+import com.crystalgraphics.api.paint.brush.CgSpriteSheet;
+import com.crystalgraphics.api.vector.svg.CgSvg;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.api.material.CgMaterialRegistry;
 import com.crystalgraphics.api.shader.CgShaderPreprocessor;
@@ -88,6 +90,7 @@ public final class CgAssetReloader {
         reloadShaders();
         reloadMaterials();
         invalidateTextCaches();
+        reloadVectorsAndSheets();
         // LAST, so a listener that re-reads a texture or a material gets the reloaded one.
         notifyListeners();
     }
@@ -131,6 +134,16 @@ public final class CgAssetReloader {
             CgShapedRunCache.clear();
         } catch (Exception e) {
             LOGGER.error("Failed to invalidate text layout cache", e);
+        }
+    }
+
+    /** SVG documents whose file now reads differently, and every sprite sheet, are read again on next use. */
+    private static void reloadVectorsAndSheets() {
+        try {
+            CgSvg.revalidate();
+            CgSpriteSheet.invalidateCache();
+        } catch (RuntimeException e) {
+            LOGGER.error("Failed to drop vector documents and sprite sheets", e);
         }
     }
 

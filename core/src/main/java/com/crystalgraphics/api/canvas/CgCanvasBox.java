@@ -188,7 +188,7 @@ public final class CgCanvasBox {
      * </ul>
      */
     public CgCanvasBox backdropFilter(CgBackdropFilter filter) {
-        this.backdrop = Objects.requireNonNull(filter, "filter");
+        this.backdrop = Objects.requireNonNull(filter, "filter") == CgBackdropFilter.NONE ? null : filter;
         return this;
     }
 

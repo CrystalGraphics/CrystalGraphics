@@ -15,6 +15,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.util.io.CgIO;
 
@@ -45,15 +46,19 @@ import com.crystalgraphics.util.io.CgIO;
  *       is {@code stretch}, {@code repeat}, {@code repeat-x}, {@code repeat-y}, {@code round} or {@code space}. An
  *       entry may name a {@code texture} of its own; {@code textureSize} is accepted and unused, since the image's own
  *       size is read.</li>
+ *   <li>Sampled nearest and clamped: a sheet is pixel art, and a nine-slice middle one texel wide must stretch as
+ *       that texel, not as a blend with its border.</li>
  *   <li>A missing sheet, a missing entry or a malformed field fails by name; nothing draws a placeholder.</li>
- *   <li>Sheets are read once and cached; any thread. A resource reload keeps working because a texture is reloaded in
- *       place.</li>
+ *   <li>Sheets are read once and cached; any thread. A resource reload drops them ({@link #invalidateCache}), so an
+ *       edited sheet is read again; a holder of a brush watches {@link #generation}.</li>
  * </ul>
  */
 public final class CgSpriteSheet {
 
     // Threads: any; parsed sheets are immutable, filled by computeIfAbsent.
     private static final Map<String, CgSpriteSheet> SHEETS = new ConcurrentHashMap<>();
+    /** Moves whenever the sheets are dropped. @see #generation */
+    private static volatile int generation;
 
     private final String id;
     private final Map<String, CgBrush> brushes;
@@ -69,6 +74,23 @@ public final class CgSpriteSheet {
     }
 
     /** Entry {@code name}'s brush. */
+    /** Every sheet dropped, so the next {@link #of} reads its file again: what a resource reload calls. */
+    public static void invalidateCache() {
+        SHEETS.clear();
+        generation++;
+    }
+
+    /**
+     * A counter that moves whenever the sheets are dropped, so a holder of a brush can tell it may be stale.
+     *
+     * <pre>{@code
+     * if (seen != CgSpriteSheet.generation()) { seen = CgSpriteSheet.generation(); button = CgBrush.sprite(id, "button"); }
+     * }</pre>
+     */
+    public static int generation() {
+        return generation;
+    }
+
     public CgBrush brush(String name) {
         CgBrush brush = brushes.get(name);
         if (brush == null) throw new IllegalArgumentException("sprite sheet " + id + " has no entry '" + name + "': " + brushes.keySet());
@@ -105,7 +127,8 @@ public final class CgSpriteSheet {
             JsonObject entry = e.getValue().getAsJsonObject();
             String texture = entry.has("texture") ? entry.get("texture").getAsString() : sheetTexture;
             if (texture == null) throw new IllegalArgumentException(at + ": no texture, on the entry or the sheet");
-            CgBrush brush = CgBrush.texture(CgTextures.of(texture));
+            // Texel for texel: a filtered one-texel centre would blend its border across the whole stretch
+            CgBrush brush = CgBrush.texture(CgTextures.of(texture)).sampler(CgSampler.NEAREST_CLAMP);
             if (entry.has("sprite")) {
                 int[] r = ints(at + ".sprite", entry.getAsJsonArray("sprite"));
                 brush = brush.region(r[0], r[1], r[2], r[3]);

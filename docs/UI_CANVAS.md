@@ -169,8 +169,8 @@ else white and tinted at draw), and drawn 1:1 on the pixel grid. Larger or turne
   between pixels, or past 256 px a side, it is a layer's `CgFilter.dropShadow` every frame. Inside a turned or scaled
   movable node it is skipped, logged once per file. Any other filter is not drawn.
 - **Not drawn**: text, `clipPath`, masks, dashes.
-- `CgSvg.revalidate()` on a resource reload drops only the documents whose file changed; `CgSvg.generation()` tells a
-  holder its document may be stale. `CgSvg.preload(paths)` parses on the job pool ahead of the first frame.
+- `CgSvg.revalidate()` drops only the documents whose file changed, and the engine's resource reload
+  (`CgAssetReloader.reload`) calls it; `CgSvg.generation()` tells a holder its document may be stale. `CgSvg.preload(paths)` parses on the job pool ahead of the first frame.
 
 ## Layers
 
