@@ -29,12 +29,12 @@ final class UiDomain {
         // sRGB, decoded into a linear scene, by default; Target where the material converts itself (glass over a backdrop)
         String colorSpace = SpecReader.choice(file, m, "ColorSpace", "sRGB", "sRGB", "Target");
         CgSettingsGrammar.Setting kindSetting = m.get("Primitive");
-        String kind = kindSetting == null ? "Quad" : kindSetting.value();
+        String kind = kindSetting == null ? "Element" : kindSetting.value();
         CgShaderTemplates.Primitive primitive = CgShaderTemplates.primitive(kind);
         if (primitive == null) {
             throw t.error(kindSetting == null ? file.domainToken() : kindSetting.valueToken(), "'Primitive " + kind
-                    + "' has no file: " + CgShaderTemplates.location(kind, "canvas/primitives", "primitive")
-                    + " (the engine's: Element, Quad, Curve, Text)");
+                    + "' has no file: " + CgShaderTemplates.location(kind, "ui/primitives", "primitive")
+                    + " (the engine's: Element, Curve, Text)");
         }
         CgShaderSyntax.Block state = file.block("RenderState");
         if (state != null) {

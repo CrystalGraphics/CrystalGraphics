@@ -20,12 +20,12 @@ import java.util.Set;
 /**
  * The templates a material is pasted into, read from files the first time a material names one, as an
  * {@code #include} resolves: a vertex factory ({@code VertexFactory Sprites}) and a ui primitive
- * ({@code Primitive Quad}). A bare name is the engine's, a namespaced one a mod's:
+ * ({@code Primitive Element}). A bare name is the engine's, a namespaced one a mod's:
  *
  * <pre>{@code
  * VertexFactory Sprites            ->  crystalgraphics:shaders/factories/Sprites.factory
  * VertexFactory mymod:Ribbons      ->  mymod:shaders/factories/Ribbons.factory
- * Primitive mymod:Ring             ->  mymod:shaders/canvas/primitives/Ring.primitive
+ * Primitive mymod:Ring             ->  mymod:shaders/ui/primitives/Ring.primitive
  * }</pre>
  *
  * <p>A factory file, every block but {@code Factory} and {@code fill} optional:</p>
@@ -102,7 +102,7 @@ public final class CgShaderTemplates {
     @Nullable
     static synchronized Primitive primitive(String name) {
         if (PRIMITIVES.containsKey(name)) return PRIMITIVES.get(name);
-        String file = location(name, "canvas/primitives", "primitive");
+        String file = location(name, "ui/primitives", "primitive");
         String source = CgIO.loadSource(file);
         Primitive made = source == null ? null : readPrimitive(name, source, file);
         PRIMITIVES.put(name, made);

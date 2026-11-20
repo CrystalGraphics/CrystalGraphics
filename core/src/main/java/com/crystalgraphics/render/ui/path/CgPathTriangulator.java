@@ -26,7 +26,7 @@ import java.util.Map;
  * the bands beside it and must stay a hard step. Split on its diagonal, each triangle knew one wall, and a
  * pixel on a cut within reach of the other wall was claimed at full coverage by the half that owned the
  * far one — a bright row across every band boundary, at every fractional scale. The cell reading of
- * {@code CgCurveBatch} takes all four corners, so there is no half that does not know a wall.</p>
+ * The cell record takes all four corners, so there is no half that does not know a wall.</p>
  *
  * <p>Which edges are on the outline is decided here, once: the walls always are; a top or bottom is
  * only where the shape does not continue past it, which {@link Silhouettes} works out from the cells on
@@ -164,7 +164,7 @@ public final class CgPathTriangulator {
 
     /**
      * Edge bits of {@link Fill#edges}: the cell's top ({@code p0->p1}), right, bottom and left edges.
-     * The same values as {@code CgCurveBatch.CELL_*}, which the draw hands them to untranslated;
+     * The same values as {@code CgCurveRecords.CELL_*}, which the draw hands them to untranslated;
      * {@link CgPathCells} hands them to the cell primitive untranslated.
      */
     public static final int TOP = 1, RIGHT = 2, BOTTOM = 4, LEFT = 8;

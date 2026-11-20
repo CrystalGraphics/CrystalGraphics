@@ -19,8 +19,7 @@ import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.platform.service.CgShaderPacks;
 import com.crystalgraphics.platform.world.CgWorldBegin;
-import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.canvas.CgCanvasLabels;
+import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.draw.CgPassConstants;
@@ -30,6 +29,7 @@ import com.crystalgraphics.render.graph.CgComputePass;
 import com.crystalgraphics.render.graph.CgDepthAccess;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
+import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.graph.CgRasterPass;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.host.CgHostFrame;
@@ -164,7 +164,6 @@ public final class CgSceneRenderer {
     private final CgDistortion distortion = new CgDistortion(this);
     private final CgOverdraw overdraw = new CgOverdraw();
     private final CgCanvasLabels labels = new CgCanvasLabels("scene.labels");
-    private final CgCanvas labelPasses = new CgCanvas();
     private long frame = Long.MIN_VALUE, labelsFrame = Long.MIN_VALUE;
     private boolean labelDepthDrawn;
 
@@ -833,13 +832,14 @@ public final class CgSceneRenderer {
     }
 
     private void labelPass(CgStageFiring firing, boolean depth) {
-        labelPasses.recordInto(firing.recording(), firing.target(), CgLoad.load(), firing.constants());
-        try {
-            if (depth) labels.drawDepth(labelPasses);
-            else labels.draw(labelPasses);
-        } finally {
-            labelPasses.stop();
-        }
+        CgGraphTexture target = firing.target();
+        CgRasterPass pass = firing.recording().raster("scene.labels").color(target, CgLoad.load())
+                .constants(firing.constants()).order(CgOrder.LOOKBACK);
+        // The host's own target carries its depth: labels test and write it there
+        if (target.kind() == CgGraphTexture.Kind.EXTERNAL) pass.depth(target, CgLoad.load(), CgDepthAccess.WRITE);
+        if (depth) labels.drawDepth(pass);
+        else labels.draw(pass, target);
+        pass.end();
     }
 
     private static void warnShaderPack() {

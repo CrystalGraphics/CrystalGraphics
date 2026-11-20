@@ -196,7 +196,7 @@ public final class CgWorldWidgetLayer implements AutoCloseable {
             this.frame = null;
         }
         float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
-        paint(CgCanvas.on(frame), scale);
+        paint(frame.canvas(), scale);
     }
 
     /**

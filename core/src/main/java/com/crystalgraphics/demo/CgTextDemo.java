@@ -1,27 +1,22 @@
 package com.crystalgraphics.demo;
 
 import com.crystalgraphics.render.scene.CgScene;
-import com.crystalgraphics.api.material.CgMaterialInstance;
+import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.api.font.CgDefaultFont;
 import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
-import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetRef;
 import com.crystalgraphics.asset.load.CgLoadPriority;
 import com.crystalgraphics.asset.load.CgVfxAssets;
-import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextLayer.Blend;
 import com.crystalgraphics.text.style.CgTextPaint;
 import com.crystalgraphics.text.style.CgTextPaint.Space;
 import com.crystalgraphics.text.style.CgTextStyle;
-import org.joml.Matrix4f;
 import org.joml.Quaternionf;
 
 
@@ -30,8 +25,8 @@ import org.joml.Quaternionf;
  * fixed where it was placed and facing where the camera stood then, a caption under each word naming what it shows: gradients over a glyph and a line; outlines under a fill,
  * over it and alone; stacked outlines; hard, soft, outlined, inset and additive shadows; skew, letter spacing and case;
  * a counting damage number; and seven shader stations, each a Text-domain material (one shader, {@code demo/text.shader},
- * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Drawn through the
- * transparent stage's canvas, as a mod draws world text whose style takes an additive or material layer.
+ * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Each word is a label
+ * ({@code scene.labelOnce}), as a mod draws world text whose style takes an additive or material layer.
  *
  * <pre>{@code
  * CgTextDemo text = new CgTextDemo(labelFont);
@@ -157,14 +152,10 @@ public final class CgTextDemo {
     private CgTextStyle criticalFaced;
     private final String[] words = {"12.3k", "NEON", "HOLLOW", "GALAXY", "INFERNO", "RAINBOW", "ELECTRIC", "Embossed",
             "POW!", "STACKED", "PLASMA", "HOLOGRAM", "level up!", "SPEED", "GLITCH", "EXTRUDE", "Critical!"};
-    private final CgRenderStage.Registration drawing;
-    private final Matrix4f pose = new Matrix4f();
 
-    private boolean active;
     private double seconds;
     /** The point the grid was last laid out round, and the turn it faces: fixed until the point moves. */
     private double laidX = Double.NaN, laidY, laidZ;
-    private float yaw;
     private final Quaternionf facing = new Quaternionf();
     /** Where station {@code i}'s word stands, absolute, refreshed each submit. */
     private final double[] at = new double[STATIONS * 3];
@@ -212,8 +203,6 @@ public final class CgTextDemo {
         styles = new CgTextStyle[]{DAMAGE, NEON, HOLLOW, galaxyStyle, infernoStyle, rainbowStyle, electricStyle, EMBOSSED,
                 COMIC, STACKED, plasmaStyle, hologramStyle, UPPER, SPEED, glitchStyle, EXTRUDE, null};
         warm = CgMaterial.of(plasma).keyword("MSDF_MODE", true);
-        // After the world renderer's draws and before the post chain, as world text with additive layers is drawn.
-        drawing = CgRenderStage.TRANSLUCENT.register(10, this::draw);
     }
 
     /** Starts compiling the shader stations' program and loading the critical's style, and reads the damage's face. */
@@ -257,8 +246,7 @@ public final class CgTextDemo {
             laidZ = z;
             double toX = view.x() - x, toZ = view.z() - z, length = Math.max(1e-6, Math.hypot(toX, toZ));
             double backX = -toX / length, backZ = -toZ / length, acrossX = toZ / length, acrossZ = -toX / length;
-            yaw = (float) Math.atan2(toX, toZ);
-            facing.rotationY(yaw);
+            facing.rotationY((float) Math.atan2(toX, toZ));
             for (int i = 0; i < STATIONS; i++) {
                 int row = i == CRITICAL_STATION ? 0 : i / COLUMNS, column = i == CRITICAL_STATION ? -1 : i % COLUMNS;
                 double offset = (column - (COLUMNS - 1) * 0.5) * SPACING;
@@ -280,31 +268,18 @@ public final class CgTextDemo {
             shownDamage = damage;
             words[0] = Long.toString(damage);
         }
-        active = true;
+        for (int i = 0; i < STATIONS; i++) word(scene, i);
     }
 
-    private void draw(CgStageFrame frame) {
-        if (!active) return;
-        CgCamera view = frame.camera();
-        CgCanvas canvas = frame.canvas();
-        // Back row first: blended text covers what is behind it.
-        for (int row = 3; row >= 0; row--) {
-            for (int column = 0; column < COLUMNS; column++) word(canvas, view, row * COLUMNS + column);
-        }
-        word(canvas, view, CRITICAL_STATION);
-    }
-
-    private void word(CgCanvas canvas, CgCamera view, int i) {
-        double px = at[i * 3], py = at[i * 3 + 1], pz = at[i * 3 + 2];
-        float scale = BLOCKS_PER_PX * (i == 0 ? 1f + 0.12f * punch(seconds) : 1f);
-        pose.translation((float) (px - view.x()), (float) (py - view.y()), (float) (pz - view.z()))
-                .rotateY(yaw).scale(scale, -scale, scale);
+    /** Station {@code i}'s word: a label in the station's style, a line of it 1.4 blocks tall. */
+    private void word(CgScene scene, int i) {
         CgTextStyle style = i == CRITICAL_STATION ? critical() : i == 1 && neonOut() ? NEON_OFF : styles[i];
         if (style == null) return;
-        CgTextDraw draw = canvas.text().style(style).text(words[i]).contained(false);
-        if (style.font() == null) draw.font(font);
-        CgTextLayout laid = draw.measure();
-        draw.at(-laid.totalWidth() * 0.5f, -laid.totalHeight() * 0.5f).pose(pose).submit();
+        float height = BLOCKS_PER_PX * PX * (i == 0 ? 1f + 0.12f * punch(seconds) : 1f);
+        CgCanvasLabels.Label label = scene.labelOnce(words[i]).at(at[i * 3], at[i * 3 + 1], at[i * 3 + 2]).height(height)
+                .rotation(facing);
+        CgTextDraw draw = style.font() == null ? label.font(font) : label.draw();
+        draw.style(style).contained(false).submit();
     }
 
     /**
@@ -366,14 +341,7 @@ public final class CgTextDemo {
                 .build();
     }
 
-    /** Draws nothing until the next submit. */
+    /** Draws nothing until the next submit: its words are the frame's labels. */
     public void clear() {
-        active = false;
-    }
-
-    /** Stops drawing and frees the material it warmed. */
-    public void delete() {
-        active = false;
-        drawing.close();
     }
 }

@@ -36,7 +36,7 @@ Names are that commit's: `material/parse/` (`CgMaterialShaderCompiler`, `CgGlslE
 | Program interface | `CgShaderBuffer.wireBlock` set the sampler uniform; `CgShaderProgram`'s `storage` skipped block lookups (now `material.CgProgram`) |
 | User buffers | `CgBindingPoints.USER_START_TBO` (unit 5, above Minecraft's 0–4); user binding indices are gone since R2, so a TBO user buffer is a `CgBuffer` kind of its own |
 | The compiler's version | `glslVersion` answered 330 off the SSBO path; `appendMaterialBuffers` refused more samplers plus buffers than the units below the reserved ones |
-| Rules kept for it | `CgCurveBatch`'s curve record stays float-typed at a 16-byte stride, so it would read through texels unchanged |
+| Rules kept for it | The curve record (`CgCurveRecords`) stays float-typed at a 16-byte stride, so it would read through texels unchanged |
 | Storage | a TBO cannot bind an offset, so it took retained storage (`createForShaderBuffer`) whatever lifetime was asked |
 | Tests | `CgGlslEmitterTest`'s `emitTbo` cases, the TBO halves of both `ShippedShaderStagePurityTest`s, `CgMaterialBuffersTest.texturePathReadsTexels`, `CgShaderBufferRegistryTest.userStartTboIsAboveMcUnits`; the parse tests stubbed the path as `TBO` |
 

@@ -345,7 +345,7 @@ at its slot and a pass states it there, Unreal's pass parameters.
 | The frame's object records | `CgBindingModel.OBJECTS` (pass set) |
 | A pass's object ids | `CgBindingModel.OBJECT_IDS` |
 | Bone palettes, vertex words | `CgBindingModel.BONES`, `CgBindingModel.VERTICES` |
-| A cg_use token's buffer (`quad`, `clip`, `particle`, ...) | its owner's `SLOT` (`CgQuadBatch.SLOT`, `CgParticleBuffer.SLOT`): `CgBindingModel.token(name)`, its place in `CgEngineBufferRegistry`'s order |
+| A cg_use token's buffer (`quad`, `clip`, `particle`, ...) | its owner's `SLOT` (`CgQuadRecord.SLOT`, `CgParticleBuffer.SLOT`): `CgBindingModel.token(name)`, its place in `CgEngineBufferRegistry`'s order |
 | The text block | `CgBindingModel.TEXT_DATA` |
 | A material's block and `Buffers { }` | `CgBindingModel.MATERIAL_BLOCK`, `CgBindingModel.buffer(i)` |
 
@@ -375,7 +375,7 @@ The engine object buffer is named `"CgObjectDataBuffer"` (the SSBO block in `cg_
 Engine-provided buffers a factory or ui primitive binds for its draws, by name:
 
 ```glsl
-EngineBuffers { quad clip shape }   // Quad.primitive: CgQuadBatch's per-instance buffer (QUAD_DATA), the clips, the shapes
+EngineBuffers { quad clip }   // Text.primitive: the glyph quads (QUAD_DATA, CgQuadRecord) and the clips
 ```
 
 `CgMaterialShader.recompile()` resolves the token here and attaches the buffer **after parse, before
@@ -387,9 +387,8 @@ unconditionally because nearly every shader wants them. A quad buffer is wanted 
 and the declaration costs a storage binding — so it is opt-in.
 
 **Why providers hold a `Supplier`, not a buffer:** the built-in `quad` entry is seeded with the
-method reference `CgQuadBatch::sharedBuffer`, which does *not* trigger that class's static
-initialization at registration time. That matters — its buffer is made at class-init, and only once
-a context exists. The supplier is invoked at attach time, when one does.
+method reference `CgQuadRecord::instanceBuffer`, which does *not* make the buffer at registration
+time. That matters — the buffer is made at its first ask, and only once a context exists. The supplier is invoked at attach time, when one does.
 
 **Adding one:** `CgEngineBufferRegistry.register(token, supplier, macroName)`, before any shader
 referencing the token is parsed. Registering a duplicate token throws.
@@ -420,7 +419,7 @@ slot (`createInternal`, `getOrCreateInternal`).
 **SSBO (an engine buffer's per-object data)**
 ```java
 CgShaderBuffer myBuf = CgShaderBufferRegistry.get()
-        .getOrCreateInternal("CgShapeTable", FORMAT, CgShapeTable.SLOT, CgBufferLifetime.FRAME);
+        .getOrCreateInternal("MyInstances", FORMAT, MY_SLOT, CgBufferLifetime.FRAME);
 
 myBuf.beginWrite(N);
 for (int i = 0; i < N; i++) {

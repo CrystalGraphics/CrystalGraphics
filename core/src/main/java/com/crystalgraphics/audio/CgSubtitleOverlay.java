@@ -151,7 +151,7 @@ final class CgSubtitleOverlay {
         if (phase == Phase.HIDDEN || widget == null) return;
         float scale = CgUiScale.of(widgetStyle.namespace()).scale(frame.width(), frame.height());
         widget.allot(frame.width() / scale, frame.height() / scale);
-        CgCanvas canvas = CgCanvas.on(frame);
+        CgCanvas canvas = frame.canvas();
         canvas.save().scale(scale, scale);
         widget.paint(canvas);
         canvas.restore();
@@ -219,7 +219,7 @@ final class CgSubtitleOverlay {
             plainWidth = region;
         }
         float bottom = height * REGION_BOTTOM - CHAR_HEIGHT;
-        CgCanvas.on(frame).text(plainLine, width * SAFE_SIDE, bottom - plainLine.layout().totalHeight());
+        frame.canvas().text(plainLine, width * SAFE_SIDE, bottom - plainLine.layout().totalHeight());
         drawn++;
     }
 

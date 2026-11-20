@@ -120,7 +120,7 @@ public final class CgCanvasPresenter {
     /** The picture over the stage's target in window pixels, premultiplied; row 0 of a target is its bottom. */
     private void composite(CgStageFrame stage, CgCanvasFrame frame) {
         if (!composites) return;
-        CgCanvas.on(stage).box(0, 0, frame.width(), frame.height()).fill(frame.picture()).premultiplied()
+        stage.canvas().box(0, 0, frame.width(), frame.height()).fill(frame.picture()).premultiplied()
                 .region(0f, 1f, 1f, 0f).draw();
     }
 }

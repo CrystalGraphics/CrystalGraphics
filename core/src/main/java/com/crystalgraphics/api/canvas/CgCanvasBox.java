@@ -170,10 +170,6 @@ public final class CgCanvasBox {
     }
 
     /**
-     * Drawn by a {@code #domain ui} material of {@code Primitive Element}: its {@code surface()} runs over the box's
-     * paint, which it may keep or replace.
-     */
-    /**
      * Glass behind the box: what is already drawn under it, captured, blurred, saturated, tinted and lit through
      * {@code filter} (CSS's {@code backdrop-filter}), its corners the box's. The box's own fill and border draw over it.
      *
@@ -192,6 +188,10 @@ public final class CgCanvasBox {
         return this;
     }
 
+    /**
+     * Drawn by a {@code #domain ui} material of {@code Primitive Element}: its {@code surface()} runs over the box's
+     * paint, which it may keep or replace.
+     */
     public CgCanvasBox material(CgMaterialInterface material) {
         this.material = material;
         return this;

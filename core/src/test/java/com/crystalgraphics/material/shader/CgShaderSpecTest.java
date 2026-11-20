@@ -337,7 +337,7 @@ public class CgShaderSpecTest {
 
     @Test
     public void aUiFileReadsItsPrimitive() {
-        CgShaderSpec ui = CgShaderSpec.read("#domain ui\nMaterial { Primitive Quad }\n"
+        CgShaderSpec ui = CgShaderSpec.read("#domain ui\nMaterial { Primitive Curve }\n"
                 + "void surface(in CgUiInput i, inout CgUiSurface s) { }\n", "test:u.shader");
         assertEquals(CgMaterialDomain.UI, ui.domain());
         assertFalse(ui.passes().isEmpty());

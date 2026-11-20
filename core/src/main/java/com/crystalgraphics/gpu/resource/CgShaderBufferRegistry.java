@@ -16,7 +16,7 @@ import java.util.Arrays;
  * <pre>{@code
  * // rewritten every frame, before the draws that read it: the frame ring
  * CgShaderBuffer shapes = CgShaderBufferRegistry.get()
- *     .getOrCreateInternal("CgShapeTable", FORMAT, CgBindingModel.token("shape"), CgBufferLifetime.FRAME);
+ *     .getOrCreateInternal("MyInstances", FORMAT, CgBindingModel.token("myinstances"), CgBufferLifetime.FRAME);
  * }</pre>
  *
  * <ul>

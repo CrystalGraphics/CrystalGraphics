@@ -1,8 +1,7 @@
 package com.crystalgraphics.lifecycle;
 
-import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
+import com.crystalgraphics.render.ui.CgCanvasPrimitives;
 import com.crystalgraphics.render.ui.path.CgPathCache;
-import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
@@ -583,7 +582,6 @@ public final class CgGraphicsLifecycle {
         // Step 6a: text's and the canvas's material instances; the material registry frees them, so the caches only
         // forget them.
         CgTextMaterials.releaseAll();
-        CgEngineMaterials.releaseAll();
         CgPathCache.SHARED.destroy();
         CgCanvasPrimitives.releaseAll();
         

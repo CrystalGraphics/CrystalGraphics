@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.svg;
 
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -36,8 +37,8 @@ public final class CgSvgCells {
     private static final int COLOR0 = FORMAT.getField("color0").getFloatOffset(), COLOR1 = FORMAT.getField("color1").getFloatOffset();
     private static final int FLAGS = FORMAT.getField("flags").getFloatOffset(), GRADIENT = FORMAT.getField("gradient").getFloatOffset();
 
-    /** The cell primitive's flags: a cell, a ramp along its axis, every edge exact (shifted in). Equal to {@code CgCurveBatch}'s. */
-    private static final int FLAG_CELL = 256, FLAG_GRADIENT = 32, ALL_EDGES = 15 << 9;
+    /** The cell primitive's flags: a cell, a ramp along its axis, every edge exact (shifted in). Equal to {@code CgCurveRecords}'. */
+    private static final int ALL_EDGES = 15 << CgCurveRecords.CELL_EDGE_SHIFT;
 
     /** A stroke's flattening tolerance in raster pixels: {@code CgPathFlattener}'s. */
     private static final float TOLERANCE = CgPathFlattener.TOLERANCE;
@@ -79,7 +80,7 @@ public final class CgSvgCells {
             int argb0 = start == null ? 0xFFFFFFFF : start[i];
             colour(o + COLOR0, argb0);
             colour(o + COLOR1, ramp ? end[i] : argb0);
-            int flags = FLAG_CELL | ALL_EDGES;
+            int flags = CgCurveRecords.FLAG_CELL | ALL_EDGES;
             if (ramp) {
                 int g = i * 4;
                 float ox = axes[g], oy = axes[g + 1], dx = axes[g + 2], dy = axes[g + 3];
@@ -87,7 +88,7 @@ public final class CgSvgCells {
                 records[o + GRADIENT + 1] = b * ox + d * oy + ty;
                 records[o + GRADIENT + 2] = ia * dx + ib * dy;
                 records[o + GRADIENT + 3] = ic * dx + id * dy;
-                flags |= FLAG_GRADIENT;
+                flags |= CgCurveRecords.FLAG_GRADIENT;
             }
             records[o + FLAGS] = flags;
         }

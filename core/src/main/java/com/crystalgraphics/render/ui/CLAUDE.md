@@ -1,7 +1,7 @@
 # render/ui — the UI canvas's backend
 
-The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it step by step; the old canvas
-(`render/canvas`) lives until UI14.
+The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`): its records, recorder, paths, SVG, backdrop and
+property trees. `CgCanvasPrimitives` holds its path materials (curves and the coverage rasters).
 
 | Path | Owns |
 |---|---|
@@ -9,7 +9,7 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
 | `element/CgUiElements` | The 96-byte element record (`CgInstanceKind.ELEMENT`): its field offsets, fill kinds, flags and writers |
 | `path/` | A path's geometry and its cache: flattening (Wang's formula), the trapezoid triangulator, the stroker and dasher, the cell records, and the shared coverage atlas with its publication rule (`CgPathCache`) |
 | `svg/` | `api.vector.svg.CgSvg`'s inside, ported from CrystalGUI: the scanner, resolver, paths, transforms, styles, colours and gradients that make a scene; the tessellator and `CgSvgOps` that make its draw ops; `CgSvgCells`, an op's coverage as cell records |
-| `backdrop/CgBackdrop` | What is behind a pane: the target's pixels under it copied, blurred on the 1/2/4 ladder. The canvas's `backdropFilter` and the old canvas's glass (`CgCanvasBackdrop`, a subclass) both draw over it |
+| `backdrop/CgBackdrop` | What is behind a pane: the target's pixels under it copied, blurred on the 1/2/4 ladder. The canvas's `backdropFilter` draws over it |
 | `property/` | The property trees a recording carries: spatial nodes, effect nodes, the palette a frame executes them as. Their values per frame, `CgPropertyValues`, are the graph's (`render/graph`) |
 
 ## Rules

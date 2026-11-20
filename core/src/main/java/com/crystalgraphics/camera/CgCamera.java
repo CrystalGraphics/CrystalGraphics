@@ -14,7 +14,7 @@ import java.nio.FloatBuffer;
 /**
  * Where something is seen from: view, projection, the camera's absolute position, resolution and time. The host's
  * camera at a stage, a stage frame's camera, a preview's or a scene's own: one type. Given to a raster pass with
- * {@code CgRasterPass.camera}, to a canvas with {@code CgCanvas.camera}; the depth convention and the target's
+ * {@code CgRasterPass.camera}, to a canvas with {@code CgCanvas.begin}; the depth convention and the target's
  * encoding are the renderer's.
  *
  * <pre>{@code
@@ -323,7 +323,7 @@ public final class CgCamera {
      * <pre>{@code
      * // a damage number over its target, at a GUI stage, in its canvas's pixels
      * if (CgView.main().camera().project(x, y, z, frame.width(), frame.height(), at)) {
-     *     frame.canvas().quad(DIGIT).at(at.x - 16, at.y - 16).size(32, 32).submit();
+     *     frame.canvas().image(DIGIT, at.x - 16, at.y - 16, 32, 32);
      * }
      * }</pre>
      *

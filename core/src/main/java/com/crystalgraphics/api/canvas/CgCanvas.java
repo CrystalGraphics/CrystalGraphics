@@ -2,7 +2,7 @@ package com.crystalgraphics.api.canvas;
 
 import com.crystalgraphics.render.ui.property.CgSpatialTree;
 import com.crystalgraphics.text.render.CgTextDraw;
-import com.crystalgraphics.render.canvas.CgCurveRecords;
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import com.crystalgraphics.render.graph.CgRasterPass;
 
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -27,7 +27,6 @@ import com.crystalgraphics.api.paint.CgPaint;
 import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.brush.CgFit;
 import com.crystalgraphics.api.paint.brush.CgTiling;
-import com.crystalgraphics.api.material.engine.CgPlacement;
 import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
 import com.crystalgraphics.api.paint.effect.CgFilter;
 import com.crystalgraphics.api.paint.effect.CgShadow;
@@ -47,10 +46,9 @@ import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
-import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
-import com.crystalgraphics.render.canvas.CgCanvasGlass;
-import com.crystalgraphics.render.canvas.CgClipTable;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.ui.CgCanvasPrimitives;
+import com.crystalgraphics.render.ui.clip.CgClipTable;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.graph.CgComputePass;
@@ -59,7 +57,6 @@ import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.CgRenderer;
 import com.crystalgraphics.render.graph.CgRecording;
 import com.crystalgraphics.render.precache.CgPipelineList;
-import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.render.ui.CgUiRecorder;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.render.ui.backdrop.CgBackdrop;
@@ -84,7 +81,7 @@ import org.joml.Matrix4fc;
  * {@link #scale}.
  *
  * <pre>{@code
- * CgCanvas canvas = CgCanvas.on(frame);                              // a HUD or screen stage's, in window pixels
+ * CgCanvas canvas = frame.canvas();                                  // a HUD or screen stage's, in window pixels
  * canvas.fill(8, 8, 200, 40, 0xC0101418);                            // a flat rect
  * canvas.box(8, 56, 200, 40).fill(CgGradient.linear(90).stop(0, 0xFF3060FF).stop(1, 0xFF60C0FF))
  *       .radius(8).border(1, 0x40FFFFFF).shadow(CgShadow.of(0, 4, 12, 0x80000000)).draw();
@@ -111,9 +108,9 @@ import org.joml.Matrix4fc;
  *   <li>Every {@link #save} needs its {@link #restore}; {@link #end} drops what is left on the stack.</li>
  * </ul>
  */
-public final class CgCanvas implements CgStageFrame.Drawer {
+public final class CgCanvas {
 
-    private static final String ELEMENT_SHADER = "crystalgraphics:shaders/canvas/element.shader";
+    private static final String ELEMENT_SHADER = "crystalgraphics:shaders/ui/element.shader";
     private static final int MAX_TILES = 4096;
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node, cull rect. */
     private static final int SAVED = 23;
@@ -157,7 +154,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     @Nullable private CgGraphTexture target;
     private CgLoad load;
     private CgCamera camera;
-    @Nullable private CgStageFrame frame;
     /** What {@link #beginNow} records into, and whether {@link #end} executes it. */
     @Nullable private CgRecording nowRecording;
     private final CgCamera nowCamera = new CgCamera();
@@ -219,13 +215,14 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     }
 
     /**
-     * What this canvas draws ahead of its first frame: the element under each blend it composites with, and its layers'
-     * blur and colour-matrix kernels. {@code CgCanvasPrimitives.precache} calls it.
+     * What this canvas draws ahead of its first frame: the element under each blend it composites with, glass in every
+     * set of its layers, and its layers' blur and colour-matrix kernels. {@code CgCanvasPrimitives.precache} calls it.
      */
     public static void precache(CgPipelineList list) {
         list.addPass(elementMaterial(), CgInstanceKind.ELEMENT);
         list.addPass(elementAdditive(), CgInstanceKind.ELEMENT);
         list.addPass(elementMask(), CgInstanceKind.ELEMENT);
+        CgCanvasGlass.precache(list);
         list.kernels(() -> {
             CgGpuOps.precacheBlur(CgFormat.RGBA16_FLOAT);
             CgGpuOps.precacheColorMatrix();
@@ -233,33 +230,17 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         });
     }
 
+    /** Forgets its shared materials at a context's teardown: the material registry frees them. Engine. */
+    public static synchronized void releaseAll() {
+        element = elementAdditive = elementMask = null;
+        CgCanvasGlass.release();
+    }
+
     private static CgMaterial elementUnder(CgBlendMode blend) {
         CgMaterial m = CgMaterial.load(ELEMENT_SHADER,
                 CgMaterialState.builder().blend(blend).twoSided().disableDepthTest().build());
         m.precache();
         return m;
-    }
-
-    /**
-     * The canvas of a HUD or screen stage's turn, in window pixels: what it draws lands in the stage's firing, in
-     * paint order with the frame's other drawing. The same canvas all turn; the stack starts empty each turn.
-     */
-    public static CgCanvas on(CgStageFrame frame) {
-        return frame.drawer(CgCanvas.class, CgCanvas::new).turn(frame, 1f);
-    }
-
-    /** As {@link #on}, in the host GUI's pixels: scaled by {@code frame.scale()}, Minecraft's GUI scale. */
-    public static CgCanvas onGui(CgStageFrame frame) {
-        return frame.drawer(CgCanvas.class, CgCanvas::new).turn(frame, frame.scale());
-    }
-
-    private CgCanvas turn(CgStageFrame frame, float scale) {
-        if (this.frame != frame || recording != frame.recording() || this.scale != scale) {
-            begin(frame.recording(), frame.target(), CgLoad.load(), frame.camera(), scale);
-            targetHeight = frame.height();
-            this.frame = frame;
-        }
-        return this;
     }
 
     /**
@@ -314,7 +295,8 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      * }</pre>
      *
      * <ul>
-     *   <li>Inside a stage's turn, draw on {@link #on} instead: it lands in paint order with the rest of the frame.</li>
+     *   <li>Inside a stage's turn, draw on {@code frame.canvas()} instead: it lands in paint order with the rest of the
+     *       frame.</li>
      * </ul>
      */
     public CgCanvas beginNow(int width, int height) {
@@ -340,7 +322,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         executeAtEnd = false;
         recording = null;
         target = null;
-        frame = null;
         depth = 0;
         if (drawn != null) CgRenderer.executeNow(drawn);
     }
@@ -355,24 +336,17 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         CgPathCache.SHARED.abandon(this);
         recording = null;
         target = null;
-        frame = null;
         chunking = false;
         executeAtEnd = false;
         depth = 0;
     }
 
     /** Lands what is drawn; a later item opens a new pass after whatever is recorded between. */
-    @Override
     public void endPass() {
         recorder.end();
     }
 
-    @Override
-    public void endTurn() {
-        end();
-    }
-
-    /** A pass open on the target: after the stage frame's own canvas lands what it drew. */
+    /** A pass open on the target. */
     private void pass() {
         if (recorder.recording()) return;
         if (layers > 0) {
@@ -384,7 +358,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
             top.load = CgLoad.load();
             return;
         }
-        if (frame != null) frame.canvas().endPass();
         recorder.begin(recording, target, load, camera);
         load = CgLoad.load();
     }
@@ -1637,7 +1610,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     public boolean photograph(int maxWidth, CgPhotograph.Sink sink) {
         if (target == null) throw new IllegalStateException("photograph() outside a turn");
         recorder.end();
-        if (frame != null) frame.canvas().endPass();
         return CgPhotograph.take(recording, target, Math.max(1, Math.round(camera.width())),
                 Math.max(1, Math.round(camera.height())), maxWidth, sink);
     }
@@ -1676,7 +1648,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
      *
      * <ul>
      *   <li>Its colour is taken as given: the canvas's opacity is not folded in, as {@code text} folds it.</li>
-     *   <li>Never set its pose, clip or node: each replaces the canvas's.</li>
      * </ul>
      */
     public CgTextDraw textDraw() {
@@ -1684,7 +1655,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         pass();
         textPose.set(a, b, 0f, 0f, c, d, 0f, 0f, 0f, 0f, 1f, 0f, tx, ty, 0f, 1f);
         textDraws++;
-        return textBatch().draw().pose(textPose).clip(clip).node(base, effect).gamma(textGamma);
+        return textBatch().draw(textPose, clip, base, effect).gamma(textGamma);
     }
 
     /** The coverage correction later text is drawn with; {@link CgTextGamma#initial()} at first. Not saved. */
@@ -2308,13 +2279,10 @@ public final class CgCanvas implements CgStageFrame.Drawer {
     private float paintedX0, paintedY0, paintedX1, paintedY1;
     private int layerOpens, capturedOpens;
     private int wantX0, wantY0, wantX1, wantY1, lastX0, lastY0, lastX1, lastY1;
-    private final float[] quadRecord = new float[CgQuadRecord.FLOATS];
-    /** The quad record's fade, 1 - opacity, as the old canvas's quads write it. */
-    private static final int QUAD_FADE = CgInstanceKind.QUAD.format().getField("fade").getFloatOffset();
 
     /**
      * {@code box}'s pane: what is drawn under it captured (the target, then each open layer over it), blurred, and drawn
-     * through the glass material as one quad, its corners the box's. The old canvas's pane, value for value.
+     * through the glass material as one element, its corners the box's.
      */
     private void pane(CgCanvasBox box) {
         CgBackdropFilter f = box.backdrop;
@@ -2347,7 +2315,6 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         int cy0 = Math.max(0, (int) Math.floor(h - py1 - pad)), cy1 = Math.min(h, (int) Math.ceil(h - py0 + pad));
         if (cx1 <= cx0 || cy1 <= cy0) return;
         recorder.end();
-        if (frame != null) frame.canvas().endPass();
         if (backdrop == null) backdrop = new CgBackdrop("canvas.backdrop");
         // Top-down, as what was painted is counted
         int ty0 = h - cy1, ty1 = h - cy0;
@@ -2386,23 +2353,13 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         }
         glass.backdrop(backdrop, offsetX, offsetY, backdrop.x0(), backdrop.y0(), backdrop.x1(), backdrop.y1()).apply();
         pass();
-        Arrays.fill(quadRecord, 0f);
-        quadRecord[CgQuadRecord.ORIGIN] = ox;
-        quadRecord[CgQuadRecord.ORIGIN + 1] = oy;
-        quadRecord[CgQuadRecord.RIGHT] = rx;
-        quadRecord[CgQuadRecord.RIGHT + 1] = ry;
-        quadRecord[CgQuadRecord.UP] = ux;
-        quadRecord[CgQuadRecord.UP + 1] = uy;
-        quadRecord[CgQuadRecord.UV1] = 1f;
-        quadRecord[CgQuadRecord.UV1 + 1] = 1f;
-        for (int k = 0; k < 4; k++) quadRecord[CgQuadRecord.COLOR + k] = 1f;
-        quadRecord[QUAD_FADE] = 1f - opacity;
-        quadRecord[CgQuadRecord.CLIP] = clip;
-        quadRecord[CgQuadRecord.NODE] = CgPalette.pack(base, effect);
-        float bx0 = ox + Math.min(0f, rx) + Math.min(0f, ux) - 1f, bx1 = ox + Math.max(0f, rx) + Math.max(0f, ux) + 1f;
-        float by0 = oy + Math.min(0f, ry) + Math.min(0f, uy) - 1f, by1 = oy + Math.max(0f, ry) + Math.max(0f, uy) + 1f;
-        recorder.draw(CgInstanceKind.QUAD, glass.material(), null, null, null, base, quadRecord, 0, 1, bx0, by0, bx1, by1);
-        grow(base, bx0, by0, bx1, by1);
+        clear();
+        CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, 0xFFFFFFFF, 0f);
+        int at = spatial();
+        float[] r = rect(at, box.x, box.y, box.w, box.h, false);
+        if (r == null) return;
+        finish(at, 1f);
+        element(glass.instance(), null, null, at, record, 0, 1, r[0], r[1], r[2], r[3]);
     }
 
     /**
@@ -2430,7 +2387,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
 
     /** A pane's glass for this turn. */
     private CgCanvasGlass pane() {
-        if (panesUsed == panes.size()) panes.add(new CgCanvasGlass(CgPlacement.SCREEN));
+        if (panesUsed == panes.size()) panes.add(new CgCanvasGlass());
         return panes.get(panesUsed++);
     }
 
@@ -2723,7 +2680,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         float reach = Math.max(radius, 0f) + feather + 1f;
         float x0 = Math.min(ax, Math.min(bx, cx)) - reach, y0 = Math.min(ay, Math.min(by, cy)) - reach;
         float x1 = Math.max(ax, Math.max(bx, cx)) + reach, y1 = Math.max(ay, Math.max(by, cy)) + reach;
-        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(CgPlacement.SCREEN), null, null, null, at,
+        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(), null, null, null, at,
                 splineRecord, 0, 1, x0, y0, x1, y1);
         grow(at, x0, y0, x1, y1);
     }
@@ -2749,7 +2706,7 @@ public final class CgCanvas implements CgStageFrame.Drawer {
         float reach = Math.max(halfStart, halfEnd) * 1.5f + feather + 1f;
         float x0 = Math.min(ax, Math.min(bx, cx)) - reach, y0 = Math.min(ay, Math.min(by, cy)) - reach;
         float x1 = Math.max(ax, Math.max(bx, cx)) + reach, y1 = Math.max(ay, Math.max(by, cy)) + reach;
-        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(CgPlacement.SCREEN), null, null, null, at,
+        recorder.draw(CgInstanceKind.CURVE, CgCanvasPrimitives.curve(), null, null, null, at,
                 splineRecord, 0, 1, x0, y0, x1, y1);
         grow(at, x0, y0, x1, y1);
     }

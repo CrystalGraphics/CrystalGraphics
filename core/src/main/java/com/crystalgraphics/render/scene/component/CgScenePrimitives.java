@@ -1,7 +1,7 @@
 package com.crystalgraphics.render.scene.component;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
-import com.crystalgraphics.render.canvas.CgCanvasLabels;
+import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;

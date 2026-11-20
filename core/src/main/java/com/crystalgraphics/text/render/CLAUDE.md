@@ -3,12 +3,13 @@
 ## Package role
 
 The **draw-time side** of text: given a `CgTextLayout` and the registry's atlas placements, the quads a canvas draws.
-Text is a canvas item (`render/canvas/CLAUDE.md`): `canvas.text()` returns a `CgTextDraw`, its `submit()` lands the
-draw's quads on that canvas in order with its other items. There is no renderer object, no lifecycle and no registry.
+Text is a canvas item (`api/canvas`, `docs/UI_CANVAS.md` § *Text*): `canvas.text(CgText, x, y)` draws a value,
+`canvas.textDraw()` returns the canvas's `CgTextDraw`, its `submit()` lands the draw's quads in order with the
+canvas's other items. There is no renderer object, no lifecycle and no registry.
 
 ```java
-canvas.text().text("Ready").font(font).at(8, 8).color(0xFFFFFFFF).submit();   // from frame.canvas(), or any CgCanvas
-canvas.text().style(TITLE).text("Level up!").at(x, y).submit();                // in a CgTextStyle (text/style)
+canvas.text(READY, 8, 8);                                                       // a CgText, from frame.canvas()
+canvas.textDraw().style(TITLE).text("Level up!").at(x, y).submit();             // in a CgTextStyle (text/style)
 ```
 
 How text looks is `text/style`'s `CgTextStyle`: a face and a stack of `CgTextLayer`s. This package draws one.
@@ -28,12 +29,12 @@ How text looks is `text/style`'s `CgTextStyle`: a face and a stack of `CgTextLay
 
 ### `CgTextDraw`
 
-The fluent request. `canvas.text()` is the canvas's one scratch, reset by the next call; `canvas.retainedText()`
-is one a caller holds across frames. `CgTextDraw.queued(queue)` hands itself to `queue` at `submit()` instead of
-drawing (`CgCanvasLabels`' labels); `detached()` belongs to no canvas.
+The fluent request. `canvas.textDraw()` is the canvas's one scratch (`CgTextBatch.draw(pose, clip, spatial,
+effect)`, the canvas's state set), reset by the next call. `CgTextDraw.queued(queue)` hands itself to `queue` at
+`submit()` instead of drawing (`CgCanvasLabels`' labels); `detached()` belongs to no canvas.
 
 - Priorities, not exclusions: `layout` > `paragraph` > `text`, `family` > `font`.
-- `pose(PoseStack)` or `pose(Matrix4f)` is read at `submit()`, so a caller may keep pushing its stack.
+- Its pose, clip and nodes are package-private: the canvas sets them, a caller never does.
 - A draw whose pose scale animates is put on a coarse size ladder (`CgTextRasterMotion`), so it makes a few sizes,
   not one per pixel. A bitmap stretched past its size blurs: `raster: msdf` for text that grows.
   While it moves its shadow cells are built on a coarser 1.5x grid (`shadowRung`) and stretched, a blur hiding what
@@ -150,13 +151,12 @@ other, exact again after 15 frames still. Keyed by draw, not font: two draws of 
 - Layout stays in logical space; the raster tier is a draw-time decision.
 - A batch owns no GPU object: records go into the canvas's quad stream.
 - One thread at a time, as its canvas.
-- The camera is read at each draw: change an immediate canvas's camera only between a `flush()` and the next draw.
 
 ## Common agent mistakes to avoid
 
 - Reintroducing a renderer object, a begin/end batch, a resize registry or a render context: the canvas owns the
   camera, the order and the drawing.
-- Holding `canvas.text()` past its `submit()`: use `retainedText()`.
+- Holding `canvas.textDraw()` past its `submit()`: the next call resets it.
 - Adding a draw-time parameter as an overload instead of a `CgTextDraw` chain method.
 - Toggling keywords or blocks on a shared text material: add a `CgTextMaterials` key instead.
 - Adding an effect as a `CgTextDraw` setter: it is a layer kind, or a field of one, in `text/style`.

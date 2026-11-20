@@ -466,23 +466,15 @@ caller sets after binding rides on the pipeline (`CgPipeline.withState`), or the
 overwrite it at the draw; and a texture bound by hand goes in through `bindTexture(unit, texture)`, winning the
 unit as GL's last bind did.
 
-**The canvas** (G4; lookback G5.3; `render/canvas`): `CgCanvas` records 2D items into raster passes:
-`recordInto(recording, target, load, constants)` picks the target, `scissor`/`noScissor` and `constants` are its
-set-state, a change of constants starts a pass, `endPass()` splits; nothing is read from GL. The caller executes the
+**The canvas** (`api.canvas`, `render/ui`): `CgCanvas` records 2D items into raster passes: `begin(recording,
+target, load, camera, scale)` picks the target, a layer or a backdrop starts a pass, `endPass()` splits; nothing is
+read from GL. The caller executes the
 recording once with `CgRenderer.executeNow(recording)`. A recorded draw executes after the canvas has moved on, so a
 snapshot keeps by value what an immediate draw read live: a texture as the handle it was given, an attached uniform
 block as its bytes; the canvas's binding table resets once a frame. A canvas's passes are `LOOKBACK`: a recorded chunk is one spatial node's
 (the run ends it where the records' node changes) and each draw carries its records' bounds there, so a draw moves
 back past the draws it does not touch, within its node's domain.
 
-**Replay** (G6.3): `CgReplay` keeps the chunks a recorder took between two `chunksTaken` readings -- found on its
-per-frame tape, `taken(n)` -- with the clip entries and shapes the stretch added and its snapshots copied into a table
-that outlives the recordings, and adds them to a later recording renumbered: clip entries, shapes and nodes, and
-nothing allocated when nothing renumbers. A stretch is kept only if it recorded nothing but chunks and changed no
-pass or scissor (`stateChanges`, `CgRecording.operations`), drew in one node, named no clip from outside its chain
-and binds no texture made for one frame. A snapshot holds a texture view as what it pointed at, so whatever moves a
-kept record's target -- an atlas grown or evicted -- must void the stretch: the caller's epoch. `differs` compares two
-stretches but for what replay renumbers, which is the check mode.
 
 **Damage** (G7.3): `CgRasterPass.damage(x, y, w, h)` limits a pass into a target that keeps its contents -- a window's
 surface -- to what changed: the executor clears and scissors every draw to the rect, and skips a pass whose rect is
@@ -536,7 +528,7 @@ CgExecutor.freeStorage(picture);   // the context is going away
   own buffers and ring.
 - **A recording is a value once sealed**: nothing changes it, nothing in it refers to its recorder.
   `CgRecording.reset()` is only for an owner that knows nobody else holds it: it refills its chunks and raster passes
-  after a reset, so a steady frame allocates none: a chunk kept past it (a `CgReplay`) is a copy, and a raster
+  after a reset, so a steady frame allocates none: a chunk kept past it (a `CgPaintChunk`) is a copy, and a raster
   pass a built frame still holds is left to that frame until `CgFrameBuilder.recycle`.
 
 ## Gate scene

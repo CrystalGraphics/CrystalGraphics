@@ -8,7 +8,7 @@ slots. Your code only makes one, sets its text and plays its animations, as `Cre
 
 Package: `com.crystalgraphics.widget`. The guide for code inside it is its `CLAUDE.md`; this page is for code that uses
 it. Text styles, which every text block draws in, are `vfx/assets.md`; the canvas everything lands on is
-[`CANVAS.md`](CANVAS.md).
+[`UI_CANVAS.md`](UI_CANVAS.md).
 
 It comes in layers. Take the first that does what you need:
 
@@ -257,7 +257,7 @@ CgWidget.retainerBox("Number").blur(4f)      // as built
 - Its region is padded by three sigma, so the blur spreads past the box unclipped; nothing outside the region is read.
 - It runs a compute pass: GL 4.3 and up, or Vulkan. A widget asset with a retainer box precaches the blur's kernels.
 - UMG's Retainer Box has no blur of its own; its Background Blur widget blurs what is behind it, as
-  `CgCanvasBackdrop` does for glass.
+  a canvas box's `backdropFilter` does for glass.
 
 ---
 
@@ -443,7 +443,7 @@ A widget of your own paints onto any canvas, its box at the canvas's origin; the
 it:
 
 ```java
-CgCanvas canvas = CgCanvas.on(frame);           // a HUD stage's turn
+CgCanvas canvas = frame.canvas();               // a HUD stage's turn
 canvas.save().translate(x, y).scale(scale, scale);
 counter.paint(canvas);
 canvas.restore();

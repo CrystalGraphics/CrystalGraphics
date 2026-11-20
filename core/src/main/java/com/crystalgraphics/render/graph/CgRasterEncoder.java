@@ -55,8 +55,8 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import com.crystalgraphics.render.canvas.CgCurveBatch;
-import com.crystalgraphics.render.canvas.CgQuadBatch;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import com.crystalgraphics.platform.rhi.pipeline.CgGraphicsPipelineDesc;
 
 /**
@@ -168,9 +168,9 @@ final class CgRasterEncoder {
         this.device = device;
         CgShaderBufferRegistry registry = CgShaderBufferRegistry.get();
         instanceBuffers[CgInstanceKind.QUAD.ordinal()] = registry.getOrCreateInternal("CgGraphQuadInstances" + depth,
-                CgInstanceKind.QUAD.format(), CgQuadBatch.SLOT, CgBufferLifetime.FRAME);
+                CgInstanceKind.QUAD.format(), CgQuadRecord.SLOT, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.CURVE.ordinal()] = registry.getOrCreateInternal("CgGraphCurveInstances" + depth,
-                CgInstanceKind.CURVE.format(), CgCurveBatch.SLOT, CgBufferLifetime.FRAME);
+                CgInstanceKind.CURVE.format(), CgCurveRecords.SLOT, CgBufferLifetime.FRAME);
         instanceBuffers[ELEMENT] = registry.getOrCreateInternal("CgGraphUiElements" + depth,
                 CgInstanceKind.ELEMENT.format(), CgUiElements.SLOT, CgBufferLifetime.FRAME);
         instanceBuffers[CgInstanceKind.OBJECT.ordinal()] = registry.getOrCreateInternal("CgGraphObjectIds" + depth,
@@ -383,7 +383,6 @@ final class CgRasterEncoder {
             if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
                 state(packed.clips.prepare());
                 state(packed.gradients.prepare());
-                state(packed.shapes.prepare());
                 state(packed.palette.prepare());
             }
             batchRecords = null;

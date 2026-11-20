@@ -634,8 +634,8 @@ public final class CgView {
      *
      * <pre>{@code
      * CgTexture picture = viewport.renderPicture(w, h, 0xFF3D3D3D);   // each frame, on the render thread
-     * ui.drawImage(picture, x, y, w, h, 0f, 1f, 1f, 0f);              // its origin is bottom left: v flipped
-     * frame.canvas().view(viewport, w, h).at(x, y).size(w, h).submit();   // or as a canvas item, flipped for you
+     * canvas.box(x, y, w, h).fill(picture).region(0f, 1f, 1f, 0f).draw(); // its origin is bottom left: v flipped
+     * canvas.view(viewport, x, y, w, h);                                // or as a canvas item, flipped for you
      * viewport.releasePicture();                                        // when the viewport goes
      * }</pre>
      *

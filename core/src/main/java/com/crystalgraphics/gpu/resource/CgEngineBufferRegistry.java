@@ -2,11 +2,10 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.api.material.CgParameterCollection;
-import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.ui.clip.CgClipTable;
 import com.crystalgraphics.render.paint.CgGradientTable;
-import com.crystalgraphics.render.canvas.CgShapeTable;
-import com.crystalgraphics.render.canvas.CgQuadBatch;
-import com.crystalgraphics.render.canvas.CgCurveBatch;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.stage.CgDirectionalLights;
 import com.crystalgraphics.text.render.CgTextMaterials;
@@ -33,7 +32,7 @@ import com.crystalgraphics.material.CgPropertyRows;
  * <h3>Why an opt-in registry rather than {@code cg_env.glsl}</h3>
  * <p>{@code CgViewBlock} and {@code CgObjectDataBuffer} are declared unconditionally in
  * {@code cg_env.glsl} because effectively every shader wants them. A quad-instance buffer is not in
- * that class — only a small minority of shaders draw through {@code CgQuadBatch} — so declaring it
+ * that class — only a small minority of shaders draw through {@code CgQuadRecord} — so declaring it
  * everywhere would bind it for shaders that never read it.</p>
  *
  * <p>The program declares what it binds, so the buffer is attached as part of parsing, before anything can compile:
@@ -41,10 +40,10 @@ import com.crystalgraphics.material.CgPropertyRows;
  *
  * <h3>Built-ins are seeded here, by method reference</h3>
  * <p>Providers hold a {@link Supplier}, not a buffer, and the built-in {@code quad} entry below is
- * seeded with {@code CgQuadBatch::instanceBuffer}. A method reference does <em>not</em> trigger
+ * seeded with {@code CgQuadRecord::instanceBuffer}. A method reference does <em>not</em> trigger
  * that class's static initialization, and {@code MACRO_NAME} is a compile-time constant that gets
  * inlined — so seeding the token costs nothing and, crucially, does not allocate
- * {@code CgQuadBatch}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
+ * {@code CgQuadRecord}'s shared buffer, which is only valid once {@code CgEngineLifecycle.ensureGraphicsContext}
  * has run. The supplier is invoked at attach time, when a GL context exists.</p>
  *
  * <p>That laziness is why the table lives here rather than each provider registering from its own
@@ -62,18 +61,16 @@ public final class CgEngineBufferRegistry {
 
     static {
         register("palette", CgPalette::buffer, CgPalette.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/palette.glsl");
+                "crystalgraphics:shaders/ui/primitives/palette.glsl");
         // A quad or curve is positioned through its spatial node, so either brings the palette with it.
-        register("quad", CgQuadBatch::instanceBuffer, CgQuadBatch.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/quad.glsl", "palette");
+        register("quad", CgQuadRecord::instanceBuffer, CgQuadRecord.MACRO_NAME,
+                "crystalgraphics:shaders/ui/primitives/quad.glsl", "palette");
         register("element", CgUiElements::buffer, CgUiElements.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/element.glsl", "palette");
-        register("curve", CgCurveBatch::instanceBuffer, CgCurveBatch.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/curve.glsl", "palette");
+                "crystalgraphics:shaders/ui/primitives/element.glsl", "palette");
+        register("curve", CgCurveRecords::instanceBuffer, CgCurveRecords.MACRO_NAME,
+                "crystalgraphics:shaders/ui/primitives/curve.glsl", "palette");
         register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/clip.glsl", "palette");
-        register("shape", CgShapeTable::buffer, CgShapeTable.MACRO_NAME,
-                "crystalgraphics:shaders/canvas/primitives/shape.glsl");
+                "crystalgraphics:shaders/ui/primitives/clip.glsl", "palette");
         // A particle is read through the culled, sorted order Range writes, so the order comes with it.
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
         // A beam draw's noise points, for the strip factory a particle program gets beside its own.
@@ -117,7 +114,7 @@ public final class CgEngineBufferRegistry {
                 });
         // The text renderer's own block (projection, gamma, cut), a uniform block filled per renderer. Last, so the
         // tokens before it keep their bindings. Its env file is the text layer, which reads quad's and clip's slots.
-        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/canvas/primitives/text.glsl",
+        register("text", CgTextMaterials::textData, "TEXT_DATA", "crystalgraphics:shaders/ui/primitives/text.glsl",
                 "quad", "clip");
         // A recording's gradients (CgGradient), read by index; after text so earlier tokens keep their bindings.
         register("gradient", CgGradientTable::buffer, CgGradientTable.MACRO_NAME,

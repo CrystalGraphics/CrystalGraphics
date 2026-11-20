@@ -4,7 +4,6 @@ import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.material.CgMaterialTestSupport;
-import com.crystalgraphics.render.canvas.CgCanvas;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -225,20 +224,14 @@ public class CgFrameBuilderTest {
     @Test
     public void aScissorChainIsIssuedFromWhereItChanged() {
         CgRecording rec = new CgRecording();
-        CgCanvas recorder = new CgCanvas();
-        recorder.recordInto(rec, CgGraphTexture.requested("surface", DESC), CgLoad.load(), constants);
-        recorder.pushScissor(0, 0, 64, 64);
-        recorder.pushScissor(3, 0f, 0f, 20f, 20f);
-        recorder.add(quads(rec, 1, 1, 0));
-        recorder.popScissor();
-        recorder.pushScissor(3, 0f, 0f, 20f, 20f);
-        recorder.add(quads(rec, 2, 1, 0));
-        recorder.popScissor();
-        recorder.pushScissor(4, 0f, 0f, 10f, 10f);
-        recorder.add(quads(rec, 3, 1, 0));
-        recorder.stop();
+        CgRasterPass pass = rec.raster("surface").color(CgGraphTexture.requested("surface", DESC), CgLoad.load())
+                .constants(constants);
+        int screen = pass.scissor(-1, 0, 0, 64, 64);
+        pass.useScissor(pass.scissor(screen, 3, 0f, 0f, 20f, 20f)).add(quads(rec, 1, 1, 0));
+        pass.useScissor(pass.scissor(screen, 3, 0f, 0f, 20f, 20f)).add(quads(rec, 2, 1, 0));
+        pass.useScissor(pass.scissor(screen, 4, 0f, 0f, 10f, 10f)).add(quads(rec, 3, 1, 0));
+        pass.end();
 
-        CgRasterPass pass = (CgRasterPass) rec.pass(0);
         assertEquals("the same chain again is the same scissor", pass.chunkScissor(0), pass.chunkScissor(1));
         int outer = pass.scissorParent(pass.chunkScissor(0));
         assertEquals(-1, pass.scissorNode(outer));

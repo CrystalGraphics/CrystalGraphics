@@ -5,7 +5,7 @@ import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.ui.clip.CgClipTable;
 import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -22,9 +22,9 @@ import java.util.function.Consumer;
  * the canvas's other items:
  *
  * <pre>{@code
- * canvas.text().text("Hello").font(font).at(20f, 40f).submit();                  // white: the plain style
- * canvas.text().style(TITLE).text("Level up!").at(x, y).submit();                // the style's font and layers
- * canvas.text().style(TITLE).text(name).family(family).targetPx(24).color(0x80FFFFFF).submit();  // on your font, faded
+ * canvas.textDraw().text("Hello").font(font).at(20f, 40f).submit();                  // white: the plain style
+ * canvas.textDraw().style(TITLE).text("Level up!").at(x, y).submit();                // the style's font and layers
+ * canvas.textDraw().style(TITLE).text(name).family(family).targetPx(24).color(0x80FFFFFF).submit();  // on your font, faded
  *
  * CgTextDraw fps = canvas.retainedText().style(HUD).at(8f, 8f);   // held across frames, on that canvas
  * fps.text(currentFps).submit();                                  // each frame
@@ -43,7 +43,7 @@ import java.util.function.Consumer;
  *       world stage. Under a perspective camera it is world text: always distance-field, its tier from its size on screen.</li>
  *   <li>A {@link #layout} is drawn as built; a {@link #paragraph} or {@link #text} wraps at {@link #constraints} in
  *       screen pixels, re-wrapped as the pose's scale changes (never for world text).</li>
- *   <li>{@code canvas.text()} is the canvas's one scratch, reset by the next call: never hold it.</li>
+ *   <li>{@code canvas.textDraw()} is the canvas's one scratch, reset by the next call: never hold it.</li>
  * </ul>
  */
 public final class CgTextDraw {
@@ -217,7 +217,7 @@ public final class CgTextDraw {
     }
 
     /** The pose its quads are placed by, read at submit. */
-    public CgTextDraw pose(@Nullable Matrix4f pose) {
+    CgTextDraw pose(@Nullable Matrix4f pose) {
         this.poseMatrix = pose;
         return this;
     }
@@ -227,7 +227,7 @@ public final class CgTextDraw {
      * white fill) by default.
      *
      * <pre>{@code
-     * canvas.text().style(TITLE).text("Level up!").at(x, y).submit();
+     * canvas.textDraw().style(TITLE).text("Level up!").at(x, y).submit();
      * }</pre>
      */
     public CgTextDraw style(CgTextStyle style) {
@@ -284,13 +284,13 @@ public final class CgTextDraw {
     }
 
     /** The {@link CgClipTable} entry it is clipped by; 0 is none. */
-    public CgTextDraw clip(int entry) {
+    CgTextDraw clip(int entry) {
         this.clip = entry;
         return this;
     }
 
     /** Its spatial and effect nodes; its pose is then in the spatial node's space. @see CgPalette */
-    public CgTextDraw node(int spatial, int effect) {
+    CgTextDraw node(int spatial, int effect) {
         this.spatialNode = spatial;
         this.effectNode = effect;
         return this;

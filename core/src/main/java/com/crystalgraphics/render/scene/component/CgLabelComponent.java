@@ -6,7 +6,7 @@ import org.joml.Matrix4d;
 import org.joml.Quaternionf;
 
 import com.crystalgraphics.camera.CgCamera;
-import com.crystalgraphics.render.canvas.CgCanvasLabels;
+import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.render.scene.batch.CgMeshBatches;
 import com.crystalgraphics.render.view.CgView;
 import com.crystalgraphics.shape.bounds.CgAABB;

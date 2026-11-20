@@ -6,5 +6,6 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     float d = sdf_rounded_box(i.local - i.size * 0.5, i.size * 0.5, vec4(min(i.size.x, i.size.y) * 0.5),
             vec4(min(i.size.x, i.size.y) * 0.5));
     s.color = mix(_Top, _Bottom, i.param.y) * i.color;
+    s.premultiplied = false;
     s.coverage = sdf_coverage(d, 1.0);
 }

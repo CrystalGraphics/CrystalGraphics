@@ -48,7 +48,7 @@ Which package owns what. For how a string moves through them, read
 
 | Class | Is |
 |---|---|
-| `CgTextDraw` | The fluent draw request: `canvas.text()`, `canvas.retainedText()`, `CgTextDraw.queued(q)` |
+| `CgTextDraw` | The fluent draw request: `canvas.textDraw()`, a label's `draw()`, `CgTextDraw.queued(q)` |
 | `CgTextBatch` | A canvas's text: resolves, plans and lands each draw's quads; with no canvas, captures world labels |
 | `CgTextGamma` | The coverage correction applied to light text |
 
@@ -117,10 +117,10 @@ public face is `api/font/CgSystemFonts`.
 
 ### The material
 
-`assets/crystalgraphics/shaders/canvas/text.shader`: one material for bitmap, MSDF and MTSDF glyphs, with a single
+`assets/crystalgraphics/shaders/ui/text.shader`: one material for bitmap, MSDF and MTSDF glyphs, with a single
 `MSDF_MODE` keyword. It also draws strokes, shadows and gamma, with the helpers in
-`shaders/canvas/primitives/text_gamma.glsl`, `shaders/canvas/primitives/rect_blur.glsl` (a decoration's shadow) and
-`shaders/canvas/primitives/texel.glsl` (bitmap glyphs off-axis).
+`shaders/ui/primitives/text_gamma.glsl`, `shaders/ui/primitives/rect_blur.glsl` (a decoration's shadow) and
+`shaders/ui/primitives/texel.glsl` (bitmap glyphs off-axis).
 
 ---
 

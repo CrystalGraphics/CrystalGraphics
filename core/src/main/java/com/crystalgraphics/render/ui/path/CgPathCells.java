@@ -29,8 +29,7 @@ public final class CgPathCells {
     private static final int WIDTHS = FORMAT.getField("widths").getFloatOffset();
     private static final int FLAGS = FORMAT.getField("flags").getFloatOffset();
 
-    /** The cell primitive's flags: a cell, its outline edges shifted in. Equal to {@code CgCurveBatch}'s. */
-    private static final int FLAG_CELL = 256, EDGE_SHIFT = 9;
+    /** The cell primitive's flags: a cell, its outline edges shifted in. Equal to {@code CgCurveRecords}'. */
 
     private float[] records = new float[FLOATS * 64];
 
@@ -61,7 +60,7 @@ public final class CgPathCells {
                 records[o + COLOR0 + k] = 1f;
                 records[o + COLOR1 + k] = 1f;
             }
-            records[o + FLAGS] = FLAG_CELL | (fill.edges()[i] & 15) << EDGE_SHIFT;
+            records[o + FLAGS] = CgCurveRecords.FLAG_CELL | (fill.edges()[i] & 15) << CgCurveRecords.CELL_EDGE_SHIFT;
         }
         return n;
     }

@@ -127,7 +127,7 @@ public final class CgPipelineList {
      * the shader's and its keywords', so a probe material builds each.
      *
      * <pre>{@code
-     * pipelines.add("crystalgraphics:shaders/canvas/text.shader");            // MSDF_MODE x WORLD_LABEL: four programs
+     * pipelines.add("crystalgraphics:shaders/ui/text.shader");            // MSDF_MODE x WORLD_LABEL: four programs
      * pipelines.add("mymod:shaders/rune.shader", "GLOW");              // its domain's combinations, each with GLOW
      * }</pre>
      */
@@ -151,7 +151,7 @@ public final class CgPipelineList {
 
     /**
      * As {@link #addPass(String, String...)}, for a shader drawn on {@code kind}'s instances: a screen-space quad or curve
-     * material (a UI's), drawn through {@code CgQuadBatch} or {@code CgCurveBatch}.
+     * material (a UI's), drawn through the canvas's records.
      *
      * <pre>{@code
      * pipelines.addPass("mymod:shaders/gui_panel.shader", CgInstanceKind.QUAD);        // its domain's combinations

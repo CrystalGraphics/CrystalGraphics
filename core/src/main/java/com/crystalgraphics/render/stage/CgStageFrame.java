@@ -1,10 +1,9 @@
 package com.crystalgraphics.render.stage;
 
-import java.util.function.Supplier;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.host.CgWorldAtmosphere;
-import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.api.canvas.CgCanvas;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.graph.CgExecutor;
 import com.crystalgraphics.render.graph.CgFrame;
@@ -33,15 +32,16 @@ import javax.annotation.Nullable;
  * });
  *
  * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
- *     frame.canvas().image(BADGE).at(8, 8).size(32, 32).submit();       // device pixels
- *     frame.scaled().text("Ready").at(4, 44).submit();                  // the host GUI's pixels
+ *     frame.canvas().image(BADGE, 8, 8, 32, 32);                        // the window's pixels
+ *     frame.scaled().text(READY, 4, 44);                                // the host GUI's pixels
  * });
  * }</pre>
  *
  * <ul>
  *   <li>Render thread, and only inside {@link CgStageRenderer#render}: the recording is executed and reset after.</li>
- *   <li>During a renderer's turn, {@link #canvas()} draws into this firing on {@link #target()}: under the view's
- *       camera at a world stage, in the window's pixels at a GUI stage. What a turn drew lands when it ends.</li>
+ *   <li>During a renderer's turn at a GUI stage, {@link #canvas()} draws into this firing on {@link #target()}, in the
+ *       window's pixels. What a turn drew lands when it ends. A world stage draws through the scene's components and
+ *       raster passes.</li>
  *   <li>What one stage hands a later one, and what a temporal effect keeps, lives in the view
  *       ({@code view().publish}, {@code view().state()}), never in a renderer's field.</li>
  * </ul>
@@ -50,20 +50,12 @@ public final class CgStageFrame {
 
     final CgRecording recording = new CgRecording();
     final CgPassConstants hostConstants = new CgPassConstants();
-    private final CgCamera gui = new CgCamera(), guiScaled = new CgCamera();
+    private final CgCamera gui = new CgCamera();
     private final CgStageMeshPass meshPass = new CgStageMeshPass(this);
     private final CgCanvas canvas = new CgCanvas();
-    private final CgCanvas.Source canvasOpener = new CgCanvas.Source() {
-        @Override
-        public void open(CgCanvas canvas) {
-            openCanvas(canvas);
-        }
-
-        @Override
-        public CgPassConstants constants() {
-            return canvasCamera();
-        }
-    };
+    /** Whether {@link #canvas} records into this turn, and at which scale. */
+    private boolean canvasOpen;
+    private float canvasScale;
 
     CgHostFrame host;
     /** The view a world firing draws; null at a GUI or custom stage's. */
@@ -78,7 +70,7 @@ public final class CgStageFrame {
     CgGraphTexture output;
     /** Whether the view's picture has been upscaled into {@link #output}: what draws after draws there, at full size. */
     boolean presented;
-    /** Whether this turn's canvas draws in the host GUI's pixels ({@link #scaled}). */
+    /** Whether this turn's canvas draws in the host GUI's pixels ({@link #scaled}): what {@link #project} answers in. */
     private boolean guiPixels;
 
     /** The firing it belongs to: what builds the view's depth pyramid. */
@@ -214,16 +206,19 @@ public final class CgStageFrame {
     }
 
     /**
-     * What a renderer draws quads, curves and text into during its turn (Unreal's canvas): on {@link #target()} under
-     * {@link #camera()}. What a turn draws lands when the turn ends, in a pass of its own.
+     * What a renderer at a GUI stage draws boxes, images, paths and text into during its turn (Unreal's canvas): on
+     * {@link #target()}, in the window's pixels. What a turn draws lands when the turn ends, in paint order with what
+     * the stage's other renderers draw.
      *
      * <pre>{@code
      * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame ->
-     *         frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).color(argb).submit());
+     *         frame.canvas().box(x, y, w, h).fill(DIGITS).region(u0, v0, u1, v1).tint(argb).draw());
      * }</pre>
+     *
+     * @throws IllegalStateException at a world stage: its drawing is the scene's components and raster passes
      */
     public CgCanvas canvas() {
-        return canvasIn(false);
+        return canvasAt(false);
     }
 
     /**
@@ -233,14 +228,13 @@ public final class CgStageFrame {
      *
      * <pre>{@code
      * CgCanvas gui = frame.scaled();
-     * gui.quad(ICON).at(4, 4).size(16, 16).submit();     // 16 GUI pixels: 64 on the window at scale 4
+     * gui.image(ICON, 4, 4, 16, 16);     // 16 GUI pixels: 64 on the window at scale 4
      * }</pre>
      *
      * @throws IllegalStateException at a world stage
      */
     public CgCanvas scaled() {
-        if (view != null) throw new IllegalStateException(stage + " is not a GUI stage: it has no GUI pixels");
-        return canvasIn(true);
+        return canvasAt(true);
     }
 
     /**
@@ -248,7 +242,7 @@ public final class CgStageFrame {
      * seen by the game's view, in the canvas's pixels, the GUI's after {@link #scaled()}. False behind the camera.
      *
      * <pre>{@code
-     * if (frame.project(x, y + 2, z, at)) frame.canvas().quad(MARKER).at(at.x - 8, at.y - 8).size(16, 16).submit();
+     * if (frame.project(x, y + 2, z, at)) frame.canvas().image(MARKER, at.x - 8, at.y - 8, 16, 16);
      * }</pre>
      *
      * @throws IllegalStateException at a world stage
@@ -267,7 +261,7 @@ public final class CgStageFrame {
      * <pre>{@code
      * CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
      *     frame.include(ui.built()).timed(GPU_UI);
-     *     frame.canvas().quad(COMPOSITE).texture(0, ui.picture()).at(0, 0).size(w, h).submit();
+     *     frame.canvas().box(0, 0, w, h).fill(ui.picture()).premultiplied().draw();
      * });
      * }</pre>
      *
@@ -289,68 +283,36 @@ public final class CgStageFrame {
         return recording.includeAgain(frame, keepRequested);
     }
 
-    private CgCanvas canvasIn(boolean scaledPixels) {
-        if (drawer != null) drawer.endPass();   // what the UI canvas drew lands first, in paint order
-        if (scaledPixels != guiPixels) {
-            guiPixels = scaledPixels;
-            if (canvas.recording()) canvas.constants(canvasCamera());   // lands what was drawn under the other camera
+    private CgCanvas canvasAt(boolean gui) {
+        if (view != null) {
+            throw new IllegalStateException(stage + " draws the world: through the scene's components and raster"
+                    + " passes, never a canvas");
+        }
+        float scale = gui ? host.guiScale() : 1f;
+        guiPixels = gui;
+        if (!canvasOpen || canvasScale != scale) {
+            canvas.begin(recording, target(), CgLoad.load(), camera(), scale);
+            canvasOpen = true;
+            canvasScale = scale;
         }
         return canvas;
     }
 
-    private CgPassConstants canvasCamera() {
-        CgCamera camera = camera();
-        if (guiPixels) {
-            float s = host.guiScale();
-            guiScaled.set(camera).projection().scale(s, s, 1f);
-            camera = guiScaled;
-        }
-        return hostConstants.seenThrough(camera, width(), height());
-    }
-
-    private void openCanvas(CgCanvas canvas) {
-        canvas.recordInto(recording, target(), depth(), CgLoad.load(), canvasCamera());
-        CgCamera camera = camera();
-        canvas.origin(camera.x(), camera.y(), camera.z());
-    }
-
-    /**
-     * Something else drawing into this frame's turns beside {@link #canvas()}: the UI canvas
-     * ({@code CgCanvas.on(frame)}). Its pass ends where this frame's own canvas's does, so the two keep paint order.
-     * Engine.
-     */
-    public interface Drawer {
-        /** Lands what is drawn: something else draws next. */
-        void endPass();
-
-        /** The turn is over: land everything and record nowhere. */
-        void endTurn();
-    }
-
-    @Nullable private Drawer drawer;
-
-    /** The drawer this frame carries, made by {@code make} at the first ask. Engine. */
-    public <T extends Drawer> T drawer(Class<T> type, Supplier<T> make) {
-        if (drawer == null) drawer = make.get();
-        return type.cast(drawer);
-    }
-
-    /** Lands what both canvases drew: something recorded outside them comes next. */
+    /** Lands what the canvas drew: something recorded outside it comes next. */
     private void endPasses() {
-        canvas.endPass();
-        if (drawer != null) drawer.endPass();
+        if (canvasOpen) canvas.endPass();
     }
 
     /** A renderer's turn starts: what it draws on the canvas records into this firing, in window pixels. */
     void turnBegins(CgRenderStage stage) {
         this.stage = stage;
         guiPixels = false;
-        canvas.arm(canvasOpener);
     }
 
-    /** A renderer's turn ends: what it drew on the canvas lands, in a pass of its own. */
+    /** A renderer's turn ends: what it drew on the canvas lands. */
     void turnEnds() {
-        canvas.stop();
-        if (drawer != null) drawer.endTurn();
+        if (!canvasOpen) return;
+        canvasOpen = false;
+        canvas.end();
     }
 }

@@ -2,8 +2,7 @@ package com.crystalgraphics.render.scene.renderer;
 
 import com.crystalgraphics.render.debug.CgDebugDraw;
 import com.crystalgraphics.render.scene.component.CgQuadComponent;
-import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
-import com.crystalgraphics.api.material.engine.CgEngineMaterials;
+import com.crystalgraphics.render.ui.CgCanvasPrimitives;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
@@ -79,7 +78,6 @@ public final class CgScenePipelines {
         // The renderer's own programs no material brings in: text in every form and the canvas's default materials
         CgPipelinePrecache.register("crystalgraphics:world", list -> {
             CgTextMaterials.precache(list);
-            CgEngineMaterials.precache(list);
             CgCanvasPrimitives.precache(list);
             CgQuadComponent.precache(list);
             CgDebugDraw.precache(list);

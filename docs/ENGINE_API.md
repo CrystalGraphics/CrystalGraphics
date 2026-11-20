@@ -61,7 +61,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
   a pass given it (`pass.camera(frame.camera())`) takes the world's sun and fog and the last frame's view too;
   `frame.constants()` is the firing's own, `frame.defaults(new CgPassConstants())` a fresh set filled the same way.
   On a GUI stage the camera is the window's device pixels, origin top left, as Unreal's canvas is;
-  `frame.scaled()` draws in the host GUI's pixels instead (`CANVAS.md` § 6). A `CgCamera` of your own is for a
+  `frame.scaled()` draws in the host GUI's pixels instead (`UI_CANVAS.md` § *Getting one*). A `CgCamera` of your own is for a
   picture of your own (a preview, a thumbnail), outside the stages.
 - **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
   windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
@@ -80,7 +80,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
 ```java
 CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
     frame.include(ui.built()).timed(GPU_UI).then(ui::executed);        // its passes, timed as gpu:ui
-    frame.canvas().quad(COMPOSITE).texture(0, ui.picture()).at(0, 0).size(w, h).submit();   // then what reads them
+    frame.canvas().box(0, 0, w, h).fill(ui.picture()).premultiplied().region(0, 1, 1, 0).draw();   // then what reads them
 });
 ```
 
@@ -245,7 +245,7 @@ lab.tick(dt);                                             // each frame: its clo
 viewport.camera().set(x, y, z, rotation, projection);
 CgTexture picture = viewport.renderPicture(w, h, 0xFF3D3D3D);   // drawn now into a picture of its own; v flipped
 viewport.renderInto(target);                              // or into a target of yours
-frame.canvas().view(viewport, w, h).at(x0, y0).size(w, h).submit();   // or as a canvas item
+frame.canvas().view(viewport, x0, y0, w, h);                            // or as a canvas item
 
 CgPrimitiveComponent<?> clicked = viewport.pick(mouseX, mouseY);       // what is under a pixel: an editor's click
 
@@ -1052,36 +1052,27 @@ A material drawn under another blend, cull, depth write or clip than its shader'
 
 **Package guide**: `api/state/CLAUDE.md`
 
-### The canvas — quads, curves and text
+### The canvas — 2D on a GUI stage or into a texture
 
-Everything 2D draws into a `CgCanvas` (Unreal's `FCanvas`): quads (UI boxes, glyphs, blits, HUD images), curves,
-triangles and cells, each item naming its material and textures. Matching neighbours are one draw and order is kept.
-At a stage, the firing's canvas lands in that firing under its camera, in the world or on the screen; nothing to
-begin, end or delete.
+Everything 2D draws into a `CgCanvas` (Skia's canvas): boxes, images, paths, splines, triangles and text, under a
+transform, opacity and clip stack, in paint order. A GUI stage's frame hands it out; nothing to begin, end or delete.
 
 ```java
-CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
-    frame.canvas().quad(DIGIT).texture(0, DIGITS).at(x, y).size(w, h).uv(u0, v0, u1, v1).color(argb).submit();
-    frame.canvas().text().style(DAMAGE).text(damage).font(font).at(x, y - 12).color(argb).submit();
+CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+    CgCanvas canvas = frame.canvas();                                      // window pixels; scaled(): the GUI's
+    canvas.box(8, 8, 160, 32).fill(0xC0101418).radius(6).border(1, 0x30FFFFFF).draw();
+    canvas.text(LABEL, 16, 14);
 });
-CgRenderStage.TRANSLUCENT.register(0, frame ->                             // camera-relative; world() is absolute
-    frame.canvas().quad(GLOW).world(x, y, z).pose(facing).at(-0.5f, -0.5f).size(1f, 1f).submit());
 
-CgCanvas now = new CgCanvas();                                             // outside any stage: drawn at flush()
-now.quad(IMAGE).texture(0, image).at(x, y).size(w, h).submit();
-now.flush();
+CgCanvas mine = new CgCanvas();                                            // into a texture of your own
+mine.begin(recording, target, CgLoad.CLEAR, CgCamera.screen(w, h), 1f);
+mine.image(icon, 0, 0, w, h);
+mine.end();
 ```
 
-- An item draws under its material's values as they are when it is submitted.
-- `CgEngineMaterials` ships an image, a mask, their 2D-array forms, a curve and a box (rounded, bordered, nine-slice:
-  `canvas.shapes()`), on the screen and in the world, in each blend mode; `CgCanvasGradient`, `CgCanvasGrid` and
-  `CgCanvasGlass` (with acrylic, Mica and liquid looks) draw gradients, grids and glass. Most consumers need no
-  shader of their own.
-- Text is an item too (`canvas.text()`): culled against the canvas's camera, rastered at device pixels on the
-  screen and from its size on screen in the world.
-The whole guide, for consumers: **[`CANVAS.md`](CANVAS.md)**.
-
-**Package guide**: `render/canvas/CLAUDE.md`
+- Paints are values (`PAINT.md`): colours, gradients, brushes and sprite sheets, grids, glass looks.
+- A world stage has no canvas: what stands in the world is a scene component (`scene.quad(...)`, `scene.label(...)`).
+- The whole guide, for consumers: **[`UI_CANVAS.md`](UI_CANVAS.md)**. Package guides: `api/canvas`, `render/ui/CLAUDE.md`.
 
 ### Font/Text System
 

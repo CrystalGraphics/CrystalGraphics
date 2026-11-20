@@ -85,7 +85,7 @@ Under `crystalgraphics:shaders/`, one folder per owner: a pass, its kernels and 
 | `env/` | What the engine compiles into every program: `cg_env.glsl`; `material/` what a surface and a post material take; `kernel/` a kernel's (`kernel.glsl`, `atomic.glsl`, `subgroup.glsl`, `check.glsl`); `handed/` the world's lights, sun and scene textures handed to a program that asks; the scene data any material reads, `globals.glsl` (parameter collections) and `rows.glsl` (per-draw values) | Never include |
 | `world/` | The world renderer's passes; `world/lights/` lighting and shadows, `world/media/` fog volumes | The engine's |
 | `post/` | The post chain's materials, its bloom and film kernels and the composite's includes | The engine's |
-| `canvas/` | The canvas's materials (`CgEngineMaterials`, `CgCanvasPrimitives`); `canvas/primitives/` what draws a ui material (`Primitive Quad`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `shape`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
+| `ui/` | The canvas's materials (`CgCanvas`, `CgCanvasPrimitives`, `CgTextMaterials`); `ui/primitives/` what draws a ui material (`Primitive Element`) and what the primitives alone read: their buffers (`quad`, `curve`, `text`, `clip`, `palette`) and `texel`, `stroke`, `rect_blur`, `text_gamma` | Name the primitives |
 | `compute/` | `compute/ops/`, the GPU ops' kernels (`CgGpuOps`), and the self test | The engine's |
 | `noise/` | The baked noise volumes (`CgNoiseVolumes`) | The engine's |
 | `collision/`, `loading/` | The collision debug lines; the loading screen's logo | The engine's |
@@ -120,7 +120,7 @@ void surface(in v2f i, inout CgSurface s) {
   `PathRibbons`, `Sequence` and `Tube`, `TubeClosed`, `TubeVolume` (a tube slot: `cg_Tube`, where on its path the vertex
   is, and `_FxPath` bound for you). Each is a file, `shaders/factories/<Name>.factory`; `VertexFactory mymod:Ribbons`
   reads `mymod:shaders/factories/Ribbons.factory` (§ 5.3), and `CgVertexFactory.register` adds one built in Java. A ui
-  `Primitive` is `shaders/canvas/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach
+  `Primitive` is `shaders/ui/primitives/<Name>.primitive` the same way. A factory's parameters read in `surface()` reach
   the fragment field by field, only those named:
 
   ```glsl
@@ -522,8 +522,8 @@ need is bound by what draws them: a factory or primitive names it in `EngineBuff
 
 | Token | Provides | Bound by |
 |---|---|---|
-| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s an element, written with `Quad.custom0`/`custom1`: where a per-element value belongs rather than in a property that breaks the batch), and for screen-space materials the edge and texel antialiasing below | The `Quad` and `Text` primitives: `CgQuadBatch`, UI quads, text glyphs |
-| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | The `Curve` primitive: `CgCurveBatch`, Bézier strokes, graph wires |
+| `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s a glyph quad), and for screen-space materials the edge and texel antialiasing below | The `Text` primitive: text glyphs (`CgQuadRecord`) |
+| `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | The `Curve` primitive: the canvas's splines, triangles and path cells (`CgCurveRecords`) |
 | `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment`: the raster pass's property trees (`CgPalette`), each spatial node's affine into the target, each effect node's opacity | `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it. The primitive multiplies by the item's opacity |
 | `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE`: the coverage of the `CgClipTable` entry the element names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only | Every ui primitive, so every ui material is clipped |
 | `rows` | Every numeric property read per draw: the material's value, or the draw's row in `CgPropertyRows` where its binder says so ([below](#per-draw-values-perdrawvalues-on)) | `Material { PerDrawValues On }` |

@@ -1,19 +1,42 @@
-# The UI canvas
+# The canvas
 
 `com.crystalgraphics.api.canvas.CgCanvas`: 2D drawing for screens, HUDs and textures. Rectangles filled by any paint
-(`docs/PAINT.md`), rounded, bordered and shadowed; images, nine-slices and tiles; under a transform, opacity and clip
-stack. Items land in a recording as batched element draws, in paint order.
+(`docs/PAINT.md`), rounded, bordered and shadowed; images, nine-slices and tiles; paths, splines, triangles and text;
+under a transform, opacity and clip stack. Items land in a recording as batched draws, in paint order.
 
-It replaces the old `render.canvas.CgCanvas` (`CANVAS.md`) step by step through P4.1; the widget stack arrives in
-later steps, and until then it still draws on the old canvas.
+Drawing in the world is the scene's, never a canvas's: quads, labels and meshes are components
+([`ENGINE_API.md`](ENGINE_API.md) § *The scene and its views*).
 
 ## Getting one
 
+At a GUI stage (`HUD`, `SCREEN`), the stage frame's:
+
 ```java
 CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
-    CgCanvas canvas = CgCanvas.on(frame);        // window pixels, from the top-left
-    // CgCanvas.onGui(frame)                     // the host GUI's pixels: Minecraft's GUI scale
+    CgCanvas canvas = frame.canvas();            // window pixels, from the top-left
+    // frame.scaled()                            // the host GUI's pixels: Minecraft's GUI scale
     canvas.fill(8, 8, 200, 40, 0xC0101418);
+});
+```
+
+- One canvas a stage turn: taking `scaled()` after `canvas()` switches the unit for what follows, order kept.
+- `frame.host().guiScale()` is the scale itself (1 in the harness), for converting a size by hand.
+- A world stage (`OPAQUE`, `SURFACES`, `TRANSLUCENT`, `OVERLAY`) throws: draw there with the scene's components.
+
+The order you register at is the layer:
+
+| Order | What it is |
+|---|---|
+| `CgRenderStage.WORLD_WIDGETS` (-100) | What follows a point in the world: damage numbers, name plates, markers. Under every window |
+| `CgRenderStage.VIEWPORT_WIDGETS` (0) | The game's interface: CrystalGUI's pinned windows draw here |
+| above 0 | Over the windows: a cursor trail, a debug overlay |
+
+Something that follows a point in the world projects it with the game's view:
+
+```java
+Vector2f at = new Vector2f();
+CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
+    if (frame.project(x, y + 2, z, at)) frame.canvas().image(MARKER, at.x - 8, at.y - 8, 16, 16);   // false: behind
 });
 ```
 
@@ -78,6 +101,24 @@ canvas.setTransform(1, 0, 0, 1, 0, 0);                       // the target's pix
 - Under a scroll node it is the bounds as recorded: what it culled is missing if the node later moves without a new
   recording.
 
+## Splines and triangles
+
+Strokes and filled triangles resolved per pixel from their distance: sharp at any scale, antialiased like a box's edge.
+Build and draw in one expression.
+
+```java
+canvas.spline().line(x0, y0, x1, y1).width(1f).color(argb).draw();
+canvas.spline().from(x0, y0).via(cx, cy).to(x1, y1).width(3f, 0.5f).colors(a, b).draw();     // tapered, two colours
+canvas.spline().cubic(x0, y0, c1x, c1y, c2x, c2y, x1, y1).width(2f)
+        .cap(CgStrokeCap.ROUND).arrowAtEnd().draw();                                         // a wire with an arrow
+canvas.triangle(x0, y0, x1, y1, x2, y2).color(argb).draw();
+canvas.triangle(x0, y0, x1, y1, x2, y2).ramp(from, x0, y0, to, x1, y1).draw();               // a gradient along a line
+```
+
+- **Widths are half-widths**, in the canvas's units; the transform scales them.
+- **Feather** defaults to antialiasing, a pixel and a half at any scale; `feather(4f)` is a soft edge that scales.
+- A shape with a fill rule, holes or joins is a `CgVectorPath` (above): exact coverage, not a distance.
+
 ## Text
 
 A `CgText` is the value: what it says, its font, size, style and where it wraps. Make it once, share it, measure it on
@@ -104,6 +145,10 @@ canvas.restore();
   drew one refuses itself (`DEGRADED`), so nothing keeps the blur.
 - `canvas.textGamma(...)` sets the coverage correction; a kept chunk with text replays only under the gamma and the
   atlases it was taken under (`STALE_TEXT`).
+- `canvas.textDraw()` is every knob of the text renderer with nothing made per draw: a cached layout, a pixel size, a
+  layer's scope. Build and submit in one expression; its colour is taken as given, not faded by the canvas.
+- Text that stays in the world is a label component (`scene.label(...)`, `scene.labelOnce(...)`): its glyphs captured
+  once and every label drawn from them (`ENGINE_API.md`). Styles, fonts and layout: [`font/README.md`](font/README.md).
 
 ## Paths
 
@@ -275,6 +320,16 @@ canvas.photograph(320, (w, h, rgb) -> thumbnail = rgb);   // what the canvas dre
 - A photograph never waits: its sink runs on the render thread about three frames later, rows top first, RGB. At most
   three are on their way (`CgPhotograph`); a fourth returns `false`.
 
+A smaller copy of a texture is `CgGpuOps.shrink`, a compute op, each texel the average of the area it covers
+(`SHADERS.md` § *Ops*); then draw it as an image:
+
+```java
+CgComputePass pass = recording.compute("thumbnail");
+CgGpuOps.shrink(pass, window, 0, 0, window.getWidth(), window.getHeight(), thumbnail, 0, 0, 192, 108);
+pass.end();
+canvas.image(thumbnail, x, y, 192, 108);
+```
+
 ## Frames recorded off the render thread
 
 A document or a heavy HUD records on its own thread and is shown on the render thread: `CgCanvasRecorder` paints into
@@ -374,10 +429,11 @@ if (canvas.replay(kept)) {
 - **Square clips intersect; rounded or rotated ones nest**, at most `CgClipTable.MAX_DEPTH` deep past the square ones.
 - **A box reuses one builder**: describe and draw it in one statement.
 - **Colours are `0xAARRGGBB`, straight alpha.** Gradients interpolate premultiplied.
-- **A material of your own** is a `#domain ui` material of `Primitive Element`: its `surface()` runs over the item's
-  paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it. A value per box is a property on an
-  instance per box (`m.instance().vec4("_Parameters", ...)`), as the widget stack's material parameters are. Declare
-  the primitive: a ui material's default is the old canvas's `Quad`, which this canvas does not draw.
+- **A material of your own** is a `#domain ui` material ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 8): its
+  `surface()` runs over the item's paint (`s.color`, premultiplied), and `box(...).material(m)` draws with it. A value
+  per box is a property on an instance per box (`m.instance().vec4("_Parameters", ...)`), as the widget stack's
+  material parameters are. `crystalgraphics:shaders/reference/ui.shader` is the one to start from; precache it
+  ([`PRECACHE.md`](PRECACHE.md)), or its first frame waits for the compile.
 - **A render target's picture** composites with `box(...).fill(picture).premultiplied().region(0, 1, 1, 0)`: it is
   premultiplied already, and its row 0 is its bottom.
 - **Intensity does not reach text**: a glyph's colour is a byte per channel. Opacity does.
@@ -391,4 +447,6 @@ The front writes one 96-byte record per item (`render.ui.element.CgUiElements`):
 widths and colours, colour, fill kind, nodes, clip, opacity and intensity, paint. `render.ui.CgUiRecorder` puts runs
 of one material and texture into chunks of a `LOOKBACK` raster pass, and the frame's `CgBatcher` joins draws that
 overlap nothing between them (Skia's bounds-checked batching). An element batch is one instance over six vertices a
-record of a data-less mesh; `canvas/primitives/Element.primitive` pulls its record by vertex index and paints it.
+record of a data-less mesh; `shaders/ui/primitives/Element.primitive` pulls its record by vertex index and paints it.
+Splines, triangles and path cells are `CURVE` records (`render.ui.path.CgCurveRecords`, `Curve.primitive`); text
+is `QUAD` records, a glyph each (`render.ui.element.CgQuadRecord`, `Text.primitive`).

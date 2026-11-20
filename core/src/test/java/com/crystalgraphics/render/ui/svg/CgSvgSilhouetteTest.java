@@ -2,7 +2,7 @@ package com.crystalgraphics.render.ui.svg;
 
 import com.crystalgraphics.render.ui.path.CgPathTriangulator;
 
-import com.crystalgraphics.render.canvas.CgCurveBatch;
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 
 import org.junit.Test;
 
@@ -50,15 +50,15 @@ public class CgSvgSilhouetteTest {
     }
 
     /**
-     * The mask travels from the tessellator into {@code CgCurveBatch.Cell#softEdges} untranslated,
+     * The mask travels from the tessellator into {@code CgCurveRecords.CELL_*} untranslated,
      * and the tessellator may not import the renderer to say so — this is where the two are held equal.
      */
     @Test
     public void theEdgeBitsAreTheRenderersEdgeBits() {
-        assertEquals(CgCurveBatch.CELL_TOP, TOP);
-        assertEquals(CgCurveBatch.CELL_RIGHT, RIGHT);
-        assertEquals(CgCurveBatch.CELL_BOTTOM, BOTTOM);
-        assertEquals(CgCurveBatch.CELL_LEFT, LEFT);
+        assertEquals(CgCurveRecords.CELL_TOP, TOP);
+        assertEquals(CgCurveRecords.CELL_RIGHT, RIGHT);
+        assertEquals(CgCurveRecords.CELL_BOTTOM, BOTTOM);
+        assertEquals(CgCurveRecords.CELL_LEFT, LEFT);
     }
 
     @Test

@@ -145,7 +145,7 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
         level(CgWorldQueries.client().levelEpoch());
         if (widgets.isEmpty()) return;
         float scale = CgUiScale.of(kit).scale(frame.width(), frame.height());
-        paint(CgCanvas.on(frame), frame.width() / scale, frame.height() / scale, scale);
+        paint(frame.canvas(), frame.width() / scale, frame.height() / scale, scale);
     }
 
     /**

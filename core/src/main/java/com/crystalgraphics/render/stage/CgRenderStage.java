@@ -37,9 +37,9 @@ import java.util.Set;
  *     pass.end();
  * });
  *
- * // The HUD: device pixels, or the host GUI's
+ * // The HUD: the window's pixels, or the host GUI's
  * CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
- *     if (frame.project(x, y, z, at)) frame.canvas().text(damage).at(at.x, at.y).submit();
+ *     if (frame.project(x, y, z, at)) frame.canvas().text(damage, at.x, at.y);
  * });
  *
  * sim.close();                                                     // unregisters

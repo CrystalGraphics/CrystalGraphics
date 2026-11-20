@@ -14,7 +14,7 @@ import com.crystalgraphics.platform.rhi.CgExternalTarget;
 import com.crystalgraphics.platform.rhi.resource.CgGpuTexture;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.CgRenderer;
-import com.crystalgraphics.render.canvas.CgCanvas;
+import com.crystalgraphics.api.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.graph.CgRecording;
@@ -202,8 +202,8 @@ public final class CgRenderTarget {
 
     /**
      * Draws {@code material} over the whole of it now, with no scene: Unreal's {@code DrawMaterialToRenderTarget}. A
-     * {@code #domain ui} material, its uv 0 to 1 across the target, over what the target holds. Render thread, outside
-     * a recording.
+     * {@code #domain ui} material on {@code Primitive Element}, its uv 0 to 1 across the target from the top left, over
+     * what the target holds. Render thread, outside a recording.
      *
      * <pre>{@code
      * target.clear();
@@ -213,9 +213,9 @@ public final class CgRenderTarget {
     public void drawMaterial(CgMaterialInterface material) {
         CgRecording rec = new CgRecording();
         CgCanvas canvas = new CgCanvas();
-        canvas.recordInto(rec, CgGraphTexture.imported(name, target(false)), CgLoad.load(), CgCamera.screen(width, height));
-        canvas.quad(material).at(0f, 0f).size(width, height).submit();
-        canvas.stop();
+        canvas.begin(rec, CgGraphTexture.imported(name, target(false)), CgLoad.load(), CgCamera.screen(width, height), 1f);
+        canvas.box(0f, 0f, width, height).material(material).fill(0xFFFFFFFF).draw();
+        canvas.end();
         CgRenderer.executeNow(rec);
         drawn();
     }

@@ -1,7 +1,8 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
 
 import javax.annotation.Nullable;
 import java.util.Arrays;
@@ -17,7 +18,7 @@ import java.util.Arrays;
  * boolean whole = text.capture(draw, kept);        // false: a glyph or shadow is still building, capture again later
  * for (int b = 0; b < kept.batches(); b++) {
  *     float[] records = kept.records(b);            // kept.count(b) records, Record.FLOATS floats each
- *     long batch = kept.batch(b);                   // what drawCaptured draws them under
+ *     long batch = kept.batch(b);                   // what drawCaptured draws them under, with kept.look(b)
  * }
  * }</pre>
  *
@@ -31,9 +32,26 @@ import java.util.Arrays;
  */
 public final class CgTextCapture {
 
+    /**
+     * How a batch's glyphs are painted: laid over the scene or added to it, in the text material or a layer's own
+     * ({@code CgTextPaint.material}). What {@link CgTextBatch#drawCaptured} draws a batch under, with its key.
+     */
+    public record Look(boolean additive, @Nullable CgMaterialDefinition material) {
+        /** A colour or gradient layer laid over. */
+        public static final Look OVER = new Look(false, null);
+        /** A colour or gradient layer added: a glow. */
+        public static final Look ADDED = new Look(true, null);
+
+        static Look of(boolean additive, @Nullable CgMaterialDefinition material) {
+            if (material == null) return additive ? ADDED : OVER;
+            return new Look(additive, material);
+        }
+    }
+
     private int batches;
     private int[] ranks = new int[4];
     private long[] keys = new long[4];
+    private Look[] looks = new Look[4];
     private float[][] records = new float[4][];
     private int[] counts = new int[4];
     @Nullable
@@ -53,6 +71,11 @@ public final class CgTextCapture {
     /** Batch {@code b}'s material state, opaque: what {@link CgTextBatch#drawCaptured} takes. */
     public long batch(int b) {
         return keys[b];
+    }
+
+    /** Batch {@code b}'s look: its blend and material. */
+    public Look look(int b) {
+        return looks[b];
     }
 
     /** Batch {@code b}'s records, {@link #count} of them from the start; the array is the capture's. */
@@ -87,11 +110,12 @@ public final class CgTextCapture {
     }
 
     /** Appends a batch: {@code count} records copied from record {@code from} of {@code src}. */
-    void add(int rank, long key, float[] src, int from, int count) {
+    void add(int rank, long key, Look look, float[] src, int from, int count) {
         if (batches == keys.length) {
             int capacity = batches * 2;
             ranks = Arrays.copyOf(ranks, capacity);
             keys = Arrays.copyOf(keys, capacity);
+            looks = Arrays.copyOf(looks, capacity);
             records = Arrays.copyOf(records, capacity);
             counts = Arrays.copyOf(counts, capacity);
         }
@@ -101,6 +125,7 @@ public final class CgTextCapture {
         System.arraycopy(src, from * CgQuadRecord.FLOATS, into, 0, floats);
         ranks[batches] = rank;
         keys[batches] = key;
+        looks[batches] = look;
         counts[batches] = count;
         batches++;
     }

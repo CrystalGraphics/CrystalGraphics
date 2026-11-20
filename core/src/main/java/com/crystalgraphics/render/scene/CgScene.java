@@ -41,7 +41,7 @@ import com.crystalgraphics.render.scene.prefab.CgPrefabInstance;
 
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.canvas.CgCanvasLabels;
+import com.crystalgraphics.render.scene.component.CgCanvasLabels;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.render.host.CgStageHost;
 import com.crystalgraphics.render.scene.renderer.CgSceneRenderer;

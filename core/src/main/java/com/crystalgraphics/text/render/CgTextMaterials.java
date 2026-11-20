@@ -36,7 +36,7 @@ import com.crystalgraphics.api.material.CgMaterialInterface;
  */
 public final class CgTextMaterials {
 
-    public static final String TEXT_SHADER = "crystalgraphics:shaders/canvas/text.shader";
+    public static final String TEXT_SHADER = "crystalgraphics:shaders/ui/text.shader";
 
     /** {@code TextData}: the gamma correction and a label depth pass's discard. */
     private static final CgBufferLayout TEXT_DATA_FORMAT = CgBufferLayout
@@ -72,6 +72,7 @@ public final class CgTextMaterials {
 
     private static final Map<Key, CgMaterialInstance> MATERIALS = new HashMap<>();
     private static final Map<PaintKey, CgMaterialInstance> PAINTS = new HashMap<>();
+    private static final Map<PaintKey, CgMaterialInstance> PAINT_LABELS = new HashMap<>();
     private static final Map<StateKey, CgRenderState> PAINT_STATES = new HashMap<>();
 
     private CgTextMaterials() {
@@ -120,10 +121,31 @@ public final class CgTextMaterials {
         });
     }
 
-    /** A retained world label's material; {@code depthPass} discards below half coverage, {@code linear} as {@link #of}. */
-    static CgMaterialInstance label(boolean msdf, boolean depthPass, CgTextGamma gamma, boolean linear) {
+    /**
+     * A retained world label's material; {@code depthPass} discards below half coverage, {@code linear} as {@link #of},
+     * {@code additive} for a glow layer.
+     */
+    static CgMaterialInstance label(boolean msdf, boolean depthPass, CgTextGamma gamma, boolean linear, boolean additive) {
         boolean corrected = linear && !depthPass;
-        return get(new Key(msdf, false, true, depthPass, corrected ? CgTextGamma.NONE : gamma, false, corrected));
+        return get(new Key(msdf, false, true, depthPass, corrected ? CgTextGamma.NONE : gamma, additive, corrected));
+    }
+
+    /** A Text-domain material's instance for a world label's layer: {@link #paint}'s, {@code WORLD_LABEL} on. */
+    static synchronized CgMaterialInstance paintLabel(CgMaterialDefinition definition, boolean msdf) {
+        return PAINT_LABELS.computeIfAbsent(new PaintKey(definition, msdf), k -> {
+            CgMaterialInstance m = CgMaterial.of(definition).keyword("MSDF_MODE", msdf).keyword("WORLD_LABEL", true)
+                    .instance();
+            CgMaterialProxy.of(m).overrideBlock(TEXT_DATA_UBO, block(CgTextGamma.initial(), 0f));
+            return m;
+        });
+    }
+
+    /** The state a world label's material layer draws under, as {@link #paintState} in the world. Null while building. */
+    static synchronized CgRenderState labelPaintState(CgMaterialInterface material, boolean additive) {
+        CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
+        if (pipeline == null) return null;
+        return PAINT_STATES.computeIfAbsent(new StateKey(pipeline.state(), false, additive),
+                k -> k.state().withBlend((additive ? CgBlendMode.ADDITIVE : CgBlendMode.PREMULTIPLIED).state()));
     }
 
     private static synchronized CgMaterialInstance get(Key key) {
@@ -168,6 +190,7 @@ public final class CgTextMaterials {
     public static synchronized void releaseAll() {
         MATERIALS.clear();
         PAINTS.clear();
+        PAINT_LABELS.clear();
         PAINT_STATES.clear();
         CgTextGradients.releaseAll();
     }

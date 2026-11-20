@@ -171,9 +171,8 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Keep feet planted at any speed and direction: root motion from feet, stride and orientation warping, turn in place, distance matching | **[`docs/animation/guides/locomotion.md`](docs/animation/guides/locomotion.md)** | `animation/ik/CLAUDE.md`, `animation/locomotion/CLAUDE.md` |
 | Play one character's clips on another: rigs, retargeters, baking | **[`docs/animation/guides/retargeting.md`](docs/animation/guides/retargeting.md)** | `animation/CLAUDE.md` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |
-| Draw 2D quads, curves or text, in the world or on the screen, below widgets | **[`docs/CANVAS.md`](docs/CANVAS.md)** | `render/canvas/CLAUDE.md` |
 | Make a colour, gradient, image brush, grid, vector shape, stroke, filter or glass look to paint with | **[`docs/PAINT.md`](docs/PAINT.md)** | `api/paint`, `api/vector` |
-| Draw 2D UI: fills, rounded and bordered boxes, shadows, images and nine-slices, under transforms and clips | **[`docs/UI_CANVAS.md`](docs/UI_CANVAS.md)** | `api/canvas`, `render/ui` |
+| Draw 2D on a GUI stage or into a texture: boxes, images, paths, splines, text, layers and glass, under transforms and clips | **[`docs/UI_CANVAS.md`](docs/UI_CANVAS.md)** | `api/canvas`, `render/ui` |
 | Load a resource file (shader source, config, image) | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Resource I/O* | `util/io/CgIO` |
 | Init, resize or tear down a context | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *CgGraphicsLifecycle* | — |
 | Test rendering without Minecraft | [Render testing](#render-testing--the-gl-debug-harness) | `gl-debug-harness/AGENTS.md` |

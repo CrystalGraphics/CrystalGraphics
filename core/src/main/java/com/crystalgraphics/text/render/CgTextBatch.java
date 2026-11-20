@@ -1,5 +1,6 @@
 package com.crystalgraphics.text.render;
 
+import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.material.CgMaterialProxy;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.api.font.CgFont;
@@ -7,7 +8,6 @@ import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.font.CgFontKey;
 import com.crystalgraphics.api.font.CgGlyphKey;
 import com.crystalgraphics.api.font.CgGlyphPlacement;
-import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.mesh.CgMesh;
 import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
@@ -16,7 +16,7 @@ import com.crystalgraphics.api.text.CgTextDecorationRect;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.render.CgFrameClock;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -42,7 +42,6 @@ import java.util.Arrays;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
-import com.crystalgraphics.render.canvas.CgQuadBatch;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
@@ -61,7 +60,7 @@ import com.crystalgraphics.render.draw.CgMaterialBindings;
  * CgTextBatch labels = new CgTextBatch(null);
  * labels.camera(projection, view, width, height);
  * boolean whole = labels.capture(label, kept);   // false: a glyph or shadow is still building
- * labels.drawCaptured(chunks, kept.batch(b), gpuRecords, kept.count(b), placements, linear);
+ * CgTextBatch.drawCaptured(chunks, kept.batch(b), kept.look(b), gpuRecords, kept.count(b), placements, linear);
  * }</pre>
  *
  * <ul>
@@ -177,14 +176,12 @@ public final class CgTextBatch {
         this.scratch = new CgTextDraw(this, null);
     }
 
-    /** The canvas's one scratch draw, reset. */
-    public CgTextDraw draw() {
-        return scratch.reset();
-    }
-
-    /** A draw of the caller's own on this batch, held across frames. */
-    public CgTextDraw retained() {
-        return new CgTextDraw(this, null);
+    /**
+     * The canvas's one scratch draw, reset, placed by {@code pose} in spatial node {@code spatial}, clipped by entry
+     * {@code clip} and faded by effect node {@code effect}: the canvas's state, which its caller never sets.
+     */
+    public CgTextDraw draw(Matrix4f pose, int clip, int spatial, int effect) {
+        return scratch.reset().pose(pose).clip(clip).node(spatial, effect);
     }
 
     /** Draws {@code draw}, whoever made it. @return whether everything drew as asked */
@@ -293,13 +290,6 @@ public final class CgTextBatch {
     public boolean capture(CgTextDraw draw, CgTextCapture into) {
         draw.validate("capture");
         List<CgTextLayer> layers = draw.style.layers();
-        for (int i = 0; i < layers.size(); i++) {
-            CgTextLayer l = layers.get(i);
-            if (l.blend() != CgTextLayer.Blend.ALPHA || l.paint().kind() == CgTextPaint.Kind.MATERIAL) {
-                throw new IllegalStateException("a world label draws colour and gradient layers over the scene alone: "
-                        + l + " of " + draw.style + " is additive or a material");
-            }
-        }
         long before = degradedDraws;
         into.begin(CgGlyphAtlas.evictions());
         capturing = into;
@@ -309,7 +299,10 @@ public final class CgTextBatch {
             capturing = null;
         }
         for (int r = 0; r < runs; r++) {
-            into.add(runRank[r], runBatch[r], records, runFrom[r], runCount[r]);
+            CgTextLayer l = runLayer[r] >= 0 ? layers.get(runLayer[r]) : null;
+            into.add(runRank[r], runBatch[r], l == null ? CgTextCapture.Look.OVER
+                    : CgTextCapture.Look.of(l.blend() == CgTextLayer.Blend.ADDITIVE, paintMaterial(l, draw)),
+                    records, runFrom[r], runCount[r]);
         }
         runs = 0;
         recordCount = 0;
@@ -318,13 +311,14 @@ public final class CgTextBatch {
 
     /**
      * Draws {@code count} captured records of {@code batch} ({@link CgTextCapture#batch}) from {@code records} into
-     * {@code chunks}' open chunk, each placed by the model matrix of the object record its {@code node} names in
-     * {@code labels}: one draw of {@code text.shader}'s {@code WORLD_LABEL} variant, under the pass's projection.
+     * {@code chunks}' open chunk under its {@code look}, each placed by the model matrix of the object record its
+     * {@code node} names in {@code labels}: one draw of the {@code WORLD_LABEL} variant of {@code text.shader}, or of
+     * the layer's own material, under the pass's projection.
      *
      * <pre>{@code
      * chunks.begin(0, 0, 0);
      * boolean linear = CgTextBatch.blendsLinearly(stage.target());
-     * text.drawCaptured(chunks, batch, glyphs, glyphCount, labels, linear);   // labels: CgInstanceKind.OBJECT records
+     * text.drawCaptured(chunks, batch, look, glyphs, glyphCount, labels, linear);   // labels: OBJECT records
      * canvas.add(chunks.end());
      * }</pre>
      *
@@ -335,49 +329,72 @@ public final class CgTextBatch {
      *       linear-blend correction in place of text gamma.</li>
      * </ul>
      */
-    public static void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
-                                    CgBufferHandle labels, boolean linearTarget) {
-        drawCaptured(chunks, batch, records, count, labels, false, linearTarget);
+    public static void drawCaptured(CgChunkBuilder chunks, long batch, CgTextCapture.Look look, CgBufferHandle records,
+                                    int count, CgBufferHandle labels, boolean linearTarget) {
+        drawCaptured(chunks, batch, look, records, count, labels, false, linearTarget);
     }
 
     /**
      * {@link #drawCaptured}'s depth pass: the records' solid core (alpha 0.5 and up) into depth alone. Drawn for every
-     * label's text before any label's colour, it makes a nearer label's text hide a farther one's in any order.
+     * label's text before any label's colour, it makes a nearer label's text hide a farther one's in any order. The
+     * glyph's shape alone: a batch's look does not change what it writes.
      */
     public static void drawCapturedDepth(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
                                          CgBufferHandle labels) {
-        drawCaptured(chunks, batch, records, count, labels, true, false);
+        drawCaptured(chunks, batch, CgTextCapture.Look.OVER, records, count, labels, true, false);
     }
 
-    private static void drawCaptured(CgChunkBuilder chunks, long batch, CgBufferHandle records, int count,
-                                     CgBufferHandle labels, boolean depthPass, boolean linearTarget) {
+    private static void drawCaptured(CgChunkBuilder chunks, long batch, CgTextCapture.Look look, CgBufferHandle records,
+                                     int count, CgBufferHandle labels, boolean depthPass, boolean linearTarget) {
         if (count <= 0) return;
-        CgMaterialInterface material = CgTextMaterials.label(CgTextSortKey.isDistanceField(batch), depthPass, CgTextGamma.initial(),
-                linearTarget);
+        boolean df = CgTextSortKey.isDistanceField(batch);
+        CgMaterialInterface material;
+        CgRenderState state;
+        if (look.material() != null && !depthPass) {
+            material = CgTextMaterials.paintLabel(look.material(), df);
+            state = CgTextMaterials.labelPaintState(material, look.additive());
+            if (state == null) return;   // its program is still building: held, as a canvas draw is
+        } else {
+            material = CgTextMaterials.label(df, depthPass, CgTextGamma.initial(), linearTarget,
+                    look.additive() && !depthPass);
+            state = null;
+        }
         CgPipeline pipeline = CgMaterialProxy.of(material).pipeline(CgInstanceKind.OBJECT);
         if (pipeline == null) return;
         CgMaterialBindings bindings = CgMaterialProxy.of(material).bindings().with(0,
                 CgGlyphAtlas.texture(CgTextSortKey.atlasIdOf(batch)));
-        pipeline = pipeline.withState(labelState(pipeline.state(), depthPass));
+        pipeline = pipeline.withState(labelState(state != null ? state : pipeline.state(), depthPass));
         chunks.draw(pipeline, bindings, CgMesh.quads(1)).objects(labels, 0, count)
-                .buffer(CgQuadBatch.SLOT, records);
+                .buffer(CgQuadRecord.SLOT, records);
     }
 
     /**
      * A label's state from the text pass's: the depth pass with colour off and depth written, the colour passes with
      * colour declared on, since the text pass leaves the mask undeclared and the depth pass's would stand. Kept per
-     * state: a pipeline is keyed by its identity.
+     * state (one a look's material and blend): a pipeline is keyed by its identity.
      */
     private static synchronized CgRenderState labelState(CgRenderState text, boolean depthPass) {
-        if (labelStateFrom != text) {
-            labelDepthState = text.withColorMask(CgColorMask.NONE).withDepth(CgDepthState.TEST_WRITE);
-            labelColorState = text.withColorMask(CgColorMask.ALL);
-            labelStateFrom = text;
+        CgRenderState[] made = LABEL_STATES.get(text);
+        if (made == null) {
+            made = new CgRenderState[] {text.withColorMask(CgColorMask.ALL),
+                    text.withColorMask(CgColorMask.NONE).withDepth(CgDepthState.TEST_WRITE)};
+            LABEL_STATES.put(text, made);
         }
-        return depthPass ? labelDepthState : labelColorState;
+        return made[depthPass ? 1 : 0];
     }
 
-    private static CgRenderState labelStateFrom, labelDepthState, labelColorState;
+    private static final Map<CgRenderState, CgRenderState[]> LABEL_STATES = new IdentityHashMap<>();
+
+    /** A layer's paint material, or null for a colour or gradient; a material layer must name a compiled one. */
+    @Nullable
+    private static CgMaterialDefinition paintMaterial(CgTextLayer l, CgTextDraw draw) {
+        if (l.paint().kind() != CgTextPaint.Kind.MATERIAL) return null;
+        if (l.paint().definition() == null) {
+            throw new IllegalStateException(l + " of " + draw.style + " names a material no loader compiled: load the"
+                    + " style as an asset, or build it with CgTextPaint.material(definition)");
+        }
+        return l.paint().definition();
+    }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════
     //  Resolve
@@ -570,12 +587,9 @@ public final class CgTextBatch {
             boolean additive = l != null && l.blend() == CgTextLayer.Blend.ADDITIVE;
             CgMaterialInterface material;
             CgRenderState state = null;
-            if (l != null && l.paint().kind() == CgTextPaint.Kind.MATERIAL) {
-                if (l.paint().definition() == null) {
-                    throw new IllegalStateException(l + " of " + draw.style + " names a material no loader compiled: load the"
-                            + " style as an asset, or build it with CgTextPaint.material(definition)");
-                }
-                material = CgTextMaterials.paint(l.paint().definition(), df);
+            CgMaterialDefinition paint = l != null ? paintMaterial(l, draw) : null;
+            if (paint != null) {
+                material = CgTextMaterials.paint(paint, df);
                 state = CgTextMaterials.paintState(material, !world, additive);
                 if (state == null) continue;   // its program is still building: held, as any draw is
             } else {

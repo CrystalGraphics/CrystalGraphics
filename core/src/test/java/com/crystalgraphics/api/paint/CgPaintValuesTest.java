@@ -11,12 +11,10 @@ import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 
-import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
 import com.crystalgraphics.api.paint.effect.CgFilter;
 import com.crystalgraphics.api.paint.gradient.CgGradient;
 import com.crystalgraphics.api.paint.gradient.CgSpread;
 import com.crystalgraphics.api.paint.pattern.CgGrid;
-import com.crystalgraphics.render.canvas.CgCanvasGlass;
 
 /** The paint values' rules: what they keep, what they refuse, what they compute. */
 public class CgPaintValuesTest {
@@ -80,36 +78,6 @@ public class CgPaintValuesTest {
         assertEquals("three sigma past the offset", 3f * 3f + 4f, CgFilter.dropShadow(-4, 1, 1f, 3f, 0).reach(), 1e-6f);
         assertTrue(CgFilter.NONE.then(CgFilter.NONE).isNone());
         assertSame(chain, chain.then(CgFilter.NONE));
-    }
-
-    @Test
-    public void backdropPresetsAreTodaysGlassLooks() {
-        check(CgBackdropFilter.DEFAULT, CgCanvasGlass.DEFAULT);
-        check(CgBackdropFilter.CLEAR, CgCanvasGlass.CLEAR);
-        check(CgBackdropFilter.FROSTED, CgCanvasGlass.FROSTED);
-        check(CgBackdropFilter.LIQUID, CgCanvasGlass.LIQUID);
-        check(CgBackdropFilter.ACRYLIC, CgCanvasGlass.ACRYLIC);
-        check(CgBackdropFilter.MICA, CgCanvasGlass.MICA);
-        check(CgBackdropFilter.PRISM, CgCanvasGlass.PRISM);
-        CgBackdropFilter world = CgBackdropFilter.LIQUID.scaled(1 / 32f);
-        assertEquals(CgCanvasGlass.LIQUID.scaled(1 / 32f).bezel(), world.bezel(), 0f);
-        assertEquals("the blur stays the target's pixels", CgBackdropFilter.LIQUID.blur(), world.blur(), 0f);
-    }
-
-    private static void check(CgBackdropFilter f, CgCanvasGlass.Look look) {
-        assertEquals(look.blur(), f.blur(), 0f);
-        assertEquals(look.saturation(), f.saturation(), 0f);
-        assertEquals(look.tint(), f.tint());
-        assertEquals(look.luminosity(), f.luminosity(), 0f);
-        assertEquals(look.bezel(), f.bezel(), 0f);
-        assertEquals(look.ior(), f.ior(), 0f);
-        assertEquals(look.chromatic(), f.chromatic(), 0f);
-        assertEquals(look.specular(), f.specular(), 0f);
-        assertEquals(look.glow(), f.glow(), 0f);
-        assertEquals(look.rim(), f.rim(), 0f);
-        assertEquals(look.rimWidth(), f.rimWidth(), 0f);
-        assertEquals(look.rimAmbient(), f.rimAmbient(), 0f);
-        assertEquals(look.noise(), f.noise(), 0f);
     }
 
     @Test

@@ -748,7 +748,7 @@ Step final {                                         // the last: onto the scree
 
 ### 8.1 What a ui material is
 
-A ui material colours **an element on a canvas** (`docs/CANVAS.md`): a box, a stroke, a piece of text. You say what
+A ui material colours **an element on a canvas** (`docs/UI_CANVAS.md`): a box, a stroke, a piece of text. You say what
 colour the element is at a pixel; the engine does everything every UI element needs and every hand-written UI shader
 used to repeat: the clip (an element inside a scrolled panel stops at its edge), the item's opacity (a fading window),
 the antialiased edge, and premultiplying for the blend.
@@ -762,28 +762,29 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     float d = sdf_rounded_box(i.local - i.size * 0.5, i.size * 0.5, vec4(min(i.size.x, i.size.y) * 0.5),
             vec4(min(i.size.x, i.size.y) * 0.5));
     s.color = mix(_Top, _Bottom, i.param.y) * i.color;
-    s.coverage = sdf_coverage(d, 1.0);               // its own edge, instead of the quad's
+    s.premultiplied = false;                         // straight alpha: the primitive premultiplies it
+    s.coverage = sdf_coverage(d, 1.0);               // its own edge, instead of the box's
 }
 ```
 
 ```java
 CgMaterial pill = CgMaterial.load("mymod:shaders/ui/pill.shader");
-canvas.quad(pill).at(x, y).size(120, 16).color(0xFF40A0FF).submit();
+canvas.box(x, y, 120, 16).fill(0xFF40A0FF).material(pill).draw();
 ```
 
 | `CgUiInput` | Is |
 |---|---|
-| `uv` | the element's texture coordinates: a quad's uv rect; a curve's `(t, 0)` along it |
-| `param` | 0..1 across the element (a little past either end on a rotated quad's soft edge) |
+| `uv` | the element's texture coordinates: a box's image region; a curve's `(t, 0)` along it |
+| `param` | 0..1 across the element (past either end on its antialiased edge) |
 | `local`, `size` | the pixel's place inside the element and the element's size, in the canvas's units |
-| `color` | the element's colour: a quad's `.color(...)`, a curve's along its gradient, a text layer's paint |
-| `custom0`, `custom1` | the quad's free values, `.custom0(...)`/`.custom1(...)` |
+| `color` | the element's colour, straight alpha: a box's fill or tint, a curve's along its gradient, a text layer's paint |
+| `custom0`, `custom1` | zero on the canvas's elements; a primitive of your own may fill them |
 
 | `CgUiSurface` | Starts as | Is |
 |---|---|---|
-| `color` | `i.color` | the colour, straight alpha: the engine premultiplies it |
+| `color` | the element's paint: on a box its fill, image, gradient and border, **premultiplied**; elsewhere `i.color` | the colour |
 | `coverage` | the element's antialiased edge | how much of the pixel it covers, 0..1 |
-| `premultiplied` | `false` | set it when `color` is premultiplied already (a texture drawn at screen resolution) |
+| `premultiplied` | `true` on a box (`Element`), `false` on a curve or text | whether `color` is premultiplied: set it `false` when you write straight alpha |
 
 ### 8.2 Primitives: which element it colours
 
@@ -799,14 +800,13 @@ the element's record ─▶ primitive's vertex ─▶ primitive fills CgUiInput 
 ```
 
 ```glsl
-Material { Primitive Element }       // Element | Quad (default) | Curve | Text | mymod:Ring
+Material { Primitive Element }       // Element (default) | Curve | Text | mymod:Ring
 ```
 
 | `Primitive` | Drawn with | Before `surface()` | After it |
 |---|---|---|---|
 | `Element` | the canvas's `box(...).material(m)` (`api.canvas.CgCanvas`): boxes, images, a widget's brush, a layer's material filter | `uv`, `param`, `local`, `size`, `color` the box's tint; `s.color` its paint (colour, image, gradient, border), **premultiplied** | clip, its effect node's opacity, HDR intensity, the blend's write; never depth-tested |
-| `Quad` (default) | the old canvas's `canvas.quad(material)`: boxes, images, bars | `uv`, `param`, `size`, `color`, the custom values; `coverage` the quad's antialiased edge; `cg_UiTexture(tex, i)` | clip, opacity, the blend's write |
-| `Curve` | `canvas.curve(...)`, `triangle`, `cell`: lines, Bézier strokes, fills | `color` along the stroke, `uv.x` = `t` along it, `local` the point; `coverage` the stroke's | drops what is invisible, then clip, opacity, the blend's write |
+| `Curve` | the canvas's own paths, splines and triangles: lines, Bézier strokes, fills | `color` along the stroke, `uv.x` = `t` along it, `local` the point; `coverage` the stroke's | drops what is invisible, then clip, opacity, the blend's write |
 | `Text` | a text style's layer (`CgTextMaterials`) | `color` the paint, its gradient applied | the glyph's coverage (bitmap or MSDF), its gamma, premultiply |
 
 ```glsl
@@ -826,27 +826,30 @@ that blend wants, as Unreal's simple element shader does: straight alpha under `
 **Its colour is sRGB**, as the canvas's is: drawn into a linear scene the engine decodes it. `Material { ColorSpace
 Target }` says the material converts itself, as glass does over a backdrop already in the target's encoding.
 
-**`cg_UiTexture(tex, i)`** samples a texture at `i.uv` on a `Quad`, filtered across texels while the quad is rotated, as
-an image must be or its texels shimmer; `cg_UiTexture(tex, i, layer)` reads a 2D array's layer.
+**An image** is `_MainTex`, which `Element` declares: a box's `image(...)` binds it, and `s.color` already holds it
+tinted. A material that reads it itself samples at `i.uv`:
 
 ```glsl
-// An image tinted by the quad's colour, under whichever blend it is drawn
+// An image's luminance, tinted by the box's colour
 #domain ui
-Properties { _MainTex ("Image", sampler2D) = "white" }
-void surface(in CgUiInput i, inout CgUiSurface s) { s.color = cg_UiTexture(_MainTex, i) * i.color; }
+void surface(in CgUiInput i, inout CgUiSurface s) {
+    vec4 t = texture(_MainTex, i.uv);
+    s.color = vec4(i.color.rgb * dot(t.rgb, vec3(0.2126, 0.7152, 0.0722)), t.a * i.color.a);
+    s.premultiplied = false;
+}
 ```
 
 ### 8.3 Writing your own primitive
 
-A new kind of canvas element is a file, **`assets/mymod/shaders/canvas/primitives/Ring.primitive`**, read when a material
-says `Primitive mymod:Ring`. It is real GLSL: a `v2f`, a `vertex()`, and a `fragment()` that fills a `CgUiInput`
-and a `CgUiSurface`, runs the material at **`CG_SURFACE(input, s)`**, then writes `fragColor`. The engine's three
-(`crystalgraphics:shaders/canvas/primitives/Quad.primitive`, `Curve`, `Text`) are the examples to start from.
+A new way to finish an element is a file, **`assets/mymod/shaders/ui/primitives/Ring.primitive`**, read when a
+material says `Primitive mymod:Ring`. It is real GLSL: a `v2f`, a `vertex()`, and a `fragment()` that fills a
+`CgUiInput` and a `CgUiSurface`, runs the material at **`CG_SURFACE(input, s)`**, then writes `fragColor`. The engine's
+three (`crystalgraphics:shaders/ui/primitives/Element.primitive`, `Curve`, `Text`) are the examples to start from.
 
 ```glsl
-// assets/mymod/shaders/canvas/primitives/Ring.primitive
+// assets/mymod/shaders/ui/primitives/Ring.primitive
 Primitive { Queue Transparent }
-EngineBuffers { quad clip }                         // what its elements are recorded into
+EngineBuffers { element clip }                      // the canvas's box records, and its clips
 Keywords { THICK ("A wider band") }                 // its own switches, as a material's (optional)
 Declarations { #include "mymod:shaders/ring.glsl" }   // GLSL every material on it gets
 Properties { }                                      // values every material on it gets (optional)
@@ -854,38 +857,46 @@ Properties { }                                      // values every material on 
 RenderState {
     Blend ONE ONE_MINUS_SRC_ALPHA                   // premultiplied, as a ui material is loaded
     Cull OFF
-    DepthTest LEQUAL
+    DepthTest ALWAYS
     DepthWrite OFF
 }
 
-struct v2f { vec2 _cg_in_param; };                  // its own fields: the _cg_in_ prefix keeps them apart from a material's
+// its own fields: the _cg_in_ prefix keeps them apart from a material's
+struct v2f { vec2 _cg_in_param; float _cg_in_index; };
 
 void vertex(out v2f o) {
-    o._cg_in_param = CG_QUAD_EDGE_PARAM;
-    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(CG_QUAD_EDGE_WORLD_POS(o._cg_in_param), 1.0);
+    int n = CG_ELEMENT_INDEX;                       // six vertices a record, pulled by index
+    vec4 r = CG_ELEMENT(n).rect;
+    o._cg_in_param = cg_element_corner();
+    o._cg_in_index = float(n);
+    vec3 p = vec3(mix(r.xy, r.zw, o._cg_in_param), 0.0);
+    gl_Position = cg_ProjMatrix * cg_ViewMatrix * vec4(cg_spatial_point(CG_ELEMENT(n).node, p), 1.0);
 }
 
 void fragment(in v2f i, out vec4 fragColor) {
-    float clip = CG_CLIP_QUAD_COVERAGE;             // before the material: it takes derivatives
+    int n = int(i._cg_in_index + 0.5);
+    float clip = cg_clip_coverage(float(CG_ELEMENT(n).clip));   // before the material: it takes derivatives
+    vec4 r = CG_ELEMENT(n).rect;
     CgUiInput ui;
     ui.param = i._cg_in_param;
     ui.uv = ui.param;
-    ui.size = vec2(length(CG_QUAD_RIGHT), length(CG_QUAD_UP));
+    ui.size = r.zw - r.xy;
     ui.local = ui.param * ui.size;
-    ui.color = CG_QUAD_COLOR;
-    ui.custom0 = CG_QUAD_CUSTOM0;
-    ui.custom1 = CG_QUAD_CUSTOM1;
+    ui.color = cg_element_unpack(CG_ELEMENT(n).color);
+    ui.custom0 = vec4(0.0);
+    ui.custom1 = vec4(0.0);
     CgUiSurface s;
     s.color = ui.color;
     s.coverage = ring_coverage(ui.param);           // what makes it a ring
     s.premultiplied = false;
     CG_SURFACE(ui, s);                              // the material runs here
-    fragColor = cg_UiWrite(s, s.coverage * clip * CG_QUAD_OPACITY);   // as the draw's blend wants it
+    fragColor = cg_UiWrite(s, s.coverage * clip * cg_effect_opacity(CG_ELEMENT(n).node));   // as the blend wants it
 }
 ```
 
 As with a factory, the file is the shader side; the canvas side (recording elements into the buffers it reads) is
-Java. A primitive over the canvas's own quads, like this ring, needs none: `canvas.quad(ringMaterial)` draws it.
+Java. A primitive over the canvas's own box records, like this ring, needs none:
+`canvas.box(x, y, w, h).fill(argb).material(ringMaterial).draw()` draws it.
 
 ---
 
@@ -1006,7 +1017,7 @@ CgDecalComponent crack = CgScene.client().decal(crackMaterial)
 | What | Where |
 |---|---|
 | The engine's factories | `crystalgraphics:shaders/factories/*.factory` |
-| The engine's ui primitives | `crystalgraphics:shaders/canvas/primitives/*.primitive` |
+| The engine's ui primitives | `crystalgraphics:shaders/ui/primitives/*.primitive` |
 | The structs `vertex()` and `surface()` take | `crystalgraphics:shaders/env/material/surface.glsl` |
 | How a format file becomes passes (engine side) | `material/shader/`: `SurfaceDomain`, `GlobalDomain`, `PostDomain`, `UiDomain`, `DecalDomain`, `VelocityPass`, `CgShaderTemplates`; its `CLAUDE.md` |
 | Precaching a material you draw | [`PRECACHE.md`](PRECACHE.md) |

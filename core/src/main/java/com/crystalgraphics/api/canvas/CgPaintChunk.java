@@ -1,14 +1,14 @@
 package com.crystalgraphics.api.canvas;
 
-import com.crystalgraphics.render.canvas.CgCurveRecords;
+import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import java.util.Arrays;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.paint.gradient.CgGradient;
-import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.ui.clip.CgClipTable;
 import com.crystalgraphics.render.draw.CgDrawChunk;
-import com.crystalgraphics.render.canvas.CgQuadRecord;
+import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgInstanceKind;
 import com.crystalgraphics.render.ui.path.CgPathCache;
 import com.crystalgraphics.text.cache.CgFontRegistry;

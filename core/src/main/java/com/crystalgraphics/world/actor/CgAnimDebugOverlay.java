@@ -92,7 +92,7 @@ public final class CgAnimDebugOverlay {
                 layout = CgTextLayout.of(TEXT.toString(), font).build();
                 laidOut = now;
             }
-            frame.canvas().text().style(LOOK).layout(layout).font(font).contained(false)
+            frame.canvas().textDraw().style(LOOK).layout(layout).font(font).contained(false)
                     .at(frame.width() - layout.totalWidth() - 8f, 8f).submit();
         } catch (RuntimeException e) {
             failed = true;

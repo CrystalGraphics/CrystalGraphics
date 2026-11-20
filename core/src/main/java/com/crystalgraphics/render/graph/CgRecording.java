@@ -4,9 +4,8 @@ import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferRecords;
 import com.crystalgraphics.gpu.resource.CgReadback;
-import com.crystalgraphics.render.canvas.CgClipTable;
+import com.crystalgraphics.render.ui.clip.CgClipTable;
 import com.crystalgraphics.render.paint.CgGradientTable;
-import com.crystalgraphics.render.canvas.CgShapeTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -74,7 +73,6 @@ public final class CgRecording {
 
     private final CgClipTable clips = new CgClipTable();
     private final CgGradientTable gradients = new CgGradientTable();
-    private final CgShapeTable shapes = new CgShapeTable();
     private final CgSpatialTree spatial = new CgSpatialTree();
     private final CgEffectTree effects = new CgEffectTree();
     private final CgPrimitiveTable primitives = new CgPrimitiveTable();
@@ -165,11 +163,6 @@ public final class CgRecording {
     /** The rounded clips its chunks name, by index. */
     public CgClipTable clips() {
         return clips;
-    }
-
-    /** The boxes its quads are drawn as, by index. */
-    public CgShapeTable shapes() {
-        return shapes;
     }
 
     /**
@@ -836,7 +829,6 @@ public final class CgRecording {
         primitives.reset();
         clips.reset();
         gradients.reset();
-        shapes.reset();
         spatial.reset();
         effects.reset();
         scratchUsed = 0;

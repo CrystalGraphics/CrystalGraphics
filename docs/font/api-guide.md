@@ -1,6 +1,6 @@
 # Text API
 
-Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`../CANVAS.md`](../CANVAS.md)).
+Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`../UI_CANVAS.md`](../UI_CANVAS.md)).
 
 ```java
 CgFont inter = CgFont.load("assets/mymod/fonts/Inter-Regular.ttf", CgFontStyle.REGULAR, 16);   // 16 px font
@@ -96,16 +96,17 @@ CgTextLayout.of(new CgStyledText(plain, spans), group).shape();   // CgStyleSpan
 
 ## 3. Drawing
 
-Text draws on a `CgCanvas`: a stage's `frame.canvas()`, or a canvas of your own (`../CANVAS.md` § 8). It is
-placed in the canvas's space and projected by its camera: the window's pixels on a GUI stage, rastered at the target's
-device pixels; the world on a world stage (§ 4). Nothing to create, size or delete.
+Text draws on a `CgCanvas` (`../UI_CANVAS.md` § *Text*): a GUI stage's `frame.canvas()`, or one you begin into a
+texture. `canvas.text(CgText, x, y)` is the everyday form; `canvas.textDraw()` is the request below, every knob of it.
+It is placed by the canvas's transform and rastered at the target's device pixels. In the world, text is a label
+component (§ 4). Nothing to create, size or delete.
 
 ### The three forms
 
 ```java
-canvas.text().text("Score: " + score).font(regular).at(x, y).submit();        // laid out and cached for you
-canvas.text().paragraph(paragraph).family(family).constraints(240, 0).at(x, y).submit();
-canvas.text().layout(laid).at(x, y).submit();                                  // drawn exactly as laid out
+canvas.textDraw().text("Score: " + score).font(regular).at(x, y).submit();        // laid out and cached for you
+canvas.textDraw().paragraph(paragraph).family(family).constraints(240, 0).at(x, y).submit();
+canvas.textDraw().layout(laid).at(x, y).submit();                                  // drawn exactly as laid out
 ```
 
 ### The request
@@ -119,17 +120,16 @@ canvas.text().layout(laid).at(x, y).submit();                                  /
 | `style(s)` | how it looks: its font where the draw names none, its layers, spacing and skew (below) | `CgTextStyle.PLAIN`, one white fill |
 | `color(argb)` | a tint over every layer of the style; a styled span's colour replaces its fill's | opaque white |
 | `contained(b)` | `true` moves the text in by its outline and shadow offsets, as Slate's runs; `false` lets them overflow, as CSS | `true` |
-| `pose(poseStack)` · `pose(matrix)` | the transform into the canvas's space, read at `submit()` | identity |
 | `constraints(maxWidth, maxHeight)` | the wrap box for `text` and `paragraph`; ignored by `layout`. `0` or less is unbounded | unbounded |
 | `measure()` | returns the `CgTextLayout` `submit()` would draw, without drawing | |
 | `submit()` | draws; returns false while a glyph or shadow is still building | |
 
 **`constraints` are on-screen pixels on a 2D draw:** the draw divides them by the pose's scale
-before wrapping, so a 240 px column stays 240 px wide as the pose zooms, and the line breaks change
+before wrapping, so a 240 px column stays 240 px wide as the canvas zooms, and the line breaks change
 instead. On world text they are layout pixels, and never re-wrap as the camera moves.
 
 ```java
-CgTextDraw title = canvas.text().text(label).font(regular).constraints(300, 0).pose(pose);
+CgTextDraw title = canvas.textDraw().text(label).font(regular).constraints(300, 0);
 float heightPx = title.measure().totalHeight();       // layout px, wrapped exactly as submit() will
 title.at(x, y).submit();
 ```
@@ -147,8 +147,8 @@ static final CgTextStyle TITLE = CgTextStyle.builder("mymod:text_styles/title")
         .layer(CgTextLayer.fill("fill"))                                                 // white
         .build();
 
-canvas.text().style(TITLE).text("Boss").font(large).at(x, y).submit();
-canvas.text().style(TITLE).text("Boss").font(large).color(0x80FFFFFF).at(x, y).submit();   // the whole look, faded
+canvas.textDraw().style(TITLE).text("Boss").font(large).at(x, y).submit();
+canvas.textDraw().style(TITLE).text("Boss").font(large).color(0x80FFFFFF).at(x, y).submit();   // the whole look, faded
 ```
 
 A glow, a gradient and a material:
@@ -183,7 +183,7 @@ of labels from one font costs what one label does, with nothing to open or close
 
 ```java
 for (Row row : rows) {
-    canvas.text().text(row.label).font(regular).at(8, row.y).submit();
+    canvas.textDraw().text(row.label).font(regular).at(8, row.y).submit();
 }
 ```
 
@@ -197,20 +197,18 @@ must to keep order.
 
 ## 4. World-space text
 
-The same draws, on a canvas under a perspective camera: a world stage's `frame.canvas()`. Glyphs switch to
-distance fields, their tier picked from their size on screen; the line breaks never change with distance.
+Text in the world is a label component of the scene: its glyphs captured once and kept on the GPU, every label
+drawn from them, depth-tested and billboarded or turned. Glyphs are distance fields, their tier picked from their size
+on screen; the line breaks never change with distance.
 
 ```java
-CgRenderStage.TRANSLUCENT.register(0, frame ->
-        frame.canvas().text().layout(signText).at(0, 0).pose(placement).submit());   // camera-relative placement
+CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();   // until removed
+tag.text("Spawn (3)");                                                                         // captured again
+scene.labelOnce(damage).font(font).height(0.3f).at(x, y, z);                                   // this frame only
 ```
 
-- The canvas's camera decides: a projection with perspective is world text. Nothing to switch or update as
-  the camera moves or the window resizes.
-- A canvas of your own draws world text through its `camera(...)`, a perspective `CgCamera`, its
-  view there or in each pose.
-- Many labels that persist and move: `scene.label(...)`, which keeps their glyphs on the GPU
-  ([`../ENGINE_API.md`](../ENGINE_API.md)).
+- A label's look is a `CgTextStyle` like any draw's; its height is in blocks.
+- More: [`../ENGINE_API.md`](../ENGINE_API.md) § *The scene and its views*.
 
 ---
 
@@ -225,7 +223,7 @@ CgShapedParagraph shaped = CgTextLayout.of(content, family).shape();       // on
 CgTextLayout measured = shaped.layout(availableWidth, 0);                  // on layout; layout px
 return new Size(measured.totalWidth(), measured.totalHeight());
 
-canvas.text().layout(shaped.layout(boxWidth, 0)).family(family)           // on paint
+canvas.textDraw().layout(shaped.layout(boxWidth, 0)).family(family)           // on paint
         .at(boxX, boxY).color(color).submit();
 ```
 
@@ -236,8 +234,8 @@ width shape and wrap once.
 
 ## Easy to get wrong
 
-- **`canvas.text()` returns one shared request.** Build and `submit()` it in a single expression.
-  `canvas.retainedText()` gives one of your own to keep across frames.
+- **`canvas.textDraw()` returns one shared request.** Build and `submit()` it in a single expression; for text you
+  draw every frame, keep a `CgText` and call `canvas.text(...)`.
 - **`constraints` does not re-wrap a `layout`.** A built layout draws exactly as built; use `text` or
   `paragraph` for text that should wrap to its box.
 - **A family's fonts share one size.** Resize the whole family with `family.atSize(px)`.

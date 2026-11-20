@@ -36,8 +36,7 @@ import com.crystalgraphics.render.post.settings.CgPostSettings;
 import com.crystalgraphics.render.host.CgHostEnvironment;
 import com.crystalgraphics.camera.CgCamera;
 import com.crystalgraphics.render.stage.CgRenderStage;
-import com.crystalgraphics.render.canvas.CgCanvas;
-import com.crystalgraphics.render.draw.CgPassConstants;
+import com.crystalgraphics.api.canvas.CgCanvas;
 import com.crystalgraphics.render.graph.CgLoad;
 import com.crystalgraphics.render.stage.CgStageFrame;
 import com.crystalgraphics.trace.CgTrace;
@@ -259,7 +258,7 @@ public final class CgRenderDemo {
     public static final CgRenderDemo INSTANCE = new CgRenderDemo();
     /** The HUD's canvas, recorded into the stage's target under a screen camera of the target's pixels. */
     private final CgCanvas hud = new CgCanvas();
-    private final CgPassConstants hudCamera = new CgPassConstants();
+    private final CgCamera hudCamera = new CgCamera();
     private CgFont hudFont, labelFont;
     private int hudPx, hudSide;
     private boolean hudFailed, hudDirty = true;
@@ -669,12 +668,11 @@ public final class CgRenderDemo {
 
             @Override
             public void precache() {
-                glass.precache();
             }
 
             @Override
             public boolean ready() {
-                return glass.ready();
+                return true;   // the scene quad's glass is the engine's, precached with it
             }
 
             @Override
@@ -684,7 +682,7 @@ public final class CgRenderDemo {
 
             @Override
             public void delete() {
-                glass.delete();
+                glass.clear();
             }
         };
     }
@@ -715,7 +713,7 @@ public final class CgRenderDemo {
 
             @Override
             public void delete() {
-                text.delete();
+                text.clear();
             }
         };
     }
@@ -1087,14 +1085,11 @@ public final class CgRenderDemo {
                 hudDirty = false;
             }
             int w = Math.max(1, frame.width()), h = Math.max(1, frame.height());
-            hudCamera.view.identity();
-            CgCamera.orthographicMatrix(hudCamera.projection, 0f, w, h, 0f, -1f, 1f);
-            hudCamera.resolution(w, h);
-            hud.recordInto(frame.recording(), frame.target(), CgLoad.load(), hudCamera);
+            hud.begin(frame.recording(), frame.target(), CgLoad.load(), hudCamera.screenLens(w, h), 1f);
             try {
-                hud.text().style(HUD_LOOK).layout(hudLayout).font(hudFont).at(4f, 4f).submit();
+                hud.textDraw().style(HUD_LOOK).layout(hudLayout).font(hudFont).at(4f, 4f).submit();
             } finally {
-                hud.stop();
+                hud.end();
             }
         } catch (RuntimeException e) {
             hudFailed = true;
