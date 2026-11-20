@@ -1,17 +1,17 @@
 package com.crystalgraphics.widget;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.joml.Vector2f;
 import org.junit.Test;
 
+import com.crystalgraphics.api.paint.brush.CgBrush;
+import static org.junit.Assert.assertEquals;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -27,7 +27,7 @@ public class CgWorldWidgetLayerTest {
 
     /** A root filled by one image: the image's centre is the component's box's centre. */
     private static final CgWidgetTree TREE = CgWidgetTree.of(CgWidget.canvas("Root")
-            .child(CgWidget.image("Img").brush(CgWidgetBrush.texture("mymod:textures/pop", 10f, 10f))
+            .child(CgWidget.image("Img").brush(CgBrush.texture("mymod:textures/pop").size(10f, 10f))
                     .slot(CgWidgetSlot.builder().anchors(0f, 0f, 1f, 1f).offsets(0f, 0f, 0f, 0f).build()))
             .build());
 

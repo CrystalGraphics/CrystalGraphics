@@ -6,9 +6,8 @@ parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
 | Class | Owns |
 |---|---|
 | `CgWidget` | one widget as designed (`UWidget`) and its builder (canvas, horizontal box, border, scale box at a user scale, retainer box, image, text block, user widget): kind, name, slot, render transform, pivot, opacity, visibility, colours, brush, text and style, a nested tree |
+| (`api.paint`) | a widget's brush is `CgBrush` (`FSlateBrush`), its colours `CgColor` (`FLinearColor`), multiplied down the tree in linear; the instance draws an untinted copy of each brush |
 | `CgWidgetSlot` | a panel slot; unset fields resolve by the parent's kind, as each UMG slot class has its own defaults |
-| `CgWidgetBrush` | `FSlateBrush`: a texture, an SVG or a UI-domain material (`Primitive Element`), image size, tint, draw type |
-| `CgLinearColour` | `FLinearColor`; `argb` decodes sRGB, `toArgb` encodes |
 | `CgWidgetTree` | the compiled tree, shared: depth-first arrays, names unique, slots resolved, a canvas's paint order |
 | `CgUserWidget` | an instance (`UUserWidget`): the live state, Slate's layout on change, `paint(canvas)` onto `api.canvas.CgCanvas`, kept as a paint chunk and replayed while its revision holds (a move or a fade a node's value, never a repaint; `repaints()`); a sequence target whose parts are its widgets by name, a nested user widget reached whole; its own animations (`playAnimation`, one player each, restarted in place; `playAnimationTo` a stretch of one, `animationCurrentTime`; `onAnimationFinished`), UMG's `PlayAnimation` and `PlayAnimationTo`; per-instance material parameters (`materialParameters`, animatable as `material_parameters`), its brush material's `_Parameters` on an instance it owns; a retainer box's `blur` (`blur(name, sigma)`, animatable as `blur`), a layer with a blur filter |
 | `CgWidgetCodec` | the kind's compiler and writer |

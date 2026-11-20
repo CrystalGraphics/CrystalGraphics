@@ -1,7 +1,6 @@
 package com.crystalgraphics.widget;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,22 +11,21 @@ import javax.annotation.Nullable;
 import org.joml.Vector2f;
 
 import com.crystalgraphics.api.canvas.CgCanvas;
-import com.crystalgraphics.api.canvas.CgPaintChunk;
-import com.crystalgraphics.api.paint.brush.CgBrush;
-import com.crystalgraphics.api.vector.svg.CgSvg;
 import com.crystalgraphics.api.canvas.CgCanvasLayer;
+import com.crystalgraphics.api.canvas.CgPaintChunk;
+import com.crystalgraphics.api.font.CgFont;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialInstance;
-import com.crystalgraphics.material.CgMaterialProperty;
-import com.crystalgraphics.api.font.CgFont;
-import com.crystalgraphics.api.text.CgTextAlign;
-import com.crystalgraphics.api.text.CgTextLayout;
+import com.crystalgraphics.api.paint.CgColor;
+import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.effect.CgFilter;
 import com.crystalgraphics.api.text.CgText;
-import com.crystalgraphics.api.texture.CgTextures;
+import com.crystalgraphics.api.text.CgTextAlign;
+import com.crystalgraphics.api.text.CgTextLayout;
 import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.i18n.CgKitStrings;
+import com.crystalgraphics.material.CgMaterialProperty;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
@@ -109,7 +107,9 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final CgFilter[] filters;
     private final float[] filterKey;
 
-    private final CgWidgetBrush[] brush;
+    private final CgBrush[] brush;
+    /** What each draws: its brush untinted, its tint multiplied in linear by paint. */
+    private final CgBrush[] drawn;
     private final Part[] parts;
     private final CgUserWidget[] nested;
 
@@ -168,7 +168,8 @@ public final class CgUserWidget implements CgSequenceTarget {
         takesParameters = new boolean[n];
         filters = new CgFilter[n];
         filterKey = new float[n * 5];
-        brush = new CgWidgetBrush[n];
+        brush = new CgBrush[n];
+        drawn = new CgBrush[n];
         parts = new Part[n];
         nested = new CgUserWidget[n];
         for (int i = 0; i < n; i++) {
@@ -216,8 +217,8 @@ public final class CgUserWidget implements CgSequenceTarget {
         state[at + SHEAR * 4 + 1] = t[5];
         state[at + ANGLE * 4] = t[6];
         state[at + RENDER_OPACITY * 4] = w != null ? w.renderOpacity : 1f;
-        putColour(at + COLOUR * 4, w != null ? w.colour : CgLinearColour.WHITE);
-        putColour(at + CONTENT_COLOUR * 4, w != null ? w.contentColour : CgLinearColour.WHITE);
+        putColour(at + COLOUR * 4, w != null ? w.colour : CgColor.WHITE);
+        putColour(at + CONTENT_COLOUR * 4, w != null ? w.contentColour : CgColor.WHITE);
         state[at + BLUR * 4] = w != null ? w.blur : 0f;
     }
 
@@ -227,7 +228,7 @@ public final class CgUserWidget implements CgSequenceTarget {
             visibility[i] = w.visibility;
             text[i] = w.text;
             style[i] = w.style;
-            brush[i] = w.brush;
+            setBrush(i, w.brush);
             laid[i] = null;
         }
     }
@@ -443,10 +444,10 @@ public final class CgUserWidget implements CgSequenceTarget {
      * image, a text block or a user widget. Never relays out; an animation keying it starts from this.
      *
      * <pre>{@code
-     * counter.colourAndOpacity("Banner", CgLinearColour.argb(0xFFFF8410));   // the banner dyed the grade's orange
+     * counter.colourAndOpacity("Banner", CgColor.argb(0xFFFF8410));   // the banner dyed the grade's orange
      * }</pre>
      */
-    public CgUserWidget colourAndOpacity(String name, CgLinearColour colour) {
+    public CgUserWidget colourAndOpacity(String name, CgColor colour) {
         Objects.requireNonNull(colour, "colour");
         set4(require(name), COLOUR, colour.r(), colour.g(), colour.b(), colour.a());
         return this;
@@ -505,17 +506,23 @@ public final class CgUserWidget implements CgSequenceTarget {
     }
 
     /** An image's brush or a border's background: UMG's {@code SetBrush}. */
-    public CgUserWidget brush(String name, CgWidgetBrush value) {
+    public CgUserWidget brush(String name, CgBrush value) {
         return brush(require(name), value);
     }
 
-    public CgUserWidget brush(int index, CgWidgetBrush value) {
+    public CgUserWidget brush(int index, CgBrush value) {
         if (!value.equals(brush[index])) {
-            brush[index] = value;
+            setBrush(index, value);
             dirty = true;
             touched++;
         }
         return this;
+    }
+
+    /** {@code value} as widget {@code i}'s brush, and the copy it draws: untinted, its tint multiplied in linear here. */
+    private void setBrush(int i, CgBrush value) {
+        brush[i] = value;
+        drawn[i] = value.linearTint().equals(CgColor.WHITE) ? value : value.tint(CgColor.WHITE);
     }
 
     /** The user widget {@code name}'s instance, nested in this one. */
@@ -534,9 +541,9 @@ public final class CgUserWidget implements CgSequenceTarget {
     }
 
     /** Widget {@code index}'s colour and opacity as a sequence leaves it, render opacity not multiplied in. */
-    public CgLinearColour colour(int index) {
+    public CgColor colour(int index) {
         int at = index * SLOTS * 4 + COLOUR * 4;
-        return new CgLinearColour(state[at], state[at + 1], state[at + 2], state[at + 3]);
+        return new CgColor(state[at], state[at + 1], state[at + 2], state[at + 3]);
     }
 
     /** Widget {@code index}'s render transform into {@code out}: translation x, y, scale x, y, shear x, y, angle. */
@@ -682,20 +689,20 @@ public final class CgUserWidget implements CgSequenceTarget {
         boolean nodes = moves[i] || fades[i];
         switch (w.kind) {
             case IMAGE -> {
-                CgWidgetBrush br = brush[i];
+                CgBrush br = brush[i];
                 if (br.draws()) {
                     // SImage: style tint x colour and opacity x brush tint.
-                    CgLinearColour t = br.tint();
+                    CgColor t = br.linearTint();
                     image(c, i, br, width, height, r * state[k] * t.r(), g * state[k + 1] * t.g(),
                             b * state[k + 2] * t.b(), a * t.a());
                 }
             }
             case TEXT_BLOCK -> text(c, i, w, width, r * state[k], g * state[k + 1], b * state[k + 2], a);
             case BORDER -> {
-                CgWidgetBrush br = brush[i];
+                CgBrush br = brush[i];
                 if (br.draws()) {
                     // SBorder: brush tint x style tint x brush colour.
-                    CgLinearColour t = br.tint(), bc = w.brushColour;
+                    CgColor t = br.linearTint(), bc = w.brushColour;
                     image(c, i, br, width, height, r * t.r() * bc.r(), g * t.g() * bc.g(), b * t.b() * bc.b(),
                             a * t.a() * bc.a());
                 }
@@ -778,27 +785,15 @@ public final class CgUserWidget implements CgSequenceTarget {
      * A brush over (0, 0) to ({@code width}, {@code height}), tinted in linear: Slate encodes the colour once
      * ({@code PackVertexColor}); a UI material reads it linear, as Slate's material shaders do.
      */
-    private void image(CgCanvas c, int i, CgWidgetBrush br, float width, float height, float r, float g, float b,
+    private void image(CgCanvas c, int i, CgBrush br, float width, float height, float r, float g, float b,
                        float a) {
         if (a <= 0f) return;
         if (br.material() != null) {
             c.box(0f, 0f, width, height).material(material(i, br.material())).fill(linear(r, g, b, a)).draw();
             return;
         }
-        int argb = CgLinearColour.argb(r, g, b, a);
-        if (br.svg() != null) {
-            // Rasterised at the size it lands on the target, its currentColor the tint
-            CgSvg doc = CgSvg.of(br.svg());
-            if (doc != null) c.box(0f, 0f, width, height).fill(CgBrush.svg(doc)).tint(argb).draw();
-            return;
-        }
-        if (br.texture() != null) {
-            // Shared by its path: loaded at its first draw, kept
-            c.box(0f, 0f, width, height).fill(CgTextures.of(br.texture())).tint(argb).draw();
-            return;
-        }
-        // A brush with no texture or material: a box of its tint, as Slate's
-        c.fill(0f, 0f, width, height, argb);
+        // Its tint is already in the colour, multiplied in linear: the canvas draws the brush untinted
+        c.box(0f, 0f, width, height).fill(drawn[i]).tint(CgColor.toArgb(r, g, b, a)).draw();
     }
 
     /** A text block's text in a box {@code width} units wide, justified, tinted. */
@@ -816,7 +811,7 @@ public final class CgUserWidget implements CgSequenceTarget {
             float total = t.layout().totalWidth();
             x = (width - total) * f - laidInset[i] * f;
         }
-        c.text(t, x, 0f, CgLinearColour.argb(r, g, b, a));
+        c.text(t, x, 0f, CgColor.toArgb(r, g, b, a));
     }
 
     /**
@@ -856,7 +851,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         }
         if (r != 1f || g != 1f || b != 1f) {
             // The tint's colour, encoded as the composite's vertex colour was: a premultiplied picture's rgb scaled
-            int argb = CgLinearColour.argb(r, g, b, 1f);
+            int argb = CgColor.toArgb(r, g, b, 1f);
             float sr = (argb >>> 16 & 0xFF) / 255f, sg = (argb >>> 8 & 0xFF) / 255f, sb = (argb & 0xFF) / 255f;
             f = f.then(CgFilter.matrix(new float[]{sr, 0, 0, 0, 0, 0, sg, 0, 0, 0, 0, 0, sb, 0, 0, 0, 0, 0, 1, 0}));
         }
@@ -976,8 +971,8 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (visibility[i] != CgWidget.Visibility.COLLAPSED) {
             switch (w.kind) {
                 case IMAGE -> {
-                    dx = brush[i].width();
-                    dy = brush[i].height();
+                    dx = brush[i].imageWidth();
+                    dy = brush[i].imageHeight();
                 }
                 case TEXT_BLOCK -> {
                     shown[i] = resolve(text[i]);
@@ -1314,7 +1309,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         measured.set(layout.totalWidth(), layout.totalHeight());
     }
 
-    private void putColour(int at, CgLinearColour c) {
+    private void putColour(int at, CgColor c) {
         state[at] = c.r();
         state[at + 1] = c.g();
         state[at + 2] = c.b();

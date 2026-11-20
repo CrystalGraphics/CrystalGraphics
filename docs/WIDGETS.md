@@ -81,9 +81,9 @@ static final CgWidgetTree POP = CgWidgetTree.of("mymod:hud/pop", CgWidget.canvas
         .child(CgWidget.text("Number").style(GOLD).text("0")
                 .slot(CgWidgetSlot.builder().anchors(0.5f, 0.5f).alignment(0.5f, 0.5f).autoSize(true).build()))
         .child(CgWidget.image("Banner")
-                .brush(CgWidgetBrush.texture("mymod:textures/hud/banner.png", 224f, 56f))
+                .brush(CgBrush.texture("mymod:textures/hud/banner.png").size(224f, 56f))
                 .slot(CgWidgetSlot.builder().anchors(0.5f, 0.5f).alignment(0.5f, 0f).offsets(0f, 30f, 224f, 56f).build())
-                .colour(new CgLinearColour(1f, 1f, 1f, 0f)))
+                .colour(new CgColor(1f, 1f, 1f, 0f)))
         .build());
 ```
 
@@ -145,14 +145,16 @@ Label: { kind: text_block, style: mymod:hud/counter, text: mymod:text/combo.hits
 ### Brushes and colours
 
 - **A brush** is a `texture`, an `svg` or a `material` (of the UI domain: its shader opens `#domain ui` and draws on
-  `Primitive Element`), its `image_size` (`[32, 32]` by default), `tint` and `draw_as: image | none`. With none of them
+  `Primitive Element`), its `image_size` (`[32, 32]` by default), `tint` and `draw_as: image | none`; an image's
+  `region` `[x, y, w, h]`, `layer`, `nine_slice` `[left, top, right, bottom]` and `tiling` as `CgBrush` has them
+  (`PAINT.md`): a widget's brush is the same `CgBrush` the canvas draws. With none of them
   it still draws, a box of its tint, as Slate's does: a border's background is that until set, so
   `background: { draw_as: none }` hides it.
 - **An `svg` brush** is fitted into the widget keeping its aspect, centred, and drawn sharp at the size it lands on
   the screen; its `currentColor` is the tint. `brush: { svg: mymod:ui/icons/sword.svg, image_size: [24, 24] }`, or
-  `CgWidgetBrush.svg(path, 24f, 24f)`.
+  `CgBrush.svg(path).size(24f, 24f)`.
 - **Colours are linear**, `[r, g, b, a]`, as Unreal's `FLinearColor`: they multiply down the tree in linear and are
-  encoded to sRGB where drawn. In Java, `CgLinearColour.argb(0xFFFFC040)` decodes a colour picked by eye.
+  encoded to sRGB where drawn. In Java they are `CgColor`s: `CgColor.argb(0xFFFFC040)` decodes a colour picked by eye.
 - **A string id** (`<ns>:text/<id>`) is read in the player's language when the tree lays out: a game kit's own table,
   else your mod's translations, `mymod:text/combo.nice` reading `"mymod.combo.nice"` from `lang/en_us.json`
   (`i18n.CgKitStrings`). A missing string shows its id, as Unreal shows a missing string's key.
@@ -489,7 +491,7 @@ first move or fade paints it once more, into a node of its own.
 
 | Package / type | Role |
 |---|---|
-| `widget.CgWidgetTree`, `CgWidget`, `CgWidgetSlot`, `CgWidgetBrush`, `CgLinearColour` | the tree as designed, its builders |
+| `widget.CgWidgetTree`, `CgWidget`, `CgWidgetSlot` (with `api.paint`'s `CgBrush` and `CgColor`) | the tree as designed, its builders |
 | `widget.CgUserWidget` | an instance: live state, Slate's layout, painting onto the canvas (kept and replayed), a sequence target, its own animations |
 | `widget.CgScreenWidgetLayer` | widgets on the screen, by z-order |
 | `widget.CgWorldWidgetLayer`, `CgWidgetComponent`, `CgUserWidgetPool` | widgets over points in the world, and the pool |

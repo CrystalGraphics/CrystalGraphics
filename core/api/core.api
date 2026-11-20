@@ -3845,6 +3845,55 @@ com/crystalgraphics/api/mesh/geckolib/CgGeckoModel
   method public skeleton ()Lcom/crystalgraphics/api/animation/CgSkeleton;
   method public,static load (Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/geckolib/CgGeckoModel;
   method public,static read (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/mesh/geckolib/CgGeckoModel;
+com/crystalgraphics/api/paint/CgColor
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final BLACK Lcom/crystalgraphics/api/paint/CgColor;
+  field public,static,final CODEC Lcom/crystalgraphics/serialization/CgCodec;
+  field public,static,final TRANSPARENT Lcom/crystalgraphics/api/paint/CgColor;
+  field public,static,final WHITE Lcom/crystalgraphics/api/paint/CgColor;
+  method public <init> (FFFF)V
+  method public a ()F
+  method public b ()F
+  method public clamp ()Lcom/crystalgraphics/api/paint/CgColor;
+  method public contrast (Lcom/crystalgraphics/api/paint/CgColor;)D
+  method public g ()F
+  method public intensity (F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public isHdr ()Z
+  method public lerp (Lcom/crystalgraphics/api/paint/CgColor;F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public lerpOklab (Lcom/crystalgraphics/api/paint/CgColor;F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public lerpSrgb (Lcom/crystalgraphics/api/paint/CgColor;F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public luminance ()F
+  method public premultiply ()Lcom/crystalgraphics/api/paint/CgColor;
+  method public r ()F
+  method public toArgb ()I
+  method public toCss ()Ljava/lang/String;
+  method public toHex ()Ljava/lang/String;
+  method public toHsl ()[F
+  method public toHsv ()[F
+  method public toOklab ()[F
+  method public toOklch ()[F
+  method public toRgba ()I
+  method public unpremultiply ()Lcom/crystalgraphics/api/paint/CgColor;
+  method public withAlpha (F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public withBlue (F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public withGreen (F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public withRed (F)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static argb (I)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static css (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hex (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hsl (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hsv (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static linear (F)F
+  method public,static oklab (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static oklch (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static rgba (I)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static srgb (F)F
+  method public,static srgb (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static toArgb (FFFF)I
 com/crystalgraphics/api/paint/CgCssColors
   access public,final
   extends java/lang/Object
@@ -3868,9 +3917,12 @@ com/crystalgraphics/api/paint/CgPaint$Solid
 com/crystalgraphics/api/paint/brush/CgBrush
   access public,final
   extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  field public,static,final WHITE Lcom/crystalgraphics/api/paint/brush/CgBrush;
   implements com/crystalgraphics/api/paint/CgPaint
   method public color ()I
   method public color (I)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public draws ()Z
   method public edges ()Lcom/crystalgraphics/api/paint/brush/CgTiling;
   method public edges (Lcom/crystalgraphics/api/paint/brush/CgTiling;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public equals (Ljava/lang/Object;)Z
@@ -3879,9 +3931,15 @@ com/crystalgraphics/api/paint/brush/CgBrush
   method public flat ()Z
   method public flat (F)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public hasRegion ()Z
+  method public hasSize ()Z
   method public hashCode ()I
+  method public imageHeight ()F
+  method public imageWidth ()F
+  method public isSvg ()Z
   method public layer ()I
   method public layer (I)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public linearTint ()Lcom/crystalgraphics/api/paint/CgColor;
+  method public material ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
   method public nineSlice ()Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
   method public nineSlice (Lcom/crystalgraphics/api/paint/brush/CgNineSlice;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public premultiplied ()Z
@@ -3893,17 +3951,24 @@ com/crystalgraphics/api/paint/brush/CgBrush
   method public regionY ()I
   method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public size (FF)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public strokeWidth ()F
   method public svg ()Lcom/crystalgraphics/api/vector/svg/CgSvg;
+  method public svgPath ()Ljava/lang/String;
   method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
+  method public texturePath ()Ljava/lang/String;
   method public tiling ()Lcom/crystalgraphics/api/paint/brush/CgTiling;
   method public tiling (Lcom/crystalgraphics/api/paint/brush/CgTiling;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public tint ()I
   method public tint (I)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public tint (Lcom/crystalgraphics/api/paint/CgColor;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public toString ()Ljava/lang/String;
+  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialDefinition;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public,static sprite (Ljava/lang/String;Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public,static svg (Lcom/crystalgraphics/api/vector/svg/CgSvg;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public,static svg (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public,static texture (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public,static texture (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
 com/crystalgraphics/api/paint/brush/CgFit
   access public,final,enum
   extends java/lang/Enum
@@ -25388,24 +25453,6 @@ com/crystalgraphics/vfx/system/CgVfxSystemSpawner
   method public group (Lcom/crystalgraphics/sequence/CgSequencePlayer;)Lcom/crystalgraphics/vfx/render/CgVfxSortGroup;
   method public spawn (Lcom/crystalgraphics/sequence/CgSequencePlayer;Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition$Spawnable;Lcom/crystalgraphics/world/CgAttachment;)Lcom/crystalgraphics/sequence/spawn/CgSequenceSpawned;
   method public,static install (Lcom/crystalgraphics/sequence/CgSequencer;)V
-com/crystalgraphics/widget/CgLinearColour
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final ARGB Lcom/crystalgraphics/serialization/CgCodec;
-  field public,static,final WHITE Lcom/crystalgraphics/widget/CgLinearColour;
-  method public <init> (FFFF)V
-  method public a ()F
-  method public b ()F
-  method public g ()F
-  method public r ()F
-  method public toArgb ()I
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-  method public,static argb (FFFF)I
-  method public,static argb (I)Lcom/crystalgraphics/widget/CgLinearColour;
-  method public,static linear (F)F
-  method public,static srgb (F)F
 com/crystalgraphics/widget/CgScreenWidgetLayer
   access public,final
   extends java/lang/Object
@@ -25460,11 +25507,11 @@ com/crystalgraphics/widget/CgUserWidget
   method public animationCurrentTime (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)D
   method public blur (Ljava/lang/String;F)Lcom/crystalgraphics/widget/CgUserWidget;
   method public box (I[F)[F
-  method public brush (ILcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
-  method public brush (Ljava/lang/String;Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public brush (ILcom/crystalgraphics/api/paint/brush/CgBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public brush (Ljava/lang/String;Lcom/crystalgraphics/api/paint/brush/CgBrush;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public changes ()J
-  method public colour (I)Lcom/crystalgraphics/widget/CgLinearColour;
-  method public colourAndOpacity (Ljava/lang/String;Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgUserWidget;
+  method public colour (I)Lcom/crystalgraphics/api/paint/CgColor;
+  method public colourAndOpacity (Ljava/lang/String;Lcom/crystalgraphics/api/paint/CgColor;)Lcom/crystalgraphics/widget/CgUserWidget;
   method public get (I[F)V
   method public isAnimationPlaying (Lcom/crystalgraphics/sequence/definition/CgSequenceDefinition;)Z
   method public layout (Lorg/joml/Vector2f;)Lorg/joml/Vector2f;
@@ -25509,11 +25556,11 @@ com/crystalgraphics/widget/CgWidget
   extends java/lang/Object
   method public blur ()F
   method public blurAxis ()Lcom/crystalgraphics/widget/CgWidget$BlurAxis;
-  method public brush ()Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public brushColour ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public brush ()Lcom/crystalgraphics/api/paint/brush/CgBrush;
+  method public brushColour ()Lcom/crystalgraphics/api/paint/CgColor;
   method public children ()Ljava/util/List;
-  method public colour ()Lcom/crystalgraphics/widget/CgLinearColour;
-  method public contentColour ()Lcom/crystalgraphics/widget/CgLinearColour;
+  method public colour ()Lcom/crystalgraphics/api/paint/CgColor;
+  method public contentColour ()Lcom/crystalgraphics/api/paint/CgColor;
   method public effect ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
   method public equals (Ljava/lang/Object;)Z
   method public hashCode ()I
@@ -25555,13 +25602,13 @@ com/crystalgraphics/widget/CgWidget$Builder
   method public angle (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public blur (F)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public blurAxis (Lcom/crystalgraphics/widget/CgWidget$BlurAxis;)Lcom/crystalgraphics/widget/CgWidget$Builder;
-  method public brush (Lcom/crystalgraphics/widget/CgWidgetBrush;)Lcom/crystalgraphics/widget/CgWidget$Builder;
-  method public brushColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public brush (Lcom/crystalgraphics/api/paint/brush/CgBrush;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public brushColour (Lcom/crystalgraphics/api/paint/CgColor;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public build ()Lcom/crystalgraphics/widget/CgWidget;
   method public child (Lcom/crystalgraphics/widget/CgWidget$Builder;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public child (Lcom/crystalgraphics/widget/CgWidget;)Lcom/crystalgraphics/widget/CgWidget$Builder;
-  method public colour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
-  method public contentColour (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public colour (Lcom/crystalgraphics/api/paint/CgColor;)Lcom/crystalgraphics/widget/CgWidget$Builder;
+  method public contentColour (Lcom/crystalgraphics/api/paint/CgColor;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public effect (Lcom/crystalgraphics/api/material/CgMaterialDefinition;Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public justification (Lcom/crystalgraphics/widget/CgWidget$Justification;)Lcom/crystalgraphics/widget/CgWidget$Builder;
   method public pivot (FF)Lcom/crystalgraphics/widget/CgWidget$Builder;
@@ -25610,27 +25657,6 @@ com/crystalgraphics/widget/CgWidget$Visibility
   method public id ()Ljava/lang/String;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/widget/CgWidget$Visibility;
   method public,static values ()[Lcom/crystalgraphics/widget/CgWidget$Visibility;
-com/crystalgraphics/widget/CgWidgetBrush
-  access public,final,record
-  extends java/lang/Record
-  field public,static,final NONE Lcom/crystalgraphics/widget/CgWidgetBrush;
-  field public,static,final WHITE Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public <init> (Ljava/lang/String;Ljava/lang/String;Lcom/crystalgraphics/api/material/CgMaterialDefinition;FFLcom/crystalgraphics/widget/CgLinearColour;Z)V
-  method public draws ()Z
-  method public height ()F
-  method public material ()Lcom/crystalgraphics/api/material/CgMaterialDefinition;
-  method public size (FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public svg ()Ljava/lang/String;
-  method public texture ()Ljava/lang/String;
-  method public tint ()Lcom/crystalgraphics/widget/CgLinearColour;
-  method public tint (Lcom/crystalgraphics/widget/CgLinearColour;)Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public width ()F
-  method public,final equals (Ljava/lang/Object;)Z
-  method public,final hashCode ()I
-  method public,final toString ()Ljava/lang/String;
-  method public,static material (Lcom/crystalgraphics/api/material/CgMaterialDefinition;FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public,static svg (Ljava/lang/String;FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
-  method public,static texture (Ljava/lang/String;FF)Lcom/crystalgraphics/widget/CgWidgetBrush;
 com/crystalgraphics/widget/CgWidgetCodec
   access public,final
   extends java/lang/Object

@@ -1,6 +1,5 @@
 package com.crystalgraphics.widget;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -11,6 +10,8 @@ import java.util.Map;
 
 import org.junit.Test;
 
+import com.crystalgraphics.api.paint.brush.CgBrush;
+import static org.junit.Assert.assertEquals;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -25,7 +26,7 @@ public class CgScreenWidgetLayerTest {
     /** One image of {@code width}, so a painted widget is known by its width. */
     private static CgWidgetTree tree(float width) {
         return CgWidgetTree.of(CgWidget.canvas("Root")
-                .child(CgWidget.image("Img").brush(CgWidgetBrush.texture("mymod:textures/pop", width, 10f))
+                .child(CgWidget.image("Img").brush(CgBrush.texture("mymod:textures/pop").size(width, 10f))
                         .slot(CgWidgetSlot.builder().anchors(0f, 0f, 0f, 0f).offsets(0f, 0f, width, 10f).build()))
                 .build());
     }

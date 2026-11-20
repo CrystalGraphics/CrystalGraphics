@@ -10,6 +10,10 @@ import java.util.Set;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDomain;
+import com.crystalgraphics.api.paint.CgColor;
+import com.crystalgraphics.api.paint.brush.CgBrush;
+import com.crystalgraphics.api.paint.brush.CgNineSlice;
+import com.crystalgraphics.api.paint.brush.CgTiling;
 import com.crystalgraphics.asset.kind.CgLookKinds;
 import com.crystalgraphics.asset.load.CgAssetCompiler;
 import com.crystalgraphics.asset.tree.CgAssetData;
@@ -205,15 +209,34 @@ public final class CgWidgetCodec {
         };
     }
 
-    private static CgWidgetBrush brush(Map<?, ?> m, String at, CgAssetCompiler.Dependencies deps) {
-        float[] size = pair(m.get("image_size"), 32f, 32f);
-        CgLinearColour tint = m.get("tint") != null ? colour(m.get("tint")) : CgLinearColour.WHITE;
-        boolean draws = !"none".equals(m.get("draw_as"));
-        String texture = m.get("texture") instanceof String t ? t : null;
-        String svg = m.get("svg") instanceof String v ? v : null;
-        CgMaterialDefinition material = m.get("material") instanceof String mat
-                ? uiMaterial(mat, at + ".material", deps) : null;
-        return new CgWidgetBrush(texture, svg, material, size[0], size[1], tint, draws);
+    /**
+     * A brush as a file writes it: one of {@code texture}, {@code svg} or {@code material} (none for a plain box), its
+     * {@code image_size} and {@code tint}, {@code draw_as: none}; an image's {@code region} {@code [x, y, w, h]},
+     * {@code layer}, {@code nine_slice} {@code [left, top, right, bottom]} and {@code tiling}.
+     */
+    private static CgBrush brush(Map<?, ?> m, String at, CgAssetCompiler.Dependencies deps) {
+        int kinds = (m.get("texture") != null ? 1 : 0) + (m.get("svg") != null ? 1 : 0) + (m.get("material") != null ? 1 : 0);
+        if (kinds > 1) throw new IllegalArgumentException(at + ": a brush is one of a texture, an SVG or a material");
+        CgBrush b;
+        if (m.get("texture") instanceof String t) b = CgBrush.texture(t);
+        else if (m.get("svg") instanceof String v) b = CgBrush.svg(v);
+        else if (m.get("material") instanceof String mat) b = CgBrush.material(uiMaterial(mat, at + ".material", deps));
+        else b = "none".equals(m.get("draw_as")) ? CgBrush.NONE : CgBrush.WHITE;
+        if (m.get("region") instanceof List<?> r && r.size() == 4) {
+            b = b.region((int) num(r.get(0), 0f), (int) num(r.get(1), 0f), (int) num(r.get(2), 0f), (int) num(r.get(3), 0f));
+        }
+        if (m.get("layer") instanceof Number l) b = b.layer(l.intValue());
+        if (m.get("nine_slice") instanceof List<?> s && s.size() == 4) {
+            b = b.nineSlice(CgNineSlice.of((int) num(s.get(0), 0f), (int) num(s.get(1), 0f), (int) num(s.get(2), 0f),
+                    (int) num(s.get(3), 0f)));
+        }
+        if (m.get("tiling") instanceof String t) b = b.tiling(CgTiling.valueOf(t.toUpperCase(Locale.ROOT)));
+        if (m.get("image_size") != null) {
+            float[] size = pair(m.get("image_size"), 32f, 32f);
+            b = b.size(size[0], size[1]);
+        }
+        if (m.get("tint") != null) b = b.tint(colour(m.get("tint")));
+        return b;
     }
 
     /** {@code id}, compiled, a UI-domain material: any other fails, naming the widget's field. */
@@ -277,14 +300,14 @@ public final class CgWidgetCodec {
             }
             case BORDER -> {
                 if (!w.children().isEmpty()) m.put("content", w.children().get(0).name());
-                if (!w.brush().equals(CgWidgetBrush.WHITE)) m.put("background", brush(w.brush()));
-                if (!w.brushColour().equals(CgLinearColour.WHITE)) m.put("brush_colour", colour(w.brushColour()));
-                if (!w.contentColour().equals(CgLinearColour.WHITE)) {
+                if (!w.brush().equals(CgBrush.WHITE)) m.put("background", brush(w.brush()));
+                if (!w.brushColour().equals(CgColor.WHITE)) m.put("brush_colour", colour(w.brushColour()));
+                if (!w.contentColour().equals(CgColor.WHITE)) {
                     m.put("content_colour_and_opacity", colour(w.contentColour()));
                 }
             }
             case IMAGE -> {
-                if (!w.brush().equals(CgWidgetBrush.WHITE)) m.put("brush", brush(w.brush()));
+                if (!w.brush().equals(CgBrush.WHITE)) m.put("brush", brush(w.brush()));
                 colourOf(w, m);
             }
             case TEXT_BLOCK -> {
@@ -309,7 +332,7 @@ public final class CgWidgetCodec {
     }
 
     private static void colourOf(CgWidget w, Map<String, Object> m) {
-        if (!w.colour().equals(CgLinearColour.WHITE)) m.put("colour_and_opacity", colour(w.colour()));
+        if (!w.colour().equals(CgColor.WHITE)) m.put("colour_and_opacity", colour(w.colour()));
     }
 
     private static Map<String, Object> slot(CgWidgetSlot s) {
@@ -338,26 +361,40 @@ public final class CgWidgetCodec {
         };
     }
 
-    private static Map<String, Object> brush(CgWidgetBrush b) {
+    private static Map<String, Object> brush(CgBrush b) {
         Map<String, Object> m = new LinkedHashMap<>();
-        if (b.texture() != null) m.put("texture", b.texture());
-        if (b.svg() != null) m.put("svg", b.svg());
-        if (b.material() != null) m.put("material", b.material().id());
-        if (b.width() != 32f || b.height() != 32f) m.put("image_size", list(b.width(), b.height()));
-        if (!b.tint().equals(CgLinearColour.WHITE)) m.put("tint", colour(b.tint()));
+        if (b.texturePath() != null) m.put("texture", b.texturePath());
+        else if (b.svgPath() != null) m.put("svg", b.svgPath());
+        else if (b.material() != null) m.put("material", b.material().id());
+        else if (b.isSvg() || b.texture() != null) {
+            throw new IllegalArgumentException("a brush made from a loaded image has no path to write: " + b);
+        }
+        if (b.hasRegion()) m.put("region", pixels(b.regionX(), b.regionY(), b.regionWidth(), b.regionHeight()));
+        if (b.layer() != 0) m.put("layer", (long) b.layer());
+        CgNineSlice s = b.nineSlice();
+        if (s != null) m.put("nine_slice", pixels(s.left(), s.top(), s.right(), s.bottom()));
+        if (b.tiling() != CgTiling.STRETCH) m.put("tiling", b.tiling().name().toLowerCase(Locale.ROOT));
+        if (b.hasSize()) m.put("image_size", list(b.imageWidth(), b.imageHeight()));
+        if (!b.linearTint().equals(CgColor.WHITE)) m.put("tint", colour(b.linearTint()));
         if (!b.draws()) m.put("draw_as", "none");
         return m;
     }
 
     // ---- values ----
 
-    private static CgLinearColour colour(Object o) {
+    private static CgColor colour(Object o) {
         if (!(o instanceof List<?> c) || c.size() != 4) throw new IllegalArgumentException("a colour is [r, g, b, a]: " + o);
-        return new CgLinearColour(num(c.get(0), 0f), num(c.get(1), 0f), num(c.get(2), 0f), num(c.get(3), 1f));
+        return new CgColor(num(c.get(0), 0f), num(c.get(1), 0f), num(c.get(2), 0f), num(c.get(3), 1f));
     }
 
-    private static List<Object> colour(CgLinearColour c) {
+    private static List<Object> colour(CgColor c) {
         return list(c.r(), c.g(), c.b(), c.a());
+    }
+
+    private static List<Object> pixels(int... values) {
+        List<Object> out = new ArrayList<>(values.length);
+        for (int v : values) out.add((long) v);
+        return out;
     }
 
     private static float[] pair(Object o, float x, float y) {

@@ -13,6 +13,8 @@ import java.util.Map;
 import org.joml.Vector2f;
 import org.junit.Test;
 
+import com.crystalgraphics.api.paint.CgColor;
+import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.effect.CgFilter;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
@@ -40,14 +42,14 @@ public class CgUserWidgetTest {
         CgWidget.Builder digits = CgWidget.horizontalBox("Number_Center");
         for (int i = 0; i < 9; i++) {
             digits.child(CgWidget.image("Ins_Dmg00_0" + i)
-                    .brush(CgWidgetBrush.texture(DIGIT, 64f, 60f))
+                    .brush(CgBrush.texture(DIGIT).size(64f, 60f))
                     .slot(CgWidgetSlot.builder().padding(-13f, 0f, -13f, 0f).vertical(Align.CENTRE).build()));
         }
         CgWidgetSlot centred = CgWidgetSlot.builder().anchors(0.5f, 0.5f).alignment(0.5f, 0.5f)
                 .offsets(0f, 0f, 500f, 100f).autoSize(true).build();
         return CgWidgetTree.of(CgWidget.canvas("All_Nut")
                 .child(CgWidget.canvas("All_Number").slot(centred)
-                        .child(CgWidget.border("Pnl_All_Num_Dmg").slot(centred).brush(CgWidgetBrush.NONE).child(digits))
+                        .child(CgWidget.border("Pnl_All_Num_Dmg").slot(centred).brush(CgBrush.NONE).child(digits))
                         .child(CgWidget.canvas("Pnl_Lang_Critical")
                                 .slot(CgWidgetSlot.builder().anchors(0f, 0.5f, 1f, 0.5f).alignment(0f, 0.5f)
                                         .offsets(0f, 0f, 0f, 60f).build())
@@ -55,13 +57,13 @@ public class CgUserWidgetTest {
                                 .child(CgWidget.image("Img_Base_Critical")
                                         .slot(CgWidgetSlot.builder().anchors(1f, 1f).alignment(1f, 1f)
                                                 .offsets(115f, 48f, 224f, 56f).build())
-                                        .brush(CgWidgetBrush.texture(BANNER, 224f, 56f))
-                                        .scale(1.5f, 1.5f).angle(2f).colour(new CgLinearColour(1f, 1f, 1f, 0f)))
+                                        .brush(CgBrush.texture(BANNER).size(224f, 56f))
+                                        .scale(1.5f, 1.5f).angle(2f).colour(new CgColor(1f, 1f, 1f, 0f)))
                                 .child(CgWidget.image("Ins_Lang_Critical")
                                         .slot(CgWidgetSlot.builder().anchors(1f, 1f).alignment(1f, 1f)
                                                 .offsets(115f, 37f, 216f, 60f).autoSize(true).build())
-                                        .brush(CgWidgetBrush.texture(WORD, 216f, 60f))
-                                        .angle(-5f).colour(new CgLinearColour(1f, 1f, 1f, 0f)))))
+                                        .brush(CgBrush.texture(WORD).size(216f, 60f))
+                                        .angle(-5f).colour(new CgColor(1f, 1f, 1f, 0f)))))
                 .build());
     }
 
@@ -129,8 +131,8 @@ public class CgUserWidgetTest {
     @Test
     public void opacityAndContentColourFlowDownInLinear() {
         CgWidgetTree tree = CgWidgetTree.of(CgWidget.canvas("Root").renderOpacity(0.5f)
-                .child(CgWidget.border("Glow").brush(CgWidgetBrush.NONE)
-                        .contentColour(new CgLinearColour(0.5f, 0.1f, 0f, 0.5f))
+                .child(CgWidget.border("Glow").brush(CgBrush.NONE)
+                        .contentColour(new CgColor(0.5f, 0.1f, 0f, 0.5f))
                         .child(CgWidget.image("Cell")))
                 .build());
         int argb = Painted.of(tree.newInstance()::paint).get(0).argb();
@@ -148,7 +150,7 @@ public class CgUserWidgetTest {
         assertEquals(1, draws.size());
         assertNull("no texture: a box of its colour", draws.get(0).texture());
         assertEquals(0xFFFFFFFF, draws.get(0).argb());
-        assertEquals(0, Painted.of(CgWidgetTree.of(CgWidget.border("B").brush(CgWidgetBrush.NONE).build())
+        assertEquals(0, Painted.of(CgWidgetTree.of(CgWidget.border("B").brush(CgBrush.NONE).build())
                 .newInstance().allot(40f, 20f)::paint).size());
     }
 
@@ -156,7 +158,7 @@ public class CgUserWidgetTest {
     @Test
     public void fillChildrenShareTheRest() {
         CgWidgetTree tree = CgWidgetTree.of(CgWidget.horizontalBox("Row")
-                .child(CgWidget.image("A").brush(CgWidgetBrush.texture("a", 40f, 10f)))
+                .child(CgWidget.image("A").brush(CgBrush.texture("a").size(40f, 10f)))
                 .child(CgWidget.image("B").slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 1f).build()))
                 .child(CgWidget.image("C").slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 3f).build()))
                 .build());
@@ -175,9 +177,9 @@ public class CgUserWidgetTest {
     @Test
     public void aScaleBoxTakesAndDrawsItsScaledSize() {
         CgWidgetTree tree = CgWidgetTree.of(CgWidget.horizontalBox("Row")
-                .child(CgWidget.image("A").brush(CgWidgetBrush.texture("a", 40f, 10f)))
-                .child(CgWidget.scaleBox("Box", 0.5f).child(CgWidget.image("B").brush(CgWidgetBrush.texture("b", 40f, 20f))))
-                .child(CgWidget.image("C").brush(CgWidgetBrush.texture("c", 10f, 10f)))
+                .child(CgWidget.image("A").brush(CgBrush.texture("a").size(40f, 10f)))
+                .child(CgWidget.scaleBox("Box", 0.5f).child(CgWidget.image("B").brush(CgBrush.texture("b").size(40f, 20f))))
+                .child(CgWidget.image("C").brush(CgBrush.texture("c").size(10f, 10f)))
                 .build());
         CgUserWidget row = tree.newInstance();
         assertEquals("40 + 40 x 0.5 + 10", 70f, row.layout(new Vector2f()).x, 1e-4f);
@@ -241,7 +243,7 @@ public class CgUserWidgetTest {
     /** A tree whose one image a test moves and fades: centred 40 x 20 at (100, 60) under a canvas scale of 2. */
     private static CgUserWidget card() {
         return CgWidgetTree.of(CgWidget.canvas("Root")
-                .child(CgWidget.image("Img").brush(CgWidgetBrush.texture("a", 40f, 20f))
+                .child(CgWidget.image("Img").brush(CgBrush.texture("a").size(40f, 20f))
                         .slot(CgWidgetSlot.builder().anchors(0f, 0f, 0f, 0f).offsets(80f, 50f, 40f, 20f).build()))
                 .build()).newInstance();
     }
@@ -264,20 +266,20 @@ public class CgUserWidgetTest {
         int img = w.tree().index("Img");
         placed(w);
         w.translation(img, 5f, 0f);
-        w.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, 0.2f));
+        w.colourAndOpacity("Img", new CgColor(1f, 1f, 1f, 0.2f));
         placed(w);
         long repaints = w.repaints();
         float[][] frames = {{30f, -4f, 0.6f, 12f}, {-8f, 9f, 0.05f, -30f}};
         for (float[] f : frames) {
             w.translation(img, f[0], f[1]);
-            w.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, f[2]));
+            w.colourAndOpacity("Img", new CgColor(1f, 1f, 1f, f[2]));
             w.part(CgSequenceBinding.Part.NODE, "Img").set(w.slot("angle"), new float[]{f[3], 0f, 0f, 0f}, 1);
             Painted.Draw replayed = only(placed(w), "a");
             assertEquals("replayed, not repainted", repaints, w.repaints());
 
             CgUserWidget fresh = card();
             fresh.translation(img, f[0], f[1]);
-            fresh.colourAndOpacity("Img", new CgLinearColour(1f, 1f, 1f, f[2]));
+            fresh.colourAndOpacity("Img", new CgColor(1f, 1f, 1f, f[2]));
             fresh.part(CgSequenceBinding.Part.NODE, "Img").set(w.slot("angle"), new float[]{f[3], 0f, 0f, 0f}, 1);
             Painted.Draw painted = only(placed(fresh), "a");
             assertEquals(painted.cx(), replayed.cx(), 1e-3f);
@@ -295,7 +297,7 @@ public class CgUserWidgetTest {
         placed(w);
         long repaints = w.repaints();
         assertEquals("unchanged: replayed", 1L, repaints);
-        w.colourAndOpacity("Img", new CgLinearColour(1f, 0.5f, 1f, 1f));
+        w.colourAndOpacity("Img", new CgColor(1f, 0.5f, 1f, 1f));
         placed(w);
         assertEquals(repaints + 1, w.repaints());
         Painted.of(w::paint);
@@ -358,7 +360,7 @@ public class CgUserWidgetTest {
     @Test
     public void aNestedUserWidgetIsReachedWhole() {
         CgWidgetTree digit = CgWidgetTree.of("mymod:widgets/digit", CgWidget.image("Cell")
-                .brush(CgWidgetBrush.texture("d", 30f, 40f)).build());
+                .brush(CgBrush.texture("d").size(30f, 40f)).build());
         CgWidgetTree row = CgWidgetTree.of(CgWidget.horizontalBox("Row")
                 .child(CgWidget.userWidget("A", digit)).child(CgWidget.userWidget("B", digit)).build());
         CgUserWidget w = row.newInstance();
@@ -467,11 +469,11 @@ public class CgUserWidgetTest {
      */
     @Test
     public void aRetainerBoxFadesItsContentAsOneImage() {
-        CgWidgetTree tree = CgWidgetTree.of(CgWidget.border("Fade").brush(CgWidgetBrush.NONE)
-                .contentColour(new CgLinearColour(1f, 1f, 1f, 0.5f))
+        CgWidgetTree tree = CgWidgetTree.of(CgWidget.border("Fade").brush(CgBrush.NONE)
+                .contentColour(new CgColor(1f, 1f, 1f, 0.5f))
                 .child(CgWidget.retainerBox("Ret").slot(CgWidgetSlot.builder().padding(0f, 0f, 0f, 0f).build())
-                        .child(CgWidget.image("Cell").brush(CgWidgetBrush.texture("c", 40f, 20f))
-                                .colour(new CgLinearColour(1f, 1f, 1f, 0.8f))))
+                        .child(CgWidget.image("Cell").brush(CgBrush.texture("c").size(40f, 20f))
+                                .colour(new CgColor(1f, 1f, 1f, 0.8f))))
                 .build());
         CgUserWidget w = tree.newInstance();
         List<Painted.Draw> draws = Painted.of(c -> {

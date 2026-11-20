@@ -5,9 +5,10 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * CSS's {@code <color>} as straight ARGB: hex in all four lengths, {@code rgb()} and {@code rgba()} in either
- * syntax, the 148 named colours of CSS Color 4 and {@code transparent}. What an SVG file's paint and a style sheet's
- * colour are read with.
+ * CSS's {@code <color>} as straight ARGB: hex in all four lengths, {@code rgb()}, {@code hsl()}, {@code oklab()} and
+ * {@code oklch()} (with their {@code a} forms) in either syntax, the 148 named colours of CSS Color 4 and
+ * {@code transparent}. What an SVG file's paint and a style sheet's colour are read with; {@code CgColor.css} reads
+ * the same at full precision.
  *
  * <pre>{@code
  * CgCssColors.parse("#f80");                  // 0xFFFF8800: three digits doubled, not shifted
@@ -191,6 +192,13 @@ public final class CgCssColors {
 
         if (value.charAt(0) == '#') return hex(value.substring(1));
         if (value.startsWith("rgb(") || value.startsWith("rgba(")) return functional(value);
+        if (value.startsWith("hsl") || value.startsWith("oklab(") || value.startsWith("oklch(")) {
+            try {
+                return CgColor.css(value).toArgb();
+            } catch (IllegalArgumentException e) {
+                return null;
+            }
+        }
 
         return NAMED.get(value);
     }

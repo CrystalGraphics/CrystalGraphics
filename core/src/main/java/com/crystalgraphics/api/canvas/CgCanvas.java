@@ -22,7 +22,6 @@ import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterial;
 import com.crystalgraphics.api.material.CgMaterialInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
-import com.crystalgraphics.api.material.CgMaterialState;
 import com.crystalgraphics.api.paint.CgPaint;
 import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.brush.CgFit;
@@ -1941,6 +1940,8 @@ public final class CgCanvas {
      */
     private void svg(CgBrush brush, float x, float y, float w, float h, int tint) {
         CgSvg doc = brush.svg();
+        // A path not readable draws nothing, as a texture not yet loaded does
+        if (doc == null) return;
         float dw = doc.width(), dh = doc.height();
         if (doc.isEmpty() || !(dw > 0f && dh > 0f && w > 0f && h > 0f) || opacity <= 0f) return;
         float sx = w / dw, sy = h / dh, ox = x, oy = y;
@@ -2402,15 +2403,18 @@ public final class CgCanvas {
             }
         }
         pass();
-        if (box.material != null && box.blend != null) {
+        CgPaint paint = box.paint;
+        // A material brush's material is the box's, as one given by material(...) is
+        CgMaterialInterface own = box.material != null ? box.material
+                : paint instanceof CgBrush mb && mb.material() != null ? CgMaterial.of(mb.material()) : null;
+        if (own != null && box.blend != null) {
             throw new IllegalStateException("a box's own material blends as its state says; blend(" + box.blend
                     + ") is the canvas's element's");
         }
-        CgMaterialInterface material = box.material != null ? box.material
+        CgMaterialInterface material = own != null ? own
                 : CgUiMaterials.element(box.blend != null ? box.blend : CgBlendMode.PREMULTIPLIED);
         if (box.shadow != null && !box.shadow.inside()) shadow(box, material);
-        CgPaint paint = box.paint;
-        if (paint instanceof CgBrush brush && brush.svg() != null) {
+        if (paint instanceof CgBrush brush && brush.isSvg()) {
             svg(brush, box.x, box.y, w, h, mul(brush.tint(), box.argb));
             borderOver(box, material);
         } else if (paint instanceof CgBrush brush && (brush.nineSlice() != null || brush.tiling() != CgTiling.STRETCH)) {
@@ -2439,6 +2443,9 @@ public final class CgCanvas {
             CgUiElements.fill(record, 0, CgUiElements.FILL_GRID, grid.lineColor(), Float.intBitsToFloat(grid.secondColor()));
             CgUiElements.uv(record, 0, grid.cellWidth(), grid.cellHeight(), grid.lineWidth(), grid.lineHeight());
             CgUiElements.flag(record, 0, CgUiElements.FLAG_CHECKER, grid.checker());
+        } else if (paint instanceof CgBrush brush && (!brush.draws() || brush.texture() == null)) {
+            // NONE draws nothing; a plain or material brush is its tint over the box, the material's surface on it
+            CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, brush.draws() ? mul(brush.tint(), argb) : 0, 0f);
         } else if (paint instanceof CgBrush brush) {
             texture = brush.texture();
             sampler = brush.sampler();

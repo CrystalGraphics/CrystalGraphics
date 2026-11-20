@@ -11,6 +11,8 @@ import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.material.CgMaterialDefinition;
 import com.crystalgraphics.api.material.CgMaterialDomain;
+import com.crystalgraphics.api.paint.CgColor;
+import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.text.style.CgTextStyle;
 
 /**
@@ -27,8 +29,8 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *         .translation(45f, 0f)
  *         .child(CgWidget.image("Img_Base_Critical")
  *                 .slot(CgWidgetSlot.builder().anchors(1f, 1f).alignment(1f, 1f).offsets(115f, 48f, 224f, 56f).build())
- *                 .brush(CgWidgetBrush.texture("kk:textures/hud/damage_number/base_critical.png", 224f, 56f))
- *                 .scale(1.5f, 1.5f).angle(2f).colour(new CgLinearColour(1f, 1f, 1f, 0f)))
+ *                 .brush(CgBrush.texture("kk:textures/hud/damage_number/base_critical.png").size(224f, 56f))
+ *                 .scale(1.5f, 1.5f).angle(2f).colour(new CgColor(1f, 1f, 1f, 0f)))
  *         .build();
  * }</pre>
  *
@@ -44,7 +46,7 @@ import com.crystalgraphics.text.style.CgTextStyle;
  *       padding and alignment are its child's {@link CgWidgetSlot}: a border's pads (4, 2) unless set, as UMG's
  *       {@code UBorderSlot}; a scale box's centres it, as {@code UScaleBoxSlot}.</li>
  *   <li>The pivot defaults to the middle (0.5, 0.5), UMG's, not Slate's corner.</li>
- *   <li>The angle is in degrees, clockwise on the y-down screen. Colours are linear ({@link CgLinearColour}).</li>
+ *   <li>The angle is in degrees, clockwise on the y-down screen. Colours are linear ({@link CgColor}).</li>
  * </ul>
  */
 public final class CgWidget {
@@ -133,10 +135,10 @@ public final class CgWidget {
     final float pivotY;
     final float renderOpacity;
     final Visibility visibility;
-    final CgLinearColour colour;
-    final CgLinearColour contentColour;
-    final CgLinearColour brushColour;
-    final CgWidgetBrush brush;
+    final CgColor colour;
+    final CgColor contentColour;
+    final CgColor brushColour;
+    final CgBrush brush;
     @Nullable final CgTextStyle style;
     final String text;
     final Justification justification;
@@ -183,13 +185,13 @@ public final class CgWidget {
         return new Builder(Kind.HORIZONTAL_BOX, name);
     }
 
-    /** A border; its background is {@link CgWidgetBrush#WHITE} until {@link Builder#brush} sets another. */
+    /** A border; its background is {@link CgBrush#WHITE} until {@link Builder#brush} sets another. */
     public static Builder border(String name) {
-        return new Builder(Kind.BORDER, name).brush(CgWidgetBrush.WHITE);
+        return new Builder(Kind.BORDER, name).brush(CgBrush.WHITE);
     }
 
     public static Builder image(String name) {
-        return new Builder(Kind.IMAGE, name).brush(CgWidgetBrush.WHITE);
+        return new Builder(Kind.IMAGE, name).brush(CgBrush.WHITE);
     }
 
     /** A retainer box: its one child painted as one image, drawn plain or through {@link Builder#effect}. */
@@ -259,22 +261,22 @@ public final class CgWidget {
     }
 
     /** An image's, a text block's or a user widget's colour and opacity. */
-    public CgLinearColour colour() {
+    public CgColor colour() {
         return colour;
     }
 
     /** A border's content colour and opacity: multiplied into everything inside it. */
-    public CgLinearColour contentColour() {
+    public CgColor contentColour() {
         return contentColour;
     }
 
     /** A border's brush colour: its background's tint. */
-    public CgLinearColour brushColour() {
+    public CgColor brushColour() {
         return brushColour;
     }
 
-    /** An image's brush, a border's background; {@link CgWidgetBrush#NONE} for the rest. */
-    public CgWidgetBrush brush() {
+    /** An image's brush, a border's background; {@link CgBrush#NONE} for the rest. */
+    public CgBrush brush() {
         return brush;
     }
 
@@ -365,10 +367,10 @@ public final class CgWidget {
         private float pivotY = 0.5f;
         private float renderOpacity = 1f;
         private Visibility visibility = Visibility.VISIBLE;
-        private CgLinearColour colour = CgLinearColour.WHITE;
-        private CgLinearColour contentColour = CgLinearColour.WHITE;
-        private CgLinearColour brushColour = CgLinearColour.WHITE;
-        private CgWidgetBrush brush = CgWidgetBrush.NONE;
+        private CgColor colour = CgColor.WHITE;
+        private CgColor contentColour = CgColor.WHITE;
+        private CgColor brushColour = CgColor.WHITE;
+        private CgBrush brush = CgBrush.NONE;
         private CgTextStyle style;
         private String text = "";
         private Justification justification = Justification.LEFT;
@@ -440,25 +442,25 @@ public final class CgWidget {
         }
 
         /** An image's, a text block's or a user widget's colour and opacity. */
-        public Builder colour(CgLinearColour colour) {
+        public Builder colour(CgColor colour) {
             this.colour = Objects.requireNonNull(colour, "colour");
             return this;
         }
 
         /** A border's content colour and opacity. */
-        public Builder contentColour(CgLinearColour colour) {
+        public Builder contentColour(CgColor colour) {
             contentColour = Objects.requireNonNull(colour, "colour");
             return this;
         }
 
         /** A border's background tint. */
-        public Builder brushColour(CgLinearColour colour) {
+        public Builder brushColour(CgColor colour) {
             brushColour = Objects.requireNonNull(colour, "colour");
             return this;
         }
 
         /** An image's brush, or a border's background. */
-        public Builder brush(CgWidgetBrush brush) {
+        public Builder brush(CgBrush brush) {
             this.brush = Objects.requireNonNull(brush, "brush");
             return this;
         }

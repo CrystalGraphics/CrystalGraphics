@@ -1,6 +1,5 @@
 package com.crystalgraphics.widget;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -11,6 +10,11 @@ import java.util.Map;
 import org.joml.Vector2f;
 import org.junit.Test;
 
+import com.crystalgraphics.api.paint.brush.CgBrush;
+import com.crystalgraphics.api.paint.brush.CgTiling;
+import com.crystalgraphics.api.paint.brush.CgNineSlice;
+import com.crystalgraphics.api.paint.CgColor;
+import static org.junit.Assert.assertEquals;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.asset.codec.CgAssetYaml;
 import com.crystalgraphics.asset.kind.CgAssetKinds;
@@ -123,7 +127,7 @@ public class CgWidgetCodecTest {
         CgWidgetTree built = CgWidgetTree.of("mymod:widgets/pop", CgWidget.canvas("Root")
                 .child(CgWidget.border("Glow")
                         .slot(CgWidgetSlot.builder().anchors(0.5f, 0.5f).alignment(0.5f, 0.5f).autoSize(true).zOrder(2).build())
-                        .brush(CgWidgetBrush.NONE).contentColour(new CgLinearColour(0.5f, 0.1f, 0f, 0.5f))
+                        .brush(CgBrush.NONE).contentColour(new CgColor(0.5f, 0.1f, 0f, 0.5f))
                         .child(CgWidget.text("Num").style(GOLD).text("kk:text/dmg").wrap(300f)
                                 .justification(CgWidget.Justification.CENTRE)
                                 .slot(CgWidgetSlot.builder().padding(2f, 0f, 2f, 0f).vertical(CgWidgetSlot.Align.BOTTOM).build())))
@@ -131,11 +135,11 @@ public class CgWidgetCodecTest {
                         .slot(CgWidgetSlot.builder().anchors(0f, 0.5f, 1f, 0.5f).offsets(0f, 0f, 0f, 60f).build())
                         .translation(45f, 0f).scale(1.5f, 1f).shear(10f, 0f).angle(-5f).pivot(0f, 0f)
                         .renderOpacity(0.25f).visibility(CgWidget.Visibility.HIDDEN)
-                        .child(CgWidget.image("Img").brush(CgWidgetBrush.texture("kk:textures/a.png", 224f, 56f)
-                                        .tint(new CgLinearColour(1f, 0.5f, 0.25f, 1f)))
-                                .colour(new CgLinearColour(1f, 1f, 1f, 0f))
+                        .child(CgWidget.image("Img").brush(CgBrush.texture("kk:textures/a.png").size(224f, 56f)
+                                        .tint(new CgColor(1f, 0.5f, 0.25f, 1f)))
+                                .colour(new CgColor(1f, 1f, 1f, 0f))
                                 .slot(CgWidgetSlot.builder().size(CgWidgetSlot.Size.FILL, 2f).build()))
-                        .child(CgWidget.image("Icon").brush(CgWidgetBrush.svg("mymod:ui/icons/sword.svg", 24f, 24f)))
+                        .child(CgWidget.image("Icon").brush(CgBrush.svg("mymod:ui/icons/sword.svg").size(24f, 24f)))
                         .child(CgWidget.userWidget("Digit", digit))
                         .child(CgWidget.scaleBox("Small", 0.418f).child(CgWidget.text("Hits").style(GOLD).text("HITS")))
                         .child(CgWidget.retainerBox("Soft").blur(2.5f).child(CgWidget.text("Ghost").style(GOLD).text("9"))))
@@ -210,5 +214,20 @@ public class CgWidgetCodecTest {
         CgUiScale kept = CgUiScale.of((Map<?, ?>) CgAssetYaml.read("_v: 1\napplication_scale: 0.75\n"));
         assertEquals("no curve: Unreal's, under its application scale", 1f, kept.scale(2560f, 1440f), 1e-4f);
         assertFalse("a default with no file", CgUiScale.of("no_such_kit") != CgUiScale.DEFAULT);
+    }
+
+    @Test
+    public void brushRegionSlicesAndTilingRoundTrip() {
+        CgBrush panel = CgBrush.texture("kk:textures/hud/frame.png").region(8, 0, 24, 24)
+                .nineSlice(CgNineSlice.of(4, 4, 4, 4)).tiling(CgTiling.REPEAT).size(96f, 48f)
+                .tint(new CgColor(0.5f, 0.25f, 1f, 1f));
+        CgWidgetTree built = CgWidgetTree.of("mymod:widgets/panel", CgWidget.canvas("Root")
+                .child(CgWidget.image("Panel").brush(panel))
+                .child(CgWidget.border("Frame").brush(CgBrush.svg("mymod:ui/frame.svg")))
+                .build());
+        String yaml = CgAssetYaml.write(CgWidgetCodec.toTree(built), CgLookKinds.WIDGET);
+        assertTrue(yaml, yaml.contains("region: [8, 0, 24, 24]") && yaml.contains("nine_slice: [4, 4, 4, 4]")
+                && yaml.contains("tiling: repeat"));
+        assertEquals(yaml, built, CgWidgetCodec.compile(asset("mymod:widgets/panel", yaml, null), (kind, id) -> null));
     }
 }

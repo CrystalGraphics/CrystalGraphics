@@ -6,7 +6,7 @@ and on a quad in the world.
 
 | Package | Values |
 |---|---|
-| `com.crystalgraphics.api.paint` | `CgPaint`: what any fill takes (`CgPaint.color(argb)`, a gradient, a brush, a grid) |
+| `com.crystalgraphics.api.paint` | `CgPaint`: what any fill takes (`CgPaint.color(argb)`, a gradient, a brush, a grid); `CgColor`, a colour held in linear light |
 | `api.paint.gradient` | `CgGradient`, `CgSpread` |
 | `api.paint.brush` | `CgBrush`, `CgNineSlice`, `CgTiling`, `CgSpriteSheet` |
 | `api.paint.pattern` | `CgGrid` |
@@ -42,7 +42,14 @@ static final CgBrush PANEL = CgBrush.texture(frame).nineSlice(CgNineSlice.unifor
 static final CgBrush PIXEL_FRAME = CgBrush.texture(frame).nineSlice(CgNineSlice.uniform(3).scaled(2f))
         .sampler(CgSampler.NEAREST_CLAMP);
 static final CgBrush BUTTON = CgBrush.sprite("mymod:theme", "button");                     // from a sprite sheet
+static final CgBrush BANNER = CgBrush.texture("mymod:textures/hud/banner.png").size(224, 56);   // by path, loaded at first draw
+static final CgBrush SHADED = CgBrush.material(bannerMaterial);                             // a UI-domain material
+static final CgBrush SEVEN = CgBrush.texture(digitArray).layer(7);                         // a layer of a 2D array
 ```
+
+One brush serves the canvas and widgets alike: an image widget draws its brush, region, slices and tiling included.
+A brush by path samples as its texture's settings file says unless `sampler(...)` sets one; `CgBrush.WHITE` is a
+plain box in its tint, `CgBrush.NONE` draws nothing.
 
 A sprite sheet is one JSON file, `assets/<namespace>/ui/sprites/<path>.json`: a resource pack rethemes by shipping the
 JSON and its PNG.
@@ -57,6 +64,22 @@ JSON and its PNG.
 
 `sprite` is `[x, y, width, height]` in the image's pixels; `border` the slices' widths, `[left, top, right, bottom]`.
 A missing sheet or entry fails by name.
+
+## Colours
+
+Colours are written as `0xAARRGGBB` sRGB, the way they are picked. Where one must be held, blended or converted, it
+is a `CgColor`: linear light, straight alpha, Unreal's `FLinearColor`.
+
+```java
+CgColor gold = CgColor.argb(0xFFFFC040);                      // decoded to linear
+CgColor muted = CgColor.css("oklch(70% 0.1 250)");             // hex, rgb(), hsl(), oklab(), oklch(), names
+int mid = gold.lerpOklab(muted, 0.5f).toArgb();                // mixed as CSS mixes, back to ARGB
+double ratio = CgColor.argb(text).contrast(CgColor.argb(bg));  // WCAG 2: 4.5 for body text
+CgColor hot = gold.intensity(3f);                              // past white, for an HDR target
+```
+
+`toHsv`, `toHsl`, `toOklab` and `toOklch` read it back; `CgColor.CODEC` reads `0xAARRGGBB`, a linear
+`[r, g, b, a]` or a CSS string, and writes losslessly, HDR included.
 
 ## Grids
 
