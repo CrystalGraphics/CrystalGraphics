@@ -169,7 +169,7 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
         private final String id;
         @Nullable
         private String kit;
-        private int order = CgRenderStage.VIEWPORT_WIDGETS;
+        private int order = CgRenderStage.SCREEN_WIDGETS;
         @Nullable
         private CgWorld world;
 
@@ -183,7 +183,7 @@ public final class CgScreenWidgetLayer implements AutoCloseable {
             return this;
         }
 
-        /** Its order on the HUD stage: {@link CgRenderStage#VIEWPORT_WIDGETS} unless set. */
+        /** Its order on the HUD stage: {@link CgRenderStage#SCREEN_WIDGETS} unless set. */
         public Builder order(int order) {
             this.order = order;
             return this;

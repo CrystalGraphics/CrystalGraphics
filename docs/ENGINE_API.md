@@ -63,7 +63,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
   On a GUI stage the camera is the window's device pixels, origin top left, as Unreal's canvas is;
   `frame.scaled()` draws in the host GUI's pixels instead (`UI_CANVAS.md` § *Getting one*). A `CgCamera` of your own is for a
   picture of your own (a preview, a thumbnail), outside the stages.
-- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.VIEWPORT_WIDGETS` (0) is the game's interface,
+- **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.SCREEN_WIDGETS` (0) is the game's interface,
   windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
   name plate), drawn under it as Unreal's screen-space widget components are. `frame.project(x, y, z, out)` puts the
   point on the canvas's pixels by the world's camera.
@@ -78,7 +78,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
   caller keeps the frame and recycles it once the firing has executed.
 
 ```java
-CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+CgRenderStage.SCREEN.register(CgRenderStage.SCREEN_WIDGETS, frame -> {
     frame.include(ui.built()).timed(GPU_UI).then(ui::executed);        // its passes, timed as gpu:ui
     frame.canvas().box(0, 0, w, h).fill(ui.picture()).premultiplied().region(0, 1, 1, 0).draw();   // then what reads them
 });
@@ -1058,7 +1058,7 @@ Everything 2D draws into a `CgCanvas` (Skia's canvas): boxes, images, paths, spl
 transform, opacity and clip stack, in paint order. A GUI stage's frame hands it out; nothing to begin, end or delete.
 
 ```java
-CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+CgRenderStage.HUD.register(CgRenderStage.SCREEN_WIDGETS, frame -> {
     CgCanvas canvas = frame.canvas();                                      // window pixels; scaled(): the GUI's
     canvas.box(8, 8, 160, 32).fill(0xC0101418).radius(6).border(1, 0x30FFFFFF).draw();
     canvas.text(LABEL, 16, 14);

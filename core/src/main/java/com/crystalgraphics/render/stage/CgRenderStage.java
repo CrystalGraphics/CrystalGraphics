@@ -110,7 +110,7 @@ public final class CgRenderStage {
 
     /**
      * The order on a GUI stage for what follows a point in the world (a damage number, a name plate): under the
-     * {@link #VIEWPORT_WIDGETS}, so a menu covers it. Unreal's screen-space widget components' layer, at
+     * {@link #SCREEN_WIDGETS}, so a menu covers it. Unreal's screen-space widget components' layer, at
      * {@code LayerZOrder} -100 ({@code SGameLayerManager::AddLayerForPlayer}).
      *
      * <pre>{@code
@@ -120,8 +120,11 @@ public final class CgRenderStage {
      */
     public static final int WORLD_WIDGETS = -100;
 
-    /** The order on a GUI stage of the game's own interface: windows, menus, panels, as Unreal's viewport ZOrder 0. */
-    public static final int VIEWPORT_WIDGETS = 0;
+    /**
+     * The order on a GUI stage of the game's own interface (windows, menus, panels), over {@link #WORLD_WIDGETS}:
+     * Unreal's viewport ZOrder 0.
+     */
+    public static final int SCREEN_WIDGETS = 0;
 
     /** A renderer registered on a stage: which scenes it reaches, and closing it unregisters it. */
     public interface Registration extends AutoCloseable {

@@ -12,7 +12,7 @@ Drawing in the world is the scene's, never a canvas's: quads, labels and meshes 
 At a GUI stage (`HUD`, `SCREEN`), the stage frame's:
 
 ```java
-CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+CgRenderStage.HUD.register(CgRenderStage.SCREEN_WIDGETS, frame -> {
     CgCanvas canvas = frame.canvas();            // window pixels, from the top-left
     // frame.scaled()                            // the host GUI's pixels: Minecraft's GUI scale
     canvas.fill(8, 8, 200, 40, 0xC0101418);
@@ -28,7 +28,7 @@ The order you register at is the layer:
 | Order | What it is |
 |---|---|
 | `CgRenderStage.WORLD_WIDGETS` (-100) | What follows a point in the world: damage numbers, name plates, markers. Under every window |
-| `CgRenderStage.VIEWPORT_WIDGETS` (0) | The game's interface: CrystalGUI's pinned windows draw here |
+| `CgRenderStage.SCREEN_WIDGETS` (0) | The game's interface: CrystalGUI's pinned windows draw here |
 | above 0 | Over the windows: a cursor trail, a debug overlay |
 
 Something that follows a point in the world projects it with the game's view:
@@ -362,7 +362,7 @@ paintDocument(canvas);
 CgCanvasFrame frame = recorder.seal();
 
 // the render thread, at a SCREEN or HUD stage
-CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, stage -> {
+CgRenderStage.SCREEN.register(CgRenderStage.SCREEN_WIDGETS, stage -> {
     if (next != null) presenter.present(stage, next);       // executed, composited, kept
     else presenter.presentAgain(stage);                      // the kept picture, nothing executed
 });

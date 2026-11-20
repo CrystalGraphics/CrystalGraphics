@@ -429,7 +429,7 @@ banner.playAnimation(OUT.loaded());
 
 | Call | Unreal | Does |
 |---|---|---|
-| `builder(id)...build()` | the game viewport | a layer on `HUD` at `VIEWPORT_WIDGETS`; `kit(ns)` its UI scale, `order(n)`, `world(w)` |
+| `builder(id)...build()` | the game viewport | a layer on `HUD` at `SCREEN_WIDGETS`; `kit(ns)` its UI scale, `order(n)`, `world(w)` |
 | `add(widget, zOrder)` | `AddToViewport(ZOrder)` | on the screen over lower z-orders, over equal ones already there; added again, it moves |
 | `remove(widget)` | `RemoveFromParent` | off the screen, its animations left as they are |
 | `contains(widget)` | `IsInViewport` | whether it is on it |

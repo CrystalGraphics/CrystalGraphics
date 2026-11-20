@@ -5,7 +5,7 @@ Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`.
 ```java
 CgFont inter = CgFont.load("assets/mymod/fonts/Inter-Regular.ttf", CgFontStyle.REGULAR, 16);   // 16 px font
 
-CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame ->                            // every frame
+CgRenderStage.HUD.register(CgRenderStage.SCREEN_WIDGETS, frame ->                            // every frame
         frame.canvas().text().text("Inventory").font(inter).at(8, 12).color(0xFFFFFFFF).submit());
 ```
 

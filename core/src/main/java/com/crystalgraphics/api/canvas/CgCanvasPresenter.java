@@ -15,7 +15,7 @@ import com.crystalgraphics.trace.CgGpuTrace;
  *
  * <pre>{@code
  * CgCanvasPresenter presenter = new CgCanvasPresenter();
- * CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, stage -> {
+ * CgRenderStage.SCREEN.register(CgRenderStage.SCREEN_WIDGETS, stage -> {
  *     CgCanvasFrame next = frames.poll();
  *     if (next != null) presenter.present(stage, next);     // executed, composited, kept
  *     else if (moved) presenter.redraw(stage);              // the kept frame under its values now: nothing recorded

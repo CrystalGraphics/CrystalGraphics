@@ -15221,9 +15221,9 @@ com/crystalgraphics/render/stage/CgRenderStage
   field public,static,final OVERLAY Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final PREPARE Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final SCREEN Lcom/crystalgraphics/render/stage/CgRenderStage;
+  field public,static,final SCREEN_WIDGETS I
   field public,static,final SURFACES Lcom/crystalgraphics/render/stage/CgRenderStage;
   field public,static,final TRANSLUCENT Lcom/crystalgraphics/render/stage/CgRenderStage;
-  field public,static,final VIEWPORT_WIDGETS I
   field public,static,final WORLD_WIDGETS I
   method public hasRenderers ()Z
   method public hasRenderers (Lcom/crystalgraphics/render/scene/CgScene;)Z

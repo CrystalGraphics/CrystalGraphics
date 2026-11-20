@@ -31,7 +31,7 @@ import javax.annotation.Nullable;
  *     pass.end();
  * });
  *
- * CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+ * CgRenderStage.HUD.register(CgRenderStage.SCREEN_WIDGETS, frame -> {
  *     frame.canvas().image(BADGE, 8, 8, 32, 32);                        // the window's pixels
  *     frame.scaled().text(READY, 4, 44);                                // the host GUI's pixels
  * });
@@ -259,7 +259,7 @@ public final class CgStageFrame {
      * the frame and recycles it once the firing has executed.
      *
      * <pre>{@code
-     * CgRenderStage.SCREEN.register(CgRenderStage.VIEWPORT_WIDGETS, frame -> {
+     * CgRenderStage.SCREEN.register(CgRenderStage.SCREEN_WIDGETS, frame -> {
      *     frame.include(ui.built()).timed(GPU_UI);
      *     frame.canvas().box(0, 0, w, h).fill(ui.picture()).premultiplied().draw();
      * });

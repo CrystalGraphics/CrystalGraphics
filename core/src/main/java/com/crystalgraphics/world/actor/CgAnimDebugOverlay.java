@@ -43,7 +43,7 @@ public final class CgAnimDebugOverlay {
 
     private static final Logger LOGGER = LogManager.getLogger(CgAnimDebugOverlay.class);
     /** Over the HUD's own lines, under the subtitles. */
-    private static final int ORDER = CgRenderStage.VIEWPORT_WIDGETS - 2;
+    private static final int ORDER = CgRenderStage.SCREEN_WIDGETS - 2;
     /** How far the look reaches, in blocks. */
     private static final double REACH = 48;
     private static final long REFRESH_NANOS = 100_000_000L;

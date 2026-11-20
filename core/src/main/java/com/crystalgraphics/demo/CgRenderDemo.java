@@ -335,7 +335,7 @@ public final class CgRenderDemo {
             }
         });
         // The HUD on the HUD stage, over the finished world: Minecraft draws clouds and weather after the world stages
-        CgRenderStage.HUD.register(CgRenderStage.VIEWPORT_WIDGETS - 1, frame -> {
+        CgRenderStage.HUD.register(CgRenderStage.SCREEN_WIDGETS - 1, frame -> {
             if (guiHidden || !hudShown) return;
             hudSide = Math.min(frame.width(), frame.height());
             drawHud(frame);
