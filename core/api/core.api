@@ -2501,11 +2501,13 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public image (Lcom/crystalgraphics/api/paint/brush/CgBrush;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public image (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public intensity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public kept (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFJ)Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;
   method public layer ()Lcom/crystalgraphics/api/canvas/CgCanvasLayer;
   method public layer (FFFF)Lcom/crystalgraphics/api/canvas/CgCanvasLayer;
   method public movable ()I
   method public opacity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public photograph (ILcom/crystalgraphics/api/canvas/CgPhotograph$Sink;)Z
+  method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
   method public replay (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Z
@@ -2520,6 +2522,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public text (Lcom/crystalgraphics/api/text/CgText;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public text (Lcom/crystalgraphics/api/text/CgText;FFI)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public textGamma (Lcom/crystalgraphics/text/render/CgTextGamma;)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public thumbnail (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public translate (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public view (Lcom/crystalgraphics/render/view/CgView;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public,static elementMaterial ()Lcom/crystalgraphics/api/material/CgMaterial;
@@ -2595,6 +2598,40 @@ com/crystalgraphics/api/canvas/CgCullRect
   field public,static,final SMALL_SCROLLER_AREA F
   method public,static changedEnough ([F[FFFF)Z
   method public,static forScroller (FFFFFFF[F)V
+com/crystalgraphics/api/canvas/CgKeptLayer
+  access public,final
+  extends java/lang/Object
+  method public <init> ()V
+  method public delete ()V
+  method public hasPicture ()Z
+  method public invalidate ()V
+  method public keep (Z)Lcom/crystalgraphics/api/canvas/CgKeptLayer;
+  method public pictureHeight ()I
+  method public pictureWidth ()I
+  method public reserve (II)Lcom/crystalgraphics/api/canvas/CgKeptLayer;
+  method public texture ()Lcom/crystalgraphics/render/graph/CgGraphTexture;
+  method public thumbnailStale ()Z
+com/crystalgraphics/api/canvas/CgKeptLayer$Placement
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/api/canvas/CgKeptLayer$Tenant
+  method public <init> ()V
+  method public place (Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;FFFF)V
+  method public vacate (Lcom/crystalgraphics/api/canvas/CgKeptLayer;IJ)V
+com/crystalgraphics/api/canvas/CgKeptLayer$Tenant
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract vacate (Lcom/crystalgraphics/api/canvas/CgKeptLayer;IJ)V
+com/crystalgraphics/api/canvas/CgKeptLayer$Walk
+  access public,final
+  extends java/lang/Object
+  implements java/lang/AutoCloseable
+  method public <init> (Lcom/crystalgraphics/api/canvas/CgKeptLayer;)V
+  method public close ()V
+  method public damage (FFFF)Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;
+  method public draws ()Z
+  method public layer ()Lcom/crystalgraphics/api/canvas/CgKeptLayer;
+  method public opacity (F)Lcom/crystalgraphics/api/canvas/CgKeptLayer$Walk;
 com/crystalgraphics/api/canvas/CgPaintChunk
   access public,final
   extends java/lang/Object
@@ -3905,13 +3942,15 @@ com/crystalgraphics/api/paint/effect/CgBackdropFilter
   field public,static,final LIQUID Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final MICA Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final PRISM Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public <init> (FFIFFFFFFFFFFFF)V
+  method public <init> (FFIFFFFFFFFFFFFI)V
   method public bezel ()F
   method public blur ()F
   method public blur (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public chromatic ()F
   method public chromatic (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public color (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public fallback ()I
+  method public fallback (I)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public glow ()F
   method public highlight (FFFFF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public ior ()F
