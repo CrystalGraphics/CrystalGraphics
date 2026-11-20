@@ -14,6 +14,8 @@ import com.crystalgraphics.frame.CgWorldSubsystem;
 
 import com.crystalgraphics.render.scene.component.CgDecalComponent;
 import com.crystalgraphics.render.scene.component.CgDynamicComponent;
+import com.crystalgraphics.render.scene.component.CgLabelComponent;
+import com.crystalgraphics.render.scene.component.CgQuadComponent;
 import com.crystalgraphics.render.scene.component.CgHazeComponent;
 import com.crystalgraphics.render.scene.component.CgPostVolume;
 import com.crystalgraphics.render.scene.component.CgColourRegion;
@@ -67,7 +69,7 @@ import javax.annotation.Nullable;
  * CgDynamicComponent trail = scene.dynamic(new Trail()).spawn();
  * CgDecalComponent crack = scene.decal(crackMaterial).at(x, y, z).size(0.5f, 2f, 2f).spawn();   // projected onto the ground
  * scene.drawOnce(marker, debugMaterial, x, y, z);    // this frame only: Unreal's debug draw
- * scene.label("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();   // this frame's name tag
+ * scene.labelOnce("Attract + Orbit").at(x, y + 6, z).height(0.5f).font(font).submit();   // this frame's name tag
  * }</pre>
  *
  * <ul>
@@ -168,36 +170,48 @@ public final class CgScene {
     }
 
     /**
+     * Text standing in the world until removed: a name tag, a sign. Its glyphs are kept on the GPU and captured again
+     * only when what it reads changes.
+     *
+     * <pre>{@code
+     * CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
+     * tag.text("Spawn (3)");
+     * }</pre>
+     */
+    public CgLabelComponent label(String text) {
+        return primitives.label(text);
+    }
+
+    /**
      * A label this frame: {@code text} at a point, facing the camera unless turned, depth-tested and drawn after the
      * translucent draws, as a name tag. Place it on the label, then {@code font(...)} or {@code family(...)} gives its
      * text draw; {@code submit()} that. Render thread.
      *
      * <pre>{@code
-     * scene.label("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040).style(DAMAGE).submit();
-     * scene.label(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
+     * scene.labelOnce("12").at(x, y, z).anchor(0.5f, 0f).font(font).color(0xFFFF5040).style(DAMAGE).submit();
+     * scene.labelOnce(sign).at(x, y, z).rotation(facingSouth).family(family).targetPx(48).constraints(400f, 0f).submit();
      * }</pre>
      *
      * <ul>
      *   <li>{@code height} is a line's height in blocks; its raster tier follows how tall it stands on screen.</li>
-     *   <li>Unlit, unfogged, writing no depth: labels behind a nearer one show through it.</li>
-     *   <li>It lives one frame: submit it each frame it shows.</li>
+     *   <li>It lives one frame: submit it each frame it shows. Text that stays is a {@link #label(String)}.</li>
      * </ul>
      */
-    public CgCanvasLabels.Label label(String text) {
+    public CgCanvasLabels.Label labelOnce(String text) {
         CgCanvasLabels.Label label = renderer.labels().text();
         label.draw().text(text);
         return label;
     }
 
-    /** As {@link #label(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
-    public CgCanvasLabels.Label label(CgShapedParagraph paragraph) {
+    /** As {@link #labelOnce(String)}, of a shaped paragraph, wrapped by the draw's {@code constraints}. */
+    public CgCanvasLabels.Label labelOnce(CgShapedParagraph paragraph) {
         CgCanvasLabels.Label label = renderer.labels().text();
         label.draw().paragraph(paragraph);
         return label;
     }
 
-    /** As {@link #label(String)}, of a finished layout: its fonts are its own. */
-    public CgCanvasLabels.Label label(CgTextLayout layout) {
+    /** As {@link #labelOnce(String)}, of a finished layout: its fonts are its own. */
+    public CgCanvasLabels.Label labelOnce(CgTextLayout layout) {
         CgCanvasLabels.Label label = renderer.labels().text();
         label.draw().layout(layout);
         return label;
@@ -263,6 +277,20 @@ public final class CgScene {
     /** Geometry asked for per view each frame. */
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return primitives.dynamic(primitive);
+    }
+
+    /**
+     * A {@code width} by {@code height} rectangle drawn with {@code material}, centred on its point: a sign, a pane, a
+     * billboard ({@code facing(CgQuadComponent.Facing.CAMERA)}). Null for a quad the canvas paints ({@code fill},
+     * {@code paint}).
+     *
+     * <pre>{@code
+     * scene.quad(2f, 1f, sign).at(x, y + 1, z).rotation(facingSouth).spawn();
+     * scene.quad(1f, 1f, null).fill(CgBrush.svg(icon)).facing(CgQuadComponent.Facing.CAMERA).at(x, y, z).spawn();
+     * }</pre>
+     */
+    public CgQuadComponent quad(float width, float height, @Nullable CgMaterialInterface material) {
+        return primitives.quad(width, height, material);
     }
 
     /**

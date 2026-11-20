@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.render.debug.CgLineSink;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.hit.CgHit;
 import com.crystalgraphics.collision.hit.CgHitPart;
@@ -28,7 +29,7 @@ import java.util.Arrays;
  *   <li>Edges and faces are capped apart, so faces never crowd out a later hitbox's edges.</li>
  * </ul>
  */
-final class CgRecentLines implements CgShapeLines.Sink {
+final class CgRecentLines implements CgLineSink {
 
     /** A query's shapes and path while it hits nothing, and the shape where it stops once it does. */
     static final int PATH = 0xFF60C0FF, HIT = 0xFFFF4040;
@@ -63,7 +64,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
     private long[] fades = new long[256];
     /** How much of its colour's alpha a face takes, of 255, or {@link #DEFAULT_FILL}; 255 for a segment. */
     private int[] fills = new int[256];
-    /** Whether a face begins a piece ({@link CgShapeLines.Sink#piece}). */
+    /** Whether a face begins a piece ({@link CgLineSink#piece}). */
     private boolean[] starts = new boolean[256];
     private boolean pieceNext;
     private CgWorldQuery[] levels = new CgWorldQuery[256];
@@ -262,7 +263,7 @@ final class CgRecentLines implements CgShapeLines.Sink {
                 double cy, double cz) {
         }
 
-        /** The triangles after this, up to the next, are one piece of a shape ({@link CgShapeLines.Sink#piece}). */
+        /** The triangles after this, up to the next, are one piece of a shape ({@link CgLineSink#piece}). */
         default void piece() {
         }
     }

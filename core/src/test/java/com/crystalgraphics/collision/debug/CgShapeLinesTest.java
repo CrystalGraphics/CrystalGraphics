@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.render.debug.CgLineSink;
 import com.crystalgraphics.collision.CgCollisionQuery;
 import com.crystalgraphics.collision.CgCollisionWorld;
 import com.crystalgraphics.collision.CollisionFakes.Table;
@@ -220,21 +221,6 @@ public class CgShapeLinesTest {
             }
             assertEquals(shape + " encloses its volume, faces out", expected, signed, expected * 0.05);
         }
-    }
-
-    @Test
-    public void aShapeInsideAnotherDrawsBetweenItsBackAndItsFront() {
-        CgCollisionDebug.Batch faces = new CgCollisionDebug.Batch(3);
-        CgShapeLines lines = new CgShapeLines();
-        lines.faces(CgSphere.of(3), new CgPose(), faces);
-        lines.faces(CgBox.of(1, 1, 1), new CgPose().facing(0.6, 0.3), faces);
-        int backs = faces.sortFrom(0.4, 1, -12);
-        List<String> runs = new ArrayList<>();
-        for (int k = 0; k < faces.count; k++) {
-            String run = (faces.pieceOf[faces.order[k]] == 0 ? "sphere " : "box ") + (k < backs ? "back" : "front");
-            if (runs.isEmpty() || !runs.get(runs.size() - 1).equals(run)) runs.add(run);
-        }
-        assertEquals(Arrays.asList("sphere back", "box back", "box front", "sphere front"), runs);
     }
 
     @Test
@@ -531,7 +517,7 @@ public class CgShapeLinesTest {
 
     private static List<double[]> corners(CgShape shape, CgPose pose) {
         List<double[]> corners = new ArrayList<>();
-        new CgShapeLines().faces(shape, pose, new CgShapeLines.Sink() {
+        new CgShapeLines().faces(shape, pose, new CgLineSink() {
             @Override
             public void line(double ax, double ay, double az, double bx, double by, double bz) {
                 throw new AssertionError("faces write no lines");

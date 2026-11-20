@@ -7,6 +7,7 @@ import com.crystalgraphics.platform.rhi.CgRHI;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.gl.state.GLCheckedHostState;
 import com.crystalgraphics.collision.debug.CgCollisionDebug;
+import com.crystalgraphics.render.debug.CgDebugDraw;
 import com.crystalgraphics.mc.CgHotReload;
 import com.crystalgraphics.compute.CgCompute;
 import com.crystalgraphics.compute.CgComputeSelfTest;
@@ -277,6 +278,7 @@ public final class CgGraphicsLifecycle {
 
     private static void finishStart(int width, int height) {
         CgCollisionDebug.install();
+        CgDebugDraw.install();
         // The engine's own passes, built together behind the loading screen rather than each at its first draw;
         // no world stage fires until they are
         CgScenePipelines.beginBoot();
@@ -596,6 +598,7 @@ public final class CgGraphicsLifecycle {
         CgRenderDemo.INSTANCE.dispose();
         CgVfx.release();
         CgCollisionDebug.release();
+        CgDebugDraw.release();
         CgSceneRenderer.releaseAll();
         CgPostRenderer.releaseAll();
         CgView.forgetAll();

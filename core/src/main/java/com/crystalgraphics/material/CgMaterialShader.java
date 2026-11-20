@@ -155,6 +155,8 @@ public final class CgMaterialShader implements CgReloadable {
     private volatile boolean sceneDepth = true;
     /** Whether it samples the scene colour; see {@link #readsSceneColor}. */
     private volatile boolean sceneColor = true;
+    /** Whether it samples the scene colour blurred ({@code CG_SCENE_COLOR_BLURRED}): its copy builds its mip chain. */
+    private volatile boolean sceneColorBlur;
     /** Whether it or anything it includes discards; see {@link #discards}. */
     private volatile boolean discards = true;
 
@@ -338,6 +340,7 @@ public final class CgMaterialShader implements CgReloadable {
             this.renderType = parsed.renderType();
             this.sceneDepth = sceneDepthIn(source);
             this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
+            this.sceneColorBlur = sceneColorBlurIn(source);
             this.discards = discardsIn(source);
             this.parsedSource = source;
             this.lastParsed = parsed;
@@ -475,6 +478,7 @@ public final class CgMaterialShader implements CgReloadable {
             if (!source.equals(parsedSource)) {
                 this.sceneDepth = sceneDepthIn(source);
                 this.sceneColor = parsed.templateReadsSceneColor() || sceneColorIn(source);
+                this.sceneColorBlur = sceneColorBlurIn(source);
                 this.discards = discardsIn(source);
             }
             this.parsedSource = source;
@@ -1114,6 +1118,15 @@ public final class CgMaterialShader implements CgReloadable {
         return parsedSource == null || sceneColor;
     }
 
+    /** Whether it samples the scene colour blurred ({@code CG_SCENE_COLOR_BLURRED}): false until parsed. */
+    public boolean readsSceneColorBlur() {
+        return sceneColorBlur;
+    }
+
+    private boolean sceneColorBlurIn(String source) {
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "CG_SCENE_COLOR_BLURRED");
+    }
+
     /**
      * How far past its geometry it samples {@code cg_SceneColor}, a share of the target's height: its
      * {@code "SceneColorMargin"} tag. NaN until parsed and for a shader that does not read it.
@@ -1159,7 +1172,8 @@ public final class CgMaterialShader implements CgReloadable {
     }
 
     private boolean sceneColorIn(String source) {
-        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR");
+        return new CgShaderPreprocessor().mentions(source, resourcePath, "cg_SceneColor", "CG_SCENE_COLOR",
+                "CG_SCENE_COLOR_BLURRED");
     }
 
     /**

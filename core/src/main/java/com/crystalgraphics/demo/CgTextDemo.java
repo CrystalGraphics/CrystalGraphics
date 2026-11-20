@@ -268,7 +268,7 @@ public final class CgTextDemo {
             }
         }
         for (int i = 0; i < STATIONS; i++) {
-            scene.label(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
+            scene.labelOnce(CAPTIONS[i]).at(at[i * 3], at[i * 3 + 1] - 1.05, at[i * 3 + 2]).height(0.28f).rotation(facing)
                     .font(labelFont).style(CgDemoStyles.LABEL).submit();
         }
         // A hit landing four times a second, climbing from single digits to the trillions, three random hits to each

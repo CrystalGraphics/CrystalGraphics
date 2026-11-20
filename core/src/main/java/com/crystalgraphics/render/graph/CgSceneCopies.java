@@ -2,6 +2,7 @@ package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.texture.CgSampler;
 import com.crystalgraphics.api.texture.CgTexture;
+import com.crystalgraphics.gpu.resource.CgDeviceTextures;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.CgDeviceSection;
 import com.crystalgraphics.platform.rhi.CgRHI;
@@ -37,11 +38,15 @@ final class CgSceneCopies {
 
     /** What a reader samples, as the builder places it before a batch: {@link #CLEAN} with {@link #DEPTH} for a depth no draw of the pass wrote. */
     static final int COLOR = 1, DEPTH = 2, CLEAN = 4;
+    /** With {@link #COLOR}: the copy builds its mip chain, for a reader sampling it blurred. */
+    static final int PYRAMID = 8;
     /**
      * What the compile resolved a batch's (or a step's) reads to, replayed as they stand: refresh the own colour, copy
      * the own depth, copy the resolved depth, read the resolved depth as it is, sample the depth where it is.
      */
     static final int COPY_COLOR = 1, COPY_DEPTH = 2, RESOLVE_DEPTH = 4, REUSE_DEPTH = 8, SAMPLE_DEPTH = 16;
+    /** With {@link #COPY_COLOR}: its mip chain built after it. */
+    static final int COLOR_PYRAMID = 32;
 
     private static final int COLOR_ZONE = CgTrace.name("graph.copy.color"), DEPTH_ZONE = CgTrace.name("graph.copy.depth");
     private static final int TARGET_COPIES = CgTrace.name("graph.target-copies"),
@@ -67,7 +72,7 @@ final class CgSceneCopies {
      * Refreshes the pass's own colour copy from {@code source}, in the rect at {@code at} of {@code rects} (pixels x0,
      * y0, x1, y1, or the whole where its x1 is below 0). Answers the pixels copied.
      */
-    long copyColor(CgGraphStorage source, int[] rects, int at) {
+    long copyColor(CgGraphStorage source, int[] rects, int at, boolean pyramid) {
         if (source.color(0) == null) return 0L;
         int width = source.width(), height = source.height();
         int x0 = 0, y0 = 0, x1 = width, y1 = height;
@@ -78,7 +83,7 @@ final class CgSceneCopies {
             y1 = Math.min(height, rects[at + 3]);
         }
         if (x1 <= x0 || y1 <= y0) return 0L;
-        color.copy(source, x0, y0, x1, y1);
+        color.copy(source, x0, y0, x1, y1, pyramid);
         long pixels = (long) (x1 - x0) * (y1 - y0);
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
         CgTrace.add(CgChannels.GL, TARGET_COPY_PIXELS, pixels);
@@ -88,21 +93,21 @@ final class CgSceneCopies {
     /** Copies {@code source}'s colour whole, for a pass reading another target's ({@link CgRasterPass#readsColor}). */
     void copyColorFrom(CgGraphStorage source) {
         if (source.color(0) == null) throw new IllegalStateException(source + " has no colour to copy");
-        colorFrom.copy(source, 0, 0, source.width(), source.height());
+        colorFrom.copy(source, 0, 0, source.width(), source.height(), false);
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
     /** Copies {@code source}'s depth whole into the pass's own depth copy; throws, naming {@code pass}, where it has none. */
     void copyDepth(CgGraphStorage source, CgPass pass) {
         requireDepth(source, pass);
-        depth.copy(source, 0, 0, 0, 0);
+        depth.copy(source, 0, 0, 0, 0, false);
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
     /** Copies {@code source}'s depth whole into the resolved depth every later reader shares. */
     void resolveDepth(CgGraphStorage source, CgPass pass) {
         requireDepth(source, pass);
-        resolved.copy(source, 0, 0, 0, 0);
+        resolved.copy(source, 0, 0, 0, 0, false);
         CgTrace.add(CgChannels.GL, TARGET_COPIES, 1);
     }
 
@@ -204,8 +209,11 @@ final class CgSceneCopies {
             this.isColor = isColor;
         }
 
-        /** Copies {@code source}'s colour, or its depth, over the rect into the same rect here, made to fit first. */
-        void copy(CgGraphStorage source, int x0, int y0, int x1, int y1) {
+        /**
+         * Copies {@code source}'s colour, or its depth, over the rect into the same rect here, made to fit first; with
+         * {@code pyramid} its mip chain built after, the copy made with one.
+         */
+        void copy(CgGraphStorage source, int x0, int y0, int x1, int y1, boolean pyramid) {
             CgGpuTexture from = isColor ? source.color(0) : source.depth();
             CgGpuTexture.Desc of = from.desc();
             int width = isColor ? source.width() : of.width(), height = isColor ? source.height() : of.height();
@@ -214,9 +222,11 @@ final class CgSceneCopies {
                 y1 = height;
             }
             CgFormat format = of.format();
-            if (desc == null || desc.width() != width || desc.height() != height || desc.format() != format) {
+            boolean mips = pyramid || desc != null && desc.levels() > 1 && desc.width() == width && desc.height() == height;
+            if (desc == null || desc.width() != width || desc.height() != height || desc.format() != format
+                    || mips != desc.levels() > 1) {
                 giveBack();
-                desc = descOf(width, height, format);
+                desc = mips ? descOf(width, height, format).withMips() : descOf(width, height, format);
             }
             if (storage == null) storage = device.pool.acquire(desc);
             try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, isColor ? COLOR_ZONE : DEPTH_ZONE)) {
@@ -232,6 +242,8 @@ final class CgSceneCopies {
                     CgDeviceSection.end();
                 }
                 execution.transitions.blitted(source, storage);
+                // Its whole chain: a level's texel gathers pixels around the rect, never only those inside it
+                if (pyramid) CgDeviceTextures.mipmaps(storage.color(0));
             }
         }
 

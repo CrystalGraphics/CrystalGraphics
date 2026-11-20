@@ -733,8 +733,10 @@ public final class CgFrameBuilder {
      * what a draw since the last copy wrote. Colour is copied before a reader whose rect, its bounds grown by its
      * shader's {@code SceneColorMargin}, the last copy does not hold or a draw since wrote into; the readers after it,
      * up to the next draw that writes colour without reading it, share the copy, which covers all their rects. A
-     * reader's own colour writes leave what it reads clean, so readers in a row never see each other's colour; any
-     * depth write, a reader's too, is seen by the next depth reader. A depth copy no draw of the pass wrote before is
+     * reader's own colour writes leave what it reads clean, so readers in a row never see each other's colour (Unreal's
+     * distortion), except a backdrop reader's ({@code CG_SCENE_COLOR_BLURRED}): it sees everything drawn before it, as
+     * CSS's backdrop-filter, so glass over glass shows the first pane, and a copy before it is built with its mip
+     * chain. Any depth write, a reader's too, is seen by the next depth reader. A depth copy no draw of the pass wrote before is
      * {@link CgSceneCopies#CLEAN}: the target's depth as the pass found it, which the executor may share between passes.
      */
     private void placeCopies(CgRasterPass pass, CgFrame.Raster packed) {
@@ -746,7 +748,7 @@ public final class CgFrameBuilder {
         int depthUnseen = sampled & CgSceneCopies.DEPTH;
         boolean depthWritten = pass.load.clearsDepth();
         int run = -1;   // the batch holding the copy the current readers share
-        boolean copied = false;
+        boolean copied = false, lastPyramid = false;
         clear(dirty);
         for (int b = 0; b < packed.count; b++) {
             CgPipeline pipeline = CgPipeline.byId(packed.pipeline[b]);
@@ -759,14 +761,21 @@ public final class CgFrameBuilder {
             if ((reads & CgSceneCopies.COLOR) != 0) {
                 // NaN before its shader parses: the whole target. One texel more for the linear filter.
                 float share = pipeline.shader().sceneColorMargin();
+                boolean blur = pipeline.readsSceneColorBlur();
                 screenRect(b, regions && !Float.isNaN(share), width, height, share * height + 1f, rect);
+                // What a backdrop reader sees, its rect: a write since the copy there is one it must see
+                boolean sees = blur && intersects(dirty, rect);
+                // Its blur reads the chain, whose levels gather the whole target: the copy is whole
+                if (blur) wholeRect(rect);
                 if (!isEmpty(rect)) {
-                    if (run >= 0) {
+                    if (run >= 0 && !sees) {
                         union(packed.copyRect, run * 4, rect);
-                    } else if (!copied || !contains(lastCopy, rect) || intersects(dirty, rect)) {
+                        if (blur) packed.copyBefore[run] |= CgSceneCopies.PYRAMID;
+                    } else if (run >= 0 || !copied || !contains(lastCopy, rect) || (blur ? sees : intersects(dirty, rect))
+                            || blur && !lastPyramid) {
                         run = b;
                         copied = true;
-                        packed.copyBefore[b] |= CgSceneCopies.COLOR;
+                        packed.copyBefore[b] |= CgSceneCopies.COLOR | (blur ? CgSceneCopies.PYRAMID : 0);
                         System.arraycopy(rect, 0, packed.copyRect, b * 4, 4);
                         clear(dirty);
                     }
@@ -777,6 +786,7 @@ public final class CgFrameBuilder {
                 union(dirty, 0, rect);
                 if ((reads & CgSceneCopies.COLOR) == 0 && run >= 0) {
                     System.arraycopy(packed.copyRect, run * 4, lastCopy, 0, 4);
+                    lastPyramid = (packed.copyBefore[run] & CgSceneCopies.PYRAMID) != 0;
                     run = -1;
                 }
             }
@@ -787,6 +797,12 @@ public final class CgFrameBuilder {
                 depthWritten = true;
             }
         }
+    }
+
+    /** {@code out} as the whole target, {@link #isWhole}'s form. */
+    private static void wholeRect(int[] out) {
+        out[0] = out[1] = 0;
+        out[2] = out[3] = -1;
     }
 
     /**

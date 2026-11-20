@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.render.debug.CgLineSink;
 import com.crystalgraphics.shape.CgPose;
 import com.crystalgraphics.shape.CgShape;
 import com.crystalgraphics.shape.bounds.CgAABBc;
@@ -53,7 +54,7 @@ import java.util.WeakHashMap;
  *       faces, so a fill meets its edges. One instance a thread.</li>
  * </ul>
  */
-final class CgShapeLines {
+public final class CgShapeLines {
 
     /** Segments in a full circle. */
     public static final int CIRCLE = 24;
@@ -68,26 +69,11 @@ final class CgShapeLines {
         }
     }
 
-    /** Where {@link #write} puts each segment and {@link #faces} each triangle, in world space. */
-    @FunctionalInterface
-    public interface Sink {
-        void line(double ax, double ay, double az, double bx, double by, double bz);
-
-        /** A triangle of a shape's surface; a sink of lines alone leaves it. */
-        default void triangle(double ax, double ay, double az, double bx, double by, double bz, double cx, double cy,
-                double cz) {
-        }
-
-        /** The triangles after this, up to the next, are one piece: a shape, or one child of a compound. */
-        default void piece() {
-        }
-    }
-
     private CgPose[] poses = {new CgPose()};
     private int depth;
     private final Vector3d a = new Vector3d(), b = new Vector3d(), u = new Vector3d(), v = new Vector3d();
     private final Vector3d local = new Vector3d();
-    private Sink out;
+    private CgLineSink out;
     /** A surface of revolution's outline, as pairs: how far from its axis, how far along it. */
     private final double[] profile = new double[2 * (CIRCLE + 8)];
     private int profiled;
@@ -114,7 +100,7 @@ final class CgShapeLines {
     }
 
     /** A world box's twelve edges. */
-    public static void box(CgAABBc box, Sink out) {
+    public static void box(CgAABBc box, CgLineSink out) {
         double x0 = box.minX(), y0 = box.minY(), z0 = box.minZ(), x1 = box.maxX(), y1 = box.maxY(), z1 = box.maxZ();
         for (int s = 0; s < 2; s++) {
             for (int t = 0; t < 2; t++) {
@@ -127,7 +113,7 @@ final class CgShapeLines {
     }
 
     /** A hit: a cross {@code size} wide each way on the surface at a point, and its unit normal. */
-    public static void mark(double x, double y, double z, double nx, double ny, double nz, double size, Sink out) {
+    public static void mark(double x, double y, double z, double nx, double ny, double nz, double size, CgLineSink out) {
         // two tangents: the normal crossed with whichever axis it is furthest from, then with that
         double ax = Math.abs(ny) < 0.9 ? 0 : 1, ay = 1 - ax;
         double tx = -nz * ay, ty = nz * ax, tz = nx * ay - ny * ax;
@@ -144,7 +130,7 @@ final class CgShapeLines {
     }
 
     /** Writes {@code shape} placed at {@code pose} into {@code out}. */
-    public void write(CgShape shape, CgPose pose, Sink out) {
+    public void write(CgShape shape, CgPose pose, CgLineSink out) {
         this.out = out;
         depth = 0;
         poses[0].set(pose);
@@ -156,7 +142,7 @@ final class CgShapeLines {
     }
 
     /** Writes the surface of {@code shape} placed at {@code pose} into {@code out}, as triangles. */
-    public void faces(CgShape shape, CgPose pose, Sink out) {
+    public void faces(CgShape shape, CgPose pose, CgLineSink out) {
         this.out = out;
         depth = 0;
         poses[0].set(pose);

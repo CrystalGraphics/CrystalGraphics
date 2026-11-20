@@ -937,7 +937,8 @@ final class CgRasterEncoder {
             view.put(CgBindingModel.SCENE_DEPTH, scene.depthView);
         }
         if ((op & CgSceneCopies.COPY_COLOR) != 0) {
-            scene.copyColor(device.storage(CgExecutor.targetOf(pass)), rects, at);
+            scene.copyColor(device.storage(CgExecutor.targetOf(pass)), rects, at,
+                    (op & CgSceneCopies.COLOR_PYRAMID) != 0);
             view.put(CgBindingModel.SCENE_COLOR, scene.colorView);
         }
     }

@@ -295,6 +295,7 @@ final class CgFrameCompiler {
                     for (int b = 0; b < packed.count; b++) {
                         int wants = packed.copyBefore[b], op = 0;
                         if ((wants & CgSceneCopies.COLOR) != 0) op |= CgSceneCopies.COPY_COLOR;
+                        if ((wants & CgSceneCopies.PYRAMID) != 0) op |= CgSceneCopies.COLOR_PYRAMID;
                         if ((wants & CgSceneCopies.DEPTH) != 0) {
                             if (inPlace) op |= CgSceneCopies.SAMPLE_DEPTH;
                             else if ((wants & CgSceneCopies.CLEAN) != 0) op |= resolved.read(raster.depthTexture());

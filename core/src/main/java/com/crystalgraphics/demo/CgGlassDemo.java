@@ -90,7 +90,7 @@ public final class CgGlassDemo {
         }
         for (int i = 0; i < LOOKS.length; i++) {
             at[i * 3 + 1] = y + LIFT;
-            scene.label(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
+            scene.labelOnce(NAMES[i]).at(at[i * 3], at[i * 3 + 1] + HEIGHT * 0.5 + 0.45, at[i * 3 + 2]).height(0.4f)
                     .font(font).style(CgDemoStyles.LABEL).submit();
         }
         active = true;

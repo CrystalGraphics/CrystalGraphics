@@ -160,10 +160,30 @@ CgHeightFogComponent fog = scene.heightFog().at(0, 64, 0).density(0.2f).heightFa
 // The engine's base surface material, for a model with no shader of its own: a texture and Unreal's base properties
 CgMaterial cloth = CgSurfaceMaterial.of("mymod:cloth", "mymod:textures/cloth.png").blend(CgBlendMode.ALPHA).twoSided().build();
 
+// UI in the world: quads drawn with a material, painted by the 2D canvas, glass, a widget; text kept until removed
+scene.quad(2f, 1f, signMaterial).at(x, y, z).rotation(facing).spawn();                 // turned: a plane
+scene.quad(0.6f, 0.6f, null).fill(CgBrush.svg(icon)).facing(CgQuadComponent.Facing.CAMERA).at(x, y, z).spawn();
+scene.quad(2f, 1f, null).radii(0.2f).backdropFilter(CgBackdropFilter.FROSTED.scaled(1 / 32f)).at(x, y, z).spawn();
+scene.quad(2f, 1.2f, null).widget(board, 500f, 300f).at(x, y, z).spawn();             // a CgUserWidget
+CgLabelComponent tag = scene.label("Spawn").font(font).height(0.5f).at(x, y + 2, z).spawn();
+tag.text("Spawn (3)");                                                                   // captured again next frame
+
 // This frame only, Unreal's debug draw: rows added before the frame's views draw
 scene.once().mesh(marker, debugMaterial).at(x, y, z).customData(0, r, g, b, a).add();
-scene.label("Spawn").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();   // a CgTextStyle
+scene.labelOnce("12").at(x, y + 2, z).height(0.5f).font(font).style(LABEL).submit();   // a CgTextStyle
+CgDebugDraw.box(minX, minY, minZ, maxX, maxY, maxZ, 0xFF40FF60, 2f);                   // any thread, two seconds
 ```
+
+A quad's picture (`fill`, `paint`, `widget`) is painted by the canvas into a texture of its own before the frame's
+first view, at the height it stands on screen rounded up to a power of two, and again only when that steps or what it
+shows changes; a widget's `changes()` includes the moves and fades its replays pose. Glass reads the scene behind it
+from a colour copy with its mip chain (`CG_SCENE_COLOR_BLURRED` in any surface material): a pane re-copies where
+something drew within its reach since the last copy, so the panes behind it, drawn first in the back-to-front pass,
+show through it. A label component's glyphs are kept on the GPU, a matrix a frame while only it moves.
+
+`CgDebugDraw` is Unreal's `DrawDebugLine` family: `line`, `point`, `box`, `sphere`, `arrow`, `text`, each for one
+frame, a duration, or `FOREVER` until `clear()`; `foreground()` draws over everything. Text needs a font given once,
+`CgDebugDraw.font(font)`: the engine ships none. Collision's debug drawing goes through the same batches.
 
 ```java
 // A primitive whose rows each view asks for each frame

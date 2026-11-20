@@ -377,6 +377,22 @@ plate.remove();                             // it plays nothing, so it stays unt
 
 ---
 
+### In world space: on a quad
+
+UMG's world-space `UWidgetComponent`: the widget painted into a picture shown on a quad standing in the world, turned
+or facing the camera, depth-tested like any surface. It is laid out at its design size and stretched over the quad, so
+give the quad the same aspect.
+
+```java
+CgUserWidget board = QUEST_BOARD.loaded().newInstance();
+scene.quad(2f, 1.2f, null).widget(board, 500f, 300f).at(x, y + 2, z).rotation(facingSouth).spawn();
+board.text("Title", "Gather 10 crystals");          // its picture painted again next frame
+```
+
+- Its picture is painted at the size the quad stands on screen, and again only when the widget changes
+  (`changes()`: text, layout, and the moves and fades a sequence writes) or that size steps.
+- A text change shows a frame after a new glyph is first needed, as on the screen.
+
 ## 8. On the screen: a screen widget layer
 
 A widget on the screen goes on a `CgScreenWidgetLayer`, UMG's viewport: `AddToViewport` puts a widget in a

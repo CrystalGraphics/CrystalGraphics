@@ -129,7 +129,7 @@ public final class CgAnimDemo {
         stations.get(active).update(dt);
         time.tickSteps();
         for (int i = 0; i < stations.size(); i++) {
-            CgScene.client().label(titles[i]).at(x + i * SPACING, y + LABEL_Y, z).height(0.6f)
+            CgScene.client().labelOnce(titles[i]).at(x + i * SPACING, y + LABEL_Y, z).height(0.6f)
                     .font(labelFont).style(CgDemoStyles.LABEL).submit();
         }
     }

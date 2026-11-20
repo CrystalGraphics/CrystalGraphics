@@ -323,6 +323,11 @@ public final class CgPipeline {
         return linked != null ? shader.readsSceneColor(linked) : shader.readsSceneColor();
     }
 
+    /** Whether its draws sample the scene colour blurred: the copy before them builds its mip chain. */
+    public boolean readsSceneColorBlur() {
+        return shader.readsSceneColorBlur();
+    }
+
     public CgRenderPassVariant pass() {
         return pass;
     }

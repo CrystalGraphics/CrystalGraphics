@@ -25,6 +25,7 @@ import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Consumer;
 
 /**
@@ -34,8 +35,8 @@ import java.util.function.Consumer;
  * {@code text.shader}'s {@code WORLD_LABEL} variant, and a frame that changed nothing but their places writes one
  * matrix a label. 10,000 outlined, shadowed labels draw in 3 draws at about 230 ns a label.
  *
- * <p>A scene's own is {@code scene.renderer().labels()} (what {@code scene.label(...)} queues), drawn into each view's translucent callback, depth-tested
- * as a name tag: {@code world.text(...)} queues on it.</p>
+ * <p>A scene's own is {@code scene.renderer().labels()}, drawn into each view's translucent callback, depth-tested as
+ * a name tag: its spawned {@code CgLabelComponent}s are held on it, and {@code scene.labelOnce(...)} queues on it.</p>
  *
  * <pre>{@code
  * CgCanvasLabels labels = CgScene.client().renderer().labels();
@@ -58,7 +59,7 @@ import java.util.function.Consumer;
  *   <li>Its draw takes colour and gradient fills, outlines, lines and shadows; an additive or material layer throws,
  *       since every record draws under one material.</li>
  *   <li>The {@code i}th label queued is the same label frame to frame: one queued in another order is captured
- *       again.</li>
+ *       again. Held labels ({@link #held(List)}) come first, each in a slot of its own, so their order never moves.</li>
  *   <li>A label is unlit and unfogged.</li>
  *   <li>A label gone for a frame keeps its records, hidden, for {@value #KEEP_HIDDEN} frames: one back with the same
  *       draw costs no capture.</li>
@@ -85,6 +86,8 @@ public final class CgCanvasLabels {
     private final String name;
     private final List<Label> labels = new ArrayList<>();
     private int count;
+    /** Labels kept across frames, by slot, null a free one: drawn ahead of the frame's own. */
+    private List<Label> held = List.of();
     private final Consumer<CgTextDraw> queue = this::submitted;
     private final Matrix4f place = new Matrix4f();
     private final Vector3f eye = new Vector3f();
@@ -116,6 +119,19 @@ public final class CgCanvasLabels {
         return labels.get(count).reset();
     }
 
+    /** A label an owner keeps and places itself, held in {@link #held(List)}'s list: its draw is never submitted. */
+    public static Label held() {
+        return new Label(CgTextDraw.detached());
+    }
+
+    /**
+     * {@code held}, read each frame ahead of the frame's own labels, slot {@code i} label {@code i}: a null slot draws
+     * nothing. Its owner keeps the slots where they are, so a held label is captured once, not each time another goes.
+     */
+    public void held(List<Label> held) {
+        this.held = Objects.requireNonNull(held, "held");
+    }
+
     /** A label's draw submitted: kept if it is the one {@link #text} handed out, else ignored. */
     private void submitted(CgTextDraw draw) {
         if (count < labels.size() && labels.get(count).draw == draw) count++;
@@ -136,14 +152,21 @@ public final class CgCanvasLabels {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
             evictions = CgGlyphAtlas.evictions();
             captured = 0;
-            for (int i = 0; i < count; i++) {
-                Label label = labels.get(i);
+            int first = held.size();
+            for (int i = 0; i < first + count; i++) {
+                Label label = i < first ? held.get(i) : labels.get(i - first);
+                if (label == null || !label.shown) {
+                    // A free slot, or a held label hidden: its records stay, drawn nowhere, for when it shows again
+                    if (i >= keptCount) capture(i, null);
+                    pose(i, null);
+                    continue;
+                }
                 CgTextLayout layout = capture(i, label.draw);
                 int px = label.draw.basePx();
                 pose(i, layout == null || px <= 0 ? null : placement(label, view, layout, px));
             }
+            upload(first + count, recording);
         }
-        upload(count, recording);
     }
 
     /** Label to view space: its offset from the eye, turned or facing the eye, its size and anchor. */
@@ -166,12 +189,13 @@ public final class CgCanvasLabels {
      * capture was incomplete or the atlas evicted since. The layout it draws; null where it has none.
      */
     @Nullable
-    private CgTextLayout capture(int i, CgTextDraw draw) {
+    private CgTextLayout capture(int i, @Nullable CgTextDraw draw) {
         while (i >= keptCount) {
             if (keptCount == kept.size()) kept.add(new Kept(CgTextDraw.detached()));
             keptCount++;
         }
         Kept k = kept.get(i);
+        if (draw == null) return null;
         if (k.whole && k.capture.evictions() == evictions && k.drawn.sameAs(draw)) {
             // Back after a gap: its ranges were zeroed, its capture kept.
             if (k.hidden > 0) {
@@ -238,7 +262,7 @@ public final class CgCanvasLabels {
 
     /** Whether there is anything to draw: a label this frame, or one hidden and kept. */
     public boolean any() {
-        return matrixCount > 0;
+        return matrixCount > 0 || count > 0 || !held.isEmpty();
     }
 
     /**
@@ -475,6 +499,7 @@ public final class CgCanvasLabels {
         double x, y, z;
         float height = 0.25f, anchorX = CENTRE, anchorY = CENTRE;
         Quaternionfc rotation;
+        boolean shown = true;
 
         Label(CgTextDraw draw) {
             this.draw = draw;
@@ -510,6 +535,12 @@ public final class CgCanvasLabels {
         public Label anchor(float x, float y) {
             this.anchorX = x;
             this.anchorY = y;
+            return this;
+        }
+
+        /** Drawn or not, its capture kept either way: a held label's; a frame's label shows by being queued. */
+        public Label shown(boolean shown) {
+            this.shown = shown;
             return this;
         }
 

@@ -1,5 +1,6 @@
 package com.crystalgraphics.collision.debug;
 
+import com.crystalgraphics.render.debug.CgLineSink;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -9,7 +10,7 @@ import java.util.Arrays;
  * {@link #REACH} are clamped; a run's colour 0 is drawn in the reader's own; a run of faces may begin a piece, and
  * may be drawn only by a reader drawing transparent, at its fill.
  */
-final class CgLinePack implements CgShapeLines.Sink {
+final class CgLinePack implements CgLineSink {
 
     static final double UNIT = 1.0 / 128;
     static final double REACH = Short.MAX_VALUE * UNIT;

@@ -541,7 +541,7 @@ float height = fps.measure().totalHeight();                        // without dr
 - `canvas.text()` is a scratch like `quad()`: build and submit in one expression.
 - **Text that persists and moves is kept on the GPU**: `CgCanvasLabels` captures each label's glyphs once and
   draws every label from them, a matrix a label a frame (10,000 outlined, shadowed labels in 3 draws). In the world,
-  `scene.label(...)` draws through one, billboarded or turned and depth-tested
+  `scene.label(...)` (kept) and `scene.labelOnce(...)` (a frame) draw through one, billboarded or turned and depth-tested
   ([`ENGINE_API.md`](ENGINE_API.md)); its javadoc has the example for labels of your own.
 - Styles (fills, outlines, shadows, gradients, materials), fonts and layout: [`font/README.md`](font/README.md).
 - **A draw's colour fades each layer on its own**: half faded, an outlined, shadowed word shows its outline through

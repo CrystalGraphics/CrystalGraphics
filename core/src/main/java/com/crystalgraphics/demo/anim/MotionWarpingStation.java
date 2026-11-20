@@ -213,9 +213,9 @@ final class MotionWarpingStation implements AnimDemoStation {
                 }
             }
             String title = warps ? (standOff ? "warped, stops at arm's length" : "warped onto the target") : "as drawn";
-            CgScene.client().label(title).at(startX(), y + 2.6, startZ()).height(0.24f).font(font).style(CgDemoStyles.LABEL).submit();
+            CgScene.client().labelOnce(title).at(startX(), y + 2.6, startZ()).height(0.24f).font(font).style(CgDemoStyles.LABEL).submit();
             if (!verdict.isEmpty()) {
-                CgScene.client().label(verdict).at(oppX, y + 2.3, oppZ).height(0.32f).font(font).style(CgDemoStyles.LABEL).submit();
+                CgScene.client().labelOnce(verdict).at(oppX, y + 2.3, oppZ).height(0.32f).font(font).style(CgDemoStyles.LABEL).submit();
             }
             if (!paths) return;
             for (int i = 1; i < ownCount; i++) {

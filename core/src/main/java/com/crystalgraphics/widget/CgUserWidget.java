@@ -135,6 +135,8 @@ public final class CgUserWidget implements CgSequenceTarget {
     private final CgPaintChunk kept = new CgPaintChunk();
     /** Bumped by every change a replay cannot show: layout, text, a brush, visibility, a colour, material parameters. */
     private long revision;
+    /** Raised by every change it shows, a move or fade a replay poses included: {@link #changes}. */
+    private long touched;
     private long keptRevision = -1;
     /** Refused chunks in a row at {@link #refusedAt}, and the repaint before which it takes none again. */
     private int refusals;
@@ -386,6 +388,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         for (CgUserWidget w : nested) if (w != null) w.reset();
         allottedWidth = allottedHeight = Float.NaN;
         dirty = true;
+        touched++;
         revision++;
     }
 
@@ -395,6 +398,7 @@ public final class CgUserWidget implements CgSequenceTarget {
             allottedWidth = width;
             allottedHeight = height;
             dirty = true;
+            touched++;
         }
         return this;
     }
@@ -412,6 +416,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (!value.equals(text[index])) {
             text[index] = value;
             dirty = true;
+            touched++;
         }
         return this;
     }
@@ -428,6 +433,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (style[index] != value) {
             style[index] = value;
             dirty = true;
+            touched++;
         }
         return this;
     }
@@ -493,6 +499,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (visibility[index] != value) {
             visibility[index] = value;
             dirty = true;
+            touched++;
         }
         return this;
     }
@@ -506,6 +513,7 @@ public final class CgUserWidget implements CgSequenceTarget {
         if (!value.equals(brush[index])) {
             brush[index] = value;
             dirty = true;
+            touched++;
         }
         return this;
     }
@@ -616,6 +624,16 @@ public final class CgUserWidget implements CgSequenceTarget {
             refusedAt = key;
             retryAt = repaints + (1L << Math.min(refusals++, 6));
         }
+    }
+
+    /**
+     * Raised by any change to what it shows, its own or a nested widget's: content, layout, and the moves and fades a
+     * replay poses without repainting. What a picture of it compares to know it is stale (a widget in the world).
+     */
+    public long changes() {
+        long c = touched + revision;
+        for (CgUserWidget w : nested) if (w != null) c += w.changes();
+        return c;
     }
 
     /** How often it has been painted rather than replayed: an animation that only moves and fades it adds none. */
@@ -1200,6 +1218,7 @@ public final class CgUserWidget implements CgSequenceTarget {
      * node, painted once; a node's later changes are its value at replay. Anything else is a repaint.
      */
     private void changed(int w, int slot, int components) {
+        touched++;
         switch (slot) {
             case TRANSLATION, SCALE, SHEAR, ANGLE -> {
                 if (!moves[w]) {

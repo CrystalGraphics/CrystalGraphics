@@ -232,6 +232,7 @@ public final class CgSceneRenderer {
     /** Engine side: the scene's. */
     public CgSceneRenderer(CgScene scene) {
         this.scene = scene;
+        labels.held(scene.primitives().heldLabels());
         media.add(new CgSceneMedia.Injector() {
             @Override
             public boolean inject(CgComputePass pass, CgSceneMedia m) {
@@ -285,7 +286,10 @@ public final class CgSceneRenderer {
         return media;
     }
 
-    /** The scene's labels this frame: what {@code CgScene.label} queues, drawn into every view's translucent callback. */
+    /**
+     * The scene's labels, drawn into every view's translucent callback: its spawned label components, then what
+     * {@code CgScene.labelOnce} queues this frame.
+     */
     public CgCanvasLabels labels() {
         long now = CgFrameRing.frame();
         if (now != labelsFrame) {

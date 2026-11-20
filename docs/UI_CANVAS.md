@@ -242,6 +242,8 @@ canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.LIQUID).fi
 - In a layer, a pane sees the target with every open layer over it, as it will be composited.
 - Each pane breaks the canvas's pass and copies what is behind it: a handful a frame, not hundreds.
 - The presets are `CgBackdropFilter`'s; `CgBackdrop` is the capture and blur alone, for a drawer composing its own.
+- In the world a pane is a quad: `scene.quad(w, h, null).radii(r).backdropFilter(f.scaled(1 / 32f))`, the look the
+  same, its lens and rim in blocks. It sees the scene and the panes behind it, never those in front.
 
 ## Views and photographs
 

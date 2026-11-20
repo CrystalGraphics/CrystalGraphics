@@ -234,6 +234,28 @@ CG_BIND(0, 2) uniform sampler2D cg_SceneColor;
 #endif
 // Level 0, as Unreal's CalcSceneColor: a screen read takes no derivatives, which a discard leaves undefined
 #define CG_SCENE_COLOR(uv) textureLod(cg_SceneColor, (uv), 0.0)
+// The scene behind, blurred by a Gaussian of sigma device pixels: its copy's mip chain (HDRP's colour pyramid). The
+// chain's levels are 2x2 boxes, so it reads one level finer than the sigma's through a 5x5 binomial in 9 bilinear
+// taps, which keeps the boxes' aliasing under the kernel. A reader names it and the copy before it is built with its
+// chain; glass behind it drawn earlier is in that copy.
+#define CG_SCENE_COLOR_BLURRED(uv, sigmaPx) cg_scene_color_blurred((uv), (sigmaPx))
+#if !defined(CG_VERTEX_STAGE) && !defined(CG_COMPUTE_STAGE)
+vec4 cg_scene_color_blurred(vec2 uv, float sigmaPx) {
+    if (sigmaPx <= 0.5) return textureLod(cg_SceneColor, uv, 0.0);
+    // The binomial's sigma is a texel; with the level's own box and the bilinear tent about 1.1 of them
+    float lod = max(0.0, log2(sigmaPx / 1.1));
+    // [1 4 6 4 1] as three bilinear taps a side: weights 5, 6, 5 sixteenths, the outer pair 1.2 texels out
+    vec2 o = 1.2 * exp2(lod) / vec2(textureSize(cg_SceneColor, 0));
+    const vec3 w = vec3(5.0, 6.0, 5.0) / 16.0;
+    vec4 c = vec4(0.0);
+    for (int y = 0; y < 3; y++) {
+        for (int x = 0; x < 3; x++) {
+            c += textureLod(cg_SceneColor, uv + vec2(float(x - 1), float(y - 1)) * o, lod) * (w[x] * w[y]);
+        }
+    }
+    return c;
+}
+#endif
 
 // cg_Lightmap: the host's lightmap, block light across and sky light down, in a world pass; 1x1 white in any other.
 #ifdef CG_HOST_TEXTURES_INDEXED

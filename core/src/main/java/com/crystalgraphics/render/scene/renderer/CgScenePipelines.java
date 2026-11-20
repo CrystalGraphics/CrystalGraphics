@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.scene.renderer;
 
+import com.crystalgraphics.render.debug.CgDebugDraw;
+import com.crystalgraphics.render.scene.component.CgQuadComponent;
 import com.crystalgraphics.render.canvas.CgCanvasPrimitives;
 import com.crystalgraphics.api.material.engine.CgEngineMaterials;
 import com.crystalgraphics.api.material.CgMaterial;
@@ -79,6 +81,8 @@ public final class CgScenePipelines {
             CgTextMaterials.precache(list);
             CgEngineMaterials.precache(list);
             CgCanvasPrimitives.precache(list);
+            CgQuadComponent.precache(list);
+            CgDebugDraw.precache(list);
             list.addPass(CgSceneMedia.LIGHT_SHADER);
         });
         // What the first light, smoke or haze dispatches; their files parsed on a worker first

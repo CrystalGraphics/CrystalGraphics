@@ -113,7 +113,7 @@ final class LocomotionStation implements AnimDemoStation {
         void draw(float now) {
             left.draw(now, colour);
             right.draw(now, colour);
-            CgScene.client().label(label).at(body.x, y + 2.4, body.z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
+            CgScene.client().labelOnce(label).at(body.x, y + 2.4, body.z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
         }
 
         void clear() {
@@ -283,10 +283,10 @@ final class LocomotionStation implements AnimDemoStation {
             }
         } else {
             for (Runner r : new Runner[]{warped, plain, strafer}) {
-                CgScene.client().label(r.label).at(r.body.x, y + 2.4, r.body.z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
+                CgScene.client().labelOnce(r.label).at(r.body.x, y + 2.4, r.body.z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
             }
         }
-        CgScene.client().label("turning in place").at(x, y + 2.4, z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
+        CgScene.client().labelOnce("turning in place").at(x, y + 2.4, z).height(0.3f).font(font).style(CgDemoStyles.LABEL).submit();
     }
 
     private void turn() {

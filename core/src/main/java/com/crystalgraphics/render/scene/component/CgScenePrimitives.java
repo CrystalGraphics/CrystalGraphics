@@ -1,5 +1,7 @@
 package com.crystalgraphics.render.scene.component;
 
+import com.crystalgraphics.api.canvas.CgCanvas;
+import com.crystalgraphics.render.canvas.CgCanvasLabels;
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.mesh.CgMesh;
@@ -76,6 +78,12 @@ public final class CgScenePrimitives {
     private final Vector4f clip = new Vector4f();
     /** Its spawned scene captures, and the ring frame they last ran in. */
     final List<CgSceneCaptureComponent> captures = new ArrayList<>();
+    /** Its spawned labels' labels, by slot, null a free one: the scene's label cache holds this list. */
+    private final List<CgCanvasLabels.Label> labels = new ArrayList<>();
+    private final List<CgCanvasLabels.Label> labelView = Collections.unmodifiableList(labels);
+    /** Its spawned quads with a picture, and the canvas they are painted through. */
+    final List<CgQuadComponent> pictures = new ArrayList<>();
+    private final CgCanvas pictureCanvas = new CgCanvas();
     private long capturedFrame = Long.MIN_VALUE;
     private final List<CgSkeletalMeshComponent> skeletalView = Collections.unmodifiableList(skeletal);
     private final CgSceneGather gathering = new CgSceneGather();
@@ -123,6 +131,10 @@ public final class CgScenePrimitives {
 
     public CgDynamicComponent dynamic(CgDynamicPrimitive primitive) {
         return new CgDynamicComponent(this, Objects.requireNonNull(primitive, "primitive"));
+    }
+
+    public CgQuadComponent quad(float width, float height, @Nullable CgMaterialInterface material) {
+        return new CgQuadComponent(this, width, height, material);
     }
 
     public CgPointLight pointLight() {
@@ -236,8 +248,9 @@ public final class CgScenePrimitives {
 
     /**
      * Engine side, before the scene's first view of a ring frame draws: every capture due draws into its target now,
-     * Unreal's scene capture update ahead of the main view. Once a ring frame, so a capture drawing this scene runs no
-     * captures inside itself. Render thread, outside a firing's recording.
+     * Unreal's scene capture update ahead of the main view, and every quad's picture that changed is painted. Once a
+     * ring frame, so a capture drawing this scene runs no captures inside itself. Render thread, outside a firing's
+     * recording.
      */
     public void updateCaptures() {
         long now = CgFrameRing.frame();
@@ -247,6 +260,34 @@ public final class CgScenePrimitives {
             CgSceneCaptureComponent c = captures.get(i);
             if (c.due()) c.capture();
         }
+        for (int i = 0; i < pictures.size(); i++) pictures.get(i).updatePicture(pictureCanvas);
+    }
+
+    /** A label component's text, {@code text} in its default font. */
+    public CgLabelComponent label(String text) {
+        return new CgLabelComponent(this, text);
+    }
+
+    /** Its spawned labels' labels by slot, a free slot null: what the scene's label cache draws ahead of its own. */
+    public List<CgCanvasLabels.Label> heldLabels() {
+        return labelView;
+    }
+
+    /** {@code label} in the first free slot; the slot. */
+    int holdLabel(CgCanvasLabels.Label label) {
+        int free = labels.indexOf(null);
+        if (free >= 0) {
+            labels.set(free, label);
+            return free;
+        }
+        labels.add(label);
+        return labels.size() - 1;
+    }
+
+    /** Slot {@code slot} freed; the trailing free slots dropped. */
+    void dropLabel(int slot) {
+        labels.set(slot, null);
+        while (!labels.isEmpty() && labels.get(labels.size() - 1) == null) labels.remove(labels.size() - 1);
     }
 
     public void drawOnce(CgMesh mesh, CgMaterialInterface material, double x, double y, double z) {
