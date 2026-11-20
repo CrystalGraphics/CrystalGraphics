@@ -14,6 +14,7 @@ parts animated by name on the widget sequencer. **Using it**: `docs/WIDGETS.md`.
 | `CgWidgetPreparer` | a widget asset's UI materials named to the precache before it is READY (its styles' faces are `text.style.CgTextStylePreparer`'s) |
 | `CgUiScale` | a kit's `ui.yaml`, `UUserInterfaceSettings`' DPI curve |
 | `CgWorldWidgetLayer`, `CgWidgetComponent` | widgets following points in the world (`SWorldWidgetScreenLayer`, a screen-space `UWidgetComponent`): queued, started at the layer's `PLAYS` tick, placed by pivot and draw size at the projected point, nearer last, painted at `HUD`'s `WORLD_WIDGETS`; released when their sequence ends or the level changes |
+| `CgWidgetLayout`, `CgWidgetPainter`, `CgWidgetAnimations`, `CgWidgetPart` | the instance's jobs, package-private: Slate's layout (`ComputeDesiredSize`, `OnArrangeChildren`, the text as laid); its paint, chunk, replay and pose walk (`OnPaint`); its animation players; one widget as a sequence target. Each reads the instance's property store; the store, the revision and the public API stay on `CgUserWidget` |
 | `CgUserWidgetPool` | `FUserWidgetPool`: instances by tree, handed back reset |
 | `CgScreenWidgetLayer` | widgets on the screen (`AddToViewport`): each laid out at the whole screen in its kit's UI units, painted by z-order, taken off at a level change; drawn on `HUD` at `SCREEN_WIDGETS` |
 

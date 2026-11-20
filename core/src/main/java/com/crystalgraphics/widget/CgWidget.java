@@ -15,6 +15,15 @@ import com.crystalgraphics.api.paint.CgColor;
 import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.text.style.CgTextStyle;
 
+import static com.crystalgraphics.widget.CgUserWidget.ANGLE;
+import static com.crystalgraphics.widget.CgUserWidget.BLUR;
+import static com.crystalgraphics.widget.CgUserWidget.COLOUR;
+import static com.crystalgraphics.widget.CgUserWidget.CONTENT_COLOUR;
+import static com.crystalgraphics.widget.CgUserWidget.RENDER_OPACITY;
+import static com.crystalgraphics.widget.CgUserWidget.SCALE;
+import static com.crystalgraphics.widget.CgUserWidget.SHEAR;
+import static com.crystalgraphics.widget.CgUserWidget.TRANSLATION;
+
 /**
  * One named widget of a {@link CgWidgetTree}, as designed: UMG's {@code UWidget}. Panels lay out their children (a
  * canvas by anchors, a horizontal box in a row, a border around one, a scale box scaling one, a retainer box painting
@@ -550,5 +559,31 @@ public final class CgWidget {
             }
             return new CgWidget(this);
         }
+    }
+
+    /**
+     * {@code w}'s designer values into a user widget's property store from {@code at}: render transform, opacity,
+     * colours, blur. {@code w} null for an untransformed, white whole.
+     */
+    static void seed(@Nullable CgWidget w, float[] state, int at) {
+        float[] t = w != null ? w.transform : new float[]{0f, 0f, 1f, 1f, 0f, 0f, 0f};
+        state[at + TRANSLATION * 4] = t[0];
+        state[at + TRANSLATION * 4 + 1] = t[1];
+        state[at + SCALE * 4] = t[2];
+        state[at + SCALE * 4 + 1] = t[3];
+        state[at + SHEAR * 4] = t[4];
+        state[at + SHEAR * 4 + 1] = t[5];
+        state[at + ANGLE * 4] = t[6];
+        state[at + RENDER_OPACITY * 4] = w != null ? w.renderOpacity : 1f;
+        putColour(state, at + COLOUR * 4, w != null ? w.colour : CgColor.WHITE);
+        putColour(state, at + CONTENT_COLOUR * 4, w != null ? w.contentColour : CgColor.WHITE);
+        state[at + BLUR * 4] = w != null ? w.blur : 0f;
+    }
+
+    private static void putColour(float[] state, int at, CgColor c) {
+        state[at] = c.r();
+        state[at + 1] = c.g();
+        state[at + 2] = c.b();
+        state[at + 3] = c.a();
     }
 }
