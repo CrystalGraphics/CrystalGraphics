@@ -182,6 +182,43 @@ canvas.restore();
 - **A layer inside a turned or scaled `movable` node is refused**: its picture's axes would not be its node's.
 - A multiply-blended draw cannot land in a layer (its blend has no layer form); draw it outside.
 
+## Kept layers
+
+A kept layer is a picture kept across frames: a frame that does not change it composites the picture and records
+nothing for it, and one that changes a little executes only the damage. A window, a panel, a minimised window's
+preview: DWM's redirection surface.
+
+```java
+static final CgKeptLayer WINDOW = new CgKeptLayer().reserve(1280, 800);    // once, kept: it owns its texture
+
+try (CgKeptLayer.Walk walk = canvas.kept(WINDOW, x, y, w, h, revision)) {  // composited when it closes
+    if (walk.draws()) {                       // false: its picture stands, nothing is recorded for it
+        ... draw the window's contents ...
+        walk.damage(cx, cy, 2, 18);           // only what changed; damage nothing for the whole picture
+    }
+}
+canvas.picture(WINDOW, tx, ty, 320, 200);     // its picture elsewhere: a preview
+canvas.thumbnail(WINDOW, tx, ty, 160, 100);   // filtered down, kept, filtered again about every 100 ms
+```
+
+```java
+// Something that moves inside the picture: its old place is damaged as it moves, or once a walk no longer reaches it
+static final CgKeptLayer.Placement CARET = new CgKeptLayer.Placement();
+CARET.place(walk, cx, cy, 2, 18);
+canvas.fill(cx, cy, 2, 18, caretColour);
+```
+
+- **Held** while the revision you pass and the size in device pixels stay as the last walk drew them. A move by
+  translation is held: the picture lands at the new place, on whole device pixels. Bump the revision whenever what it
+  shows changes.
+- **Drawn whole** the first time, after a resize and after `invalidate()`; otherwise only the damage executes. Draw
+  everything on every walk that draws: the damage limits where it lands, not what is recorded.
+- A kept layer composited inside another's walk damages its place there itself.
+- **Glass inside a walk draws flat**, in its `CgBackdropFilter.fallback` colour: a kept picture of glass would be
+  stale. Keep live glass outside kept layers.
+- Its texture is rounded up to 64 pixels, at least `reserve(w, h)`, at most 4096 a side. A canvas frees a layer
+  nobody asked for in 300 frames unless `keep(true)`; `delete()` at a context's teardown.
+
 ## Glass
 
 `box(...).backdropFilter(f)` is CSS's `backdrop-filter`: what is already drawn under the box, captured, blurred,

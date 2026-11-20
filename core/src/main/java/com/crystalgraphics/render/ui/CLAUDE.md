@@ -37,4 +37,7 @@ The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`). P4.1 builds it st
   what is there (`MASK`) is its own form; one with none (a multiply) is refused inside a layer.
 - **A layer's pass draws at its picture's origin** (`CgUiRecorder.view`, the pass's view origin) under a fresh identity
   node; the outer clip and nodes apply once, at its composite.
+- **A kept walk is a layer over a requested texture** (`api.canvas.CgKeptLayer`): its first pass clears, and on a
+  walk that is not whole every pass into the texture takes the damage (`CgRasterPass.damage`), so the clear is cut
+  too. A dropped walk invalidates the layer: what it noted never reached the texture.
 - **Hot paths allocate nothing**: a canvas reuses its record, its box builder and its tile sink.

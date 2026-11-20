@@ -7,8 +7,8 @@ package com.crystalgraphics.api.paint.effect;
  * drawn behind it, other panes included.
  *
  * <pre>{@code
- * canvas.rect(x, y, w, h).radius(12).backdropFilter(CgBackdropFilter.ACRYLIC).submit();
- * canvas.rect(x, y, w, h).radius(24).backdropFilter(CgBackdropFilter.LIQUID.tint(0x20FFFFFF).light(0.3f, -1f)).submit();
+ * canvas.box(x, y, w, h).radius(12).backdropFilter(CgBackdropFilter.ACRYLIC).draw();
+ * canvas.box(x, y, w, h).radius(24).backdropFilter(CgBackdropFilter.LIQUID.tint(0x20FFFFFF).light(0.3f, -1f)).draw();
  *
  * // in the world, its lengths in blocks: the look was tuned in pixels, a block 32 of them
  * scene.quad(2f, 1f).radii(0.25f).backdropFilter(CgBackdropFilter.FROSTED.scaled(1 / 32f)).at(x, y, z).spawn();
@@ -37,12 +37,16 @@ package com.crystalgraphics.api.paint.effect;
  * @param noise      grain
  * @param lightX     the light's direction across, with {@code lightY} normalised when used; up-left by default
  * @param lightY     the light's direction down
+ * @param fallback   what the pane paints where there is nothing to filter (inside a kept layer), straight ARGB: Acrylic's
+ *                   {@code FallbackColor}
  */
 public record CgBackdropFilter(float blur, float saturation, int tint, float luminosity, float bezel, float ior,
                                float chromatic, float specular, float glow, float rim, float rimWidth,
-                               float rimAmbient, float noise, float lightX, float lightY) {
+                               float rimAmbient, float noise, float lightX, float lightY, int fallback) {
 
     private static final float LIGHT = -0.7071f;
+    /** Acrylic's {@code FallbackColor}. */
+    private static final int FALLBACK = 0xFF2B2D30;
 
     /** A pane over a blur, a lens at its edge, lit and grained: what a pane is when nothing says otherwise. */
     public static final CgBackdropFilter DEFAULT = of(12f, 1.35f, 0x662B2D30, 0f, 8f, 1.5f, 0.20f, 1f, 0.10f, 0.25f,
@@ -86,55 +90,61 @@ public record CgBackdropFilter(float blur, float saturation, int tint, float lum
                                        float chromatic, float specular, float glow, float rim, float rimWidth,
                                        float rimAmbient, float noise) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, LIGHT, LIGHT);
+                rimWidth, rimAmbient, noise, LIGHT, LIGHT, FALLBACK);
     }
 
     /** This look with the backdrop blurred by {@code sigma} target pixels. */
     public CgBackdropFilter blur(float sigma) {
         return new CgBackdropFilter(sigma, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look with {@code argb} laid over the backdrop. */
     public CgBackdropFilter tint(int argb) {
         return new CgBackdropFilter(blur, saturation, argb, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look with the backdrop's saturation and how much of its brightness the tint takes. */
     public CgBackdropFilter color(float saturation, float luminosity) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look with a lens {@code bezel} wide at the edge, refracting by {@code ior}. */
     public CgBackdropFilter lens(float bezel, float ior) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look with its colours refracting {@code chromatic} apart. */
     public CgBackdropFilter chromatic(float chromatic) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look's highlights: overall strength, the broad glow, the rim band, its width and its even part. */
     public CgBackdropFilter highlight(float specular, float glow, float rim, float rimWidth, float rimAmbient) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look with {@code noise} grain. */
     public CgBackdropFilter noise(float noise) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, lightX, lightY);
+                rimWidth, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /** This look lit from ({@code x}, {@code y}), a direction on the target, y down. */
     public CgBackdropFilter light(float x, float y) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
-                rimWidth, rimAmbient, noise, x, y);
+                rimWidth, rimAmbient, noise, x, y, fallback);
+    }
+
+    /** This look painting {@code argb} where there is nothing to filter: inside a kept layer. */
+    public CgBackdropFilter fallback(int argb) {
+        return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel, ior, chromatic, specular, glow, rim,
+                rimWidth, rimAmbient, noise, lightX, lightY, argb);
     }
 
     /**
@@ -143,7 +153,7 @@ public record CgBackdropFilter(float blur, float saturation, int tint, float lum
      */
     public CgBackdropFilter scaled(float unitsPerPixel) {
         return new CgBackdropFilter(blur, saturation, tint, luminosity, bezel * unitsPerPixel, ior, chromatic, specular,
-                glow, rim, rimWidth * unitsPerPixel, rimAmbient, noise, lightX, lightY);
+                glow, rim, rimWidth * unitsPerPixel, rimAmbient, noise, lightX, lightY, fallback);
     }
 
     /**

@@ -72,6 +72,10 @@ public final class CgCanvasLayer implements AutoCloseable {
     @Nullable CgGraphTexture texture;
     CgLoad load = CgLoad.CLEAR;
     final CgCamera lens = new CgCamera();
+    /** The kept layer's walk it draws, or null for a layer of the frame. */
+    @Nullable CgKeptLayer.Walk kept;
+    /** The recording's pass count at its opening: its passes are those after. */
+    int passMark;
 
     CgCanvasLayer(CgCanvas canvas) {
         this.canvas = canvas;
@@ -90,6 +94,7 @@ public final class CgCanvasLayer implements AutoCloseable {
         live = true;
         texture = null;
         load = CgLoad.CLEAR;
+        kept = null;
     }
 
     /** Fades the picture as a whole by {@code f}, 0..1: what CSS's {@code opacity} on a group is. */
