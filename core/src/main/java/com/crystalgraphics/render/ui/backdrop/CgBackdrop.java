@@ -21,7 +21,7 @@ import com.crystalgraphics.platform.rhi.format.CgFormat;
  * CgBackdrop backdrop = new CgBackdrop("mymod.glass");                                 // once, kept
  * CgGraphTexture capture = backdrop.capture(rec, target, w, h, format, x0, y0, x1, y1);  // bottom-left pixels
  * // ... draw anything more into capture: the layers above the target
- * CgGraphTexture blurred = backdrop.blur(rec, 24f);                                    // three sigma, in pixels
+ * CgGraphTexture blurred = backdrop.blur(rec, 8f);   // a Gaussian of sigma 8 target pixels                                    // three sigma, in pixels
  * }</pre>
  *
  * <ul>
@@ -76,14 +76,13 @@ public class CgBackdrop {
     }
 
     /**
-     * Blurs what the last capture covers by {@code blurPx}, three sigma, in place on a texture of its own: Skia's
-     * scale-then-blur ({@link CgGpuOps#blurScaled}), edges mirrored as Chromium extends a backdrop. Under half a
-     * pixel, the capture is the blur.
+     * Blurs what the last capture covers by a Gaussian of {@code sigma} target pixels, CSS's {@code blur()}, in place on
+     * a texture of its own: Skia's scale-then-blur ({@link CgGpuOps#blurScaled}), edges mirrored as Chromium extends a
+     * backdrop. A blur reaching under half a pixel is the capture itself.
      */
-    public CgGraphTexture blur(CgRecording rec, float blurPx) {
+    public CgGraphTexture blur(CgRecording rec, float sigma) {
         if (capture == null) throw new IllegalStateException("blur before a capture");
-        if (blurPx < 0.5f) return blurred = capture;
-        float sigma = blurPx / REACH_PER_SIGMA;
+        if (sigma * REACH_PER_SIGMA < 0.5f) return blurred = capture;
         int scale = CgGpuOps.blurScale(sigma);
         int at = Integer.numberOfTrailingZeros(scale);
         CgGraphTexture target = blurTargets[at];

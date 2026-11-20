@@ -1,5 +1,5 @@
 // Liquid glass over a blurred and a sharp backdrop: the canvas's pane (CgCanvasBox.backdropFilter), an element.
-//     refract -> pick blurred/sharp -> saturate -> luminosity -> tint -> specular -> noise -> SDF mask
+//     refract -> pick blurred/sharp -> matrix -> luminosity -> matrix -> specular -> noise -> SDF mask
 // Acrylic's order, refraction where a lens puts it. Each optional layer is a keyword. The backdrop is read where the
 // pixel is, so a pane under any pose reads what is behind it.
 //
@@ -24,10 +24,17 @@ Properties {
     _CornerRadiusY ("Corner Radii Y (TL,TR,BR,BL)", vec4) = (0.0, 0.0, 0.0, 0.0)
     _BoxSize       ("Box size, in its own units", vec2) = (0.0, 0.0)
 
-    _Tint       ("Tint (over the blur)", color) = (0.0, 0.0, 0.0, 0.0)
-    _Saturation ("Saturation of backdrop", float) = 1.0
-    // The share of the backdrop's brightness the tint's replaces: acrylic 0.96, Mica 1.0.
-    _Luminosity ("Luminosity blend toward the tint", float) = 0.0
+    // The backdrop filter's colour steps (CgBackdropFilter.Plan): a 4x5 matrix as its rows and offsets, the
+    // luminosity's colour and amount, a second matrix
+    _BeforeR   ("Matrix before, red row",   vec4) = (1.0, 0.0, 0.0, 0.0)
+    _BeforeG   ("Matrix before, green row", vec4) = (0.0, 1.0, 0.0, 0.0)
+    _BeforeB   ("Matrix before, blue row",  vec4) = (0.0, 0.0, 1.0, 0.0)
+    _BeforeOff ("Matrix before, offsets",   vec4) = (0.0, 0.0, 0.0, 0.0)
+    _Lum       ("Luminosity colour, amount", vec4) = (0.0, 0.0, 0.0, 0.0)
+    _AfterR    ("Matrix after, red row",    vec4) = (1.0, 0.0, 0.0, 0.0)
+    _AfterG    ("Matrix after, green row",  vec4) = (0.0, 1.0, 0.0, 0.0)
+    _AfterB    ("Matrix after, blue row",   vec4) = (0.0, 0.0, 1.0, 0.0)
+    _AfterOff  ("Matrix after, offsets",    vec4) = (0.0, 0.0, 0.0, 0.0)
     _Bezel      ("Bezel width, in the box's units", float) = 8.0
     _Ior        ("Index of refraction",    float) = 1.5
     _Specular   ("Specular strength",      float) = 0.0
@@ -134,13 +141,8 @@ void surface(in CgUiInput i, inout CgUiSurface s) {
     bool linearScene = CG_LINEAR_SCENE;
     if (linearScene) c.rgb = linear_to_srgb(max(c.rgb, vec3(0.0)));
 
-    // A heavy blur greys the scene; saturation brings its colour back.
-    float lum = luminance(c.rgb);
-    c.rgb = mix(vec3(lum), c.rgb, _Saturation);
-
-    // Luminosity then tint, WinUI acrylic's order: the backdrop takes the tint's brightness and keeps its hue.
-    c.rgb = mix(c.rgb, cg_setLum(c.rgb, cg_lum(_Tint.rgb)), _Luminosity);
-    c.rgb = mix(c.rgb, _Tint.rgb, _Tint.a);
+    // The filter's colour steps: a saturate, contrast or tint is a matrix, Fluent's luminosity between them
+    c.rgb = cg_glassColor(c.rgb, _BeforeR, _BeforeG, _BeforeB, _BeforeOff, _Lum, _AfterR, _AfterG, _AfterB, _AfterOff);
 
 #ifdef WITH_SPECULAR
     // Symmetric about the light axis, |dot|: light entering one edge leaves through the opposite one. One-sided

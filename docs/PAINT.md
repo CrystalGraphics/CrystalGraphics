@@ -116,13 +116,22 @@ static final CgFilter SMEAR = CgFilter.blur(0f, 6f);                            
 static final CgShadow CARD = CgShadow.of(0, 2, 8, 0x60000000);                              // CSS's box-shadow
 static final CgShadow WELL = CgShadow.of(0, 1, 3, 0x80000000).inset();
 
-static final CgBackdropFilter PANE = CgBackdropFilter.ACRYLIC.tint(0x401F1F23);
-static final CgBackdropFilter LENS = CgBackdropFilter.LIQUID.lens(20f, 1.6f).light(0.3f, -1f);
-static final CgBackdropFilter WORLD_PANE = CgBackdropFilter.FROSTED.scaled(1 / 32f);       // lengths in blocks
+// CSS's backdrop-filter: grayscale(1) contrast(1.2) blur(8px), a CgFilter chain over what is behind
+static final CgBackdropFilter MUTED_PANE = CgBackdropFilter.of(CgFilter.grayscale(1f).then(CgFilter.contrast(1.2f))
+        .then(CgFilter.blur(8f)));
+// glass: the chain, then a lens at the pane's edge
+static final CgBackdropFilter LENS = CgBackdropFilter.of(CgFilter.blur(4f).then(CgFilter.saturate(1.8f)))
+        .lens(CgBackdropFilter.Lens.LIQUID.light(0.3f, -1f));
+// Fluent acrylic's recipe: blur, saturate, luminosity toward the tint, the tint laid over
+static final CgBackdropFilter PANE = CgBackdropFilter.acrylic(10f, 1.5f, 0.1f, 0x401F1F23);
+static final CgBackdropFilter WORLD_PANE = CgBackdropFilter.FROSTED.scaled(1 / 32f);       // the lens in blocks
 ```
 
-`CgBackdropFilter`'s presets are `DEFAULT`, `CLEAR`, `FROSTED`, `LIQUID`, `ACRYLIC`, `MICA` and `PRISM`. A pane sees
-anything drawn behind it, other panes included.
+A backdrop filter is a `CgFilter` chain and an optional `CgBackdropFilter.Lens` (refraction, dispersion, rim, glow, grain). The
+chain takes blurs, every colour function and `CgFilter.tint` and `CgFilter.luminosity` (Fluent's, past CSS); a drop
+shadow or a material is a layer's and is refused. The pane costs one capture, a blur ladder and one pass: the colour
+steps fold into that pass. Presets: `DEFAULT`, `CLEAR`, `FROSTED`, `LIQUID`, `ACRYLIC`, `MICA`, `PRISM`; the lenses
+`CgBackdropFilter.Lens.DEFAULT`, `CLEAR`, `LIQUID`, `PRISM`. A pane sees anything drawn behind it, other panes included.
 
 ## Easy to get wrong
 

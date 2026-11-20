@@ -167,12 +167,8 @@ public final class CgQuadComponent extends CgPrimitiveComponent<CgQuadComponent>
         requireLive();
         Objects.requireNonNull(filter, "filter");
         if (glass == null) glass = CgMaterial.load(GLASS_SHADER).instance();
-        glass.set1f("_Blur", filter.blur()).colorARGB("_Tint", filter.tint()).set1f("_Saturation", filter.saturation())
-                .set1f("_Luminosity", filter.luminosity()).set1f("_Bezel", filter.bezel()).set1f("_Ior", filter.ior())
-                .set1f("_Specular", filter.specular()).set1f("_Glow", filter.glow())
-                .set1f("_EdgeHighlight", filter.rim()).set1f("_EdgeWidth", filter.rimWidth())
-                .set1f("_RimAmbient", filter.rimAmbient()).set1f("_Chromatic", filter.chromatic())
-                .set1f("_Noise", filter.noise()).vec2("_LightDir", filter.lightX(), filter.lightY());
+        glass.set1f("_Blur", filter.blur());
+        filter.writeTo(glass);
         return radii(radius);
     }
 

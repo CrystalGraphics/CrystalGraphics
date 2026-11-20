@@ -101,7 +101,7 @@ final class CgCanvasGlass {
         return this;
     }
 
-    /** Every value of {@code filter} but its blur, which is the backdrop's. */
+    /** Every value of {@code filter} but its blur, which is the backdrop's ladder's. */
     CgCanvasGlass look(CgBackdropFilter filter) {
         this.look = filter;
         return this;
@@ -109,7 +109,7 @@ final class CgCanvasGlass {
 
     /** How far its lens samples past its edge, in its own units: what a backdrop captures around it. */
     float reach() {
-        return refracts() ? 2.2f * look.bezel() * (1f + 0.2f * look.chromatic()) : 0f;
+        return look.lensReach();
     }
 
     /** Writes its values into the instance of the layers they switch on. */
@@ -117,14 +117,14 @@ final class CgCanvasGlass {
         if (blurred == null || sharp == null) throw new IllegalStateException("glass without a backdrop");
         boolean refracts = refracts();
         current = instances.of(instances.material().keyword(WITH_REFRACTION, refracts)
-                .keyword(WITH_CHROMATIC, refracts && look.chromatic() > 0f)
-                .keyword(WITH_SPECULAR, look.specular() > 0f).keyword(WITH_NOISE, look.noise() > 0f));
+                .keyword(WITH_CHROMATIC, refracts && look.lens().chromatic() > 0f)
+                .keyword(WITH_SPECULAR, look.lens().specular() > 0f).keyword(WITH_NOISE, look.lens().grain() > 0f));
         write(current);
         return this;
     }
 
     private boolean refracts() {
-        return look.ior() > 1.001f && look.bezel() > 0f;
+        return look.lens().refracts();
     }
 
     private void write(CgMaterialValues b) {
@@ -138,19 +138,6 @@ final class CgCanvasGlass {
         // Half a texel in, so a bilinear tap never reaches past it
         b.vec4("_CaptureRect", (bx0 + 0.5f) / gridWidth, (by0 + 0.5f) / gridHeight, (bx1 - 0.5f) / gridWidth,
                 (by1 - 0.5f) / gridHeight);
-        b.colorARGB("_Tint", look.tint());
-        b.set1f("_Saturation", look.saturation());
-        b.set1f("_Luminosity", look.luminosity());
-        b.set1f("_Bezel", look.bezel());
-        b.set1f("_Ior", look.ior());
-        b.set1f("_Specular", look.specular());
-        b.set1f("_Glow", look.glow());
-        b.set1f("_EdgeHighlight", look.rim());
-        b.set1f("_EdgeWidth", look.rimWidth());
-        b.set1f("_RimAmbient", look.rimAmbient());
-        b.set1f("_Chromatic", look.chromatic());
-        b.set1f("_Noise", look.noise());
-        float lx = look.lightX(), ly = look.lightY(), length = (float) Math.sqrt(lx * lx + ly * ly);
-        b.vec2("_LightDir", length > 0f ? lx / length : 0f, length > 0f ? ly / length : -1f);
+        look.writeTo(b);
     }
 }

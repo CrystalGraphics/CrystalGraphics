@@ -306,13 +306,17 @@ canvas.fill(cx, cy, 2, 18, caretColour);
 
 ## Glass
 
-`box(...).backdropFilter(f)` is CSS's `backdrop-filter`: what is already drawn under the box, captured, blurred,
-saturated, tinted and lit, inside the box's corners.
+`box(...).backdropFilter(f)` is CSS's `backdrop-filter`: what is already drawn under the box, captured, through a
+`CgFilter` chain, then a `CgBackdropFilter.Lens` where it has one, inside the box's corners.
 
 ```java
 canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.ACRYLIC).draw();
 canvas.box(x, y, 320, 200).radius(16).backdropFilter(CgBackdropFilter.LIQUID).fill(0x10FFFFFF).border(1, 0x30FFFFFF).draw();
+canvas.box(x, y, 320, 200).backdropFilter(CgBackdropFilter.of(CgFilter.grayscale(1f).then(CgFilter.blur(8f)))).draw();
 ```
+
+- The chain's blurs are one blur of the capture (its 1/2/4 ladder), its colour steps one matrix either side of a
+  luminosity, all in the pane's one pass; a drop shadow or a material is a layer's filter, refused here.
 
 - **Draw a pane after what it covers.** A second pane over the first shows it.
 - **One capture serves every pane after it** while no layer has opened and nothing was drawn over what a pane

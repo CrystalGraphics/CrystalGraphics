@@ -946,6 +946,8 @@ public final class CgCanvas {
                     picture = composed(picture, shadow, v[0] * k, v[1] * k, Float.floatToRawIntBits(v[4]), null);
                 }
                 case MATERIAL -> picture = composed(picture, null, 0f, 0f, 0, op);
+                case LUMINOSITY -> throw new IllegalArgumentException(
+                        "luminosity is a backdrop filter's step; a layer's filter cannot take it");
             }
         }
         return picture;
@@ -2281,7 +2283,8 @@ public final class CgCanvas {
         int w = Math.max(1, Math.round(camera.width())), h = Math.max(1, Math.round(camera.height()));
         float local = Math.max(1e-6f, Math.max(box.w, box.h));
         float pixels = Math.max(px1 - px0, py1 - py0);
-        float pad = f.blur() + glass.reach() * pixels / local + 4f;
+        // Three sigma of blur reach in, and the lens's reach out
+        float pad = 3f * f.blur() + glass.reach() * pixels / local + 4f;
         int cx0 = Math.max(0, (int) Math.floor(px0 - pad)), cx1 = Math.min(w, (int) Math.ceil(px1 + pad));
         int cy0 = Math.max(0, (int) Math.floor(h - py1 - pad)), cy1 = Math.min(h, (int) Math.ceil(h - py0 + pad));
         if (cx1 <= cx0 || cy1 <= cy0) return;

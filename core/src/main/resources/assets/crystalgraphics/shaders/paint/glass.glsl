@@ -18,6 +18,19 @@ vec3 cg_clipColor(vec3 c) {
 }
 vec3 cg_setLum(vec3 c, float l) { return cg_clipColor(c + vec3(l - cg_lum(c))); }
 
+// A backdrop filter's colour steps on c, sRGB: a 4x5 matrix (rows r, g, b on (c, 1), offsets off), the luminosity
+// toward lum.rgb's brightness by lum.a, a second matrix. Unclamped between steps; the target clamps.
+vec3 cg_glassMatrix(vec3 c, vec4 r, vec4 g, vec4 b, vec4 off) {
+    vec4 p = vec4(c, 1.0);
+    return vec3(dot(r, p), dot(g, p), dot(b, p)) + off.rgb;
+}
+
+vec3 cg_glassColor(vec3 c, vec4 br, vec4 bg, vec4 bb, vec4 boff, vec4 lum, vec4 ar, vec4 ag, vec4 ab, vec4 aoff) {
+    c = cg_glassMatrix(c, br, bg, bb, boff);
+    c = mix(c, cg_setLum(c, cg_lum(lum.rgb)), lum.a);
+    return cg_glassMatrix(c, ar, ag, ab, aoff);
+}
+
 // The glass's height across the bezel, x = 0 at the edge and 1 where it goes flat: Apple's convex squircle.
 float cg_glassHeight(float x) {
     float t = 1.0 - clamp(x, 0.0, 1.0);

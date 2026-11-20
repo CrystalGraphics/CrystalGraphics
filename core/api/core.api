@@ -4014,8 +4014,8 @@ com/crystalgraphics/api/paint/brush/CgTiling
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/brush/CgTiling;
   method public,static values ()[Lcom/crystalgraphics/api/paint/brush/CgTiling;
 com/crystalgraphics/api/paint/effect/CgBackdropFilter
-  access public,final,record
-  extends java/lang/Record
+  access public,final
+  extends java/lang/Object
   field public,static,final ACRYLIC Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final CLEAR Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final DEFAULT Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
@@ -4024,36 +4024,70 @@ com/crystalgraphics/api/paint/effect/CgBackdropFilter
   field public,static,final MICA Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final NONE Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   field public,static,final PRISM Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public <init> (FFIFFFFFFFFFFFFI)V
-  method public bezel ()F
   method public blur ()F
   method public blur (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public chromatic ()F
-  method public chromatic (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public color (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public equals (Ljava/lang/Object;)Z
   method public fallback ()I
   method public fallback (I)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public glow ()F
-  method public highlight (FFFFF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
-  method public ior ()F
-  method public lens (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public filter ()Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public hashCode ()I
+  method public lens ()Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public lens (Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public lensReach ()F
-  method public light (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public luminosity ()F
+  method public luminosity (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public plan ()Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Plan;
+  method public saturation ()F
+  method public saturation (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public scaled (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public tint ()I
+  method public tint (I)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public toString ()Ljava/lang/String;
+  method public writeTo (Lcom/crystalgraphics/api/material/CgMaterialValues;)V
+  method public,static acrylic (FFFI)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public,static of (Lcom/crystalgraphics/api/paint/effect/CgFilter;)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+com/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens
+  access public,final,record
+  extends java/lang/Record
+  field public,static,final CLEAR Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  field public,static,final DEFAULT Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  field public,static,final LIQUID Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  field public,static,final NONE Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  field public,static,final PRISM Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public <init> (FFFFFFFFFFF)V
+  method public bezel ()F
+  method public chromatic ()F
+  method public chromatic (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public glow ()F
+  method public grain ()F
+  method public grain (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public highlight (FFFFF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public ior ()F
+  method public light (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
   method public lightX ()F
   method public lightY ()F
-  method public luminosity ()F
-  method public noise ()F
-  method public noise (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public reach ()F
+  method public refraction (FF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+  method public refracts ()Z
   method public rim ()F
   method public rimAmbient ()F
   method public rimWidth ()F
-  method public saturation ()F
-  method public scaled (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
+  method public scaled (F)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
   method public specular ()F
-  method public tint ()I
-  method public tint (I)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+  method public,static of (FFFFFFFFF)Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter$Lens;
+com/crystalgraphics/api/paint/effect/CgBackdropFilter$Plan
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (F[F[F[F)V
+  method public after ()[F
+  method public before ()[F
+  method public blur ()F
+  method public equals (Ljava/lang/Object;)Z
+  method public hashCode ()I
+  method public luminosity ()[F
   method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/paint/effect/CgFilter
   access public,final
@@ -4064,6 +4098,7 @@ com/crystalgraphics/api/paint/effect/CgFilter
   method public isNone ()Z
   method public ops ()Ljava/util/List;
   method public reach ()F
+  method public steps ()Ljava/util/List;
   method public then (Lcom/crystalgraphics/api/paint/effect/CgFilter;)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public toString ()Ljava/lang/String;
   method public,static blur (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
@@ -4075,17 +4110,40 @@ com/crystalgraphics/api/paint/effect/CgFilter
   method public,static grayscale (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static hueRotate (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static invert (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static luminosity (IF)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static material (Lcom/crystalgraphics/api/material/CgMaterialInterface;Ljava/lang/String;)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static matrix ([F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static of (Ljava/util/List;)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static opacity (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static saturate (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
   method public,static sepia (F)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+  method public,static tint (I)Lcom/crystalgraphics/api/paint/effect/CgFilter;
+com/crystalgraphics/api/paint/effect/CgFilter$Fn
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final BLUR Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final BRIGHTNESS Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final CONTRAST Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final DROP_SHADOW Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final GRAYSCALE Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final HUE_ROTATE Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final INVERT Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final LUMINOSITY Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final MATERIAL Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final MATRIX Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final OPACITY Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final SATURATE Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final SEPIA Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  field public,static,final TINT Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  method public,static values ()[Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
 com/crystalgraphics/api/paint/effect/CgFilter$Kind
   access public,final,enum
   extends java/lang/Enum
   field public,static,final BLUR Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
   field public,static,final COLOR_MATRIX Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
   field public,static,final DROP_SHADOW Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
+  field public,static,final LUMINOSITY Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
   field public,static,final MATERIAL Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
   method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
   method public,static values ()[Lcom/crystalgraphics/api/paint/effect/CgFilter$Kind;
@@ -4099,6 +4157,18 @@ com/crystalgraphics/api/paint/effect/CgFilter$Op
   method public material ()Lcom/crystalgraphics/api/material/CgMaterialInterface;
   method public textureParameter ()Ljava/lang/String;
   method public values ()[F
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/api/paint/effect/CgFilter$Step
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;[FILcom/crystalgraphics/api/paint/effect/CgFilter$Op;)V
+  method public args ()[F
+  method public color ()I
+  method public equals (Ljava/lang/Object;)Z
+  method public function ()Lcom/crystalgraphics/api/paint/effect/CgFilter$Fn;
+  method public hashCode ()I
+  method public op ()Lcom/crystalgraphics/api/paint/effect/CgFilter$Op;
+  method public value ()F
   method public,final toString ()Ljava/lang/String;
 com/crystalgraphics/api/paint/effect/CgShadow
   access public,final,record

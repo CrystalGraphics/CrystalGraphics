@@ -2,7 +2,7 @@
 // sharp at the bezel and blurred inside, read from the scene colour copy taken before it. Panes drawn before it, the
 // farther ones in the back-to-front pass, are in that copy: glass sees glass behind it. Its margin is the reach of the
 // lens and of three sigma of a blur up to 30 pixels at 1080 rows: a pane re-copies where one within it drew.
-//     refract -> pick blurred/sharp -> saturate -> luminosity -> tint -> specular -> noise -> SDF mask
+//     refract -> pick blurred/sharp -> matrix -> luminosity -> matrix -> specular -> noise -> SDF mask
 #domain surface
 #include "crystalgraphics:shaders/paint/glass.glsl"
 #include "crystalgraphics:shaders/lib/noise.glsl"
@@ -13,9 +13,17 @@ Properties {
     _BoxSize       ("The pane's size, in its units",  vec2) = (1.0, 1.0)
     _CornerRadius  ("Corner radii (TL,TR,BR,BL)",     vec4) = (0.0, 0.0, 0.0, 0.0)
     _Blur       ("The backdrop's Gaussian sigma, target pixels", float) = 12.0
-    _Tint       ("Tint (over the blur)", color) = (0.0, 0.0, 0.0, 0.0)
-    _Saturation ("Saturation of backdrop", float) = 1.0
-    _Luminosity ("Luminosity blend toward the tint", float) = 0.0
+    // The backdrop filter's colour steps (CgBackdropFilter.Plan): a 4x5 matrix as its rows and offsets, the
+    // luminosity's colour and amount, a second matrix
+    _BeforeR   ("Matrix before, red row",   vec4) = (1.0, 0.0, 0.0, 0.0)
+    _BeforeG   ("Matrix before, green row", vec4) = (0.0, 1.0, 0.0, 0.0)
+    _BeforeB   ("Matrix before, blue row",  vec4) = (0.0, 0.0, 1.0, 0.0)
+    _BeforeOff ("Matrix before, offsets",   vec4) = (0.0, 0.0, 0.0, 0.0)
+    _Lum       ("Luminosity colour, amount", vec4) = (0.0, 0.0, 0.0, 0.0)
+    _AfterR    ("Matrix after, red row",    vec4) = (1.0, 0.0, 0.0, 0.0)
+    _AfterG    ("Matrix after, green row",  vec4) = (0.0, 1.0, 0.0, 0.0)
+    _AfterB    ("Matrix after, blue row",   vec4) = (0.0, 0.0, 1.0, 0.0)
+    _AfterOff  ("Matrix after, offsets",    vec4) = (0.0, 0.0, 0.0, 0.0)
     _Bezel      ("Bezel width, in the pane's units", float) = 0.25
     _Ior        ("Index of refraction",    float) = 1.5
     _Specular   ("Specular strength",      float) = 0.0
@@ -84,9 +92,7 @@ void surface(in v2f i, inout CgSurface s) {
 
     // The colour work in sRGB, as the canvas's, so a look reads the same on the screen and in the world
     c = linear_to_srgb(max(c, vec3(0.0)));
-    c = mix(vec3(luminance(c)), c, _Saturation);
-    c = mix(c, cg_setLum(c, cg_lum(_Tint.rgb)), _Luminosity);
-    c = mix(c, _Tint.rgb, _Tint.a);
+    c = cg_glassColor(c, _BeforeR, _BeforeG, _BeforeB, _BeforeOff, _Lum, _AfterR, _AfterG, _AfterB, _AfterOff);
     if (_Specular > 0.0) {
         float proj = abs(dot(grad, normalize(_LightDir + vec2(1e-6, 0.0))));
         float glow = _Glow * pow(proj, 1.5) * (1.0 - edge);
