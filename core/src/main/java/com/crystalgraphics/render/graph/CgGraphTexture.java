@@ -377,6 +377,7 @@ public final class CgGraphTexture extends CgGraphResource implements CgTexture {
     }
 
     /** Whether it is a 2D array: its description says so, or an imported target's images are one. */
+    @Override
     public boolean isArray() {
         return getLayers() > 1;
     }

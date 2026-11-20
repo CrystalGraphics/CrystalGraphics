@@ -23,6 +23,7 @@ import com.crystalgraphics.render.draw.CgChunkBuilder;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.draw.CgInstanceKind;
+import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.graph.CgGraphTexture;
@@ -236,7 +237,10 @@ public final class CgUiRecorder {
         if (pipeline != null && state != null) pipeline = pipeline.withState(state);
         if (pipeline != null && layered) pipeline = layerForm(pipeline);
         CgMaterialBindings drawn = proxy.bindings();
-        binding = texture != null ? drawn.with(0, texture, sampler) : drawn;
+        // An element's array is the primitive's second texture; text's atlas, an array, is its first
+        int slot = kind == CgInstanceKind.ELEMENT && texture != null && texture.isArray() ? CgUiElements.ARRAY_SLOT
+                : CgUiElements.IMAGE_SLOT;
+        binding = texture != null ? drawn.with(slot, texture, sampler) : drawn;
     }
 
     /** {@code pipeline} under its blend's layer form; a blend with none (a multiply) cannot land in a layer. */

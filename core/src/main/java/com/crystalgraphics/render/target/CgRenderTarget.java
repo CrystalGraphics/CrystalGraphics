@@ -208,6 +208,7 @@ public final class CgRenderTarget {
      * <pre>{@code
      * target.clear();
      * target.drawMaterial(ripples);   // ripples' uv(0, 0) at the target's top left
+     * target.drawMaterial(CgUiMaterials.image(splash));   // a texture: the engine's image material (keep the instance)
      * }</pre>
      */
     public void drawMaterial(CgMaterialInterface material) {

@@ -27,6 +27,8 @@
 #define CG_ELEMENT_HARD_TOP 1024
 #define CG_ELEMENT_HARD_RIGHT 2048
 #define CG_ELEMENT_HARD_BOTTOM 4096
+// An image or mask from _MainArray's layer, the record's paint
+#define CG_ELEMENT_ARRAY 8192
 
 // Per side, left, top, right, bottom: 1 where the side is hard.
 vec4 cg_element_hard(uint flags) {

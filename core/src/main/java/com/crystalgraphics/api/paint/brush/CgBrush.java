@@ -20,6 +20,7 @@ import com.crystalgraphics.api.vector.svg.CgSvg;
  * static final CgBrush PANEL = CgBrush.texture(frame).nineSlice(CgNineSlice.uniform(4));   // corners stay put
  * static final CgBrush BUTTON = CgBrush.sprite("crystalgui:ore", "button");                // a sprite sheet's entry
  * static final CgBrush FLOOR = CgBrush.texture(tile).tiling(CgTiling.REPEAT);
+ * static final CgBrush SEVEN = CgBrush.texture(digitArray).layer(7);                    // a layer of a 2D array
  * static final CgBrush SAVE = CgBrush.svg(CgSvg.of("mymod:ui/icons/save.svg"));               // fitted, centred
  *
  * canvas.image(ICON).at(x, y).size(16, 16).submit();
@@ -34,6 +35,8 @@ import com.crystalgraphics.api.vector.svg.CgSvg;
  *   <li>An SVG brush binds the file's {@code currentColor} with {@link #color}, black by default, and multiplies
  *       everything by {@link #tint}: one document, many colours in a frame. Region, nine-slice, tiling, sampler and
  *       premultiplied are an image's and do not apply.</li>
+ *   <li>A brush over a 2D array ({@code CgTexture2DArray}) draws its layer 0 unless {@link #layer} names another;
+ *       region, nine-slice and tiling are in that layer's pixels.</li>
  *   <li>A brush is a value: every setter answers a new one. Build it once.</li>
  * </ul>
  */
@@ -45,6 +48,7 @@ public final class CgBrush implements CgPaint {
     @Nullable
     private CgSvg svg;
     private int x, y, width = -1, height = -1;
+    private int layer;
     @Nullable
     private CgNineSlice nineSlice;
     private CgTiling tiling = CgTiling.STRETCH;
@@ -68,6 +72,7 @@ public final class CgBrush implements CgPaint {
         b.y = y;
         b.width = width;
         b.height = height;
+        b.layer = layer;
         b.nineSlice = nineSlice;
         b.tiling = tiling;
         b.edges = edges;
@@ -123,6 +128,20 @@ public final class CgBrush implements CgPaint {
         b.y = y;
         b.width = width;
         b.height = height;
+        return b;
+    }
+
+    /**
+     * This brush drawing layer {@code layer} of its 2D array.
+     *
+     * @throws IllegalStateException when its texture is not an array
+     */
+    public CgBrush layer(int layer) {
+        image("a layer");
+        if (!texture.isArray()) throw new IllegalStateException("a layer is a 2D array's; " + texture + " is not one");
+        if (layer < 0) throw new IllegalArgumentException("layer " + layer);
+        CgBrush b = copy();
+        b.layer = layer;
         return b;
     }
 
@@ -243,6 +262,11 @@ public final class CgBrush implements CgPaint {
         return height > 0 ? height : texture == null ? 0 : texture.getHeight();
     }
 
+    /** The layer of its 2D array it draws; 0 for any other texture. */
+    public int layer() {
+        return layer;
+    }
+
     @Nullable
     public CgNineSlice nineSlice() {
         return nineSlice;
@@ -298,7 +322,7 @@ public final class CgBrush implements CgPaint {
         if (this == o) return true;
         if (!(o instanceof CgBrush b)) return false;
         return texture == b.texture && svg == b.svg && color == b.color && flat == b.flat
-                && Float.compare(strokeWidth, b.strokeWidth) == 0 && fit == b.fit && x == b.x && y == b.y && width == b.width && height == b.height
+                && Float.compare(strokeWidth, b.strokeWidth) == 0 && fit == b.fit && x == b.x && y == b.y && width == b.width && height == b.height && layer == b.layer
                 && Objects.equals(nineSlice, b.nineSlice) && tiling == b.tiling && edges == b.edges
                 && sampler.equals(b.sampler) && tint == b.tint && premultiplied == b.premultiplied;
     }
@@ -315,6 +339,7 @@ public final class CgBrush implements CgPaint {
         h = 31 * h + y;
         h = 31 * h + width;
         h = 31 * h + height;
+        h = 31 * h + layer;
         h = 31 * h + Objects.hashCode(nineSlice);
         h = 31 * h + tiling.hashCode();
         h = 31 * h + edges.hashCode();
@@ -329,7 +354,8 @@ public final class CgBrush implements CgPaint {
             return "CgBrush[" + svg + String.format(" color #%08X tint #%08X", color, tint) + (flat ? " flat " + strokeWidth : "")
                     + " " + fit + ']';
         }
-        return "CgBrush[" + texture + (hasRegion() ? " " + x + "," + y + " " + width + "x" + height : "")
+        return "CgBrush[" + texture + (texture != null && texture.isArray() ? " layer " + layer : "")
+                + (hasRegion() ? " " + x + "," + y + " " + width + "x" + height : "")
                 + (nineSlice != null ? " " + nineSlice : "") + " " + tiling + String.format(" #%08X", tint)
                 + (premultiplied ? " premultiplied" : "") + ']';
     }

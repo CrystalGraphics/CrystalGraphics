@@ -51,6 +51,10 @@ public final class CgUiElements {
      * pixel on the shared edge to one of the two, so a seam inside a pixel is covered once. Left, top, right, bottom.
      */
     public static final int FLAG_HARD_LEFT = 512, FLAG_HARD_TOP = 1024, FLAG_HARD_RIGHT = 2048, FLAG_HARD_BOTTOM = 4096;
+    /** An image or mask from a layer of a 2D array, {@code _MainArray} at {@link #ARRAY_SLOT}; the layer in {@code PAINT}. */
+    public static final int FLAG_ARRAY = 8192;
+    /** The primitive's texture slots: an image's, and a 2D array's. */
+    public static final int IMAGE_SLOT = 0, ARRAY_SLOT = 1;
 
     /** Float offsets of the record's fields: std430, as {@link CgInstanceKind#ELEMENT}'s format lays them out. */
     public static final int RECT = 0, UV = 4, RADII = 8, BORDER_COLOR = 12, WIDTHS_TR = 16, WIDTHS_BL = 17, COLOR = 18,
@@ -97,6 +101,12 @@ public final class CgUiElements {
         r[at + FLAGS] = Float.intBitsToFloat(flags | kind);
         r[at + COLOR] = Float.intBitsToFloat(argb);
         r[at + PAINT] = kind == FILL_GRADIENT ? Float.intBitsToFloat((int) paint) : paint;
+    }
+
+    /** The image or mask fill at {@code at} read from layer {@code layer} of a 2D array. */
+    public static void layer(float[] r, int at, int layer) {
+        flag(r, at, FLAG_ARRAY, true);
+        r[at + PAINT] = Float.intBitsToFloat(layer);
     }
 
     /** The fill kind of the record at {@code at}: one of {@code FILL_*}. */

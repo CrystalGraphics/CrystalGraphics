@@ -342,4 +342,6 @@ public final class CgTexture2DArray extends CgTextureAbstract {
     }
 
     @Override public int getTarget() { return GL_TEXTURE_2D_ARRAY; }
+
+    @Override public boolean isArray() { return true; }
 }

@@ -7,6 +7,7 @@ EngineBuffers { element clip gradient }
 
 Properties {
     _MainTex ("Image", sampler2D) = "white"
+    _MainArray ("Image array", sampler2DArray) = "white"
 }
 
 // Drawn in paint order, never depth-tested: a material of yours on a box draws as the canvas's own element does
@@ -51,7 +52,10 @@ void fragment(in v2f i, out vec4 fragColor) {
     vec2 param = i._cg_in_local / size;
     vec4 uvRect = CG_ELEMENT(n).uv;
     vec2 uv = mix(uvRect.xy, uvRect.zw, clamp(param, 0.0, 1.0));
-    vec4 texel = texture(_MainTex, uv);
+    // An array's layer by uv's own gradients: a texture read inside a branch has none of its own
+    vec2 uvDx = dFdx(uv), uvDy = dFdy(uv);
+    vec4 texel = (flags & uint(CG_ELEMENT_ARRAY)) != 0u
+            ? textureGrad(_MainArray, vec3(uv, float(CG_ELEMENT(n).paint)), uvDx, uvDy) : texture(_MainTex, uv);
     // A path: its paint maps over the path's own box by the frame the radii hold, after uv took the raster's region
     bool covered = (flags & uint(CG_ELEMENT_COVERAGE)) != 0u;
     vec2 paintParam = param, paintSize = size;

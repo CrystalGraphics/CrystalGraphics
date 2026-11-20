@@ -2520,19 +2520,20 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public translate (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public triangle (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvasTriangle;
   method public view (Lcom/crystalgraphics/render/view/CgView;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
-  method public,static elementMaterial ()Lcom/crystalgraphics/api/material/CgMaterial;
   method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
   method public,static releaseAll ()V
 com/crystalgraphics/api/canvas/CgCanvasBox
   access public,final
   extends java/lang/Object
   method public backdropFilter (Lcom/crystalgraphics/api/paint/effect/CgBackdropFilter;)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
+  method public blend (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public border (FFFFIIII)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public border (FI)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public draw ()Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public fill (I)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public fill (Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public fill (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
+  method public mask (Lcom/crystalgraphics/api/paint/brush/CgBrush;I)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public mask (Lcom/crystalgraphics/api/texture/CgTexture;I)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public material (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/api/canvas/CgCanvasBox;
   method public premultiplied ()Lcom/crystalgraphics/api/canvas/CgCanvasBox;
@@ -2702,6 +2703,16 @@ com/crystalgraphics/api/canvas/CgPhotograph$Sink
   access public,abstract,interface
   extends java/lang/Object
   method public,abstract accept (II[B)V
+com/crystalgraphics/api/canvas/CgUiMaterials
+  access public,final
+  extends java/lang/Object
+  field public,static,final ELEMENT Ljava/lang/String;
+  field public,static,final IMAGE Ljava/lang/String;
+  method public,static element ()Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static element (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static image (Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterial;
+  method public,static image (Lcom/crystalgraphics/api/texture/CgTexture;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
+  method public,static image (Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/material/CgBlendMode;)Lcom/crystalgraphics/api/material/CgMaterialInstance;
 com/crystalgraphics/api/font/CgDefaultFont
   access public,final
   extends java/lang/Object
@@ -3869,6 +3880,8 @@ com/crystalgraphics/api/paint/brush/CgBrush
   method public flat (F)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public hasRegion ()Z
   method public hashCode ()I
+  method public layer ()I
+  method public layer (I)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public nineSlice ()Lcom/crystalgraphics/api/paint/brush/CgNineSlice;
   method public nineSlice (Lcom/crystalgraphics/api/paint/brush/CgNineSlice;)Lcom/crystalgraphics/api/paint/brush/CgBrush;
   method public premultiplied ()Z
@@ -4584,6 +4597,7 @@ com/crystalgraphics/api/texture/CgTexture
   access public,abstract,interface
   extends java/lang/Object
   method public getLevels ()I
+  method public isArray ()Z
   method public keepsStorage ()Z
   method public sampler ()Lcom/crystalgraphics/api/texture/CgSampler;
   method public,abstract getHeight ()I
@@ -8786,6 +8800,7 @@ com/crystalgraphics/gpu/resource/CgTexture2DArray
   method public getSourcePaths ()[Ljava/lang/String;
   method public getTarget ()I
   method public growLayers (I)V
+  method public isArray ()Z
   method public release ()V
   method public sampler (Lcom/crystalgraphics/api/texture/CgSampler;)Lcom/crystalgraphics/gpu/resource/CgTexture2DArray;
   method public uploadLayerRegion (IIIIIIILjava/nio/ByteBuffer;)V
@@ -15418,6 +15433,7 @@ com/crystalgraphics/render/ui/element/CgQuadRecord
 com/crystalgraphics/render/ui/element/CgUiElements
   access public,final
   extends java/lang/Object
+  field public,static,final ARRAY_SLOT I
   field public,static,final BORDER_COLOR I
   field public,static,final CLIP I
   field public,static,final COLOR I
@@ -15430,6 +15446,7 @@ com/crystalgraphics/render/ui/element/CgUiElements
   field public,static,final FILL_SHADOW I
   field public,static,final FILL_TEXTURE I
   field public,static,final FLAGS I
+  field public,static,final FLAG_ARRAY I
   field public,static,final FLAG_BORDER I
   field public,static,final FLAG_CHECKER I
   field public,static,final FLAG_COVERAGE I
@@ -15440,6 +15457,7 @@ com/crystalgraphics/render/ui/element/CgUiElements
   field public,static,final FLAG_PREMULTIPLIED I
   field public,static,final FLAG_ROUNDED I
   field public,static,final FLOATS I
+  field public,static,final IMAGE_SLOT I
   field public,static,final MACRO_NAME Ljava/lang/String;
   field public,static,final MAX_PER_DRAW I
   field public,static,final NODE I
@@ -15457,6 +15475,7 @@ com/crystalgraphics/render/ui/element/CgUiElements
   method public,static flag ([FIIZ)V
   method public,static half2 (FF)I
   method public,static kind ([FI)I
+  method public,static layer ([FII)V
   method public,static nodes ([FIFI)V
   method public,static opacity ([FIFF)V
   method public,static paintFrame ([FIFFFFFFFF)V

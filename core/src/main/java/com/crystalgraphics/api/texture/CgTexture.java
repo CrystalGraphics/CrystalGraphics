@@ -46,6 +46,11 @@ public interface CgTexture {
         return null;
     }
 
+    /** Whether it is a 2D array, sampled by layer: a {@code CgTexture2DArray}, or a graph texture of layers. */
+    default boolean isArray() {
+        return false;
+    }
+
     /** Its width at level 0, in texels. */
     int getWidth();
 

@@ -4,8 +4,10 @@ import java.util.Objects;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.api.material.CgBlendMode;
 import com.crystalgraphics.api.material.CgMaterialInterface;
 import com.crystalgraphics.api.paint.CgPaint;
+import com.crystalgraphics.api.paint.brush.CgBrush;
 import com.crystalgraphics.api.paint.effect.CgBackdropFilter;
 import com.crystalgraphics.api.paint.effect.CgShadow;
 import com.crystalgraphics.api.texture.CgTexture;
@@ -20,12 +22,16 @@ import com.crystalgraphics.api.vector.CgCornerRadii;
  * canvas.box(x, y, 160, 32).fill(CgGradient.linear(180).stop(0, top).stop(1, bottom)).radii(CgCornerRadii.of(8, 8, 0, 0)).draw();
  * canvas.box(x, y, 48, 48).fill(avatar).radius(24).shadow(CgShadow.of(0, 2, 6, 0x60000000)).draw();
  * canvas.box(x, y, w, h).material(myUiMaterial).fill(0xFFFFFFFF).draw();      // a #domain ui material, Primitive Element
+ * canvas.box(x, y, 64, 64).fill(spark).blend(CgBlendMode.ADDITIVE).draw();     // added onto what is behind
+ * canvas.box(x, y, 12, 16).mask(CgBrush.texture(digits).layer(7), 0xFFFFD040).draw();   // a 2D array's layer
  * }</pre>
  *
  * <ul>
  *   <li>Unset, a box is transparent with square corners, no border and no shadow: {@code draw()} draws nothing visible.</li>
  *   <li>Radii larger than the box shrink to fit, as CSS's do.</li>
  *   <li>A border is drawn inside the box, over its fill.</li>
+ *   <li>{@link #blend} is the canvas's own element's; a box with its own {@link #material} blends as that material's
+ *       state says, and naming both throws at {@code draw()}.</li>
  * </ul>
  */
 public final class CgCanvasBox {
@@ -43,6 +49,7 @@ public final class CgCanvasBox {
     int borderTopColor, borderRightColor, borderBottomColor, borderLeftColor;
     @Nullable CgShadow shadow;
     @Nullable CgMaterialInterface material;
+    @Nullable CgBlendMode blend;
     @Nullable CgBackdropFilter backdrop;
     /** Whether a fill was given: unset, a box is transparent. */
     boolean filled;
@@ -67,6 +74,7 @@ public final class CgCanvasBox {
         borderTop = borderRight = borderBottom = borderLeft = 0f;
         shadow = null;
         material = null;
+        blend = null;
         backdrop = null;
         filled = false;
         return this;
@@ -78,6 +86,7 @@ public final class CgCanvasBox {
         this.argb = argb;
         this.paint = null;
         this.texture = null;
+        this.mask = false;
         return this;
     }
 
@@ -86,6 +95,7 @@ public final class CgCanvasBox {
         this.filled = true;
         this.paint = paint;
         this.texture = null;
+        this.mask = false;
         return this;
     }
 
@@ -105,6 +115,32 @@ public final class CgCanvasBox {
         this.paint = null;
         this.mask = true;
         this.argb = argb;
+        return this;
+    }
+
+    /**
+     * Filled by the box's colour where {@code brush}'s image is opaque: its region, slices, tiling and layer as a fill
+     * of it would draw them.
+     *
+     * @throws IllegalArgumentException for an SVG brush, whose silhouette is {@code CgBrush.flat}
+     */
+    public CgCanvasBox mask(CgBrush brush, int argb) {
+        if (brush.svg() != null) throw new IllegalArgumentException("an SVG brush's silhouette is its flat(): " + brush);
+        this.filled = true;
+        this.paint = brush;
+        this.texture = null;
+        this.mask = true;
+        this.argb = argb;
+        return this;
+    }
+
+    /**
+     * Blended onto what is behind it by {@code blend}: {@code ADDITIVE} adds light, {@code MODULATE} multiplies,
+     * {@code SUBTRACT} takes away, {@code MASK} keeps what is behind by its alpha. {@code PREMULTIPLIED}, over, unless
+     * set. Inside a layer a {@code MODULATE} box is refused: a layer has no multiply form.
+     */
+    public CgCanvasBox blend(CgBlendMode blend) {
+        this.blend = CgUiMaterials.require(blend);
         return this;
     }
 

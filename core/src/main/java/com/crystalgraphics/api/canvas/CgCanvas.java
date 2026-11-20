@@ -110,7 +110,6 @@ import org.joml.Matrix4fc;
  */
 public final class CgCanvas {
 
-    private static final String ELEMENT_SHADER = "crystalgraphics:shaders/ui/element.shader";
     private static final int MAX_TILES = 4096;
     /** A save's fields: the affine, opacity, intensity, clip entry, clip rect and whether it is one, clip node, cull rect. */
     private static final int SAVED = 23;
@@ -194,34 +193,12 @@ public final class CgCanvas {
     private float[] stack = new float[SAVED * 16];
     private int depth;
 
-    @Nullable private static CgMaterial element, elementAdditive, elementMask;
-
-    /** The material every item draws with unless it names its own: the element primitive's paint, premultiplied. */
-    public static synchronized CgMaterial elementMaterial() {
-        if (element == null) element = elementUnder(CgBlendMode.PREMULTIPLIED);
-        return element;
-    }
-
-    /** The element primitive added on: a glow layer's composite. */
-    private static synchronized CgMaterial elementAdditive() {
-        if (elementAdditive == null) elementAdditive = elementUnder(CgBlendMode.ADDITIVE);
-        return elementAdditive;
-    }
-
-    /** The element primitive as a mask: what is under it kept by its alpha. */
-    private static synchronized CgMaterial elementMask() {
-        if (elementMask == null) elementMask = elementUnder(CgBlendMode.MASK);
-        return elementMask;
-    }
-
     /**
      * What this canvas draws ahead of its first frame: the element under each blend it composites with, glass in every
      * set of its layers, and its layers' blur and colour-matrix kernels. {@code CgCanvasPrimitives.precache} calls it.
      */
     public static void precache(CgPipelineList list) {
-        list.addPass(elementMaterial(), CgInstanceKind.ELEMENT);
-        list.addPass(elementAdditive(), CgInstanceKind.ELEMENT);
-        list.addPass(elementMask(), CgInstanceKind.ELEMENT);
+        CgUiMaterials.precache(list);
         CgCanvasGlass.precache(list);
         list.kernels(() -> {
             CgGpuOps.precacheBlur(CgFormat.RGBA16_FLOAT);
@@ -232,15 +209,8 @@ public final class CgCanvas {
 
     /** Forgets its shared materials at a context's teardown: the material registry frees them. Engine. */
     public static synchronized void releaseAll() {
-        element = elementAdditive = elementMask = null;
+        CgUiMaterials.releaseAll();
         CgCanvasGlass.release();
-    }
-
-    private static CgMaterial elementUnder(CgBlendMode blend) {
-        CgMaterial m = CgMaterial.load(ELEMENT_SHADER,
-                CgMaterialState.builder().blend(blend).twoSided().disableDepthTest().build());
-        m.precache();
-        return m;
     }
 
     /**
@@ -922,7 +892,7 @@ public final class CgCanvas {
     /** The mask drawn into the layer, keeping what it covers: a path's coverage, or a paint over the picture. */
     private void mask(CgCanvasLayer l) {
         if (l.maskPath != null) {
-            pathMaterial = elementMask();
+            pathMaterial = CgUiMaterials.element(CgBlendMode.MASK);
             try {
                 if (l.maskStroke != null) {
                     stroke(l.maskPath, l.maskStroke, 0xFFFFFFFF);
@@ -946,7 +916,7 @@ public final class CgCanvas {
             a = d = 1f;
             b = c = tx = ty = 0f;
             nodeStale = true;
-            box(l.x0, l.y0, l.w, l.h).fill(l.maskPaint).material(elementMask()).draw();
+            box(l.x0, l.y0, l.w, l.h).fill(l.maskPaint).material(CgUiMaterials.element(CgBlendMode.MASK)).draw();
             restore();
             maskX0 = -Float.MAX_VALUE;
             maskY0 = -Float.MAX_VALUE;
@@ -1005,11 +975,11 @@ public final class CgCanvas {
         filters.begin(recording, out, CgLoad.CLEAR, filterLens.screenLens(pw, ph));
         if (shadow != null) {
             filterElement(CgUiElements.FILL_MASK, shadowArgb, false, dx, dy, pw, ph);
-            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, shadow, null, 0, filterRecord, 0, 1,
+            filters.draw(CgInstanceKind.ELEMENT, CgUiMaterials.element(), null, shadow, null, 0, filterRecord, 0, 1,
                     dx, dy, dx + pw, dy + ph);
         }
         filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, 0f, 0f, pw, ph);
-        CgMaterialInterface material = elementMaterial();
+        CgMaterialInterface material = CgUiMaterials.element();
         if (through != null) {
             CgMaterialInstance instance = filterInstance(through.material());
             instance.sampler(through.textureParameter(), 0, picture);
@@ -1070,7 +1040,7 @@ public final class CgCanvas {
         CgUiElements.uv(record, 0, (ex0 - l.x0) / l.w, 1f - (ey0 - l.y0) / l.h, (ex1 - l.x0) / l.w, 1f - (ey1 - l.y0) / l.h);
         CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
         finish(base, 1f);
-        element(l.blend == CgBlendMode.ADDITIVE ? elementAdditive() : elementMaterial(), picture, null, base, record, 0, 1,
+        element(l.blend == CgBlendMode.ADDITIVE ? CgUiMaterials.element(CgBlendMode.ADDITIVE) : CgUiMaterials.element(), picture, null, base, record, 0, 1,
                 ex0, ey0, ex1, ey1);
     }
 
@@ -1269,7 +1239,7 @@ public final class CgCanvas {
         CgUiElements.uv(record, 0, 0f, 1f, w / tw, 1f - h / th);
         CgUiElements.rect(record, 0, x0, y0, x0 + w, y0 + h);
         finish(base, 1f);
-        element(elementMaterial(), kept.texture, null, base, record, 0, 1, x0, y0, x0 + w, y0 + h);
+        element(CgUiMaterials.element(), kept.texture, null, base, record, 0, 1, x0, y0, x0 + w, y0 + h);
     }
 
     /**
@@ -1830,7 +1800,7 @@ public final class CgCanvas {
         paintFrame(path, ex0, ey0, cached);
         CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
         finish(base, gain);
-        element(pathMaterial != null ? pathMaterial : elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1,
+        element(pathMaterial != null ? pathMaterial : CgUiMaterials.element(), texture, null, base, record, 0, 1, ex0, ey0, ex1,
                 ey1);
     }
 
@@ -2084,7 +2054,7 @@ public final class CgCanvas {
                 (cell.x() + w) / (float) CgPathCache.SIZE, 1f - (cell.y() + h) / (float) CgPathCache.SIZE);
         CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
         finish(base, 1f);
-        element(elementMaterial(), cell.texture(), null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+        element(CgUiMaterials.element(), cell.texture(), null, base, record, 0, 1, ex0, ey0, ex1, ey1);
         pathDraws++;
     }
 
@@ -2216,7 +2186,7 @@ public final class CgCanvas {
         CgUiElements.uv(record, 0, u0, v0, u1, v1);
         CgUiElements.rect(record, 0, ex0, ey0, ex1, ey1);
         finish(base, 1f);
-        element(elementMaterial(), texture, null, base, record, 0, 1, ex0, ey0, ex1, ey1);
+        element(CgUiMaterials.element(), texture, null, base, record, 0, 1, ex0, ey0, ex1, ey1);
     }
 
     /** Records op {@code op}'s coverage into {@code texture} under the affine, landing the canvas's pass first. */
@@ -2371,7 +2341,7 @@ public final class CgCanvas {
         if (behind != null) {
             float y = capture.getHeight() - h;
             filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, 0f, y, w, h);
-            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, target, null, 0, filterRecord, 0, 1,
+            filters.draw(CgInstanceKind.ELEMENT, CgUiMaterials.element(), null, target, null, 0, filterRecord, 0, 1,
                     0f, y, w, y + h);
         }
         for (int i = 0; i < layers; i++) {
@@ -2379,7 +2349,7 @@ public final class CgCanvas {
             if (!l.opened) continue;
             float x = l.ownerX + l.x0, y = capture.getHeight() - h + l.ownerY + l.y0;
             filterElement(CgUiElements.FILL_TEXTURE, 0xFFFFFFFF, true, x, y, l.w, l.h);
-            filters.draw(CgInstanceKind.ELEMENT, elementMaterial(), null, l.texture, null, 0, filterRecord, 0, 1,
+            filters.draw(CgInstanceKind.ELEMENT, CgUiMaterials.element(), null, l.texture, null, 0, filterRecord, 0, 1,
                     x, y, x + l.w, y + l.h);
         }
         filters.end();
@@ -2432,7 +2402,12 @@ public final class CgCanvas {
             }
         }
         pass();
-        CgMaterialInterface material = box.material != null ? box.material : elementMaterial();
+        if (box.material != null && box.blend != null) {
+            throw new IllegalStateException("a box's own material blends as its state says; blend(" + box.blend
+                    + ") is the canvas's element's");
+        }
+        CgMaterialInterface material = box.material != null ? box.material
+                : CgUiMaterials.element(box.blend != null ? box.blend : CgBlendMode.PREMULTIPLIED);
         if (box.shadow != null && !box.shadow.inside()) shadow(box, material);
         CgPaint paint = box.paint;
         if (paint instanceof CgBrush brush && brush.svg() != null) {
@@ -2467,8 +2442,10 @@ public final class CgCanvas {
         } else if (paint instanceof CgBrush brush) {
             texture = brush.texture();
             sampler = brush.sampler();
-            CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, mul(brush.tint(), argb), 0f);
+            CgUiElements.fill(record, 0, box.mask ? CgUiElements.FILL_MASK : CgUiElements.FILL_TEXTURE,
+                    mul(brush.tint(), argb), 0f);
             CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, brush.premultiplied());
+            if (texture.isArray()) CgUiElements.layer(record, 0, brush.layer());
             float tw = texture.getWidth(), th = texture.getHeight();
             if (brush.hasRegion() && tw > 0 && th > 0) {
                 CgUiElements.uv(record, 0, brush.regionX() / tw, brush.regionY() / th,
@@ -2499,6 +2476,7 @@ public final class CgCanvas {
         }
         tiles.brush = brush;
         tiles.argb = mul(brush.tint(), box.argb);
+        tiles.mask = box.mask;
         tiles.material = material;
         tiles.x0 = box.x;
         tiles.y0 = box.y;
@@ -2528,14 +2506,16 @@ public final class CgCanvas {
         @Nullable CgBrush brush;
         @Nullable CgMaterialInterface material;
         int argb;
+        boolean mask;
         /** The box the pieces fill: a piece's side on it fades, every other side is hard. */
         float x0, y0, x1, y1;
 
         @Override
         public void piece(float x, float y, float w, float h, float u0, float v0, float u1, float v1) {
             clear();
-            CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, argb, 0f);
+            CgUiElements.fill(record, 0, mask ? CgUiElements.FILL_MASK : CgUiElements.FILL_TEXTURE, argb, 0f);
             CgUiElements.flag(record, 0, CgUiElements.FLAG_PREMULTIPLIED, brush.premultiplied());
+            if (brush.texture().isArray()) CgUiElements.layer(record, 0, brush.layer());
             CgUiElements.uv(record, 0, u0, v0, u1, v1);
             float e = 1e-3f;
             CgUiElements.flag(record, 0, CgUiElements.FLAG_HARD_LEFT, x > x0 + e);

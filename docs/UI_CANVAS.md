@@ -75,6 +75,22 @@ canvas.box(x, y, 160, 32)                                    // a box: describe,
 canvas.image(texture, x, y, 32, 32);                         // stretched
 canvas.image(CgBrush.sprite("mymod:hud", "panel"), x, y, w, h);   // the sheet's nine-slice and tiling
 canvas.box(x, y, 16, 16).mask(icon, 0xFFFFD040).draw();      // a silhouette in any colour
+canvas.box(x, y, 12, 16).fill(CgBrush.texture(digits).layer(7)).draw();          // a layer of a 2D array
+canvas.box(x, y, 12, 16).mask(CgBrush.texture(digits).layer(7), gold).draw();    // ...as a silhouette
+canvas.box(x, y, 64, 64).fill(spark).blend(CgBlendMode.ADDITIVE).draw();         // added onto what is behind
+```
+
+**A blend per box**: `PREMULTIPLIED` (over) unless `blend(...)` names `ADDITIVE`, `MODULATE` (multiply),
+`SUBTRACT` or `MASK` (keeps what is behind by the box's alpha). It is the item's own, as Skia's `SkPaint` blend: no
+layer, no extra pass. A layer's `blend` blends a group as one picture; a `MODULATE` box inside a layer is refused, as
+a layer has no multiply form. A box with its own `material(...)` blends as that material's state says.
+
+**Ready materials** for an API that takes a material instead of a paint are `CgUiMaterials`: `image(texture)` (and
+`image(texture, blend)`) draws a texture over the element, `element(blend)` is the canvas's own element.
+
+```java
+static final CgMaterialInstance SPLASH = CgUiMaterials.image(splash);   // made once, deleted by its owner
+target.drawMaterial(SPLASH);                                            // CgRenderTarget: the texture over it all
 ```
 
 ## State

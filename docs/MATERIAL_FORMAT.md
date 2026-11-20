@@ -827,7 +827,8 @@ that blend wants, as Unreal's simple element shader does: straight alpha under `
 Target }` says the material converts itself, as glass does over a backdrop already in the target's encoding.
 
 **An image** is `_MainTex`, which `Element` declares: a box's `image(...)` binds it, and `s.color` already holds it
-tinted. A material that reads it itself samples at `i.uv`:
+tinted. `Element` also declares `_MainArray`, a `sampler2DArray` a brush over a 2D array binds (`CgBrush.layer`). A material that reads the image itself samples at `i.uv`; the shipped
+one that does is `CgUiMaterials.image`:
 
 ```glsl
 // An image's luminance, tinted by the box's colour
