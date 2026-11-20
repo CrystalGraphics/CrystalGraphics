@@ -57,8 +57,8 @@ import java.util.function.Consumer;
  *
  * <ul>
  *   <li>A text's {@code height} is a line's height in blocks: its draw's {@code basePx()} maps to it.</li>
- *   <li>Its draw takes colour and gradient fills, outlines, lines and shadows; an additive or material layer throws,
- *       since every record draws under one material.</li>
+ *   <li>Its draw takes every layer a text style has, additive and material layers included: each look is a batch of
+ *       its own.</li>
  *   <li>Held components ({@link #held(List)}) come first, each in a slot of its own, so their order never moves; then
  *       the frame's texts, the {@code i}th the same text frame to frame.</li>
  *   <li>Unlit and unfogged.</li>

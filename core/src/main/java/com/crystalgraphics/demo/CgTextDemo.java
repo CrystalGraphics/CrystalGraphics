@@ -25,8 +25,8 @@ import org.joml.Quaternionf;
  * fixed where it was placed and facing where the camera stood then, a caption under each word naming what it shows: gradients over a glyph and a line; outlines under a fill,
  * over it and alone; stacked outlines; hard, soft, outlined, inset and additive shadows; skew, letter spacing and case;
  * a counting damage number; and seven shader stations, each a Text-domain material (one shader, {@code demo/text.shader},
- * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Each word is a label
- * ({@code scene.labelOnce}), as a mod draws world text whose style takes an additive or material layer.
+ * its effect a value): galaxy, fire, an HSV rainbow, electricity, plasma, a hologram and a glitch. Each word is text in the
+ * world ({@code scene.textOnce}), as a mod draws world text whose style takes an additive or material layer.
  *
  * <pre>{@code
  * CgTextDemo text = new CgTextDemo(labelFont);
