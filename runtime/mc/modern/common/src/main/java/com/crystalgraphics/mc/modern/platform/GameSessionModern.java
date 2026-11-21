@@ -13,6 +13,14 @@ import net.minecraft.client.Minecraft;
 //? if >=1.19 {
 import net.minecraft.client.gui.screens.worldselection.WorldOpenFlows;
 //?}
+//? if >=26.1 {
+/*import com.mojang.serialization.Dynamic;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.util.datafix.DataFixers;
+import net.minecraft.util.filefix.FileFixerUpper;
+import net.minecraft.util.worldupdate.UpgradeProgress;
+import net.minecraft.world.level.storage.LevelStorageSource;
+*///?}
 
 /**
  * {@link CgGameSession} on 1.13+. It loads a save; with none on disk it loads one {@link CgGameSession#makeSave} wrote,
@@ -52,6 +60,9 @@ public final class GameSessionModern implements CgGameSession.Host {
         String name = CgGameSession.saveToEnter(saves, save);
         if (name == null) name = CgGameSession.makeSave(saves);
         LOGGER.info("[cg] loading world '{}'", name);
+        //? if >=26.1 {
+        /*if (CgGameSession.MADE_SAVE.equals(name)) fixMadeSave(mc, name);
+        *///?}
         // Compiled on each side of the break, never reflective: each thin jar is remapped as it is built, and a lookup by
         // Mojang name is a string no remapper rewrites. The Runnable is the give-up path, not a completion callback.
         //? if >=1.20.5 {
@@ -68,6 +79,20 @@ public final class GameSessionModern implements CgGameSession.Host {
         *///?}
         return true;
     }
+
+    //? if >=26.1 {
+    /*// A save the file fixer has work for (any pre-26.3 one, on 26.3) opens behind two prompts: back it up, then join
+    // now. The one this host made is fixed here instead, so a run never waits on a click; anyone else's keeps them.
+    private static void fixMadeSave(Minecraft mc, String name) {
+        try (LevelStorageSource.LevelStorageAccess access = mc.getLevelSource().createAccess(name)) {
+            Dynamic<?> data = access.getUnfixedDataTag(false);
+            FileFixerUpper fixer = DataFixers.getFileFixer();
+            if (fixer.requiresFileFixing(NbtUtils.getDataVersion(data))) fixer.fix(access, data, new UpgradeProgress());
+        } catch (Exception e) {
+            LOGGER.warn("[cg] could not upgrade '{}' before loading it; Minecraft will ask", name, e);
+        }
+    }
+    *///?}
 
     @Override
     public void quit() {

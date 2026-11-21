@@ -116,8 +116,9 @@ public final class CgGameSession {
 
     /**
      * Makes a save under {@code saves} for a host whose era cannot make one through its own API: {@link #MADE_SAVE}, a
-     * creative superflat world with commands, written at 1.13.2's format. Every modern version upgrades it as it loads
-     * (an older release opens in a newer one without a backup prompt), and its level makes its spawn on first load.
+     * creative superflat world with commands, written at 1.13.2's format. Every modern version upgrades it as it loads,
+     * and its level makes its spawn on first load. An older release opens without a prompt, except where the version's
+     * file fixer has work for it (26.3): Minecraft then asks twice, so the host runs the fixer on this save itself first.
      *
      * <pre>{@code
      * String name = CgGameSession.saveToEnter(saves, save);
