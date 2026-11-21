@@ -301,7 +301,7 @@ public class CgNetObjectsTest {
         TURRET.spawn(rig.at(0, 0, 0)).setInt(AMMO, 7).start();
         rig.restart();
         Path saved = root.resolve("crystalgraphics/objects/test");
-        Files.copy(saved.resolve("turret.dat"), saved.resolve("late.dat"));
+        Files.copy(saved.resolve("turret.jsonc"), saved.resolve("late.jsonc"));
 
         CgNetType late = CgNetType.define("test:late").fields(HEAT, AMMO, SHOWN, SEED, SECRET, LABEL, TARGET, RANGE)
                 .persisted().build();

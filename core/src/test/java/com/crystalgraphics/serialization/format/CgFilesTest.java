@@ -7,6 +7,7 @@ import com.crystalgraphics.serialization.nbt.CgNbtTag;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgCodecException;
+import com.crystalgraphics.serialization.CgPlainOps;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -19,6 +20,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -57,6 +59,35 @@ public class CgFilesTest {
         assertEquals(want.ki(), got.ki());
         assertEquals(want.skills(), got.skills());
         assertArrayEquals(want.seed(), got.seed());
+    }
+
+    @Test
+    public void aUuidIsTextWherePeopleReadItAndTwoLongsWhereTheyDoNot() throws IOException {
+        UUID id = UUID.fromString("8667ba71-b85a-4004-af54-457a9734eed7");
+        Path jsonc = folder.getRoot().toPath().resolve("id.jsonc");
+        CgFiles.JSONC.write(jsonc, CgCodecs.UUID, id);
+        assertEquals("\"8667ba71-b85a-4004-af54-457a9734eed7\"", Files.readString(jsonc).trim());
+        assertEquals(id, CgFiles.JSONC.read(jsonc, CgCodecs.UUID));
+        CgFileFormat[] texts = {CgFiles.JSON, CgFiles.YAML};
+        for (int i = 0; i < texts.length; i++) {
+            CgFileFormat text = texts[i];
+            Path file = folder.getRoot().toPath().resolve("id" + i + ".txt");
+            text.write(file, CgCodecs.UUID, id);
+            assertTrue(text + ": " + Files.readString(file), Files.readString(file).contains("8667ba71-b85a"));
+            assertEquals(id, text.read(file, CgCodecs.UUID));
+        }
+
+        Path binary = folder.getRoot().toPath().resolve("id.bin");
+        CgFiles.write(binary, CgCodecs.UUID, id);
+        assertEquals("two longs on disk, no text", id, CgFiles.read(binary, CgCodecs.UUID));
+        assertFalse(CgPlainOps.INSTANCE.humanReadable());
+
+        // either form reads in either format: what a person typed, what an older file held
+        Files.writeString(jsonc, "[" + id.getMostSignificantBits() + ", " + id.getLeastSignificantBits() + "]");
+        assertEquals(id, CgFiles.JSONC.read(jsonc, CgCodecs.UUID));
+        assertEquals(id, CgCodecs.UUID.decode(CgPlainOps.INSTANCE, id.toString()));
+        Files.writeString(jsonc, "\"not-a-uuid\"");
+        assertThrows(CgCodecException.class, () -> CgFiles.JSONC.read(jsonc, CgCodecs.UUID));
     }
 
     @Test

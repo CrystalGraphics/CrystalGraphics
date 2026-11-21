@@ -27,7 +27,7 @@ import com.crystalgraphics.serialization.CgCodecs;
  * # assets/mymod/net_types/ki.yaml        -> the type mymod:ki
  * _v: 1
  * fields:
- *   current: { kind: float, fallback: 0.0, sync: owner }
+ *   current: { kind: float, fallback: 0.0, sync: owner, persisted: true }   # kept with the entity
  *   charging: { kind: bool }
  * events:
  *   overcharged: { payload: float }
@@ -43,7 +43,8 @@ import com.crystalgraphics.serialization.CgCodecs;
  *       or anyone connects.</li>
  *   <li>The same type in Java is {@code CgNetType.define("mymod:ki").fields(...).onEntities(...)}: a file and a
  *       declaration of the same shape are one type.</li>
- *   <li>{@code persisted: true} fails at load: an entity's object is not saved with it yet.</li>
+ *   <li>A field's {@code persisted: true} saves it with the entity, through chunk unloads; the type's saves every field.
+ *       A local field persisted fails at load, naming it.</li>
  *   <li>A reload that changes its fields, events or holders fails by name until a restart.</li>
  * </ul>
  */
@@ -73,8 +74,8 @@ public final class CgNetTypeCompiler {
                 String name = String.valueOf(e.getKey());
                 Map<?, ?> f = (Map<?, ?>) e.getValue();
                 String sync = f.get("sync") == null ? "all" : String.valueOf(f.get("sync"));
-                if (persisted && sync.equals("local")) {
-                    throw new CgAssetException(id + ": fields." + name + ": a local field is never saved, and the type is persisted");
+                if (Boolean.TRUE.equals(f.get("persisted")) && sync.equals("local")) {
+                    throw new CgAssetException(id + ": fields." + name + ": a local field is never saved, and it is persisted");
                 }
                 fields.add(field(id, name, f, sync));
             }
@@ -87,12 +88,9 @@ public final class CgNetTypeCompiler {
                 events.add(payload == null ? CgNetEvent.of(name) : CgNetEvent.of(name, codec(String.valueOf(payload))));
             }
         }
-        if (persisted) {
-            // An entity's object rides its entity, and saving into the entity's own data is not built yet.
-            throw new CgAssetException(id + ": persisted: an entity's properties are not saved with it yet");
-        }
         CgNetType.Builder type = CgNetType.define(id).fields(fields.toArray(new CgNetField<?>[0]))
                 .events(events.toArray(new CgNetEvent<?>[0])).onEntities(entities(id, tree.get("entities")));
+        if (persisted) type.persisted();
         try {
             return type.buildOnce();
         } catch (IllegalArgumentException | IllegalStateException bad) {
@@ -118,6 +116,7 @@ public final class CgNetTypeCompiler {
         }
         if (Boolean.TRUE.equals(f.get("initial_only"))) field.initialOnly();
         if (Boolean.TRUE.equals(f.get("predicted"))) field.predicted();
+        if (Boolean.TRUE.equals(f.get("persisted"))) field.persisted();
         return field;
     }
 

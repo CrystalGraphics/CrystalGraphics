@@ -9,8 +9,8 @@ package com.crystalgraphics.mc.shared;
 public final class CrystalGraphicsForgeLevelMixins extends VariantMixins {
 
     public CrystalGraphicsForgeLevelMixins() {
-        super("crystalgraphics", new String[]{"ChunkWriteHook"}, "OpaquePassHook", "TransparentPassHook", "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook",
+        super("crystalgraphics", new String[]{"ChunkWriteHook", "EntitySaveHook"}, "OpaquePassHook", "TransparentPassHook", "LevelViewHook", "ExplosionHook", "LevelEventHook", "CameraHook", "SoundVolumeHook",
                 "FirstScreenHook",
-                "EntityRendererHook", "ActorRenderHook", "VanillaPoseHook");
+                "EntityRendererHook", "ShadowFieldsHook", "ShadowFieldsSrgHook", "ActorRenderHook", "VanillaPoseHook");
     }
 }

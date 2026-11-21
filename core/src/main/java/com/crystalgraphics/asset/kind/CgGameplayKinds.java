@@ -162,13 +162,14 @@ public final class CgGameplayKinds {
     /** What a net type's field holds: a primitive or a string (a codec type is Java's alone). */
     private static final CgValueType NET_KIND = CgValueType.enumOf("bool", "int", "long", "float", "double", "string");
 
-    /** One field of a net type: its kind, what it reads before it is held, and who is sent it. */
+    /** One field of a net type: its kind, what it reads before it is held, who is sent it, and whether it is saved. */
     static final CgType NET_FIELD = CgTypes.struct("crystalgraphics:net_type.field")
             .property("kind", NET_KIND).required()
             .property("fallback", VALUE)
             .property("sync", CgValueType.enumOf("all", "owner", "local")).defaultValue("all")
             .property("initial_only", BOOL).defaultValue(false)
             .property("predicted", BOOL).defaultValue(false)
+            .property("persisted", BOOL).defaultValue(false)
             .register();
 
     /** One event of a net type, and the kind of its payload; none without one. */

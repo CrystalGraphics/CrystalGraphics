@@ -20,7 +20,10 @@ import com.crystalgraphics.frame.CgWorld;
 import com.crystalgraphics.frame.CgWorldSubsystem;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbtOps;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.world.CgWorldQueries;
 
 /**
@@ -232,6 +235,8 @@ public final class CgNetEntities extends CgWorldSubsystem {
             CgNetObject obj = onServer ? s.byEntity.remove(entity) : id < 0 ? null : s.byId.remove(id + 1);
             if (obj == null) continue;
             s.all.remove(obj);
+            // a player's entity leaving (logging out, a dimension, a respawn) keeps what its object saved
+            if (onServer && obj.type.persisted && PlayerFiles.owns(obj)) PlayerFiles.leaving(obj);
             end(obj);
         }
     }
@@ -284,6 +289,126 @@ public final class CgNetEntities extends CgWorldSubsystem {
                 }
             }
         }
+    }
+
+    // ── Saved with the entity ───────────────────────────────────────────────────────────────
+
+    /**
+     * A persisted type's new object on {@code entity}, its values set from what the entity saved; a value that no longer
+     * decodes is logged and left at its fallback. Before it starts.
+     */
+    static void restore(CgNetObject obj, Object entity) {
+        // an entity's types are made together as it enters: its compound is read once for them
+        if (entity != restoring) {
+            restored = CgEntitySaves.read(entity);
+            restoring = entity;
+        }
+        CgNbtCompound saved = restored;
+        if (!saved.has(obj.type.name)) return;
+        try {
+            CgNetObjects.decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
+        } catch (RuntimeException failed) {
+            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", entity, obj.type.name, failed);
+        }
+    }
+
+    /** The entity {@link #restore} last read the compound of, and that compound; dropped at the tick's end. */
+    @Nullable
+    private static Object restoring;
+    @Nullable
+    private static CgNbtCompound restored;
+    /** Entity objects changed since their entity was last saved: none, and a save asks nothing. */
+    private static int unsavedOnEntities;
+
+    /** Whether a field its type saves changed this tick: a change to one it does not save costs its entity nothing. */
+    private static boolean savedChanged(CgNetObject obj) {
+        boolean[] saves = obj.type.saves;
+        for (int i = 0; i < saves.length; i++) if (saves[i] && CgNetObject.has(obj.dirty, i)) return true;
+        return false;
+    }
+
+    /**
+     * Server, at the tick's end: an object that changed. One on an entity whose type saves a changed field is written as
+     * the entity is next saved, or now where the host has no hook; any other costs nothing here.
+     */
+    static void changed(CgNetObject obj) {
+        if (!obj.type.persisted || obj.kind != CgAnchor.Kind.ENTITY || !savedChanged(obj)) return;
+        unsaved(obj);
+    }
+
+    private static void unsaved(CgNetObject obj) {
+        if (!obj.unsavedOnEntity) {
+            obj.unsavedOnEntity = true;
+            unsavedOnEntities++;
+        }
+        if (CgEntitySaves.hooked()) return;
+        Object entity = obj.entity();
+        if (entity != null) saving(entity);
+    }
+
+    /**
+     * The game is saving {@code entity}: its persisted objects changed since it was last saved are written into its
+     * compound, every type in one read and one write. Server thread; a host calls it through
+     * {@code CgEntitySaves.saving}. Costs a check where nothing changed, and allocates nothing where this entity has
+     * nothing to write.
+     */
+    public static void saving(Object entity) {
+        // a client saves entities too (a creative pick): the server's objects are the server thread's alone
+        if (unsavedOnEntities == 0 || CgNetwork.side() != CgNetwork.Side.SERVER) return;
+        CgNbtCompound saved = null;
+        List<CgNetType> types = CgNetType.SAVED_ON_ENTITIES;
+        for (int i = 0; i < types.size(); i++) {
+            CgNetType type = types.get(i);
+            CgNetObject obj = type.holders.get(entity);
+            if (obj == null || !obj.unsavedOnEntity) continue;
+            if (saved == null) saved = CgEntitySaves.read(entity);
+            saved.put(type.name, CgNetObjects.encodeFields(CgNbtOps.INSTANCE, obj));
+            obj.unsavedOnEntity = false;
+            unsavedOnEntities--;
+        }
+        if (saved == null) return;
+        CgEntitySaves.write(entity, saved);
+        entitiesWritten++;
+        if (restoring == entity) restoring = null;
+    }
+
+    /** Entities written into since the server started: what the gauntlet's check reads. */
+    static int entitiesWritten;
+    /** Objects that ended with a change their entity's save never took. */
+    static int endedUnsaved;
+
+    /** Server: an ended object's change no longer waits on its entity's save. */
+    static void dropped(CgNetObject obj) {
+        if (!obj.unsavedOnEntity) return;
+        endedUnsaved++;
+        obj.unsavedOnEntity = false;
+        unsavedOnEntities--;
+    }
+
+    /**
+     * Server, as it stops: the game saves every entity after its stopping event, by when the objects are gone, so what
+     * changed on entities goes into their compounds now.
+     */
+    static void stopping(List<CgNetObject> live) {
+        for (int i = 0; i < live.size() && unsavedOnEntities > 0; i++) {
+            CgNetObject obj = live.get(i);
+            Object entity = obj.unsavedOnEntity ? obj.entity() : null;
+            if (entity != null) saving(entity);
+        }
+        unsavedOnEntities = 0;
+    }
+
+    /** Server, each tick's end: the compound kept for restoring is dropped. */
+    static void tickEnded() {
+        restoring = null;
+        restored = null;
+    }
+
+    /** Back to nothing pending. Tests only, through {@code CgNetObjects.resetForTesting}. */
+    static void resetSaves() {
+        unsavedOnEntities = 0;
+        restoring = null;
+        restored = null;
     }
 
     /** Ends one side's local objects and forgets its list: a server stopping, a client leaving its level. */

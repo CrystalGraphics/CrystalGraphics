@@ -170,6 +170,8 @@ val headlessTestTask = tasks.register<Test>("headlessTest") {
     // The format's schemas, where the private plan checkout sits beside this one; the bible gate skips without them.
     val spec = rootProject.file("../plan/crystalgraphics/vfx-aaa/spec")
     if (spec.isDirectory) systemProperty("crystalgraphics.spec", spec.absolutePath)
+    // The user docs' generated reference tables rewritten (ReferenceDocsTest): -PupdateDocs=true
+    providers.gradleProperty("updateDocs").orNull?.let { systemProperty("crystalgraphics.docs.update", it) }
     // The kits' round-trip gate, asked for: -Pkits=<namespace>=<dir>;...
     providers.gradleProperty("kits").orNull?.let {
         systemProperty("crystalgraphics.kits", it)
@@ -218,6 +220,37 @@ tasks.named<Test>("test") {
 }
 
 tasks.named("check") { dependsOn(headlessTestTask) }
+
+// ── examples: the docs' example mods, each compiled on its own against the API it teaches ──
+// At Java 8 against the Java 8 copies of core and platform: what a reader on the oldest versions builds with. Their
+// pages' code blocks are checked against these files by DocsRulesTest; what a lesson promises on screen, by
+// DocsExamplesTest.
+val compileExamples = tasks.register("compileExamples") {
+    description = "Compiles every example mod under examples/."
+    group = "verification"
+}
+val examplesRoot = rootProject.file("examples")
+examplesRoot.walkTopDown()
+    .filter { it.isDirectory && it.invariantSeparatorsPath.endsWith("/src/main/java") }
+    .forEach { src ->
+        val example = src.parentFile.parentFile.parentFile.relativeTo(examplesRoot).invariantSeparatorsPath
+        val task = tasks.register<JavaCompile>("compileExample_" + example.replace(Regex("[^A-Za-z0-9]+"), "_")) {
+            description = "Compiles the example mod examples/$example."
+            val platform = project(":platform").layout.buildDirectory
+            val platformBuild = platform.get().asFile.toPath()
+            val coreMain = sourceSets["main"].output
+            dependsOn(":platform:unpackDowngraded", "unpackDowngraded")
+            source = fileTree(src)
+            classpath = sourceSets["downgraded"].output + files(platform.dir("downgraded/classes")) +
+                    headlessTest.compileClasspath.filter { f -> f !in coreMain.files && !f.toPath().startsWith(platformBuild) }
+            javaCompiler.set(tasks.compileJava.get().javaCompiler)
+            options.release.set(8)
+            options.compilerArgs.addAll(listOf("-Xlint:-options", "-proc:none"))
+            destinationDirectory.set(layout.buildDirectory.dir("examples/$example"))
+        }
+        compileExamples { dependsOn(task) }
+    }
+tasks.named("check") { dependsOn(compileExamples) }
 
 // T5: the allocation proofs again on the Java 8 copies of core and platform, where a jvmdg stub on a hot path would
 // allocate. By hand: ./gradlew :core:allocationProofsOnJava8Copy

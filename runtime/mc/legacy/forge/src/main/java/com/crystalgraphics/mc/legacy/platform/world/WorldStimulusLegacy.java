@@ -59,6 +59,14 @@ public final class WorldStimulusLegacy implements CgWorldStimulus {
         return player != null && run("kill " + player.getName());
     }
 
+    @Override
+    public boolean teleport(double x, double y, double z) {
+        EntityPlayerSP player = player();
+        if (player == null) return false;
+        String name = player.getName();
+        return run("gamemode 1 " + name, String.format(Locale.ROOT, "tp %s %.2f %.2f %.2f", name, x, y, z));
+    }
+
     // As the death screen's button does: nothing closes the screen for it.
     @Override
     public boolean respawn() {

@@ -128,8 +128,13 @@ public final class LevelsLegacy implements CgLevels.Host {
     }
 
     @Override
+    // An unloaded entity is taken out of its world without dying, and Forge here says nothing: still its world's entity
+    // for its id is what tells it from one whose chunk went.
     public boolean alive(Object entity) {
-        return entity instanceof Entity && ((Entity) entity).isEntityAlive();
+        if (!(entity instanceof Entity)) return false;
+        Entity e = (Entity) entity;
+        World world = worldOf(e);
+        return e.isEntityAlive() && world != null && world.getEntityByID(e.getEntityId()) == e;
     }
 
     static World worldOf(Object handle) {

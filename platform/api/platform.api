@@ -3647,6 +3647,7 @@ com/crystalgraphics/platform/world/CgWorldStimulus
   method public jumpDown ()Z
   method public merchant (III)Z
   method public pressJump ()Z
+  method public teleport (DDD)Z
   method public turnLook (F)Z
   method public use (III)Z
   method public useEntity (I)Z

@@ -1,0 +1,3 @@
+# docs:begin listeners
+client com.example.zombiemod.client.ZombieModClient
+# docs:end listeners

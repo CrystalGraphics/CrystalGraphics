@@ -24,9 +24,23 @@ import java.util.Map;
  */
 public final class CgPlainOps implements CgDynamicOps<Object> {
 
-    public static final CgPlainOps INSTANCE = new CgPlainOps();
+    public static final CgPlainOps INSTANCE = new CgPlainOps(false);
 
-    private CgPlainOps() {
+    /**
+     * The same tree for a text format people read: {@link #humanReadable()} is true, so a codec writes values as people
+     * write them (a UUID as its text). What YAML reads and writes, and a tree built in memory to be written as text.
+     */
+    public static final CgPlainOps TEXT = new CgPlainOps(true);
+
+    private final boolean humanReadable;
+
+    private CgPlainOps(boolean humanReadable) {
+        this.humanReadable = humanReadable;
+    }
+
+    @Override
+    public boolean humanReadable() {
+        return humanReadable;
     }
 
     @Override

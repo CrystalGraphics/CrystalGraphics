@@ -40,7 +40,7 @@ public final class YamlFileFormat extends TextFileFormat<Object> {
 
     @Override
     CgDynamicOps<Object> ops() {
-        return CgPlainOps.INSTANCE;
+        return CgPlainOps.TEXT;
     }
 
     @Override

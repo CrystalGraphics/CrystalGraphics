@@ -1,118 +1,122 @@
-# Motion warping: a move that lands where its target is
+# Motion warping: a move that lands on its target
 
-A rush, a dive or a grab is drawn once, covering a fixed distance in a fixed direction. In a game the opponent stands
-somewhere else every time. Motion warping bends the move's root motion while it plays, so it ends on the target. The
-clip's pacing stays as drawn: where it was slow it stays slow, and where it was fast it stays fast.
+**What you will have:** a lunge that lands at arm's length from its target whether the target stands nearer or
+further than the clip was drawn, turns to face it on the way, and still catches it when it sidesteps.
 
-| Piece | What it is |
+## In plain words
+
+A lunge is drawn once, travelling a fixed distance in a fixed direction. In a fight the enemy stands somewhere else
+every time. **Motion warping** stretches, shrinks and bends the lunge while it plays so it ends right on the target,
+like a long jumper adjusting their last steps to hit the board. The timing stays as the animator drew it: where the
+move was slow it stays slow, where it was fast it stays fast.
+
+Three pieces make it work:
+
+| Piece | In plain words |
 |---|---|
-| A **warp window** on the clip | a span of the clip whose root motion is bent toward a named target |
-| The character's **motion warping** | where each named target stands now, set by the game |
-| The **montage** that plays the clip | its root motion is warped inside the window, then moves the character as root motion always does |
+| A **warp window** on the clip | the stretch of the move that may be bent: "from 0.2 s to 0.9 s, aim at `opponent`" |
+| A **target** on the character | where `opponent` is now, set by your gameplay |
+| The **montage** that plays the clip | plays the move and carries the character by its bent travel |
 
-Distances are metres in the world; a yaw is radians about +y from facing +z, positive toward +x.
+## The code: a zombie's lunge onto the player
 
-## 1. A clip that travels
-
-Warping bends root motion, so the clip must have some ([clips.md](clips.md) § root motion). Many attack clips keep
-their travel on the pelvis and leave the root still. Move it onto the root once, at load:
-
-```java
-CgAnimSequence dive = CgClipModifiers.encodeRootBone(rawDive, skeleton, "root", "pelvis");
-```
-
-Each frame the root goes horizontally where the pelvis is, keeping its own height and turn. The root's children are
-placed back where they were, so the pose does not change. Root motion is turned on for you.
-
-## 2. A window on the clip
-
-In Java:
-
-```java
-CgAnimSequence rush = dive.with(dive.settings().withWarpWindows(List.of(
-        CgWarpWindow.of("opponent", 0.0f, 1.0f))));   // its first second ends on "opponent"
-```
-
-As data, in the clip's settings file (`clips/<clip id>.yaml`):
+The clip's window, `assets/mymod/clips/models/zombie/lunge.yaml`:
 
 ```yaml
 _v: 1
 root_motion: { enabled: true, lock: ref_pose }
 warp_windows:
-  - { target: opponent, start: 0.0, end: 1.0 }
+  - { target: opponent, start: 0.0, end: 0.6 }     # the first 0.6 s ends on "opponent"
 ```
 
-Put the window over the part of the move that travels. Anything after it plays as drawn, from wherever the window
-left the character.
+On the server, when the zombie attacks, aim it and play the move:
 
-## 3. Tell it where the target is
+```java
+CgEntityActor zombie = CgEntityActors.serverActor(zombieId);
+zombie.animation().motionWarping()
+        .target("opponent", player.getX(), player.getY(), player.getZ(), playerYawRadians)
+        .standOff("opponent", 0.9f);                 // stop 0.9 m short: arm's length
+zombie.play("mymod:moves/zombie_lunge");             // carried by its root motion, seen by everyone near
+```
 
-The game sets the target before the window opens, and may move it while the window plays:
+The actor names its `root_motion` body, so the bent travel moves the zombie entity itself
+([`root-motion-moves-the-entity.md`](root-motion-moves-the-entity.md)).
+
+## Variations
+
+### On a character of your own
 
 ```java
 CgAnimInstance anim = component.anim();
-anim.motionWarping().target("opponent", enemy.x, enemy.y, enemy.z, enemyYaw);
+anim.motionWarping().target("opponent", x, y, z, yaw);
+sequencer.play(LUNGE, Map.of("caster", fighter));
+
+Matrix4f step = new Matrix4f();                                       // each frame, after the pose
+if (anim.montages().consumeRootMotion(1f, step)) mover.move(step);    // the bent step
 ```
 
-Then play the move as a sequence's animation section on the character (a montage), and move the character by its root
-motion each frame:
+### A window in Java
 
 ```java
-Matrix4f step = new Matrix4f();
-if (anim.montages().consumeRootMotion(1f, step)) mover.move(step);   // the warped step
+CgAnimSequence rush = dive.with(dive.settings().withWarpWindows(List.of(
+        CgWarpWindow.of("opponent", 0.0f, 0.6f))));
 ```
 
-A strike should end at arm's length, not inside its opponent. Give the target a **stand-off**: the move stops that
-far short of it, on the line from the target to the character, recomputed each frame:
+### Turning to face the target as it closes
 
 ```java
-anim.motionWarping().target("opponent", x, y, z, yaw).standOff("opponent", 0.9f);   // where the fist meets them
+CgWarpWindow.of("opponent", 0.2f, 0.9f)
+        .facing(true)                                                              // face its position
+        .rotation(CgWarpWindow.Rotation.SLERP_WITH_CLAMPED_RATE, 1f, 720f);        // at most 720° a second
 ```
 
-A target set again while its window is open is aimed at again from where the character stands. A sidestepping
-opponent is caught. `removeTarget("opponent")` makes its windows play the clip's own motion.
-
-## Choices on a window
-
-| Field (data) | Builder | Default | What it does |
+| Window key (file) | Builder | Default | Does |
 |---|---|---|---|
 | `translation` | `translation(on, ignoreHeight)` | true | bend the travel toward the target |
-| `ignore_height` | `translation(on, ignoreHeight)` | true | leave height as the clip has it: a dive still dives |
+| `ignore_height` | `translation(on, ignoreHeight)` | true | keep the clip's own height: a dive still dives |
 | `rotation` | `noRotation()` | true | bend the turn toward the target's |
-| `facing` | `facing(true)` | false | turn to face the target's position instead of copying its yaw |
-| `method` | `rotation(method, time, rate)` | `slerp` | `slerp` over the time left; `slerp_with_clamped_rate` the same, never faster than `max_rotation_rate`; `constant_rate` at that rate; `scale` the clip's own turn scaled to end on it |
+| `facing` | `facing(true)` | false | face the target's position instead of copying its yaw |
+| `method` | `rotation(method, time, rate)` | `slerp` | `slerp` over the time left; `slerp_with_clamped_rate` never faster than `max_rotation_rate`; `constant_rate` at that rate; `scale` the clip's own turn scaled to end on it |
 | `rotation_time` | `rotation(method, time, rate)` | 1 | how much of the window's remaining time the turn takes |
 | `max_rotation_rate` | `rotation(method, time, rate)` | 0 | degrees a second, for the clamped methods |
-| `max_speed_ratio` | `maxSpeedRatio(r)` | 0 (none) | the warped step at most `r` times the clip's own |
+| `max_speed_ratio` | `maxSpeedRatio(r)` | 0 (none) | the bent step at most `r` times the clip's own |
 | `yaw_offset` | `yawOffset(deg)` | 0 | degrees added to the target turn: land behind and turn round |
 
-A rush that turns to face its opponent as it closes, at most 720 degrees a second:
+### A target that moves
+
+Set the target again while the window is open and the move re-aims from where the character is now: a sidestepping
+target is caught. `removeTarget("opponent")` lets the window play the clip's own travel.
+
+### A clip whose travel is on the pelvis
+
+Many attack clips move the pelvis and leave the root still. Move the travel onto the root once, at load; the pose
+does not change and root motion is turned on:
 
 ```java
-CgWarpWindow.of("opponent", 0.2f, 0.9f).facing(true).rotation(CgWarpWindow.Rotation.SLERP_WITH_CLAMPED_RATE, 1f, 720f)
+CgAnimSequence dive = CgClipModifiers.encodeRootBone(rawDive, skeleton, "root", "pelvis");
 ```
 
 ## How the bend works
 
-Each frame, inside the window, the engine knows three things in the character's own space: this frame's step of the
-clip, the rest of the window's motion, and where the target is. It takes a frame along the rest of the motion. Along
-that line it scales the step by how far the target is against how far the clip would go. Sideways and up, it shears
-the step by the angles between them. Summed over the window, the steps end exactly on the target, and the path keeps
-the clip's shape: a curve stays a curve, a pause stays a pause. A window whose clip does not travel at all is pulled to
-the target in a straight line instead.
+Each frame inside the window, the engine knows this frame's step of the clip, the rest of the window's travel, and
+where the target is. Along the line of the remaining travel it scales the step by how far the target is against how
+far the clip would go; sideways and up it shears the step by the angle between them. Summed over the window, the
+steps end exactly on the target, and the path keeps the clip's shape: a curve stays a curve, a pause stays a pause. A
+window whose clip does not travel at all is pulled to the target in a straight line.
 
-## Easy to get wrong
+## What goes wrong
 
-- **Only the root-motion montage is warped.** A clip on a graph's sequence player is not.
-- **The window must be inside the clip**, and its montage must play past its end. A section that stops at the clip's
-  last frame never plays that frame's step.
-- **Placement comes from `placedBy`.** Warping reads where the character stands through the instance's `placedBy`, at
-  the moment it bends each step. Without it, the character is taken to stand at the origin.
-- **A warp has a believable range.** Bending a 2.4 m lunge onto 4.2 m peaks at 22 m/s against the clip's 16; onto
-  5.5 m, 29, which reads as a teleport. Past about one and a half times a move's own reach, dash in first.
-- **The clip's own pause after the window is its own.** Measure where a move lands as its window closes.
-- Warping allocates nothing once warm.
+- **Nothing bends**: only the root-motion montage is warped. A clip played by a graph's sequence player is not.
+- **It stops short of the window's end**: the window must lie inside the clip, and the montage must play past its end.
+- **It lands at the world's origin**: the character's placement is unknown. A component or an actor's body knows it;
+  an instance of your own needs `anim.placedBy(...)`.
+- **It looks like a teleport**: a warp has a believable range. Bending a 2.4 m lunge onto 4.2 m peaks at 22 m/s
+  against the clip's own 16; onto 5.5 m, 29. Past about one and a half times a move's own reach, dash in first.
+- **It lands, then drifts**: the clip's own motion after the window plays as drawn. Measure where a move lands as its
+  window closes.
 
-Gates: `CgMotionWarpingTest` (headless: a 4 m rush landing 2, 8 and 13 m away and off its line, a stand-off, its turn,
-the data form, 0 B) and `CgMotionWarpingKakarotTest` (Goku's back attack landing on nine targets from a quarter of its 22 m reach to one
-and a half times it, up to 70 degrees off its line). The anim demo's **Motion warping** station plays Goku's lunging strike in two lanes, warped and as drawn.
+## Where next
+
+- Root motion itself: [`root-motion.md`](root-motion.md).
+- On a Minecraft entity: [`root-motion-moves-the-entity.md`](root-motion-moves-the-entity.md).
+- Feet that fit any speed and direction: [`locomotion.md`](locomotion.md).

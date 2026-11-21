@@ -1,6 +1,6 @@
 # animation.ik — Unreal's bone controllers: IK, constraints and dynamics as graph nodes
 
-> Using it: `docs/animation/guides/ik.md`. The graph these nodes sit in is `animation.graph`; the solver AnimDynamics
+> Using it: `docs/animation/guides/ik-and-look-at.md`, `springs-hair-and-cloth.md`. The graph these nodes sit in is `animation.graph`; the solver AnimDynamics
 > runs on is `animation.dynamics.CgAnimPhys`.
 
 | Type | Role |

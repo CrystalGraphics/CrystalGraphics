@@ -1,6 +1,7 @@
 package com.crystalgraphics.mc.shared;
 
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
 import org.spongepowered.asm.mixin.MixinEnvironment;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
@@ -10,7 +11,10 @@ import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -88,12 +92,40 @@ public abstract class VariantMixins implements IMixinConfigPlugin {
         return owned;
     }
 
+    // Mixin resolves a @Shadow alias for a private field only, so a mixin that shadows fields by one naming is listed
+    // only where its target class has them: Mojang's in a dev run, SRG's in an installed game. Mixin does not ask
+    // shouldApplyMixin of the mixins a plugin lists, so the choice is made here. {target, field names...}
+    private static final Map<String, String[]> FIELD_MIXINS = new HashMap<String, String[]>();
+
+    static {
+        FIELD_MIXINS.put("ShadowFieldsHook", new String[]{"net/minecraft/client/renderer/entity/EntityRenderer", "shadowStrength"});
+        FIELD_MIXINS.put("ShadowFieldsSrgHook", new String[]{"net/minecraft/client/renderer/entity/EntityRenderer", "f_114478_", "field_76987_f"});
+    }
+
+    private static boolean hasField(String[] targetAndNames) {
+        try {
+            ClassNode node = MixinService.getService().getBytecodeProvider().getClassNode(targetAndNames[0]);
+            for (FieldNode field : node.fields) {
+                for (int i = 1; i < targetAndNames.length; i++) {
+                    if (targetAndNames[i].equals(field.name)) return true;
+                }
+            }
+            return false;
+        } catch (Exception unreadable) {
+            return false;
+        }
+    }
+
     @Override
     public List<String> getMixins() {
         List<String> mixins = new ArrayList<String>();
         if (!owned) return mixins;
         Collections.addAll(mixins, commonMixins);
         if (isClient()) Collections.addAll(mixins, clientMixins);
+        for (Iterator<String> each = mixins.iterator(); each.hasNext(); ) {
+            String[] needs = FIELD_MIXINS.get(each.next());
+            if (needs != null && !hasField(needs)) each.remove();
+        }
         return mixins;
     }
 

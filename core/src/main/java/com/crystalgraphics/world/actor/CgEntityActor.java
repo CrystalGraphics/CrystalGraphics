@@ -7,11 +7,13 @@ import com.crystalgraphics.api.animation.CgAnimSequence;
 import com.crystalgraphics.asset.kind.CgSequenceKinds;
 import com.crystalgraphics.asset.load.CgVfxAssets;
 import com.crystalgraphics.frame.CgWorld;
+import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.platform.world.CgEntityMovement;
 import com.crystalgraphics.sequence.CgSequencePlayer;
 import com.crystalgraphics.sequence.CgSequenceTarget;
 import com.crystalgraphics.sequence.CgSequencer;
+import com.crystalgraphics.sequence.net.CgSequenceNet;
 import com.crystalgraphics.sequence.animation.CgSequenceSkeletal;
 import com.crystalgraphics.sequence.definition.CgSequenceDefinition;
 import com.crystalgraphics.world.CgEntityProperties;
@@ -235,6 +237,19 @@ public abstract class CgEntityActor {
     }
 
     /**
+     * Its body's anim instance: set a variable, fire a montage. Null where it has no body.
+     *
+     * <pre>{@code
+     * CgEntityActors.serverActor(id).animation().set(CHARGE, 0.8f);
+     * }</pre>
+     */
+    @Nullable
+    public final CgAnimInstance animation() {
+        CgSkeletalMeshComponent b = body();
+        return b == null ? null : b.anim();
+    }
+
+    /**
      * Its body: the root-motion body where it names one, else the first skeletal mesh it added, else its prefab's
      * first; null where it has none. What its registration's graph runs on and its reactions play on.
      */
@@ -308,18 +323,46 @@ public abstract class CgEntityActor {
     }
 
     private void play(CgReaction r) {
+        if (reacting != null) reacting.stop();
+        reacting = playSequence(r.sequence(), r.slot());
+    }
+
+    /**
+     * Server: plays {@code sequence} on its body and shows it to everyone who sees it. {@code slot} is the montage slot
+     * its animation plays on; null is the sequence's own. The play ends with {@link CgSequencePlayer#stop()}, and
+     * {@link CgSequencePlayer#onFinished} hears its end.
+     *
+     * <pre>{@code
+     * CgEntityActors.serverActor(id).play("mymod:zombie_swing").onFinished(() -> CgEntities.of(zombie).removeTag(SWINGING));
+     * }</pre>
+     *
+     * @throws IllegalStateException on a client
+     */
+    public final CgSequencePlayer play(String sequence, @Nullable String slot) {
+        if (!server || host == null) throw new IllegalStateException("play(" + sequence + ") is the server's: " + entity + " is on a client");
+        CgSequencePlayer player = playSequence(sequence, slot);
+        CgSequenceNet.serve(player, CgAnchor.on(host), entity.id()).start();
+        return player;
+    }
+
+    /** As {@link #play(String, String)} on the sequence's own slot. */
+    public final CgSequencePlayer play(String sequence) {
+        return play(sequence, null);
+    }
+
+    /** Plays {@code sequence} on its body, its every role the body, on this side only: what a reaction plays. */
+    final CgSequencePlayer playSequence(String sequence, @Nullable String slot) {
         CgSkeletalMeshComponent body = body();
-        if (body == null) throw new IllegalStateException("no body to play " + r.sequence() + " on: its prefab has no skeletal mesh");
-        CgSequenceDefinition d = CgVfxAssets.<CgSequenceDefinition>ref(CgSequenceKinds.SEQUENCE, r.sequence()).get();
-        if (d == null) throw new IllegalStateException("its reaction's sequence " + r.sequence() + " did not load");
+        if (body == null) throw new IllegalStateException("no body to play " + sequence + " on: its prefab has no skeletal mesh");
+        CgSequenceDefinition d = CgVfxAssets.<CgSequenceDefinition>ref(CgSequenceKinds.SEQUENCE, sequence).get();
+        if (d == null) throw new IllegalStateException("the sequence " + sequence + " did not load");
         CgWorld world = server ? CgWorld.serverWorld() : CgWorld.client();
         CgSequencer sequencer = CgSequencer.of(world);
         if (sequencer == null) sequencer = world.add(new CgSequencer());
-        Reacting target = new Reacting(this, body, r.slot());
+        Reacting target = new Reacting(this, body, slot);
         Map<String, CgSequenceTarget> roles = new HashMap<>();
         for (CgSequenceDefinition.Role role : d.roles()) roles.put(role.name(), target);
-        if (reacting != null) reacting.stop();
-        reacting = sequencer.play(d, roles);
+        return sequencer.play(d, roles);
     }
 
     /**

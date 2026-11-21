@@ -116,6 +116,9 @@ layout.cacheIn(game);     // <game>/mymod/cache              deletable
 
 CrystalGraphics' own cache is `CgCacheDirectory`, on its own layout; `-Dcrystalgraphics.cache.dir` moves it.
 
+The same layout, given to `CgNetType.storage(namespace, layout)`, puts a namespace's saved networked objects under
+`<world>/<root>/` instead of `<world>/crystalgraphics/` ([`NETWORKING.md` §13](NETWORKING.md#13-saving-with-the-world)).
+
 ## 4. Config storage
 
 `CgConfigStorage` is named files: a value through a codec, or raw text. It is [`SERIALIZATION.md`](SERIALIZATION.md)

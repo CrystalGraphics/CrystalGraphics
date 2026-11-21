@@ -1,9 +1,6 @@
 package com.crystalgraphics.net.object;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,18 +24,16 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.CgNetwork;
 import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
+import com.crystalgraphics.platform.service.CgStorageLayout;
 import com.crystalgraphics.serialization.CgCodec;
 import com.crystalgraphics.serialization.CgCodecException;
 import com.crystalgraphics.serialization.CgCodecs;
 import com.crystalgraphics.serialization.CgDynamicOps;
-import com.crystalgraphics.serialization.format.CgFiles;
-import com.crystalgraphics.serialization.nbt.CgNbtCompound;
-import com.crystalgraphics.serialization.nbt.CgNbtOps;
+import com.crystalgraphics.serialization.CgStateMap;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
 import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.world.CgEntityQueries;
-import com.crystalgraphics.world.CgEntitySaves;
 import com.crystalgraphics.platform.world.CgPlayers;
 import com.crystalgraphics.world.CgWorldQueries;
 
@@ -108,6 +103,12 @@ public final class CgNetObjects {
 
     static Object server() {
         return startedServer;
+    }
+
+    /** The one connected player's entity: a single-player world's, for a probe. Null with none, or more than one. */
+    @Nullable
+    static Object onlyPlayer() {
+        return VIEWERS.size() == 1 ? VIEWERS.get(0).peer.player() : null;
     }
     private static boolean[] unsaved = new boolean[8];
 
@@ -288,6 +289,7 @@ public final class CgNetObjects {
             Viewer viewer = new Viewer((CgPeer) connection.peer(), connection, takeSlot());
             VIEWERS.add(viewer);
             VIEWERS_BY_ID.put(viewer.peer.id(), viewer);
+            PlayerFiles.joined(viewer.peer.id());
             connection.router().onNotify(COMMANDS, payload -> {
                 if (payload instanceof byte[]) receiveCommands(viewer, (byte[]) payload);
             });
@@ -326,6 +328,7 @@ public final class CgNetObjects {
     private static void dropViewer(Viewer viewer) {
         if (!VIEWERS.remove(viewer)) return;
         VIEWERS_BY_ID.remove(viewer.peer.id(), viewer);
+        PlayerFiles.disconnected(viewer.peer.id());
         CgNetObject.unmark(usedSlots, viewer.slot);
         for (CgNetObject obj : LIVE) CgNetObject.unmark(obj.seenBy, viewer.slot);
     }
@@ -348,9 +351,24 @@ public final class CgNetObjects {
         if (world != null) load(type, world);
     }
 
+    /** Where a change of {@code obj}'s is saved: with its entity, in its player's file, or in its type's world file. */
+    private static void noteSave(CgNetObject obj) {
+        if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
+            if (obj.anyDirty) CgNetEntities.changed(obj);
+        } else if (obj.type.persisted && PlayerFiles.owns(obj)) {
+            if (obj.anyDirty) PlayerFiles.changed(obj);
+        } else if (obj.anyDirty || obj.moved) {
+            markUnsaved(obj.type);
+        }
+    }
+
     /** The server is stopping: what persists is saved, and nothing carries into the next world. */
     public static void serverStopped() {
+        // changes since the last tick's end were never noted: the stop is mid-tick
+        for (int i = 0; i < LIVE.size(); i++) noteSave(LIVE.get(i));
         if (started) save();
+        PlayerFiles.writeAll();
+        CgNetEntities.stopping(LIVE);
         started = false;
         startedServer = null;
         LIVE.clear();
@@ -358,6 +376,7 @@ public final class CgNetObjects {
         FIRED.clear();
         for (CgNetType type : CgNetType.REGISTERED) type.holders.clear();
         CgNetEntities.clear(true);
+        PlayerFiles.reset();
         Arrays.fill(unsaved, false);
     }
 
@@ -367,6 +386,7 @@ public final class CgNetObjects {
     /** Sends this tick's spawns, changes, moves and despawns, one frame per player. Server thread. */
     public static void serverTick() {
         tick = CgEngineLifecycle.serverTicks();
+        if (started) PlayerFiles.tickStarted();
         List<CgNetType> types = CgNetType.USED;
         for (int t = 0; t < types.size(); t++) {
             CgNetType type = types.get(t);
@@ -380,7 +400,11 @@ public final class CgNetObjects {
             for (int v = 0; v < VIEWERS.size(); v++) VIEWERS.get(v).flush();
         }
         trace(types);
-        if (started && tick % SAVE_EVERY == 0) save();
+        if (started && tick % SAVE_EVERY == 0) {
+            save();
+            PlayerFiles.writeAll();
+        }
+        CgNetEntities.tickEnded();
     }
 
     private static void trace(List<CgNetType> types) {
@@ -462,15 +486,13 @@ public final class CgNetObjects {
                 BY_ID.remove(obj.id);
                 obj.removed();
                 if (obj.holderKey != null) obj.type.holders.remove(obj.holderKey, obj);
+                CgNetEntities.dropped(obj);
+                if (PlayerFiles.owns(obj)) PlayerFiles.dropped(obj);
                 markUnsaved(obj.type);
                 serverEnded(obj);
                 continue;
             }
-            if (obj.type.persisted && obj.kind == CgAnchor.Kind.ENTITY) {
-                if (obj.anyDirty) store(obj);
-            } else if (obj.anyDirty || obj.moved) {
-                markUnsaved(obj.type);
-            }
+            noteSave(obj);
             send(obj);
             obj.clearDirty();
             LIVE.set(keep++, obj);
@@ -622,7 +644,11 @@ public final class CgNetObjects {
             case PLAYER: {
                 Viewer viewer = VIEWERS_BY_ID.get(obj.player);
                 Object player = viewer == null ? null : viewer.peer.player();
-                if (viewer == null && !obj.type.persisted) {
+                // gone: a per-holder object that saves wrote its values into the player's own data as they left, and
+                // reads them back as they return; one made while they are away (from their file) waits for them, and a
+                // spawned one that saves waits in the world's file
+                if (viewer == null && !obj.offline && (obj.holderKey != null || !obj.type.persisted)) {
+                    if (obj.type.persisted && obj.holderKey != null) PlayerFiles.leaving(obj);
                     obj.kill();
                     return;
                 }
@@ -630,6 +656,8 @@ public final class CgNetObjects {
                     obj.despawn();
                     return;
                 }
+                // a new player entity (joined, respawned) saves nothing of it yet: all of it goes into the next save
+                if (player != null) obj.offline = false;
                 obj.holder = player;
                 obj.dormant = player == null;
                 if (player == null) return;
@@ -1121,25 +1149,16 @@ public final class CgNetObjects {
     // ── Persistence ─────────────────────────────────────────────────────────────────────────────
 
     private static Path file(Path world, CgNetType type) {
-        return world.resolve("crystalgraphics").resolve("objects").resolve(type.namespace)
-                .resolve(type.name.substring(type.namespace.length() + 1) + ".dat");
+        CgStorageLayout layout = CgNetType.storageOf(type.namespace);
+        Path objects = layout.rootIn(world).resolve("objects");
+        // the shared folder keeps each namespace apart; a namespace's own needs no second level
+        if (layout == CgNetType.DEFAULT_STORAGE) objects = objects.resolve(type.namespace);
+        return objects.resolve(type.name.substring(type.namespace.length() + 1) + SaveFiles.EXTENSION);
     }
 
     private static void load(CgNetType type, Path world) {
         Path file = file(world, type);
-        List<CgNetObject> loaded;
-        try {
-            loaded = CgFiles.read(file, new SavedObjects(type));
-        } catch (IOException | RuntimeException failed) {
-            Path aside = file.resolveSibling(file.getFileName() + ".unreadable");
-            LOGGER.error("[cg-net] could not read {}; moved to {}", file, aside, failed);
-            try {
-                Files.move(file, aside, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException ignored) {
-                // A later save still writes a fresh file; saving over the unreadable one is what this guards.
-            }
-            return;
-        }
+        List<CgNetObject> loaded = SaveFiles.read(file, new SavedObjects(type));
         if (loaded == null) return;
         for (CgNetObject obj : loaded) {
             if (type.perHolder) {
@@ -1163,26 +1182,27 @@ public final class CgNetObjects {
 
     private static boolean save(CgNetType type, Path world) {
         List<CgNetObject> objects = new ArrayList<>();
-        // an entity's are saved with the entity
-        for (CgNetObject obj : LIVE) if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY) objects.add(obj);
-        Path file = file(world, type);
-        try {
-            CgFiles.write(file, new SavedObjects(type), objects);
-            return true;
-        } catch (IOException failed) {
-            LOGGER.error("[cg-net] could not save {} to {}", type.name, file, failed);
-            return false;
+        // an entity's are saved with the entity, a player's per-holder ones in the player's file
+        for (CgNetObject obj : LIVE) {
+            if (obj.type == type && obj.isLive() && obj.kind != CgAnchor.Kind.ENTITY && !PlayerFiles.owns(obj)) objects.add(obj);
         }
+        return SaveFiles.write(file(world, type), new SavedObjects(type), objects);
     }
 
-    /** {@code obj}'s set fields as a map by name, as they are saved; a {@code local()} field never is. */
+    /** {@code obj}'s set fields that its type saves, as a map by name. */
     @SuppressWarnings("unchecked")
-    private static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
+    static <T> T encodeFields(CgDynamicOps<T> ops, CgNetObject obj) {
+        CgNetSaveForm form = obj.type.saveForm;
+        if (form != null) {
+            CgStateMap<T> out = new CgStateMap<>(ops);
+            form.write(obj, out);
+            return out.encode();
+        }
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecBuilder<T> fields = CgCodecs.map(ops);
         for (int i = 0; i < all.length; i++) {
             CgNetField<Object> field = (CgNetField<Object>) all[i];
-            if (!CgNetObject.has(obj.set, i) || field.local) continue;
+            if (!CgNetObject.has(obj.set, i) || !obj.type.saves[i]) continue;
             if (field.kind == CgNetField.Kind.CODEC && obj.refs[i] == null) {
                 fields.raw(field.name, ops.empty());    // set to null: not the fallback a missing key loads
                 continue;
@@ -1192,13 +1212,18 @@ public final class CgNetObjects {
         return fields.build();
     }
 
-    /** The fields {@link #encodeFields} wrote, set on {@code obj}; a field it does not name keeps its fallback. */
-    private static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
+    /** The saved fields {@link #encodeFields} wrote, set on {@code obj}; one it does not name keeps its fallback. */
+    static <T> void decodeFields(CgDynamicOps<T> ops, T in, CgNetObject obj) {
+        CgNetSaveForm form = obj.type.saveForm;
+        if (form != null) {
+            form.read(obj, new CgStateMap<>(ops, in));
+            return;
+        }
         CgNetField<?>[] all = obj.type.fields;
         CgCodecs.MapCodecReader<T> fields = CgCodecs.read(ops, in);
         for (int i = 0; i < all.length; i++) {
             CgNetField<?> field = all[i];
-            if (field.local || !fields.has(field.name)) continue;
+            if (!obj.type.saves[i] || !fields.has(field.name)) continue;
             T raw = fields.raw(field.name);
             if (field.kind == CgNetField.Kind.CODEC && Objects.equals(raw, ops.empty())) {
                 obj.refs[i] = null;
@@ -1209,29 +1234,6 @@ public final class CgNetObjects {
             }
             CgNetObject.mark(obj.set, i);
         }
-    }
-
-    /**
-     * A persisted type's new object on {@code entity}, its values set from what the entity saved; a value that no longer
-     * decodes is logged and left at its fallback. Before it starts.
-     */
-    static void restore(CgNetObject obj, Object entity) {
-        CgNbtCompound saved = CgEntitySaves.read(entity);
-        if (!saved.has(obj.type.name)) return;
-        try {
-            decodeFields(CgNbtOps.INSTANCE, saved.get(obj.type.name), obj);
-        } catch (RuntimeException failed) {
-            LOGGER.error("[cg-net] {}'s saved {} does not read; it starts from its fallbacks", entity, obj.type.name, failed);
-        }
-    }
-
-    /** An entity's object of a persisted type changed: its values saved with the entity, under the type's name. */
-    private static void store(CgNetObject obj) {
-        Object entity = obj.entity();
-        if (entity == null) return;
-        CgNbtCompound saved = CgEntitySaves.read(entity);
-        saved.put(obj.type.name, encodeFields(CgNbtOps.INSTANCE, obj));
-        CgEntitySaves.write(entity, saved);
     }
 
     /** One type's live objects as its save file holds them; a decoded object is live but not yet registered. */
@@ -1299,5 +1301,7 @@ public final class CgNetObjects {
         started = false;
         startedServer = null;
         Arrays.fill(unsaved, false);
+        CgNetEntities.resetSaves();
+        PlayerFiles.reset();
     }
 }

@@ -110,4 +110,22 @@ public interface CgDynamicOps<T> {
     default Object toPlain(T value) {
         throw new CgCodecException(getClass().getSimpleName() + " cannot be read as a plain tree");
     }
+
+    /**
+     * Whether people read this format: JSON, JSONC, YAML, TOML. A codec may then write a value as people write it
+     * rather than as the machine does: {@link CgCodecs#UUID} is its text there, two longs on the wire and in binary.
+     *
+     * <pre>{@code
+     * return ops.humanReadable() ? ops.createString(id.toString()) : packed(ops, id);
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Decoding should accept both forms in either format: a person may write either, and a file outlives a
+     *       change of format.</li>
+     *   <li>A wrapping ops answers its base's.</li>
+     * </ul>
+     */
+    default boolean humanReadable() {
+        return false;
+    }
 }

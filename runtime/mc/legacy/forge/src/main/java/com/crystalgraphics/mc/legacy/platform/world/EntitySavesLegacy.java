@@ -29,6 +29,11 @@ public final class EntitySavesLegacy implements CgEntitySaves.Host {
     }
 
     @Override
+    public boolean savesWhenSaved() {
+        return true;   // EntitySaveHook, at the head of writeToNBT
+    }
+
+    @Override
     public void write(Object entity, CgNbtCompound data) {
         ((Entity) entity).getEntityData().setTag(KEY, (NBTBase) CgNbt.toHost(data));
     }

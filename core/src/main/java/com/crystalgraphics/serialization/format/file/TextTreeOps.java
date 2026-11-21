@@ -14,6 +14,7 @@ final class TextTreeOps implements CgDynamicOps<Object> {
     private TextTreeOps() {
     }
 
+    @Override public boolean humanReadable() { return true; }
     @Override public Object empty() { return CgPlainOps.INSTANCE.empty(); }
     @Override public Object createString(String value) { return value; }
     @Override public Object createNumber(Number value) { return value; }

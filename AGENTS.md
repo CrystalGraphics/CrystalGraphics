@@ -165,11 +165,13 @@ Fabric's dev mod is `tasks.jar` bundling each module's `downgradedJar` —
 | Upload, compute or read back off the render thread or beside the frame | [`docs/ENGINE_API.md`](docs/ENGINE_API.md) § *Async* | `gpu/`, `gpu/resource`, `render/graph` |
 | Know who sets GPU state, on GL and Vulkan, and what crosses to the host | **[`docs/RENDER_STATE.md`](docs/RENDER_STATE.md)** | `platform/gl/state` |
 | Render text on screen | `docs/font/README.md` | `text/CLAUDE.md` |
-| Animate a skinned character: play a clip, run an anim graph or a state machine from variables, play a montage on a slot | **[`docs/animation/guides/graphs.md`](docs/animation/guides/graphs.md)** | `animation/CLAUDE.md`, `animation/graph/CLAUDE.md`, `animation/state/CLAUDE.md` |
-| Place bones from the game: IK, look-at, feet on the ground, constraints, hair and cloth that swing | **[`docs/animation/guides/ik.md`](docs/animation/guides/ik.md)** | `animation/ik/CLAUDE.md` |
+| Animate a skinned character: play a clip, run an anim graph or a state machine from variables, play a montage on a slot | **[`docs/animation/guides/graphs-and-variables.md`](docs/animation/guides/graphs-and-variables.md)** | `animation/CLAUDE.md`, `animation/graph/CLAUDE.md`, `animation/state/CLAUDE.md` |
+| Place bones from the game: IK, look-at, feet on the ground, constraints, hair and cloth that swing | **[`docs/animation/guides/ik-and-look-at.md`](docs/animation/guides/ik-and-look-at.md)** | `animation/ik/CLAUDE.md` |
 | Land a rush, dive or grab on its target wherever it stands: warp windows, motion warping, encode root bone | **[`docs/animation/guides/motion-warping.md`](docs/animation/guides/motion-warping.md)** | `animation/warping/CLAUDE.md` |
 | Keep feet planted at any speed and direction: root motion from feet, stride and orientation warping, turn in place, distance matching | **[`docs/animation/guides/locomotion.md`](docs/animation/guides/locomotion.md)** | `animation/ik/CLAUDE.md`, `animation/locomotion/CLAUDE.md` |
 | Play one character's clips on another: rigs, retargeters, baking | **[`docs/animation/guides/retargeting.md`](docs/animation/guides/retargeting.md)** | `animation/CLAUDE.md` |
+| Draw a Minecraft entity with your own model and graph: actors, entity variables, reactions, held items, the humanoid template | **[`docs/animation/guides/actors.md`](docs/animation/guides/actors.md)** | `world/actor/` |
+| Give an entity data of your own, read what it is doing, tag it, save it, change it from gameplay (`CgEntities.of`) | **[`docs/entities/README.md`](docs/entities/README.md)** | `net/CLAUDE.md`, `world/` |
 | Build a HUD element, a widget over a point in the world (damage numbers, name plates, markers) or a subtitle's look | **[`docs/WIDGETS.md`](docs/WIDGETS.md)** | `widget/CLAUDE.md` |
 | Make a colour, gradient, image brush, grid, vector shape, stroke, filter or glass look to paint with | **[`docs/PAINT.md`](docs/PAINT.md)** | `api/paint`, `api/vector` |
 | Draw 2D on a GUI stage or into a texture: boxes, images, paths, splines, text, layers and glass, under transforms and clips | **[`docs/UI.md`](docs/UI.md)** | `api/canvas`, `render/ui` |

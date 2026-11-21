@@ -1,149 +1,121 @@
-# Locomotion: feet that keep up with the character
+# Locomotion: feet that never slide
 
-A run clip is drawn at one speed, facing one way. A game moves its character at many speeds, in every direction, on
-potions and slopes, and turns it on the spot. Played as it is, the clip's feet slide. These tools fit the clip to the
-movement instead:
+**What you will have:** a character whose feet stay planted at every speed, from a crawl to a sprint on a speed
+potion, running sideways and backwards with its chest still ahead, turning on the spot without skating, and stopping
+exactly where it means to.
 
-| Tool | What it fixes |
+## In plain words
+
+A run clip is recorded at one speed, going straight ahead. The game moves the character at any speed, in any
+direction, and turns it on the spot. Played as recorded, the feet slide over the ground as if on ice. The tools here
+bend the clip, as it plays, to fit how the character really moves:
+
+| Tool | In plain words |
 |---|---|
-| Root motion from the feet | a clip drawn in place gets the travel its planted feet imply |
-| Root motion from everything | every playing clip's travel, at its weight, for the nodes below to read |
-| Stride warping | longer or shorter strides for a faster or slower character |
-| Orientation warping | a forward run turned to go sideways or diagonally, the chest still ahead |
-| Turn in place | the body holds where it stands while the entity turns, then swings round |
-| Distance matching | a start or stop played by ground covered, not by time |
+| **Stride warping** | longer steps when the character goes faster than the clip, shorter when slower |
+| **Orientation warping** | the hips and legs turn toward where the character goes, the chest keeps facing ahead: one forward run covers every direction |
+| **Turn in place** | the feet stay planted while the body turns, then step round to catch up, as a person turns on the spot |
+| **Distance matching** | a start or stop clip timed by how much ground is covered, so the last step lands where the character stops |
+| **Root motion from the feet** | for a clip drawn in place: work out how far it would travel from where its feet push |
 
-Distances are metres; angles are degrees about the skeleton's +y, from its facing (+z), positive toward +x. The nodes
-are graph nodes ([graphs.md](graphs.md)), each shown in Java and in an `anim_graph` file.
+Distances are metres, angles degrees, measured from the character's facing (+Z), positive to its left.
 
-## Clips that travel
+## The code: a run that fits any speed and direction
 
-Warping reads a clip's **root motion**: how far its root moves. A captured clip has it. A clip drawn in place (an anime
-run, most hand-keyed loops) does not, so give it root motion from its feet once, at load:
+The usual chain, on a Minecraft entity's actor, as a file:
 
-```java
-CgAnimSequence run = CgClipModifiers.rootMotionFromFeet(rawRun, skeleton, true, "root", "foot_l", "foot_r");
-float speed = CgClipModifiers.speed(run, skeleton);     // metres a second it covers at rate 1
+```yaml
+# assets/mymod/anim_graphs/runner.yaml
+_v: 1
+variables:
+  speed:      { type: float }
+  move_angle: { type: float }
+  stride:     { type: float, default: 1 }
+entity:
+  speed: entity.speed                     # blocks a second
+  move_angle: entity.move_direction       # degrees off its facing, left positive
+output: out
+nodes:
+  out:     { kind: leg_ik, source: turned, legs: [ { ik_foot_bone: ik_foot_l, fk_foot_bone: foot_l }, { ik_foot_bone: ik_foot_r, fk_foot_bone: foot_r } ] }
+  turned:  { kind: orientation_warping, source: strided, mode: manual, orientation_angle: move_angle,
+             ik_foot_root: ik_foot_root, spine_bones: [spine_01, spine_02, spine_03], ik_foot_bones: [ik_foot_l, ik_foot_r] }
+  strided: { kind: stride_warping, source: runs, mode: manual, stride_scale: stride, scale_clamp: [0.5, 1.5],
+             pelvis: pelvis, ik_foot_root: ik_foot_root,
+             feet: [ { ik_foot_bone: ik_foot_l, fk_foot_bone: foot_l, thigh_bone: thigh_l },
+                     { ik_foot_bone: ik_foot_r, fk_foot_bone: foot_r, thigh_bone: thigh_r } ] }
+  runs:    { kind: blend_space_player, blend_space: mymod:runner_runs, x: speed }
 ```
 
-A step lasts while one foot is the lowest. The root covers what that foot sweeps backward, at an even pace over the
-step. Pass `true` for a loop, so the step across its seam counts as one step.
-
-Loops of different speeds blend in step only if their feet are marked alike. Mark each foot where it passes the root
-going forward:
+The stride is how much faster the entity goes than the clip it plays. The actor sets it each frame:
 
 ```java
-run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_l", "foot_l", true);
-run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_r", "foot_r", true);
+@Override protected void tick(CgEntity runner, float dt) {
+    float speed = runner.properties(CgEntityProperties.MOTION).get(CgEntityProperties.SPEED);
+    float own = Math.max(1.5f, Math.min(speed, 6f));        // the blend space's own speed at this input
+    body.anim().set(STRIDE, speed / own);                     // 1 inside the blend space's range, more past it
+}
 ```
 
-A blend space of marked loops then syncs by those markers ([graphs.md](graphs.md) § *Sync groups and markers*).
+**Manual mode** is right on a Minecraft entity: the game moves the entity, and the nodes only bend the pose to match.
+The order matters: stride before orientation, both before leg IK.
 
-## Root motion from everything
+## Each tool
 
-By default only a root-motion montage moves the character. Locomotion warping needs every player's motion, blended by
-weight:
+### Stride warping
 
-```java
-anim.montages().rootMotionMode(CgRootMotionMode.FROM_EVERYTHING);
-
-// each frame, after the pose: what the clips moved, as the warping nodes left it
-if (anim.montages().consumeRootMotion(1f, step)) mover.move(step);
-```
-
-In this mode every player holds its clip's root in place, and the motion goes to the mover instead. A blended
-mode is not deterministic over the network: a move that must replay the same on every client keeps
-`FROM_MONTAGES_ONLY`.
-
-## Stride warping
-
-The node scales each IK foot's stride along the direction of travel to match the speed the character really moves
-at. It pulls the pelvis toward the feet so the legs still reach, and turns each thigh toward its foot. A leg IK after
-it bends the knees.
+Scales each foot's step along the direction of travel, pulls the pelvis down so the legs still reach, and turns each
+thigh toward its foot. Leg IK after it bends the knees.
 
 ```java
-CgAnimVariable<Float> speed = CgAnimVariable.floating("speed"), rate = CgAnimVariable.floating("rate", 1f);
-
-CgAnimNode runs = CgBlendSpacePlayerNode.of(RUNS, speed).playRate(rate);
 CgAnimNode strided = CgStrideWarpingNode.of(runs, "pelvis", "ik_foot_root")
         .foot("ik_foot_l", "foot_l", "thigh_l").foot("ik_foot_r", "foot_r", "thigh_r")
-        .locomotionSpeed(speed)                 // the scale is this over the clips' own speed
-        .scaleClamp(0.5f, 1.5f);                // past these the loop plays faster or slower instead
+        .manual(STRIDE)                         // the scale, set by the game
+        .scaleClamp(0.5f, 1.5f);                // past these, play the loop faster or slower instead
 CgAnimNode legs = CgLegIkNode.of(strided).leg("ik_foot_l", "foot_l").leg("ik_foot_r", "foot_r");
 ```
 
-```yaml
-strided:
-  kind: stride_warping
-  source: runs
-  pelvis: pelvis
-  ik_foot_root: ik_foot_root
-  feet:
-    - { ik_foot_bone: ik_foot_l, fk_foot_bone: foot_l, thigh_bone: thigh_l }
-    - { ik_foot_bone: ik_foot_r, fk_foot_bone: foot_r, thigh_bone: thigh_r }
-  locomotion_speed: speed
-  scale_clamp: [0.5, 1.5]
-```
-
-A stride can only stretch so far before the leg cannot reach. So clamp the scale, and let the play rate cover the
-rest:
+A step can stretch only so far before the leg cannot reach. Clamp the scale, and let the play rate cover the rest:
 
 ```java
 float own = clamp(v, slowestLoop, fastestLoop);       // the blend's own speed at v
 float stride = clamp(v / own, 0.5f, 1.5f);
-anim.set(speed, v).set(rate, v / (own * stride));
+anim.set(SPEED, v).set(STRIDE, stride).set(RATE, v / (own * stride));   // RATE: the blend space's playRate
 ```
 
-In `GRAPH` mode, the default, the node reads the clips' root motion and replaces it with the warped motion, so the
-character then moves at `speed`. `manual(STRIDE)` takes the scale outright instead, along `strideDirection` (+z).
+**Graph mode**, for a character the animation moves rather than the game: `.locomotionSpeed(SPEED)` instead of
+`manual`, and the instance in `CgRootMotionMode.FROM_EVERYTHING`. The node then reads the clips' own travel and
+replaces it with the warped one, so the character moves at `speed` ([`root-motion.md`](root-motion.md)).
 
-A skeleton without IK foot bones gets them as virtual bones, each following its foot:
+### Orientation warping
 
-```java
-mesh = mesh.withVirtualBones(List.of(new CgVirtualBone("ik_foot_root", "root", "root"),
-        new CgVirtualBone("ik_foot_l", "ik_foot_root", "foot_l"), new CgVirtualBone("ik_foot_r", "ik_foot_root", "foot_r")));
-```
-
-## Orientation warping
-
-One forward loop covers every direction. The node turns the root and the IK feet toward where the character moves,
-and turns the spine back so the chest still faces ahead:
+Turns the root and the feet toward where the character goes, and turns the spine back so the chest still faces
+ahead.
 
 ```java
 CgAnimNode turned = CgOrientationWarpingNode.of(strided, "ik_foot_root")
         .spine("spine_01", "spine_02", "spine_03")
         .ikFeet("ik_foot_l", "ik_foot_r")
-        .locomotionAngle(MOVE_ANGLE);           // where it moves, degrees off its facing
+        .manual(MOVE_ANGLE);                    // degrees off its facing
 ```
 
-```yaml
-turned:
-  kind: orientation_warping
-  source: strided
-  ik_foot_root: ik_foot_root
-  spine_bones: [spine_01, spine_02, spine_03]
-  ik_foot_bones: [ik_foot_l, ik_foot_r]
-  locomotion_angle: move_angle
-```
+- **The root takes half the turn** (`distribution`), the spine turns that much back, shared down the chain, and the
+  feet take the rest.
+- **It eases toward the target** at `interp(speed, maxDegrees)`.
+- **Past 90 degrees it turns the other way**, playing the clip as a backward run (`flipBeyond`). A character with one
+  forward loop for every direction sets `flipBeyond(0)`: at a 90-degree strafe the clip's own drift tips the target
+  either side of 90, and the legs would flip from frame to frame.
 
-The root takes `distribution` of the turn (half by default). The spine turns that much back, shared evenly down the
-chain, and the IK foot root takes the rest. The node eases toward its target at `interp(speed, maxDegrees)`. A target
-past 90 degrees turns the other way instead, taking the clip for a backward one (`flipBeyond`). A character with one
-forward loop for every direction sets `flipBeyond(0)`: at a 90 degree strafe its clip's own drift tips the target
-either side of 90, and the legs would flip from frame to frame. In `GRAPH` mode the node turns the root motion too,
-so the character moves where its feet go.
-
-The angle from the game, for a character facing `yaw` and moving along `(mx, mz)`:
+Off an entity, the angle from a facing `yaw` and movement `(mx, mz)`:
 
 ```java
 float lx = mx * cos(yaw) - mz * sin(yaw), lz = mx * sin(yaw) + mz * cos(yaw);
 anim.set(MOVE_ANGLE, (float) Math.toDegrees(Math.atan2(lx, lz)));
 ```
 
-## Turning in place
+### Turn in place
 
-`CgOffsetRootBoneNode` keeps the skeleton's root where it stands in the world while the entity turns or moves under
-it, then eases it back. The feet stay put, and the body swings round after:
+`CgOffsetRootBoneNode` keeps the skeleton's root where it stands while the entity turns or moves under it, then
+eases it back: the feet stay put and the body swings round after.
 
 ```java
 CgAnimNode standing = CgOffsetRootBoneNode.of(idle)
@@ -152,56 +124,41 @@ CgAnimNode standing = CgOffsetRootBoneNode.of(idle)
 ```
 
 ```yaml
-standing:
-  kind: offset_root_bone
-  source: idle
-  rotation_half_life: 0.25
-  max_rotation_error: 100
-  max_translation_error: 0.5
+standing: { kind: offset_root_bone, source: idle, rotation_half_life: 0.25, max_rotation_error: 100, max_translation_error: 0.5 }
 ```
 
 | Mode | The held root |
 |---|---|
-| `ACCUMULATE` | moves only by the clips' root motion |
-| `INTERPOLATE` | as `ACCUMULATE`, then eased back over its half-life |
-| `HOLD_AND_CONSUME` | follows the entity, keeping the offset, and moves by the clips' motion too |
-| `HOLD_SHRINK_AND_CONSUME` | as `HOLD_AND_CONSUME`, taking the clips' motion only where it shrinks the offset (a turn clip) |
-| `HOLD` | follows the entity, keeping the offset |
+| `INTERPOLATE` | held, then eased back over its half-life: the usual choice |
+| `ACCUMULATE` | moved only by the clips' own travel |
+| `HOLD` | follows the entity, keeping how far behind it is |
 | `RELEASE` | follows the entity and eases back |
+| `HOLD_AND_CONSUME` | as `HOLD`, and moved by the clips' travel too |
+| `HOLD_SHRINK_AND_CONSUME` | as `HOLD_AND_CONSUME`, taking the clips' travel only where it closes the gap (a turn clip) |
 
-It reads where the instance stands (`placedBy`; a skeletal mesh component sets it). A jump past `teleportDistance`
-(3 m) carries the offset along.
+It reads where the character stands from its component, which an actor's body has. A jump past `teleportDistance`
+(3 m) carries the offset along rather than easing across it.
 
-## Distance matching
+### Distance matching
 
-A start, stop or pivot played by distance lands its steps where the character's feet land. Give the clip a distance
-curve at load:
+A start or stop clip played by distance lands its steps where the feet land. Give the clip a distance curve at load,
+then play it with a sequence evaluator whose time is found each frame:
 
 ```java
 CgAnimSequence stop = CgClipModifiers.distanceCurve(
         CgClipModifiers.rootMotionFromFeet(rawStop, skeleton, false, "root", "foot_l", "foot_r"),
         skeleton, CgClipModifiers.DISTANCE, true);    // true: it stops at its end
-```
 
-Then play it with a sequence evaluator, its time set each frame:
-
-```java
-// a stop: placed by the distance still to go
-CgSequenceEvaluatorNode.of(stop).matchToTarget(TO_STOP);
-// a start: advanced by the distance covered this frame, its rate kept within [0.75, 1.25]
-CgSequenceEvaluatorNode.of(start).advanceByDistance(TRAVELLED, 0.75f, 1.25f);
-// any clip at a time the game sets: seconds, or a share of the clip
-CgSequenceEvaluatorNode.of(aim).explicitTime(AIM_TIME);
-CgSequenceEvaluatorNode.of(swing).explicitTime(SWING).normalized();   // Minecraft's swing progress, 0 to 1
+CgSequenceEvaluatorNode.of(stop).matchToTarget(TO_STOP);                    // placed by the distance still to go
+CgSequenceEvaluatorNode.of(start).advanceByDistance(TRAVELLED, 0.75f, 1.25f);   // advanced by ground covered, rate kept within
 ```
 
 ```yaml
-stopping: { kind: sequence_evaluator, clip: mymod:hero/run_stop, mode: match_to_target, distance: to_stop }
-starting: { kind: sequence_evaluator, clip: mymod:hero/run_start, mode: advance_by_distance, distance: travelled, play_rate_clamp: [0.75, 1.25] }
-swinging: { kind: sequence_evaluator, clip: mymod:hero/swing, time: swing, normalized: true }
+stopping: { kind: sequence_evaluator, clip: mymod:runner/run_stop, mode: match_to_target, distance: to_stop }
+starting: { kind: sequence_evaluator, clip: mymod:runner/run_start, mode: advance_by_distance, distance: travelled, play_rate_clamp: [0.75, 1.25] }
 ```
 
-How far it still has to go, from its velocity and braking:
+How far there is still to go, from velocity and braking:
 
 ```java
 Vector3f stopAt = CgMovementPrediction.stopLocation(velocity, friction, deceleration, new Vector3f());
@@ -210,13 +167,38 @@ Vector3f pivot = CgMovementPrediction.pivotLocation(acceleration, velocity, fric
 ```
 
 `CgDistanceMatching` has the sums on their own: `timeAtDistance`, `timeAfterDistanceTravelled`,
-`playRateToMatchSpeed`. A clip without its distance curve fails when the graph is bound, naming it.
+`playRateToMatchSpeed`.
 
-## The order
+### Root motion from the feet
 
+A clip drawn in place (a hand-keyed loop) has no travel of its own. Work it out once, at load, from where its planted
+feet push, and mark its feet so loops of different speeds blend in step:
+
+```java
+CgAnimSequence run = CgClipModifiers.rootMotionFromFeet(rawRun, skeleton, true, "root", "foot_l", "foot_r");   // true: a loop
+float speed = CgClipModifiers.speed(run, skeleton);     // metres a second it covers at rate 1
+run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_l", "foot_l", true);
+run = CgClipModifiers.footSyncMarkers(run, skeleton, "root", "foot_r", "foot_r", true);
 ```
-blend space of loops ──► stride warping ──► orientation warping ──► leg IK ──► (foot placement) ──► output
-idle ──► offset root bone ──► output
-```
 
-Stride warping comes before orientation warping, as both read and bend the root motion. Leg IK comes after both.
+A step lasts while one foot is the lowest; the root covers what that foot sweeps backward, at an even pace over the
+step. `speed` is what a blend space's sample of it should sit at.
+
+## What goes wrong
+
+- **Feet still slide at high speed**: the stride is clamped at 1.5 and the play rate is not raised for the rest.
+- **The legs flip back and forth while strafing**: a single forward loop with the default `flipBeyond`. Set it to 0.
+- **Nothing warps in graph mode**: the instance is not in `FROM_EVERYTHING`, so the graph reads no travel. On a
+  Minecraft entity, use manual mode instead.
+- **The entity is moved twice**: graph mode and `FROM_EVERYTHING` on an actor that names a `root_motion` body. The game
+  already moves the entity; use manual mode.
+- **A stop overshoots**: its clip has no distance curve (that fails when the graph is bound, naming it), or `to_stop`
+  is not set each frame.
+- **No IK foot bones**: give the skeleton virtual ones ([`ik-and-look-at.md`](ik-and-look-at.md) § *Feet on the ground*).
+- **Leg IK before the warping**: the knees bend to the old feet. Leg IK goes last.
+
+## Where next
+
+- The blend space the loops come from: [`blend-spaces.md`](blend-spaces.md).
+- Feet on stairs and slabs: [`ik-and-look-at.md`](ik-and-look-at.md).
+- A move landing on a target: [`motion-warping.md`](motion-warping.md).

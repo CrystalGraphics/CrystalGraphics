@@ -172,7 +172,7 @@ static final CgCodec<List<Spell>> SPELLS = CgCodecs.listOf(Spell.CODEC);
 |---|---|---|
 | `CgCodecs.STRING`, `INT`, `LONG`, `FLOAT`, `DOUBLE`, `BOOL` | the boxed primitives | |
 | `CgCodecs.BYTES` | `byte[]` | one tag on the wire and in NBT; Base64 in JSON and TOML, `!!binary` in YAML |
-| `CgCodecs.UUID` | `UUID` | two longs |
+| `CgCodecs.UUID` | `UUID` | its text (`"8667ba71-…"`) in JSON, JSONC, YAML and TOML; two longs on the wire and in binary files. Either form reads in any format |
 | `CgCodecs.enumOf(Kind.class)` | an enum | by constant name, never ordinal: inserting a constant does not re-point old saves |
 | `CgCodecs.listOf(codec)` | `List<A>` | |
 | `CgCodecs.mapOf(keyCodec, valueCodec)` | `Map<K, V>` | read back in written order; `INT` and `LONG` keys are written as their text, any other key codec must write text for JSON, TOML, YAML and NBT |

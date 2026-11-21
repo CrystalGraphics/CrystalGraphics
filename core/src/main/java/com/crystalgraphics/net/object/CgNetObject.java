@@ -76,6 +76,14 @@ public final class CgNetObject {
     final long[] ownerHas;
     boolean anyDirty;
     boolean moved;
+    /** Server: an entity's persisted object changed since the entity was last saved. */
+    boolean unsavedOnEntity;
+    /** Server: a player's object made while they are away, from their file; dormant until they join. */
+    boolean offline;
+    /** Server: a player's object ended because they left, its values in their file. */
+    boolean leftWithPlayer;
+    /** Server: the player's file a per-holder object of theirs saves in; null for any other. */
+    PlayerFiles.File saveFile;
 
     long spawnTick;
     int lifetime = -1;

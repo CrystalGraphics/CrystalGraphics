@@ -2,16 +2,32 @@ package com.crystalgraphics.world.actor;
 
 import javax.annotation.Nullable;
 
+import com.crystalgraphics.cue.CgCueManager;
+import com.crystalgraphics.cue.CgCueParameters;
+import com.crystalgraphics.cue.CgCuePlaying;
+import com.crystalgraphics.net.object.CgAnchor;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
+import com.crystalgraphics.net.object.CgPredictionKey;
+import com.crystalgraphics.tag.CgGameplayTag;
 import com.crystalgraphics.platform.world.CgEntityQuery;
 import com.crystalgraphics.tag.CgTagCounts;
 import com.crystalgraphics.world.CgEntityProperties;
 import com.crystalgraphics.world.CgEntityQueries;
+import com.crystalgraphics.world.CgEntityTags;
 
 /**
- * A host entity as its actor sees it this frame: its id and type, and its pose interpolated to where the host draws it.
- * Read on the client world's thread; refreshed each frame before the actor's {@code tick}.
+ * One of the game's entities on this side, from {@link CgEntities#of}: its tags, its cues, its properties, and where
+ * it stands. The server's calls change it; the owner's client may predict its own player's tags and cues; any other
+ * client only reads.
+ *
+ * <pre>{@code
+ * CgEntities.of(zombie).addTag(STUNNED).executeCue(STUN_CUE);                         // server
+ * CgEntities.predicted(() -> CgEntities.local().addTag(CHARGING).addCue(AURA_CUE));   // the player's own client
+ * if (CgEntities.of(zombieId).hasTag(STUNNED)) { ... }                                // any client
+ * }</pre>
+ *
+ * An actor reads the entity it draws the same way:
  *
  * <pre>{@code
  * protected void tick(CgEntity dragon, float dt) {
@@ -23,13 +39,14 @@ import com.crystalgraphics.world.CgEntityQueries;
  *
  * <ul>
  *   <li>Angles are Minecraft's, in degrees: yaw 0 faces +z.</li>
- *   <li>Its numbers hold until the next frame's refresh; a field holding a {@code CgEntity} sees them change.</li>
+ *   <li>Its pose is refreshed each frame an actor draws it, before the actor's {@code tick}; a handle with no actor
+ *       holds no pose.</li>
  * </ul>
  */
 public final class CgEntity {
 
     private final int id;
-    private final String type;
+    private String type;
     final double[] pose = new double[CgEntityQuery.POSE_LENGTH];
     /** Its owned tags, on its side: the server's counts, or a client's mirror of them. Set at spawn. */
     CgTagCounts tags = new CgTagCounts();
@@ -41,6 +58,18 @@ public final class CgEntity {
     int flags;
     boolean present;
     long hostFrame = -1;
+
+    /** Reads its pose and flags from the host's entities at {@code partialTick}; whether the host has it. */
+    boolean refresh(CgEntityQuery entities, float partialTick) {
+        present = entities.pose(id, partialTick, pose);
+        if (present) flags = entities.flags(id);
+        return present;
+    }
+
+    /** Names its type as its actor spawns. */
+    void type(String type) {
+        this.type = type;
+    }
 
     CgEntity(int id, String type) {
         this.id = id;
@@ -91,7 +120,7 @@ public final class CgEntity {
 
     /**
      * The gameplay tags it owns, with counts ({@code CgEntityTags}): on a server its own, on a client what its server last
-     * sent. Read them; change them on the server through {@code CgEntityTags.add}.
+     * sent, its owner's predictions included. Read them; change them through {@link #addTag} and {@link #removeTag}.
      */
     public CgTagCounts tags() {
         return tags;
@@ -147,6 +176,149 @@ public final class CgEntity {
      */
     public long hostFrame() {
         return hostFrame;
+    }
+
+    // ── the gameplay handle: CgEntities.of(entity) ──────────────────────────────────────
+
+    /** Whether this side is the server: its calls are the truth. */
+    public boolean isAuthority() {
+        return serverHost != null;
+    }
+
+    /** Whether this is the client's own player: the one client whose calls the server may take. False on a server. */
+    public boolean isOwner() {
+        return serverHost == null && CgEntityTags.owns(id);
+    }
+
+    /** Whether it owns {@code tag}, or any tag under it. */
+    public boolean hasTag(CgGameplayTag tag) {
+        return tags.has(tag);
+    }
+
+    /** Whether it owns any of {@code wanted}. */
+    public boolean hasAnyTag(CgGameplayTag... wanted) {
+        for (CgGameplayTag tag : wanted) if (tags.has(tag)) return true;
+        return false;
+    }
+
+    /** Whether it owns every one of {@code wanted}. */
+    public boolean hasAllTags(CgGameplayTag... wanted) {
+        for (CgGameplayTag tag : wanted) if (!tags.has(tag)) return false;
+        return true;
+    }
+
+    /** One more of {@code tag}: counted, so two sources may grant one tag. */
+    public CgEntity addTag(CgGameplayTag tag) {
+        return addTag(tag, 1);
+    }
+
+    /** {@code count} more of {@code tag}. The server's, or the owner's client's, asked of the server. */
+    public CgEntity addTag(CgGameplayTag tag, int count) {
+        if (count <= 0) throw new IllegalArgumentException("add " + count + " of " + tag + ": a count is positive");
+        return changeTag(tag, count, "addTag");
+    }
+
+    /** One fewer of {@code tag}; nothing where it owns none explicitly. */
+    public CgEntity removeTag(CgGameplayTag tag) {
+        return removeTag(tag, 1);
+    }
+
+    /** {@code count} fewer of {@code tag}, gone at 0. */
+    public CgEntity removeTag(CgGameplayTag tag, int count) {
+        if (count <= 0) throw new IllegalArgumentException("remove " + count + " of " + tag + ": a count is positive");
+        int owned = tags.explicitCount(tag);
+        return changeTag(tag, -Math.min(count, owned), "removeTag");
+    }
+
+    /** {@code tag}'s own count set to {@code count}: Unreal's {@code SetLooseGameplayTagCount}. */
+    public CgEntity setTagCount(CgGameplayTag tag, int count) {
+        if (count < 0) throw new IllegalArgumentException("count " + count + " of " + tag + ": a count is not negative");
+        return changeTag(tag, count - tags.explicitCount(tag), "setTagCount");
+    }
+
+    private CgEntity changeTag(CgGameplayTag tag, int delta, String verb) {
+        if (delta == 0) return this;
+        if (serverHost != null) {
+            if (delta > 0) CgEntityTags.add(serverHost, tag, delta);
+            else CgEntityTags.remove(serverHost, tag, -delta);
+        } else {
+            requireOwner(verb);
+            CgEntityTags.ask(id, tag, delta, CgEntities.key());
+        }
+        return this;
+    }
+
+    /**
+     * Hears {@code tag}'s count on this entity change, on this side: {@code (before, now)}, the tags under it counted. A
+     * client hears the server's change as it arrives, and its own predicted one at once.
+     *
+     * @return what to {@code cancel()} to stop hearing
+     */
+    public CgEntityTags.Watch onTagChanged(CgGameplayTag tag, java.util.function.BiConsumer<Integer, Integer> listener) {
+        return CgEntityTags.watch(serverHost != null ? serverHost : (Object) id, tag, listener);
+    }
+
+    /** Plays the cue {@code tag} once at this entity: Unreal's {@code ExecuteGameplayCue}. */
+    public CgEntity executeCue(CgGameplayTag tag) {
+        return executeCue(tag, new CgCueParameters());
+    }
+
+    /** As {@link #executeCue(CgGameplayTag)} with {@code parameters}, anchored on this entity where they name none. */
+    public CgEntity executeCue(CgGameplayTag tag, CgCueParameters parameters) {
+        if (serverHost == null) requireOwner("executeCue");
+        cues().execute(tag, anchored(parameters));
+        return this;
+    }
+
+    /** Starts the lasting cue {@code tag} on this entity: Unreal's {@code AddGameplayCue}; the handle ends it. */
+    public CgCuePlaying addCue(CgGameplayTag tag) {
+        return addCue(tag, new CgCueParameters());
+    }
+
+    /**
+     * As {@link #addCue(CgGameplayTag)} with {@code parameters}. On the owner's client it plays at once and is asked of
+     * the server under the window's key ({@link CgEntities#predicted}), shown only while the server takes it.
+     */
+    public CgCuePlaying addCue(CgGameplayTag tag, CgCueParameters parameters) {
+        if (serverHost != null) return cues().add(tag, anchored(parameters));
+        requireOwner("addCue");
+        return cues().predict(tag, anchored(parameters), CgEntities.key());
+    }
+
+    private CgCueManager cues() {
+        return serverHost != null ? CgCueManager.server() : CgCueManager.client();
+    }
+
+    private CgCueParameters anchored(CgCueParameters parameters) {
+        if (parameters.anchor() == null) parameters.anchor(serverHost != null ? CgAnchor.on(serverHost) : CgAnchor.onEntity(id));
+        return parameters;
+    }
+
+    /**
+     * Raises the entity event {@code name} ({@code hurt}, {@code landed}, ...) as if the game had: its reactions play,
+     * on this side's actor, for this frame.
+     *
+     * @throws IllegalStateException on a client
+     * @throws IllegalArgumentException for a name that is no entity event
+     */
+    public CgEntity raiseEvent(String name) {
+        var event = CgReaction.event(name);
+        if (serverHost == null) throw new IllegalStateException("raiseEvent(" + name + ") is the server's: " + this + " is on a client");
+        CgNetObject motion = properties(CgEntityProperties.MOTION);
+        if (motion == null) throw new IllegalStateException(this + " has no motion to raise " + name + " on");
+        motion.setBool(event, true);
+        return this;
+    }
+
+    private void requireOwner(String verb) {
+        if (!isOwner()) {
+            throw new IllegalStateException(verb + " on " + this + " is the server's or its owner's: this client is neither");
+        }
+    }
+
+    /** The window's key, for what else a predicted call should undo. */
+    static CgPredictionKey window() {
+        return CgEntities.key();
     }
 
     @Override

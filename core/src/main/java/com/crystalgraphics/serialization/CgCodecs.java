@@ -285,19 +285,50 @@ public final class CgCodecs {
         }
     };
 
-    /** A UUID as its two longs. */
+    /**
+     * A UUID: its text ({@code "8667ba71-b85a-4004-af54-457a9734eed7"}) in a format people read
+     * ({@link CgDynamicOps#humanReadable}), its two longs, most significant first, on the wire and in binary files.
+     * Either form decodes in any format.
+     */
     public static final CgCodec<UUID> UUID = new CgCodec<UUID>() {
         @Override
         public <T> T encode(CgDynamicOps<T> ops, UUID input) {
+            if (ops.humanReadable()) return ops.createString(input.toString());
             return ops.createList(Arrays.asList(ops.createNumber(input.getMostSignificantBits()),
                     ops.createNumber(input.getLeastSignificantBits())));
         }
 
         @Override
         public <T> UUID decode(CgDynamicOps<T> ops, T input) {
+            // the format's own form first; the other still reads, as a person or an older file wrote it
+            try {
+                return ops.humanReadable() ? uuidFromText(ops.getStringValue(input)) : uuidFromHalves(ops, input);
+            } catch (CgCodecException otherForm) {
+                try {
+                    return ops.humanReadable() ? uuidFromHalves(ops, input) : uuidFromText(ops.getStringValue(input));
+                } catch (CgCodecException neither) {
+                    throw otherForm;
+                }
+            }
+        }
+
+        private <T> UUID uuidFromHalves(CgDynamicOps<T> ops, T input) {
             List<T> halves = ops.getListValue(input);
             if (halves.size() != 2) throw new CgCodecException("a UUID is two longs, not " + halves.size() + " values");
             return new UUID(ops.getNumberValue(halves.get(0)).longValue(), ops.getNumberValue(halves.get(1)).longValue());
+        }
+
+        /** {@code 8-4-4-4-12} hex digits, as {@code UUID.toString} writes them. */
+        private UUID uuidFromText(String text) {
+            boolean dashes = text.length() == 36 && text.charAt(8) == '-' && text.charAt(13) == '-'
+                    && text.charAt(18) == '-' && text.charAt(23) == '-';
+            String hex = text.replace("-", "");
+            if (!dashes || hex.length() != 32) throw new CgCodecException("not a UUID: \"" + text + "\"");
+            try {
+                return new UUID(Long.parseUnsignedLong(hex.substring(0, 16), 16), Long.parseUnsignedLong(hex.substring(16), 16));
+            } catch (NumberFormatException notHex) {
+                throw new CgCodecException("not a UUID: \"" + text + "\"");
+            }
         }
     };
 

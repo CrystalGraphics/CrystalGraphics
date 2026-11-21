@@ -1,13 +1,20 @@
 package com.crystalgraphics.net.object;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+
+import com.crystalgraphics.platform.service.CgStorageLayout;
+import com.crystalgraphics.serialization.CgCodecs;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -28,6 +35,13 @@ public class CgNetAnchorsTest {
     static final CgNetType WARD = CgNetType.define("test:ward").fields(CURRENT).persisted().build();
     static final CgNetType WARDS = CgNetType.define("test:wards").fields(CURRENT).perHolder().persisted().build();
     static final CgNetType GUARD = CgNetType.define("test:guard").fields(CURRENT).perHolder().build();
+    static final CgNetType FOCUS = CgNetType.define("test:focus").fields(CURRENT).perHolder().persisted().build();
+    static final CgStorageLayout OWN = CgStorageLayout.of("ownmod");
+    static {
+        CgNetType.storage("ownmod", OWN);
+    }
+    static final CgNetType OWN_POOL = CgNetType.define("ownmod:pool").fields(CURRENT).perHolder().persisted().build();
+    static final CgNetType OWN_SHRINE = CgNetType.define("ownmod:shrine").fields(CURRENT).persisted().build();
 
     @Rule
     public final TemporaryFolder world = new TemporaryFolder();
@@ -137,7 +151,7 @@ public class CgNetAnchorsTest {
     }
 
     @Test
-    public void aPlayersObjectEndsAtDeathUnlessCopiedAndWhenTheyLeaveUnlessPersisted() {
+    public void aPlayersObjectEndsAtDeathUnlessCopiedAndLeavesWithThemIntoTheirFile() {
         QUEST.spawn(CgAnchor.player(rig.client(0).id())).start();
         CgNetObject mana = MANA.of(rig.client(0).id()).setInt(CURRENT, 40);
         rig.tick(1);
@@ -154,11 +168,11 @@ public class CgNetAnchorsTest {
         rig.client(0).disconnect();
         rig.tick(1);
         assertEquals(0, QUEST.size());
-        assertTrue("persisted: dormant while they are away", mana.isDormant());
+        assertTrue("persisted: it leaves with them", mana.isRemoved());
+        assertEquals("written to their file as they left", 40, saved(0, MANA));
         rig.client(0).connect();
         rig.tick(3);
-        assertFalse(mana.isDormant());
-        assertEquals(40, rig.client(0).visible(MANA).get(0).getInt(CURRENT));
+        assertEquals("made from their file as they join", 40, rig.client(0).visible(MANA).get(0).getInt(CURRENT));
     }
 
     @Test
@@ -177,6 +191,103 @@ public class CgNetAnchorsTest {
         assertEquals(2, MANA.size());
         assertEquals(70, rig.client(0).visible(MANA).get(0).getInt(CURRENT));
         assertEquals("theirs alone", 20, rig.client(1).visible(MANA).get(0).getInt(CURRENT));
+    }
+
+    @Test
+    public void anAbsentPlayersObjectIsReadFromTheirFileAndWrittenBack() {
+        UUID away = rig.client(1).id();
+        MANA.of(away).setInt(CURRENT, 55);
+        rig.tick(1);
+        rig.client(1).disconnect();
+        rig.tick(2);
+
+        CgNetObject mana = MANA.of(away);
+        assertEquals("read from their file while they are away", 55, mana.getInt(CURRENT));
+        mana.setInt(CURRENT, 60);
+        rig.tick(2);
+        assertFalse("waits for them", mana.isRemoved());
+        assertTrue(mana.isDormant());
+
+        rig.restart().tick(1);
+        assertEquals("written to their file as the server stopped", 60, saved(1, MANA));
+        rig.client(1).connect();
+        rig.tick(3);
+        assertEquals("theirs as they join", 60, rig.client(1).visible(MANA).get(0).getInt(CURRENT));
+    }
+
+    @Test
+    public void anEditByHandIsReadAndItsCommentsKept() throws Exception {
+        UUID away = rig.client(1).id();
+        MANA.of(away).setInt(CURRENT, 10);
+        rig.tick(1);
+        rig.client(1).disconnect();
+        rig.tick(2);
+        Path file = PlayerFiles.path(new PlayerFiles.File(away, CgNetType.DEFAULT_STORAGE));
+        assertTrue("written as they left", Files.readString(file).contains("10"));
+
+        // an admin's fix: a comment, a new value, a trailing comma
+        Files.writeString(file, """
+                {
+                  // raised by an admin
+                  "test:mana": { "current": 99, },
+                }
+                """);
+        CgNetObject mana = MANA.of(away);
+        assertEquals("their edit, read", 99, mana.getInt(CURRENT));
+        mana.setInt(CURRENT, 100);
+        rig.restart().tick(1);
+        String text = Files.readString(file);
+        assertTrue(text, text.contains("// raised by an admin"));
+        assertTrue(text, text.contains("100"));
+        assertTrue("the last one kept", Files.isRegularFile(file.resolveSibling(file.getFileName() + ".old")));
+    }
+
+    @Test
+    public void anObjectEndedByDeathLeavesTheirFile() {
+        UUID id = rig.client(0).id();
+        FOCUS.of(id).setInt(CURRENT, 5);
+        rig.tick(1);
+        PlayerFiles.writeAll();
+        assertEquals(5, saved(0, FOCUS));
+        rig.client(0).die();
+        rig.tick(1);
+        PlayerFiles.writeAll();
+        assertFalse("ended at death: not brought back", file(id, CgNetType.DEFAULT_STORAGE).containsKey(FOCUS.name()));
+        rig.client(0).respawn();
+        rig.tick(1);
+        assertEquals(0, FOCUS.of(id).getInt(CURRENT));
+    }
+
+    @Test
+    public void aNamespaceWithItsOwnLayoutSavesUnderItsOwnFolder() {
+        UUID id = rig.client(0).id();
+        OWN_POOL.of(id).setInt(CURRENT, 7);
+        MANA.of(id).setInt(CURRENT, 3);
+        OWN_SHRINE.spawn(rig.at(0, 64, 0)).start().setInt(CURRENT, 9);
+        rig.tick(1);
+        rig.restart().tick(1);
+
+        Path world = this.world.getRoot().toPath();
+        assertTrue(Files.isRegularFile(world.resolve("ownmod").resolve("players").resolve(id + ".jsonc")));
+        assertTrue(Files.isRegularFile(world.resolve("ownmod").resolve("objects").resolve("shrine.jsonc")));
+        assertFalse("its own file alone", file(id, CgNetType.DEFAULT_STORAGE).containsKey(OWN_POOL.name()));
+        assertFalse(file(id, OWN).containsKey(MANA.name()));
+        assertEquals(3, saved(0, MANA));
+        assertEquals("back from its own file", 7, OWN_POOL.of(id).getInt(CURRENT));
+        int[] shrine = {0};
+        OWN_SHRINE.forEach(obj -> shrine[0] = obj.getInt(CURRENT));
+        assertEquals("back from its own folder", 9, shrine[0]);
+    }
+
+    private int saved(int client, CgNetType type) {
+        Map<?, ?> file = file(rig.client(client).id(), CgNetType.storageOf(type.namespace()));
+        return ((Number) ((Map<?, ?>) file.get(type.name())).get("current")).intValue();
+    }
+
+    /** The player's file as it is on disk. */
+    private static Map<?, ?> file(UUID player, CgStorageLayout layout) {
+        Object read = SaveFiles.read(PlayerFiles.path(new PlayerFiles.File(player, layout)), CgCodecs.PLAIN);
+        return read instanceof Map ? (Map<?, ?>) read : Map.of();
     }
 
     @Test

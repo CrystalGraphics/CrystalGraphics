@@ -7,6 +7,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.LinkedHashSet;
+import java.util.Collection;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -27,6 +30,7 @@ import com.crystalgraphics.net.CgPeer;
 import com.crystalgraphics.trace.CgTraceNames;
 import com.crystalgraphics.world.CgEntityQueries;
 import com.crystalgraphics.platform.world.CgPlayers;
+import com.crystalgraphics.platform.service.CgStorageLayout;
 
 /**
  * A kind of networked object: its fields, who sees it, whether it persists, and what it is on a client. Declared once,
@@ -95,6 +99,11 @@ public final class CgNetType {
     private static final Map<String, CgNetType> BY_NAME = new ConcurrentHashMap<>();
     /** The types {@link Builder#onEntities} put on entities: what an entity's arrival asks. */
     static final List<CgNetType> ON_ENTITIES = new CopyOnWriteArrayList<>();
+    /** The persisted per-holder types: what an entity being saved is asked for. */
+    static final List<CgNetType> SAVED_ON_ENTITIES = new CopyOnWriteArrayList<>();
+    /** Where what saves goes unless its namespace names a layout ({@link #storage}). */
+    static final CgStorageLayout DEFAULT_STORAGE = CgStorageLayout.of("crystalgraphics");
+    private static final Map<String, CgStorageLayout> STORAGE = new ConcurrentHashMap<>();
     /** The types that have had an object or a refusal: the per-tick counters' loop, never every declared type. */
     static final List<CgNetType> USED = new CopyOnWriteArrayList<>();
 
@@ -106,7 +115,13 @@ public final class CgNetType {
     final CgNetCommand<?>[] commands;
     /** Blocks within which a point anchor's object is seen; negative for its whole dimension. */
     final double range;
+    /** Whether it saves any field: its objects outlive the session. */
     final boolean persisted;
+    /** By field index: whether the field is saved, by its own {@code persisted()} or the type's. */
+    final boolean[] saves;
+    /** Its own saved form, in place of each saved field by its codec; null for that. */
+    @Nullable
+    final CgNetSaveForm saveForm;
     @Nullable
     final BiPredicate<CgNetObject, CgPeer> visibleTo;
     final boolean perHolder;
@@ -157,7 +172,14 @@ public final class CgNetType {
         for (CgNetField<?> field : fields) if (field.command != null) commands.add(field.command);
         this.commands = commands.toArray(new CgNetCommand<?>[0]);
         this.range = b.range;
-        this.persisted = b.persisted;
+        this.saves = new boolean[fields.length];
+        boolean any = false;
+        for (int i = 0; i < fields.length; i++) {
+            saves[i] = !fields[i].local && (b.persisted || fields[i].persisted);
+            any |= saves[i];
+        }
+        this.persisted = any;
+        this.saveForm = b.saveForm;
         this.visibleTo = b.visibleTo;
         this.perHolder = b.perHolder;
         this.copyOnDeath = b.copyOnDeath;
@@ -201,6 +223,8 @@ public final class CgNetType {
         private final List<CgNetCommand<?>> commands = new ArrayList<>();
         private double range = -1;
         private boolean persisted;
+        @Nullable
+        private CgNetSaveForm saveForm;
         @Nullable
         private BiPredicate<CgNetObject, CgPeer> visibleTo;
         private boolean perHolder;
@@ -271,16 +295,38 @@ public final class CgNetType {
         }
 
         /**
-         * Saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. A per-holder
-         * type's object on an entity other than a player is saved with that entity instead ({@code CgEntitySaves}): it
-         * travels with the entity through chunk unloads and dies with it.
+         * Every field it lists is saved ({@link CgNetField#persisted()}, field by field, saves only those): its objects are
+         * saved with the world and back the next time it starts; a {@link CgNetObject#fire() fired} one never is. A
+         * per-holder type's object on an entity other than a player is saved with that entity instead
+         * ({@code CgEntitySaves}): it travels with the entity through chunk unloads and dies with it.
          *
          * <pre>{@code
-         * RAGE = CgNetType.define("mymod:rage").fields(LEVEL).onEntities(t -> t.equals("minecraft:zombie")).persisted().build();
+         * WARD = CgNetType.define("mymod:ward").fields(POWER, OWNER_NAME).persisted().build();   // all of it lasts
          * }</pre>
+         *
+         * <ul>
+         *   <li>Its {@code local()} fields are never saved.</li>
+         *   <li>For fields shared with other types (a cue's), this saves them here alone; a field's own {@code persisted()}
+         *       saves it in every type listing it.</li>
+         * </ul>
          */
         public Builder persisted() {
             persisted = true;
+            return this;
+        }
+
+        /**
+         * Saves its objects in a form of its own, written and read by {@code form}, in place of each saved field under its
+         * name. The fields saved ({@code persisted()}) still decide when a change is saved. See {@link CgNetSaveForm}.
+         *
+         * <pre>{@code
+         * .fields(X.persisted(), Y.persisted()).savedAs(new PointAsText())
+         * }</pre>
+         *
+         * @throws IllegalStateException at {@code build()} when no field is saved: the form would never be asked
+         */
+        public Builder savedAs(CgNetSaveForm form) {
+            saveForm = Objects.requireNonNull(form, "form");
             return this;
         }
 
@@ -404,9 +450,13 @@ public final class CgNetType {
                 if (local && persisted) throw new IllegalStateException(name + ": its fields are all local, and a local field is never saved");
                 if (local && !commands.isEmpty()) throw new IllegalStateException(name + ": its fields are all local, and nothing reaches the server");
                 CgNetType type = new CgNetType(this, REGISTERED.size());
+                if (saveForm != null && !type.persisted) {
+                    throw new IllegalStateException(name + " has a saved form and saves no field: mark the fields it saves persisted()");
+                }
                 REGISTERED.add(type);
                 BY_NAME.put(name, type);
                 if (type.entityTypes != null) ON_ENTITIES.add(type);
+                if (type.persisted && type.perHolder) SAVED_ON_ENTITIES.add(type);
                 if (type.persisted) CgNetObjects.declaredLate(type);
                 return type;
             }
@@ -550,8 +600,13 @@ public final class CgNetType {
         obj = create(anchor != null ? anchor : CgAnchor.on(entity));
         obj.holderKey = key;
         holders.put(key, obj);
-        // an entity's saved values, from its own saved data: what it held when the game last saved it
-        if (persisted && anchor == null) CgNetObjects.restore(obj, entity);
+        // what it held when it was last saved: a player's in their file, online or not; an entity's in its own data
+        if (persisted && key instanceof UUID) {
+            PlayerFiles.restore(obj, (UUID) key);
+            obj.offline = CgPlayers.player((UUID) key) == null;
+        } else if (persisted && !(key instanceof ChunkKey)) {
+            CgNetEntities.restore(obj, entity);
+        }
         return obj.start();
     }
 
@@ -739,7 +794,7 @@ public final class CgNetType {
             if (!f.name.equals(g.name) || f.kind != g.kind || f.initialOnly != g.initialOnly || f.ownerOnly != g.ownerOnly
                     || f.skipOwner != g.skipOwner || f.serverOnly != g.serverOnly || f.local != g.local
                     || (f.command == null) != (g.command == null) || f.fallbackBits != g.fallbackBits
-                    || !Objects.equals(f.fallback, g.fallback)) {
+                    || !Objects.equals(f.fallback, g.fallback) || saves[i] != (!g.local && (b.persisted || g.persisted))) {
                 return false;
             }
         }
@@ -749,7 +804,8 @@ public final class CgNetType {
         for (CgNetField<?> f : b.fields) if (f.command != null) commandNames.add(f.command.name);
         if (commands.length != commandNames.size()) return false;
         for (int i = 0; i < commands.length; i++) if (!commands[i].name.equals(commandNames.get(i))) return false;
-        return range == b.range && persisted == b.persisted && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
+        // whether a field saves is compared above: the type's persisted() and each field's both decide it
+        return range == b.range && saveForm == b.saveForm && perHolder == b.perHolder && copyOnDeath == b.copyOnDeath
                 && visibleToTrackers == b.visibleToTrackers && linger == b.linger && predictionTimeout == b.predictionTimeout
                 && keepRefused == b.keepRefused && (entityTypes == null) == (b.entityTypes == null)
                 && (visibleTo == null) == (b.visibleTo == null);
@@ -791,6 +847,49 @@ public final class CgNetType {
     /** Every declared type, in declaration order. */
     public static List<CgNetType> all() {
         return Collections.unmodifiableList(REGISTERED);
+    }
+
+    /**
+     * Saves a namespace's objects under a folder of its own in the world, instead of {@code crystalgraphics}'s: each
+     * player's under {@code <world>/<root>/players/<uuid>.jsonc}, its world objects under
+     * {@code <world>/<root>/objects/<type>.jsonc}. Entities' objects are unaffected: they save with the entity.
+     *
+     * <pre>{@code
+     * public static final CgStorageLayout LAYOUT = CgStorageLayout.of("rpgcore");
+     * CgNetType.storage("rpgcore", LAYOUT);      // at init, before the server starts
+     * // rpgcore:ki on a player   -> <world>/rpgcore/players/<uuid>.jsonc
+     * // rpgcore:shrine           -> <world>/rpgcore/objects/shrine.jsonc
+     * }</pre>
+     *
+     * <ul>
+     *   <li>Without it, a namespace saves to {@code <world>/crystalgraphics/players/<uuid>.jsonc}, shared with every other
+     *       such namespace, and {@code <world>/crystalgraphics/objects/<namespace>/<type>.jsonc}.</li>
+     *   <li>Call it at init: what a running server already saved stays where it was.</li>
+     *   <li>One layout per namespace: a second, different one throws. Several namespaces may share one layout.</li>
+     *   <li>{@code players/} and {@code objects/} are this layer's: keep files of your own beside them.</li>
+     * </ul>
+     */
+    public static void storage(String namespace, CgStorageLayout layout) {
+        Objects.requireNonNull(namespace, "namespace");
+        Objects.requireNonNull(layout, "layout");
+        CgStorageLayout before = STORAGE.putIfAbsent(namespace, layout);
+        if (before != null && before != layout) {
+            throw new IllegalStateException(namespace + " already saves under " + before.root() + ", not " + layout.root());
+        }
+    }
+
+    /** The layout {@code namespace} saves under: its own, or {@code crystalgraphics}'s. */
+    static CgStorageLayout storageOf(String namespace) {
+        CgStorageLayout layout = STORAGE.get(namespace);
+        return layout != null ? layout : DEFAULT_STORAGE;
+    }
+
+    /** Every layout something may be saved under: the default, and each namespace's own. */
+    static Collection<CgStorageLayout> storageLayouts() {
+        Set<CgStorageLayout> all = new LinkedHashSet<>();
+        all.add(DEFAULT_STORAGE);
+        all.addAll(STORAGE.values());
+        return all;
     }
 
     /** The declared type named {@code name}, or null: what a frame, a prediction or an asset names. */

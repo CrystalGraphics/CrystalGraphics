@@ -7,9 +7,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.WeakHashMap;
+import java.util.function.BiConsumer;
 
 import com.crystalgraphics.net.object.CgNetBehaviour;
+import com.crystalgraphics.net.object.CgNetCommand;
+import com.crystalgraphics.net.object.CgNetEntities;
+import com.crystalgraphics.net.object.CgNetEvent;
 import com.crystalgraphics.net.object.CgNetField;
+import com.crystalgraphics.net.object.CgPredictionKey;
 import com.crystalgraphics.net.object.CgNetObject;
 import com.crystalgraphics.net.object.CgNetType;
 import com.crystalgraphics.serialization.CgCodec;
@@ -55,7 +60,50 @@ public final class CgEntityTags {
             CgCodecs.field("t", WIRE_TAG, Owned::tag),
             CgCodecs.field("n", CgCodecs.INT, Owned::count), Owned::new);
     private static final CgNetField<List<Owned>> TAGS = CgNetField.of("tags", CgCodecs.listOf(OWNED));
-    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS).perHolder().build();
+
+    /** An owner's change asked of the server: a tag (the table's index), by how much, and the asking client's key. */
+    record Change(int tag, int delta, int key) {
+        static final CgCodec<Change> CODEC = CgCodecs.record(
+                CgCodecs.field("t", CgCodecs.INT, Change::tag),
+                CgCodecs.field("d", CgCodecs.INT, Change::delta),
+                CgCodecs.field("k", CgCodecs.INT, Change::key),
+                Change::new);
+    }
+
+    /** The server's answer to a change, to its asker alone. */
+    record Verdict(int key, boolean accepted) {
+        static final CgCodec<Verdict> CODEC = CgCodecs.record(
+                CgCodecs.field("k", CgCodecs.INT, Verdict::key),
+                CgCodecs.field("a", CgCodecs.BOOL, Verdict::accepted),
+                Verdict::new);
+    }
+
+    private static final CgNetCommand<Change> CHANGE = CgNetCommand.of("change", Change.CODEC).perSecond(20);
+    private static final CgNetEvent<Verdict> VERDICT = CgNetEvent.of("verdict", Verdict.CODEC);
+    private static final CgNetType TYPE = CgNetType.define("crystalgraphics:entity_tags").fields(TAGS)
+            .events(VERDICT).commands(CHANGE).perHolder().onEntities(type -> type.equals(CgNetEntities.PLAYER)).build();
+
+    /** What the server takes of an owner's change to its own entity's tags. */
+    @FunctionalInterface
+    public interface Rule {
+        /** Whether {@code entity} (the host's) may have {@code delta} more of {@code tag}; {@code delta} is negative to remove. */
+        boolean accepts(Object entity, CgGameplayTag tag, int delta);
+    }
+
+    /** What {@link #watch} gave: call {@link #cancel} to stop hearing. */
+    @FunctionalInterface
+    public interface Watch {
+        void cancel();
+    }
+
+    private static Rule rule = (entity, tag, delta) -> false;
+    /** The client's predicted changes awaiting the server's verdict, by key id. */
+    private static final Map<Integer, CgPredictionKey> KEYS = new HashMap<>();
+    /** Who hears which tag change: by the entity (the server's host object) or its id (a client), a tag each. */
+    private static final Map<Object, List<Watcher>> WATCHERS = new HashMap<>();
+
+    private record Watcher(CgGameplayTag tag, BiConsumer<Integer, Integer> listener) {
+    }
 
     /** The server's: every entity given a tag, held weakly, its counts and the object carrying them. */
     private static final Map<Object, Served> SERVER = new WeakHashMap<>();
@@ -74,6 +122,22 @@ public final class CgEntityTags {
     }
 
     static {
+        TYPE.onCommand(CHANGE, (obj, sender, change) -> {
+            Object entity = obj.entity();
+            CgGameplayTag tag = change == null || entity == null ? null : serverLink().fromWire(change.tag());
+            boolean ok = tag != null && change.delta() != 0 && rule.accepts(entity, tag, change.delta());
+            if (ok) {
+                if (change.delta() > 0) add(entity, tag, change.delta());
+                else remove(entity, tag, -change.delta());
+            }
+            if (change != null) obj.emitToOwner(VERDICT, new Verdict(change.key(), ok));
+        });
+        TYPE.onEvent(VERDICT, (obj, verdict) -> {
+            CgPredictionKey key = KEYS.remove(verdict.key());
+            if (key == null) return;
+            if (verdict.accepted()) key.accept();
+            else key.refuse();
+        });
         TYPE.onClient(obj -> new CgNetBehaviour() {
             @Override
             public void spawned(CgNetObject o, float age) {
@@ -153,7 +217,9 @@ public final class CgEntityTags {
 
     private static void change(Object entity, CgGameplayTag tag, int delta) {
         Served s = served(entity);
+        int before = s.counts.count(tag);
         s.counts.update(tag, delta);
+        fire(entity, tag, before, s.counts.count(tag));
         List<Owned> now = new ArrayList<>(s.counts.size());
         for (int i = 0; i < s.counts.size(); i++) now.add(new Owned(s.counts.tag(i), s.counts.countAt(i)));
         // the entity's own object of the type, made on its first tag, ending with it
@@ -189,14 +255,87 @@ public final class CgEntityTags {
         if (!o.has(TAGS)) return;
         Mirror m = CLIENT.computeIfAbsent(o.entityId(), id -> new Mirror());
         m.served = true;
+        List<Watcher> watched = WATCHERS.get(o.entityId());
+        int[] before = null;
+        if (watched != null) {
+            before = new int[watched.size()];
+            for (int i = 0; i < before.length; i++) before[i] = m.counts.count(watched.get(i).tag());
+        }
         m.counts.clear();
         // a tag this client lacks reads as null, and counts nothing here
         for (Owned owned : o.get(TAGS)) if (owned.tag() != null) m.counts.update(owned.tag(), owned.count());
+        if (before != null) {
+            for (int i = 0; i < before.length; i++) {
+                fire(o.entityId(), watched.get(i).tag(), before[i], m.counts.count(watched.get(i).tag()));
+            }
+        }
+    }
+
+    // ── asking, and hearing ─────────────────────────────────────────────────────────────
+
+    /** Server: which of an owner's changes to its own entity's tags it takes. None, until set. */
+    public static void acceptTags(Rule accepting) {
+        rule = Objects.requireNonNull(accepting, "rule");
+    }
+
+    /** Client: whether this client's own player is entity {@code entityId}: it owns that entity's tags. */
+    public static boolean owns(int entityId) {
+        CgNetObject obj = TYPE.find(entityId);
+        return obj != null && obj.isMine();
+    }
+
+    /**
+     * Client, the owner: {@code delta} more of {@code tag} on entity {@code entityId}, shown here now and asked of the
+     * server under {@code key}. Refused, it goes back as everything else under the key does.
+     *
+     * <p>Reached through {@code CgEntity.addTag}, which is the call to make.
+     *
+     * @throws IllegalStateException where this client has no object of the entity's tags to ask through: it is not the owner
+     */
+    public static void ask(int entityId, CgGameplayTag tag, int delta, CgPredictionKey key) {
+        CgNetObject obj = TYPE.find(entityId);
+        if (obj == null || !obj.isMine()) {
+            throw new IllegalStateException("only an entity's owner changes its tags from a client: entity " + entityId + " is not this client's");
+        }
+        Mirror m = CLIENT.computeIfAbsent(entityId, id -> new Mirror());
+        int before = m.counts.count(tag);
+        m.counts.update(tag, delta);
+        fire(entityId, tag, before, m.counts.count(tag));
+        KEYS.put(key.id(), key);
+        key.onRefused(() -> {
+            int was = m.counts.count(tag);
+            m.counts.update(tag, -delta);
+            fire(entityId, tag, was, m.counts.count(tag));
+        });
+        obj.send(CHANGE, new Change(CgTagNet.fromServer().toWire(tag), delta, key.id()));
+    }
+
+    /**
+     * Hears {@code tag}'s count on {@code entity} change, on this side: {@code (before, now)}, the tags under it
+     * counted. {@code entity} is the host's object on a server, its network id (an {@code Integer}) on a client.
+     */
+    public static Watch watch(Object entity, CgGameplayTag tag, BiConsumer<Integer, Integer> listener) {
+        Watcher w = new Watcher(Objects.requireNonNull(tag, "tag"), Objects.requireNonNull(listener, "listener"));
+        WATCHERS.computeIfAbsent(entity, k -> new ArrayList<>(2)).add(w);
+        return () -> {
+            List<Watcher> all = WATCHERS.get(entity);
+            if (all != null && all.remove(w) && all.isEmpty()) WATCHERS.remove(entity);
+        };
+    }
+
+    private static void fire(Object entity, CgGameplayTag tag, int before, int now) {
+        if (before == now) return;
+        List<Watcher> all = WATCHERS.get(entity);
+        if (all == null) return;
+        for (Watcher w : new ArrayList<>(all)) if (w.tag() == tag) w.listener().accept(before, now);
     }
 
     /** Forgets both sides. Tests only. */
     static void resetForTesting() {
         SERVER.clear();
         CLIENT.clear();
+        KEYS.clear();
+        WATCHERS.clear();
+        rule = (entity, tag, delta) -> false;
     }
 }

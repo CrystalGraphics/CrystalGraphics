@@ -63,7 +63,7 @@ public final class CgNetField<V> {
     final Kind kind;
     final CgCodec<V> codec;
 
-    boolean initialOnly, ownerOnly, skipOwner, serverOnly, local;
+    boolean initialOnly, ownerOnly, skipOwner, serverOnly, local, persisted;
     /** A predicted field's way to the server: a command its type lists after its own. */
     @Nullable
     CgNetCommand<V> command;
@@ -151,7 +151,32 @@ public final class CgNetField<V> {
     public CgNetField<V> local() {
         if (command != null) throw new IllegalStateException(name + " is predicted");
         if (serverOnly) throw new IllegalStateException(name + " is serverOnly");
+        if (persisted) throw new IllegalStateException(name + " is persisted, and a local value is never saved");
         mutable().local = true;
+        return this;
+    }
+
+    /**
+     * Saved with what its object lives on, and back as it loads: Unreal's {@code SaveGame} property. On an entity's object
+     * that is the entity's own saved data; on any other, the world's. Only the fields marked so are saved, so one type
+     * holds what lasts beside what does not, and a type saving any field keeps its objects past a restart (a player's,
+     * while they are away). {@link CgNetType.Builder#persisted()} saves every field a type lists.
+     *
+     * <pre>{@code
+     * public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();     // through chunk unloads
+     * public static final CgNetField<Integer> TARGET = CgNetField.ofInt("target");             // gone with the session
+     * public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TARGET)
+     *         .onEntities(type -> type.equals("minecraft:zombie")).build();
+     * }</pre>
+     *
+     * <ul>
+     *   <li>A {@link #local()} field cannot be: each side works it out for itself.</li>
+     *   <li>A field listed by several types is saved in each of them.</li>
+     * </ul>
+     */
+    public CgNetField<V> persisted() {
+        if (local) throw new IllegalStateException(name + " is local, and a local value is never saved");
+        mutable().persisted = true;
         return this;
     }
 

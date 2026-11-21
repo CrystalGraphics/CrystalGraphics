@@ -10,27 +10,28 @@ import org.spongepowered.asm.mixin.Shadow;
 @Mixin(value = Render.class, remap = false)
 public abstract class RenderHook implements HostRender {
 
-    @Shadow(aliases = "field_76989_e")
-    protected float shadowSize;
+    // by their SRG names, as the installed game has them: Mixin resolves an alias for a private field only
+    @Shadow
+    protected float field_76989_e;
 
-    @Shadow(aliases = "field_76987_f")
-    protected float shadowOpaque;
+    @Shadow
+    protected float field_76987_f;
 
-    @Shadow(aliases = "func_177067_a")
-    protected abstract void renderName(Entity entity, double x, double y, double z);
+    @Shadow
+    protected abstract void func_177067_a(Entity entity, double x, double y, double z);
 
     @Override
     public void crystalgraphics$renderName(Entity entity, double x, double y, double z) {
-        renderName(entity, x, y, z);
+        func_177067_a(entity, x, y, z);
     }
 
     @Override
     public float crystalgraphics$shadowSize() {
-        return shadowSize;
+        return field_76989_e;
     }
 
     @Override
     public float crystalgraphics$shadowOpaque() {
-        return shadowOpaque;
+        return field_76987_f;
     }
 }

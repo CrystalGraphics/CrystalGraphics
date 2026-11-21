@@ -1,6 +1,6 @@
 # animation.graph — Unreal's anim graph: nodes, their runtime, the data form
 
-> Using it: `docs/animation/guides/graphs.md`. The instance that runs a graph is `animation.CgAnimInstance`.
+> Using it: `docs/animation/guides/graphs-and-variables.md`. The instance that runs a graph is `animation.CgAnimInstance`.
 
 | Type | Role |
 |---|---|

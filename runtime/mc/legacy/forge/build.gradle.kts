@@ -2,6 +2,7 @@
 // whose gradle.properties pins Forge and MCP). Real mode compiles through Unimined's FG2 support at MCP
 // names; stub mode compiles against the database and never loads Unimined. @see cgbuildlogic.LegacyTree
 
+import cgbuildlogic.devRunProperties
 import cgbuildlogic.registerMcpReobf
 import cgbuildlogic.registerThinRename
 import cgbuildlogic.stubMode
@@ -28,6 +29,10 @@ if (!stubMode) {
         defaultRemapJar = false
     }
 }
+
+// A dev run hands the game the command line's -Dcrystalgraphics.* and -Dcrystalgui.*, as every other node's does: a
+// gauntlet, a probe's switch.
+tasks.withType<JavaExec>().matching { it.name.startsWith("run") }.configureEach { systemProperties(devRunProperties()) }
 
 // The merge's input from this node: its classes at the SRG members FML runs, class names kept.
 val main = sourceSets.main.get()

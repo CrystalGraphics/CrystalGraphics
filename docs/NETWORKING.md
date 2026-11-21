@@ -646,8 +646,9 @@ thing:
   whose objects differ, as a cue's do, sets it per object.
 - **An entity or player anchor follows by itself**: `obj.x()` reads where it is now, on the server.
   `obj.entity()` is the entity on either side: the server's, or the one of `obj.entityId()` in a client's level.
-- **A player who is away** (logged out) leaves a player-anchored object waiting, `obj.isDormant()`, unless the type
-  is not persisted, when it ends.
+- **A player who is away** (logged out) takes their per-holder objects with them: one that saves is written into their
+  own file as they leave and read back as they return ([§13](#13-saving-with-the-world)); the rest end. A spawned
+  object anchored on them that saves waits, `obj.isDormant()`, in the world's file.
 - **A rule of your own** replaces the anchor's: `.visibleTo((obj, peer) -> sameTeam(peer.id(), obj))` on the type,
   asked once a tick per object and player. Never across dimensions.
 - **On the server, `obj.level()`** is the level it is in, for what your code asks of the world:
@@ -672,7 +673,14 @@ bar.setInt(MANA, Math.min(bar.getInt(MAX), bar.getInt(MANA) + 1));
 CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 ```
 
-- `of(player)` takes a player entity or a profile id, online or not; `of(entity)` any other entity.
+- `of(player)` takes a player entity or a profile id, online or not; `of(entity)` any other entity. For a player who
+  is away, a type that saves reads their file (§13), and what you change is written back into it with the world's
+  next save:
+
+  ```java
+  CgNetObject bar = MANA_BAR.of(offlineId);           // server: their saved mana, from their file
+  bar.setInt(MANA, 100);                               // in their file by the next save; theirs as they join
+  ```
 - **`find(holder)`** only looks, on either side: on a server the holder's object if it has one (null, and nothing
   made, if not); on a client this client's copy of it, null until it arrives. A client reaches its own object, to
   send it a command, with `find(localPlayer)`.
@@ -692,40 +700,22 @@ CgNetObject smog = POLLUTION.ofChunk(level, chunkX, chunkZ);   // a chunk's
 
 ### An entity's properties: a type on entities
 
-A per-holder type is how you give any of the game's entities properties of your own: a mod's ki, a form, a gear.
-`onEntities` puts one object on every entity whose type it accepts, made as the entity appears on each side and ended
-as it leaves; there is nothing to call per entity.
+`onEntities` puts one object of a per-holder type on every entity whose type it accepts, made as the entity appears
+on each side and ended as it leaves: an entity's **properties**. Their guide is [`entities/`](entities/README.md):
+declaring them in Java or as a `net_type` file, the engine's own motion type, tags, the gameplay handle and saving.
 
 ```java
-public static final CgNetField<Float> CURRENT = CgNetField.ofFloat("current");      // the server's, sent
-public static final CgNetField<Integer> GEAR = CgNetField.ofInt("gear").local();    // each side's own, never sent
-public static final CgNetEvent<Void> CHARGED = CgNetEvent.of("charged");
-
-public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR).events(CHARGED)
-        .onEntities(type -> type.equals("minecraft:player"))
-        .onServer(obj -> new KiRegen())         // its tick(), each server tick
-        .onClient(obj -> new KiGear())          // its frame(obj, seconds), each client frame
-        .build();
-
-KI.of(player).get(CURRENT);                     // either side
-KI.of(player).setFloat(CURRENT, 80f);           // the server
-KI.onEvent(CHARGED, (obj, none) -> flash(obj)); // where it is emitted, and on the clients that see it
+public static final CgNetType KI = CgNetType.define("mymod:ki").fields(CURRENT, GEAR)
+        .onEntities(type -> type.equals("minecraft:player")).build();
+KI.onServer(obj -> new KiRegen());              // the built type's, not the builder's
 ```
+
+Two rules the net layer adds for them, on any type:
 
 - **A `local()` field is kept on each side and never sent or saved**: a value each side works out for itself, which
   either side's code writes. It is the one thing a client may write on an object that is not its prediction.
 - **A type whose fields are all local never touches the wire**: each side makes its own objects, and its events are
   heard on the side that emits them. It cannot be `persisted()` or take commands.
-- **Behaviours run before the frame's actors read them**: on the server each tick (`NET_IN`), on a client each frame
-  (`BEGIN`, a behaviour's `frame`). A client's local objects end when its level changes, or when its host no longer
-  has the entity (Forge before 1.13 says nothing when an entity leaves).
-- **Hosts say when entities come and go once**, through `CgNetEntities`; a type declared at init hears every
-  entity from then.
-- **The same type as a file**: a `net_type` asset (`assets/mymod/net_types/ki.yaml` declares
-  `mymod:ki`), compiled as the game starts on each side, before any entity enters or anyone connects. Its fields are
-  `{ kind, fallback, sync: all | owner | local, initial_only, predicted }`, its events `{ payload }`, and `entities`
-  a list of entity type ids, `players` or `all`. Reach it with `CgNetType.named("mymod:ki")` and `field("current")`;
-  a Java declaration of the same shape is the same type (`docs/vfx/networking.md` § *Your own data on an entity*).
 
 ---
 
@@ -895,30 +885,119 @@ The other viewers are sent the sanitized value; the owner is sent it only when s
 
 ---
 
+### An entity's tags and cues, predicted
+
+A player's own client predicts changes to its own player (tags, cues) through the entity's gameplay handle, grouped by
+`CgEntities.predicted` under one key the server takes or refuses whole:
+[`entities/guides/the-gameplay-handle.md`](entities/guides/the-gameplay-handle.md).
+
 ## 13. Saving with the world
 
-A `persisted()` type's live objects are saved with the world, under its folder (`crystalgraphics/objects/`), when
-the server stops and every five minutes, and come back when it starts again, before any player joins.
+What is saved is chosen field by field, as Unreal's `SaveGame` properties are: a field marked `persisted()` is saved,
+the rest last as long as the session. One type holds both.
 
-- Each object keeps its anchor, owner, fields (`serverOnly()` ones too) and age; a server behaviour is made again and
-  hears `spawned` with that age.
-- **An entity's object is saved with the entity**: a per-holder type's object on an entity other than a player (`of(entity)`,
-  or `onEntities`) is written into the entity's own saved data as it changes, and read back when the entity is loaded and
-  its object made. It travels with the entity through chunk unloads and is gone when the entity is.
+```java
+public static final CgNetField<Integer> CHARGE = CgNetField.ofInt("charge").persisted();   // back after a restart
+public static final CgNetField<UUID> TARGET = CgNetField.of("target", CgCodecs.UUID);       // this session's
+public static final CgNetType TURRET = CgNetType.define("mymod:turret").fields(CHARGE, TARGET).range(96).build();
+```
+
+`persisted()` on the type saves every field it lists (a cue's, whose fields are shared with every other cue, is saved
+this way). A type that saves any field keeps its objects: they are saved with the world, under its folder
+(`crystalgraphics/objects/`), when the server stops and every five minutes, and come back when it starts again, before
+any player joins. A player's and an entity's per-holder ones are saved with them instead (below).
+
+- Each object keeps its anchor, owner, saved fields (`serverOnly()` ones too) and age; a server behaviour is made
+  again and hears `spawned` with that age, its other fields at their fallbacks.
+- **A player's object is saved in their own file**, `crystalgraphics/players/<uuid>.jsonc`, as the game keeps a
+  player's stats and advancements apart from their `playerdata`: a per-holder type's object on a player (`of(player)`,
+  or `onEntities` accepting players), every type of theirs in one file. It is written when they leave, with the
+  world's save and as the server stops, only for a player whose saved fields changed, and read as their objects are
+  made: as they join, or by `of(id)` while they are away. An object that ended while they were here (at their death,
+  without `copyOnDeath()`) leaves their file.
+- **An entity's object is saved with the entity**: a per-holder type's object on any other entity (`of(entity)`, or
+  `onEntities`) is written into the entity's own saved data as the game saves the entity (a chunk unloading, an
+  autosave, the server stopping), and read back when the entity is loaded and its object made. It travels with the
+  entity through chunk unloads and is gone when the entity is.
+- **A change costs a flag**: however often a saved field changes, it is encoded once, at the entity's save, every type
+  of that entity in one write; a change to a field not saved costs nothing, and an entity with nothing changed is
+  saved as Minecraft saves it. (Forge 1.13.2 and 1.14.3, which
+  load no mixins, write at the tick a change happens instead.)
 
   ```java
-  public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage");
-  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE)
-          .onEntities(type -> type.equals("minecraft:zombie")).persisted().build();
+  public static final CgNetField<Integer> RAGE = CgNetField.ofInt("rage").persisted();
+  public static final CgNetField<Integer> TAUNTS = CgNetField.ofInt("taunts");
+  public static final CgNetType FURY = CgNetType.define("mymod:fury").fields(RAGE, TAUNTS)
+          .onEntities(type -> type.equals("minecraft:zombie")).build();
 
-  FURY.of(zombie).setInt(RAGE, 3);    // server: still 3 when the zombie's chunk loads again
+  FURY.of(zombie).setInt(RAGE, 3).setInt(TAUNTS, 2);   // server: rage still 3 when the chunk loads again, taunts 0
   ```
 
   It is kept under the key `crystalgraphics`, each type under its name: inside the loader's persistent entity data on
   Forge, NeoForge and Forge before 1.13, and as a key of the entity's own on Fabric. A field that no longer reads is
   logged and starts from its fallback.
-- **Not saved**: fired objects, `local()` fields, and objects spawned on an entity by hand (`spawn(CgAnchor.on(entity))`
-  of a persisted type throws: an entity saves one object of a type, a per-holder one).
+- **A saved form of your own**: by default each saved field is written under its name by its codec. A type whose save
+  should look otherwise (a compact form, the keys an older version wrote, one value from several fields) gives a
+  `CgNetSaveForm`, which writes and reads a `CgStateMap` in its place, Unreal's `Serialize` override. It is used
+  everywhere the type saves: an entity's data, a player's file, the world's file.
+
+  ```java
+  public static final CgNetType MARK = CgNetType.define("mymod:mark").fields(X.persisted(), Y.persisted())
+          .onEntities(type -> type.equals("minecraft:zombie"))
+          .savedAs(new CgNetSaveForm() {
+              public <T> void write(CgNetObject obj, CgStateMap<T> out) { out.putString("at", obj.getInt(X) + "," + obj.getInt(Y)); }
+              public <T> void read(CgNetObject obj, CgStateMap<T> in) {
+                  String[] at = in.getString("at", "0,0").split(",");
+                  obj.setInt(X, Integer.parseInt(at[0])).setInt(Y, Integer.parseInt(at[1]));
+              }
+          })
+          .build();
+  ```
+
+  Which fields are `persisted()` still decides when a change is saved, so a type saving none refuses a form.
+- **Elsewhere, in the world's file** (`crystalgraphics/objects/`): objects at a point, a chunk's, a dimension's, and
+  objects spawned on a player by hand (several of a type may be).
+- **Files a person can open**: every file here is JSONC (JSON that allows `//` comments and trailing commas), so an
+  admin, or a player whose data went wrong, opens it in any editor:
+
+  ```jsonc
+  {
+    // raised by an admin after the rollback
+    "rpgcore:ki": { "current": 80, "max": 120 },
+    "mymod:mana": { "mana": 40 }
+  }
+  ```
+
+  - Edit it while the server is down, or while that player is offline: a file in use is written over from memory.
+  - Comments are kept: each write carries them back to the same key.
+  - Each write leaves the file it replaces beside it as `.jsonc.old`, as Minecraft keeps `level.dat_old`.
+  - A file that no longer parses is moved aside as `.jsonc.unreadable`, named in the log, and never written over: fix
+    it and move it back. A value of one type that does not decode starts that type from its fallbacks and keeps a copy
+    of the file as `.unreadable`; the player's other types load.
+  - A type the server no longer has (a mod removed) stays in the file untouched.
+  - A float field holding NaN or an infinity cannot be written (JSON has neither): the write is logged and its changes
+    stay pending.
+  - A file is read once while in use: as its player joins, or at the first `of(uuid)` while they are away. Writes come
+    from memory, only for a file whose saved fields changed.
+- **A folder of your own**: by default every mod's data goes under `<world>/crystalgraphics/`. A mod that wants its
+  own, beside the files it already keeps, names a storage layout for its namespace once, at init:
+
+  ```java
+  public static final CgStorageLayout LAYOUT = CgStorageLayout.of("rpgcore");
+  CgNetType.storage("rpgcore", LAYOUT);
+  ```
+
+  | What | Default | With the layout |
+  |---|---|---|
+  | a player's per-holder objects | `<world>/crystalgraphics/players/<uuid>.jsonc`, shared with every mod that has none | `<world>/rpgcore/players/<uuid>.jsonc`, its own alone |
+  | world objects | `<world>/crystalgraphics/objects/rpgcore/<type>.jsonc` | `<world>/rpgcore/objects/<type>.jsonc` |
+  | an entity's | the entity's own data | the same |
+
+  `players/` and `objects/` are this layer's; keep your own files beside them. Only a file whose saved fields changed is
+  written, so a mod's own file is rewritten for that mod's changes alone.
+- **Not saved**: fields not persisted, `local()` fields (`persisted()` on one throws), fired objects, and objects spawned
+  on an entity by hand (`spawn(CgAnchor.on(entity))` of a type that saves throws: an entity saves one object of a
+  type, a per-holder one).
 
 ---
 

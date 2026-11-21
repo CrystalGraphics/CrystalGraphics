@@ -2,8 +2,12 @@ package com.crystalgraphics.mc.model;
 
 import com.crystalgraphics.animation.CgAnimInstance;
 import com.crystalgraphics.animation.CgAnimation;
+import com.crystalgraphics.platform.world.CgEntityQuery;
+import com.crystalgraphics.render.host.CgStageHost;
+import com.crystalgraphics.world.CgEntityQueries;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.joml.Matrix4d;
 
 import javax.annotation.Nullable;
 
@@ -33,6 +37,8 @@ import java.util.Arrays;
  *   <li>The frame thread's: {@code play}, {@code stop} and {@code parts} run where the game renders.</li>
  *   <li>Every call sets every part again: one model object draws every entity of its renderer, so a pose left on it
  *       would be the next entity's.</li>
+ *   <li>Each instance stands where its entity is drawn, turned by its body yaw, so a world-space target (a look-at at
+ *       the player, a reach for a lever) lands where it is in the world.</li>
  *   <li>A level change drops every instance ({@link CgAnimation}'s rule), and with it the entity's pose.</li>
  *   <li>A host that sets its models from {@link #parts} says so with {@link #hosted()}; where none has, {@link #play}
  *       logs once that the game draws the entity unposed.</li>
@@ -46,6 +52,7 @@ public final class CgVanillaPoses {
     private static CgAnimInstance[] instances = new CgAnimInstance[4];
     private static int count;
     private static boolean hosted, warned;
+    private static final double[] POSE = new double[CgEntityQuery.POSE_LENGTH];
 
     private CgVanillaPoses() {
     }
@@ -59,11 +66,11 @@ public final class CgVanillaPoses {
     public static CgAnimInstance play(int id) {
         if (!hosted && !warned) {
             warned = true;
-            LOG.warn("[crystalgraphics] vanilla poses: this host sets no model from them; entity {} is drawn unposed", id);
+            LOG.warn("[crystalgraphics] vanilla poses: this Minecraft version cannot move its own models; entity {} keeps the game's animation", id);
         }
         int at = find(id);
         if (at >= 0 && instances[at].posed()) return instances[at];
-        CgAnimInstance instance = CgAnimation.client().add(new CgAnimInstance(CgVanillaHumanoid.MESH));
+        CgAnimInstance instance = CgAnimation.client().add(new CgAnimInstance(CgVanillaHumanoid.MESH).placedBy(out -> place(id, out)));
         if (at >= 0) {
             instances[at] = instance;
             return instance;
@@ -111,6 +118,14 @@ public final class CgVanillaPoses {
         if (at < 0 || !instances[at].posed()) return false;
         CgVanillaHumanoid.parts(instances[at].pose(), out);
         return true;
+    }
+
+    /** Entity {@code id}'s feet and facing at the frame's partial tick: where the game draws its model. */
+    private static void place(int id, Matrix4d out) {
+        if (!CgEntityQueries.client().pose(id, CgStageHost.frame(CgStageHost.WORLD_OPAQUE).partialTick(), POSE)) return;
+        // the model faces -z, hence Minecraft's 180 - bodyYaw (LivingEntityRenderer.setupRotations)
+        out.translation(POSE[CgEntityQuery.X], POSE[CgEntityQuery.Y], POSE[CgEntityQuery.Z])
+                .rotateY(Math.toRadians(180.0 - POSE[CgEntityQuery.BODY_YAW]));
     }
 
     private static int find(int id) {

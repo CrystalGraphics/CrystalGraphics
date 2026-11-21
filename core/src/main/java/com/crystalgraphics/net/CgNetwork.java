@@ -21,6 +21,8 @@ import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.net.object.CgNetObjects;
 import com.crystalgraphics.gauntlet.CgGauntlet;
 import com.crystalgraphics.net.object.CgNetProbe;
+import com.crystalgraphics.net.object.CgEntitySavesProbe;
+import com.crystalgraphics.net.object.CgPlayerSavesProbe;
 import com.crystalgraphics.net.object.CgNetStress;
 import com.crystalgraphics.net.protocol.CgConnections;
 import com.crystalgraphics.net.protocol.CgProtocolConnection;
@@ -153,6 +155,8 @@ public final class CgNetwork {
         if (Boolean.getBoolean(CgNetStress.PROPERTY)) CgNetStress.install();
         // Declared here or nowhere: its types go into every connection's hello.
         if (CgGauntlet.plays("crystalgraphics:net")) CgNetProbe.install();
+        if (CgGauntlet.plays("crystalgraphics:player-saves")) CgPlayerSavesProbe.install();
+        if (CgGauntlet.plays("crystalgraphics:entity-saves")) CgEntitySavesProbe.install();
         CgCollisionShow.install();
         CgTagNet.install();
         CgSequenceNet.install();
