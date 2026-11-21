@@ -178,10 +178,11 @@ public final class CgTextBatch {
 
     /**
      * The canvas's one scratch draw, reset, placed by {@code pose} in spatial node {@code spatial}, clipped by entry
-     * {@code clip} and faded by effect node {@code effect}: the canvas's state, which its caller never sets.
+     * {@code clip}, faded by effect node {@code effect} and drawn at {@code opacity}: the canvas's state, which its
+     * caller never sets.
      */
-    public CgTextDraw draw(Matrix4f pose, int clip, int spatial, int effect) {
-        return scratch.reset().pose(pose).clip(clip).node(spatial, effect);
+    public CgTextDraw draw(Matrix4f pose, int clip, int spatial, int effect, float opacity) {
+        return scratch.reset().pose(pose).clip(clip).node(spatial, effect).opacity(opacity);
     }
 
     /** Draws {@code draw}, whoever made it. @return whether everything drew as asked */
@@ -734,9 +735,9 @@ public final class CgTextBatch {
             layerRow[i] = l.paint().kind() == CgTextPaint.Kind.GRADIENT ? CgTextGradients.row(l.paint()) : 0f;
             if (l.kind() == CgTextLayer.Kind.SHADOW) {
                 shadowList.set(s, l.offsetX() * unit, l.offsetY() * unit, l.blur() * unit, l.spread() * unit,
-                        layerArgb(draw.rgba, l), l.inset(), l.outlined());
+                        layerArgb(draw.argb(), l), l.inset(), l.outlined());
             } else if (grownPastField(l, layerRing[i], unit, fieldReach)) {
-                shadowList.set(s, 0f, 0f, 0f, l.width() * unit, layerArgb(draw.rgba, l), false, false);
+                shadowList.set(s, 0f, 0f, 0f, l.width() * unit, layerArgb(draw.argb(), l), false, false);
             } else {
                 continue;
             }
@@ -979,10 +980,10 @@ public final class CgTextBatch {
                     atlasLayer = p.atlasPageIndex();
                     c1w = pxRange;
                     if (layer.kind() == CgTextLayer.Kind.FILL) {
-                        rgba = fillArgb(draw.rgba, resolvedGlyphs.argbColor[localIndex], layer);
+                        rgba = fillArgb(draw.argb(), resolvedGlyphs.argbColor[localIndex], layer);
                         c2 = p.key().getFontKey().getTargetPx();
                     } else {
-                        rgba = layerArgb(draw.rgba, layer);
+                        rgba = layerArgb(draw.argb(), layer);
                         c1x = layer.width() * unit * texelsPerLocal;
                         c1y = alignCode(alignOf(layer),
                                 layer.join() == CgTextLayer.Join.ROUND && p.atlasType() == CgGlyphAtlas.Type.MTSDF);
@@ -1143,9 +1144,9 @@ public final class CgTextBatch {
         List<CgTextLayer> layers = draw.style.layers();
         for (int i = 0; i < layers.size(); i++) {
             CgTextLayer l = layers.get(i);
-            if (l.kind() == CgTextLayer.Kind.FILL) return multiply(draw.rgba, l.paint().colour());
+            if (l.kind() == CgTextLayer.Kind.FILL) return multiply(draw.argb(), l.paint().colour());
         }
-        return draw.rgba;
+        return draw.argb();
     }
 
     private static int multiply(int a, int b) {

@@ -50,7 +50,7 @@ final class CgCanvasText {
         cv.pass();
         Matrix4f at = pose();
         draws++;
-        return batch().draw(at, cv.clip, cv.base, cv.effect).gamma(gamma);
+        return batch().draw(at, cv.clip, cv.base, cv.effect, cv.opacity).gamma(gamma);
     }
 
     /** Text items that drew below the tier they asked for, still generating. */

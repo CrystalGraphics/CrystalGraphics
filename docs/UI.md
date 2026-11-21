@@ -198,9 +198,12 @@ Reading the state back, for a caller that decides in pixels:
 float[] m = canvas.transform(new float[6]);          // a b c d tx ty: your units to the target's pixels
 float[] can = canvas.clipBounds(new float[4]);       // x0 y0 x1 y1: what can still show
 float alpha = canvas.currentOpacity();               // the opacity every item now takes
+float px = canvas.deviceScale();                     // device pixels per unit: what a level of detail keys on
+float x = canvas.snapX(16.3f);                       // the nearest X on a whole device pixel; as given if rotated
 ```
 
-- **Cull with `clipBounds`.** Before painting a long list, skip what lies wholly outside it: it would draw nothing.
+- **Cull with `outsideClip(x0, y0, x1, y1)`**, device pixels against `clipBounds`. Before painting a long list, skip
+  what lies wholly outside it: it would draw nothing.
 - **Every `save` needs its `restore`.** `end()` drops whatever is left on the stack.
 
 ---
@@ -253,8 +256,8 @@ canvas.restore();
   `canvas.degradedDraws()` counts it. Kept drawing refuses to keep that frame (§ 12), so nothing keeps the blur.
 - **`canvas.textGamma(...)`** sets how text coverage is corrected; it is not saved by `save()`.
 - **`canvas.textDraw()`** is every knob of the text renderer with nothing made per draw (a cached layout, a pixel
-  size, a layer's scope): `canvas.textDraw().layout(cached).family(ui).at(x, y).color(argb).submit()`. Its colour is
-  taken as given: the canvas's opacity is not folded in.
+  size, a layer's scope): `canvas.textDraw().layout(cached).family(ui).at(x, y).color(argb).submit()`. Like every
+  item, it is drawn at the canvas's opacity.
 - **Intensity does not reach text**: a glyph's colour is a byte a channel. Opacity does.
 - Fonts, styles and layout: [`font/README.md`](font/README.md). Text in the world is a scene component,
   `scene.text(...)` ([`ENGINE_API.md`](ENGINE_API.md)).

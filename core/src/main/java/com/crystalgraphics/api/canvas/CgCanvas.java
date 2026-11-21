@@ -1001,7 +1001,7 @@ public final class CgCanvas {
      * }</pre>
      *
      * <ul>
-     *   <li>Its colour is taken as given: the canvas's opacity is not folded in, as {@code text} folds it.</li>
+     *   <li>Its colour is multiplied by the canvas's opacity when it is handed out, as every item's is.</li>
      * </ul>
      */
     public CgTextDraw textDraw() {
@@ -1150,6 +1150,42 @@ public final class CgCanvas {
     }
 
     // ── The transform ──────────────────────────────────────────────────
+
+    /** Whether the transform has no rotation or skew: what {@link #snapX} and {@link #snapY} need. */
+    public boolean rectilinear() {
+        return Math.abs(b) < 1e-5f && Math.abs(c) < 1e-5f;
+    }
+
+    /**
+     * How many device pixels one unit covers under the transform now, on its larger axis: what a level-of-detail
+     * decision keys on, since one logical size is twice the pixels at a scale of 2.
+     */
+    public float deviceScale() {
+        return (float) Math.max(Math.hypot(a, b), Math.hypot(c, d));
+    }
+
+    /**
+     * The X nearest {@code x} that lands on a whole device pixel: hinted icon art keeps its edges sharp there. {@code x}
+     * itself under rotation or skew.
+     */
+    public float snapX(float x) {
+        if (!rectilinear() || Math.abs(a) < 1e-6f) return x;
+        return (Math.round(a * x + tx) - tx) / a;
+    }
+
+    /** The Y-axis twin of {@link #snapX}. */
+    public float snapY(float y) {
+        if (!rectilinear() || Math.abs(d) < 1e-6f) return y;
+        return (Math.round(d * y + ty) - ty) / d;
+    }
+
+    /**
+     * Whether {@code (x0, y0)-(x1, y1)}, in the device pixels of the node drawn in, misses what the clip can show:
+     * a cull, conservative as {@link #clipBounds} is. Allocates nothing.
+     */
+    public boolean outsideClip(float x0, float y0, float x1, float y1) {
+        return x1 <= cullX0 || x0 >= cullX1 || y1 <= cullY0 || y0 >= cullY1;
+    }
 
     /** Whether the transform maps axes to axes with positive scale: what bakes into the record at node 0. */
     private boolean axisAligned() {

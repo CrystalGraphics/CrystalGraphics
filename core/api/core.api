@@ -2473,6 +2473,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public concat (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public currentOpacity ()F
   method public degradedDraws ()J
+  method public deviceScale ()F
   method public end ()V
   method public endChunk (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Lcom/crystalgraphics/api/canvas/CgPaintChunk$Refusal;
   method public endPass ()V
@@ -2494,11 +2495,13 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public nodeOpacity (IF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public nodeTransform (IFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public opacity (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public outsideClip (FFFF)Z
   method public photograph (ILcom/crystalgraphics/api/canvas/CgPhotograph$Sink;)Z
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
+  method public rectilinear ()Z
   method public replay (Lcom/crystalgraphics/api/canvas/CgPaintChunk;)Z
   method public restore ()Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public rotate (F)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -2506,6 +2509,8 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public scale ()F
   method public scale (FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public setTransform (FFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public snapX (F)F
+  method public snapY (F)F
   method public spline ()Lcom/crystalgraphics/api/canvas/CgCanvasSpline;
   method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;I)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public stroke (Lcom/crystalgraphics/api/vector/CgVectorPath;Lcom/crystalgraphics/api/vector/CgStroke;Lcom/crystalgraphics/api/paint/CgPaint;)Lcom/crystalgraphics/api/canvas/CgCanvas;
@@ -19648,7 +19653,7 @@ com/crystalgraphics/text/render/CgTextBatch
   method public degradedDraws ()J
   method public draw (Lcom/crystalgraphics/api/text/CgText;FFILorg/joml/Matrix4f;IIILcom/crystalgraphics/text/render/CgTextGamma;)Z
   method public draw (Lcom/crystalgraphics/text/render/CgTextDraw;)Z
-  method public draw (Lorg/joml/Matrix4f;III)Lcom/crystalgraphics/text/render/CgTextDraw;
+  method public draw (Lorg/joml/Matrix4f;IIIF)Lcom/crystalgraphics/text/render/CgTextDraw;
   method public,static blendsLinearly (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Z
   method public,static drawCaptured (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/text/render/CgTextCapture$Look;Lcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;Z)V
   method public,static drawCapturedDepth (Lcom/crystalgraphics/render/draw/CgChunkBuilder;JLcom/crystalgraphics/render/draw/CgBufferHandle;ILcom/crystalgraphics/render/draw/CgBufferHandle;)V

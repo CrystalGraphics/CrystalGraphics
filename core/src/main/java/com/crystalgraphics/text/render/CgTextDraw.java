@@ -65,6 +65,8 @@ public final class CgTextDraw {
     int targetPx = -1;
     float x, y;
     int rgba = 0xFFFFFFFF;
+    /** The canvas's opacity when it was handed out, multiplied into {@link #rgba}'s alpha. */
+    float opacity = 1f;
     @Nullable
     Matrix4f poseMatrix;
     CgTextStyle style = CgTextStyle.PLAIN;
@@ -110,6 +112,7 @@ public final class CgTextDraw {
         targetPx = -1;
         x = y = 0f;
         rgba = 0xFFFFFFFF;
+        opacity = 1f;
         poseMatrix = null;
         style = CgTextStyle.PLAIN;
         glyphScopes = null;
@@ -129,7 +132,7 @@ public final class CgTextDraw {
         return layout == other.layout && paragraph == other.paragraph && Objects.equals(text, other.text)
                 && font == other.font && family == other.family && maxWidth == other.maxWidth
                 && maxHeight == other.maxHeight && targetPx == other.targetPx && x == other.x && y == other.y
-                && rgba == other.rgba && style == other.style && contained == other.contained && clip == other.clip
+                && rgba == other.rgba && opacity == other.opacity && style == other.style && contained == other.contained && clip == other.clip
                 && spatialNode == other.spatialNode && effectNode == other.effectNode && gamma.equals(other.gamma)
                 && sameScopes(other);
     }
@@ -147,6 +150,7 @@ public final class CgTextDraw {
         x = other.x;
         y = other.y;
         rgba = other.rgba;
+        opacity = other.opacity;
         style = other.style;
         glyphScopes = other.glyphScopes == null ? null : other.glyphScopes.clone();
         scopedLayers = other.scopedLayers;
@@ -214,6 +218,18 @@ public final class CgTextDraw {
     public CgTextDraw color(int argb) {
         this.rgba = argb;
         return this;
+    }
+
+    /** The opacity its colour is drawn at: the canvas's, set when it hands the draw out. */
+    CgTextDraw opacity(float opacity) {
+        this.opacity = opacity;
+        return this;
+    }
+
+    /** {@link #rgba} at {@link #opacity}: what every layer is tinted by. */
+    int argb() {
+        if (opacity >= 1f) return rgba;
+        return (rgba & 0x00FFFFFF) | Math.round((rgba >>> 24) * Math.max(0f, opacity)) << 24;
     }
 
     /** The pose its quads are placed by, read at submit. */
