@@ -11943,6 +11943,61 @@ com/crystalgraphics/probe/CgContainersProbe
   access public,final
   extends java/lang/Object
   method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/probe/CgPicturesProbe
+  access public,final
+  extends java/lang/Object
+  field public,static,final H I
+  field public,static,final LOOK_X I
+  field public,static,final LOOK_Y I
+  field public,static,final PIC_X I
+  field public,static,final PIC_Y I
+  field public,static,final REF_X I
+  field public,static,final REF_Y I
+  field public,static,final W I
+  method public,static drawPoint ()V
+  method public,static hud (Ljava/lang/Object;)V
+  method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
+com/crystalgraphics/probe/CgPicturesProbe$Cell
+  access public,final,record
+  extends java/lang/Record
+  method public <init> (Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;Ljava/lang/String;IIIIZ)V
+  method public count ()I
+  method public damage ()I
+  method public glint ()Z
+  method public item ()Ljava/lang/String;
+  method public kind ()Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  method public x ()I
+  method public y ()I
+  method public,final equals (Ljava/lang/Object;)Z
+  method public,final hashCode ()I
+  method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/probe/CgPicturesProbe$Drawn
+  access public,final
+  extends java/lang/Object
+  field public checkTarget Z
+  field public nanos J
+  field public state Ljava/lang/String;
+  field public,final retargeted Ljava/util/List;
+  method public <init> ()V
+com/crystalgraphics/probe/CgPicturesProbe$Host
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/probe/CgPicturesProbe$Host;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract absent ()Ljava/lang/String;
+  method public,abstract bottomUp ()Z
+  method public,abstract knows (Ljava/lang/String;)Z
+  method public,abstract picture (Ljava/util/List;IILcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)Ljava/lang/Object;
+  method public,abstract reference (Ljava/lang/Object;Ljava/util/List;IIIIIIILcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V
+com/crystalgraphics/probe/CgPicturesProbe$Kind
+  access public,final,enum
+  extends java/lang/Enum
+  field public,static,final DECORATED Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  field public,static,final ITEM Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  field public,static,final PLAYER Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  field public,static,final TOOLTIP Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  method public,static valueOf (Ljava/lang/String;)Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
+  method public,static values ()[Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;
 com/crystalgraphics/probe/CgServerSmoke
   access public,final
   extends com/crystalgraphics/gauntlet/CgGauntletController
