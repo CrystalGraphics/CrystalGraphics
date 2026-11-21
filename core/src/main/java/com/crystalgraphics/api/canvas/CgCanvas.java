@@ -700,7 +700,7 @@ public final class CgCanvas {
      * }</pre>
      */
     public CgCanvas picture(CgKeptLayer kept, float x, float y, float w, float h) {
-        return picture(kept, 0f, 0f, kept.pictureWidth, kept.pictureHeight, x, y, w, h);
+        return picture(kept, 0f, 0f, kept.pictureWidth(), kept.pictureHeight(), x, y, w, h);
     }
 
     /**
@@ -731,7 +731,7 @@ public final class CgCanvas {
      * </ul>
      */
     public CgCanvas thumbnail(CgKeptLayer kept, float x, float y, float w, float h) {
-        return thumbnail(kept, 0f, 0f, kept.pictureWidth, kept.pictureHeight, x, y, w, h);
+        return thumbnail(kept, 0f, 0f, kept.pictureWidth(), kept.pictureHeight(), x, y, w, h);
     }
 
     /** As {@link #thumbnail(CgKeptLayer, float, float, float, float)}, of part of the picture as {@link #picture} takes it. */

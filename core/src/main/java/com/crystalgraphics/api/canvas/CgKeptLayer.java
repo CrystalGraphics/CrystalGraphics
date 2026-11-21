@@ -33,7 +33,8 @@ import com.crystalgraphics.render.graph.CgGraphTexture;
  *   <li>Glass inside a walk draws flat ({@code CgBackdropFilter.fallback}): a kept picture of glass would be stale.</li>
  *   <li>A canvas frees a layer nobody asked for in 300 frames, unless {@link #keep}; the next ask draws it whole.
  *       {@link #delete} at a context's teardown.</li>
- *   <li>One canvas walks it at a time.</li>
+ *   <li>One canvas walks it at a time. Another may composite it meanwhile, on any thread: it draws the last finished
+ *       picture.</li>
  * </ul>
  */
 public final class CgKeptLayer {
@@ -167,10 +168,14 @@ public final class CgKeptLayer {
     int reserveWidth, reserveHeight;
     boolean keep;
 
-    // The picture: its texture, and what it holds
+    /** A finished picture: what any canvas composites, while the next is drawn into the same texture. */
+    record Shown(CgGraphTexture texture, int width, int height) {
+    }
+
+    // The picture: the texture walks draw into, what it holds, and the last picture a walk finished
     @Nullable CgGraphTexture texture;
-    int pictureWidth, pictureHeight;
     long revision = NONE;
+    @Nullable volatile Shown shown;
     long lastFrame;
     /** The canvas that frees it when idle. */
     @Nullable CgCanvas sweeper;
@@ -210,14 +215,14 @@ public final class CgKeptLayer {
         return this;
     }
 
-    /** Forgets what it holds: the next walk draws it whole. */
+    /** Forgets what it holds: the next walk draws it whole. Its last picture is composited until then. */
     public void invalidate() {
         revision = NONE;
     }
 
-    /** Whether it holds a picture: drawn at least once, and not freed. */
+    /** Whether it holds a picture: a walk finished, and it was not freed since. */
     public boolean hasPicture() {
-        return texture != null && revision != NONE;
+        return shown != null;
     }
 
     /**
@@ -226,17 +231,20 @@ public final class CgKeptLayer {
      */
     @Nullable
     public CgGraphTexture texture() {
-        return hasPicture() ? texture : null;
+        Shown s = shown;
+        return s == null ? null : s.texture;
     }
 
-    /** Its picture's size in device pixels, as last drawn. */
+    /** Its picture's size in device pixels, as last drawn; 0 when it holds none. */
     public int pictureWidth() {
-        return pictureWidth;
+        Shown s = shown;
+        return s == null ? 0 : s.width;
     }
 
     /** @see #pictureWidth */
     public int pictureHeight() {
-        return pictureHeight;
+        Shown s = shown;
+        return s == null ? 0 : s.height;
     }
 
     /** Whether its kept thumbnail trails the picture: draw it again soon. */
@@ -249,13 +257,15 @@ public final class CgKeptLayer {
         if (texture != null) CgExecutor.freeStorage(texture);
         if (thumbnail != null) CgExecutor.freeStorage(thumbnail);
         texture = thumbnail = null;
+        shown = null;
         revision = NONE;
         thumbnailDrawn = -1L;
     }
 
     /** Whether the last walk drew it at {@code revision} and this size, so it may be composited as it is. */
     boolean holds(long revision, int width, int height) {
-        return hasPicture() && this.revision == revision && pictureWidth == width && pictureHeight == height;
+        Shown s = shown;
+        return s != null && s.texture == texture && this.revision == revision && s.width == width && s.height == height;
     }
 
     /** Starts a walk at {@code frame}, damaged everywhere with {@code full}. */

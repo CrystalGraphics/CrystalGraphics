@@ -70,13 +70,16 @@ final class CgCanvasKeptLayers {
         if (!walk.draws) return walk;
 
         CgRecording recording = cv.recording;
-        boolean full = !kept.hasPicture() || kept.pictureWidth != pw || kept.pictureHeight != ph;
+        CgKeptLayer.Shown shown = kept.shown;
+        boolean full = kept.revision == CgKeptLayer.NONE || shown == null || shown.width() != pw || shown.height() != ph;
         if (kept.texture != null) {
             // Remade when outgrown, or holding more than twice what it needs
             int tw = kept.texture.getWidth(), th = kept.texture.getHeight();
             int rw = reserved(kept.reserveWidth), rh = reserved(kept.reserveHeight);
             if (tw < pw || th < ph || tw < rw || th < rh || tw > Math.max(Math.max(64, pw * 2), rw)
                     || th > Math.max(Math.max(64, ph * 2), rh)) {
+                // Released when this recording ends: nothing may composite it from here
+                kept.shown = null;
                 recording.release(kept.texture);
                 kept.texture = null;
             }
@@ -107,8 +110,6 @@ final class CgCanvasKeptLayers {
         // Its clear lands even when nothing is drawn: what vacated is cleared
         cv.pass();
         cv.recorder.openPass();
-        kept.pictureWidth = pw;
-        kept.pictureHeight = ph;
         return walk;
     }
 
@@ -164,8 +165,8 @@ final class CgCanvasKeptLayers {
             int th = t.getHeight();
             // A pixel either side for edge coverage, then the bottom-left rect a pass takes
             int x0 = Math.max(0, (int) Math.floor(kept.damageX0) - 1), y0 = Math.max(0, (int) Math.floor(kept.damageY0) - 1);
-            int x1 = Math.min(kept.pictureWidth, (int) Math.ceil(kept.damageX1) + 1);
-            int y1 = Math.min(kept.pictureHeight, (int) Math.ceil(kept.damageY1) + 1);
+            int x1 = Math.min(l.w, (int) Math.ceil(kept.damageX1) + 1);
+            int y1 = Math.min(l.h, (int) Math.ceil(kept.damageY1) + 1);
             int dx = 0, dy = 0, dw = 0, dh = 0;
             if (x1 > x0 && y1 > y0) {
                 dx = x0;
@@ -179,6 +180,10 @@ final class CgCanvasKeptLayers {
             }
         }
         kept.revision = walk.revision;
+        CgKeptLayer.Shown shown = kept.shown;
+        if (shown == null || shown.texture() != kept.texture || shown.width() != l.w || shown.height() != l.h) {
+            kept.shown = new CgKeptLayer.Shown(kept.texture, l.w, l.h);
+        }
         kept.drawCount++;
         composite(walk);
     }
@@ -187,8 +192,9 @@ final class CgCanvasKeptLayers {
     private void composite(CgKeptLayer.Walk walk) {
         CgCanvas cv = canvas;
         CgKeptLayer kept = walk.layer();
-        if (!kept.hasPicture()) return;
-        int x0 = walk.x0, y0 = walk.y0, w = kept.pictureWidth, h = kept.pictureHeight;
+        CgKeptLayer.Shown shown = kept.shown;
+        if (shown == null) return;
+        int x0 = walk.x0, y0 = walk.y0, w = shown.width(), h = shown.height();
         // Composited into a kept layer being walked: it damages where it lands there, and where it was
         for (int i = cv.layers.count - 1; i >= 0; i--) {
             CgCanvasLayer outer = cv.layers.at(i);
@@ -198,7 +204,7 @@ final class CgCanvasKeptLayers {
             break;
         }
         if (walk.opacity <= 0f || cv.opacity <= 0f || cv.clippedOut(x0, y0, x0 + w, y0 + h)) return;
-        float tw = kept.texture.getWidth(), th = kept.texture.getHeight();
+        float tw = shown.texture().getWidth(), th = shown.texture().getHeight();
         cv.pass();
         float[] record = cv.clear();
         CgUiElements.fill(record, 0, CgUiElements.FILL_TEXTURE, (Math.round(255f * walk.opacity) << 24) | 0x00FFFFFF, 0f);
@@ -207,20 +213,22 @@ final class CgCanvasKeptLayers {
         CgUiElements.uv(record, 0, 0f, 1f, w / tw, 1f - h / th);
         CgUiElements.rect(record, 0, x0, y0, x0 + w, y0 + h);
         cv.finish(cv.base, 1f);
-        cv.element(CgUiMaterials.element(), kept.texture, null, cv.base, x0, y0, x0 + w, y0 + h);
+        cv.element(CgUiMaterials.element(), shown.texture(), null, cv.base, x0, y0, x0 + w, y0 + h);
     }
 
     /** Part of {@code kept}'s picture over a rect in the units now, as last drawn; nothing when it holds none. */
     void picture(CgKeptLayer kept, float sx, float sy, float sw, float sh, float x, float y, float w, float h) {
-        if (!kept.hasPicture() || !(sw > 0f && sh > 0f)) return;
-        float tw = kept.texture.getWidth(), th = kept.texture.getHeight();
-        canvas.box(x, y, w, h).fill(kept.texture).premultiplied()
+        CgKeptLayer.Shown shown = kept.shown;
+        if (shown == null || !(sw > 0f && sh > 0f)) return;
+        float tw = shown.texture().getWidth(), th = shown.texture().getHeight();
+        canvas.box(x, y, w, h).fill(shown.texture()).premultiplied()
                 .region(sx / tw, 1f - sy / th, (sx + sw) / tw, 1f - (sy + sh) / th).draw();
     }
 
     /** As {@link #picture}, filtered down to the rect's device size first and refreshed at most every 100 ms. */
     void thumbnail(CgKeptLayer kept, float sx, float sy, float sw, float sh, float x, float y, float w, float h) {
-        if (!kept.hasPicture() || !(sw > 0f && sh > 0f)) return;
+        CgKeptLayer.Shown shown = kept.shown;
+        if (shown == null || !(sw > 0f && sh > 0f)) return;
         CgCanvas cv = canvas;
         int dw = Math.round(w * (float) Math.hypot(cv.a, cv.b)), dh = Math.round(h * (float) Math.hypot(cv.c, cv.d));
         if (dw < 1 || dh < 1 || sw < dw || sh < dh || sw < dw * 1.5f && sh < dh * 1.5f) {
@@ -241,7 +249,8 @@ final class CgCanvasKeptLayers {
         if (kept.thumbnailStale && (kept.thumbnailDrawn == -1L || now - kept.thumbnailAt >= THUMBNAIL_REFRESH_NANOS)) {
             cv.recorder.end();
             CgComputePass pass = recording.compute("canvas.kept.thumbnail");
-            CgGpuOps.shrink(pass, kept.texture, sx, kept.texture.getHeight() - sy - sh, sw, sh, kept.thumbnail, 0, 0, dw, dh);
+            CgGpuOps.shrink(pass, shown.texture(), sx, shown.texture().getHeight() - sy - sh, sw, sh, kept.thumbnail, 0, 0,
+                    dw, dh);
             pass.end();
             kept.thumbnailDrawn = kept.drawCount;
             kept.thumbnailX = sx;
@@ -265,6 +274,7 @@ final class CgCanvasKeptLayers {
             if (kept.texture != null) recording.release(kept.texture);
             if (kept.thumbnail != null) recording.release(kept.thumbnail);
             kept.texture = kept.thumbnail = null;
+            kept.shown = null;
             kept.thumbnailDrawn = -1L;
             kept.invalidate();
             kept.sweeper = null;
