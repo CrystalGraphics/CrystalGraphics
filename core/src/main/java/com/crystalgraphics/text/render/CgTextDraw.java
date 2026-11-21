@@ -5,7 +5,7 @@ import com.crystalgraphics.api.font.CgFontFamily;
 import com.crystalgraphics.api.text.CgShapedParagraph;
 import com.crystalgraphics.api.text.CgText;
 import com.crystalgraphics.api.text.CgTextLayout;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
+import com.crystalgraphics.render.ui.property.CgClipTree;
 import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.text.style.CgTextLayer;
 import com.crystalgraphics.text.style.CgTextStyle;
@@ -283,7 +283,7 @@ public final class CgTextDraw {
         return true;
     }
 
-    /** The {@link CgClipTable} entry it is clipped by; 0 is none. */
+    /** The {@link CgClipTree} entry it is clipped by; 0 is none. */
     CgTextDraw clip(int entry) {
         this.clip = entry;
         return this;

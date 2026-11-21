@@ -525,7 +525,7 @@ need is bound by what draws them: a factory or primitive names it in `EngineBuff
 | `quad` | `QUAD_DATA(n)` + `CG_QUAD_WORLD_POS` / `CG_QUAD_UV` / `CG_QUAD_COLOR` / `CG_QUAD_NORMAL` / `CG_QUAD_ATLAS_LAYER` / `CG_QUAD_CUSTOM0`-`CG_QUAD_CUSTOM1` (two free vec4s a glyph quad), and for screen-space materials the edge and texel antialiasing below | The `Text` primitive: text glyphs (`CgQuadRecord`) |
 | `curve` | `CURVE_DATA(n)` + `CG_CURVE_WORLD_POS` / `CG_CURVE_P0`–`P2` / `CG_CURVE_COLOR0`–`1` / `CG_CURVE_WIDTHS` / `CG_CURVE_FEATHER` / `CG_CURVE_FLAGS` | The `Curve` primitive: the canvas's splines, triangles and path cells (`CgCurveRecords`) |
 | `palette` | `PALETTE_DATA(n)` + `cg_spatial_point`/`_vector`/`_covector`/`_scale`, `cg_effect_opacity`, and fragment-only `cg_spatial_from_fragment`: the raster pass's property trees (`CgPalette`), each spatial node's affine into the target, each effect node's opacity | `quad`, `curve` and `clip` bring it; `CG_QUAD_*` and `CG_CURVE_*` positions are already mapped through it. The primitive multiplies by the item's opacity |
-| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE`: the coverage of the `CgClipTable` entry the element names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only | Every ui primitive, so every ui material is clipped |
+| `clip` | `CLIP_DATA(n)` + `CG_CLIP_QUAD_COVERAGE` / `CG_CLIP_CURVE_COVERAGE`: the coverage of the `CgClipTree` entry the element names (`Quad.clip`, `Curve.clip`, `CgTextDraw.clip`), 1 for entry 0. Fragment stage only | Every ui primitive, so every ui material is clipped |
 | `rows` | Every numeric property read per draw: the material's value, or the draw's row in `CgPropertyRows` where its binder says so ([below](#per-draw-values-perdrawvalues-on)) | `Material { PerDrawValues On }` |
 | `particle` | `PARTICLE_DATA(n)` + `CG_PARTICLE_POSITION` / `_SIZE` / `_VELOCITY` / `_PROGRESS` / `_SEED` / `_SPIN` / `_HEAT` / `_OPACITY` / `_LIGHT` / `_ID` / `_FLOOR` / `_COLOR` / `_SCALE` / `_AGE`: a GPU pool's drawn parts (`CgParticleBuffer`), written after each step at each particle's record index; a draw reads its own range of Range's order. It brings `rows` | The particle factories (`Sprites`, `MeshParticles`), which hand it to a material as `cg_Particle` |
 | `globals` | `CG_GLOBAL_<namespace>_<name>` for every parameter of every `CgParameterCollection`: Unreal's material parameter collections ([below](#global-parameters-cg_global_)) | Any program naming one |
@@ -544,7 +544,7 @@ need is bound by what draws them: a factory or primitive names it in `EngineBuff
 > each raster pass's palette from the recorded values and a `CgPropertyValues`, so a compositor moves or fades what was
 > recorded by writing values and executing the built frame again.
 
-> **A rounded clip is an element's field, not a render target.** `CgClipTable.add` records a rounded box in its own
+> **A rounded clip is an element's field, not a render target.** `CgClipTree.add` records a rounded box in its own
 > space, the inverse of the pose that put it in the bound target, and the entry it sits inside; it answers an index.
 > An element stamped with it multiplies its output by the coverage of every entry up the chain (`MAX_DEPTH`, 4), so any
 > rotation or skew clips exactly. Changing the clip never flushes. `addPixelRect` is the square case at whole pixels.

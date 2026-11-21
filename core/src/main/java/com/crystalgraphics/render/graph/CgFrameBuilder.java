@@ -8,7 +8,6 @@ import com.crystalgraphics.api.state.CgColorMask;
 import com.crystalgraphics.api.state.CgDepthState;
 import com.crystalgraphics.api.state.CgRenderState;
 import com.crystalgraphics.gpu.resource.CgFallbackTextures;
-import com.crystalgraphics.render.ui.property.CgSpatialTree;
 import com.crystalgraphics.render.draw.CgBatcher;
 import com.crystalgraphics.render.draw.CgDrawCommands;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
@@ -94,6 +93,17 @@ public final class CgFrameBuilder {
     private CgDrawChunk[] refChunk = new CgDrawChunk[256];
     private int[] refDraw = new int[256];
     /** The values each recording of the graph being built is drawn with. */
+    /** A recording with no draw data: every draw in domain 0, its bounds as drawn. */
+    private static final CgDrawData NO_DATA = new CgDrawData() {
+        @Override
+        public Frozen freeze(@Nullable CgPropertyValues values) {
+            throw new UnsupportedOperationException("no draw data to freeze");
+        }
+
+        @Override
+        public void reset() {
+        }
+    };
     private final IdentityHashMap<CgRecording, CgPropertyValues> valuesOf = new IdentityHashMap<>();
     /** A pass's constants converted to a host's standard depth ({@link CgPassConstants#blocks}). */
     private final float[] constantsScratch = new float[CgPassConstants.FLOATS];
@@ -499,7 +509,7 @@ public final class CgFrameBuilder {
                 packed.pipeline[b] = list.pipeline(c);
                 packed.binding[b] = frame.bindings.add(list.binding(c));
                 packed.kind[b] = OBJECT;
-                if (!packed.tables && CgPipeline.byId(packed.pipeline[b]).readsTables()) packed.tables = true;
+                packed.reads |= CgPipeline.byId(packed.pipeline[b]).engineBuffers();
                 packed.mesh[b] = list.mesh(c);
                 packed.submesh[b] = list.rangeSubmesh(c);
                 packed.rangeFirst[b] = list.rangeFirst(c);
@@ -569,12 +579,12 @@ public final class CgFrameBuilder {
         boolean groups = CgTrace.isEnabled(CgChannels.GPU_GROUPS);   // only then may a group split a batch
         int refs = 0;
         List<CgDrawChunk> chunks = pass.chunkList();
-        CgSpatialTree tree = pass.recording.spatial();
+        CgDrawData places = pass.recording.drawData() != null ? pass.recording.drawData() : NO_DATA;
         for (int c = 0; c < chunks.size(); c++) {
             CgDrawChunk chunk = chunks.get(c);
             int scissor = pass.chunkScissor(c);
             // Draws reorder only among those whose relative position cannot change: the nearest movable node's.
-            int domain = tree.domain(chunk.spatial());
+            int domain = places.domain(chunk.spatial());
             for (int d = 0; d < chunk.draws(); d++) {
                 int binding = frame.bindings.add(chunk.binding(d));
                 if (refs == refChunk.length) {
@@ -583,7 +593,7 @@ public final class CgFrameBuilder {
                 }
                 refChunk[refs] = chunk;
                 refDraw[refs] = d;
-                tree.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
+                places.boundsInDomain(chunk.spatial(), chunk.x0(d), chunk.y0(d), chunk.x1(d), chunk.y1(d), domainBounds);
                 batcher.add(chunk.pipeline(d), binding, chunk.kind(d), chunk.mesh(d), chunk.rangeSubmesh(d),
                         chunk.rangeFirst(d), chunk.rangeCount(d),
                         chunk.indirectCount(d) != null || chunk.objects(d) != null || chunk.buffer(d, 0) != null,
@@ -607,7 +617,7 @@ public final class CgFrameBuilder {
             packed.pipeline[b] = batcher.batchPipeline(b);
             packed.binding[b] = batcher.batchBinding(b);
             packed.kind[b] = ki;
-            if (!packed.tables && CgPipeline.byId(packed.pipeline[b]).readsTables()) packed.tables = true;
+            packed.reads |= CgPipeline.byId(packed.pipeline[b]).engineBuffers();
             packed.mesh[b] = (CgMesh) batcher.batchMesh(b);
             packed.submesh[b] = batcher.batchSubmesh(b);
             packed.rangeFirst[b] = batcher.batchRangeFirst(b);
@@ -675,9 +685,7 @@ public final class CgFrameBuilder {
     /** What every pass packs after its batches: its recording's tables and its constants' snapshot. */
     private void packTail(CgRasterPass pass, CgFrame frame, CgFrame.Raster packed) {
         CgTrace.Zone part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_TABLES);
-        packed.clips = frame.clipsOf(pass.recording.clips());
-        packed.gradients = frame.gradientsOf(pass.recording.gradients());
-        packed.palette = frame.paletteOf(pass.recording, valuesOf.get(pass.recording));
+        packed.data = frame.frozenOf(pass.recording, valuesOf.get(pass.recording));
         part.close();
         part = CgTrace.zone(CgChannels.GL_DETAIL, PACK_CONSTANTS);
         CgFrameBindings constants = CgPassConstants.blocks(frame.bindings.begin(), pass.constants, 0,

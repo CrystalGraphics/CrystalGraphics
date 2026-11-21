@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.paint;
+package com.crystalgraphics.render.ui.paint;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;

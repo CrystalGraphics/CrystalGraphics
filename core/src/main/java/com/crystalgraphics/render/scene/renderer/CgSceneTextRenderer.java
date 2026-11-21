@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.scene.renderer;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.render.ui.element.CgQuadRecord;
 
 import com.crystalgraphics.api.text.CgTextLayout;
@@ -143,6 +144,7 @@ public final class CgSceneTextRenderer {
      * firing, before {@link #drawDepth} and {@link #draw}. {@code width} and {@code height} are the target's pixels.
      */
     public void prepare(CgRecording recording, CgCamera view, int width, int height) {
+        CgCanvasTables.of(recording);   // its pipelines read the clip and palette slots, whatever else the recording draws
         capturer.camera(view.projection(), NO_VIEW, width, height);
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.WORLD, "world.text.content")) {
             evictions = CgGlyphAtlas.evictions();

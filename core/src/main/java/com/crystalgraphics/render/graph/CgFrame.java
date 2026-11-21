@@ -1,9 +1,6 @@
 package com.crystalgraphics.render.graph;
 
 import com.crystalgraphics.api.mesh.CgMesh;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
-import com.crystalgraphics.render.paint.CgGradientTable;
-import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.draw.CgFrameBindings;
 import com.crystalgraphics.render.draw.CgBufferHandle;
 import com.crystalgraphics.render.draw.CgDrawChunk;
@@ -123,17 +120,9 @@ public final class CgFrame {
     boolean keepRequested;
     /** Executing again with values that may have moved what a damaged pass drew: every pass draws whole. */
     boolean wholePasses;
-    /** Copies of the clip tables its passes' recordings filled, by recording: a frame refers back to no recording. */
-    private final IdentityHashMap<CgClipTable, CgClipTable> clips = new IdentityHashMap<>();
-    private final IdentityHashMap<CgGradientTable, CgGradientTable> gradients = new IdentityHashMap<>();
-    private final List<CgGradientTable> gradientPool = new ArrayList<>();
-    private int gradientsUsed;
-    private final List<CgClipTable> clipPool = new ArrayList<>();
-    private int clipsUsed;
-    /** The same for property trees: a palette per recording, which the frame's values change at execution. */
-    private final IdentityHashMap<CgRecording, CgPalette> palettes = new IdentityHashMap<>();
-    private final List<CgPalette> palettePool = new ArrayList<>();
-    private int palettesUsed;
+    /** Each recording's draw data as this frame keeps it, frozen on first ask in a build: it refers back to none. */
+    private final IdentityHashMap<CgRecording, CgDrawData.Frozen> frozen = new IdentityHashMap<>();
+    private final List<CgDrawData.Frozen> frozenList = new ArrayList<>();
 
     CgFrame() {
         for (int k = 0; k < KINDS; k++) instances[k] = new float[CgInstanceKind.of(k).floats() * 256];
@@ -212,12 +201,9 @@ public final class CgFrame {
         batches = 0;
         draws = 0;
         executions = 0;
-        clips.clear();
-        clipsUsed = 0;
-        gradients.clear();
-        gradientsUsed = 0;
-        palettes.clear();
-        palettesUsed = 0;
+        for (int i = 0; i < frozenList.size(); i++) frozenList.get(i).release();
+        frozenList.clear();
+        frozen.clear();
     }
 
     /** The slot {@code table}'s first record has in this frame's, copied on first ask in a build. */
@@ -238,37 +224,18 @@ public final class CgFrame {
         return base;
     }
 
-    /** This frame's copy of {@code table}, made on first ask in a build. */
-    CgGradientTable gradientsOf(CgGradientTable table) {
-        CgGradientTable copy = gradients.get(table);
-        if (copy != null) return copy;
-        if (gradientsUsed == gradientPool.size()) gradientPool.add(new CgGradientTable());
-        copy = gradientPool.get(gradientsUsed++);
-        copy.copyFrom(table);
-        gradients.put(table, copy);
-        return copy;
-    }
-
-    /** This frame's copy of {@code table}, made on first ask in a build. */
-    CgClipTable clipsOf(CgClipTable table) {
-        CgClipTable copy = clips.get(table);
-        if (copy != null) return copy;
-        if (clipsUsed == clipPool.size()) clipPool.add(new CgClipTable());
-        copy = clipPool.get(clipsUsed++);
-        copy.copyFrom(table);
-        clips.put(table, copy);
-        return copy;
-    }
-
-    /** This frame's palette for {@code recording}, drawn with {@code values}, made on first ask in a build. */
-    CgPalette paletteOf(CgRecording recording, @Nullable CgPropertyValues values) {
-        CgPalette palette = palettes.get(recording);
-        if (palette != null) return palette;
-        if (palettesUsed == palettePool.size()) palettePool.add(new CgPalette());
-        palette = palettePool.get(palettesUsed++);
-        palette.copyFrom(recording.spatial(), recording.effects(), values);
-        palettes.put(recording, palette);
-        return palette;
+    /** {@code recording}'s draw data frozen for this frame, drawn with {@code values}; null where it has none. */
+    @Nullable
+    CgDrawData.Frozen frozenOf(CgRecording recording, @Nullable CgPropertyValues values) {
+        CgDrawData data = recording.drawData();
+        if (data == null) return null;
+        CgDrawData.Frozen f = frozen.get(recording);
+        if (f == null) {
+            f = data.freeze(values);
+            frozen.put(recording, f);
+            frozenList.add(f);
+        }
+        return f;
     }
 
     /** Room for {@code count} steps. */
@@ -502,16 +469,13 @@ public final class CgFrame {
         boolean writesDepth;
         /** Bits by kind ordinal: the kinds its batches draw, so their buffers are bound once per pass. */
         int kinds;
-        /** Whether a batch's pipeline reads the tables (palette, clips), as an OBJECT text label does. */
-        boolean tables;
+        /** The engine buffers its batches' pipelines read, as {@code CgPipeline.engineBuffers} bits. */
+        long reads;
         /** Recorded draws its batches cover. */
         int draws;
-        /** The frame's copy of its recording's clip table. */
-        CgClipTable clips;
-        /** The frame's copy of its recording's gradients. */
-        CgGradientTable gradients;
-        /** The frame's palette of its recording's property trees. */
-        CgPalette palette;
+        /** Its recording's draw data as the frame keeps it; null where it has none. */
+        @Nullable
+        CgDrawData.Frozen data;
 
         void size(int batches) {
             if (pipeline.length < batches) {
@@ -547,7 +511,8 @@ public final class CgFrame {
             }
             count = batches;
             kinds = 0;
-            tables = false;
+            reads = 0L;
+            data = null;
             indirects = 0;
             eachCount = 0;
             Arrays.fill(eachFrom, 0, batches, -1);

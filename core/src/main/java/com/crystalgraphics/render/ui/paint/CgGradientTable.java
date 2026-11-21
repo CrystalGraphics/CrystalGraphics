@@ -1,5 +1,6 @@
-package com.crystalgraphics.render.paint;
+package com.crystalgraphics.render.ui.paint;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import java.util.Arrays;
 
 import com.crystalgraphics.api.buffer.CgBufferLayout;
@@ -16,7 +17,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * recording owns one, filled as its draws name gradients and uploaded by the executor before a pass that reads it.
  *
  * <pre>{@code
- * CgGradientTable gradients = recording.gradients();
+ * CgGradientTable gradients = CgCanvasTables.of(recording).gradients();
  * int sky = gradients.add(SKY);                      // the same gradient added again answers the same index
  * record.gradient(sky);                              // what a draw's record names
  * }</pre>

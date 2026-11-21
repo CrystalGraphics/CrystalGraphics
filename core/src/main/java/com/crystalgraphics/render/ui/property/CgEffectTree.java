@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.render.graph.CgPropertyValues;
 import java.util.Arrays;
 
@@ -8,7 +9,7 @@ import java.util.Arrays;
  * with nothing recorded again. Node 0 is opacity 1.
  *
  * <pre>{@code
- * int fade = recording.effects().add(0, 1f);   // the compositor may change it with CgPropertyValues.opacity
+ * int fade = CgCanvasTables.of(recording).effects().add(0, 1f);   // the compositor may change it with CgPropertyValues.opacity
  * chunks.begin(spatial, clip, fade);
  * }</pre>
  *

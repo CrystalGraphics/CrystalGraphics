@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.draw;
 
+import com.crystalgraphics.gpu.resource.CgEngineBufferRegistry;
 import com.crystalgraphics.render.precache.CgPipelineList;
 import com.crystalgraphics.api.material.CgRenderPassVariant;
 import com.crystalgraphics.material.CgShader;
@@ -283,27 +284,29 @@ public final class CgPipeline {
     }
 
     /**
-     * Whether its shader reads a recording's tables (palette, clips, shapes) through the {@code quad}, {@code curve},
-     * {@code clip} or {@code shape}: whatever kind draws it, its pass binds them.
+     * Its shader's engine buffers and what they require, as bits by {@code CgEngineBufferRegistry.indexOf}: what a pass
+     * drawing it binds of its recording's draw data. An index past 63 sets every bit.
      */
-    public boolean readsTables() {
+    public long engineBuffers() {
         CgShaderSpec parsed = shader.ensureParsed();
-        if (parsed == null) return false;
-        if (parsed != tablesParse) {
-            boolean reads = false;
-            for (String token : parsed.engineBuffers()) {
-                reads |= token.equals("quad") || token.equals("curve") || token.equals("clip") || token.equals("shape");
+        if (parsed == null) return 0L;
+        if (parsed != buffersParse) {
+            long mask = 0L;
+            for (String token : CgEngineBufferRegistry.withRequirements(parsed.engineBuffers())) {
+                int i = CgEngineBufferRegistry.indexOf(token);
+                if (i >= Long.SIZE) mask = -1L;
+                else if (i >= 0) mask |= 1L << i;
             }
-            tables = reads;
-            tablesParse = parsed;
+            buffers = mask;
+            buffersParse = parsed;
         }
-        return tables;
+        return buffers;
     }
 
-    /** {@link #readsTables()}, for the parse it was read from. */
+    /** {@link #engineBuffers()}, for the parse it was read from. */
     @Nullable
-    private volatile CgShaderSpec tablesParse;
-    private volatile boolean tables;
+    private volatile CgShaderSpec buffersParse;
+    private volatile long buffers;
 
     /**
      * Whether its draws sample {@code cg_DepthBuffer}: its linked program does (its source may, before it links), or the

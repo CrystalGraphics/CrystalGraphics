@@ -446,7 +446,7 @@ if (canvas.replay(kept)) {
   join one draw whatever their order, so interleaving looks costs nothing where they do not touch.
 - **Axis-aligned edges snap to device pixels** (`pixelSnap(false)` turns it off); rotated items antialias instead.
   Translation and positive scale bake into each item; rotation and skew cost a spatial node, up to 4096 a recording.
-- **Square clips intersect; rounded or rotated ones nest**, at most `CgClipTable.MAX_DEPTH` deep past the square ones.
+- **Square clips intersect; rounded or rotated ones nest**, at most `CgClipTree.MAX_DEPTH` deep past the square ones.
 - **A box reuses one builder**: describe and draw it in one statement.
 - **Colours are `0xAARRGGBB`, straight alpha.** Gradients interpolate premultiplied.
 - **A material of your own** is a `#domain ui` material ([`MATERIAL_FORMAT.md`](MATERIAL_FORMAT.md) § 8): its

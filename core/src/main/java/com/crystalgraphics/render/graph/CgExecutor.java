@@ -522,6 +522,9 @@ public final class CgExecutor {
     }
 
     /** Every mesh the frame draws placed in the store, and what changed uploaded: before the first raster pass. */
+    /** The kinds drawn on the unit quad. */
+    private static final int UNIT_QUAD_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
+
     private static void placeMeshes(CgFrame frame) {
         try (CgTrace.Zone ignored = CgTrace.zone(CgChannels.GL, "graph.placeMeshes")) {
             CgMeshStore store = CgMeshStore.get();
@@ -529,7 +532,7 @@ public final class CgExecutor {
             for (int s = 0; s < frame.stepCount; s++) {
                 CgFrame.Raster packed = frame.rasters[s];
                 if (packed == null) continue;
-                unitQuad |= (packed.kinds & CgRasterEncoder.UNIT_KINDS) != 0;
+                unitQuad |= (packed.kinds & UNIT_QUAD_KINDS) != 0;
                 elements |= (packed.kinds & 1 << CgInstanceKind.ELEMENT.ordinal()) != 0;
                 for (int b = 0; b < packed.count; b++) {
                     if (packed.mesh[b] != null) store.place(packed.mesh[b]);

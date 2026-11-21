@@ -1,12 +1,13 @@
 package com.crystalgraphics.api.canvas;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import java.util.Arrays;
 
 import javax.annotation.Nullable;
 
 import com.crystalgraphics.api.paint.gradient.CgGradient;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
+import com.crystalgraphics.render.ui.property.CgClipTree;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -16,7 +17,7 @@ import com.crystalgraphics.text.render.CgTextGamma;
 import com.crystalgraphics.render.draw.CgMaterialBindings;
 import com.crystalgraphics.render.graph.CgGraphTexture;
 import com.crystalgraphics.render.graph.CgRecording;
-import com.crystalgraphics.render.paint.CgGradientTable;
+import com.crystalgraphics.render.ui.paint.CgGradientTable;
 import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.render.ui.property.CgEffectTree;
 import com.crystalgraphics.render.ui.property.CgPalette;
@@ -58,7 +59,7 @@ public final class CgPaintChunk {
         OUTER_NODE,
         /** A draw binds a texture that lives one frame. */
         FRAME_TEXTURE,
-        /** A clip copied in at replay would nest past {@link CgClipTable#MAX_DEPTH}. */
+        /** A clip copied in at replay would nest past {@link CgClipTree#MAX_DEPTH}. */
         CLIP_DEPTH,
         /** A text item drew a glyph or shadow below its tier, still generating: kept, it would stay that way. */
         DEGRADED,
@@ -184,7 +185,7 @@ public final class CgPaintChunk {
     private Refusal keep(CgCanvas canvas, int count, CgRecording recording, int clipsBefore, int nodesBefore,
                          int effectsBefore, int baseClip, int baseNode, int baseEffect, boolean onePass) {
         if (!onePass) return Refusal.PASS;
-        CgClipTable clipTable = recording.clips();
+        CgClipTree clipTable = CgCanvasTables.of(recording).clips();
         int clipsAfter = clipTable.count();
         ensureClips(clipsAfter - clipsBefore);
         for (int e = clipsBefore; e < clipsAfter; e++) {
@@ -192,12 +193,12 @@ public final class CgPaintChunk {
             if (parent != baseClip && parent < clipsBefore) return Refusal.OUTER_CLIP;
             int node = clipTable.node(e);
             if (node != baseNode && node < nodesBefore) return Refusal.OUTER_NODE;
-            clipTable.read(e, clips, clipCount * CgClipTable.ENTRY_FLOATS);
+            clipTable.read(e, clips, clipCount * CgClipTree.ENTRY_FLOATS);
             clipParents[clipCount] = parent == baseClip ? -1 : parent - clipsBefore;
             clipNodes[clipCount] = node;
             clipIndices[clipCount++] = e;
         }
-        CgSpatialTree tree = recording.spatial();
+        CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
         int nodesAfter = tree.count();
         ensureNodes(nodesAfter - nodesBefore);
         for (int n = nodesBefore; n < nodesAfter; n++) {
@@ -208,7 +209,7 @@ public final class CgPaintChunk {
             nodeParents[nodeCount] = parent == baseNode ? -1 : parent - nodesBefore;
             nodeIndices[nodeCount++] = n;
         }
-        CgEffectTree effects = recording.effects();
+        CgEffectTree effects = CgCanvasTables.of(recording).effects();
         int effectsAfter = effects.count();
         ensureEffects(effectsAfter - effectsBefore);
         for (int e = effectsBefore; e < effectsAfter; e++) {
@@ -218,7 +219,7 @@ public final class CgPaintChunk {
             effectParents[effectCount] = parent == baseEffect ? -1 : parent - effectsBefore;
             effectIndices[effectCount++] = e;
         }
-        CgGradientTable gradientTable = recording.gradients();
+        CgGradientTable gradientTable = CgCanvasTables.of(recording).gradients();
         for (int i = 0; i < count; i++) {
             CgDrawChunk chunk = canvas.taped(i);
             int spatial = chunk.spatial();
@@ -270,7 +271,7 @@ public final class CgPaintChunk {
         boolean same = clip == baseClip && node == baseNode && effect == baseEffect;
         replayNode = node;
         replayEffect = effect;
-        CgSpatialTree tree = recording.spatial();
+        CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
         for (int k = 0; k < nodeCount; k++) {
             int parent = nodeParents[k] < 0 ? node : newNodes[nodeParents[k]];
             int o = k * 6;
@@ -278,16 +279,16 @@ public final class CgPaintChunk {
                     nodeMovable[k]);
             same &= newNodes[k] == nodeIndices[k];
         }
-        CgEffectTree effects = recording.effects();
+        CgEffectTree effects = CgCanvasTables.of(recording).effects();
         for (int k = 0; k < effectCount; k++) {
             int parent = effectParents[k] < 0 ? effect : newEffects[effectParents[k]];
             newEffects[k] = effects.add(parent, effectOpacities[k]);
             same &= newEffects[k] == effectIndices[k];
         }
-        CgClipTable clipTable = recording.clips();
+        CgClipTree clipTable = CgCanvasTables.of(recording).clips();
         for (int k = 0; k < clipCount; k++) {
             int parent = clipParents[k] < 0 ? clip : newClips[clipParents[k]];
-            int entry = clipTable.addCopy(clips, k * CgClipTable.ENTRY_FLOATS, parent, renumberNode(clipNodes[k], node));
+            int entry = clipTable.addCopy(clips, k * CgClipTree.ENTRY_FLOATS, parent, renumberNode(clipNodes[k], node));
             if (entry < 0) {
                 refusal = Refusal.CLIP_DEPTH;
                 return false;
@@ -295,7 +296,7 @@ public final class CgPaintChunk {
             newClips[k] = entry;
             same &= entry == clipIndices[k];
         }
-        CgGradientTable gradientTable = recording.gradients();
+        CgGradientTable gradientTable = CgCanvasTables.of(recording).gradients();
         for (int k = 0; k < gradientCount; k++) {
             newGradients[k] = gradientTable.add(gradients[k]);
             same &= newGradients[k] == gradientIndices[k];
@@ -473,7 +474,7 @@ public final class CgPaintChunk {
 
     private void ensureClips(int n) {
         if (clipIndices.length >= n) return;
-        clips = Arrays.copyOf(clips, n * CgClipTable.ENTRY_FLOATS);
+        clips = Arrays.copyOf(clips, n * CgClipTree.ENTRY_FLOATS);
         clipParents = Arrays.copyOf(clipParents, n);
         clipIndices = Arrays.copyOf(clipIndices, n);
         clipNodes = Arrays.copyOf(clipNodes, n);

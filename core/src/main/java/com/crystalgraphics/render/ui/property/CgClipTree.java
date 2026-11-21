@@ -1,5 +1,6 @@
-package com.crystalgraphics.render.ui.clip;
+package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.gpu.resource.CgBufferLifetime;
 import com.crystalgraphics.gpu.resource.CgFrameRing;
@@ -22,7 +23,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  * chain, up to {@link #MAX_DEPTH} entries deep.</p>
  *
  * <pre>{@code
- * CgClipTable clips = recording.clips();   // one per recording: its chunks name its entries
+ * CgClipTree clips = CgCanvasTables.of(recording).clips();   // one per recording: its chunks name its entries
  *
  * // A 200x120 box under `pose`, 8px corners, a 1px border cut away.
  * int panel = clips.add(0, pose, targetHeight, 0, 0, 200, 120, EIGHTS, EIGHTS, ONES);
@@ -60,7 +61,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  *       "no clip" and is never read.</li>
  * </ul>
  */
-public final class CgClipTable {
+public final class CgClipTree {
 
     /** The macro a shader's GLSL reads an entry through; the {@code clip} engine buffer declares it. */
     public static final String MACRO_NAME = "CLIP_DATA";
@@ -87,7 +88,7 @@ public final class CgClipTable {
     /** Lazy, like the quad renderer's: its storage is made only once a context has initialised. */
     private static CgShaderBuffer buffer;
     /** The table the buffer holds now, as of which version and frame: what lets a pass skip the upload. */
-    private static CgClipTable uploaded;
+    private static CgClipTree uploaded;
     private static int uploadedVersion = -1;
     private static long uploadedFrame = -1;
 
@@ -103,7 +104,7 @@ public final class CgClipTable {
     public static CgShaderBuffer buffer() {
         if (buffer == null) {
             buffer = CgShaderBufferRegistry.get()
-                    .getOrCreateInternal("CgClipTable", FORMAT, SLOT, CgBufferLifetime.FRAME);
+                    .getOrCreateInternal("CgClipTree", FORMAT, SLOT, CgBufferLifetime.FRAME);
         }
         return buffer;
     }
@@ -280,7 +281,7 @@ public final class CgClipTable {
     }
 
     /** Makes this a copy of {@code other}: what a built frame keeps, so its recording can be reset at once. */
-    public void copyFrom(CgClipTable other) {
+    public void copyFrom(CgClipTree other) {
         if (entries.length < other.entries.length) {
             entries = new float[other.entries.length];
             parents = new int[other.parents.length];

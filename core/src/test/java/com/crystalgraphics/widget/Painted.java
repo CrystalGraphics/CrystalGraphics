@@ -1,5 +1,6 @@
 package com.crystalgraphics.widget;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -71,7 +72,7 @@ final class Painted {
         paint.accept(canvas);
         canvas.end();
         List<Draw> draws = new ArrayList<>();
-        CgSpatialTree nodes = recording.spatial();
+        CgSpatialTree nodes = CgCanvasTables.of(recording).spatial();
         for (int p = 0; p < recording.passCount(); p++) {
             if (!(recording.pass(p) instanceof CgRasterPass raster)) continue;
             boolean inLayer = raster.target() != target;
@@ -88,7 +89,7 @@ final class Painted {
                         float[] c = place(nodes, CgPalette.spatialOf(node), (x0 + x1) * 0.5f, (y0 + y1) * 0.5f);
                         draws.add(new Draw(texture, c[0], c[1], x1 - x0, y1 - y0,
                                 Float.floatToRawIntBits(data[o + CgUiElements.COLOR]), inLayer,
-                                opacity(recording.effects(), CgPalette.effectOf(node))));
+                                opacity(CgCanvasTables.of(recording).effects(), CgPalette.effectOf(node))));
                     }
                 }
             }

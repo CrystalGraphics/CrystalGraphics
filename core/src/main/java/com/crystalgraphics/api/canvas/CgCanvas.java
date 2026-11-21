@@ -1,5 +1,6 @@
 package com.crystalgraphics.api.canvas;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.render.ui.property.CgSpatialTree;
 import com.crystalgraphics.text.render.CgTextDraw;
 import com.crystalgraphics.render.ui.path.CgCurveRecords;
@@ -46,7 +47,7 @@ import com.crystalgraphics.compute.ops.CgGpuOps;
 import com.crystalgraphics.gpu.resource.CgTextureDesc;
 import com.crystalgraphics.platform.rhi.format.CgFormat;
 import com.crystalgraphics.render.ui.CgCanvasPrimitives;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
+import com.crystalgraphics.render.ui.property.CgClipTree;
 import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.draw.CgDrawChunk;
 import com.crystalgraphics.render.draw.CgInstanceKind;
@@ -508,7 +509,7 @@ public final class CgCanvas {
 
     /**
      * Clips later items to a rounded rect, intersected with the clip now. Clips nested past what a draw carries
-     * ({@link CgClipTable#MAX_DEPTH} beyond their square intersections) become a mask layer over the shape, closed by
+     * ({@link CgClipTree#MAX_DEPTH} beyond their square intersections) become a mask layer over the shape, closed by
      * the {@link #restore} that pops the level: inside a {@code save()}, as every clip should be.
      */
     public CgCanvas clip(float x, float y, float w, float h, @Nullable CgCornerRadii radii) {
@@ -523,7 +524,7 @@ public final class CgCanvas {
             clipY1 = Math.max(y0, y1);
             cull(clipX0, clipY0, clipX1, clipY1);
             pose.identity();
-            int entry = recording.clips().add(clipBase, base, pose, targetHeight, clipX0, clipY0, clipX1, clipY1, noRadii,
+            int entry = CgCanvasTables.of(recording).clips().add(clipBase, base, pose, targetHeight, clipX0, clipY0, clipX1, clipY1, noRadii,
                     noRadii, null);
             if (entry > 0) clip = entry;
             return this;
@@ -549,12 +550,12 @@ public final class CgCanvas {
             clipRy[3] = fit.bottomLeftY() * kv;
         }
         pose.identity();
-        int entry = recording.clips().add(clip, at, pose, targetHeight, x0, y0, x1, y1, rounded ? clipRx : noRadii,
+        int entry = CgCanvasTables.of(recording).clips().add(clip, at, pose, targetHeight, x0, y0, x1, y1, rounded ? clipRx : noRadii,
                 rounded ? clipRy : noRadii, null);
         if (entry < 0) {
             // Deeper than a draw carries: a mask layer over the shape, which composites under the clips outside
             if (depth == 0) {
-                throw new IllegalStateException("clips nest at most " + CgClipTable.MAX_DEPTH
+                throw new IllegalStateException("clips nest at most " + CgClipTree.MAX_DEPTH
                         + " deep past their square intersections outside a save()");
             }
             CgVectorPath.Builder shape = CgVectorPath.builder();
@@ -662,7 +663,7 @@ public final class CgCanvas {
      */
     public int movable(float m00, float m10, float m01, float m11, float m02, float m12) {
         if (recording == null) throw new IllegalStateException("a movable node on a canvas that records nowhere");
-        int n = recording.spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, true);
+        int n = CgCanvasTables.of(recording).spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, true);
         enterNode(n, m00, m10, m01, m11, m02, m12);
         base = n;
         nodeStale = true;
@@ -696,7 +697,7 @@ public final class CgCanvas {
      */
     public CgCanvas enter(int node) {
         if (recording == null) throw new IllegalStateException("entering a node on a canvas that records nowhere");
-        CgSpatialTree tree = recording.spatial();
+        CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
         if (node <= 0 || node >= tree.count() || !tree.movable(node) || tree.parent(node) != base) {
             throw new IllegalArgumentException("spatial node " + node + " is not a movable node opened under node " + base);
         }
@@ -713,7 +714,7 @@ public final class CgCanvas {
 
     /** The cull rect carried into node {@code n}'s space: through a translation, else the whole plane. */
     private void cullInto(int n) {
-        CgSpatialTree tree = recording.spatial();
+        CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
         if (tree.local(n, 0) == 1f && tree.local(n, 1) == 0f && tree.local(n, 2) == 0f && tree.local(n, 3) == 1f) {
             float dx = tree.local(n, 4), dy = tree.local(n, 5);
             cullX0 -= dx;
@@ -771,7 +772,7 @@ public final class CgCanvas {
         if (!Float.isNaN(x)) cull(l.boundX0, l.boundY0, l.boundX1, l.boundY1);
         // Its items under a node of their own: clips made inside evaluate through the palette, which the pass's view
         // origin moves to the picture's corner. The clip outside applies when it composites.
-        l.node = recording.spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, false);
+        l.node = CgCanvasTables.of(recording).spatial().add(base, 1f, 0f, 0f, 1f, 0f, 0f, false);
         base = l.node;
         nodeStale = true;
         clip = 0;
@@ -788,15 +789,15 @@ public final class CgCanvas {
     /** Where the outer base sits in the root as recorded: a layer's picture is placed there. */
     private void owner(CgCanvasLayer l) {
         float ox = 0f, oy = 0f;
-        for (int n = l.outerBase; n != 0; n = recording.spatial().parent(n)) {
-            float la = recording.spatial().local(n, 0), lb = recording.spatial().local(n, 1);
-            float lc = recording.spatial().local(n, 2), ld = recording.spatial().local(n, 3);
+        for (int n = l.outerBase; n != 0; n = CgCanvasTables.of(recording).spatial().parent(n)) {
+            float la = CgCanvasTables.of(recording).spatial().local(n, 0), lb = CgCanvasTables.of(recording).spatial().local(n, 1);
+            float lc = CgCanvasTables.of(recording).spatial().local(n, 2), ld = CgCanvasTables.of(recording).spatial().local(n, 3);
             if (la != 1f || lb != 0f || lc != 0f || ld != 1f) {
                 throw new IllegalStateException("a layer inside a turned or scaled movable node: open the layer outside it,"
                         + " or make the node by translation (movable() under an axis-aligned transform)");
             }
-            ox += recording.spatial().local(n, 4);
-            oy += recording.spatial().local(n, 5);
+            ox += CgCanvasTables.of(recording).spatial().local(n, 4);
+            oy += CgCanvasTables.of(recording).spatial().local(n, 5);
         }
         l.ownerX = ox;
         l.ownerY = oy;
@@ -1364,9 +1365,9 @@ public final class CgCanvas {
         recorder.openPass();
         chunking = true;
         chunkPasses = recorder.passes();
-        chunkClips = recording.clips().count();
-        chunkNodes = recording.spatial().count();
-        chunkEffects = recording.effects().count();
+        chunkClips = CgCanvasTables.of(recording).clips().count();
+        chunkNodes = CgCanvasTables.of(recording).spatial().count();
+        chunkEffects = CgCanvasTables.of(recording).effects().count();
         chunkEffect = effect;
         chunkClip = clip;
         chunkNode = spatial();
@@ -1422,7 +1423,7 @@ public final class CgCanvas {
      */
     public int fader(float opacity) {
         if (recording == null) throw new IllegalStateException("an effect node on a canvas that records nowhere");
-        effect = recording.effects().add(effect, Math.max(0f, Math.min(1f, opacity)));
+        effect = CgCanvasTables.of(recording).effects().add(effect, Math.max(0f, Math.min(1f, opacity)));
         return effect;
     }
 
@@ -1441,7 +1442,7 @@ public final class CgCanvas {
      */
     public CgCanvas moved(int node, float m00, float m10, float m01, float m11, float m02, float m12) {
         if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
-        if (!recording.spatial().movable(node)) {
+        if (!CgCanvasTables.of(recording).spatial().movable(node)) {
             throw new IllegalArgumentException("spatial node " + node + " is not movable: open it with movable()");
         }
         enterNode(node, m00, m10, m01, m11, m02, m12);
@@ -1457,10 +1458,10 @@ public final class CgCanvas {
         float nc = a * m01 + c * m11, nd = b * m01 + d * m11;
         float ntx = a * m02 + c * m12 + tx, nty = b * m02 + d * m12 + ty;
         if (axisAligned()) {
-            recording.spatial().set(n, na / a, nb / a, nc / d, nd / d, ntx, nty);
+            CgCanvasTables.of(recording).spatial().set(n, na / a, nb / a, nc / d, nd / d, ntx, nty);
             b = c = tx = ty = 0f;
         } else {
-            recording.spatial().set(n, na, nb, nc, nd, ntx, nty);
+            CgCanvasTables.of(recording).spatial().set(n, na, nb, nc, nd, ntx, nty);
             a = d = 1f;
             b = c = tx = ty = 0f;
         }
@@ -1493,17 +1494,17 @@ public final class CgCanvas {
      */
     public CgCanvas nodeTransform(int node, float a, float b, float c, float d, float tx, float ty) {
         if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
-        if (!recording.spatial().movable(node)) {
+        if (!CgCanvasTables.of(recording).spatial().movable(node)) {
             throw new IllegalArgumentException("spatial node " + node + " is not movable: open it with movable()");
         }
-        recording.spatial().set(node, a, b, c, d, tx, ty);
+        CgCanvasTables.of(recording).spatial().set(node, a, b, c, d, tx, ty);
         return this;
     }
 
     /** Sets effect node {@code node}'s opacity for this frame: one {@link #fader} made, or a replayed chunk's. */
     public CgCanvas nodeOpacity(int node, float opacity) {
         if (recording == null) throw new IllegalStateException("a node value on a canvas that records nowhere");
-        recording.effects().set(node, Math.max(0f, Math.min(1f, opacity)));
+        CgCanvasTables.of(recording).effects().set(node, Math.max(0f, Math.min(1f, opacity)));
         return this;
     }
 
@@ -1795,7 +1796,7 @@ public final class CgCanvas {
             CgUiElements.fill(record, 0, CgUiElements.FILL_COLOR, mul(solid.argb(), tint), 0f);
             gain = solid.intensity();
         } else {
-            CgUiElements.fill(record, 0, CgUiElements.FILL_GRADIENT, tint, recording.gradients().add((CgGradient) paint));
+            CgUiElements.fill(record, 0, CgUiElements.FILL_GRADIENT, tint, CgCanvasTables.of(recording).gradients().add((CgGradient) paint));
         }
         CgUiElements.uv(record, 0, u0, v0, u1, v1);
         paintFrame(path, ex0, ey0, cached);
@@ -2080,9 +2081,9 @@ public final class CgCanvas {
 
     /** Whether a layer may open here: no turned or scaled movable node above the current one ({@link #owner}). */
     private boolean layerable() {
-        for (int n = base; n != 0; n = recording.spatial().parent(n)) {
-            if (recording.spatial().local(n, 0) != 1f || recording.spatial().local(n, 1) != 0f
-                    || recording.spatial().local(n, 2) != 0f || recording.spatial().local(n, 3) != 1f) {
+        for (int n = base; n != 0; n = CgCanvasTables.of(recording).spatial().parent(n)) {
+            if (CgCanvasTables.of(recording).spatial().local(n, 0) != 1f || CgCanvasTables.of(recording).spatial().local(n, 1) != 0f
+                    || CgCanvasTables.of(recording).spatial().local(n, 2) != 0f || CgCanvasTables.of(recording).spatial().local(n, 3) != 1f) {
                 return false;
             }
         }
@@ -2368,9 +2369,9 @@ public final class CgCanvas {
     /** A node's recorded translation in the root. */
     private float[] recordedOrigin(int n) {
         float ox = 0f, oy = 0f;
-        for (; n != 0; n = recording.spatial().parent(n)) {
-            ox += recording.spatial().local(n, 4);
-            oy += recording.spatial().local(n, 5);
+        for (; n != 0; n = CgCanvasTables.of(recording).spatial().parent(n)) {
+            ox += CgCanvasTables.of(recording).spatial().local(n, 4);
+            oy += CgCanvasTables.of(recording).spatial().local(n, 5);
         }
         originScratch[0] = ox;
         originScratch[1] = oy;
@@ -2441,7 +2442,7 @@ public final class CgCanvas {
             return;
         }
         if (paint instanceof CgGradient gradient) {
-            CgUiElements.fill(record, 0, CgUiElements.FILL_GRADIENT, argb, recording.gradients().add(gradient));
+            CgUiElements.fill(record, 0, CgUiElements.FILL_GRADIENT, argb, CgCanvasTables.of(recording).gradients().add(gradient));
         } else if (paint instanceof CgGrid grid) {
             CgUiElements.fill(record, 0, CgUiElements.FILL_GRID, grid.lineColor(), Float.intBitsToFloat(grid.secondColor()));
             CgUiElements.uv(record, 0, grid.cellWidth(), grid.cellHeight(), grid.lineWidth(), grid.lineHeight());
@@ -2748,7 +2749,7 @@ public final class CgCanvas {
 
     /** Counts a draw in node {@code at}'s space as painted over the capture: carried to the root, or everything. */
     private void painted(int at, float x0, float y0, float x1, float y1) {
-        CgSpatialTree tree = recording.spatial();
+        CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
         float ox = 0f, oy = 0f;
         for (int n = at; n != 0; n = tree.parent(n)) {
             if (tree.local(n, 0) != 1f || tree.local(n, 1) != 0f || tree.local(n, 2) != 0f || tree.local(n, 3) != 1f) {
@@ -2846,7 +2847,7 @@ public final class CgCanvas {
     private int spatial() {
         if (axisAligned()) return base;
         if (nodeStale || node == 0) {
-            node = recording.spatial().add(base, a, b, c, d, tx, ty, false);
+            node = CgCanvasTables.of(recording).spatial().add(base, a, b, c, d, tx, ty, false);
             nodeStale = false;
         }
         return node;

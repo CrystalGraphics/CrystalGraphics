@@ -10,7 +10,9 @@ property trees. `CgCanvasPrimitives` holds its path materials (curves and the co
 | `path/` | A path's geometry and its cache: flattening (Wang's formula), the trapezoid triangulator, the stroker and dasher, the cell records, and the shared coverage atlas with its publication rule (`CgPathCache`) |
 | `svg/` | `api.vector.svg.CgSvg`'s inside, ported from CrystalGUI: the scanner, resolver, paths, transforms, styles, colours and gradients that make a scene; the tessellator and `CgSvgOps` that make its draw ops; `CgSvgCells`, an op's coverage as cell records |
 | `backdrop/CgBackdrop` | What is behind a pane: the target's pixels under it copied, blurred on the 1/2/4 ladder. The canvas's `backdropFilter` draws over it |
-| `property/` | The property trees a recording carries: spatial nodes, effect nodes, the palette a frame executes them as. Their values per frame, `CgPropertyValues`, are the graph's (`render/graph`) |
+| `CgCanvasTables` | The canvas's tables in one recording (`CgCanvasTables.of(recording)`): the property trees and the gradients, the recording's `CgDrawData`. A build freezes a copy; a raster pass binds it where its pipelines read `palette`, `clip` or `gradient`. The frame graph knows the interface alone |
+| `property/` | The property trees (Chromium's `PropertyTrees`): spatial nodes, effect nodes, `CgClipTree` (a rounded clip per node, in its spatial node's space), and the palette a frame resolves them as. Their values per frame, `CgPropertyValues`, are the graph's (`render/graph`) |
+| `paint/CgGradientTable` | The gradients a recording's draws name, by index |
 
 ## Rules
 

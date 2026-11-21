@@ -91,7 +91,7 @@ public enum CgInstanceKind {
                 .float_("atlasLayer")
                 // A free scalar in the twelve bytes std430 pads after atlasLayer, so it costs no size.
                 .float_("custom2")
-                // The clip-table entry this quad is drawn under, 0 for none -- in the same padding. @see CgClipTable
+                // The clip-table entry this quad is drawn under, 0 for none -- in the same padding. @see CgClipTree
                 .float_("clip")
                 // Its spatial and effect nodes, CgPalette.pack'd -- the last of that padding. @see CgPalette
                 .float_("node")
@@ -147,7 +147,7 @@ public enum CgInstanceKind {
                 // as p0/p1/p2 and scaled so t = dot(p - origin, dir) runs 0..1 across color0 -> color1.
                 // Zero for every stroke and for any flat fill; FLAG_GRADIENT is what says to read it.
                 .vec4("gradient")
-                // The CgClipTable entry the primitive is drawn under, 0 for none.
+                // The CgClipTree entry the primitive is drawn under, 0 for none.
                 .float_("clip")
                 // Its spatial and effect nodes, CgPalette.pack'd. @see CgPalette
                 .float_("node")

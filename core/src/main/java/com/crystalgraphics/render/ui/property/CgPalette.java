@@ -28,7 +28,7 @@ import com.crystalgraphics.render.shader.CgBindingModel;
  *   <li>A record names both of its nodes in one float, {@link #pack}: spatial plus
  *       {@value CgSpatialTree#MAX_NODES} times effect.</li>
  *   <li>Node 0 is the pass's own space at opacity 1, and a shader never reads its entry: the root costs nothing.</li>
- *   <li>A frame keeps its own copy of the trees ({@link #copyFrom}), so the recording may be reset once built.</li>
+ *   <li>A built frame keeps its own copy of the trees, through its frozen {@code CgCanvasTables} ({@link #copyFrom}), so the recording may be reset once built.</li>
  * </ul>
  */
 public final class CgPalette {

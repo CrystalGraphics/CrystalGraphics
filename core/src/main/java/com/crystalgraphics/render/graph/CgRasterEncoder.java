@@ -39,7 +39,6 @@ import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
 import com.crystalgraphics.render.mesh.CgMeshStore;
-import com.crystalgraphics.render.ui.property.CgPalette;
 import com.crystalgraphics.render.shader.CgBindingModel;
 import com.crystalgraphics.trace.CgTrace;
 import com.crystalgraphics.util.trace.CgChannels;
@@ -70,7 +69,6 @@ final class CgRasterEncoder {
 
     private static final Logger LOGGER = LogManager.getLogger("CgExecutor");
     private static final int KINDS = CgInstanceKind.values().length;
-    static final int UNIT_KINDS = (1 << CgInstanceKind.QUAD.ordinal()) | (1 << CgInstanceKind.CURVE.ordinal());
     private static final int OBJECT = CgInstanceKind.OBJECT.ordinal();
     private static final int ELEMENT = CgInstanceKind.ELEMENT.ordinal();
     /** Records written to the frame's table, once each, and ids the passes copied to name them: SR1's two counts. */
@@ -379,12 +377,7 @@ final class CgRasterEncoder {
             passBase.clear();
             for (int k = 0; k < KINDS; k++) if ((packed.kinds & (1 << k)) != 0) state(instanceBuffers[k]);
             if (tabled && (packed.kinds & (1 << OBJECT)) != 0) state(primitives);
-            packed.palette.pass(pass.viewOwner(), pass.viewX(), pass.viewY(), CgPassConstants.height(pass.constants));
-            if ((packed.kinds & UNIT_KINDS) != 0 || packed.tables) {
-                state(packed.clips.prepare());
-                state(packed.gradients.prepare());
-                state(packed.palette.prepare());
-            }
+            if (packed.data != null) packed.data.bind(binder.of(pass, packed.reads));
             batchRecords = null;
             batchWords = null;
             Arrays.fill(batchBuffers, null);
@@ -609,7 +602,7 @@ final class CgRasterEncoder {
                     if (damage == null) rp.setScissor(0, 0, w, h);
                     else rp.setScissor(damage[0], damage[1], damage[2], damage[3]);
                 } else if (boundScissor >= 0) {
-                    scissorRect(pass, packed.palette, boundScissor);
+                    scissorRect(pass, packed.data, boundScissor);
                     if (damage != null) cutToDamage(damage);
                     rp.setScissor(scissorRect[0], scissorRect[1], scissorRect[2], scissorRect[3]);
                 }
@@ -709,6 +702,50 @@ final class CgRasterEncoder {
             store.drawOn(rp, drawCache, mesh, drawnInstances(packed, b), packed.first[b], submesh(packed, b),
                     rangeFirst(packed, b), rangeCount(packed, b));
             CgTrace.zoneDone(CgChannels.GL_DETAIL, BATCH_DRAW, t);
+        }
+    }
+
+    /** A pass's draw data binds through this: what its pipelines read, its view and its buffers. */
+    private final PassBinder binder = new PassBinder();
+
+    private final class PassBinder implements CgDrawData.Binder {
+        private CgRasterPass pass;
+        private long reads;
+
+        PassBinder of(CgRasterPass pass, long reads) {
+            this.pass = pass;
+            this.reads = reads;
+            return this;
+        }
+
+        @Override
+        public boolean reads(int index) {
+            return index >= 0 && (index >= Long.SIZE || (reads & 1L << index) != 0);
+        }
+
+        @Override
+        public void bind(CgShaderBuffer buffer) {
+            state(buffer);
+        }
+
+        @Override
+        public int viewOwner() {
+            return pass.viewOwner();
+        }
+
+        @Override
+        public float viewX() {
+            return pass.viewX();
+        }
+
+        @Override
+        public float viewY() {
+            return pass.viewY();
+        }
+
+        @Override
+        public float targetHeight() {
+            return CgPassConstants.height(pass.constants);
         }
     }
 
@@ -898,14 +935,15 @@ final class CgRasterEncoder {
     }
 
     /** Scissor {@code index} and every one it is inside, cut together, into {@link #scissorRect}. */
-    private void scissorRect(CgRasterPass pass, CgPalette palette, int index) {
+    private void scissorRect(CgRasterPass pass, @Nullable CgDrawData.Frozen data, int index) {
         int[] rects = pass.scissorRects();
         int x0 = Integer.MIN_VALUE, y0 = Integer.MIN_VALUE, x1 = Integer.MAX_VALUE, y1 = Integer.MAX_VALUE;
         for (int s = index; s >= 0; s = pass.scissorParent(s)) {
             int node = pass.scissorNode(s);
             int[] rect = scissorPart;
             if (node < 0) System.arraycopy(rects, s * 4, rect, 0, 4);
-            else palette.scissorOf(node, pass.scissorBoxes(), s * 4, rect);
+            else if (data != null) data.scissorOf(node, pass.scissorBoxes(), s * 4, rect);
+            else throw new IllegalStateException(pass + ": a scissor under node " + node + " in a recording with no draw data");
             x0 = Math.max(x0, rect[0]);
             y0 = Math.max(y0, rect[1]);
             x1 = Math.min(x1, rect[0] + rect[2]);

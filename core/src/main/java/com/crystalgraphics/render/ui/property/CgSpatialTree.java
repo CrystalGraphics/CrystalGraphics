@@ -1,5 +1,6 @@
 package com.crystalgraphics.render.ui.property;
 
+import com.crystalgraphics.render.ui.CgCanvasTables;
 import com.crystalgraphics.render.graph.CgPropertyValues;
 
 import org.joml.Matrix4fc;
@@ -12,7 +13,7 @@ import java.util.Arrays;
  * again. Node 0 is the recording's root: the space its raster passes are expressed in.
  *
  * <pre>{@code
- * CgSpatialTree tree = recording.spatial();
+ * CgSpatialTree tree = CgCanvasTables.of(recording).spatial();
  * int window = tree.add(0, placement, true);                  // movable: the compositor may move it
  * int scroller = tree.add(window, 0f, 32f, true);             // a translation under it
  * int rotated = tree.add(scroller, rotation, false);          // a static transform: batches with its domain

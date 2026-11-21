@@ -12399,6 +12399,7 @@ com/crystalgraphics/render/draw/CgPipeline
   extends java/lang/Object
   method public as (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public device (Lcom/crystalgraphics/api/state/CgRenderState;Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipelineDesc$Topology;ZLjava/util/List;Lcom/crystalgraphics/platform/rhi/format/CgFormat;I)Lcom/crystalgraphics/platform/rhi/pipeline/CgGraphicsPipeline;
+  method public engineBuffers ()J
   method public has (Lcom/crystalgraphics/render/draw/CgPipelineForm;)Z
   method public id ()I
   method public isBuilt ()Z
@@ -12410,7 +12411,6 @@ com/crystalgraphics/render/draw/CgPipeline
   method public readsSceneColor ()Z
   method public readsSceneColorBlur ()Z
   method public readsSceneDepth ()Z
-  method public readsTables ()Z
   method public shader ()Lcom/crystalgraphics/material/CgMaterialShader;
   method public slotWrites ()I
   method public state ()Lcom/crystalgraphics/api/state/CgRenderState;
@@ -12569,6 +12569,28 @@ com/crystalgraphics/render/graph/CgDraw
   method public records ([FII)Lcom/crystalgraphics/render/graph/CgDraw;
   method public sortKey (J)Lcom/crystalgraphics/render/graph/CgDraw;
   method public transform (Lorg/joml/Matrix4fc;)Lcom/crystalgraphics/render/graph/CgDraw;
+com/crystalgraphics/render/graph/CgDrawData
+  access public,abstract,interface
+  extends java/lang/Object
+  method public boundsInDomain (IFFFF[F)V
+  method public domain (I)I
+  method public,abstract freeze (Lcom/crystalgraphics/render/graph/CgPropertyValues;)Lcom/crystalgraphics/render/graph/CgDrawData$Frozen;
+  method public,abstract reset ()V
+com/crystalgraphics/render/graph/CgDrawData$Binder
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract bind (Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;)V
+  method public,abstract reads (I)Z
+  method public,abstract targetHeight ()F
+  method public,abstract viewOwner ()I
+  method public,abstract viewX ()F
+  method public,abstract viewY ()F
+com/crystalgraphics/render/graph/CgDrawData$Frozen
+  access public,abstract,interface
+  extends java/lang/Object
+  method public,abstract bind (Lcom/crystalgraphics/render/graph/CgDrawData$Binder;)V
+  method public,abstract release ()V
+  method public,abstract scissorOf (I[FI[I)V
 com/crystalgraphics/render/graph/CgExecutor
   access public,final
   extends java/lang/Object
@@ -12835,17 +12857,16 @@ com/crystalgraphics/render/graph/CgRecording
   method public callback (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphTexture;Lcom/crystalgraphics/render/graph/CgGraphTexture;Ljava/lang/Runnable;[Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public callback (Ljava/lang/String;Lcom/crystalgraphics/render/graph/CgGraphTexture;Ljava/lang/Runnable;[Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public chunks ()Lcom/crystalgraphics/render/draw/CgChunkBuilder;
-  method public clips ()Lcom/crystalgraphics/render/ui/clip/CgClipTable;
   method public compile (Lcom/crystalgraphics/render/draw/CgPipeline;)Lcom/crystalgraphics/render/graph/CgRequest;
   method public compute (Ljava/lang/String;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public compute (Ljava/lang/String;Lcom/crystalgraphics/render/draw/CgPassConstants;)Lcom/crystalgraphics/render/graph/CgComputePass;
   method public copy (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JLcom/crystalgraphics/render/graph/CgGraphBuffer;JJ)V
   method public copy (Lcom/crystalgraphics/render/graph/CgGraphTexture;IIIILcom/crystalgraphics/render/graph/CgGraphTexture;IIIIZ)V
-  method public effects ()Lcom/crystalgraphics/render/ui/property/CgEffectTree;
+  method public drawData ()Lcom/crystalgraphics/render/graph/CgDrawData;
+  method public drawData (Lcom/crystalgraphics/render/graph/CgDrawData;)V
   method public fetch (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJLcom/crystalgraphics/gpu/resource/CgReadback$Sink;)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;I)V
   method public fill (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JJI)V
-  method public gradients ()Lcom/crystalgraphics/render/paint/CgGradientTable;
   method public include (Lcom/crystalgraphics/render/graph/CgFrame;)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public includeAgain (Lcom/crystalgraphics/render/graph/CgFrame;Z)Lcom/crystalgraphics/render/graph/CgPass$Include;
   method public isSealed ()Z
@@ -12864,7 +12885,6 @@ com/crystalgraphics/render/graph/CgRecording
   method public scratch (Ljava/lang/String;IILcom/crystalgraphics/platform/rhi/format/CgFormat;)Lcom/crystalgraphics/render/graph/CgGraphTexture;
   method public scratch (Ljava/lang/String;JLcom/crystalgraphics/render/graph/CgBufferUsage;)Lcom/crystalgraphics/render/graph/CgGraphBuffer;
   method public seal ()Lcom/crystalgraphics/render/graph/CgRecording;
-  method public spatial ()Lcom/crystalgraphics/render/ui/property/CgSpatialTree;
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;JLjava/nio/ByteBuffer;)V
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;J[FII)V
   method public update (Lcom/crystalgraphics/render/graph/CgGraphBuffer;J[III)V
@@ -13251,20 +13271,6 @@ com/crystalgraphics/render/meshpass/engine/CgEnginePasses
   method public,static covers (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Z
   method public,static depthPipeline (Lcom/crystalgraphics/api/material/CgMaterialInterface;)Lcom/crystalgraphics/render/draw/CgPipeline;
   method public,static register ()V
-com/crystalgraphics/render/paint/CgGradientTable
-  access public,final
-  extends java/lang/Object
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  field public,static,final SLOT Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
-  method public <init> ()V
-  method public add (Lcom/crystalgraphics/api/paint/gradient/CgGradient;)I
-  method public copyFrom (Lcom/crystalgraphics/render/paint/CgGradientTable;)V
-  method public gradient (I)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
-  method public prepare ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public read (I[F)V
-  method public reset ()V
-  method public words ()I
-  method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/render/post/CgOutline
   access public,final
   extends java/lang/Object
@@ -15486,6 +15492,19 @@ com/crystalgraphics/render/ui/CgCanvasPrimitives
   method public,static precache (Lcom/crystalgraphics/render/precache/CgPipelineList;)V
   method public,static releaseAll ()V
   method public,static strokeCoverage ()Lcom/crystalgraphics/api/material/CgMaterial;
+com/crystalgraphics/render/ui/CgCanvasTables
+  access public,final
+  extends java/lang/Object
+  implements com/crystalgraphics/render/graph/CgDrawData
+  method public boundsInDomain (IFFFF[F)V
+  method public clips ()Lcom/crystalgraphics/render/ui/property/CgClipTree;
+  method public domain (I)I
+  method public effects ()Lcom/crystalgraphics/render/ui/property/CgEffectTree;
+  method public freeze (Lcom/crystalgraphics/render/graph/CgPropertyValues;)Lcom/crystalgraphics/render/graph/CgDrawData$Frozen;
+  method public gradients ()Lcom/crystalgraphics/render/ui/paint/CgGradientTable;
+  method public reset ()V
+  method public spatial ()Lcom/crystalgraphics/render/ui/property/CgSpatialTree;
+  method public,static of (Lcom/crystalgraphics/render/graph/CgRecording;)Lcom/crystalgraphics/render/ui/CgCanvasTables;
 com/crystalgraphics/render/ui/CgUiRecorder
   access public,final
   extends java/lang/Object
@@ -15525,28 +15544,6 @@ com/crystalgraphics/render/ui/backdrop/CgBackdrop
   method public y0 ()I
   method public y1 ()I
   method public,static formatOf (Lcom/crystalgraphics/render/graph/CgGraphTexture;)Lcom/crystalgraphics/platform/rhi/format/CgFormat;
-com/crystalgraphics/render/ui/clip/CgClipTable
-  access public,final
-  extends java/lang/Object
-  field public,static,final ENTRY_FLOATS I
-  field public,static,final MACRO_NAME Ljava/lang/String;
-  field public,static,final MAX_DEPTH I
-  field public,static,final NODE_FLOAT I
-  field public,static,final PARENT_FLOAT I
-  field public,static,final SLOT Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
-  method public <init> ()V
-  method public add (IILorg/joml/Matrix4f;FFFFF[F[F[F)I
-  method public add (ILorg/joml/Matrix4f;FFFFF[F[F[F)I
-  method public addCopy ([FIII)I
-  method public addPixelRect (IIIIIIF)I
-  method public copyFrom (Lcom/crystalgraphics/render/ui/clip/CgClipTable;)V
-  method public count ()I
-  method public node (I)I
-  method public parent (I)I
-  method public prepare ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
-  method public read (I[FI)V
-  method public reset ()V
-  method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/render/ui/element/CgQuadRecord
   access public,final
   extends java/lang/Object
@@ -15618,6 +15615,20 @@ com/crystalgraphics/render/ui/element/CgUiElements
   method public,static radii ([FIFFFFFFFF)V
   method public,static rect ([FIFFFF)V
   method public,static uv ([FIFFFF)V
+com/crystalgraphics/render/ui/paint/CgGradientTable
+  access public,final
+  extends java/lang/Object
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final SLOT Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  method public <init> ()V
+  method public add (Lcom/crystalgraphics/api/paint/gradient/CgGradient;)I
+  method public copyFrom (Lcom/crystalgraphics/render/ui/paint/CgGradientTable;)V
+  method public gradient (I)Lcom/crystalgraphics/api/paint/gradient/CgGradient;
+  method public prepare ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public read (I[F)V
+  method public reset ()V
+  method public words ()I
+  method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/render/ui/path/CgCurveRecords
   access public,final
   extends java/lang/Object
@@ -15752,6 +15763,28 @@ com/crystalgraphics/render/ui/path/CgPathTriangulator$Fill
   method public,final equals (Ljava/lang/Object;)Z
   method public,final hashCode ()I
   method public,final toString ()Ljava/lang/String;
+com/crystalgraphics/render/ui/property/CgClipTree
+  access public,final
+  extends java/lang/Object
+  field public,static,final ENTRY_FLOATS I
+  field public,static,final MACRO_NAME Ljava/lang/String;
+  field public,static,final MAX_DEPTH I
+  field public,static,final NODE_FLOAT I
+  field public,static,final PARENT_FLOAT I
+  field public,static,final SLOT Lcom/crystalgraphics/render/shader/CgBindingModel$Slot;
+  method public <init> ()V
+  method public add (IILorg/joml/Matrix4f;FFFFF[F[F[F)I
+  method public add (ILorg/joml/Matrix4f;FFFFF[F[F[F)I
+  method public addCopy ([FIII)I
+  method public addPixelRect (IIIIIIF)I
+  method public copyFrom (Lcom/crystalgraphics/render/ui/property/CgClipTree;)V
+  method public count ()I
+  method public node (I)I
+  method public parent (I)I
+  method public prepare ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
+  method public read (I[FI)V
+  method public reset ()V
+  method public,static buffer ()Lcom/crystalgraphics/gpu/resource/CgShaderBuffer;
 com/crystalgraphics/render/ui/property/CgEffectTree
   access public,final
   extends java/lang/Object

@@ -4,8 +4,6 @@ import com.crystalgraphics.api.texture.CgTextures;
 import com.crystalgraphics.api.buffer.CgBufferLayout;
 import com.crystalgraphics.api.buffer.CgBufferRecords;
 import com.crystalgraphics.gpu.resource.CgReadback;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
-import com.crystalgraphics.render.paint.CgGradientTable;
 import com.crystalgraphics.platform.rhi.command.CgAccess;
 import com.crystalgraphics.render.CgFrameClock;
 import com.crystalgraphics.render.draw.CgChunkBuilder;
@@ -13,8 +11,6 @@ import com.crystalgraphics.render.draw.CgOrder;
 import com.crystalgraphics.render.draw.CgPassConstants;
 import com.crystalgraphics.render.draw.CgPipeline;
 import com.crystalgraphics.render.draw.CgPrimitiveTable;
-import com.crystalgraphics.render.ui.property.CgEffectTree;
-import com.crystalgraphics.render.ui.property.CgSpatialTree;
 import com.crystalgraphics.util.CgBoxedInts;
 
 import javax.annotation.Nullable;
@@ -71,10 +67,9 @@ public final class CgRecording {
     static final int WRITE = 1;
     private static final int EVENT_INTS = 4;
 
-    private final CgClipTable clips = new CgClipTable();
-    private final CgGradientTable gradients = new CgGradientTable();
-    private final CgSpatialTree spatial = new CgSpatialTree();
-    private final CgEffectTree effects = new CgEffectTree();
+    /** What its draws read beyond their records, its recorder's: frozen by a build, reset with it. */
+    @Nullable
+    private CgDrawData drawData;
     private final CgPrimitiveTable primitives = new CgPrimitiveTable();
     private final CgChunkBuilder chunks = CgChunkBuilder.pooling(primitives);
     private final List<CgPass> passes = new ArrayList<>();
@@ -155,14 +150,19 @@ public final class CgRecording {
     private final List<CgGraphResource> scratch = new ArrayList<>();
     private int scratchUsed;
 
-    /** The gradients its draws name, by index. */
-    public CgGradientTable gradients() {
-        return gradients;
+    /** What its draws read beyond their records (the canvas's tables); null until a recorder attaches some. */
+    @Nullable
+    public CgDrawData drawData() {
+        return drawData;
     }
 
-    /** The rounded clips its chunks name, by index. */
-    public CgClipTable clips() {
-        return clips;
+    /**
+     * Attaches {@code data}: a build freezes it, its raster passes bind it, and {@link #reset()} resets it. One per
+     * recording, attached once.
+     */
+    public void drawData(CgDrawData data) {
+        if (drawData != null && drawData != data) throw new IllegalStateException(this + " already carries " + drawData);
+        drawData = data;
     }
 
     /**
@@ -171,16 +171,6 @@ public final class CgRecording {
      */
     public CgPrimitiveTable primitives() {
         return primitives;
-    }
-
-    /** The spatial nodes its chunks are positioned in. @see CgSpatialTree */
-    public CgSpatialTree spatial() {
-        return spatial;
-    }
-
-    /** The opacity groups its chunks are drawn in. @see CgEffectTree */
-    public CgEffectTree effects() {
-        return effects;
     }
 
     /** The builder this recording's chunks are written with. */
@@ -827,10 +817,7 @@ public final class CgRecording {
         chunks.reset();
         chunks.recycle();
         primitives.reset();
-        clips.reset();
-        gradients.reset();
-        spatial.reset();
-        effects.reset();
+        if (drawData != null) drawData.reset();
         scratchUsed = 0;
         sealed = false;
     }

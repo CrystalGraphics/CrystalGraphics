@@ -1,4 +1,4 @@
-package com.crystalgraphics.render.ui.clip;
+package com.crystalgraphics.render.ui.property;
 
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
@@ -9,14 +9,14 @@ import java.lang.reflect.Field;
 import static org.junit.Assert.assertEquals;
 
 /**
- * {@link CgClipTable}'s promises a shader cannot check for itself: an entry maps a fragment back into its box's own
- * space under any pose, entries chain no deeper than {@link CgClipTable#MAX_DEPTH}, and a square clip at whole pixels
+ * {@link CgClipTree}'s promises a shader cannot check for itself: an entry maps a fragment back into its box's own
+ * space under any pose, entries chain no deeper than {@link CgClipTree#MAX_DEPTH}, and a square clip at whole pixels
  * cuts what a scissor would.
  */
-public class CgClipTableTest {
+public class CgClipTreeTest {
 
     private static final float TARGET_HEIGHT = 1080f;
-    private final CgClipTable table = new CgClipTable();
+    private final CgClipTree table = new CgClipTree();
     private static final float[] ZEROS = new float[4];
 
     @Test
@@ -48,7 +48,7 @@ public class CgClipTableTest {
     public void clipsChainToMaxDepthAndUnwindThroughTheirParents() {
         Matrix4f pose = new Matrix4f();
         int parent = 0;
-        int[] chain = new int[CgClipTable.MAX_DEPTH];
+        int[] chain = new int[CgClipTree.MAX_DEPTH];
         for (int i = 0; i < chain.length; i++) {
             chain[i] = table.add(parent, pose, TARGET_HEIGHT, 0f, 0f, 10f, 10f, ZEROS, ZEROS, null);
             parent = chain[i];
@@ -115,9 +115,9 @@ public class CgClipTableTest {
     }
 
     private float[] slice(int entry, int at) throws Exception {
-        Field field = CgClipTable.class.getDeclaredField("entries");
+        Field field = CgClipTree.class.getDeclaredField("entries");
         field.setAccessible(true);
-        Field floats = CgClipTable.class.getDeclaredField("FLOATS");
+        Field floats = CgClipTree.class.getDeclaredField("FLOATS");
         floats.setAccessible(true);
         float[] entries = (float[]) field.get(table);
         float[] out = new float[8];

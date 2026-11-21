@@ -2,8 +2,8 @@ package com.crystalgraphics.gpu.resource;
 
 import com.crystalgraphics.render.ui.element.CgUiElements;
 import com.crystalgraphics.api.material.CgParameterCollection;
-import com.crystalgraphics.render.ui.clip.CgClipTable;
-import com.crystalgraphics.render.paint.CgGradientTable;
+import com.crystalgraphics.render.ui.property.CgClipTree;
+import com.crystalgraphics.render.ui.paint.CgGradientTable;
 import com.crystalgraphics.render.ui.element.CgQuadRecord;
 import com.crystalgraphics.render.ui.path.CgCurveRecords;
 import com.crystalgraphics.render.ui.property.CgPalette;
@@ -69,7 +69,7 @@ public final class CgEngineBufferRegistry {
                 "crystalgraphics:shaders/ui/primitives/element.glsl", "palette");
         register("curve", CgCurveRecords::instanceBuffer, CgCurveRecords.MACRO_NAME,
                 "crystalgraphics:shaders/ui/primitives/curve.glsl", "palette");
-        register("clip", CgClipTable::buffer, CgClipTable.MACRO_NAME,
+        register("clip", CgClipTree::buffer, CgClipTree.MACRO_NAME,
                 "crystalgraphics:shaders/ui/primitives/clip.glsl", "palette");
         // A particle is read through the culled, sorted order Range writes, so the order comes with it.
         register("particle_order", CgParticleOrderBuffer::buffer, CgParticleOrderBuffer.MACRO_NAME, null);
