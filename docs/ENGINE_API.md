@@ -61,7 +61,7 @@ CgRenderStage.HUD.register(CgRenderStage.WORLD_WIDGETS, frame -> {
   a pass given it (`pass.camera(frame.camera())`) takes the world's sun and fog and the last frame's view too;
   `frame.constants()` is the firing's own, `frame.defaults(new CgPassConstants())` a fresh set filled the same way.
   On a GUI stage the camera is the window's device pixels, origin top left, as Unreal's canvas is;
-  `frame.scaled()` draws in the host GUI's pixels instead (`UI_CANVAS.md` § *Getting one*). A `CgCamera` of your own is for a
+  `frame.scaled()` draws in the host GUI's pixels instead (`UI.md` § 2 *Where you draw*). A `CgCamera` of your own is for a
   picture of your own (a preview, a thumbnail), outside the stages.
 - **Two named orders on a GUI stage**, Unreal's layers: `CgRenderStage.SCREEN_WIDGETS` (0) is the game's interface,
   windows and menus; `CgRenderStage.WORLD_WIDGETS` (-100) is what follows a point in the world (a damage number, a
@@ -1072,7 +1072,7 @@ mine.end();
 
 - Paints are values (`PAINT.md`): colours, gradients, brushes and sprite sheets, grids, glass looks.
 - A world stage has no canvas: what stands in the world is a scene component (`scene.quad(...)`, `scene.text(...)`).
-- The whole guide, for consumers: **[`UI_CANVAS.md`](UI_CANVAS.md)**. Package guides: `api/canvas`, `render/ui/CLAUDE.md`.
+- The whole guide, for consumers: **[`UI.md`](UI.md)**. Package guides: `api/canvas`, `render/ui/CLAUDE.md`.
 
 ### Font/Text System
 

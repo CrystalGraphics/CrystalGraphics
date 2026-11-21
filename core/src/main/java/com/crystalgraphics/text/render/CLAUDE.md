@@ -3,7 +3,7 @@
 ## Package role
 
 The **draw-time side** of text: given a `CgTextLayout` and the registry's atlas placements, the quads a canvas draws.
-Text is a canvas item (`api/canvas`, `docs/UI_CANVAS.md` § *Text*): `canvas.text(CgText, x, y)` draws a value,
+Text is a canvas item (`api/canvas`, `docs/UI.md` § 6 *Text*): `canvas.text(CgText, x, y)` draws a value,
 `canvas.textDraw()` returns the canvas's `CgTextDraw`, its `submit()` lands the draw's quads in order with the
 canvas's other items. There is no renderer object, no lifecycle and no registry.
 

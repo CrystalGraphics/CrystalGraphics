@@ -1,6 +1,6 @@
 # Text API
 
-Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`../UI_CANVAS.md`](../UI_CANVAS.md)).
+Three steps: load **fonts**, describe a **layout**, **draw** it on a canvas ([`../UI.md`](../UI.md)).
 
 ```java
 CgFont inter = CgFont.load("assets/mymod/fonts/Inter-Regular.ttf", CgFontStyle.REGULAR, 16);   // 16 px font
@@ -96,7 +96,7 @@ CgTextLayout.of(new CgStyledText(plain, spans), group).shape();   // CgStyleSpan
 
 ## 3. Drawing
 
-Text draws on a `CgCanvas` (`../UI_CANVAS.md` § *Text*): a GUI stage's `frame.canvas()`, or one you begin into a
+Text draws on a `CgCanvas` (`../UI.md` § 6 *Text*): a GUI stage's `frame.canvas()`, or one you begin into a
 texture. `canvas.text(CgText, x, y)` is the everyday form; `canvas.textDraw()` is the request below, every knob of it.
 It is placed by the canvas's transform and rastered at the target's device pixels. In the world, text is a text
 component (§ 4). Nothing to create, size or delete.

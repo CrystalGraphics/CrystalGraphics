@@ -748,7 +748,7 @@ Step final {                                         // the last: onto the scree
 
 ### 8.1 What a ui material is
 
-A ui material colours **an element on a canvas** (`docs/UI_CANVAS.md`): a box, a stroke, a piece of text. You say what
+A ui material colours **an element on a canvas** (`docs/UI.md`): a box, a stroke, a piece of text. You say what
 colour the element is at a pixel; the engine does everything every UI element needs and every hand-written UI shader
 used to repeat: the clip (an element inside a scrolled panel stops at its edge), the item's opacity (a fading window),
 the antialiased edge, and premultiplying for the blend.

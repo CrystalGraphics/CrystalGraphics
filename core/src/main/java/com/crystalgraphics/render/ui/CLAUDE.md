@@ -1,6 +1,6 @@
 # render/ui — the UI canvas's backend
 
-The engine behind `api.canvas.CgCanvas` (`docs/UI_CANVAS.md`): its records, recorder, paths, SVG, backdrop and
+The engine behind `api.canvas.CgCanvas` (`docs/UI.md`): its records, recorder, paths, SVG, backdrop and
 property trees. `CgCanvasPrimitives` holds its path materials (curves and the coverage rasters).
 
 | Path | Owns |
