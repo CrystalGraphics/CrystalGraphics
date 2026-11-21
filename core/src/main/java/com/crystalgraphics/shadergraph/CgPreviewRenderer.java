@@ -55,7 +55,7 @@ public final class CgPreviewRenderer {
     public static final int DEFAULT_BUDGET = 4;
 
     /**
-     * Edge length of a preview, matching the node's slot at {@code uiScale 2}.
+     * Edge length of a preview, matching the node's slot in device pixels.
      *
      * <p>Rendered at the size it is displayed, with {@link #DEFAULT_SAMPLES} handling the silhouette.
      * Supersampling instead would need a 512² target and would multiply <em>shading</em> cost too, which

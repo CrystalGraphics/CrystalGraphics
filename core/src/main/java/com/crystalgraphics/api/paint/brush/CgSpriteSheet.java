@@ -42,7 +42,9 @@ import com.crystalgraphics.util.io.CgIO;
  * <ul>
  *   <li>{@code sprite} is {@code [x, y, width, height]} in the image's pixels; {@code border} is how far each slice
  *       reaches into the region, {@code [left, top, right, bottom]}, and makes the entry nine-sliced
- *       ({@code fillCenter: false} leaves its middle empty, {@code borderScale} scales its slices). {@code repeat}
+ *       ({@code fillCenter: false} leaves its middle empty, {@code borderScale} scales its slices: on the sheet, for
+ *       every entry, times the entry's own). Pixel art drawn at two UI pixels a texel says {@code "borderScale": 2}
+ *       on the sheet. {@code repeat}
  *       is {@code stretch}, {@code repeat}, {@code repeat-x}, {@code repeat-y}, {@code round} or {@code space}. An
  *       entry may name a {@code texture} of its own; {@code textureSize} is accepted and unused, since the image's own
  *       size is read.</li>
@@ -119,6 +121,7 @@ public final class CgSpriteSheet {
             throw new IllegalArgumentException("sprite sheet " + id + ": cannot read " + path + ": " + e.getMessage(), e);
         }
         String sheetTexture = root.has("texture") ? root.get("texture").getAsString() : null;
+        float sheetBorderScale = root.has("borderScale") ? root.get("borderScale").getAsFloat() : 1f;
         JsonObject elements = root.has("elements") ? root.getAsJsonObject("elements") : null;
         if (elements == null) throw new IllegalArgumentException("sprite sheet " + id + ": no elements");
         Map<String, CgBrush> brushes = new LinkedHashMap<>();
@@ -137,7 +140,8 @@ public final class CgSpriteSheet {
                 int[] b = ints(at + ".border", entry.getAsJsonArray("border"));
                 CgNineSlice slice = CgNineSlice.of(b[0], b[1], b[2], b[3]);
                 if (entry.has("fillCenter") && !entry.get("fillCenter").getAsBoolean()) slice = slice.hollow();
-                if (entry.has("borderScale")) slice = slice.scaled(entry.get("borderScale").getAsFloat());
+                float borderScale = sheetBorderScale * (entry.has("borderScale") ? entry.get("borderScale").getAsFloat() : 1f);
+                if (borderScale != 1f) slice = slice.scaled(borderScale);
                 brush = brush.nineSlice(slice);
             }
             if (entry.has("repeat")) {

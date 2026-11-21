@@ -1,8 +1,11 @@
 package com.crystalgraphics.serialization;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /**
@@ -133,6 +136,28 @@ public final class CgTreeEdit {
     public CgTreeEdit map(String path, Function<Value, Object> step) {
         Value value = get(path);
         if (value != null) parentOf(path, false).put(last(path), create(step.apply(value)));
+        return this;
+    }
+
+    /**
+     * {@code step} on each map in the list at {@code path}, every element edited as a tree of its own. Nothing when the
+     * path is not there; an element that is not a map is refused.
+     *
+     * <pre>{@code
+     * .from(1, tree -> tree.each("nodes", node -> node.map("x", v -> v.asDouble() * 2).map("y", v -> v.asDouble() * 2)))
+     * }</pre>
+     */
+    public CgTreeEdit each(String path, Consumer<CgTreeEdit> step) {
+        Map<String, Object> parent = parentOf(path, false);
+        Object raw = parent == null ? null : parent.get(last(path));
+        if (raw == null) return this;
+        List<Object> edited = new ArrayList<>();
+        for (Object element : ops.getListValue(close(raw))) {
+            CgTreeEdit one = new CgTreeEdit(ops, element);
+            step.accept(one);
+            edited.add(one.build());
+        }
+        parent.put(last(path), ops.createList(edited));
         return this;
     }
 

@@ -3013,6 +3013,12 @@ com/crystalgraphics/platform/service/CgCursorService$Image
   method public,final toString ()Ljava/lang/String;
   method public,static of (Ljava/lang/String;[IIIII)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
   method public,static standard (Ljava/lang/String;)Lcom/crystalgraphics/platform/service/CgCursorService$Image;
+com/crystalgraphics/platform/service/CgDisplayScale
+  access public,abstract,interface
+  extends java/lang/Object
+  field public,static,final NONE Lcom/crystalgraphics/platform/service/CgDisplayScale;
+  field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public,abstract scale ()F
 com/crystalgraphics/platform/service/CgGameClasses
   access public,final
   extends java/lang/Object

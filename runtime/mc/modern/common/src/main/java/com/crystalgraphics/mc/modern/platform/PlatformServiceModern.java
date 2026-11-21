@@ -8,9 +8,11 @@ import com.crystalgraphics.mc.modern.platform.gl.GLDeviceModern;
 /*import com.crystalgraphics.sdl.ClipboardSdl;
 import com.crystalgraphics.sdl.InputSdl;
 import com.crystalgraphics.sdl.SdlCursorService;
+import com.crystalgraphics.sdl.SdlDisplayScale;
 *///?} else {
 import com.crystalgraphics.lwjgl3.ClipboardGlfw;
 import com.crystalgraphics.lwjgl3.GlfwCursorService;
+import com.crystalgraphics.lwjgl3.GlfwDisplayScale;
 import com.crystalgraphics.lwjgl3.InputGlfw;
 //?}
 import com.crystalgraphics.lwjgl3.Lwjgl3AudioOutput;
@@ -39,6 +41,7 @@ import com.crystalgraphics.platform.CgPlatformService;
 import com.crystalgraphics.collision.mirror.CgMirrorHost;
 import com.crystalgraphics.serialization.nbt.CgNbt;
 import com.crystalgraphics.platform.service.CgCursorService;
+import com.crystalgraphics.platform.service.CgDisplayScale;
 import com.crystalgraphics.platform.service.CgGameClasses;
 import com.crystalgraphics.platform.service.CgGameDirectory;
 import com.crystalgraphics.platform.service.CgGameSession;
@@ -160,11 +163,13 @@ public final class PlatformServiceModern implements CgPlatformService {
         // which is what lets it sit in tier 1 knowing nothing about this era.
         //? if >=26.3 {
         /*CgPlatform.provide(CgCursorService.SERVICE, new SdlCursorService());
+        CgPlatform.provide(CgDisplayScale.SERVICE, new SdlDisplayScale());
         CgPlatform.provide(CgInput.HOST, new InputModern(InputSdl.INSTANCE));
         CgPlatform.provide(CgClipboard.HOST, ClipboardSdl.INSTANCE);
         *///?} else {
         CgPlatform.provide(CgCursorService.SERVICE,
                 new GlfwCursorService(PlatformServiceModern::windowHandle));
+        CgPlatform.provide(CgDisplayScale.SERVICE, new GlfwDisplayScale(PlatformServiceModern::windowHandle));
         CgPlatform.provide(CgInput.HOST, new InputModern(new InputGlfw(PlatformServiceModern::windowHandle)));
         CgPlatform.provide(CgClipboard.HOST, new ClipboardGlfw(PlatformServiceModern::windowHandle));
         //?}
