@@ -3889,18 +3889,25 @@ com/crystalgraphics/api/paint/CgColor
   method public,final toString ()Ljava/lang/String;
   method public,static argb (I)Lcom/crystalgraphics/api/paint/CgColor;
   method public,static css (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static cssArgb (Ljava/lang/String;)I
   method public,static hex (Ljava/lang/String;)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hexArgb (Ljava/lang/String;)I
   method public,static hsl (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hslArgb (FFFF)I
   method public,static hsv (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static hsvArgb (FFFF)I
   method public,static lerpArgb (IIF)I
   method public,static lerpArgbPremultiplied (IIF)I
   method public,static linear (F)F
   method public,static multiplyArgb (II)I
   method public,static oklab (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static oklabArgb (FFFF)I
   method public,static oklch (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static oklchArgb (FFFF)I
   method public,static rgba (I)Lcom/crystalgraphics/api/paint/CgColor;
   method public,static srgb (F)F
   method public,static srgb (FFFF)Lcom/crystalgraphics/api/paint/CgColor;
+  method public,static srgbArgb (FFFF)I
   method public,static toArgb (FFFF)I
   method public,static toHex (I)Ljava/lang/String;
 com/crystalgraphics/api/paint/CgCssColors

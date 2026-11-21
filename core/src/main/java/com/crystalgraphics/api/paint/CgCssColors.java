@@ -194,7 +194,7 @@ public final class CgCssColors {
         if (value.startsWith("rgb(") || value.startsWith("rgba(")) return functional(value);
         if (value.startsWith("hsl") || value.startsWith("oklab(") || value.startsWith("oklch(")) {
             try {
-                return CgColor.css(value).toArgb();
+                return CgColor.cssArgb(value);
             } catch (IllegalArgumentException e) {
                 return null;
             }

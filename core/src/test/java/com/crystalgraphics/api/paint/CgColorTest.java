@@ -46,6 +46,26 @@ public class CgColorTest {
     }
 
     @Test
+    public void packedFactoriesMatchTheRecords() {
+        for (int h = -30; h <= 390; h += 15) {
+            for (float s = 0f; s <= 1f; s += 0.25f) {
+                for (float x = 0f; x <= 1f; x += 0.125f) {
+                    String at = h + " " + s + " " + x;
+                    assertEquals("hsv " + at, CgColor.hsv(h, s, x, 0.5f).toArgb(), CgColor.hsvArgb(h, s, x, 0.5f));
+                    assertEquals("hsl " + at, CgColor.hsl(h, s, x, 0.5f).toArgb(), CgColor.hslArgb(h, s, x, 0.5f));
+                    assertEquals("oklch " + at, CgColor.oklch(x, s * 0.3f, h, 1f).toArgb(), CgColor.oklchArgb(x, s * 0.3f, h, 1f));
+                }
+            }
+        }
+        assertEquals(CgColor.srgb(0.2f, 0.4f, 0.6f, 1f).toArgb(), CgColor.srgbArgb(0.2f, 0.4f, 0.6f, 1f));
+        assertEquals(0x80FF8800, CgColor.hexArgb("ff880080"));
+        assertEquals(0xFF336699, CgColor.cssArgb("hsl(210 50% 40%)"));
+        assertEquals(0xFF663399, CgColor.cssArgb("RebeccaPurple"));
+        assertEquals(CgColor.css("oklch(62.8% 0.2577 29.23)").toArgb(), CgColor.cssArgb("oklch(62.8% 0.2577 29.23)"));
+        assertThrows(IllegalArgumentException.class, () -> CgColor.cssArgb("hsl(1)"));
+    }
+
+    @Test
     public void oklabMatchesOttosson() {
         // Ottosson's reference pairs, linear sRGB in
         assertArrayEquals(new float[]{1f, 0f, 0f, 1f}, CgColor.WHITE.toOklab(), 1e-4f);

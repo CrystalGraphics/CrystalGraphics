@@ -180,6 +180,88 @@ public record CgColor(float r, float g, float b, float a) {
         return oklab(l, (float) (c * Math.cos(rad)), (float) (c * Math.sin(rad)), alpha);
     }
 
+    // ── In, packed ──────────────────────────────────────────────────────────
+    //
+    // The factories above, answering sRGB 0xAARRGGBB with no record made: for a colour built only to be drawn.
+
+    /** {@link #srgb(float, float, float, float)} packed: sRGB channels, 0 to 1, each clamped. */
+    public static int srgbArgb(float r, float g, float b, float a) {
+        return byteOf(a) << 24 | byteOf(r) << 16 | byteOf(g) << 8 | byteOf(b);
+    }
+
+    /** {@link #hex(String)} packed. @throws IllegalArgumentException when it is not a hex colour */
+    public static int hexArgb(String hex) {
+        Integer argb = CgCssColors.parse(hex.startsWith("#") ? hex : "#" + hex);
+        if (argb == null) throw new IllegalArgumentException("not a hex colour: " + hex);
+        return argb;
+    }
+
+    /** {@link #css(String)} packed, an HDR colour clamped. @throws IllegalArgumentException when it is not one */
+    public static int cssArgb(String value) {
+        String v = value.trim().toLowerCase(Locale.ROOT);
+        int open = v.indexOf('(');
+        if (open > 0 && v.endsWith(")")) {
+            String name = v.substring(0, open).trim();
+            if (name.equals("hsl") || name.equals("hsla") || name.equals("oklab") || name.equals("oklch")) {
+                String[] t = v.substring(open + 1, v.length() - 1).trim().split("[\\s,/]+");
+                if (t.length < 3) throw new IllegalArgumentException("not a CSS colour: " + value);
+                float alpha = t.length > 3 ? alpha(t[3]) : 1f;
+                return switch (name) {
+                    case "oklab" -> oklabArgb(lightness(t[0]), chroma(t[1]), chroma(t[2]), alpha);
+                    case "oklch" -> oklchArgb(lightness(t[0]), chroma(t[1]), angle(t[2]), alpha);
+                    default -> hslArgb(angle(t[0]), percent(t[1]), percent(t[2]), alpha);
+                };
+            }
+        }
+        Integer argb = CgCssColors.parse(value);
+        if (argb == null) throw new IllegalArgumentException("not a CSS colour: " + value);
+        return argb;
+    }
+
+    /** {@link #hsv} packed. CSS Color 4's closed form, channel by channel, nothing allocated. */
+    public static int hsvArgb(float h, float s, float v, float a) {
+        return byteOf(a) << 24 | byteOf(hsvChannel(5f, h, s, v)) << 16 | byteOf(hsvChannel(3f, h, s, v)) << 8
+                | byteOf(hsvChannel(1f, h, s, v));
+    }
+
+    /** {@link #hsl} packed. CSS Color 4's {@code hslToRgb}, channel by channel, nothing allocated. */
+    public static int hslArgb(float h, float s, float l, float a) {
+        return byteOf(a) << 24 | byteOf(hslChannel(0f, h, s, l)) << 16 | byteOf(hslChannel(8f, h, s, l)) << 8
+                | byteOf(hslChannel(4f, h, s, l));
+    }
+
+    /** {@link #oklab} packed, clamped to 0 to 1. */
+    public static int oklabArgb(float l, float aa, float bb, float alpha) {
+        double l_ = l + 0.3963377774 * aa + 0.2158037573 * bb;
+        double m_ = l - 0.1055613458 * aa - 0.0638541728 * bb;
+        double s_ = l - 0.0894841775 * aa - 1.2914855480 * bb;
+        double lc = l_ * l_ * l_, mc = m_ * m_ * m_, sc = s_ * s_ * s_;
+        return toArgb((float) (4.0767416621 * lc - 3.3077115913 * mc + 0.2309699292 * sc),
+                (float) (-1.2684380046 * lc + 2.6097574011 * mc - 0.3413193965 * sc),
+                (float) (-0.0041960863 * lc - 0.7034186147 * mc + 1.7076147010 * sc), alpha);
+    }
+
+    /** {@link #oklch} packed, clamped to 0 to 1. */
+    public static int oklchArgb(float l, float c, float h, float alpha) {
+        double rad = Math.toRadians(h);
+        return oklabArgb(l, (float) (c * Math.cos(rad)), (float) (c * Math.sin(rad)), alpha);
+    }
+
+    /** One sRGB channel of HSV: {@code v - v s max(0, min(k, 4 - k, 1))}, {@code k = (n + h / 60) mod 6}. */
+    private static float hsvChannel(float n, float h, float s, float v) {
+        float k = (n + h / 60f) % 6f;
+        if (k < 0f) k += 6f;
+        return v - v * s * Math.max(0f, Math.min(Math.min(k, 4f - k), 1f));
+    }
+
+    /** One sRGB channel of HSL: {@code l - a max(-1, min(k - 3, 9 - k, 1))}, {@code k = (n + h / 30) mod 12}. */
+    private static float hslChannel(float n, float h, float s, float l) {
+        float k = (n + h / 30f) % 12f;
+        if (k < 0f) k += 12f;
+        float a = s * Math.min(l, 1f - l);
+        return l - a * Math.max(-1f, Math.min(Math.min(k - 3f, 9f - k), 1f));
+    }
+
     // ── Out ─────────────────────────────────────────────────────────────────
 
     /** As sRGB {@code 0xAARRGGBB}, each channel clamped to 0 to 1. */
