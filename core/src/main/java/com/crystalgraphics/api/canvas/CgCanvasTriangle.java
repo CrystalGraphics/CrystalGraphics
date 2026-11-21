@@ -100,7 +100,7 @@ public final class CgCanvasTriangle {
 
     /** Draws it, answering the canvas. */
     public CgCanvas draw() {
-        canvas.draw(this);
+        canvas.curves.draw(this);
         return canvas;
     }
 }

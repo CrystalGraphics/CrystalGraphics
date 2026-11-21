@@ -150,7 +150,7 @@ public final class CgCanvasLayer implements AutoCloseable {
     /** Filters, masks and composites what was drawn in it, and restores the state its opening saved. */
     @Override
     public void close() {
-        canvas.closeLayer(this);
+        canvas.layers.close(this);
     }
 
     private void settable() {

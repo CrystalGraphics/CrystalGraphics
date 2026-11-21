@@ -79,7 +79,7 @@ public final class CgKeptLayer {
          */
         public void place(Walk walk, float x, float y, float w, float h, boolean changed) {
             if (!walk.draws) return;
-            float[] r = walk.canvas.keptRect(walk, x, y, w, h);
+            float[] r = walk.canvas.keptLayers.rect(walk, x, y, w, h);
             CgKeptLayer layer = walk.layer();
             if (!changed && in == layer && x0 == r[0] && y0 == r[1] && x1 == r[2] && y1 == r[3]) {
                 frame = layer.walkFrame;
@@ -139,7 +139,7 @@ public final class CgKeptLayer {
         /** Marks a rect in the canvas's units now as changed: only damaged rects execute on a walk that is not whole. */
         public Walk damage(float x, float y, float w, float h) {
             if (!draws) return this;
-            float[] r = canvas.keptRect(this, x, y, w, h);
+            float[] r = canvas.keptLayers.rect(this, x, y, w, h);
             CgKeptLayer.this.damage(r[0], r[1], r[2], r[3]);
             return this;
         }
@@ -157,7 +157,7 @@ public final class CgKeptLayer {
 
         @Override
         public void close() {
-            if (live) canvas.closeKept(this);
+            if (live) canvas.keptLayers.close(this);
         }
     }
 

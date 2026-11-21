@@ -92,7 +92,7 @@ public final class CgCanvasRecorder {
         recording.raster("canvas_picture_clear").color(picture, CgLoad.CLEAR).camera(lens).end();
         canvas.begin(recording, picture, CgLoad.load(), lens, scale);
         // Glass sees the host's frame the picture is composited over, as the frame began, then the picture
-        canvas.behind(CgGraphTexture.current());
+        canvas.backdrop.behind(CgGraphTexture.current());
         active = true;
         return canvas;
     }

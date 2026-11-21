@@ -146,7 +146,7 @@ public final class CgCanvasSpline {
      * @throws IllegalStateException without geometry: {@link #line}, {@link #to} or {@link #cubic} first
      */
     public CgCanvas draw() {
-        canvas.draw(this);
+        canvas.curves.draw(this);
         return canvas;
     }
 }

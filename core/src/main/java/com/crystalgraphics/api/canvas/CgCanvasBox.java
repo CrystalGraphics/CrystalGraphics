@@ -235,7 +235,7 @@ public final class CgCanvasBox {
 
     /** Draws it, answering the canvas. */
     public CgCanvas draw() {
-        canvas.draw(this);
+        canvas.boxes.draw(this);
         return canvas;
     }
 }
