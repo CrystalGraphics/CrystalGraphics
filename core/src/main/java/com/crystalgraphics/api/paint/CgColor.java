@@ -195,9 +195,7 @@ public record CgColor(float r, float g, float b, float a) {
 
     /** As CSS hex, lower case: {@code #rrggbb} when opaque, else {@code #rrggbbaa}. Clamped as {@link #toArgb()}. */
     public String toHex() {
-        int argb = toArgb();
-        return (argb >>> 24) == 0xFF ? String.format("#%06x", argb & 0xFFFFFF)
-                : String.format("#%06x%02x", argb & 0xFFFFFF, argb >>> 24);
+        return toHex(toArgb());
     }
 
     /** As CSS: its hex where 8 bits hold it exactly, else {@code color(srgb-linear r g b / a)}, HDR included. */
@@ -314,6 +312,55 @@ public record CgColor(float r, float g, float b, float a) {
 
     public CgColor withAlpha(float a) {
         return new CgColor(r, g, b, a);
+    }
+
+    // ── Packed ──────────────────────────────────────────────────────────────
+    //
+    // On {@code 0xAARRGGBB} sRGB ints as they are, nothing allocated: for a tint folded into every draw.
+
+    /** {@code argb} times {@code by}, channel by channel on the encoded bytes: a tint over a colour. */
+    public static int multiplyArgb(int argb, int by) {
+        return mulByte(argb >>> 24, by >>> 24) << 24 | mulByte(argb >>> 16 & 0xFF, by >>> 16 & 0xFF) << 16
+                | mulByte(argb >>> 8 & 0xFF, by >>> 8 & 0xFF) << 8 | mulByte(argb & 0xFF, by & 0xFF);
+    }
+
+    /** Toward {@code to} by {@code t} on the encoded bytes, straight alpha: {@link #lerpSrgb} without a record. */
+    public static int lerpArgb(int from, int to, float t) {
+        return lerpByte(from >>> 24, to >>> 24, t) << 24 | lerpByte(from >>> 16 & 0xFF, to >>> 16 & 0xFF, t) << 16
+                | lerpByte(from >>> 8 & 0xFF, to >>> 8 & 0xFF, t) << 8 | lerpByte(from & 0xFF, to & 0xFF, t);
+    }
+
+    /**
+     * Toward {@code to} by {@code t} with premultiplied alpha, as CSS interpolates a gradient or a transition: a fade
+     * toward {@code transparent} (transparent black) only fades, where a straight lerp darkens on the way. No alpha
+     * left is {@code 0}.
+     */
+    public static int lerpArgbPremultiplied(int from, int to, float t) {
+        float aFrom = (from >>> 24) / 255f, aTo = (to >>> 24) / 255f;
+        float alpha = aFrom + (aTo - aFrom) * t;
+        if (alpha <= 0f) return 0;
+        return Math.round(alpha * 255f) << 24 | premultipliedByte(from >>> 16 & 0xFF, aFrom, to >>> 16 & 0xFF, aTo, t, alpha) << 16
+                | premultipliedByte(from >>> 8 & 0xFF, aFrom, to >>> 8 & 0xFF, aTo, t, alpha) << 8
+                | premultipliedByte(from & 0xFF, aFrom, to & 0xFF, aTo, t, alpha);
+    }
+
+    /** {@code argb} as CSS hex, as {@link #toHex()} writes it: {@code #rrggbb} when opaque, else {@code #rrggbbaa}. */
+    public static String toHex(int argb) {
+        return (argb >>> 24) == 0xFF ? String.format("#%06x", argb & 0xFFFFFF)
+                : String.format("#%06x%02x", argb & 0xFFFFFF, argb >>> 24);
+    }
+
+    private static int mulByte(int a, int b) {
+        return a * b / 255;
+    }
+
+    private static int lerpByte(int from, int to, float t) {
+        return Math.round(from + (to - from) * t);
+    }
+
+    private static int premultipliedByte(int from, float aFrom, int to, float aTo, float t, float alpha) {
+        float premultiplied = from * aFrom + (to * aTo - from * aFrom) * t;
+        return Math.max(0, Math.min(255, Math.round(premultiplied / alpha)));
     }
 
     // ── Channels ────────────────────────────────────────────────────────────
