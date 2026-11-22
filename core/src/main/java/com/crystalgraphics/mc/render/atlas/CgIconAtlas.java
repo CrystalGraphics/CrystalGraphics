@@ -16,9 +16,9 @@ import com.crystalgraphics.api.texture.CgTexture;
  * they look like. Mojang's {@code GuiItemAtlas}. Internal to {@code mc.render}'s kinds; render thread only.
  *
  * <ul>
- *   <li>The grid is laid out in GUI units, 16 to an icon: a cell every {@link #STRIDE} units, one unit of gutter on
- *       each side, cleared with it, so filtering never reaches the next icon. Every icon starts on a whole unit at any
- *       scale, where vanilla draws a slot's item.</li>
+ *   <li>The grid is laid out in GUI units: a cell's frame ({@link #ICON}, or {@link #OVERLAY} for what a slot's
+ *       decorations draw past it) with one unit of gutter each side, cleared with it, so filtering never reaches the
+ *       next cell. Every slot starts on a whole unit at any scale, where vanilla draws a slot's item.</li>
  *   <li>Space comes from free slots, then from cells not shown this frame; past that the page is remade at 1.5 times
  *       what the frame needs, to a power of two, up to the host's largest target, and every cell draws again.</li>
  * </ul>
@@ -85,12 +85,17 @@ public final class CgIconAtlas {
         }
     }
 
-    /** Units from one cell to the next: 16 for the icon, one of gutter each side. */
-    public static final int STRIDE = 18;
+    /** An icon's frame in units: the slot alone. */
+    public static final int ICON = 16;
+    /** An overlay's frame in units: the slot and 4 more each side, where count text and its shadow reach. */
+    public static final int OVERLAY = 24;
 
-    /** The icon's side in pixels; pixels a unit; pixels from one cell to the next. */
+    /** The slot's side in pixels; pixels a unit; pixels from one cell to the next. */
     public final int cell;
     public final float scale, stride;
+    /** The frame in units, units from one cell to the next (the frame and a unit of gutter each side), and where the
+     *  slot starts inside a cell. */
+    public final int frame, strideUnits, slotOffset;
     private final Map<Object, Cell> byKey = new HashMap<>();
     private Cell[] slots = new Cell[0];
     private int side, perRow;
@@ -98,10 +103,14 @@ public final class CgIconAtlas {
     @Nullable private CgTexture pageTexture, whiteTexture;
     private long shownFrame = Long.MIN_VALUE;
 
-    public CgIconAtlas(int cell) {
+    /** @param cell the slot's side in device pixels @param frame {@link #ICON} or {@link #OVERLAY} */
+    public CgIconAtlas(int cell, int frame) {
         this.cell = cell;
+        this.frame = frame;
         this.scale = cell / 16f;
-        this.stride = STRIDE * scale;
+        this.strideUnits = frame + 2;
+        this.slotOffset = 1 + (frame - 16) / 2;
+        this.stride = strideUnits * scale;
     }
 
     /** The cell of {@code key}, made for {@code drawn} if new. */
@@ -240,26 +249,33 @@ public final class CgIconAtlas {
         out[at + 3] = Math.round((row + 1) * stride) - y0;
     }
 
-    /** The icon's top-left in the page's units: a whole unit, where the host draws it. */
+    /** The slot's top-left in the page's units: a whole unit, where the host draws the item. */
     public int unitsX(Cell c) {
-        return (c.slot % perRow) * STRIDE + 1;
+        return (c.slot % perRow) * strideUnits + slotOffset;
     }
 
     /** @see #unitsX */
     public int unitsY(Cell c) {
-        return (c.slot / perRow) * STRIDE + 1;
+        return (c.slot / perRow) * strideUnits + slotOffset;
     }
 
-    /** {@code c} drew at {@code frame}: its image made against the page's textures, rows bottom-up where they run so. */
+    /**
+     * {@code c} drew at {@code frame}: its image made against the page's textures, rows bottom-up where they run so; an
+     * overlay's covers its frame, the margin past the slot as the image's outset.
+     */
     public void drawn(Cell c, long frame, boolean bottomUp) {
         c.drawnFrame = frame;
         if (c.image != null || pageTexture == null) return;
+        int margin = (this.frame - 16) / 2;
         float s = side;
-        float u0 = unitsX(c) * scale / s, u1 = (unitsX(c) + 16) * scale / s;
-        float top = unitsY(c) * scale / s, bottom = (unitsY(c) + 16) * scale / s;
+        float x0 = unitsX(c) - margin, y0 = unitsY(c) - margin;
+        float u0 = x0 * scale / s, u1 = (x0 + this.frame) * scale / s;
+        float top = y0 * scale / s, bottom = (y0 + this.frame) * scale / s;
         float v0 = bottomUp ? 1f - top : top, v1 = bottomUp ? 1f - bottom : bottom;
-        c.image = whiteTexture == null ? CgPicture.Image.of(pageTexture, u0, v0, u1, v1)
+        CgPicture.Image image = whiteTexture == null ? CgPicture.Image.of(pageTexture, u0, v0, u1, v1)
                 : CgPicture.Image.matted(pageTexture, whiteTexture, u0, v0, u1, v1);
+        float out = margin / 16f;
+        c.image = margin == 0 ? image : image.outset(out, out, out, out);
     }
 
     /** Every cell, for a sweep over all of them. */

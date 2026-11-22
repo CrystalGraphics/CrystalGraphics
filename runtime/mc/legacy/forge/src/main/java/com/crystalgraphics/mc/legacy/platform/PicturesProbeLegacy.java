@@ -6,6 +6,7 @@ import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.probe.CgPicturesProbe.Cell;
 import com.crystalgraphics.probe.CgPicturesProbe.Drawn;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.client.gui.Gui;
 import net.minecraft.client.gui.GuiScreen;
 import net.minecraft.client.gui.ScaledResolution;
@@ -52,6 +53,16 @@ public final class PicturesProbeLegacy {
             void tip(ItemStack stack, int x, int y) {
                 renderToolTip(stack, x, y);
             }
+        }
+
+        @Override
+        public void cooldown(String item) {
+            //? if >=1.10 {
+            EntityPlayerSP player = Minecraft.getMinecraft().player;
+            Item it = Item.getByNameOrId(item);
+            if (player == null || it == null) return;
+            if (!player.getCooldownTracker().hasCooldown(it)) player.getCooldownTracker().setCooldown(it, 200);
+            //?}
         }
 
         @Override

@@ -378,11 +378,12 @@ public final class CgHostPictures {
     private static boolean draw(Host host, CgHostPicture p, CgHostPicture.Size s, long frame) {
         boolean two = host.twoClears();
         try {
-            if (s.target == null) s.target = host.createTarget(s.width, s.height);
-            if (two && s.white == null) s.white = host.createTarget(s.width, s.height);
+            int w = s.width + 2 * s.pad, h = s.height + 2 * s.pad;
+            if (s.target == null) s.target = host.createTarget(w, h);
+            if (two && s.white == null) s.white = host.createTarget(w, h);
             CgPictureLighting lighting = p.lighting();
-            host.draw(s.target, s.width, s.height, s.scale, 0f, lighting, p.drawer);
-            if (two) host.draw(s.white, s.width, s.height, s.scale, 1f, lighting, p.drawer);
+            host.draw(s.target, w, h, s.scale, 0f, lighting, p.drawer);
+            if (two) host.draw(s.white, w, h, s.scale, 1f, lighting, p.drawer);
         } catch (VirtualMachineError e) {
             throw e;
         } catch (Throwable t) {
@@ -404,6 +405,10 @@ public final class CgHostPictures {
             float v0 = host.bottomUp() ? 1f : 0f, v1 = 1f - v0;
             image = white == null ? CgPicture.Image.of(black, 0f, v0, 1f, v1)
                     : CgPicture.Image.matted(black, white, 0f, v0, 1f, v1);
+            if (s.pad > 0) {
+                float ox = (float) s.pad / s.width, oy = (float) s.pad / s.height;
+                image = image.outset(ox, oy, ox, oy);
+            }
         }
         synchronized (p) {
             p.drawn(s, frame, image);

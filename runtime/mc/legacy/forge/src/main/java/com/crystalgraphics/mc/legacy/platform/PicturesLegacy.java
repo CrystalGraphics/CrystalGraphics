@@ -125,6 +125,13 @@ final class PicturesLegacy implements CgHostPictures.Host {
         GlStateManager.loadIdentity();
         GlStateManager.translate(0f, 0f, -2000f);
         RenderHelper.enableGUIStandardItemLighting();
+        // A slot's state, whatever the last picture's code left: a tooltip mod leaving depth off draws a glint over the
+        // whole cell and a shield's back over its front
+        GlStateManager.enableDepth();
+        GlStateManager.depthFunc(GL11.GL_LEQUAL);
+        GlStateManager.depthMask(true);
+        GlStateManager.enableAlpha();
+        GlStateManager.color(1f, 1f, 1f, 1f);
         try {
             drawer.draw(new Context(w, h, scale, partialTick(mc)));
         } finally {

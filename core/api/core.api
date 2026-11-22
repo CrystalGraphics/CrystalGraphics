@@ -2499,6 +2499,7 @@ com/crystalgraphics/api/canvas/CgCanvas
   method public photograph (ILcom/crystalgraphics/api/canvas/CgPhotograph$Sink;)Z
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgKeptLayer;FFFFFFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
+  method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public picture (Lcom/crystalgraphics/api/canvas/CgPicture;FFFF)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public pixelSnap (Z)Lcom/crystalgraphics/api/canvas/CgCanvas;
   method public recording ()Z
@@ -2715,12 +2716,15 @@ com/crystalgraphics/api/canvas/CgPhotograph$Sink
 com/crystalgraphics/api/canvas/CgPicture
   access public,abstract,interface
   extends java/lang/Object
+  method public naturalHeight ()F
+  method public naturalWidth ()F
   method public,abstract image (IIF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public,abstract version ()J
 com/crystalgraphics/api/canvas/CgPicture$Image
   access public,final
   extends java/lang/Object
   field public,static,final MISSING Lcom/crystalgraphics/api/canvas/CgPicture$Image;
+  method public outset (FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public texture ()Lcom/crystalgraphics/api/texture/CgTexture;
   method public,static matted (Lcom/crystalgraphics/api/texture/CgTexture;Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
   method public,static of (Lcom/crystalgraphics/api/texture/CgTexture;FFFF)Lcom/crystalgraphics/api/canvas/CgPicture$Image;
@@ -11962,6 +11966,8 @@ com/crystalgraphics/probe/CgContainersProbe
 com/crystalgraphics/probe/CgPicturesProbe
   access public,final
   extends java/lang/Object
+  field public,static,final COOLING Ljava/lang/String;
+  field public,static,final DECORATED_BY_PROBE Ljava/lang/String;
   field public,static,final H I
   field public,static,final LOOK_X I
   field public,static,final LOOK_Y I
@@ -11973,6 +11979,8 @@ com/crystalgraphics/probe/CgPicturesProbe
   method public,static cellsOf (Ljava/util/List;)Ljava/util/List;
   method public,static hud (Ljava/lang/Object;)V
   method public,static renderer (Ljava/util/List;)Lcom/crystalgraphics/mc/render/custom/CgPictureRenderer;
+  method public,static running ()Z
+  method public,static stackOf (Lcom/crystalgraphics/probe/CgPicturesProbe$Cell;)Lcom/crystalgraphics/mc/item/CgItemStack;
   method public,static test ()Lcom/crystalgraphics/gauntlet/CgGauntletController;
 com/crystalgraphics/probe/CgPicturesProbe$Cell
   access public,final,record
@@ -12001,6 +12009,7 @@ com/crystalgraphics/probe/CgPicturesProbe$Host
   extends java/lang/Object
   field public,static,final NONE Lcom/crystalgraphics/probe/CgPicturesProbe$Host;
   field public,static,final SERVICE Lcom/crystalgraphics/platform/CgService;
+  method public cooldown (Ljava/lang/String;)V
   method public draws (Lcom/crystalgraphics/probe/CgPicturesProbe$Kind;)Z
   method public,abstract absent ()Ljava/lang/String;
   method public,abstract cells (Lcom/crystalgraphics/mc/render/custom/CgHostDrawContext;Ljava/util/List;Lcom/crystalgraphics/probe/CgPicturesProbe$Drawn;)V

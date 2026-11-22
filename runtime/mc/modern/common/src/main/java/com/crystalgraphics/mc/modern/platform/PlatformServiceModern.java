@@ -72,6 +72,7 @@ import com.crystalgraphics.platform.audio.CgHostVolume;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
 
 import net.minecraft.client.Minecraft;
@@ -150,6 +151,7 @@ public final class PlatformServiceModern implements CgPlatformService {
         CgPlatform.provide(CgGameSession.HOST, GameSessionModern.INSTANCE);
         CgPlatform.provide(CgHostPictures.HOST, PicturesModern.create());
         CgPlatform.provide(CgItemIcons.HOST, new ItemIconsModern());
+        CgPlatform.provide(CgTooltips.HOST, new TooltipsModern());
         CgPlatform.provide(CgPicturesProbe.Host.SERVICE, PicturesProbeModern.create());
         CgPlatform.provide(CgKeyBindings.HOST, KeyBindingsModern.INSTANCE);
         CgKeyBindings.hostProvided();

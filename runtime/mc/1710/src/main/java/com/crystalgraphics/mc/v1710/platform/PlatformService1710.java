@@ -2,6 +2,7 @@ package com.crystalgraphics.mc.v1710.platform;
 
 import com.crystalgraphics.mc.render.CgHostPictures;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.probe.CgPicturesProbe;
 import com.crystalgraphics.mc.v1710.platform.world.EntitySaves1710;
 import com.crystalgraphics.world.CgEntitySaves;
@@ -153,6 +154,7 @@ public final class PlatformService1710 implements CgPlatformService {
             CgPlatform.provide(CgGameSession.HOST, GameSession1710.INSTANCE);
             CgPlatform.provide(CgHostPictures.HOST, new Pictures1710());
             CgPlatform.provide(CgItemIcons.HOST, new ItemIcons1710());
+            CgPlatform.provide(CgTooltips.HOST, new Tooltips1710());
             CgPlatform.provide(CgPicturesProbe.Host.SERVICE, new PicturesProbe1710());
             CgPlatform.provide(CgKeyBindings.HOST, KeyBindings1710.INSTANCE);
             CgKeyBindings.hostProvided();

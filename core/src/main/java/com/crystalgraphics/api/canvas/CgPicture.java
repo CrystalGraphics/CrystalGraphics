@@ -37,6 +37,8 @@ import com.crystalgraphics.material.CgMaterialProxy;
  *       it means "shown, at this size". Answer fast and allocate nothing.</li>
  *   <li>A picture is premultiplied: Mojang's GUI blits its own pictures so ({@code GUI_TEXTURED_PREMULTIPLIED_ALPHA}).</li>
  *   <li>{@link #version} moves whenever the pixels do: a kept layer holding the picture walks again on it.</li>
+ *   <li>A picture that knows its own size (a tooltip) answers {@link #naturalWidth}; {@code canvas.picture(p, x, y)}
+ *       shows it at that size.</li>
  * </ul>
  */
 public interface CgPicture {
@@ -51,6 +53,16 @@ public interface CgPicture {
     /** Moves whenever the picture's pixels change. */
     long version();
 
+    /** Its own width in units, where it has one (a tooltip); 0 when it takes the rect it is shown in. */
+    default float naturalWidth() {
+        return 0f;
+    }
+
+    /** @see #naturalWidth */
+    default float naturalHeight() {
+        return 0f;
+    }
+
     /**
      * A texture and the region of it the picture covers. Immutable: a producer makes one when its texture or region
      * changes, not per frame.
@@ -58,6 +70,7 @@ public interface CgPicture {
      * <pre>{@code
      * Image.of(texture, 0f, 1f, 1f, 0f);                    // the whole of a bottom-up (GL) texture
      * Image.matted(overBlack, overWhite, 0f, 1f, 1f, 0f);   // drawn twice by a GUI that writes alpha raw
+     * Image.of(texture, 0f, 1f, 1f, 0f).outset(0f, 0f, 0.125f, 0.125f);   // reaches 2 units past a 16-unit rect
      * }</pre>
      */
     final class Image {
@@ -70,6 +83,8 @@ public interface CgPicture {
         @Nullable final CgTexture texture;
         @Nullable final CgTexture white;
         final float u0, v0, u1, v1;
+        /** How far the region reaches past the rect it is shown in, each side, as fractions of the rect's size. */
+        final float left, top, right, bottom;
         /** Where {@link #white} is set, the material that takes alpha from the two drawings. */
         @Nullable final CgMaterialInstance matte;
 
@@ -80,7 +95,30 @@ public interface CgPicture {
             this.v0 = v0;
             this.u1 = u1;
             this.v1 = v1;
+            this.left = this.top = this.right = this.bottom = 0f;
             this.matte = white == null ? null : matte(white);
+        }
+
+        private Image(Image of, float left, float top, float right, float bottom) {
+            this.texture = of.texture;
+            this.white = of.white;
+            this.u0 = of.u0;
+            this.v0 = of.v0;
+            this.u1 = of.u1;
+            this.v1 = of.v1;
+            this.left = left;
+            this.top = top;
+            this.right = right;
+            this.bottom = bottom;
+            this.matte = of.matte;
+        }
+
+        /**
+         * This region drawn past the rect it is shown in, each side a fraction of the rect's size: what Minecraft draws
+         * outside the box it was given (a slot's count text, a tooltip mod's frame). Chromium's ink overflow.
+         */
+        public Image outset(float left, float top, float right, float bottom) {
+            return new Image(this, left, top, right, bottom);
         }
 
         // _MainTex is the box's fill, bound by the element; _White is the material's own sampler, at its own unit

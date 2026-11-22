@@ -17,9 +17,13 @@ import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.custom.CgPictureRenderer;
 import com.crystalgraphics.mc.render.item.CgItemIcon;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.mc.render.tooltip.CgTooltipPicture;
+import com.crystalgraphics.mc.render.tooltip.CgTooltips;
 import com.crystalgraphics.platform.CgPlatform;
 import com.crystalgraphics.platform.CgService;
 import com.crystalgraphics.platform.service.CgModLoader;
+import com.crystalgraphics.serialization.nbt.CgNbtCompound;
+import com.crystalgraphics.serialization.nbt.CgNbtList;
 import com.crystalgraphics.platform.world.CgWorldStimulus;
 import com.crystalgraphics.render.stage.CgRenderStage;
 
@@ -71,7 +75,7 @@ public final class CgPicturesProbe {
             return switch (kind) {
                 case ITEM, DECORATED -> new int[]{x - 1, y - 1, 18, 18};
                 case PLAYER -> new int[]{x - 26, y - 66, 52, 70};
-                case TOOLTIP -> new int[]{x, y - 16, W - x, 40};
+                case TOOLTIP -> new int[]{x, y - 16, W - x, H - (y - 16)};
             };
         }
 
@@ -160,6 +164,10 @@ public final class CgPicturesProbe {
 
         /** Draws {@code cells} with {@code ctx}'s GUI objects into the picture the draw point points them at. */
         void cells(CgHostDrawContext ctx, List<Cell> cells, Drawn out);
+
+        /** Keeps {@code item} cooling down for the player, as using it would. Client tick. Nothing where it cannot. */
+        default void cooldown(String item) {
+        }
     }
 
     /** The panels, in GUI units: the reference at the left, the picture beside it, below it. */
@@ -185,7 +193,12 @@ public final class CgPicturesProbe {
     private static final String VANILLA = "minecraft:diamond_sword,minecraft:clock,minecraft:compass,minecraft:chest,"
             + "minecraft:shield,minecraft:carved_pumpkin,minecraft:oak_sapling";
 
-    private enum Phase { WAITING, SETTLING, PARITY, SHOT, COST_STATIC, COST_GLINT, DONE }
+    private enum Phase { WAITING, SETTLING, PARITY, SHOT, TIPS, TIPS_SHOT, COST_STATIC, COST_GLINT, DONE }
+
+    /** Kept cooling down through the run: its overlay animates as vanilla's does. */
+    public static final String COOLING = "minecraft:ender_pearl";
+    /** Decorated by the loader's probe decorator where the loader has item decorators (Forge, NeoForge). */
+    public static final String DECORATED_BY_PROBE = "minecraft:stick";
 
     private static volatile Test active;
     private static volatile Phase phase = Phase.WAITING;
@@ -219,7 +232,7 @@ public final class CgPicturesProbe {
             .refresh(CgPictureRefresh.REALTIME)
             .renderer(ctx -> {
                 picture.checkTarget = parity();
-                CgPlatform.get(Host.SERVICE).cells(ctx, iconsHere() ? notItems(cells) : cells, picture);
+                CgPlatform.get(Host.SERVICE).cells(ctx, hostDrawn(cells), picture);
                 if (parity() && !picture.retargeted.isEmpty() && !retargetNoted && active != null) {
                     retargetNoted = true;
                     active.noted("pictures.retargeted", picture.retargeted.toString());
@@ -256,6 +269,11 @@ public final class CgPicturesProbe {
 
     // ── the host's call ──────────────────────────────────────────────────────────
 
+    /** Whether the test runs: a loader's probe decorator draws its mark only then. Any thread. */
+    public static boolean running() {
+        return active != null;
+    }
+
     /** Host side: its HUD hook, with the hook's GUI object (null where it makes its own). Render thread. */
     public static void hud(@Nullable Object gui) {
         if (active == null || !drawing()) return;
@@ -272,20 +290,42 @@ public final class CgPicturesProbe {
         return CgPlatform.get(CgItemIcons.HOST).absent() == null;
     }
 
-    private static List<Cell> notItems(List<Cell> all) {
+    /** Whether this node draws tooltips; where not (1.13.2), they stay in the probe's picture. */
+    private static boolean tooltipsHere() {
+        return CgPlatform.get(CgTooltips.HOST).absent() == null;
+    }
+
+    /** The cells the probe's own picture draws: what icons, overlays and tooltip pictures do not. */
+    private static List<Cell> hostDrawn(List<Cell> all) {
+        boolean icons = iconsHere(), tips = tooltipsHere();
         List<Cell> out = new ArrayList<>(all.size());
-        for (Cell c : all) if (c.kind() != Kind.ITEM) out.add(c);
+        for (Cell c : all) {
+            boolean item = c.kind() == Kind.ITEM || c.kind() == Kind.DECORATED;
+            if (item && icons || c.kind() == Kind.TOOLTIP && tips) continue;
+            out.add(c);
+        }
         return out;
     }
 
     /** A cell's icon: its item, count, durability and, glinted, sharpness by the era's own name for it. */
     private static CgItemIcon icon(Cell c) {
-        return ICONS.computeIfAbsent(c, k -> {
-            CgItemStack s = CgItemStack.of(k.item(), Math.max(1, k.count()));
-            if (k.damage() > 0) s = s.withDamage(k.damage());
-            if (k.glint()) s = s.withEnchantment(CgItems.shape() == CgItems.Shape.LEGACY ? "16" : "minecraft:sharpness", 1);
-            return CgItemIcons.of(s);
-        });
+        return ICONS.computeIfAbsent(c, k -> CgItemIcons.of(stackOf(k)));
+    }
+
+    /**
+     * A cell's stack, the same for the reference and the picture: its item, count, durability, glinted with sharpness by
+     * the era's own name for it, a bundle holding three diamonds and five apples.
+     */
+    public static CgItemStack stackOf(Cell c) {
+        CgItemStack s = CgItemStack.of(c.item(), Math.max(1, c.count()));
+        if (c.damage() > 0) s = s.withDamage(c.damage());
+        if (c.glint()) s = s.withEnchantment(CgItems.shape() == CgItems.Shape.LEGACY ? "16" : "minecraft:sharpness", 1);
+        if (c.item().equals("minecraft:bundle")) {
+            s = s.with("minecraft:bundle_contents", CgNbtList.of(
+                    new CgNbtCompound().put("id", "minecraft:diamond").put("count", 3),
+                    new CgNbtCompound().put("id", "minecraft:apple").put("count", 5)));
+        }
+        return s;
     }
 
     // The icon atlas's draws, a frame at a time, once the cost grid has settled
@@ -303,7 +343,7 @@ public final class CgPicturesProbe {
 
     private static boolean drawing() {
         Phase p = phase;
-        return parity() || p == Phase.COST_STATIC || p == Phase.COST_GLINT;
+        return parity() || p == Phase.TIPS || p == Phase.TIPS_SHOT || p == Phase.COST_STATIC || p == Phase.COST_GLINT;
     }
 
     /** The parity panels are drawn: while warming, and until the shot has been read, its frame among them. */
@@ -311,12 +351,17 @@ public final class CgPicturesProbe {
         return phase == Phase.PARITY || phase == Phase.SHOT;
     }
 
+    // The parity panels' size, the tooltip ones' too; the cost grid's otherwise
+    private static boolean parityPanels() {
+        return parity() || phase == Phase.TIPS || phase == Phase.TIPS_SHOT;
+    }
+
     private static int panelW() {
-        return parity() ? W : GRID * 18 + 4;
+        return parityPanels() ? W : GRID * 18 + 4;
     }
 
     private static int panelH() {
-        return parity() ? H : GRID * 18 + 4;
+        return parityPanels() ? H : GRID * 18 + 4;
     }
 
     // ── the test ─────────────────────────────────────────────────────────────────
@@ -348,10 +393,15 @@ public final class CgPicturesProbe {
                 float s = frame.scale();
                 canvas.save().scale(s, s);
                 canvas.picture(PICTURE, PIC_X, PIC_Y, panelW(), panelH());
-                // Items as their icons: Minecraft draws each look once into the atlas, a glinted one every frame
-                if (iconsHere()) {
-                    for (Cell c : cells) {
-                        if (c.kind() == Kind.ITEM) canvas.picture(icon(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                // Items as their icons and overlays, drawn by Minecraft into the atlas; tooltips as Minecraft draws them,
+                // its box where a screen puts it for a pointer at the cell (8 right, 16 up)
+                for (Cell c : cells) {
+                    if (iconsHere() && (c.kind() == Kind.ITEM || c.kind() == Kind.DECORATED)) {
+                        CgItemIcon icon = icon(c);
+                        canvas.picture(icon, PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        if (c.kind() == Kind.DECORATED) canvas.picture(icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                    } else if (tooltipsHere() && c.kind() == Kind.TOOLTIP) {
+                        canvas.picture(CgTooltipPicture.of(stackOf(c)), PIC_X + c.x() + 8, PIC_Y + c.y() - 16);
                     }
                 }
                 if (parity()) canvas.picture(FAILING, FAIL_X, FAIL_Y, FAIL_SIZE, FAIL_SIZE);
@@ -431,7 +481,10 @@ public final class CgPicturesProbe {
         if (test == null) return;
         ticks++;
         // A focus lost at any time would pause the game over the panels
-        if (phase != Phase.WAITING) CgPlatform.get(CgWorldStimulus.SERVICE).keepRunning();
+        if (phase != Phase.WAITING) {
+            CgPlatform.get(CgWorldStimulus.SERVICE).keepRunning();
+            CgPlatform.get(Host.SERVICE).cooldown(COOLING);
+        }
         switch (phase) {
             case WAITING -> {
                 if (!test.inWorld()) return;
@@ -464,6 +517,24 @@ public final class CgPicturesProbe {
             case SHOT -> {
                 if (!shot.done()) return;
                 compare(test);
+                cells = tipCells(test, CgPlatform.get(Host.SERVICE));
+                next(Phase.TIPS);
+            }
+            case TIPS -> {
+                if (ticks < WARM) return;
+                shot = test.shoot("parity-tooltips");
+                next(Phase.TIPS_SHOT);
+            }
+            case TIPS_SHOT -> {
+                if (!shot.done()) return;
+                if (!referenceDrew) {
+                    test.skipped("pictures.parity.tooltips.panel", "no reference panel on this node");
+                } else if (cells.isEmpty()) {
+                    test.skipped("pictures.parity.tooltips.panel", "no tooltips drawn by this node's probe host");
+                } else {
+                    BufferedImage image = read(test);
+                    if (image != null) parity(test, image, scale, "tooltips.");
+                }
                 startCost(false);
                 next(Phase.COST_STATIC);
             }
@@ -516,9 +587,27 @@ public final class CgPicturesProbe {
         out.add(new Cell(Kind.ITEM, "minecraft:book", 22, 24, 1, 0, true));
         out.add(new Cell(Kind.DECORATED, "minecraft:cobblestone", 40, 24, 37, 0, false));
         out.add(new Cell(Kind.DECORATED, "minecraft:diamond_pickaxe", 58, 24, 1, 900, false));
+        // Vanilla's cooldown sweep, and a loader decorator's mark (Forge, NeoForge)
+        out.add(new Cell(Kind.DECORATED, COOLING, 76, 24, 1, 0, false));
+        out.add(new Cell(Kind.DECORATED, DECORATED_BY_PROBE, 94, 24, 1, 0, false));
         out.add(new Cell(Kind.PLAYER, "", 170, 84, 30, 0, false));
         // A short tooltip, whole inside the panel: one running past it shows through the other panel
         out.add(new Cell(Kind.TOOLTIP, "minecraft:book", 4, 60, 1, 0, true));
+        return out;
+    }
+
+    /** The tooltip panels: a book's, and a bundle's where bundles exist and the host fills one. */
+    private static List<Cell> tipCells(Test test, Host host) {
+        List<Cell> out = new ArrayList<>();
+        if (!host.draws(Kind.TOOLTIP)) return out;
+        out.add(new Cell(Kind.TOOLTIP, "minecraft:book", 4, 20, 1, 0, true));
+        // A bundle's contents are a component: from 1.20.5, and shown from 1.21.2 where bundles are on by default
+        if (CgItems.shape() == CgItems.Shape.COMPONENTS && host.knows("minecraft:bundle")) {
+            // Its tooltip is 104 units across: whole inside the panel from here
+            out.add(new Cell(Kind.TOOLTIP, "minecraft:bundle", 84, 20, 1, 0, false));
+        } else {
+            test.noted("pictures.absent.minecraft:bundle", "no bundle with contents here");
+        }
         return out;
     }
 
@@ -601,6 +690,21 @@ public final class CgPicturesProbe {
     // ── what is measured ─────────────────────────────────────────────────────────
 
     /** The capture: the picture's panel against the reference's, per cell and whole; the failing picture; the refusal. */
+    /** The tooltip panels' capture; null, stated failed, where it was not written or cannot be read. */
+    @Nullable
+    private static BufferedImage read(Test test) {
+        if (!shot.written()) {
+            test.stated("pictures.parity.tooltips.panel", false, "the capture was never written: " + shot.failure());
+            return null;
+        }
+        try {
+            return ImageIO.read(shot.file().toFile());
+        } catch (IOException e) {
+            test.stated("pictures.parity.tooltips.panel", false, "the capture could not be read: " + e);
+            return null;
+        }
+    }
+
     private static void compare(Test test) {
         if (!shot.written()) {
             test.stated("pictures.parity", false, "the capture was never written: " + shot.failure());
@@ -614,7 +718,11 @@ public final class CgPicturesProbe {
             return;
         }
         float s = scale;
-        test.stated("pictures.picture", pictureDrawn > 0, "pixels Minecraft drew on in the picture's own texture: " + pictureRead);
+        if (hostDrawn(cells).isEmpty()) {
+            test.skipped("pictures.picture", "every cell is an icon, overlay or tooltip picture here; their parity proves the draw");
+        } else {
+            test.stated("pictures.picture", pictureDrawn > 0, "pixels Minecraft drew on in the picture's own texture: " + pictureRead);
+        }
         int magenta = magenta(image, s);
         test.stated("pictures.failure", FAILING.state() == CgHostPicture.State.FAILED && magenta > 0,
                 "a renderer that throws: " + FAILING.state() + ", " + magenta + " magenta pixels where it shows");
@@ -627,19 +735,26 @@ public final class CgPicturesProbe {
             test.skipped("pictures.parity", "no reference panel: this node's HUD hook gives no GUI object, or the node no fill");
             return;
         }
+        parity(test, image, s, "");
+    }
+
+    /** Each cell's panel against the reference's, then the whole: checks named {@code pictures.parity.<prefix>...}. */
+    private static void parity(Test test, BufferedImage image, float s, String prefix) {
         List<int[]> slack = new ArrayList<>();
         for (Cell cell : cells) {
             int[] r = cell.rect();
             int[] own = {r[0], r[1], r[2], r[3], cell.slack()};
             slack.add(own);
             int[] d = diff(image, r[0], r[1], r[2], r[3], s, false, List.of(own));
-            test.stated("pictures.parity." + cell.name(), d[0] == 0, d[0] + " of " + d[2] + " pixels differ by more than "
+            test.stated("pictures.parity." + prefix + cell.name(), d[0] == 0, d[0] + " of " + d[2] + " pixels differ by more than "
                     + cell.slack() + "; max " + d[1] + (d[1] > 1 && d[0] == 0 ? " (" + cell.slackReason() + ")" : ""));
         }
         int[] whole = diff(image, 0, 0, W, H, s, false, slack);
-        test.stated("pictures.parity", whole[0] == 0, "the whole panel: " + whole[0] + " of " + whole[2]
+        test.stated(prefix.isEmpty() ? "pictures.parity" : "pictures.parity." + prefix + "panel", whole[0] == 0,
+                "the whole panel: " + whole[0] + " of " + whole[2]
                 + " pixels differ by more than their cell allows (1; " + GLINT_SLACK + " glinted; " + LAYER_SLACK
                 + " under a tooltip's layers); max " + whole[1] + "; scale " + s);
+        if (!prefix.isEmpty()) return;
         int[] blank = diff(image, 0, 0, W, H, s, true, List.of());
         test.stated("pictures.drawn", blank[0] > 0, blank[0] + " of the reference panel's pixels are not the background");
     }

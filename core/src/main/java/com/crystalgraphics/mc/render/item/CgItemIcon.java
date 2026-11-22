@@ -14,6 +14,7 @@ import com.crystalgraphics.render.CgFrameClock;
  * <pre>{@code
  * CgItemIcon sword = CgItemIcons.of(stack);       // any thread; the same handle for an equal stack
  * canvas.picture(sword, x, y, 16, 16);              // at the rect's device pixels: crisp at any scale
+ * canvas.picture(sword.overlay(), x, y, 16, 16);    // its count, bar, cooldown and mods' decorators, over it
  * }</pre>
  *
  * <ul>
@@ -42,6 +43,9 @@ public final class CgItemIcon implements CgPicture {
     }
 
     private final CgItemStack stack;
+    /** Whether this is a stack's decorations ({@link #overlay}) rather than its icon. */
+    final boolean decorations;
+    @Nullable private volatile CgItemIcon overlay;
     /** The host's stack, made at the first draw point that resolves it; NONE where the game does not know the item. */
     @Nullable Object hostStack;
     boolean unknown;
@@ -53,7 +57,29 @@ public final class CgItemIcon implements CgPicture {
     boolean prewarm;
 
     CgItemIcon(CgItemStack stack) {
+        this(stack, false);
+    }
+
+    private CgItemIcon(CgItemStack stack, boolean decorations) {
         this.stack = stack;
+        this.decorations = decorations;
+    }
+
+    /**
+     * The stack's decorations, drawn by Minecraft's own decoration code: its count, durability bar, cooldown and every
+     * mod's decorator (Forge's and NeoForge's {@code IItemDecorator}). Shown over the icon in the same rect; the count's
+     * text reaches past it, as in vanilla. Nothing for a stack that draws none. An overlay's overlay is itself.
+     */
+    public CgItemIcon overlay() {
+        if (decorations) return this;
+        CgItemIcon o = overlay;
+        if (o == null) {
+            synchronized (this) {
+                o = overlay;
+                if (o == null) overlay = o = new CgItemIcon(stack, true);
+            }
+        }
+        return o;
     }
 
     /** The stack it shows. */
@@ -129,7 +155,7 @@ public final class CgItemIcon implements CgPicture {
 
     @Override
     public String toString() {
-        return "CgItemIcon[" + stack.item() + "]";
+        return (decorations ? "CgItemIcon.overlay[" : "CgItemIcon[") + stack.item() + "]";
     }
 
     // Guarded by this

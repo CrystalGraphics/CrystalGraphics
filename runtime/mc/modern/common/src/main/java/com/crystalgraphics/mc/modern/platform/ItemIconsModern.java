@@ -3,8 +3,11 @@ package com.crystalgraphics.mc.modern.platform;
 import com.crystalgraphics.mc.item.CgItems;
 import com.crystalgraphics.mc.render.custom.CgHostDrawContext;
 import com.crystalgraphics.mc.render.item.CgItemIcons;
+import com.crystalgraphics.platform.service.CgModLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.ItemStack;
+
+import java.util.Locale;
 //? if >=1.14 <1.21.4 {
 import net.minecraft.client.resources.model.BakedModel;
 //?}
@@ -84,6 +87,58 @@ public final class ItemIconsModern implements CgItemIcons.Host {
         ((GuiGraphics) ctx.gui()).renderItem(stack, x, y);
         //?} elif >=26.1 {
         /*((GuiGraphicsExtractor) ctx.gui()).item(stack, x, y);
+        *///?}
+    }
+
+    /**
+     * Its decorations: the stack's data (its bar follows it) with its count, drawn again every frame while the item cools
+     * down. A loader with item decorators (Forge, NeoForge) may decorate any stack, so only Fabric's undecorated stacks
+     * draw none.
+     */
+    @Override
+    public CgItemIcons.Look overlayLook(Object hostStack) {
+        ItemStack stack = (ItemStack) hostStack;
+        float cooldown = cooldown(stack);
+        boolean decorated = stack.getCount() > 1 || bar(stack) || cooldown > 0f || DECORATORS;
+        if (!decorated) return null;
+        Long key = (long) CgItems.stampOf(stack) << 32 | stack.getCount() & 0xFFFFFFFFL;
+        return cooldown > 0f ? new CgItemIcons.Look(key, true, "cooldown") : CgItemIcons.Look.still(key);
+    }
+
+    @Override
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+        ItemStack stack = (ItemStack) hostStack;
+        Minecraft mc = Minecraft.getInstance();
+        //? if >=1.14 <1.19.4 {
+        /*mc.getItemRenderer().renderGuiItemDecorations(mc.font, stack, x, y);
+        *///?} elif >=1.19.4 <1.20 {
+        /*mc.getItemRenderer().renderGuiItemDecorations((PoseStack) ctx.poseStack(), mc.font, stack, x, y);
+        *///?} elif >=1.20 <26.1 {
+        ((GuiGraphics) ctx.gui()).renderItemDecorations(mc.font, stack, x, y);
+        //?} elif >=26.1 {
+        /*((GuiGraphicsExtractor) ctx.gui()).itemDecorations(mc.font, stack, x, y);
+        *///?}
+    }
+
+    /** Whether the loader has item decorators: Forge's and NeoForge's {@code IItemDecorator}. */
+    private static final boolean DECORATORS = CgModLoader.name().toLowerCase(Locale.ROOT).contains("forge");
+
+    // The bar vanilla draws: a durability bar, or from 1.17 any item's own
+    private static boolean bar(ItemStack stack) {
+        //? if >=1.17 {
+        return stack.isBarVisible();
+        //?} else {
+        /*return stack.isDamaged();
+        *///?}
+    }
+
+    private static float cooldown(ItemStack stack) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return 0f;
+        //? if <1.21.3 {
+        return mc.player.getCooldowns().getCooldownPercent(stack.getItem(), 0f);
+        //?} else {
+        /*return mc.player.getCooldowns().getCooldownPercent(stack, 0f);
         *///?}
     }
 

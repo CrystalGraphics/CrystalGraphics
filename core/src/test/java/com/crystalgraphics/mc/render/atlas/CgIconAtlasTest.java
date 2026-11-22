@@ -55,7 +55,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void aStillCellDrawsOnceThenNever() {
-        CgIconAtlas atlas = new CgIconAtlas(32);
+        CgIconAtlas atlas = new CgIconAtlas(32, CgIconAtlas.ICON);
         show(atlas, 1, "sword", "apple");
         assertEquals(2, place(atlas, 1).size());
         for (long f = 2; f < 10; f++) {
@@ -68,7 +68,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void anAnimatedCellDrawsEveryFrameItShows() {
-        CgIconAtlas atlas = new CgIconAtlas(16);
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         CgIconAtlas.Cell glint = atlas.cell("glint", "glint", true, "glint");
         for (long f = 1; f < 5; f++) {
             glint.shown(f);
@@ -80,7 +80,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void aSlotNotShownThisFrameIsReclaimedBeforeThePageGrows() {
-        CgIconAtlas atlas = new CgIconAtlas(16);
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         show(atlas, 1, "a", "b", "c", "d");
         place(atlas, 1);
         int side = atlas.side();
@@ -100,7 +100,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void thePageGrowsToOneAndAHalfTimesTheFrameToAPowerOfTwo() {
-        CgIconAtlas atlas = new CgIconAtlas(32);
+        CgIconAtlas atlas = new CgIconAtlas(32, CgIconAtlas.ICON);
         Object[] keys = new Object[100];
         for (int i = 0; i < keys.length; i++) keys[i] = i;
         show(atlas, 1, keys);
@@ -117,20 +117,20 @@ public class CgIconAtlasTest {
 
     @Test
     public void iconsStartOnWholeUnitsAndNeighboursShareEdges() {
-        CgIconAtlas atlas = new CgIconAtlas(20);   // scale 1.25: a cell every 22.5 pixels
+        CgIconAtlas atlas = new CgIconAtlas(20, CgIconAtlas.ICON);   // scale 1.25: a cell every 22.5 pixels
         Object[] keys = new Object[9];
         for (int i = 0; i < keys.length; i++) keys[i] = i;
         show(atlas, 1, keys);
         List<CgIconAtlas.Cell> due = place(atlas, 1);
         int[] r = new int[4];
         for (CgIconAtlas.Cell c : due) {
-            assertEquals(1, atlas.unitsX(c) % CgIconAtlas.STRIDE);
-            assertEquals(1, atlas.unitsY(c) % CgIconAtlas.STRIDE);
+            assertEquals(1, atlas.unitsX(c) % atlas.strideUnits);
+            assertEquals(1, atlas.unitsY(c) % atlas.strideUnits);
             atlas.rect(c, r, 0);
             int right = r[0] + r[2];
             // The next cell along starts where this one ends
             for (CgIconAtlas.Cell n : due) {
-                if (atlas.unitsY(n) == atlas.unitsY(c) && atlas.unitsX(n) == atlas.unitsX(c) + CgIconAtlas.STRIDE) {
+                if (atlas.unitsY(n) == atlas.unitsY(c) && atlas.unitsX(n) == atlas.unitsX(c) + atlas.strideUnits) {
                     int[] rn = new int[4];
                     atlas.rect(n, rn, 0);
                     assertEquals(right, rn[0]);
@@ -141,7 +141,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void aSweepForgetsCellsNobodyUses() {
-        CgIconAtlas atlas = new CgIconAtlas(16);
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         List<CgIconAtlas.Cell> cells = show(atlas, 1, "kept", "dropped");
         place(atlas, 1);
         cells.get(0).use();
@@ -151,7 +151,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void aFailedCellIsNotDrawnUntilRetried() {
-        CgIconAtlas atlas = new CgIconAtlas(16);
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         CgIconAtlas.Cell c = show(atlas, 1, "broken").get(0);
         place(atlas, 1);
         c.fail();
@@ -164,7 +164,7 @@ public class CgIconAtlasTest {
 
     @Test
     public void aFrameLargerThanThePageCanHoldIsRefusedByName() {
-        CgIconAtlas atlas = new CgIconAtlas(64);
+        CgIconAtlas atlas = new CgIconAtlas(64, CgIconAtlas.ICON);
         Object[] keys = new Object[100];
         for (int i = 0; i < keys.length; i++) keys[i] = i;
         show(atlas, 1, keys);

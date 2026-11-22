@@ -732,12 +732,38 @@ public final class CgCanvas {
         int pw = Math.max(1, Math.round(w * (float) Math.hypot(a, b)));
         int ph = Math.max(1, Math.round(h * (float) Math.hypot(c, d)));
         CgPicture.Image image = picture.image(pw, ph, deviceScale());
-        keptLayers.pictured(picture, x, y, w, h, pw, ph);
-        if (image == null) return this;
-        if (image == CgPicture.Image.MISSING) return fill(x, y, w, h, CgGrid.checker(MISSING_MAGENTA, 0xFF000000).cell(w * 0.5f, h * 0.5f));
-        CgCanvasBox box = box(x, y, w, h).fill(image.texture).premultiplied().region(image.u0, image.v0, image.u1, image.v1);
+        if (image == null) {
+            keptLayers.pictured(picture, x, y, w, h, pw, ph);
+            return this;
+        }
+        if (image == CgPicture.Image.MISSING) {
+            keptLayers.pictured(picture, x, y, w, h, pw, ph);
+            return fill(x, y, w, h, CgGrid.checker(MISSING_MAGENTA, 0xFF000000).cell(w * 0.5f, h * 0.5f));
+        }
+        // What it draws past its rect (count text, a tooltip's frame) widens the quad and what a kept layer damages
+        float bx = x - image.left * w, by = y - image.top * h;
+        float bw = w * (1f + image.left + image.right), bh = h * (1f + image.top + image.bottom);
+        keptLayers.pictured(picture, bx, by, bw, bh, pw, ph);
+        CgCanvasBox box = box(bx, by, bw, bh).fill(image.texture).premultiplied().region(image.u0, image.v0, image.u1, image.v1);
         if (image.matte != null) box.material(image.matte);
         return box.draw();
+    }
+
+    /**
+     * {@code picture} at its own size ({@link CgPicture#naturalWidth}), its top-left at {@code (x, y)}: a tooltip.
+     * Nothing while it does not know its size yet; it is asked for all the same, so its producer measures it.
+     *
+     * <pre>{@code
+     * canvas.picture(CgTooltipPicture.of(stack), pointerX + 12, pointerY - 12);
+     * }</pre>
+     */
+    public CgCanvas picture(CgPicture picture, float x, float y) {
+        float w = picture.naturalWidth(), h = picture.naturalHeight();
+        if (w <= 0f || h <= 0f) {
+            picture.image(1, 1, deviceScale());
+            return this;
+        }
+        return picture(picture, x, y, w, h);
     }
 
     /**

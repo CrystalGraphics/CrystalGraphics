@@ -137,6 +137,20 @@ public abstract class CgHostPicture implements CgPicture {
         return this;
     }
 
+    /**
+     * Units its targets reach past the rect on each side, for what Minecraft draws outside the box it is given (a
+     * tooltip mod's frame). {@link #draw}'s context covers the margin too: the rect starts at {@code (bleed, bleed)}.
+     * 0 by default.
+     */
+    protected float bleed() {
+        return 0f;
+    }
+
+    /** Its {@link #version} moves: something a canvas reads of it changed (a kind's natural size). Any thread. */
+    protected final void changed() {
+        version++;
+    }
+
     /** Moves when what it draws changes, for {@link CgPictureRefresh#ON_CHANGE}. 0 by default: never. */
     protected long stamp() {
         return 0L;
@@ -191,7 +205,7 @@ public abstract class CgHostPicture implements CgPicture {
             CgHostPictures.release(sizes[oldest]);
             sizes[oldest] = sizes[--sizeCount];
         }
-        Size s = new Size(w, h, scale);
+        Size s = new Size(w, h, scale, Math.round(bleed() * scale));
         sizes[sizeCount++] = s;
         return s;
     }
@@ -213,7 +227,8 @@ public abstract class CgHostPicture implements CgPicture {
 
     /** One size it is shown at: the host's targets, and what they show. */
     static final class Size {
-        final int width, height;
+        /** The rect's pixels; {@code pad} more on each side for the bleed. */
+        final int width, height, pad;
         final float scale;
         long shownFrame = Long.MIN_VALUE, drawnFrame = Long.MIN_VALUE, drawnStamp, drawnInvalidated = -1L;
         /** The host's targets: over black, and over white where the host's GUI writes alpha raw. */
@@ -222,10 +237,11 @@ public abstract class CgHostPicture implements CgPicture {
         @Nullable CgTexture targetTexture, whiteTexture;
         @Nullable volatile CgPicture.Image image;
 
-        Size(int width, int height, float scale) {
+        Size(int width, int height, float scale, int pad) {
             this.width = width;
             this.height = height;
             this.scale = scale;
+            this.pad = pad;
         }
     }
 }

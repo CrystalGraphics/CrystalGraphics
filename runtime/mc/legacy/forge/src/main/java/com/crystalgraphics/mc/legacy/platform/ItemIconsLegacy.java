@@ -45,6 +45,43 @@ public final class ItemIconsLegacy implements CgItemIcons.Host {
         Minecraft.getMinecraft().getRenderItem().renderItemAndEffectIntoGUI((ItemStack) hostStack, x, y);
     }
 
+    /** Its decorations: the stack's data with its count, drawn again every frame while the item cools down (1.10+). */
+    @Override
+    public CgItemIcons.Look overlayLook(Object hostStack) {
+        ItemStack stack = (ItemStack) hostStack;
+        int count = count(stack);
+        boolean cooling = cooldown(stack) > 0f;
+        if (count <= 1 && !stack.getItem().showDurabilityBar(stack) && !cooling) return null;
+        Long key = (long) CgItems.stampOf(stack) << 32 | count & 0xFFFFFFFFL;
+        return cooling ? new CgItemIcons.Look(key, true, "cooldown") : CgItemIcons.Look.still(key);
+    }
+
+    @Override
+    public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+        Minecraft mc = Minecraft.getMinecraft();
+        //? if <1.12 {
+        /*mc.getRenderItem().renderItemOverlays(mc.fontRendererObj, (ItemStack) hostStack, x, y);
+        *///?} else {
+        mc.getRenderItem().renderItemOverlays(mc.fontRenderer, (ItemStack) hostStack, x, y);
+        //?}
+    }
+
+    private static int count(ItemStack stack) {
+        //? if <1.11 {
+        /*return stack.stackSize;
+        *///?} else {
+        return stack.getCount();
+        //?}
+    }
+
+    private static float cooldown(ItemStack stack) {
+        //? if <1.10 {
+        /*return 0f;
+        *///?} else {
+        return ClientLegacy.player() == null ? 0f : ClientLegacy.player().getCooldownTracker().getCooldown(stack.getItem(), 0f);
+        //?}
+    }
+
     /** A look: the model compared by identity, as a baked model has no equality of its own. */
     private static final class Key {
         private final int stamp;

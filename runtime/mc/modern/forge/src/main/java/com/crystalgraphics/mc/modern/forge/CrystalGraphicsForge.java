@@ -1,5 +1,9 @@
 package com.crystalgraphics.mc.modern.forge;
 
+//? if >=1.20 {
+import net.minecraftforge.client.event.RegisterItemDecorationsEvent;
+import net.minecraft.world.item.Items;
+//?}
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
 import com.crystalgraphics.platform.CgPlatform;
@@ -229,6 +233,12 @@ public final class CrystalGraphicsForge implements VariantEntry {
 
         private Events() {}
 
+        //? if >=1.20 {
+        private static void onRegisterDecorators(RegisterItemDecorationsEvent event) {
+            event.register(Items.STICK, new ProbeDecorator());
+        }
+        //?}
+
         /** From the entry point rather than from an annotation; see the class note. */
         static void register(FMLJavaModLoadingContext context) {
             KeysForge.register(context);
@@ -252,6 +262,14 @@ public final class CrystalGraphicsForge implements VariantEntry {
             ((ReloadableResourceManager) Minecraft.getInstance().getResourceManager())
                     .registerReloadListener((ResourceManagerReloadListener) manager -> LifecycleModern.reload());
             *///?}
+            // The pictures probe's item decorator (ProbeDecorator), from 1.20
+            //? if >=1.21.10 {
+            /*RegisterItemDecorationsEvent.BUS.addListener(Events::onRegisterDecorators);
+            *///?} elif >=1.21.6 {
+            /*RegisterItemDecorationsEvent.getBus(context.getModBusGroup()).addListener(Events::onRegisterDecorators);
+            *///?} elif >=1.20 {
+            context.getModEventBus().addListener(Events::onRegisterDecorators);
+            //?}
             // Below 1.19 Forge has no shutdown event; process exit frees the context there.
             //? if >=1.19 <1.21.6 {
             MinecraftForge.EVENT_BUS.addListener(Events::onGameShuttingDown);

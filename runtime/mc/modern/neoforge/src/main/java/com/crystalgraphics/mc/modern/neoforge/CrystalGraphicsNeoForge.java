@@ -1,5 +1,7 @@
 package com.crystalgraphics.mc.modern.neoforge;
 
+import net.neoforged.neoforge.client.event.RegisterItemDecorationsEvent;
+import net.minecraft.world.item.Items;
 import com.crystalgraphics.lifecycle.CgEngineLifecycle;
 import com.crystalgraphics.mc.modern.platform.world.EntitySavesModern;
 import com.crystalgraphics.platform.CgPlatform;
@@ -203,9 +205,15 @@ public final class CrystalGraphicsNeoForge implements VariantEntry {
         public static final class ModBus {
             private ModBus() {}
 
+            private static void onRegisterDecorators(RegisterItemDecorationsEvent event) {
+                event.register(Items.STICK, new ProbeDecorator());
+            }
+
             static void register(IEventBus modBus) {
                 modBus.addListener(ModBus::onRegisterReloadListeners);
                 modBus.addListener(ModBus::onRegisterKeyMappings);
+                // The pictures probe's item decorator
+                modBus.addListener(ModBus::onRegisterDecorators);
                 // The GUI stages: RenderGuiEvent.Post once a frame (never the per-layer event), and each screen once
                 // drawn. Client-only types: NeoForge 1.20.4 refuses ScreenEvent on a dedicated server.
                 NeoForge.EVENT_BUS.addListener(ModBus::onRenderGui);

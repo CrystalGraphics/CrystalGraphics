@@ -98,8 +98,6 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
     public boolean draws(Kind kind) {
         //? if <1.20 {
         /*return kind == Kind.ITEM || kind == Kind.DECORATED;
-        *///?} elif >=1.21.6 <26.1 {
-        /*return kind != Kind.TOOLTIP;
         *///?} else {
         return true;
         //?}
@@ -237,6 +235,29 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
         }
         g.flush();
     }
+    *///?} elif <1.21.10 {
+    /*// The recorded GUI: an entity's picture-in-picture is placed by its box, so offsets, never a pose
+    private void draw(Minecraft mc, GuiGraphics g, Cell cell, int ox, int oy) {
+        int x = cell.x() + ox, y = cell.y() + oy;
+        switch (cell.kind()) {
+            case ITEM -> g.renderItem(stack(cell), x, y);
+            case DECORATED -> {
+                g.renderItem(stack(cell), x, y);
+                g.renderItemDecorations(mc.font, stack(cell), x, y);
+            }
+            case PLAYER -> {
+                if (mc.player != null) {
+                    InventoryScreen.renderEntityInInventoryFollowsMouse(g, x - 25, y - 70, x + 25, y, cell.count(), 0.0625f,
+                            x - CgPicturesProbe.LOOK_X, y - 35 - CgPicturesProbe.LOOK_Y, mc.player);
+                }
+            }
+            case TOOLTIP -> {
+                // Deferred to the GUI's end, which holds one: drawn now, under this cell's pose
+                g.setTooltipForNextFrame(mc.font, stack(cell), x, y);
+                g.renderDeferredTooltip();
+            }
+        }
+    }
     *///?} elif <26.1 {
     /*// The recorded GUI: an entity's picture-in-picture is placed by its box, so offsets, never a pose
     private void draw(Minecraft mc, GuiGraphics g, Cell cell, int ox, int oy) {
@@ -253,7 +274,10 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
                             x - CgPicturesProbe.LOOK_X, y - 35 - CgPicturesProbe.LOOK_Y, mc.player);
                 }
             }
-            case TOOLTIP -> { }
+            case TOOLTIP -> {
+                g.setTooltipForNextFrame(mc.font, stack(cell), x, y);
+                g.renderDeferredElements();
+            }
         }
     }
     *///?} else {
@@ -281,6 +305,21 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
     }
     *///?}
 
+    @Override
+    public void cooldown(String item) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+        //? if >=1.14 {
+        ItemStack stack = CgItems.toHost(CgItemStack.of(item, 1));
+        if (stack == null || stack.isEmpty()) return;
+        //?}
+        //? if >=1.14 <1.21.3 {
+        if (!mc.player.getCooldowns().isOnCooldown(stack.getItem())) mc.player.getCooldowns().addCooldown(stack.getItem(), 200);
+        //?} elif >=1.21.3 {
+        /*if (!mc.player.getCooldowns().isOnCooldown(stack)) mc.player.getCooldowns().addCooldown(stack, 200);
+        *///?}
+    }
+
     private ItemStack stack(Cell cell) {
         if (stacks.size() > 256) stacks.clear();   // the probe's cells change by phase
         return stacks.computeIfAbsent(cell, c -> {
@@ -290,10 +329,7 @@ public final class PicturesProbeModern implements CgPicturesProbe.Host {
             if (c.glint()) s.enchant(Enchantments.SHARPNESS, 1);
             return s;
             *///?} else {
-            CgItemStack s = CgItemStack.of(c.item(), Math.max(1, c.count()));
-            if (c.damage() > 0) s = s.withDamage(c.damage());
-            if (c.glint()) s = s.withEnchantment("minecraft:sharpness", 1);
-            return CgItems.toHost(s);
+            return CgItems.toHost(CgPicturesProbe.stackOf(c));
             //?}
         });
     }

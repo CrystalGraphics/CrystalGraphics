@@ -107,12 +107,29 @@ public final class CgItemIcons {
          */
         void draw(CgHostDrawContext ctx, Object hostStack, int x, int y);
 
+        /**
+         * What {@code hostStack}'s decorations look like: its count, durability bar, cooldown and mods' decorators; null
+         * where it draws none. Render thread, at the draw point.
+         */
+        @Nullable
+        Look overlayLook(Object hostStack);
+
+        /**
+         * Draws {@code hostStack}'s decorations alone, as the inventory draws them over a slot's item, the slot's top-left
+         * at {@code (x, y)}. Render thread, inside a {@link CgHostPictures.Host} draw.
+         */
+        void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y);
+
         /** Draws nothing. */
         Host NONE = new Host() {
             @Override public String absent() { return "no host draws item icons here"; }
             @Override public Object toHost(CgItemStack stack) { return null; }
             @Override public Look look(Object hostStack) { throw new UnsupportedOperationException(); }
             @Override public void draw(CgHostDrawContext ctx, Object hostStack, int x, int y) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public Look overlayLook(Object hostStack) { throw new UnsupportedOperationException(); }
+            @Override public void drawOverlay(CgHostDrawContext ctx, Object hostStack, int x, int y) {
                 throw new UnsupportedOperationException();
             }
         };
@@ -150,8 +167,8 @@ public final class CgItemIcons {
     private static final Queue<CgItemIcon> ASKED = new ConcurrentLinkedQueue<>();
     private static final List<CgItemIcon> HELD = new ArrayList<>();
     /**
-     * Pages by {@link #atlasKey}: a size, and where the host clears a page whole, whether its looks animate, so a
-     * glint's redraw never redraws a still icon.
+     * Pages by {@link #atlasKey}: a size, icons or overlays, and where the host clears a page whole, whether its looks
+     * animate, so a glint's redraw never redraws a still icon.
      */
     private static final Map<Integer, CgIconAtlas> ATLASES = new HashMap<>();
     private static final Queue<CgIconAtlas.Cell> DROPPED = new ConcurrentLinkedQueue<>();
@@ -328,9 +345,16 @@ public final class CgItemIcons {
                         icon.unknown = icon.hostStack == null;
                     }
                     if (icon.unknown) continue;
-                    Look look = look(host, icon);
-                    CgIconAtlas atlas = ATLASES.computeIfAbsent(atlasKey(s.pixels, split && look.animated()),
-                            key -> new CgIconAtlas(key >> 1));
+                    Look look = icon.decorations ? overlayLook(host, icon) : look(host, icon);
+                    if (look == null) {
+                        // No decorations: nothing to draw, nothing shown
+                        if (s.cell != null) s.cell.release();
+                        s.cell = null;
+                        continue;
+                    }
+                    CgIconAtlas atlas = ATLASES.computeIfAbsent(atlasKey(s.pixels, icon.decorations,
+                            split && look.animated()), key -> new CgIconAtlas(key >> 2,
+                            (key & 2) != 0 ? CgIconAtlas.OVERLAY : CgIconAtlas.ICON));
                     CgIconAtlas.Cell cell = atlas.cell(look.key(), icon.hostStack, look.animated(), look.why());
                     if (s.cell != cell) {
                         if (s.cell != null) s.cell.release();
@@ -352,8 +376,8 @@ public final class CgItemIcons {
         }
     }
 
-    private static int atlasKey(int pixels, boolean animated) {
-        return pixels << 1 | (animated ? 1 : 0);
+    private static int atlasKey(int pixels, boolean overlay, boolean animated) {
+        return pixels << 2 | (overlay ? 2 : 0) | (animated ? 1 : 0);
     }
 
     @Nullable
@@ -363,6 +387,16 @@ public final class CgItemIcons {
         } catch (RuntimeException e) {
             if (LOGGED.add(icon.stack().item())) LOGGER.warn("[cg] item icon {}: the game cannot make its stack", icon.stack(), e);
             return null;
+        }
+    }
+
+    @Nullable
+    private static Look overlayLook(Host host, CgItemIcon icon) {
+        try {
+            return host.overlayLook(icon.hostStack);
+        } catch (RuntimeException e) {
+            if (LOGGED.add(icon.stack().item() + ":overlay")) LOGGER.warn("[cg] item overlay {}: its look could not be read", icon.stack(), e);
+            return new Look(icon, true, "unknown");
         }
     }
 
@@ -419,7 +453,8 @@ public final class CgItemIcons {
             CgIconAtlas.Cell c = cells.get(i);
             if (c.failed()) continue;
             try {
-                host.draw(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c));
+                if (atlas.frame == CgIconAtlas.OVERLAY) host.drawOverlay(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c));
+                else host.draw(ctx, c.drawn, atlas.unitsX(c), atlas.unitsY(c));
             } catch (VirtualMachineError e) {
                 throw e;
             } catch (Throwable t) {

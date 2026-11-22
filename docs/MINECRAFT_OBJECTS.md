@@ -3,8 +3,8 @@
 Minecraft draws its own objects (items, entities, blocks, tooltips, anything a mod draws with Minecraft's API) into
 **pictures** that your canvas shows. Nothing is captured or imitated: the game's own code draws them, so a mod's item
 renderer, a resource pack and a tooltip mod show exactly as in vanilla. This guide covers what exists today: the
-picture, the draw point, custom pictures and item icons. Entities, blocks and tooltips arrive as their own kinds on the
-same base.
+picture, the draw point, custom pictures, item icons with their overlays, and tooltips. Entities and blocks arrive as
+their own kinds on the same base.
 
 ## If you have drawn Minecraft's objects in a UI before
 
@@ -43,8 +43,13 @@ static final CgCustomPicture RADAR = CgCustomPicture.of("mymod:radar")
 // In any canvas, a stage's or a CrystalGUI widget's:
 canvas.picture(RADAR, x, y, 128, 128);
 
-// An item's icon: any thread, the same handle for an equal stack
-canvas.picture(CgItemIcons.of(stack), x, y, 16, 16);
+// An item's icon and its count, bar and cooldown: any thread, the same handle for an equal stack
+CgItemIcon icon = CgItemIcons.of(stack);
+canvas.picture(icon, x, y, 16, 16);
+canvas.picture(icon.overlay(), x, y, 16, 16);
+
+// Its tooltip as Minecraft and every tooltip mod draw it, at its own size
+canvas.picture(CgTooltipPicture.of(stack), pointerX + 12, pointerY - 12);
 ```
 
 In CrystalGUI, a `PictureView` shows one: `new PictureView(RADAR)`.
@@ -112,6 +117,34 @@ CgItemIcons.prewarm(screenStacks, Math.round(16 * scale));   // a screen opening
 - An item the game does not know shows nothing; a stack whose drawing throws shows the missing texture, logged once.
   1.13.2 draws no icons yet: `CgItems` cannot make its stacks.
 
+### Overlays
+
+`icon.overlay()` is the stack's decorations, drawn by Minecraft's own decoration code: the count, the durability bar
+(or any item's own bar), the cooldown sweep, and every mod's `IItemDecorator` on Forge and NeoForge. Shown in the same
+rect as the icon, over it; the count's text reaches past the rect as it does in a slot (the overlay's image is drawn 4
+units past it on every side). Keyed by the stack's data and count; drawn again every frame while the item cools down. A
+stack with nothing to decorate draws none, except on Forge and NeoForge, where a decorator may draw on any stack.
+
+### Tooltips
+
+```java
+CgTooltipPicture tip = CgTooltipPicture.of(stack);
+canvas.picture(tip, pointerX + 12, pointerY - 12);   // its box's top-left there, at its natural size
+
+CgItemTooltip data = CgItemTooltip.of(stack);         // the same lines, for a UI that draws its own
+for (CgStyledText line : data.lines()) ...
+for (CgPicture image : data.images()) canvas.picture(image, x, y);   // a bundle's contents, at its own size (1.20+)
+```
+
+- **`CgTooltipPicture`** is the whole tooltip a screen draws, through each loader's tooltip events, so a tooltip mod's
+  restyle and a bundle's contents show. Its size is the host's own measure (`naturalWidth`, 0 until the first draw
+  point); a 12-unit margin around the box holds what a tooltip mod draws past it. Drawn every frame it shows.
+- **`CgItemTooltip`** reads the lines every frame it is asked for (Shift, advanced tooltips), as styled text: colour,
+  bold, italic, underline, strikethrough. Its `version()` moves when they change.
+- Where Minecraft defers a tooltip to the end of its GUI (1.21.6 on), the host draws it at once into the picture.
+- Before 1.20 a tooltip is drawn by a screen that is never shown, sized as the game's GUI: a tooltip wraps only where
+  vanilla's would, never to the picture it is drawn into.
+
 ## 5. The draw point
 
 `mc.render.CgHostPictures.drawPoint()` draws every picture due in one batch, at the head of each GUI firing (the HUD and
@@ -149,6 +182,11 @@ stays the game's. After each picture the host binds back the framebuffer and vie
 Where no Minecraft runs, `CgStandInPictures` draws each picture with the engine's own canvas into a `CgRenderTarget`,
 handing the canvas as `ctx.gui()`: the harness runs everything above the draw point as in game.
 
+A picture may draw past the rect it is shown in: an image's `outset` (each side a fraction of the rect) widens the quad
+and what a kept layer damages. A `CgHostPicture` kind asks for it with `bleed()`, units its targets hold around the
+rect. A picture with a size of its own answers `naturalWidth`/`naturalHeight`, and `canvas.picture(p, x, y)` shows it at
+that size.
+
 ## 7. Testing and the Game Gallery
 
 - `crystalgraphics:pictures` (gauntlet): the draw point's parity test. The host draws the same objects with vanilla's
@@ -156,6 +194,8 @@ handing the canvas as `ctx.gui()`: the harness runs everything above the draw po
   scrolls with the clock; 2 under a tooltip's translucent layers). A throwing renderer shows the missing
   texture; a dev run refuses a draw point inside a section. `-Dcrystalgraphics.pictures.items=a+b` adds mods' items.
   Its 100-slot grid checks `icons.static` (a still grid draws nothing once drawn) and `icons.glint` (a glinted one
-  draws its looks every frame).
+  draws its looks every frame). Decorated cells are icon and overlay (an ender pearl kept cooling down, a stick marked by
+  the probe's decorator on Forge and NeoForge); tooltips are `CgTooltipPicture`s, and a second capture compares a book's
+  and a bundle's (from 1.20.5, where items carry components) under `pictures.parity.tooltips.*`.
 - CrystalGUI's Game Gallery (`crystalgui:game-gallery`, the `game-gallery` harness scene) shows every kind on a page
   with its checks.
