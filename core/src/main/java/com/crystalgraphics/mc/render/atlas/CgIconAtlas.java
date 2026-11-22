@@ -77,9 +77,11 @@ public final class CgIconAtlas {
             failed = true;
         }
 
+        /** Drawn again the next time it shows: after a resource reload, failed or not. */
         public void retry() {
             failed = false;
             drawnFrame = Long.MIN_VALUE;
+            image = null;
         }
     }
 
