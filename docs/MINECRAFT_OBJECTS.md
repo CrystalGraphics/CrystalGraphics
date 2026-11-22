@@ -106,8 +106,9 @@ CgItemIcons.prewarm(screenStacks, Math.round(16 * scale));   // a screen opening
   Mojang's own (the model identity and animated flag its GUI atlas keys by); 1.14 to 1.21.3 the stack's stamp with the
   model its overrides resolve to, so a clock's frame is a look of its own; legacy and 1.7.10 the same with their
   models and icons.
-- **Drawn when it changes**: a cell draws when it gets a slot, and again every frame it shows while animated: a glint,
-  a custom renderer (BEWLR, TEISR, `IItemRenderer`, a mod's built-in renderer), an animated sprite. A look the host
+- **Drawn when it changes**: a cell draws when it gets a slot, and again while it shows and animates, at
+  `crystalgraphics.icons.animatedHz` (`CgItemIcons.ANIMATED_HZ`): 20 a second, the game's tick, by default; 0 draws it
+  every frame. What animates: a glint, a custom renderer (BEWLR, TEISR, `IItemRenderer`, a mod's built-in renderer), an animated sprite. A look the host
   cannot classify counts as animated: never wrong, only slower. 1.21.4 and 1.21.5 have no identity to read, so every
   icon there counts as animated.
 - **The atlas**: a uniform grid per size in device pixels, laid out in GUI units (a cell every 18, one of gutter each

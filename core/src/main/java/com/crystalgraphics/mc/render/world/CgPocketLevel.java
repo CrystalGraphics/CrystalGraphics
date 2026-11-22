@@ -6,6 +6,8 @@ import java.util.IdentityHashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -502,8 +504,19 @@ public final class CgPocketLevel implements CgHostLevel, AutoCloseable {
             rangeChanged = false;
             host.visibleRange(level, minY, maxY);
         }
-        for (Change c; (c = changes.poll()) != null; ) host.setBlock(level, c.x(), c.y(), c.z(), c.state());
+        for (Change c; (c = changes.poll()) != null; ) {
+            try {
+                host.setBlock(level, c.x(), c.y(), c.z(), c.state());
+            } catch (IllegalArgumentException e) {
+                // A block this version lacks (stone_bricks before 1.13) is air, as vanilla reads one in a structure
+                if (UNKNOWN.add(c.state().block())) LOGGER.warn("{}: air in pocket levels", e.getMessage());
+                host.setBlock(level, c.x(), c.y(), c.z(), CgBlockState.AIR);
+            }
+        }
     }
+
+    /** Blocks the host refused, warned of once each. */
+    private static final Set<String> UNKNOWN = ConcurrentHashMap.newKeySet();
 
     // The engine's reversed-Z projection in the host's convention: unchanged where it is reversed, else GL's -1..1
     private static void hostProjection(Matrix4fc engine, Matrix4f out) {

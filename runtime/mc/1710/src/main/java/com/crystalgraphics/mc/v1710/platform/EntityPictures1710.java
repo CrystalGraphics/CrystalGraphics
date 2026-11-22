@@ -60,12 +60,21 @@ public final class EntityPictures1710 implements CgEntityPictures.Host {
             default:
                 if (previous != null) return previous;
                 NBTTagCompound tag = CgNbt.toHost(ref.data().toNbt());
-                // Before 1.11 an entity's id is its name, unnamespaced
-                tag.setString("id", tag.getString("id").replaceFirst("^minecraft:", ""));
+                // Before 1.11 an entity's id is its name, unnamespaced, and capitalised: sheep is Sheep
+                tag.setString("id", gameName(tag.getString("id").replaceFirst("^minecraft:", "")));
                 // Made, never spawned: a picture's entity never joins the level
                 Entity e = EntityList.createEntityFromNBT(tag, world);
                 return e instanceof EntityLivingBase ? e : null;
         }
+    }
+
+    // The registered name a modern id stands for, its case aside (1.11 lowered them all); the id as given where none matches
+    private static String gameName(String id) {
+        if (EntityList.stringToClassMapping.containsKey(id)) return id;
+        for (Object name : EntityList.stringToClassMapping.keySet()) {
+            if (((String) name).equalsIgnoreCase(id)) return (String) name;
+        }
+        return id;
     }
 
     private static GameProfile profile(String nameOrUuid) {

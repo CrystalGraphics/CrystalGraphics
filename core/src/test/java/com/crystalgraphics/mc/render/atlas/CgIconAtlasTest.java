@@ -79,6 +79,41 @@ public class CgIconAtlasTest {
     }
 
     @Test
+    public void aPacedAnimatedCellDrawsOnlyWhenItsPeriodHasPassed() {
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
+        CgIconAtlas.Cell glint = atlas.cell("glint", "glint", true, "glint");
+        long tick = 50_000_000L;
+        int drawn = 0;
+        // Sixty frames a second for a second, paced at twenty: every third frame, the first included
+        for (long f = 1; f <= 60; f++) {
+            glint.shown(f);
+            List<CgIconAtlas.Cell> due = new ArrayList<>();
+            if (atlas.place(f, MAX, f * 16_666_667L, tick, due)) atlas.targets("page", null, PAGE, null);
+            for (CgIconAtlas.Cell c : due) atlas.drawn(c, f, false);
+            drawn += due.size();
+        }
+        assertEquals(20, drawn);
+    }
+
+    @Test
+    public void unevenFramesKeepThePaceOnAverage() {
+        CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
+        CgIconAtlas.Cell glint = atlas.cell("glint", "glint", true, "glint");
+        long tick = 50_000_000L, now = 0L;
+        int drawn = 0;
+        // Frames of 30 and 90 ms in turn, 16 a second on average, for 2.4 s: slower than the pace only half the time
+        for (long f = 1; f <= 40; f++) {
+            now += f % 2 == 0 ? 90_000_000L : 30_000_000L;
+            glint.shown(f);
+            List<CgIconAtlas.Cell> due = new ArrayList<>();
+            if (atlas.place(f, MAX, now, tick, due)) atlas.targets("page", null, PAGE, null);
+            for (CgIconAtlas.Cell c : due) atlas.drawn(c, f, false);
+            drawn += due.size();
+        }
+        assertTrue(drawn + " draws", drawn >= 36 && drawn <= 40);
+    }
+
+    @Test
     public void aSlotNotShownThisFrameIsReclaimedBeforeThePageGrows() {
         CgIconAtlas atlas = new CgIconAtlas(16, CgIconAtlas.ICON);
         show(atlas, 1, "a", "b", "c", "d");

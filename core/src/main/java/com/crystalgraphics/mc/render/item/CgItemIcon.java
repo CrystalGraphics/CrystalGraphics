@@ -112,7 +112,7 @@ public final class CgItemIcon implements CgPicture {
     }
 
     /**
-     * Whether it is drawn again every frame it shows, as its look was last read: a glint, a custom renderer, an animated
+     * Whether it is drawn again while it shows, at {@link CgItemIcons#ANIMATED_HZ}, as its look was last read: a glint, a custom renderer, an animated
      * sprite, or a look the host cannot classify. False before its first draw.
      */
     public boolean animated() {

@@ -207,9 +207,9 @@ public final class CgPicturesProbe {
     private static final int GRID = 10;
     /**
      * The most a glinted pixel may differ: the glint scrolls with the millisecond clock, and the picture draws up to a
-     * frame after the reference under load (4 measured with three clients at once; a wrong draw is dozens).
+     * frame after the reference under load (12 measured with four slow clients at once; a wrong draw is near 200).
      */
-    private static final int GLINT_SLACK = 8;
+    private static final int GLINT_SLACK = 16;
     /**
      * The most a pixel under stacked translucent layers may differ: the picture blends them over transparent in an 8-bit
      * target and is composited after, a rounding a layer more than vanilla's straight blend (a tooltip's fill and border).
@@ -217,6 +217,8 @@ public final class CgPicturesProbe {
     private static final int LAYER_SLACK = 2;
     /** Client ticks: in the world before drawing; parity frames before the shot; frames a cost is measured over. */
     private static final int SETTLE = 60, WARM = 20, COST = 60;
+    /** Ticks past WARM a parity shot waits for the panel's pictures to draw: a slow client spreads first draws. */
+    private static final int HOLD = 600;
     private static final String VANILLA = "minecraft:diamond_sword,minecraft:clock,minecraft:compass,minecraft:chest,"
             + "minecraft:shield,minecraft:carved_pumpkin,minecraft:oak_sapling";
 
@@ -243,6 +245,8 @@ public final class CgPicturesProbe {
     /** Client ticks a cost phase lasts; the render frames inside it, each side's own. */
     private static int costFrames, pictureFrames, referenceFrames;
     private static boolean retargetNoted, pictureAsked, referenceDrew;
+    /** Pictures of the panel not drawn yet, last frame: a slow client's budget spreads first draws over many. */
+    private static volatile int unreadyPictures = -1;
     private static volatile String pictureRead = "never asked";
     private static volatile int pictureDrawn;
     @Nullable private static volatile String refused;
@@ -255,10 +259,17 @@ public final class CgPicturesProbe {
     private static final Map<Cell, Object> REFERENCE_ENTITIES = new HashMap<>(), REFERENCE_BLOCKS = new HashMap<>();
     /** Cells whose reference threw, noted once each. */
     private static final Set<String> slotThrown = new TreeSet<>(), slotMade = new TreeSet<>();
+    private static final Map<String, Integer> slotTries = new HashMap<>();
+    /** Frames a reference entity may take to be made before the probe says the game made none. */
+    private static final int MAKE_TRIES = 60;
     /** Frames a cost grid's icons take to draw for the first time, the budget spreading them, before they are counted. */
     private static final int ICONS_SETTLE = 10;
     private static long iconFrame = Long.MIN_VALUE;
     private static int iconFrames, iconFramesRedrawn, iconFirstDraws, iconRedraws;
+    /** When the first and the last counted frame drew, nanoseconds. */
+    private static long iconFirstNanos, iconLastNanos;
+    /** The icon pace put aside while pixels are compared, or negative while it is in force. */
+    private static float pacedHz = -1f;
 
     /** What the draw point draws: the cells, with Minecraft's code, every frame. */
     static final CgCustomPicture PICTURE = CgCustomPicture.of("crystalgraphics:pictures_probe")
@@ -406,9 +417,12 @@ public final class CgPicturesProbe {
         if (c.kind() == Kind.ENTITY) {
             CgEntityPictures.Host host = CgPlatform.get(CgEntityPictures.HOST);
             Object e = REFERENCE_ENTITIES.compute(c, (k, before) -> host.entity(ref(k), before));
-            // Both panels would be empty for an entity the game cannot make: that is a failure, not parity
-            if (slotMade.add(c.name()) && active != null) {
-                active.stated("pictures.made." + c.name(), e != null, e == null ? "the game made no entity from it" : "made");
+            // Both panels would be empty for an entity the game cannot make: that is a failure, not parity. A host may
+            // make it a few frames on (1.7.10), so none is stated only after MAKE_TRIES
+            int tries = slotTries.merge(c.name(), 1, Integer::sum);
+            if ((e != null || tries >= MAKE_TRIES) && slotMade.add(c.name()) && active != null) {
+                active.stated("pictures.made." + c.name(), e != null, e == null
+                        ? "the game made no entity from it in " + tries + " frames" : "made");
             }
             if (e != null) host.draw(ctx, e, pose(c), c.count(), x, y, r[2], r[3]);
         } else if (c.kind() == Kind.BLOCK) {
@@ -446,6 +460,9 @@ public final class CgPicturesProbe {
         iconFrame = st.frame();
         Phase p = phase;
         if ((p != Phase.COST_STATIC && p != Phase.COST_GLINT) || costFrames < ICONS_SETTLE) return;
+        long now = System.nanoTime();
+        if (iconFrames == 0) iconFirstNanos = now;
+        iconLastNanos = now;
         iconFrames++;
         iconFirstDraws += st.firstDraws();
         iconRedraws += st.redraws();
@@ -487,6 +504,7 @@ public final class CgPicturesProbe {
             retargetNoted = false;
             slotThrown.clear();
             slotMade.clear();
+            slotTries.clear();
             refused = null;
             pictureAsked = referenceDrew = false;
             pictureRead = "never asked";
@@ -505,28 +523,31 @@ public final class CgPicturesProbe {
                 CgCanvas canvas = frame.canvas();
                 float s = frame.scale();
                 canvas.save().scale(s, s);
+                int unready = 0;
+                // The probe's own picture draws once its read is asked: not waited for, or neither happens
                 canvas.picture(PICTURE, PIC_X, PIC_Y, panelW(), panelH());
                 // Items as their icons and overlays, drawn by Minecraft into the atlas; tooltips as Minecraft draws them,
                 // its box where a screen puts it for a pointer at the cell (8 right, 16 up)
                 for (Cell c : cells) {
                     if (iconsHere() && (c.kind() == Kind.ITEM || c.kind() == Kind.DECORATED)) {
                         CgItemIcon icon = icon(c);
-                        canvas.picture(icon, PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
-                        if (c.kind() == Kind.DECORATED) canvas.picture(icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        unready += show(canvas, icon, PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        if (c.kind() == Kind.DECORATED) unready += show(canvas, icon.overlay(), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
                     } else if (tooltipsHere() && c.kind() == Kind.TOOLTIP) {
-                        canvas.picture(CgTooltipPicture.of(stackOf(c)), PIC_X + c.x() + 8, PIC_Y + c.y() - 16);
+                        unready += show(canvas, CgTooltipPicture.of(stackOf(c)), PIC_X + c.x() + 8, PIC_Y + c.y() - 16);
                     } else if (c.kind() == Kind.ENTITY) {
                         int[] r = c.rect();
-                        canvas.picture(entityPicture(c), PIC_X + r[0], PIC_Y + r[1], r[2], r[3]);
+                        unready += show(canvas, entityPicture(c), PIC_X + r[0], PIC_Y + r[1], r[2], r[3]);
                     } else if (c.kind() == Kind.BLOCK) {
-                        canvas.picture(blockPicture(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
+                        unready += show(canvas, blockPicture(c), PIC_X + c.x(), PIC_Y + c.y(), 16, 16);
                     }
                 }
+                unreadyPictures = unready;
                 if (parity()) canvas.picture(FAILING, FAIL_X, FAIL_Y, FAIL_SIZE, FAIL_SIZE);
                 canvas.restore();
                 countIcons();
                 if (phase == Phase.PARITY && refused == null) refused = refusal();
-                if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2) {
+                if (phase == Phase.PARITY && !pictureAsked && ticks > WARM / 2 && unready == 0) {
                     pictureAsked = true;
                     readPicture(s);
                 }
@@ -628,7 +649,7 @@ public final class CgPicturesProbe {
                 next(Phase.PARITY);
             }
             case PARITY -> {
-                if (ticks < WARM) return;
+                if (!ready(test, "parity")) return;
                 shot = test.shoot("parity");
                 next(Phase.SHOT);
             }
@@ -639,7 +660,7 @@ public final class CgPicturesProbe {
                 next(Phase.TIPS);
             }
             case TIPS -> {
-                if (ticks < WARM) return;
+                if (!ready(test, "parity-tooltips")) return;
                 shot = test.shoot("parity-tooltips");
                 next(Phase.TIPS_SHOT);
             }
@@ -768,6 +789,7 @@ public final class CgPicturesProbe {
 
     private static void startCost(boolean glint) {
         iconFrames = iconFramesRedrawn = 0;
+        iconFirstNanos = iconLastNanos = 0L;
         iconFirstDraws = iconRedraws = 0;
         // A clock's or compass's hand is a new look each time it moves, drawn once each: not a still grid's
         List<String> items = new ArrayList<>(known);
@@ -807,13 +829,30 @@ public final class CgPicturesProbe {
                 CgItemIcon icon = ICONS.get(c);
                 if (icon != null && icon.animated()) animating.add(c.item() + " (" + icon.why() + ")");
             }
-            boolean ok = iconFrames > 0 && iconFirstDraws == 0 && iconRedraws == (long) iconFrames * animating.size();
+            // Each animating look at the pace; none redrawn where none animates
+            boolean ok = iconFrames > 0 && iconFirstDraws == 0
+                    && (animating.isEmpty() ? iconRedraws == 0 : iconRedraws <= pacedMost() * animating.size());
             test.stated("icons.static", ok, counted + "; " + animating.size() + " looks animate"
                     + (animating.isEmpty() ? "" : ": " + animating));
             return;
         }
-        test.stated("icons.glint", iconFrames > 0 && iconFramesRedrawn == iconFrames, counted + ", redrawn in "
-                + iconFramesRedrawn);
+        test.stated("icons.glint", iconFrames > 0 && iconFramesRedrawn >= pacedLeast() && iconFramesRedrawn <= pacedMost(),
+                counted + ", redrawn in " + iconFramesRedrawn + String.format(Locale.ROOT, " over %.2f s at %s",
+                        (iconLastNanos - iconFirstNanos) / 1e9, CgItemIcons.ANIMATED_HZ.get() + " Hz"));
+    }
+
+    // Draws the counted frames allow an animated look at the pace: every frame where it is 0, else one a period, and one more
+    private static long pacedMost() {
+        float hz = CgItemIcons.ANIMATED_HZ.get();
+        if (hz <= 0f) return iconFrames;
+        return Math.min(iconFrames, (long) Math.ceil(hz * (iconLastNanos - iconFirstNanos) / 1e9) + 1);
+    }
+
+    // The fewest: most of the periods counted, a frame slower than the pace drawing once
+    private static long pacedLeast() {
+        float hz = CgItemIcons.ANIMATED_HZ.get();
+        double due = hz <= 0f ? iconFrames : Math.min(iconFrames, hz * (iconLastNanos - iconFirstNanos) / 1e9);
+        return (long) (due * 0.6);
     }
 
     // ── what is measured ─────────────────────────────────────────────────────────
@@ -909,11 +948,16 @@ public final class CgPicturesProbe {
         int x0 = Math.round(Math.max(0, gx) * s), y0 = Math.round(Math.max(0, gy) * s);
         int x1 = Math.round(Math.min(W, gx + gw) * s), y1 = Math.round(Math.min(H, gy + gh) * s);
         int over = 0, max = 0, n = 0;
+        // Vanilla's crosshair, 15 units square at the screen's centre, falls on a panel in a small window: not compared
+        int cx = image.getWidth() / 2, cy = image.getHeight() / 2, ch = Math.round(8 * s);
         for (int y = y0; y < y1; y++) {
             for (int x = x0; x < x1; x++) {
                 int rx = Math.round(REF_X * s) + x, ry = Math.round(REF_Y * s) + y;
                 int px = Math.round(PIC_X * s) + x, py = Math.round(PIC_Y * s) + y;
                 if (rx >= image.getWidth() || py >= image.getHeight()) continue;
+                if (Math.abs(rx - cx) <= ch && Math.abs(ry - cy) <= ch || Math.abs(px - cx) <= ch && Math.abs(py - cy) <= ch) {
+                    continue;
+                }
                 int a = image.getRGB(rx, ry), b = againstBackground ? BACKGROUND : image.getRGB(px, py);
                 int d = Math.max(Math.abs((a >> 16 & 255) - (b >> 16 & 255)),
                         Math.max(Math.abs((a >> 8 & 255) - (b >> 8 & 255)), Math.abs((a & 255) - (b & 255))));
@@ -933,12 +977,48 @@ public final class CgPicturesProbe {
         return most;
     }
 
+    // A picture shown at x, y in w by h units (h 0: its own size, a tooltip's); 1 where it has not drawn yet
+    private static int show(CgCanvas canvas, CgPicture picture, float x, float y, float w, float h) {
+        canvas.picture(picture, x, y, w, h);
+        return picture.version() == 0 ? 1 : 0;
+    }
+
+    private static int show(CgCanvas canvas, CgPicture picture, float x, float y) {
+        canvas.picture(picture, x, y);
+        return picture.version() == 0 ? 1 : 0;
+    }
+
+    // Warmed, and every picture of the panel drawn; past HOLD ticks it is shot as it is, the wait noted
+    private static boolean ready(Test test, String shot) {
+        if (ticks < WARM) return false;
+        int unready = unreadyPictures;
+        // The parity shot also waits for the picture's own read, asked on the frame its panel is whole
+        boolean waiting = unready != 0 || "parity".equals(shot) && !pictureAsked;
+        if (waiting && ticks < WARM + HOLD) return false;
+        if (unready != 0) test.noted("pictures.wait." + shot, unready + " pictures still undrawn after " + ticks + " ticks");
+        return true;
+    }
+
     private static void next(Phase p) {
         phase = p;
         ticks = 0;
+        unreadyPictures = -1;
+        paced(p != Phase.PARITY && p != Phase.SHOT && p != Phase.TIPS && p != Phase.TIPS_SHOT);
+    }
+
+    // Pixels are compared against vanilla drawn this frame: a glint drawn at the pace may be a period old
+    private static void paced(boolean on) {
+        if (!on && pacedHz < 0f) {
+            pacedHz = CgItemIcons.ANIMATED_HZ.get();
+            CgItemIcons.ANIMATED_HZ.set(0f);
+        } else if (on && pacedHz >= 0f) {
+            CgItemIcons.ANIMATED_HZ.set(pacedHz);
+            pacedHz = -1f;
+        }
     }
 
     private static void finish(Test test) {
+        paced(true);
         composite = false;
         phase = Phase.DONE;
         test.done();

@@ -16,6 +16,7 @@ import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
+import com.crystalgraphics.variable.CgVar;
 import com.crystalgraphics.api.texture.CgTexture;
 import com.crystalgraphics.mc.CgAssetReloader;
 import com.crystalgraphics.mc.item.CgItemStack;
@@ -56,13 +57,25 @@ import com.crystalgraphics.util.trace.CgChannels;
  */
 public final class CgItemIcons {
 
+    /**
+     * How often an animated icon (a glint, a clock, a mod's renderer) is drawn again, a second: the game's tick rate by
+     * default, as a clock and a compass change only on a tick; 0 draws it every frame it shows. Set from the command line
+     * ({@code -Dcrystalgraphics.icons.animatedHz=60}) or in code:
+     * <pre>{@code
+     * CgItemIcons.ANIMATED_HZ.set(0f);   // every frame: a pixel comparison against vanilla drawn this frame
+     * float hz = CgItemIcons.ANIMATED_HZ.get();
+     * }</pre>
+     */
+    public static final CgVar.Num ANIMATED_HZ = CgVar.number("crystalgraphics.icons.animatedHz", 20f, 0f, 1000f,
+            "How often an animated item icon is drawn again, a second; 0 every frame");
+
     private static final Logger LOGGER = LogManager.getLogger("CgItemIcons");
 
     /**
      * What a stack looks like: equal for stacks Minecraft draws alike; whether it animates, and why.
      *
      * @param key      compared with {@code equals}: Mojang's model identity, or the stack's stamp with its model
-     * @param animated drawn again every frame it shows
+     * @param animated drawn again while it shows, at {@link #ANIMATED_HZ}
      * @param why      what animates it ({@code "glint"}, {@code "custom renderer"}, {@code "animated sprite"},
      *                 {@code "unknown"}), named in the trace's hint; null when still
      */
@@ -148,12 +161,13 @@ public final class CgItemIcons {
      * @param firstDraws cells drawn for the first time this frame
      * @param redraws    cells drawn again this frame, as animated
      * @param deferred   first draws left for the next frame by the budget
+     * @param firstDrawsTotal cells drawn for the first time since the game started: a reader a frame apart sees every one
      * @param redrawn    one icon drawn again this frame and why ({@code "minecraft:clock (animated sprite)"}); null
      *                   when none was
      */
     public record Stats(long frame, int icons, int cells, int pages, int firstDraws, int redraws, int deferred,
-                        @Nullable String redrawn) {
-        static final Stats NONE = new Stats(-1L, 0, 0, 0, 0, 0, 0, null);
+                        long firstDrawsTotal, @Nullable String redrawn) {
+        static final Stats NONE = new Stats(-1L, 0, 0, 0, 0, 0, 0, 0L, null);
     }
 
     /** Frames a size may go unshown before its cell is given back; a page unshown as long is freed. */
@@ -175,6 +189,7 @@ public final class CgItemIcons {
     private static final ArrayDeque<Release> RELEASING = new ArrayDeque<>();
     private static final Set<Object> LOGGED = new HashSet<>();
     private static volatile Stats stats = Stats.NONE;
+    private static long firstDrawsTotal;
     private static volatile boolean retry;
     /** An icon drawn again this frame as animated, for the hint: its item, and why. */
     private static volatile String redrawnExample;
@@ -258,7 +273,9 @@ public final class CgItemIcons {
             for (Map.Entry<Integer, CgIconAtlas> e : ATLASES.entrySet()) {
                 CgIconAtlas atlas = e.getValue();
                 DUE.clear();
-                if (atlas.place(frame, pictures.maxTargetSize(), DUE)) remake(pictures, atlas, frame);
+                float hz = ANIMATED_HZ.get();
+                long every = hz <= 0f ? 0L : (long) (1e9f / hz);
+                if (atlas.place(frame, pictures.maxTargetSize(), System.nanoTime(), every, DUE)) remake(pictures, atlas, frame);
                 if (DUE.isEmpty()) continue;
                 if (!pictures.clearsRects()) {
                     // The host clears the page whole: every cell it shows draws with what is due, in one call
@@ -316,7 +333,8 @@ public final class CgItemIcons {
             cells += a.cells();
             if (a.page() != null) pages++;
         }
-        stats = new Stats(frame, HELD.size(), cells, pages, firstDraws, redraws, deferred,
+        firstDrawsTotal += firstDraws;
+        stats = new Stats(frame, HELD.size(), cells, pages, firstDraws, redraws, deferred, firstDrawsTotal,
                 redraws == 0 ? null : redrawnExample);
         CgTrace.counter(CgChannels.PICTURES, "icons-cells", cells);
         CgTrace.counter(CgChannels.PICTURES, "icons-pages", pages);

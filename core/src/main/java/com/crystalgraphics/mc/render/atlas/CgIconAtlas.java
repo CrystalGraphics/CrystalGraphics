@@ -137,20 +137,34 @@ public final class CgIconAtlas {
         return shownFrame >= frame;
     }
 
+    /** When its animated cells were last drawn, nanoseconds. */
+    private long animatedAt = Long.MIN_VALUE / 2;
+
     public int cells() {
         return byKey.size();
     }
 
+    /** {@link #place(long, int, long, long, List)}, its animated cells drawn every frame they show. */
+    public boolean place(long frame, int maxSide, List<Cell> due) {
+        return place(frame, maxSide, 0L, 0L, due);
+    }
+
     /**
      * Gives every cell shown at {@code frame} a slot, remaking the page when they do not fit; the cells that must draw
-     * this frame into {@code due}: new to a slot, never drawn, or animated. True where the page was remade, so the
-     * host's targets change; {@code maxSide} is the host's largest target.
+     * this frame into {@code due}: new to a slot, never drawn, or animated and their last drawing at least
+     * {@code animateEvery} nanoseconds before {@code now} (0 draws them every frame). True where the page was remade,
+     * so the host's targets change; {@code maxSide} is the host's largest target.
      */
-    public boolean place(long frame, int maxSide, List<Cell> due) {
+    public boolean place(long frame, int maxSide, long now, long animateEvery, List<Cell> due) {
         int shown = 0;
         for (Cell c : byKey.values()) if (c.shownFrame == frame) shown++;
         if (shown == 0) return false;
         shownFrame = frame;
+        // The page's animated cells move together, at the pace asked: a glint at the game's tick rate is one redraw in three.
+        // A fixed step, as Minecraft's tick timer, so uneven frames average out; a stall of more than four periods resyncs rather than draws
+        // every frame to catch up.
+        boolean animate = animateEvery <= 0L || now - animatedAt >= animateEvery;
+        if (animate) animatedAt = animateEvery <= 0L || now - animatedAt > 4 * animateEvery ? now : animatedAt + animateEvery;
         boolean remade = false;
         int free = 0;
         for (Cell s : slots) if (s == null || s.shownFrame != frame) free++;
@@ -192,7 +206,7 @@ public final class CgIconAtlas {
                 c.slot = next;
                 c.image = null;
             }
-            if (!c.failed && (c.image == null || c.animated)) due.add(c);
+            if (!c.failed && (c.image == null || c.animated && animate)) due.add(c);
         }
         return remade;
     }
